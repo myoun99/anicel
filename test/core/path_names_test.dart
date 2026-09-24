@@ -33,12 +33,21 @@ void main() {
 
   test('a staged name keeps the source file name after its hash', () {
     expect(
-      MediaStagingStore.stagedNameFor(r'C:\media\take 1.wav'),
+      MediaStagingStore.stagedNameFor((
+        poolPath: r'C:\media\take 1.wav',
+        token: 'c1',
+      )),
       endsWith('-take_1.wav'),
     );
     expect(
-      MediaStagingStore.stagedNameFor('C:/media/take 1.wav'),
-      MediaStagingStore.stagedNameFor(r'C:\media\take 1.wav'),
+      MediaStagingStore.stagedNameFor((
+        poolPath: 'C:/media/take 1.wav',
+        token: 'c1',
+      )),
+      MediaStagingStore.stagedNameFor((
+        poolPath: r'C:\media\take 1.wav',
+        token: 'c1',
+      )),
       reason: 'both spellings of one path are one staged file',
     );
   });

@@ -18,6 +18,7 @@ import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame_id.dart';
+import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
@@ -60,7 +61,7 @@ import 'live_stroke_landing.dart';
 /// handed whole, so the four roads cannot disagree about what a save is.
 typedef _SaveCarry = ({
   Project project,
-  Map<String, MediaByteSource> mediaToStore,
+  Map<MediaCarry, MediaByteSource> mediaToStore,
   ProjectConforms conforms,
   void Function(double)? onProgress,
 });
@@ -69,7 +70,7 @@ typedef _SaveCarry = ({
 /// [ProjectFileDoor.adoptPlacedArchive] needs to make that archive the
 /// project: the media entry names it stored, and the edit count it is clean
 /// as of ([ProjectFile.bindToSavedFile]).
-typedef StagedArchive = ({Map<String, String> entryNames, int cleanAsOf});
+typedef StagedArchive = ({Set<String> mediaInFile, int cleanAsOf});
 
 /// Saves the session into a `.anicel` and opens one back.
 /// Who asked for a save — the ONE thing the two entrances disagree about.
@@ -467,7 +468,7 @@ class ProjectFileDoor {
     final carry = _carryFor(onProgress: onProgress);
     celsLostToAMissingFile = await _saveArchive(path, carry, adoptRefs: false);
     return (
-      entryNames: mediaEntryNamesFor(carry.mediaToStore),
+      mediaInFile: {...mediaEntryNamesFor(carry.mediaToStore).values},
       cleanAsOf: cleanAsOf,
     );
   }
@@ -497,7 +498,7 @@ class ProjectFileDoor {
   }) {
     _file.bindToSavedFile(
       placedPath,
-      entryNames: staged.entryNames,
+      mediaInFile: staged.mediaInFile,
       cleanAsOf: staged.cleanAsOf,
     );
     _changes.notifyChanged();
@@ -619,7 +620,7 @@ class ProjectFileDoor {
       mediaToStore: projectMediaSources(
         project: project,
         projectFilePath: _file.path,
-        mediaEntryNames: _file.mediaEntryNames,
+        mediaInFile: _file.mediaInFile,
         staging: _staging,
       ),
       conforms: _file.conformsToStore(),
@@ -757,12 +758,12 @@ class ProjectFileDoor {
     // rather than on close or on import-undo, because this is the one
     // moment the bytes provably live somewhere else. The save's own step,
     // so it stays here rather than joining the binding below.
-    for (final path in mediaToStore.keys) {
-      _staging.retire(path);
+    for (final carry in mediaToStore.keys) {
+      _staging.retire(carry);
     }
     _file.bindToSavedFile(
       filePath,
-      entryNames: mediaEntryNamesFor(mediaToStore),
+      mediaInFile: {...mediaEntryNamesFor(mediaToStore).values},
       cleanAsOf: cleanAsOf,
     );
     _changes.notifyChanged();
@@ -913,7 +914,7 @@ class ProjectFileDoor {
       // What this project carries, as the file on disk says. Anything the
       // pool names that is NOT here is an ordinary outside reference and
       // resolves by path like it always did.
-      entryNames: result.mediaEntryNames,
+      mediaInFile: {...result.mediaEntryNames.values},
       // Dirty when the cels are being read out of a staged copy rather than
       // the project's own address — and when the load just HEALED
       // mismatched cels, where memory no longer matches the file (R7q2).

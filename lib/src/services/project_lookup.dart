@@ -287,13 +287,37 @@ Set<String> projectAudioSourcePaths(Project project) => {
 /// project stores is what the pool holds, and a clip pointing at an
 /// unregistered file stays a reference like any other.
 Set<String> projectArchivedMediaPaths(Project project) => {
+  for (final carry in projectMediaCarries(project)) carry.poolPath,
+};
+
+/// [projectArchivedMediaPaths] as the carries themselves — what the save
+/// streams, and what each one's bytes are named from ([MediaAsset.carry]).
+Set<MediaCarry> projectMediaCarries(Project project) => {
   // `carried` is the whole answer now. It used to be ANDed with the kind,
   // which meant a movie the user had explicitly asked the project to hold
   // was dropped on the way to the archive — the flag said yes and the save
   // said no, with nothing on screen explaining the disagreement.
   for (final asset in project.mediaAssets)
-    if (asset.carried) asset.path,
+    ?asset.carry,
 };
+
+/// The carry the pool's [path] asset is ([MediaAsset.carry]) — null when
+/// the pool names no such asset, or points at the file instead of carrying
+/// it.
+///
+/// 🚨★★★**THE POOL AS IT IS NOW, NOT THE PATH.** One path can have been
+/// carried twice — removed, then carried again, with an undo able to bring
+/// the first back — and which carry's bytes a reader gets is the one the
+/// pool names at this moment (card `recarry-after-remove-reads-the-old`).
+MediaCarry? projectMediaCarryOf(Project project, String path) {
+  final key = normalizedMediaPath(path);
+  for (final asset in project.mediaAssets) {
+    if (asset.path == key) {
+      return asset.carry;
+    }
+  }
+  return null;
+}
 
 /// Every layer id the project already holds, as raw strings.
 ///

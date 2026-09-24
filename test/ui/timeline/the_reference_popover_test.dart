@@ -387,7 +387,7 @@ void main() {
     );
     expect(mediaAssetPoolState(linked), 'Linked');
     expect(
-      mediaAssetPoolState(linked.copyWith(carried: true)),
+      mediaAssetPoolState(linked.copyWith(carriedAs: 'c1')),
       'In the project',
     );
   });

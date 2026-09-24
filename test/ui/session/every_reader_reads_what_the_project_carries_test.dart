@@ -153,8 +153,8 @@ void main() {
             reason: 'no decoder was pointed at the original',
           );
           expect(
-            session.mediaStagingStore.find(path),
-            isNull,
+            session.mediaStagingStore.holdsAnyCopyOf(path),
+            isFalse,
             reason: 'the project already holds it — its original is not '
                 'copied again',
           );

@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/media_pool.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**A FILE REGISTERED WITH KEEP IS HELD FROM THAT MOMENT — THE
@@ -55,7 +56,7 @@ void main() {
   }
 
   List<int> heldBytesOf(String path) {
-    final staged = session.mediaStagingStore.find(path)!;
+    final staged = stagedCopyIn(session, path)!;
     final source = MediaAppFileBytes(path: staged.path, framed: staged.framed);
     return staged.framed
         ? MediaFramedBytes(source).readSync()
@@ -91,7 +92,7 @@ void main() {
 
     await pool.importMediaFiles([path], copyIntoProject: false);
 
-    expect(session.mediaStagingStore.find(path), isNull);
+    expect(session.mediaStagingStore.holdsAnyCopyOf(path), isFalse);
     expect(pool.mediaAssets.single.carried, isFalse);
   });
 

@@ -17,6 +17,7 @@ import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**A FILE PLACED WITH KEEP IS HELD FROM THAT MOMENT — BY EVERY DOOR.**
@@ -187,7 +188,7 @@ void main() {
         isTrue,
         reason: 'the premise: the pool records it carried',
       );
-      final staged = s.mediaStagingStore.find(path);
+      final staged = stagedCopyIn(s, path);
       expect(staged, isNotNull, reason: '「품은 순간」 — not at the save');
       File(path).deleteSync();
       final held = MediaAppFileBytes(path: staged!.path, framed: staged.framed);
@@ -210,8 +211,8 @@ void main() {
 
       expect(landed, isTrue);
       expect(
-        s.mediaStagingStore.find(path),
-        isNull,
+        s.mediaStagingStore.holdsAnyCopyOf(path),
+        isFalse,
         reason: 'the user said keep the link — a copy anyway is a second '
             'copy nobody asked for',
       );

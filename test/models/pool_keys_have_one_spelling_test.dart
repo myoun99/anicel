@@ -51,7 +51,7 @@ void main() {
   test('a file that recorded another spelling names the same entries the '
       'pool now asks for', () {
     final project = createDefaultProject().copyWith(
-      mediaAssets: [MediaAsset(path: pool, name: 'A1', carried: true)],
+      mediaAssets: [MediaAsset(path: pool, name: 'A1', carriedAs: 'c1')],
     );
     final json = project.toJson();
     final assets = json['mediaAssets'] as List;

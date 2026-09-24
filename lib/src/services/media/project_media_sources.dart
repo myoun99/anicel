@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show immutable;
 
+import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
 import '../persistence/anicel_incremental_writer.dart';
 import '../persistence/anicel_project_archive.dart';
@@ -22,9 +23,9 @@ enum MediaBytesAt {
   original,
 }
 
-/// Where [poolPath]'s STORED bytes are right now — THE order every reader
-/// and the save look in: the entry called [entryName] in the project file's
-/// [layout], then the copy [staging] holds, then the file it came from.
+/// Where [carry]'s STORED bytes are right now — THE order every reader and
+/// the save look in: its entry in the project file's [layout], then the
+/// copy [staging] holds, then the file it came from.
 ///
 /// 🚨★★★**ONE ORDER, WRITTEN ONCE.** The save's walk ([projectMediaSources])
 /// and the readers' question (`ProjectFile.holdMediaBytes`) each spelled
@@ -32,39 +33,52 @@ enum MediaBytesAt {
 /// after a crash a reader fell back to an original the save knew better
 /// than to trust (audit 2026-09-24, `carried-bytes-audit-0924`).
 ///
+/// 🚨★★★**ASKED BY CARRY, NOT BY PATH.** Both places are named from the
+/// carry ([anicelMediaEntryName], [MediaStagingStore.stagedNameFor]), so
+/// the bytes of an earlier carry of the same path — still in the file, or
+/// still staged, for an undo to bring back — are not an answer to this one
+/// (card `recarry-after-remove-reads-the-old`).
+///
 /// STORED, not readable: a framed entry comes back framed — the save
 /// streams it forward as it is, and a reader decodes it
-/// ([mediaSourceDecodingFrames]).
+/// ([mediaSourceDecodingFrames]). Either spelling of the entry answers:
+/// whether it compressed is a property of the bytes.
 ({MediaByteSource stored, MediaBytesAt at}) storedMediaBytesFor(
-  String poolPath, {
+  MediaCarry carry, {
   required AnicelZipLayout? layout,
   required String? archivePath,
-  required String? entryName,
   required MediaStagingStore? staging,
 }) {
-  if (entryName != null && layout != null && archivePath != null) {
-    final entry = layout.entryNamed(entryName);
-    if (entry != null) {
-      return (
-        stored: MediaArchiveBytes.ofEntry(
-          archivePath: archivePath,
-          entry: entry,
-        ),
-        at: MediaBytesAt.archive,
-      );
+  if (layout != null && archivePath != null) {
+    for (final name in anicelMediaEntryNames(carry)) {
+      final entry = layout.entryNamed(name);
+      if (entry != null) {
+        return (
+          stored: MediaArchiveBytes.ofEntry(
+            archivePath: archivePath,
+            entry: entry,
+          ),
+          at: MediaBytesAt.archive,
+        );
+      }
     }
   }
   // Staged at 품기: the bytes the project already controls, already
   // compressed when that was worth it.
-  final staged = staging?.find(poolPath);
+  final staged = staging?.find(carry);
   if (staged != null) {
     return (
       stored: MediaAppFileBytes(path: staged.path, framed: staged.framed),
       at: MediaBytesAt.staged,
     );
   }
-  return (stored: MediaFileBytes(poolPath), at: MediaBytesAt.original);
+  return (stored: MediaFileBytes(carry.poolPath), at: MediaBytesAt.original);
 }
+
+/// Whether [entryNames] — the media entries a project file is known to
+/// hold — include [carry]'s, under either spelling.
+bool mediaEntryHeld(Set<String> entryNames, MediaCarry carry) =>
+    anicelMediaEntryNames(carry).any(entryNames.contains);
 
 /// The layout of the project file at [projectFilePath] as a reader should
 /// see it — its tail's directory, or the last one that committed when a
@@ -113,13 +127,17 @@ AnicelZipLayout? readableAnicelLayout(String? projectFilePath) {
 /// than guessed at. It is already missing, the relink flow exists for
 /// exactly that, and writing a zero-length entry over its name would turn
 /// a findable absence into a permanent one.
-Map<String, MediaByteSource> projectMediaSources({
+///
+/// Keyed by the CARRY: each one's entry is named from it
+/// ([anicelMediaEntryName]), and [mediaInFile] is the entries the project
+/// file is known to hold.
+Map<MediaCarry, MediaByteSource> projectMediaSources({
   required Project project,
   required String? projectFilePath,
-  required Map<String, String> mediaEntryNames,
+  required Set<String> mediaInFile,
   MediaStagingStore? staging,
 }) {
-  final wanted = projectArchivedMediaPaths(project);
+  final wanted = projectMediaCarries(project);
   if (wanted.isEmpty) {
     return const {};
   }
@@ -127,19 +145,17 @@ Map<String, MediaByteSource> projectMediaSources({
   // so this costs a central-directory read rather than a pass over the
   // project.
   final layout = readableAnicelLayout(projectFilePath);
-  final sources = <String, MediaByteSource>{};
-  for (final path in wanted) {
-    final entryName = mediaEntryNames[path];
+  final sources = <MediaCarry, MediaByteSource>{};
+  for (final carry in wanted) {
     final (:stored, :at) = storedMediaBytesFor(
-      path,
+      carry,
       layout: layout,
       archivePath: projectFilePath,
-      entryName: entryName,
       staging: staging,
     );
     // The staged copy goes in AS IT IS; the original only while it is there.
     if (at != MediaBytesAt.original || stored.existsSync()) {
-      sources[path] = stored;
+      sources[carry] = stored;
       continue;
     }
     // Recorded as INSIDE the project and found nowhere: refusing beats
@@ -149,11 +165,11 @@ Map<String, MediaByteSource> projectMediaSources({
     // embedded. (An asset that was never carried in simply stays LEFT
     // OUT, per the doc above — that one is a findable absence the relink
     // flow exists for.)
-    if (entryName != null) {
+    if (mediaEntryHeld(mediaInFile, carry)) {
       throw StateError(
-        'media "$path" is recorded inside the project, but neither the '
-        'archive nor the original file holds its bytes — saving now would '
-        'make that loss permanent',
+        'media "${carry.poolPath}" is recorded inside the project, but '
+        'neither the archive nor the original file holds its bytes — '
+        'saving now would make that loss permanent',
       );
     }
   }
@@ -306,12 +322,18 @@ class ProjectConforms {
 }
 
 /// What the project should record as living inside it, after a save that
-/// stored [sources].
-Map<String, String> mediaEntryNamesFor(Map<String, MediaByteSource> sources) =>
-    {
-      for (final entry in sources.entries)
-        entry.key: anicelMediaEntryName(
-          entry.key,
-          framed: entry.value.storedIsFramed,
-        ),
-    };
+/// stored [sources]: pool path → the entry its carry was written under.
+///
+/// ⚠️Keyed by the PATH for the manifest, where that is safe — a saved
+/// project names one carry per path. The session keeps only the names
+/// ([mediaEntryHeld]): within a session one path can have been carried
+/// twice.
+Map<String, String> mediaEntryNamesFor(
+  Map<MediaCarry, MediaByteSource> sources,
+) => {
+  for (final entry in sources.entries)
+    entry.key.poolPath: anicelMediaEntryName(
+      entry.key,
+      framed: entry.value.storedIsFramed,
+    ),
+};

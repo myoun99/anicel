@@ -2191,11 +2191,9 @@ class EditorSessionManager extends ChangeNotifier
     landing: importLanding,
     fingerprints: mediaFingerprints,
     pool: mediaPool,
-    staging: mediaStagingStore,
     conforms: audioConformStore,
     frameRate: () => projectSettings.projectFrameRate,
     holdBytes: projectFile.holdMediaBytes,
-    projectHolds: projectFile.projectHoldsMediaBytes,
   );
 
   late final CutFolderImportDoor cutFolderDoor = CutFolderImportDoor(
@@ -2206,9 +2204,8 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches: renderCaches,
     timeline: this,
     landing: importLanding,
-    staging: mediaStagingStore,
     holdBytes: projectFile.holdMediaBytes,
-    projectHolds: projectFile.projectHoldsMediaBytes,
+    holdCarriedBytes: mediaPool.holdCarriedBytes,
   );
 
   // The TVPaint door (session/tvpp_import_door.dart). A .tvpp opens AS A

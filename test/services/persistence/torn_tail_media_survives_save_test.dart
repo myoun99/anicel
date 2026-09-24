@@ -76,18 +76,21 @@ void main() {
     File(audioPath).writeAsBytesSync(audioBytes, flush: true);
 
     final project = createDefaultProject().copyWith(
-      mediaAssets: [MediaAsset(path: audioPath, name: '대사.wav', carried: true)],
+      mediaAssets: [
+        MediaAsset(path: audioPath, name: '대사.wav', carriedAs: 'c1'),
+      ],
     );
+    final carry = project.mediaAssets.single.carry!;
     final store = BrushFrameStore();
     store.storeBakedSurface(key('f1'), inked(3));
     await service.save(
       project: project,
       brushFrameStore: store,
       filePath: path,
-      mediaToStore: {audioPath: MediaFileBytes(audioPath)},
+      mediaToStore: {carry: MediaFileBytes(audioPath)},
     );
     final mediaEntryNames = mediaEntryNamesFor({
-      audioPath: MediaFileBytes(audioPath),
+      carry: MediaFileBytes(audioPath),
     });
 
     // The import original leaves — carrying exists so this is survivable.
@@ -106,10 +109,10 @@ void main() {
     final sources = projectMediaSources(
       project: project,
       projectFilePath: path,
-      mediaEntryNames: mediaEntryNames,
+      mediaInFile: {...mediaEntryNames.values},
     );
     expect(
-      sources[audioPath],
+      sources[carry],
       isA<MediaArchiveBytes>(),
       reason:
           'the torn file still holds the bytes; "nothing is inside" '
@@ -127,7 +130,7 @@ void main() {
     );
 
     final healed = parseAnicelZipLayoutFile(path);
-    final mediaEntry = healed.entryNamed(anicelMediaEntryName(audioPath));
+    final mediaEntry = healed.entryNamed(anicelMediaEntryName(carry));
     expect(mediaEntry, isNotNull, reason: 'the media survived the heal');
     final raf = File(path).openSync();
     try {
@@ -147,9 +150,10 @@ void main() {
     final audioPath = '${directory.path.replaceAll('\\', '/')}/gone.wav';
     final project = createDefaultProject().copyWith(
       mediaAssets: [
-        MediaAsset(path: audioPath, name: 'gone.wav', carried: true),
+        MediaAsset(path: audioPath, name: 'gone.wav', carriedAs: 'c1'),
       ],
     );
+    final carry = project.mediaAssets.single.carry!;
     // A valid archive that simply does not hold the entry — and no
     // original on disk either. Proceeding would write an archive without
     // the asset and rename it over whatever still had the bytes.
@@ -160,9 +164,9 @@ void main() {
       () => projectMediaSources(
         project: project,
         projectFilePath: archivePath,
-        mediaEntryNames: mediaEntryNamesFor({
-          audioPath: MediaFileBytes(audioPath),
-        }),
+        mediaInFile: {
+          ...mediaEntryNamesFor({carry: MediaFileBytes(audioPath)}).values,
+        },
       ),
       throwsStateError,
     );

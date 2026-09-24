@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/media/project_media_sources.dart'
+    show mediaEntryHeld;
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
@@ -273,10 +275,14 @@ void main() {
       reason: 'a take is the project\'s own recording, so it packs it',
     );
     expect(
-      manager.projectFile.mediaEntryNames.keys,
-      contains(takePath),
+      mediaEntryHeld(
+        manager.projectFile.mediaInFile,
+        manager.mediaPool.mediaAssets.single.carry!,
+      ),
+      isTrue,
       reason: 'the save put it INSIDE the .anicel',
     );
+    expect(manager.mediaPool.mediaAssets.single.path, takePath);
     expect(
       Directory('${directory.path}/scene.assets/Media').existsSync(),
       isFalse,
@@ -315,7 +321,7 @@ void main() {
           'take back, and the room\'s own ending is what clears it',
     );
     expect(
-      manager.projectFile.mediaEntryNames,
+      manager.projectFile.mediaInFile,
       isEmpty,
       reason: 'nothing referenced, nothing carried',
     );

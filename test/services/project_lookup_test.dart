@@ -63,7 +63,12 @@ Layer _seLayer(String id, List<String> clipPaths) => Layer(
 );
 
 MediaAsset _asset(String path, MediaAssetKind kind, {bool carried = true}) =>
-    MediaAsset(path: path, name: path, kind: kind, carried: carried);
+    MediaAsset(
+      path: path,
+      name: path,
+      kind: kind,
+      carriedAs: carried ? 'c1' : null,
+    );
 
 void main() {
   group('project_lookup', () {

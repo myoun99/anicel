@@ -53,7 +53,7 @@ void main() {
 
       s.projectFile.bindToSavedFile(
         pathOf('law.anicel'),
-        entryNames: const {},
+        mediaInFile: const {},
         cleanAsOf: captured,
       );
 
@@ -67,7 +67,7 @@ void main() {
 
       s.projectFile.bindToSavedFile(
         pathOf('law.anicel'),
-        entryNames: const {},
+        mediaInFile: const {},
         cleanAsOf: s.projectFile.editCount,
       );
 
@@ -80,14 +80,14 @@ void main() {
 
       s.projectFile.bindToOpenedFile(
         pathOf('opened.anicel'),
-        entryNames: const {},
+        mediaInFile: const {},
         unsaved: true,
       );
       expect(s.projectFile.hasUnsavedChanges, isTrue);
 
       s.projectFile.bindToOpenedFile(
         pathOf('opened.anicel'),
-        entryNames: const {},
+        mediaInFile: const {},
         unsaved: false,
       );
       expect(s.projectFile.hasUnsavedChanges, isFalse);

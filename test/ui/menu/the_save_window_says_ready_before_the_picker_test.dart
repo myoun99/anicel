@@ -92,7 +92,7 @@ void main() {
                   File(path).writeAsBytesSync(const [7, 7, 7, 7]);
                   report(1);
                   return (
-                    entryNames: const <String, String>{},
+                    mediaInFile: const <String>{},
                     cleanAsOf: session.projectFile.editCount,
                   );
                 },
@@ -207,7 +207,7 @@ void main() {
                   session.projectDoor.celsLostToAMissingFile = {lostKey};
                   report(1);
                   return (
-                    entryNames: const <String, String>{},
+                    mediaInFile: const <String>{},
                     cleanAsOf: session.projectFile.editCount,
                   );
                 },

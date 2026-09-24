@@ -110,7 +110,7 @@ void main() {
                   };
                   report(1);
                   return (
-                    entryNames: const <String, String>{},
+                    mediaInFile: const <String>{},
                     cleanAsOf: session.projectFile.editCount,
                   );
                 },

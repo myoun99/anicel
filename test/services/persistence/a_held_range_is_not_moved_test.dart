@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**WHAT A READER HOLDS BY OFFSET, A SAVE DOES NOT MOVE.**
@@ -191,6 +192,11 @@ void main() {
       return (session: s, movie: movie);
     }
 
+    /// The entry [movie]'s carry is stored under — plain, as random bytes
+    /// are ([savedWithAMovie]).
+    String entryOf(EditorSessionManager s, String movie) =>
+        anicelMediaEntryName(carryIn(s, movie)!);
+
     /// Garbage past the ratio, behind everything — so the next save packs.
     void pastTheRatio(String path) {
       appendAnicelEntries(
@@ -210,7 +216,7 @@ void main() {
       final path = normalizedMediaPath('${directory.path}/counted.anicel');
       final (:session, :movie) = await savedWithAMovie(tester, path);
       final file = session.projectFile;
-      final entry = anicelMediaEntryName(movie, framed: false);
+      final entry = entryOf(session, movie);
 
       final first = (await tester.runAsync(
         () => file.holdMediaBytes(movie),
@@ -261,7 +267,7 @@ void main() {
       final path = normalizedMediaPath('${directory.path}/project.anicel');
       final (:session, :movie) = await savedWithAMovie(tester, path);
       final bytes = File(movie).readAsBytesSync();
-      final entry = anicelMediaEntryName(movie, framed: false);
+      final entry = entryOf(session, movie);
       pastTheRatio(path);
       final held = (await tester.runAsync(
         () => session.projectFile.holdMediaBytes(movie),
@@ -313,7 +319,7 @@ void main() {
       final path = normalizedMediaPath('${directory.path}/dropped.anicel');
       final (:session, :movie) = await savedWithAMovie(tester, path);
       final bytes = File(movie).readAsBytesSync();
-      final entry = anicelMediaEntryName(movie, framed: false);
+      final entry = entryOf(session, movie);
       final held = (await tester.runAsync(
         () => session.projectFile.holdMediaBytes(movie),
       ))!;
@@ -375,7 +381,7 @@ void main() {
         reason: 'the carried entry, not the original',
       );
       expect(session.projectFile.heldArchiveEntries, {
-        anicelMediaEntryName(movie, framed: false),
+        entryOf(session, movie),
       });
       held.release();
       expect(session.projectFile.heldArchiveEntries, isEmpty);
@@ -446,7 +452,7 @@ void main() {
             'the viewer reads — 「품은 순간 … 불변」',
       );
       expect(session.projectFile.heldArchiveEntries, {
-        anicelMediaEntryName(movie, framed: false),
+        entryOf(session, movie),
       });
 
       slot.request.value = null;

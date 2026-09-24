@@ -201,7 +201,7 @@ void main() {
       'another project is opened',
       (ProjectFile file, String another) => file.bindToOpenedFile(
         another,
-        entryNames: const {},
+        mediaInFile: const {},
         unsaved: false,
       ),
     ),

@@ -67,9 +67,9 @@ void main() {
     final sources = projectMediaSources(
       project: reopened.repository.requireProject(),
       projectFilePath: projectPath,
-      mediaEntryNames: reopened.projectFile.mediaEntryNames,
+      mediaInFile: reopened.projectFile.mediaInFile,
     );
-    expect(sources[asset.path], isA<MediaArchiveBytes>());
+    expect(sources[asset.carry], isA<MediaArchiveBytes>());
     // Read through the door every consumer uses: a carried file is held
     // FRAMED when it compresses, and the archive then holds its blob —
     // what the save streams is not what the file says.
@@ -99,7 +99,7 @@ void main() {
     await reopened.projectDoor.openProjectFromFile(projectPath);
     expect(reopened.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
     expect(
-      reopened.projectFile.mediaEntryNames,
+      reopened.projectFile.mediaInFile,
       isEmpty,
       reason: 'nothing about a movie is carried',
     );
@@ -140,9 +140,9 @@ void main() {
     final sources = projectMediaSources(
       project: reopened.repository.requireProject(),
       projectFilePath: second,
-      mediaEntryNames: reopened.projectFile.mediaEntryNames,
+      mediaInFile: reopened.projectFile.mediaInFile,
     );
-    expect(sources[asset.path], isA<MediaArchiveBytes>());
+    expect(sources[asset.carry], isA<MediaArchiveBytes>());
     // Through the consumers' door — see the test above.
     expect(
       reopened.projectFile.mediaByteSourceFor(asset.path).readSync(),
@@ -188,7 +188,7 @@ void main() {
 
     final reopened = session();
     await reopened.projectDoor.openProjectFromFile(projectPath);
-    expect(reopened.projectFile.mediaEntryNames, isEmpty);
+    expect(reopened.projectFile.mediaInFile, isEmpty);
     // And it still resolves, by path, exactly as it always did.
     expect(reopened.mediaPool.mediaAssets.single.path, source.replaceAll('\\', '/'));
     reopened.dispose();
@@ -196,10 +196,14 @@ void main() {
 
   test('the entry name is stable, so a re-save finds the same bytes',
       () async {
+    final editor = session();
     final source = writeMedia('a.wav', 100);
+    await editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
+    final carry = editor.mediaPool.mediaAssets.single.carry!;
+    editor.dispose();
     expect(
-      anicelMediaEntryName(source),
-      anicelMediaEntryName(source),
+      anicelMediaEntryName(carry),
+      anicelMediaEntryName((poolPath: carry.poolPath, token: carry.token)),
     );
   });
 }

@@ -71,11 +71,9 @@ class ProjectImportDoors {
     required ImportLanding landing,
     required MediaFingerprintLedger fingerprints,
     required MediaPool pool,
-    required MediaStagingStore staging,
     required AudioConformStore conforms,
     required ProjectFrameRate Function() frameRate,
     required HoldMediaBytes holdBytes,
-    required bool Function(String path) projectHolds,
   }) : _project = project,
        _changes = changes,
        _internals = internals,
@@ -83,11 +81,9 @@ class ProjectImportDoors {
        _landing = landing,
        _fingerprints = fingerprints,
        _pool = pool,
-       _staging = staging,
        _conforms = conforms,
        _frameRate = frameRate,
-       _holdBytes = holdBytes,
-       _projectHolds = projectHolds;
+       _holdBytes = holdBytes;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
@@ -96,7 +92,6 @@ class ProjectImportDoors {
   final ImportLanding _landing;
   final MediaFingerprintLedger _fingerprints;
   final MediaPool _pool;
-  final MediaStagingStore _staging;
   final AudioConformStore _conforms;
   final ProjectFrameRate Function() _frameRate;
 
@@ -107,16 +102,13 @@ class ProjectImportDoors {
   /// `carried-bytes-every-reader`).
   final HoldMediaBytes _holdBytes;
 
-  /// Whether the project already holds a medium's bytes
-  /// (`ProjectFile.projectHoldsMediaBytes`) — see [_holdCarried].
-  final bool Function(String path) _projectHolds;
-
   /// 🚨★★★**A PLACEMENT THAT CARRIES HOLDS THE BYTES FIRST.** Every door
   /// here decides an asset carried from the window's Keep, and the landing
   /// is what records it in the pool — so the bytes of each carried one in
-  /// [assets] are staged HERE, before that record exists (유저 2026-08-30:
+  /// [assets] are held HERE, before that record exists (유저 2026-08-30:
   /// 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」; the law and its
-  /// order are [MediaStagingStore.stageCarriedBytes]'s).
+  /// order are [MediaStagingStore.stageCarriedBytes]'s), through the pool's
+  /// one question for it ([MediaPool.holdCarriedBytes]).
   ///
   /// 🪦None of the five doors did, from the day staging landed until
   /// 2026-09-23: that round staged the pool's own registration, the doors
@@ -128,20 +120,16 @@ class ProjectImportDoors {
   /// A landing that fails after this leaves a staged copy no asset names:
   /// the orphan the run's room takes when the run ends, the same as any.
   ///
-  /// ⚠️An asset whose bytes the project already HOLDS — in the project file,
-  /// or staged — is left alone: those are the bytes the user asked to keep,
-  /// and the file on disk may have moved on since. The staging funnel is
-  /// idempotent for the same reason, but it knows only its own copies.
-  /// 🪦So placing a carried file from the pool copied its original AGAIN
-  /// once a save had absorbed the first copy — the edited original, when it
-  /// had been edited: never read (the project file answers first), but a
-  /// second copy on disk until the next save, and a stored size in the pool
-  /// that was not the project's.
+  /// ⚠️A file the pool already has is left alone: the landing keeps the
+  /// pool's entry, whose bytes are the ones the user asked to keep, and the
+  /// file on disk may have moved on since. 🪦So placing a carried file from
+  /// the pool copied its original AGAIN once a save had absorbed the first
+  /// copy — the edited original, when it had been edited. 🪦This asked
+  /// whether the project held the PATH, which after a removal an earlier
+  /// carry answered — and the file carried again was never held (card
+  /// `recarry-after-remove-reads-the-old`).
   Future<void> _holdCarried(Iterable<MediaAsset> assets) =>
-      _staging.stageCarriedBytes([
-        for (final asset in assets)
-          if (asset.carried && !_projectHolds(asset.path)) asset.path,
-      ]);
+      _pool.holdCarriedBytes(assets);
 
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
   /// import window's core verb. Reference mode (default) stamps

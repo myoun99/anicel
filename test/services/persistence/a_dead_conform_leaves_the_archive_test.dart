@@ -10,6 +10,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/media_asset.dart' show MediaCarry;
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -20,6 +21,9 @@ import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import '../../helpers/temp_dir.dart';
+
+/// The first carry of [path] — the save is handed carries, not paths.
+MediaCarry carryOf(String path) => (poolPath: path, token: 'c1');
 
 /// 🚨★★★**THE SETTINGS-CHANGE SWEEP, AND THE THING IT MUST NOT SWEEP.**
 ///
@@ -166,7 +170,7 @@ void main() {
       project: createDefaultProject(),
       brushFrameStore: p.store,
       filePath: p.path,
-      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
       // Large on purpose: the conform has to be worth several reports of
       // its own, or a short denominator could hide inside the rounding.
       conforms: carrying(p.audio, writeConform('a.conform', 4 << 20, 7)),
@@ -190,7 +194,7 @@ void main() {
       project: createDefaultProject(),
       brushFrameStore: p.store,
       filePath: p.path,
-      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
       conforms: carrying(p.audio, writeConform('a.conform', 40000, 7)),
     );
     expect(
@@ -205,7 +209,7 @@ void main() {
       project: createDefaultProject(),
       brushFrameStore: p.store,
       filePath: p.path,
-      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
       conforms: const ProjectConforms.none(),
     );
 
@@ -216,7 +220,7 @@ void main() {
       reason: 'a 48k conform in a 44.1k project is dead weight',
     );
     expect(
-      after.entryNamed(anicelMediaEntryName(p.audio)),
+      after.entryNamed(anicelMediaEntryName(carryOf(p.audio))),
       isNotNull,
       reason:
           '⛔and the SOUND stays. Sweeping the derived thing must never '
@@ -230,7 +234,7 @@ void main() {
       project: createDefaultProject(),
       brushFrameStore: p.store,
       filePath: p.path,
-      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
       conforms: carrying(p.audio, writeConform('a.conform', 40000, 7)),
     );
 
@@ -243,7 +247,7 @@ void main() {
       project: createDefaultProject(),
       brushFrameStore: p.store,
       filePath: p.path,
-      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
       conforms: alreadyInside(p.path, p.audio),
     );
 
@@ -268,7 +272,7 @@ void main() {
       project: createDefaultProject(),
       brushFrameStore: p.store,
       filePath: p.path,
-      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
       conforms: carrying(p.audio, conformPath),
     );
     final afterFirst = File(p.path).lengthSync();
@@ -278,7 +282,7 @@ void main() {
       project: createDefaultProject(),
       brushFrameStore: p.store,
       filePath: p.path,
-      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
       conforms: carrying(p.audio, conformPath),
     );
 
@@ -299,7 +303,7 @@ void main() {
       project: createDefaultProject(),
       brushFrameStore: p.store,
       filePath: p.path,
-      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
       conforms: carrying(p.audio, writeConform('a.conform', 40000, 7)),
     );
 
@@ -310,7 +314,7 @@ void main() {
       project: createDefaultProject(),
       brushFrameStore: p.store,
       filePath: p.path,
-      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
       conforms: carrying(p.audio, writeConform('b.conform', 50000, 9)),
     );
 

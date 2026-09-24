@@ -3,15 +3,15 @@
 // bytes actually are right now.
 //
 // Its own object since round 8 (G1, 2026-09-06). It owns the state the
-// save and the open both move — the path, the carried entry names, the
-// dirty flag and the completed-save generation — so the two doors push
+// save and the open both move — the path, the media entries it holds, the
+// dirty flag and the file generation — so the two doors push
 // facts DOWN into it and nothing has to reach sideways for them.
 // [ProjectFileDoor] is the writer; this is the record.
 
 import 'dart:async';
 import 'dart:io';
 
-import '../../models/media_asset.dart' show normalizedMediaPath;
+import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ConformCacheLayout;
@@ -20,15 +20,21 @@ import '../../services/media/project_media_sources.dart'
     show
         MediaBytesAt,
         ProjectConforms,
+        mediaEntryHeld,
         projectConformSources,
         readableAnicelLayout,
         storedMediaBytesFor;
 import '../../services/persistence/anicel_incremental_writer.dart'
     show parseAnicelZipLayoutFile;
 import '../../services/persistence/anicel_project_archive.dart'
-    show anicelConformEntryNames;
+    show
+        anicelConformEntryNames,
+        anicelMediaEntryName,
+        anicelMediaEntryNames,
+        anicelMediaEntryPrefix;
 import '../../services/persistence/media_blob_codec.dart';
 import '../../services/persistence/media_staging_store.dart';
+import '../../services/project_lookup.dart' show projectMediaCarryOf;
 import 'session_roles.dart';
 
 /// The project file this session is bound to, and everything derived from
@@ -48,14 +54,26 @@ class ProjectFile {
 
   String? _projectFilePath;
 
-  /// Pool path → archive entry, for the media this project carries.
+  /// The media entries the bound file holds, as of the last save or open.
   ///
   /// NAMES, not offsets. A compaction moves every byte in the file, so a
   /// remembered offset would read a window of whatever landed in its
   /// place — a project that opens fine and plays the wrong sound. The
   /// offset is looked up from the layout at the moment it is wanted, and
   /// the layout is already being parsed then.
-  Map<String, String> _mediaEntryNames = const {};
+  ///
+  /// 🚨★★★**NAMES ONLY — NOT KEYED BY PATH.** This was pool path → entry,
+  /// and so it answered「the file holds SOME carry of this path」: a file
+  /// removed from the pool and carried again before a save found the old
+  /// carry's entry here, and every reader and the save took the old bytes
+  /// (card `recarry-after-remove-reads-the-old`). A carry is asked for by
+  /// its own name ([mediaEntryHeld]).
+  Set<String> _mediaInFile = const {};
+
+  /// The carry the pool's [poolPath] asset is right now, or null when the
+  /// pool points at the file ([projectMediaCarryOf]).
+  MediaCarry? _carryOf(String poolPath) =>
+      projectMediaCarryOf(_requireProject(), poolPath);
 
   /// What [poolPath]'s bytes ACTUALLY occupy right now, or null when only
   /// the file on disk knows.
@@ -80,17 +98,25 @@ class ProjectFile {
   /// file first — so the size shown is the size of the bytes that are READ.
   /// 🪦The staged copy answered first here alone.
   int? mediaStoredBytesFor(String poolPath) {
-    final key = normalizedMediaPath(poolPath);
-    return _archivedMediaBytes()[key] ?? _staging.find(key)?.storedLength;
+    final carry = _carryOf(poolPath);
+    if (carry == null) {
+      return null;
+    }
+    final archived = _archivedMediaBytes();
+    for (final name in anicelMediaEntryNames(carry)) {
+      if (archived[name] case final length?) {
+        return length;
+      }
+    }
+    return _staging.find(carry)?.storedLength;
   }
 
-  /// Stored lengths for the media inside the project file, parsed ONCE per
-  /// completed save and kept until the next one.
+  /// Stored lengths of the media entries inside the project file, BY ENTRY
+  /// NAME, parsed ONCE per [_fileGeneration] and kept until the next one.
   ///
-  /// ⚠️Keyed on [_completedSaveGeneration] rather than time: a compaction
-  /// moves every byte, so a length from before one describes nothing. The
-  /// generation is the thing that already changes exactly when that
-  /// happens.
+  /// ⚠️Keyed on the generation rather than time: a compaction moves every
+  /// byte, so a length from before one describes nothing. The generation
+  /// is the thing that already changes exactly when that happens.
   Map<String, int> _archivedMediaBytes() => _archivedBytes().media;
 
   /// The archived lengths of the media AND of the conforms, from ONE walk
@@ -107,7 +133,7 @@ class ProjectFile {
     if (path == null) {
       return (media: const {}, conform: const {});
     }
-    if (_archivedBytesGeneration == _completedSaveGeneration) {
+    if (_archivedBytesGeneration == _fileGeneration) {
       return (media: _mediaStoredBytes, conform: _conformArchivedBytes);
     }
     var media = const <String, int>{};
@@ -119,9 +145,9 @@ class ProjectFile {
     final layout = readableAnicelLayout(path);
     if (layout != null) {
       media = {
-        for (final entry in _mediaEntryNames.entries)
-          if (layout.entryNamed(entry.value) case final found?)
-            entry.key: found.length,
+        for (final entry in layout.entries)
+          if (entry.name.startsWith(anicelMediaEntryPrefix))
+            entry.name: entry.length,
       };
       final project = _requireProject();
       conform = {
@@ -138,7 +164,7 @@ class ProjectFile {
     }
     _mediaStoredBytes = media;
     _conformArchivedBytes = conform;
-    _archivedBytesGeneration = _completedSaveGeneration;
+    _archivedBytesGeneration = _fileGeneration;
     return (media: media, conform: conform);
   }
 
@@ -225,10 +251,9 @@ class ProjectFile {
     return sizes;
   }
 
-  /// What the project carries, for tests and for anything that needs to
-  /// resolve an asset's bytes without going through a save.
-  Map<String, String> get mediaEntryNames =>
-      Map<String, String>.unmodifiable(_mediaEntryNames);
+  /// The media entries the bound file holds ([_mediaInFile]) — what the
+  /// save's walk tells a loss from an asset that was never saved.
+  Set<String> get mediaInFile => Set<String>.unmodifiable(_mediaInFile);
 
   /// Whether the PROJECT has [poolPath]'s bytes, wherever the file on disk
   /// has got to.
@@ -245,11 +270,15 @@ class ProjectFile {
   /// "success" re-keys the asset to a different path — which, for bytes
   /// held under the OLD key, is how you lose them.
   ///
-  /// ⚠️Cheap on purpose: a map lookup and a stat. The pool draws a row per
+  /// ⚠️Cheap on purpose: a set lookup and a stat. The pool draws a row per
   /// asset and must not open the archive to do it.
+  ///
+  /// ⛔The bytes of the carry the pool names NOW ([_carryOf]) — an earlier
+  /// carry of the same path is not this asset's, and a reference has none.
   bool projectHoldsMediaBytes(String poolPath) {
-    final key = normalizedMediaPath(poolPath);
-    return _mediaEntryNames.containsKey(key) || _staging.find(key) != null;
+    final carry = _carryOf(poolPath);
+    return carry != null &&
+        (mediaEntryHeld(_mediaInFile, carry) || _staging.find(carry) != null);
   }
 
   /// Where [poolPath]'s bytes actually are RIGHT NOW — the read side of
@@ -280,17 +309,28 @@ class ProjectFile {
   /// with the OS spelling, a carried file missed its entry and read its
   /// original, and a staged copy was held under a key the save's
   /// retirement never asked about (audit 2026-09-24).
+  ///
+  /// 🚨★★★**THE CARRY THE POOL NAMES NOW, NOT THE PATH** ([_carryOf]).
+  /// Removed and carried again before a save, one path has two carries —
+  /// the old one's entry still in the file for an undo to bring back — and
+  /// asked by path, the old entry answered first (card
+  /// `recarry-after-remove-reads-the-old`). An asset the pool points at
+  /// rather than carries reads its file, whatever an earlier carry of the
+  /// same path left in the file or the store.
   ({MediaByteSource source, void Function() Function()? hold})
   _whereTheBytesAre(String poolPath) {
-    final key = normalizedMediaPath(poolPath);
-    final entryName = _mediaEntryNames[key];
+    final carry = _carryOf(poolPath);
+    if (carry == null) {
+      return (source: MediaFileBytes(poolPath), hold: null);
+    }
     final (:stored, :at) = storedMediaBytesFor(
-      key,
-      // Parsed only for an asset the project carries — the pool asks per
-      // row, and an outside reference has nothing in there to find.
-      layout: entryName == null ? null : readableAnicelLayout(_projectFilePath),
+      carry,
+      // Parsed only when the file holds this carry — the pool asks per row,
+      // and a carry not saved yet has nothing in there to find.
+      layout: mediaEntryHeld(_mediaInFile, carry)
+          ? readableAnicelLayout(_projectFilePath)
+          : null,
       archivePath: _projectFilePath,
-      entryName: entryName,
       staging: _staging,
     );
     return (
@@ -300,8 +340,10 @@ class ProjectFile {
       // still serves a window rather than the whole file.
       source: mediaSourceDecodingFrames(stored),
       hold: switch (at) {
-        MediaBytesAt.archive => () => _holdEntry(entryName!),
-        MediaBytesAt.staged => () => _staging.hold(key),
+        MediaBytesAt.archive => () => _holdEntry(
+          anicelMediaEntryName(carry, framed: stored.storedIsFramed),
+        ),
+        MediaBytesAt.staged => () => _staging.hold(carry),
         MediaBytesAt.original => null,
       },
     );
@@ -565,13 +607,18 @@ class ProjectFile {
     }
   }
 
-  /// Bumped each time a save COMPLETES — the cache key for anything read
-  /// out of the archive on disk ([_archivedBytes]).
+  /// Bumped each time the bound file becomes a different set of bytes — a
+  /// save COMPLETES, or another file is OPENED — the cache key for anything
+  /// read out of the archive on disk ([_archivedBytes]).
   ///
   /// ⚠️Not a stand-in for [_saveInFlight], which is a point-in-time flag.
   /// This one only ever goes up, so a reader that captured it can tell
   /// whether the file it measured is still the file it measured.
-  int _completedSaveGeneration = 0;
+  ///
+  /// 🪦Bumped by saves alone, it kept the sizes of the LAST project's file
+  /// after an open: the pool of the project just opened showed none, or
+  /// another file's (found with `recarry-after-remove-reads-the-old`).
+  int _fileGeneration = 0;
 
   /// Whether the autosave tick should do nothing right now: a save is
   /// already mid-flight, or the user threw this session's work away.
@@ -605,9 +652,10 @@ class ProjectFile {
   /// way out; nothing may save it again.
   bool _discardedUnsavedWork = false;
 
-  /// [filePath] IS the project now, carrying [entryNames] and every edit up
-  /// to [cleanAsOf] — the tail BOTH writers share: the direct save and the
-  /// picker-placed archive that is adopted without a second write.
+  /// [filePath] IS the project now, holding the media entries [mediaInFile]
+  /// and every edit up to [cleanAsOf] — the tail BOTH writers share: the
+  /// direct save and the picker-placed archive that is adopted without a
+  /// second write.
   ///
   /// ⛔They used to state it twice, line for line, which is a copy by
   /// connascence even where the text drifted: one of them growing a step
@@ -619,14 +667,14 @@ class ProjectFile {
   /// bytes; either way it stays unsaved, which costs a question at most.
   void bindToSavedFile(
     String filePath, {
-    required Map<String, String> entryNames,
+    required Set<String> mediaInFile,
     required int cleanAsOf,
   }) {
-    _mediaEntryNames = entryNames;
+    _mediaInFile = mediaInFile;
     _projectFilePath = filePath;
     _editsInFile = cleanAsOf;
     _forgetFailedCopy();
-    _completedSaveGeneration += 1;
+    _fileGeneration += 1;
     invalidateConformStoredBytes();
     // A save is the session saying it is worth keeping after all; whatever
     // was discarded before it is not this session's state any more.
@@ -638,20 +686,22 @@ class ProjectFile {
     // conform depends on.
   }
 
-  /// The session is bound to [filePath], which was just OPENED: it carries
-  /// [entryNames], and [unsaved] says whether memory already differs from
-  /// the file.
+  /// The session is bound to [filePath], which was just OPENED: it holds
+  /// the media entries [mediaInFile], and [unsaved] says whether memory
+  /// already differs from the file.
   ///
   /// ⚠️Called AFTER the load has cleared the history. `clear()` runs the
   /// dirty listener, so a session that set [unsaved] any earlier would
   /// have it overwritten by its own reset.
   void bindToOpenedFile(
     String filePath, {
-    required Map<String, String> entryNames,
+    required Set<String> mediaInFile,
     required bool unsaved,
   }) {
-    _mediaEntryNames = entryNames;
+    _mediaInFile = mediaInFile;
     _projectFilePath = filePath;
+    _fileGeneration += 1;
+    invalidateConformStoredBytes();
     // A different project is a different session; a discard that belonged
     // to the last one must not silence this one's autosave.
     _discardedUnsavedWork = false;

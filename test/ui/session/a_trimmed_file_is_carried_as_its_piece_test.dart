@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🗣️유저 2026-09-11: 「자를때 원본 전체만 안들어가고 자른것만 안으로
@@ -138,7 +139,7 @@ void main() {
       reason: 'the file the door read is gone — the staged copy is the only '
           'one (「사본 남으면 진짜 용서안할게」)',
     );
-    expect(s.mediaStagingStore.find(piece), isNotNull);
+    expect(stagedCopyIn(s, piece), isNotNull);
     await tester.pumpAndSettle();
   });
 
@@ -183,7 +184,7 @@ void main() {
     s.trimmedPieces.discard(piece);
 
     expect(File(piece).existsSync(), isFalse);
-    expect(s.mediaStagingStore.find(piece), isNull);
+    expect(s.mediaStagingStore.holdsAnyCopyOf(piece), isFalse);
     await tester.pumpAndSettle();
   });
 
@@ -195,7 +196,11 @@ void main() {
     final piece = (await tester.runAsync(
       () => s.trimmedPieces.cut(gif!, MediaAssetKind.image, outFrame: 0),
     ))!.path;
-    expect(s.mediaStagingStore.find(piece), isNull, reason: 'the premise');
+    expect(
+      s.mediaStagingStore.holdsAnyCopyOf(piece),
+      isFalse,
+      reason: 'the premise',
+    );
 
     s.trimmedPieces.secure(piece);
 

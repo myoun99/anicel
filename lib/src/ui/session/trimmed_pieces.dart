@@ -17,6 +17,7 @@ import '../../services/media/media_byte_source.dart';
 import '../../services/media/movie_span.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/media_staging_store.dart';
+import '../../services/project_lookup.dart' show projectMediaCarryOf;
 import 'session_roles.dart';
 
 /// The IN/OUT the window chose for a file — what a [KeptSpan] is made of
@@ -139,7 +140,13 @@ class TrimmedPieces {
   /// second answer to 「who holds a placed file's bytes」, and the later
   /// one — it ran after the landing had recorded the piece.
   void secure(String piece) {
-    if (_staging.find(piece) != null) {
+    // The carry the landing recorded — a piece's path is fresh, so the pool
+    // names exactly one ([projectMediaCarryOf]).
+    final carry = projectMediaCarryOf(
+      _project.repository.requireProject(),
+      piece,
+    );
+    if (carry != null && _staging.find(carry) != null) {
       _deleteIfThere(piece);
     }
   }
@@ -273,7 +280,7 @@ class TrimmedPieces {
       final name = copy == 1 ? '$base.$extension' : '${base}_$copy.$extension';
       final address = '${_staging.directoryPath}/$name';
       if (!taken.contains(name) &&
-          _staging.find(address) == null &&
+          !_staging.holdsAnyCopyOf(address) &&
           !File(address).existsSync()) {
         return name;
       }
