@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -98,5 +99,58 @@ void main() {
         reason: 'the odd edge: 200 clamped against itself, not half-covered',
       );
     });
+  });
+
+  testWidgets('an odd height and an odd corner keep their last texel whole '
+      'too, wherever the source lands', (tester) async {
+    await tester.runAsync(() async {
+      // 3×3 landing at (1, 1): the right column, the bottom row and the
+      // corner each have no neighbour past the edge.
+      final source = await image(3, 3, (x, y) => [x * 100, y * 100, 0, 255]);
+      final picture = halvingPicture([
+        (image: source, at: const ui.Offset(1, 1)),
+      ]);
+      final level = await picture.toImage(3, 3);
+      picture.dispose();
+      final px = await bytesOf(level);
+      expect(at(px, 3, 0, 0), [0, 0, 0, 0], reason: 'before its place');
+      expect(at(px, 3, 1, 1), [50, 50, 0, 255], reason: 'the even block');
+      expect(
+        at(px, 3, 2, 1),
+        [200, 50, 0, 255],
+        reason: 'the odd column: 200 whole, its two rows averaged',
+      );
+      expect(
+        at(px, 3, 1, 2),
+        [50, 200, 0, 255],
+        reason: 'the odd row: 200 whole, its two columns averaged',
+      );
+      expect(at(px, 3, 2, 2), [200, 200, 0, 255], reason: 'the odd corner');
+    });
+  });
+
+  testWidgets('an image one texel wide is its own level column', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final source = await image(1, 3, (x, y) => [0, y * 100, 0, 255]);
+      final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
+      final level = await picture.toImage(1, 2);
+      picture.dispose();
+      final px = await bytesOf(level);
+      expect(at(px, 1, 0, 0), [0, 50, 0, 255], reason: 'rows 0 and 1');
+      expect(at(px, 1, 0, 1), [0, 200, 0, 255], reason: 'the odd corner');
+    });
+  });
+
+  test('the halving is a texture draw, never an image shader', () {
+    // The same bytes either way, so no picture above can tell them apart —
+    // but on the real app (Impeller GLES, 2026-09-24) 70 tiles halved
+    // through image-shader rects rastered in 111.8 ms against 3.23 as
+    // texture draws, and a level tile in 4.25 against 2.43.
+    final source = File(
+      'lib/src/ui/canvas/level_image.dart',
+    ).readAsStringSync();
+    expect(source, isNot(contains('ImageShader(')));
   });
 }
