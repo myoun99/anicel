@@ -26,14 +26,20 @@ import '../helpers/dart_sources.dart';
 void main() {
   const verbs = 'lib/src/ui/brush/history_verbs.dart';
 
-  String bodyOf(String source, String signature) {
+  /// ⚠️LF, whatever the checkout wrote: a Windows working tree holds CRLF,
+  /// and a method's end is found by its newline.
+  String bodyOf(String raw, String signature) {
+    final source = raw.replaceAll('\r\n', '\n');
     final start = source.indexOf(signature);
     expect(start, isNonNegative, reason: '$signature is where the order lives');
     return source.substring(start, source.indexOf('\n  }\n', start));
   }
 
   test('undo asks polygon, then transform, then the document', () {
-    final undo = bodyOf(File(verbs).readAsStringSync(), 'VoidCallback? _undo()');
+    final undo = bodyOf(
+      File(verbs).readAsStringSync(),
+      'VoidCallback? _undo()',
+    );
     final polygon = undo.indexOf('selection.hasOpenPolygon');
     final transform = undo.indexOf('selection.canUndoTransformStep');
     final document = undo.indexOf('session.canUndo');
@@ -66,7 +72,10 @@ void main() {
   });
 
   test('redo is the same shape, and says so by asking the trace first', () {
-    final redo = bodyOf(File(verbs).readAsStringSync(), 'VoidCallback? _redo()');
+    final redo = bodyOf(
+      File(verbs).readAsStringSync(),
+      'VoidCallback? _redo()',
+    );
     expect(
       redo,
       matches(RegExp(r'if \(selection\.canRedoPolygonPoint\) \{')),
