@@ -590,6 +590,11 @@ void qa_video_apple_abort(void) {
 @interface QaRangeResourceLoader : NSObject <AVAssetResourceLoaderDelegate>
 @property(nonatomic, readonly) BOOL opened;
 @property(nonatomic, readonly) dispatch_queue_t queue;
+/// The container the span holds, as a type AVFoundation can pick a reader
+/// for ([qa_apple_container_type]) — and the extension the served URL
+/// wears to match it.
+@property(nonatomic, readonly) NSString* containerType;
+@property(nonatomic, readonly) NSString* containerExtension;
 - (instancetype)initWithPath:(NSString*)path
                       offset:(int64_t)offset
                       length:(int64_t)length
@@ -601,6 +606,36 @@ void qa_video_apple_abort(void) {
 /// of the resource」 is the whole rest of the movie, and answering it in one
 /// piece was one allocation the size of the movie.
 static const int64_t kQaServedChunkBytes = 1024 * 1024;
+
+/// Which container [span] holds, read off its first bytes: an ISO media file
+/// says so in its `ftyp` box — `qt  ` is QuickTime, `M4V` an iTunes movie,
+/// anything else MPEG-4 — and a QuickTime file older than `ftyp` begins
+/// straight with its atoms.
+///
+/// 🚨★★★**AVFOUNDATION DOES NOT SNIFF WHAT A RESOURCE LOADER SERVES.** The
+/// loader used to answer `public.movie` — an abstract type — on the stated
+/// belief that 「the generic type lets it sniff the bytes」. It does not: on
+/// the Apple runner every movie served that way opened with no video track
+/// at all (2026-09-25, `a_movie_kept_compressed_plays_where_it_lies_test`,
+/// the first test ever to open a span on Apple). A plain span took the same
+/// road, so a movie carried inside a saved project had the same answer.
+static NSString* qa_apple_container_type(qa_media_span* span,
+                                         int64_t length) {
+  uint8_t head[12];
+  if (length < 12 || qa_media_span_read(span, 0, head, 12) != 12) {
+    return AVFileTypeMPEG4;
+  }
+  if (memcmp(head + 4, "ftyp", 4) != 0) {
+    return AVFileTypeQuickTimeMovie;
+  }
+  if (memcmp(head + 8, "qt  ", 4) == 0) {
+    return AVFileTypeQuickTimeMovie;
+  }
+  if (memcmp(head + 8, "M4V", 3) == 0) {
+    return AVFileTypeAppleM4V;
+  }
+  return AVFileTypeMPEG4;
+}
 
 @implementation QaRangeResourceLoader {
   qa_media_span* _span;
@@ -624,6 +659,13 @@ static const int64_t kQaServedChunkBytes = 1024 * 1024;
                              framed ? 1 : 0);
   _length = qa_media_span_size(_span);
   _opened = _span != NULL;
+  if (_opened) {
+    _containerType = qa_apple_container_type(_span, _length);
+    _containerExtension =
+        [_containerType isEqualToString:AVFileTypeQuickTimeMovie] ? @"mov"
+        : [_containerType isEqualToString:AVFileTypeAppleM4V]     ? @"m4v"
+                                                                  : @"mp4";
+  }
   return self;
 }
 
@@ -640,17 +682,17 @@ static const int64_t kQaServedChunkBytes = 1024 * 1024;
   qa_media_span_close(_span);
 }
 
-/// What the span looks like from outside: a file of [_length] bytes whose
-/// type AVFoundation must guess, because a URL with our own scheme carries
-/// no extension it could read one from.
+/// What the span looks like from outside: a file of [_length] bytes of the
+/// container its own first bytes name ([qa_apple_container_type]).
+///
+/// 🪦This answered `public.movie`, with the reason 「claiming a specific
+/// container we have not parsed would be a guess … the generic type lets it
+/// sniff the bytes」. The first half was fair and the second was never
+/// true; the container is now read, not guessed.
 - (void)fillInformation:(AVAssetResourceLoadingRequest*)request {
   request.contentInformationRequest.contentLength = _length;
   request.contentInformationRequest.byteRangeAccessSupported = YES;
-  // ⚠️`public.movie` rather than a precise type: this backend is handed a
-  // span, not a name, and claiming a specific container we have not parsed
-  // would be a guess AVFoundation then has to live with. The generic type
-  // lets it sniff the bytes it is about to be given.
-  request.contentInformationRequest.contentType = @"public.movie";
+  request.contentInformationRequest.contentType = _containerType;
 }
 
 - (BOOL)resourceLoader:(AVAssetResourceLoader*)resourceLoader
@@ -815,8 +857,11 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
                            "that span does not hold a readable movie");
         return 0;
       }
-      NSURL* served =
-          [NSURL URLWithString:@"qa-anicel-range:///movie"];
+      // ⚠️The name wears the container's extension too, so nothing that
+      // reads the URL before asking the loader guesses otherwise.
+      NSString* served_name = [@"qa-anicel-range:///movie."
+          stringByAppendingString:g_decode_serving.containerExtension];
+      NSURL* served = [NSURL URLWithString:served_name];
       AVURLAsset* urlAsset = [AVURLAsset URLAssetWithURL:served options:nil];
       [urlAsset.resourceLoader setDelegate:g_decode_serving
                                      queue:g_decode_serving.queue];
