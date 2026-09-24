@@ -12,6 +12,7 @@ import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
+import '../services/last_stroke_slot.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
@@ -31,6 +32,7 @@ import '../services/persistence/project_autosave_service.dart';
 import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/confirm_verb.dart';
 import 'brush/temporary_tool.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import 'brush/tool_press.dart';
@@ -201,6 +203,18 @@ class _HomePageState extends State<HomePage> {
   final CanvasSelectionCommands _canvasSelectionCommands =
       CanvasSelectionCommands();
 
+  /// The last drawing action, which 확정 lays down again. Shell-owned
+  /// because it outlives a project (유저: 「프로그램을 닫을 때까지」).
+  final LastStrokeSlot _lastStroke = LastStrokeSlot();
+
+  /// 확정 — Enter here, and the rail's ↵ and 적용 in the workspace.
+  late final ConfirmVerb _confirm = ConfirmVerb(
+    selection: _canvasSelectionCommands,
+    lastStroke: _lastStroke,
+    tool: _brushTool,
+    transformOptions: _transformOptions,
+  );
+
   /// The ↑/↓ layer-nav channel (UI-R20 #14): the arrows that cross the
   /// frame axis walk the timeline's DISPLAYED layer rows, selection or no
   /// selection (F-86); the workspace binds the handler (it owns the row
@@ -303,6 +317,11 @@ class _HomePageState extends State<HomePage> {
       // window out at 100% and then jump.
       uiScaleStore: _unlessTesting(AppUiScaleStore.new),
       onionSkinSettingsStore: _unlessTesting(AppOnionSkinSettingsStore.new),
+    );
+    // The census cannot reach this State; the session can be reached — the
+    // same push the workspace makes for the cut piece.
+    _lastStroke.addListener(
+      () => _session.renderCaches.lastStrokeBytes = _lastStroke.strokeBytes,
     );
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.
@@ -493,6 +512,7 @@ class _HomePageState extends State<HomePage> {
     _panelsMenu.dispose();
     _brushTool.dispose();
     _transformOptions.dispose();
+    _lastStroke.dispose();
     _colorWheelBackground.dispose();
     _colorPalette.dispose();
     _shortcuts.dispose();
@@ -706,8 +726,8 @@ class _HomePageState extends State<HomePage> {
         _walkTimeline(horizontal: false, forward: false);
       case EditorActionIds.layerDown:
         _walkTimeline(horizontal: false, forward: true);
-      case EditorActionIds.selectionTransformCommit:
-        _confirmPolygonOrTransform();
+      case EditorActionIds.confirm:
+        _confirm.confirm();
       case EditorActionIds.selectionTransformCancel:
         _abandonPolygonOrCancelTransform();
       // The comma set row (UI-R17 #7): current block or whole selection.
@@ -834,16 +854,6 @@ class _HomePageState extends State<HomePage> {
     if (_session.canRedo) {
       _session.redo();
     }
-  }
-
-  /// CONFIRM. An open polygon outline is the newest thing this key can
-  /// be closing, and it takes precedence: it is what the user is
-  /// looking at (유저 확정 — 폴리곤 확정은 확정 버튼으로).
-  void _confirmPolygonOrTransform() {
-    if (_canvasSelectionCommands.closePolygon()) {
-      return;
-    }
-    _canvasSelectionCommands.commitTransform();
   }
 
   void _abandonPolygonOrCancelTransform() {
@@ -1025,6 +1035,8 @@ class _HomePageState extends State<HomePage> {
                                         _canvasNavigationRegionKey,
                                     canvasSelectionCommands:
                                         _canvasSelectionCommands,
+                                    lastStroke: _lastStroke,
+                                    confirm: _confirm,
                                     layerNav: _timelineLayerNav,
                                     flipHud: _flipHud,
                                     onInvokeAction: _invokeAction,

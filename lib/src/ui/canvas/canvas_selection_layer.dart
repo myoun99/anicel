@@ -1262,15 +1262,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       closePolygon: _closeOpenPolygon,
       transformActive: () => _transform != null,
       beginTransform: _beginTransform,
-      // Enter: an open Ctrl+T commits; otherwise a pending move confirms
-      // (R16-①'s keyboard confirm).
-      commitTransform: () {
-        if (_transform != null) {
-          _commitTransform();
-        } else {
-          _confirmMoveSession();
-        }
-      },
       cancelTransform: _cancelTransform,
       applyRegion: applyCommittedRegion,
       movePending: () => _movePending,
@@ -1284,14 +1275,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // next Ctrl+T against its own guard. Measured: transformActive true,
       // movePending false, a ghost float painter still mounted, and Escape
       // the only way out.
-      confirmPendingMove: () {
-        if (_transform != null) {
-          _commitTransform();
-        }
-        if (_movePending) {
-          _confirmMoveSession();
-        }
-      },
+      confirmPendingMove: _confirmSession,
       revertPendingMove: _revertMoveSession,
       transformValues: _transformValuesNow,
       setTransformValues: _setTransformValues,
@@ -1302,6 +1286,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       flipTransform: _flipTransform,
       resetTransform: _resetTransform,
       applyTransform: _applyTransform,
+      canApplyTransform: () => _applyAction() != null,
     );
   }
 
@@ -1358,19 +1343,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
-  /// 적용 / the system 확정 button, which are one verb with two doors.
+  /// 적용 — the transform tool's half of 확정, and every door to it: the
+  /// tool settings button, the box's ✓ and Enter (`ConfirmVerb`).
   ///
-  /// Transformed → commit. Untransformed → REPLAY the last committed
-  /// transform's values into the box and stop there, so the recalled
-  /// values can be seen and adjusted; a second press is what applies them
-  /// (유저 확정 08-13: "재현만. 두번째눌러야 적용").
-  void _applyTransform() {
+  /// 🗣️유저 2026-09-24 (confirm-button-Q2): 「변형도구=변형중이지 않으면
+  /// 마지막 변형 재실행, 변형중이면 확정」. 변형 중 is [_sessionHasChanges]
+  /// — the user's own word for it (08-27: 「변형중일땐. 그니까 변경사항이
+  /// 있으면」). ↩️It asked [_boxIsTransformed] alone, so a session that held
+  /// its change outside an open box replayed a transform over it.
+  ///
+  /// Otherwise it REPLAYS the last committed transform's values into the
+  /// box and stops there, so the recalled values can be seen and adjusted;
+  /// a second press is what applies them (유저 확정 08-13: "재현만.
+  /// 두번째눌러야 적용").
+  void _applyTransform() => _applyAction()?.call();
+
+  /// What 적용 would do now, or null when it has nothing to do — the ONE
+  /// answer both the press and the buttons' enablement read.
+  VoidCallback? _applyAction() {
     if (!_canEditTransform()) {
-      return;
+      return null;
     }
-    if (_transform != null && _boxIsTransformed) {
-      _commitTransform();
-      return;
+    if (_sessionHasChanges) {
+      return _confirmSession;
     }
     // 🚨THE ARMED MODE'S OWN MEMORY (유저 2026-08-29: 「툴마다 기억하는게
     // 다름」). One shared slot could only answer for whichever mode
@@ -1378,8 +1373,33 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // warp — or did nothing at all, when that warp's affine was identity.
     final recall = widget.selectionCommands?.recallFor(_mode);
     if (recall == null || recall.isIdentity) {
-      return;
+      return null;
     }
+    return () => _replayTransform(recall);
+  }
+
+  /// Lands the session: the open box first, then the move it rides.
+  ///
+  /// ⛔**BOTH `if`s.** `_commitTransform` on an identity affine only closes
+  /// the box and leaves the session pending, so the single branch Enter used
+  /// to take made one confirm into two. With both, a warped box commits
+  /// warped (the second `if` finds nothing pending) and an untouched box
+  /// closes and confirms at once.
+  ///
+  /// ↩️The box's ✓, wired straight to `_confirmMoveSession`, landed the
+  /// UNWARPED lift: the artwork committed at its pre-transform position and
+  /// size, the warped preview kept painting on top until something closed
+  /// the box, and the wrong landing went into history.
+  void _confirmSession() {
+    if (_transform != null) {
+      _commitTransform();
+    }
+    if (_movePending) {
+      _confirmMoveSession();
+    }
+  }
+
+  void _replayTransform(TransformRecall recall) {
     // The replay is an EDIT of the box like any other, so it enters and
     // leaves through _editTransform (open a box when none is up; resample
     // and re-run the ants on the way out). The closure runs inside its
@@ -1539,12 +1559,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _endSession(_SessionEnd.confirm);
       return;
     }
-    if (_transform != null) {
-      _commitTransform();
-    }
-    if (_movePending) {
-      _confirmMoveSession();
-    }
+    _confirmSession();
   }
 
   /// Remembers where the box stands, just before an operation moves it
@@ -4146,18 +4161,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     onPressed: _cancelTransform,
   );
 
-  /// ⛔**BOTH `if`s, not Enter's single branch.** `_commitTransform` on an
-  /// identity affine only closes the box and leaves the session pending,
-  /// so Enter's form would make one tap of a button labelled 「confirm」
-  /// into two. With both, a warped box commits warped (the inner confirm
-  /// fires and the outer no-ops on a null pending stamp) and an untouched
-  /// box closes and confirms in one tap.
+  /// The box's ✓ is 적용 — [_applyTransform], the verb Enter and the tool
+  /// settings button reach too (confirm-button: 「입구 하나」). ↩️It carried
+  /// a branch of its own, and that is how Enter and this button came to
+  /// answer the same box two ways.
   ///
-  /// ↩️Wired straight to `_confirmMoveSession` it landed the UNWARPED
-  /// lift: the artwork committed at its pre-transform position and size,
-  /// the warped preview kept painting on top until something closed the
-  /// box, and the wrong landing went into history. Enter has branched on
-  /// this since R16-①; the button never did.
   /// ⚠️[isSelected] is the ON state, and 「this session has changes」 is
   /// exactly that — the same fact the ants and the box already show in the
   /// session's red. The BUTTON says it the app's own way instead of
@@ -4167,14 +4175,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     tooltip: AppText.strings.commonApply,
     icon: const Icon(Icons.check),
     isSelected: _sessionHasChanges,
-    onPressed: () {
-      if (_transform != null) {
-        _commitTransform();
-      }
-      if (_movePending) {
-        _confirmMoveSession();
-      }
-    },
+    onPressed: _applyAction() == null ? null : _applyTransform,
   );
 
   Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, SelectionTransformChrome? chrome) {
@@ -4197,6 +4198,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // the user said, and a confirm closes the box, which is what
             // makes it go. The session already carries the shape it began
             // with — nothing new is remembered for this.
+            // ⚠️Since 확정 became one verb (confirm-button) no door leaves a
+            // session without its box — Enter on an untouched box used to —
+            // so this states the law rather than guarding a case a user can
+            // reach.
             startShape: _transform == null ? null : _moveSessionStartShape,
             // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
             // 선택 커밋될떈 픽셀에 제대로 안착한 상태로」.

@@ -139,6 +139,10 @@ abstract final class EditorActionIds {
   static const undo = 'edit-undo';
   static const redo = 'edit-redo';
 
+  /// 확정 — `ConfirmVerb`. ↩️It was `selection-transform-commit`, and it
+  /// committed a transform and nothing else (confirm-button).
+  static const confirm = 'edit-confirm';
+
   /// The tools and their tiles (I-19). The shape tiles' ids are generated
   /// from their verb and shape — see `_shapeTileActions`.
   static const toolBrush = 'tool-brush';
@@ -157,7 +161,6 @@ abstract final class EditorActionIds {
   static const selectionDeselect = 'selection-deselect';
   static const layerUp = 'layer-up';
   static const layerDown = 'layer-down';
-  static const selectionTransformCommit = 'selection-transform-commit';
   static const selectionTransformCancel = 'selection-transform-cancel';
   static const onionSkinToggle = 'onion-skin-toggle';
   static const canvasRotateCcw = 'canvas-rotate-ccw';
@@ -581,12 +584,13 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Navigation',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
   ),
-  // Enter/Escape only mean commit/cancel while a transform box is open
-  // (no-ops otherwise); text fields keep them (bare keys stand down).
+  // Enter is 확정 — the last stroke laid down again, or 적용 while the
+  // transform tool is up (`ConfirmVerb`); Escape cancels a transform. Text
+  // fields keep both (bare keys stand down).
   const EditorActionDefinition(
-    id: EditorActionIds.selectionTransformCommit,
-    label: 'Commit Transform',
-    category: 'Selection',
+    id: EditorActionIds.confirm,
+    label: 'Confirm',
+    category: 'Edit',
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.enter),
       SingleActivator(LogicalKeyboardKey.numpadEnter),

@@ -977,9 +977,12 @@ class _MoveSettingsState extends State<_MoveSettings> {
                   : null,
               child: Text(AppText.strings.commonReset),
             ),
+            // 적용 is 확정's transform half (confirm-button) — grey when it has
+            // nothing to do, like the rail's ↵ and the box's ✓, because all
+            // three ask the one verb.
             FilledButton(
               key: const ValueKey<String>('move-apply-button'),
-              onPressed: canEdit
+              onPressed: widget.selectionCommands?.canApplyTransform ?? false
                   ? () => widget.selectionCommands?.applyTransform()
                   : null,
               child: Text(AppText.strings.commonApply),

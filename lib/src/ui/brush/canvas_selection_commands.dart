@@ -207,7 +207,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   VoidCallback? _deselect;
   bool Function()? _transformActive;
   VoidCallback? _beginTransform;
-  VoidCallback? _commitTransform;
   VoidCallback? _cancelTransform;
   void Function(CanvasSelectionRegion? region)? _applyRegion;
   bool Function()? _movePending;
@@ -227,6 +226,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
   void Function({required bool horizontal})? _flipTransform;
   VoidCallback? _resetTransform;
   VoidCallback? _applyTransform;
+  bool Function()? _canApplyTransform;
   bool Function()? _canEditTransform;
   Object? _owner;
 
@@ -241,7 +241,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     bool Function()? closePolygon,
     bool Function()? transformActive,
     VoidCallback? beginTransform,
-    VoidCallback? commitTransform,
     VoidCallback? cancelTransform,
     void Function(CanvasSelectionRegion? region)? applyRegion,
     bool Function()? movePending,
@@ -261,19 +260,20 @@ class CanvasSelectionCommands extends ChangeNotifier {
     void Function({required bool horizontal})? flipTransform,
     VoidCallback? resetTransform,
     VoidCallback? applyTransform,
+    bool Function()? canApplyTransform,
     bool Function()? canEditTransform,
   }) {
     _owner = owner;
     _flipTransform = flipTransform;
     _resetTransform = resetTransform;
     _applyTransform = applyTransform;
+    _canApplyTransform = canApplyTransform;
     _canEditTransform = canEditTransform;
     _hasSelection = hasSelection;
     _deselect = deselect;
     _closePolygon = closePolygon;
     _transformActive = transformActive;
     _beginTransform = beginTransform;
-    _commitTransform = commitTransform;
     _cancelTransform = cancelTransform;
     _applyRegion = applyRegion;
     _movePending = movePending;
@@ -297,7 +297,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _closePolygon = null;
     _transformActive = null;
     _beginTransform = null;
-    _commitTransform = null;
     _cancelTransform = null;
     _applyRegion = null;
     _movePending = null;
@@ -311,6 +310,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _flipTransform = null;
     _resetTransform = null;
     _applyTransform = null;
+    _canApplyTransform = null;
     _canEditTransform = null;
     notifySessionChanged();
   }
@@ -378,15 +378,12 @@ class CanvasSelectionCommands extends ChangeNotifier {
     setRegion(null);
   }
 
-  /// Whether a free-transform session is open (Enter/Escape then
-  /// commit/cancel it instead of their usual meanings).
+  /// Whether a free-transform session is open (Escape then cancels it, and
+  /// 확정 answers with [applyTransform]).
   bool get transformActive => _transformActive?.call() ?? false;
 
   /// Ctrl+T: opens the free-transform box on the live selection.
   void beginTransform() => _beginTransform?.call();
-
-  /// Enter: commits the open transform as one undo entry.
-  void commitTransform() => _commitTransform?.call();
 
   /// Escape: discards the open transform.
   void cancelTransform() => _cancelTransform?.call();
@@ -394,9 +391,10 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// Whether a TVP-style move session awaits its confirm (R16-①).
   bool get movePending => _movePending?.call() ?? false;
 
-  /// Adopts the pending move into history as ONE undo entry — called by
-  /// the confirm button, Enter, tool switches, and the history manager's
-  /// pre-undo/redo hook. No-op without a pending session.
+  /// Lands the session — the open box, then the move it rides — as ONE undo
+  /// entry. Called by tool switches, the history manager's pre-undo/redo
+  /// hook, and [applyTransform] when the session holds changes. No-op
+  /// without a session.
   void confirmPendingMove() => _confirmPendingMove?.call();
 
   /// Reverts the pending move: the pixels return EXACTLY to where the
@@ -495,15 +493,20 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// perspective/mesh offsets (유저 확정 08-13: "리셋은 전부").
   void resetTransform() => _resetTransform?.call();
 
-  /// 적용, and the system 확정 button's transform-tool meaning, which are
-  /// deliberately the same verb reached from two doors (유저 확정 08-13):
+  /// 적용 — 확정 while a transform is in play (`ConfirmVerb`), so the tool
+  /// settings button, the box's ✓ and Enter are one verb (유저 확정 08-13,
+  /// and 09-24 confirm-button-Q2 「변형중이면 확정」):
   ///
-  /// - the box has been transformed → commit it, one undo entry;
-  /// - nothing has been transformed → **replay the last committed
-  ///   transform's values** into the box, in whatever mode is armed now.
-  ///   It does NOT commit: the recalled values land where they can be seen
-  ///   and adjusted, and a second press applies them.
+  /// - the session holds changes → land it, one undo entry;
+  /// - it holds none → **replay the last committed transform's values**
+  ///   into the box, in whatever mode is armed now. It does NOT commit: the
+  ///   recalled values land where they can be seen and adjusted, and a
+  ///   second press applies them.
   void applyTransform() => _applyTransform?.call();
+
+  /// Whether [applyTransform] has anything to do — the same answer the press
+  /// acts on, so a button that asks is never lit for a no-op.
+  bool get canApplyTransform => _canApplyTransform?.call() ?? false;
 
   /// Whether the transform tool would accept an edit right now.
   ///

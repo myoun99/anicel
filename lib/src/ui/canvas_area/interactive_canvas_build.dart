@@ -346,6 +346,7 @@ class _InteractiveCanvasBuild {
       viewCommands: _state.widget.canvasViewCommands,
       selectionCommands: _state.widget.canvasSelectionCommands,
       cutPieceSlot: _state.widget.cutPieceSlot,
+      lastStroke: _state.widget.lastStroke,
       // R13-3: a live stroke holds the prerender warmer — composite
       // warming never shares the UI/raster threads with drawing.
       onStrokeInputActiveChanged: session.setBrushInputActive,
@@ -376,6 +377,7 @@ class _InteractiveCanvasBuild {
       onPressNeedsCel: () {
         return _state._pressNeedsCel(toolState, session);
       },
+      onStrokeNeedsCel: () => _state._strokeNeedsCel(session),
       takeStrokePrefixCommand: session.autoFrame.takeAutoFrameForStroke,
       onAutoFrameSettled: session.autoFrame.flushAutoFrameForStroke,
       // P5 eyedropper. Picks NEVER switch tools (R11-②): the

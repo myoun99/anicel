@@ -52,6 +52,7 @@ import '../debug/input_inspector.dart' show InputInspector;
 import '../../models/brush_blend_mode.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
+import '../../services/last_stroke_slot.dart';
 import '../../services/cut_piece_stamp.dart';
 import 'cut_piece_preview.dart';
 import '../../models/project.dart' show defaultProjectBackdropArgb;
@@ -154,6 +155,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.historyManager,
     this.takeStrokePrefixCommand,
     this.onPressNeedsCel,
+    this.onStrokeNeedsCel,
+    this.onAutoFrameSettled,
     this.viewport,
     this.viewportController,
     this.onViewportChanged,
@@ -199,6 +202,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewCommands,
     this.selectionCommands,
     this.cutPieceSlot,
+    this.lastStroke,
     this.onCutContent,
     this.oneFingerAction,
     this.runsTheSelectedTool = true,
@@ -314,6 +318,14 @@ class BrushCanvasPanel extends StatefulWidget {
   /// [InteractiveBrushEditCanvasView.onPressNeedsCel], which is where it
   /// goes. The shell answers 「make one, or say why not」.
   final bool Function()? onPressNeedsCel;
+
+  /// The same answer for a stroke whatever tool is up — the door 확정's
+  /// 재입력 takes on an empty cell (`MainCanvasBrushHost.onStrokeNeedsCel`).
+  final bool Function()? onStrokeNeedsCel;
+
+  /// Settles a block [onStrokeNeedsCel] made that no stroke claimed —
+  /// the host's pointer-up does it for a press (I-10).
+  final VoidCallback? onAutoFrameSettled;
 
   /// The view PUSHED by a caller that keeps it in its own `setState` — an
   /// input, re-applied whenever the caller changes it.
@@ -668,6 +680,12 @@ class BrushCanvasPanel extends StatefulWidget {
   /// (the cut variants are then inert rather than crashing).
   final CutPieceSlot? cutPieceSlot;
 
+  /// The last drawing action: every stroke this canvas lands is held here,
+  /// and 확정 lays it down again through the same funnel. Null in hosts
+  /// that are not the cut's canvas — 재입력 lays on 「지금 레이어·지금
+  /// 프레임」, which only that canvas has.
+  final LastStrokeSlot? lastStroke;
+
   /// A finished cut outline, for a host whose content is not a cel
   /// ([contentOverride]): the host lifts the piece from what it SHOWS. Null
   /// = the cut reads the active cel into [cutPieceSlot].
@@ -966,6 +984,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     widget.selectionCommands?.addListener(_selectionSeat.handleSelectionChannelChanged);
     _selectionSeat.bindSelectionHistoryRecorder();
     _bindCutPasteHandler();
+    _installedReinputHandler = _reinputLastStroke;
+    widget.lastStroke?.reinputHandler = _installedReinputHandler;
     _bindCelPixelRevision();
     _syncIdleAnts();
   }
@@ -1025,6 +1045,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   void Function()? _installedCutPasteHandler;
+
+  /// Held in a field for [_installedCutPasteHandler]'s reason.
+  void Function()? _installedReinputHandler;
 
   CanvasZoomScale get _zoomScale => CanvasZoomScale.of(context);
 
@@ -1102,6 +1125,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       _installedCutPasteHandler,
     )) {
       widget.cutPieceSlot?.pasteAtOriginHandler = null;
+    }
+    if (identical(
+      widget.lastStroke?.reinputHandler,
+      _installedReinputHandler,
+    )) {
+      widget.lastStroke?.reinputHandler = null;
     }
     _idleAnts.dispose();
     _selectionFloat.dispose();
@@ -1999,6 +2028,41 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ({int left, int top, int rightExclusive, int bottomExclusive})?
   _contentBoundsCached;
 
+  /// 확정's normal-state half: the last drawing action, laid down again at
+  /// the same place on the cel you stand on — one step, one undo
+  /// (confirm-button, 유저 2026-09-24).
+  ///
+  /// ⛔It goes through [_commitSourceStroke] like any stroke, so the live
+  /// selection clips it and the history takes it the way it takes a stroke.
+  void _reinputLastStroke() {
+    final stroke = widget.lastStroke?.stroke;
+    if (stroke == null) {
+      return;
+    }
+    if (widget._editableCoordinator != null) {
+      _commitSourceStroke(stroke);
+      return;
+    }
+    // No cel to lay it on: the door a stroke on an empty cell takes — the
+    // auto frame makes one, or the shell says why not.
+    if (!(widget.onStrokeNeedsCel?.call() ?? false)) {
+      return;
+    }
+    // ⚠️A frame apart, for the reason the press that makes its cel waits
+    // (`_BrushEditCelPress`): the block exists now, and the rebuild that
+    // stands this canvas on it comes after. The block and the stroke still
+    // land as ONE undo — the stroke takes the block as its prefix — and a
+    // block no stroke claimed keeps its own (I-10).
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        if (mounted && widget._editableCoordinator != null) {
+          _commitSourceStroke(stroke);
+        }
+        widget.onAutoFrameSettled?.call();
+      })
+      ..ensureVisualUpdate();
+  }
+
   void _commitSourceStroke(BrushStrokeCommitData rawStrokeData) {
     // Only reachable from the interactive canvas, which requires the
     // coordinator to exist.
@@ -2011,6 +2075,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       setState(() {});
       return;
     }
+    // What landed, clipped as it landed — the pixels 확정 lays down again.
+    // ⛔Here and nowhere else: every drawing verb passes this line, so no
+    // verb can be the one that forgets to record itself.
+    widget.lastStroke?.hold(strokeData);
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {

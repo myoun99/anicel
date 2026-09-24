@@ -31,6 +31,7 @@ import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../models/brush_tip_entry.dart';
 import '../services/cut_piece_slot.dart';
+import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/brush_preset_library.dart';
@@ -44,6 +45,7 @@ import 'brush/brush_preset_view_options.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/confirm_verb.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'brush/paint_tool_state_notifier.dart';
@@ -188,6 +190,8 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasViewCommands,
     this.canvasNavigationRegionKey,
     this.canvasSelectionCommands,
+    this.lastStroke,
+    this.confirm,
     this.layerNav,
     this.onInvokeAction,
     this.flipHud,
@@ -226,6 +230,15 @@ class EditorWorkspace extends StatefulWidget {
 
   /// The shell-owned selection shortcut channel (P9, Ctrl+D + nudges).
   final CanvasSelectionCommands? canvasSelectionCommands;
+
+  /// The last drawing action (shell-owned — it outlives a project),
+  /// forwarded to the canvas that records and lays it down.
+  final LastStrokeSlot? lastStroke;
+
+  /// 확정 (shell-owned, Enter's verb): the rail's ↵ and the move tool's 적용
+  /// are its other doors. Null keeps both on their old verbs' absence
+  /// (focused widget tests).
+  final ConfirmVerb? confirm;
 
   /// The shell-owned ↑/↓ layer-nav channel (UI-R20 #14): this state binds
   /// the handler because it owns the timeline view state (row filter,

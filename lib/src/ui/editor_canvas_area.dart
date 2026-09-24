@@ -15,6 +15,7 @@ import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/cut_piece_slot.dart';
+import '../services/last_stroke_slot.dart';
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/brush_tool_state.dart';
@@ -80,6 +81,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.navigationRegionKey,
     this.canvasSelectionCommands,
     this.cutPieceSlot,
+    this.lastStroke,
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
@@ -123,6 +125,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// Where a finished cut lands — owned by the workspace so the piece
   /// outlives every project the canvas shows.
   final CutPieceSlot? cutPieceSlot;
+
+  /// The last drawing action, which this canvas records and 확정 lays down
+  /// again — shell-owned for the same reason as [cutPieceSlot].
+  final LastStrokeSlot? lastStroke;
 
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueListenable<bool> cameraViewEnabled;
@@ -640,6 +646,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (!canvasToolMarksCel(toolState.tool)) {
       return false;
     }
+    return _strokeNeedsCel(session);
+  }
+
+  /// A STROKE with no cel under it: make the block if the toggle and the row
+  /// allow it, otherwise say why at the cursor.
+  ///
+  /// The press asks this once its tool turned out to mark. 확정's 재입력
+  /// asks it directly — it IS a stroke, whichever tool is up, so the door
+  /// it takes on an empty cell is the stroke's (confirm-button).
+  bool _strokeNeedsCel(EditorSessionManager session) {
     if (session.autoFrame.beginAutoFrameForStroke()) {
       return true;
     }

@@ -235,6 +235,7 @@ class _WorkspaceTabs {
                 navigationRegionKey: _state.widget.canvasNavigationRegionKey,
                 canvasSelectionCommands: _state.widget.canvasSelectionCommands,
                 cutPieceSlot: _state._cutPieceSlot,
+                lastStroke: _state.widget.lastStroke,
                 cameraViewEnabled: _state._views._cameraViewEnabled,
                 cameraDimOpacity: _state._views._cameraDimOpacity,
                 expandedLaneLayerIds: _state._expandedLaneLayerIds,

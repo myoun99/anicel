@@ -21,6 +21,7 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart'
     show CanvasSelectionShape, SelectionMaskOptions;
 import '../../services/cut_piece_slot.dart';
+import '../../services/last_stroke_slot.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/active_stroke_overlay.dart';
@@ -96,10 +97,12 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.viewCommands,
     this.selectionCommands,
     this.cutPieceSlot,
+    this.lastStroke,
     this.onStrokeInputActiveChanged,
     this.onStrokeLanderChanged,
     this.onSelectionInteractionChanged,
     this.onPressNeedsCel,
+    this.onStrokeNeedsCel,
     this.standingFrameKeyOf,
     this.onAutoFrameSettled,
     this.takeStrokePrefixCommand,
@@ -284,6 +287,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Where a finished cut lands — threaded down to the canvas panel.
   final CutPieceSlot? cutPieceSlot;
 
+  /// The last drawing action — threaded down to the canvas panel, which
+  /// records it and lays it down again for 확정.
+  final LastStrokeSlot? lastStroke;
+
   /// Forwarded to [BrushCanvasPanel]: stroke lifecycle (R13-3 warm hold).
   final ValueChanged<bool>? onStrokeInputActiveChanged;
 
@@ -313,6 +320,11 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// nothing to say: a tool that marks nothing asks for no block and earns
   /// no notice).
   final bool Function()? onPressNeedsCel;
+
+  /// The same answer for a STROKE whatever tool is up — what 확정's 재입력
+  /// asks on an empty cell (confirm-button). [onPressNeedsCel] is this after
+  /// its tool question.
+  final bool Function()? onStrokeNeedsCel;
 
   /// 🚨F-171 — where the editing stack STANDS before any cel exists: the
   /// cel the next press would make (`AutoFrameForStroke.frameIdForNextCel`).
@@ -532,6 +544,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       historyManager: widget.historyManager,
       takeStrokePrefixCommand: widget.takeStrokePrefixCommand,
       onPressNeedsCel: widget.onPressNeedsCel,
+      onStrokeNeedsCel: widget.onStrokeNeedsCel,
+      onAutoFrameSettled: widget.onAutoFrameSettled,
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
@@ -575,6 +589,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
       cutPieceSlot: widget.cutPieceSlot,
+      lastStroke: widget.lastStroke,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
       onStrokeLanderChanged: widget.onStrokeLanderChanged,
       onSelectionInteractionChanged: widget.onSelectionInteractionChanged,

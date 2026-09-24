@@ -311,7 +311,7 @@ void main() {
       );
       await tester.pump();
       expect(commands.transformActive, isTrue, reason: 'the box opened');
-      commands.commitTransform();
+      commands.applyTransform();
       await tester.pump();
       await settle(tester);
       expect(commands.transformActive, isFalse, reason: 'Enter closed it');
