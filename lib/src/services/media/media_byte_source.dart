@@ -654,22 +654,42 @@ MediaByteSource mediaAppFileSource(String path) => mediaSourceDecodingFrames(
 );
 
 /// A medium's bytes a reader holds (`ProjectFile.holdMediaBytes`), how it
-/// gives them back, and when they have [moved].
+/// gives them back, and when — and how — they have [moved].
 ///
 /// 🚨★★★**[moved] completes when the answer to 「where are these bytes」 is
 /// somewhere else now** — a save absorbed the staged copy the reader holds
-/// into the project file, or wrote that file anew elsewhere (a save-as). A
-/// reader that keeps reading (a document the viewer
-/// shows, a movie a canvas row decodes) opens again on the new answer, THEN
-/// gives these back: held, they would stay where they are for as long as it
-/// lives — a staged copy on disk beside the entry that replaced it (card
-/// `canvas-holds-staged-for-session`; 유저 08-27: 「사본 남으면 진짜
-/// 용서안할게」). A reader that is done in a moment never looks.
+/// into the project file, or wrote that file anew elsewhere (a save-as) — or
+/// is ABOUT to be, because a save is replacing the very file they are in. A
+/// reader that keeps reading (a document the viewer shows, a movie a canvas
+/// row decodes) opens again on the new answer, in the order the move says
+/// ([HeldBytesMove]): held, the bytes would stay where they are for as long
+/// as it lives — a staged copy on disk beside the entry that replaced it
+/// (card `canvas-holds-staged-for-session`; 유저 08-27: 「사본 남으면 진짜
+/// 용서안할게」), a file a save cannot replace (card
+/// `rewrite-under-offset-readers`). A reader that is done in a moment never
+/// looks.
 typedef HeldMediaBytes = ({
   MediaByteSource source,
   void Function() release,
-  Future<void> moved,
+  Future<HeldBytesMove> moved,
 });
+
+/// How a reader's bytes moved ([HeldMediaBytes.moved]) — and so the order
+/// it opens again in.
+enum HeldBytesMove {
+  /// A save put them somewhere else. Open the new answer FIRST, then let
+  /// these go: nothing waits on the reader, and no frame waits on a closed
+  /// one.
+  elsewhere,
+
+  /// A save is about to replace the very file they are in, and cannot while
+  /// anything in this process holds it open — Windows refuses a rename onto
+  /// an open file (measured with our own handle, `OpenProjectFile`; the
+  /// engine opens without delete sharing too, `qa_open_path_read`). Let
+  /// these go NOW: the save waits for it, and the next open waits for the
+  /// save, then finds the new answer.
+  replacing,
+}
 
 /// Where every reader asks for a medium's bytes —
 /// `ProjectFile.holdMediaBytes`: the project's own copy first, then the file

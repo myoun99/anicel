@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
@@ -181,6 +183,68 @@ void main() {
 
     expect(movies.openedAt.last.path, elsewhere);
     expect(page(), findsOneWidget);
+  });
+
+  testWidgets('🚨a movie on the page asked to let go of its file — what a '
+      'whole write onto the file asks first — lets go FIRST, then opens it '
+      'again: the page stays, and closing gives back what it took up', (
+    tester,
+  ) async {
+    final closing = ClosingVideoBackend();
+    debugVideoDecodeBackend = movies = closing;
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedMovie,
+    );
+    await saveProject(tester, session, directory);
+    final file = session.projectFile.path!;
+    final slot = await view(tester, session, path, MediaAssetKind.video);
+    expect(page(), findsOneWidget, reason: 'the premise');
+    closing.events.clear();
+
+    // Asked straight, not through a save: the page's reader answers on the
+    // test's own clock, which a save run on the real one never pumps.
+    unawaited(session.projectFile.readersLetGoOf(file));
+    await settleAsync(tester, () => closing.events.length >= 2);
+
+    expect(closing.events, [
+      'close $file',
+      'open $file',
+    ], reason: 'let go of first, then opened again');
+    expect(page(), findsOneWidget, reason: 'nothing on screen blinked');
+
+    slot.request.value = null;
+    await settleAsync(
+      tester,
+      () => session.projectFile.heldArchiveEntries.isEmpty,
+    );
+    expect(session.projectFile.heldArchiveEntries, isEmpty);
+  });
+
+  testWidgets('a movie let go of for a file it then cannot open says so — '
+      'there is nothing left to read', (tester) async {
+    var refusing = false;
+    debugVideoDecodeBackend = movies = ClosingVideoBackend(
+      refuses: (_) => refusing,
+    );
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedMovie,
+    );
+    await saveProject(tester, session, directory);
+    await view(tester, session, path, MediaAssetKind.video);
+    expect(page(), findsOneWidget, reason: 'the premise');
+    refusing = true;
+
+    unawaited(
+      session.projectFile.readersLetGoOf(session.projectFile.path!),
+    );
+    final failed = find.textContaining(AppText.strings.mediaViewerLoadFailed);
+    await settleAsync(tester, () => tester.any(failed));
+
+    expect(failed, findsOneWidget);
   });
 
   testWidgets('a movie the save moves where it will not open stays on the '

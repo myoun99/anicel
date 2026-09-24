@@ -51,13 +51,13 @@ Future<({int token, QaVideoInfo info})?> openMovieOn(
 
 /// A movie open on a decoder, and how it is put back: `close` shuts the
 /// decoder and only THEN gives back the bytes it was reading — and `moved`,
-/// when those bytes have an answer somewhere else now
+/// when those bytes have an answer somewhere else, or are about to
 /// ([HeldMediaBytes.moved]).
 typedef HeldMovie = ({
   int token,
   QaVideoInfo info,
   Future<void> Function() close,
-  Future<void> moved,
+  Future<HeldBytesMove> moved,
 });
 
 /// [backend] opened on the bytes [hold] answers for [path] — the project's

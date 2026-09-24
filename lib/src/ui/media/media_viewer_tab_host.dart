@@ -658,13 +658,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       document = await _openDocument(request);
     } on Object catch (error) {
       if (mounted && generation == _generation) {
-        // 🚨WHY, under the sentence that says WHAT. The engines answer with
-        // a reason — 「this file has no readable video stream」, 「no decoder
-        // for this codec」 — and this arm used to drop it on the floor, so
-        // every unreadable file looked identical to every other one.
-        // ⚠️The detail is the engine's own words and is not translated; the
-        // export path made the same call with the encoder's.
-        setState(() => _message = '${strings.mediaViewerLoadFailed}\n$error');
+        setState(() => _message = _couldNotOpen(error));
       }
       return;
     }
@@ -718,9 +712,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     HeldViewerDocument was,
     MediaViewerRequest request,
   ) async {
-    await was.moved;
+    final move = await was.moved;
     if (!mounted || !identical(_document, was)) {
       return;
+    }
+    if (move == HeldBytesMove.replacing) {
+      return _letGoThenFollow(was, request);
     }
     final ViewerDocument? fresh;
     try {
@@ -736,13 +733,76 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       await fresh?.dispose();
       return;
     }
+    _takeUp(fresh, request);
+    unawaited(was.dispose());
+  }
+
+  /// A save is REPLACING the file [was] reads, and cannot while it is held
+  /// open ([HeldBytesMove.replacing]) — so [was] goes FIRST, and the same
+  /// [request] opens once the save lets it: the open waits for the save to
+  /// end (card `rewrite-under-offset-readers`). The pages already drawn
+  /// stay on screen meanwhile; a page asked in between is asked again of
+  /// the new document, and a cut waits for it.
+  Future<void> _letGoThenFollow(
+    HeldViewerDocument was,
+    MediaViewerRequest request,
+  ) async {
+    // Every cut already asked of [was] lands before it goes.
+    for (var cuts = _cuts; ; cuts = _cuts) {
+      await cuts;
+      if (identical(cuts, _cuts)) {
+        break;
+      }
+    }
+    if (!mounted || !identical(_document, was)) {
+      return;
+    }
+    final reopened = Completer<void>();
+    _cuts = reopened.future;
+    try {
+      // A page asked of [was] from here on fails, and is asked again of
+      // the document that takes its place ([_takeUp]).
+      await was.dispose();
+      final ViewerDocument? fresh;
+      try {
+        fresh = await _openDocument(request);
+      } on Object catch (error) {
+        if (mounted && identical(_document, was)) {
+          setState(() => _message = _couldNotOpen(error));
+        }
+        return;
+      }
+      if (!mounted || !identical(_document, was) || fresh == null) {
+        await fresh?.dispose();
+        return;
+      }
+      _takeUp(fresh, request);
+    } finally {
+      reopened.complete();
+    }
+  }
+
+  /// What the panel says when a document will not open.
+  ///
+  /// 🚨WHY, under the sentence that says WHAT. The engines answer with a
+  /// reason — 「this file has no readable video stream」, 「no decoder for
+  /// this codec」 — and the viewer used to drop it on the floor, so every
+  /// unreadable file looked identical to every other one.
+  /// ⚠️The detail is the engine's own words and is not translated; the
+  /// export path made the same call with the encoder's.
+  static String _couldNotOpen(Object error) =>
+      '${AppText.strings.mediaViewerLoadFailed}\n$error';
+
+  /// [fresh] in place of the document shown, for the same [request] — and
+  /// followed in its turn.
+  void _takeUp(ViewerDocument fresh, MediaViewerRequest request) {
     setState(() {
-      // A render still out on [was] lands nowhere, and is asked of [fresh].
+      // A render still out on the document it replaces lands nowhere, and
+      // is asked of [fresh].
       _generation += 1;
       _renders.clear();
       _document = fresh;
     });
-    unawaited(was.dispose());
     if (fresh is HeldViewerDocument) {
       unawaited(_follow(fresh, request));
     }

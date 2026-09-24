@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -338,6 +339,79 @@ void main() {
       contains(1),
       reason: 'asked again of the new answer, not given up on',
     );
+  });
+
+  /// A carried PDF in the project file, shown — and every document the
+  /// viewer opens on it, in order. [reopen], when given, holds back every
+  /// open after the first until it completes.
+  Future<({EditorSessionManager session, List<FakePdfDocument> opened})>
+  shownFromTheFile(WidgetTester tester, {Completer<void>? reopen}) async {
+    final directory = Directory.systemTemp.createTempSync('anicel-lets-go');
+    deleteAfterSessionEnds(directory);
+    final (session: carried, path: carriedPath) = await carrying(
+      tester,
+      directory,
+      writeCarriedPdf,
+    );
+    await saveProject(tester, carried, directory);
+    final opened = <FakePdfDocument>[];
+    PdfRenderService.debugOpenerOverride = (source) async {
+      await openPdfThatReads(source);
+      if (opened.isNotEmpty) {
+        await reopen?.future;
+      }
+      final fresh = FakePdfDocument(pageSizes: const [pageSize]);
+      opened.add(fresh);
+      return fresh;
+    };
+    await pumpViewer(tester, on: carried, open: carriedPath);
+    return (session: carried, opened: opened);
+  }
+
+  testWidgets('a read out when the document is asked to let go of its file '
+      'holds its piece — the document goes only once it has landed', (
+    tester,
+  ) async {
+    final (:session, :opened) = await shownFromTheFile(tester);
+    final cutFrom = opened.single..holdRegionReads();
+    await cutDrag(tester);
+    expect(cutFrom.regionReads, hasLength(1), reason: 'the read is out');
+
+    unawaited(session.projectFile.readersLetGoOf(session.projectFile.path!));
+    await tester.pump();
+    expect(cutFrom.disposed, isFalse, reason: 'not while a cut reads it');
+    cutFrom.releaseRegionReads();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(held.isNotEmpty, isTrue, reason: 'what was cut is what is shown');
+    expect(cutFrom.disposed, isTrue, reason: 'let go of once it landed');
+    expect(opened, hasLength(2), reason: 'and opened again');
+  });
+
+  testWidgets('a cut asked while the document is let go of waits for the one '
+      'that replaces it', (tester) async {
+    final reopen = Completer<void>();
+    final (:session, :opened) = await shownFromTheFile(tester, reopen: reopen);
+    final was = opened.single;
+
+    unawaited(session.projectFile.readersLetGoOf(session.projectFile.path!));
+    await tester.pump();
+    await tester.pump();
+    expect(was.disposed, isTrue, reason: 'the premise: let go of');
+    expect(opened, hasLength(1), reason: 'the premise: not open again yet');
+    await cutDrag(tester);
+    expect(was.regionReads, isEmpty, reason: 'never asked of what was let go');
+
+    reopen.complete();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(opened, hasLength(2));
+    expect(opened.last.regionReads, hasLength(1), reason: 'asked of this one');
+    expect(held.isNotEmpty, isTrue);
   });
 
   testWidgets('the cached pages make room for the read — and the one on '

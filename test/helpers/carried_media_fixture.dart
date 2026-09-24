@@ -10,6 +10,8 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/viewer_document.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
+    show parseAnicelZipLayoutFile;
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
@@ -86,6 +88,10 @@ class ClosingVideoBackend extends ReadingVideoBackend {
   final Map<int, String> _openAt = {};
   var _tokens = 0;
 
+  /// Every open and close, in the order they happened — `open <path>` and
+  /// `close <path>` — what 「let go FIRST, then opened again」 is read off.
+  final List<String> events = [];
+
   /// While set, every open waits for it — the moment a reader has asked
   /// and the decoder has not answered yet.
   Completer<void>? openGate;
@@ -102,13 +108,30 @@ class ClosingVideoBackend extends ReadingVideoBackend {
     }
     final token = _tokens += 1;
     _openAt[token] = path;
+    events.add('open $path');
     return (token: token, info: opened.info);
   }
 
   @override
   Future<void> close(int token) async {
     closed.add(_openAt[token]!);
+    events.add('close ${_openAt[token]}');
   }
+}
+
+/// Tears the tail of the project file at [file] the way an append crash
+/// does (the crash contract): the body survives, the directory does not —
+/// so the next save writes the file WHOLE and swaps it in.
+void tearTheTail(String file) {
+  final healthy = parseAnicelZipLayoutFile(file);
+  File(file).openSync(mode: FileMode.append)
+    ..truncateSync(healthy.centralDirectoryOffset + 7)
+    ..closeSync();
+  expect(
+    () => parseAnicelZipLayoutFile(file),
+    throwsFormatException,
+    reason: 'the premise: the tail is torn',
+  );
 }
 
 Future<String> writeCarriedPicture(Directory dir) =>

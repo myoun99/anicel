@@ -426,6 +426,13 @@ class AnicelFileService {
     /// cannot be. So the caller takes the swap, and with it the shape the
     /// staging road already had: adopt the temp, replace, repoint.
     void Function(String tempPath)? onFullWriteLeftAt,
+
+    /// Waited for just before a whole write is renamed onto [filePath]: the
+    /// readers holding that file open let go of it
+    /// (`ProjectFile.readersLetGoOf`) — Windows refuses a rename onto a file
+    /// anything in this process holds open. The session's own cel handle is
+    /// [renameWithRetry]'s to let go; the media readers are the session's.
+    Future<void> Function()? beforeReplacing,
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
@@ -502,7 +509,7 @@ class AnicelFileService {
     };
     final refsHere = <BrushFrameKey>{
       for (final entry in baked.fileRefs.entries)
-        if (_samePath(entry.value.filePath, filePath)) entry.key,
+        if (samePath(entry.value.filePath, filePath)) entry.key,
     };
     final sound =
         !rewriteWhole &&
@@ -543,7 +550,7 @@ class AnicelFileService {
     /// one left behind reads whatever lands on its old bytes.
     void moveRefs(Map<int, AnicelRelocation> moved) {
       for (final store in stores) {
-        store.relocateFileRefs((path) => _samePath(path, filePath), moved);
+        store.relocateFileRefs((path) => samePath(path, filePath), moved);
       }
     }
 
@@ -586,6 +593,7 @@ class AnicelFileService {
       sessionFields: sessionFields,
       onProgress: onProgress,
       onFullWriteLeftAt: onFullWriteLeftAt,
+      beforeReplacing: beforeReplacing,
     );
     adoptEach(adopted);
     return settle(lost(adopted));
@@ -837,7 +845,7 @@ class AnicelFileService {
     // [baked] — its hot surfaces are native-backed and cannot cross.
     final cleanRefsToVerify = <(String, int, int)>[
       for (final ref in baked.fileRefs.entries)
-        if (!dirty.contains(ref.key) && _samePath(ref.value.filePath, filePath))
+        if (!dirty.contains(ref.key) && samePath(ref.value.filePath, filePath))
           (anicelCelEntryName(ref.key), ref.value.dataOffset, ref.value.length),
     ];
     // 🚨Refs a DIRTY cel still holds into this file — a rekeyed cel keeps
@@ -848,7 +856,7 @@ class AnicelFileService {
     final heldByDirtyCels = <String, int>{
       for (final key in dirty)
         if (baked.fileRefs[key] case final ref?
-            when _samePath(ref.filePath, filePath))
+            when samePath(ref.filePath, filePath))
           anicelCelEntryName(key): ref.dataOffset,
     };
     // ⛔A bool, not [onProgress]: the port now opens for the refs even with
@@ -1151,6 +1159,7 @@ class AnicelFileService {
     ProjectConforms conforms = const ProjectConforms.none(),
     void Function(double)? onProgress,
     void Function(String tempPath)? onFullWriteLeftAt,
+    Future<void> Function()? beforeReplacing,
   }) async {
     final allKeys = <BrushFrameKey>{
       ...baked.hot.keys,
@@ -1236,6 +1245,10 @@ class AnicelFileService {
       onFullWriteLeftAt(tempPath);
       return refs;
     }
+    // The readers of the file let go FIRST ([save]'s `beforeReplacing`) —
+    // awaited here, before the swap, where the refs still read the old file
+    // in its place; nothing may wait between the swap and the adopt below.
+    await beforeReplacing?.call();
     // SYNC rename: existing refs into the replaced file carry offsets of
     // the OLD layout, so no event may run between the swap and the
     // caller's adoptSavedFile — sync-to-return is microtask-tight.
@@ -1621,7 +1634,10 @@ class AnicelFileService {
     });
   }
 
-  static bool _samePath(String a, String b) =>
+  /// Whether [a] and [b] name the same project file, whichever way each was
+  /// spelled — what a save asks of a ref, and of a reader it must ask to let
+  /// go (`ProjectFile.readersLetGoOf`).
+  static bool samePath(String a, String b) =>
       a.replaceAll('\\', '/').toLowerCase() ==
       b.replaceAll('\\', '/').toLowerCase();
 }

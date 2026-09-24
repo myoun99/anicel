@@ -13,7 +13,8 @@ import '../../services/cut_frame_composite_plan.dart'
     show resolveCutFrameCompositeEntries;
 import '../../services/import/raster_cel_import.dart'
     show rasterizeImageToSurface;
-import '../../services/media/media_byte_source.dart' show HoldMediaBytes;
+import '../../services/media/media_byte_source.dart'
+    show HeldBytesMove, HoldMediaBytes;
 import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
 import '../../services/straight_rgba_image.dart';
@@ -30,7 +31,7 @@ typedef _OpenMovie = ({
   int token,
   QaVideoInfo info,
   Future<void> Function() close,
-  Future<void> moved,
+  Future<HeldBytesMove> moved,
 });
 
 /// A movie by the bytes it shows: the row's pool path, and the carry the
@@ -279,8 +280,7 @@ class MovieCelHydrator {
       opening
           .then((opened) async {
             if (opened != null) {
-              await opened.moved;
-              await _follow(movie, opening);
+              await _follow(movie, opening, await opened.moved);
             }
           })
           // An open that failed has nothing to follow; its asker hears why.
@@ -305,8 +305,26 @@ class MovieCelHydrator {
   /// so the copy sat on disk beside the entry that replaced it until the app
   /// quit (card `canvas-holds-staged-for-session`; 유저 08-27: 「사본 남으면
   /// 진짜 용서안할게」).
-  Future<void> _follow(_Movie movie, Future<_OpenMovie?> was) async {
+  ///
+  /// ⚠️A save REPLACING the file [was] reads cannot wait for a new answer —
+  /// there is none until it has replaced the file, and it cannot while [was]
+  /// holds it open ([HeldBytesMove.replacing]). Then [was] goes FIRST and the
+  /// movie opens again after: the open waits for the save to end, and a
+  /// frame asked meanwhile waits for the open (card
+  /// `rewrite-under-offset-readers`).
+  Future<void> _follow(
+    _Movie movie,
+    Future<_OpenMovie?> was,
+    HeldBytesMove move,
+  ) async {
     if (_disposed || !identical(_opened[movie], was)) {
+      return;
+    }
+    if (move == HeldBytesMove.replacing) {
+      _opened[movie] = _following(
+        movie,
+        _close(was).then((_) => _open(movie.path)),
+      );
       return;
     }
     final opening = _open(movie.path);

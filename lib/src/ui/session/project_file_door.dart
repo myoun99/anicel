@@ -662,6 +662,7 @@ class ProjectFileDoor {
     adoptRefs: adoptRefs,
     rewriteWhole: rewriteWhole,
     onFullWriteLeftAt: onFullWriteLeftAt,
+    beforeReplacing: () => _file.readersLetGoOf(filePath),
   );
 
   /// What the tools are holding — read at each save and put back on open by
@@ -680,12 +681,14 @@ class ProjectFileDoor {
     tools: toolChoice?.read() ?? const {},
   );
 
-  Future<void> _swapIn({required String from, required String to}) =>
-      replaceProjectFileCoordinated(
-        from: from,
-        to: to,
-        stores: _stores,
-      );
+  /// [from] swapped in as [to] through the coordinator — after the readers
+  /// holding [to] open have let go of it, as on the direct road
+  /// ([ProjectFile.readersLetGoOf]): a replace under a held descriptor
+  /// leaves the reader on the file that is gone.
+  Future<void> _swapIn({required String from, required String to}) async {
+    await _file.readersLetGoOf(to);
+    await replaceProjectFileCoordinated(from: from, to: to, stores: _stores);
+  }
 
   Future<void> _writeProjectToFile(
     String filePath, {

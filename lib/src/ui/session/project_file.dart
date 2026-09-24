@@ -11,6 +11,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
@@ -24,6 +26,8 @@ import '../../services/media/project_media_sources.dart'
         projectConformSources,
         readableAnicelLayout,
         storedMediaBytesFor;
+import '../../services/persistence/anicel_file_service.dart'
+    show AnicelFileService;
 import '../../services/persistence/anicel_incremental_writer.dart'
     show AnicelZipLayout, parseAnicelZipLayoutFile;
 import '../../services/persistence/anicel_project_archive.dart'
@@ -371,11 +375,17 @@ class ProjectFile {
     staging: _staging,
   );
 
-  /// Every hold handed out and not given back yet that has a carry, and the
-  /// answer it was given — what a save asks about, to tell each whose bytes
-  /// it moved ([HeldMediaBytes.moved]).
+  /// Every hold handed out and not given back yet that has a carry, the
+  /// answer it was given, and when it is given back — what a save asks
+  /// about, to tell each whose bytes it moved ([HeldMediaBytes.moved]) and
+  /// to wait for the ones it asked to let go ([readersLetGoOf]).
   final List<
-    ({MediaCarry carry, MediaByteSource stored, Completer<void> moved})
+    ({
+      MediaCarry carry,
+      MediaByteSource stored,
+      Completer<HeldBytesMove> moved,
+      Completer<void> released,
+    })
   >
   _liveHolds = [];
 
@@ -402,10 +412,54 @@ class ProjectFile {
     for (final live in _liveHolds) {
       if (!live.moved.isCompleted &&
           _storedFor(live.carry, () => layout).stored != live.stored) {
-        live.moved.complete();
+        live.moved.complete(HeldBytesMove.elsewhere);
       }
     }
   }
+
+  /// Asks every reader holding [filePath] open to let go of it, and waits
+  /// until they have — what a whole write needs before it can replace that
+  /// file (`AnicelFileService.save`'s `beforeReplacing`).
+  ///
+  /// 🚨★★★**THE REPLACE FAILED UNDER EVERY READER, FOR AS LONG AS IT READ.**
+  /// A whole write (a torn tail healed, refs the file no longer backs) is
+  /// built beside the file and renamed onto it — and Windows refuses a
+  /// rename onto a file anything in this process holds open. A canvas row
+  /// holds its movie for the session, so a save that had to write whole
+  /// went to the failed copy for as long as the row was there (card
+  /// `rewrite-under-offset-readers`). The session's own cel handle already
+  /// lets go first ([AnicelFileService.renameWithRetry]); this is the same
+  /// for the readers, told [HeldBytesMove.replacing] — and each opens again
+  /// once the save has ended, because the next hold waits for it
+  /// ([holdMediaBytes]).
+  ///
+  /// ⚠️Bounded by [lettingGoAtMost]: a reader that does not follow its hold
+  /// (a placement mid-render, the import window's preview) never lets go on
+  /// being asked, and a save must not wait on it forever. Past the bound the
+  /// replace is tried anyway, and meets the refusal it always met.
+  Future<void> readersLetGoOf(String filePath) async {
+    final holding = [
+      for (final live in _liveHolds)
+        if (live.stored.span?.path case final path?
+            when AnicelFileService.samePath(path, filePath))
+          live,
+    ];
+    for (final live in holding) {
+      if (!live.moved.isCompleted) {
+        live.moved.complete(HeldBytesMove.replacing);
+      }
+    }
+    await Future.wait([
+      for (final live in holding) live.released.future,
+    ]).timeout(lettingGoAtMost, onTimeout: () => const []);
+  }
+
+  /// How long a save waits for the readers it asked to let go
+  /// ([readersLetGoOf]). A reader that follows lets go within a decoder's
+  /// round trip; one that does not, never. A test that must see the letting
+  /// go rather than the bound sets it past its own timeout.
+  @visibleForTesting
+  static Duration lettingGoAtMost = const Duration(seconds: 2);
 
   /// Entries a reader holds by OFFSET right now ([holdMediaBytes]), and
   /// how many hold each.
@@ -450,7 +504,12 @@ class ProjectFile {
     // follows it.
     final live = carry == null
         ? null
-        : (carry: carry, stored: stored, moved: Completer<void>());
+        : (
+            carry: carry,
+            stored: stored,
+            moved: Completer<HeldBytesMove>(),
+            released: Completer<void>(),
+          );
     if (live != null) {
       _liveHolds.add(live);
     }
@@ -464,8 +523,9 @@ class ProjectFile {
         released = true;
         _liveHolds.remove(live);
         letGo?.call();
+        live?.released.complete();
       },
-      moved: live?.moved.future ?? Completer<void>().future,
+      moved: live?.moved.future ?? Completer<HeldBytesMove>().future,
     );
   }
 

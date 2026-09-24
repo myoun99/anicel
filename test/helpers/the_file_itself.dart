@@ -9,5 +9,5 @@ import 'package:anicel/src/services/media/media_byte_source.dart';
 Future<HeldMediaBytes> theFileItself(String path) async => (
   source: MediaFileBytes(path),
   release: () {},
-  moved: Completer<void>().future,
+  moved: Completer<HeldBytesMove>().future,
 );

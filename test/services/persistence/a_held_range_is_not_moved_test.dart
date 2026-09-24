@@ -149,7 +149,7 @@ void main() {
     final document = HeldViewerDocument(movie!, (
       source: MediaFileBytes(archive),
       release: () => events.add('released'),
-      moved: Completer<void>().future,
+      moved: Completer<HeldBytesMove>().future,
     ));
 
     await document.dispose();
