@@ -12,7 +12,6 @@ import '../widgets/boolean_dot.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
-import '../widgets/static_raster.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
@@ -108,29 +107,6 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   void Function(BrushTipEntry tip)? get _deleteTip =>
       widget.onDeleteTip == null ? null : _deleteTipNow;
 
-  /// Every row its own repaint boundary where nothing is baked, so a row's
-  /// repaint stops at its own edge (H40, 2026-09-24).
-  ///
-  /// A brush pick changes three or four rows, and every one of the forty
-  /// was painted again — 884 render objects of ± buttons alone. Measured on
-  /// the real Windows app (profile, the user's work file open): the pick's
-  /// worst frame 14.3 → 11.3 ms with every row its own boundary.
-  ///
-  /// ⛔Only where nothing is captured ([StaticRaster.capturePays] false —
-  /// Impeller). Where the body bakes (Skia, the old tablets), a boundary
-  /// inside it stands the bake down and the whole panel would paint every
-  /// frame again: the 09-22 round took the `Opacity` out of a switch and a
-  /// bar precisely so this body could bake (`panel_static_raster_test`).
-  ///
-  /// ⛔A boundary and not a [StaticRaster] zone per row: a zone paints
-  /// through inside a clip to its box, and a row's segmented control draws
-  /// the outer half of its outline past the row's edge — the cut moved one
-  /// pixel by 1/255 at the user's screen size. A boundary changes no
-  /// pixel; the body keeps its own clip, the edge the panel always had.
-  List<Widget> _zoned(List<Widget> rows) => StaticRaster.capturePays
-      ? rows
-      : [for (final row in rows) RepaintBoundary(child: row)];
-
   /// [fresh], with every row that shows what the kept row at its place
   /// showed replaced by that kept instance.
   List<Widget> _keepRows(List<Widget> fresh) {
@@ -214,7 +190,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         key: const ValueKey<String>('brush-settings-panel'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
-        children: _zoned(_keepRows([
+        children: _keepRows([
           // 유저 확정 (rail-and-strip): SIZE, OPACITY and BLEND — each with
           // its pressure curve or lock — left this panel for the TOP STRIP.
           // They are the settings a hand changes mid-stroke, against a test
@@ -591,7 +567,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           // settings convention into the gap. It lives in the frame pill —
           // beside the other verbs that make and unmake a block, which is
           // the group it belongs to.
-        ])),
+        ]),
       ),
     );
   }
