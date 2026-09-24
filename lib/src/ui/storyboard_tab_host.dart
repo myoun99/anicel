@@ -14,6 +14,8 @@ import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/toolbar_panel_context.dart';
+import 'timeline/timeline_grid_metrics.dart'
+    show timelineLayerRowHeight, timelineLayerRowHeightIn;
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
 import 'timeline/session_lane_callbacks.dart';
@@ -73,9 +75,12 @@ class StoryboardTabHost extends StatefulWidget {
       TimelineCommandBar.height + StoryboardPanel.minPanelHeight;
 
   /// [minPanelHeight] where the tab is shown — the bar grows with the OS
-  /// text size ([TimelineCommandBar.heightIn]).
+  /// text size ([TimelineCommandBar.heightIn]), and so does the legend's
+  /// band above the lanes ([timelineLayerRowHeightIn], text-scale-rail-rows).
   static double minPanelHeightIn(BuildContext context) =>
-      minPanelHeight + TimelineCommandBar.growthIn(context);
+      minPanelHeight +
+      TimelineCommandBar.growthIn(context) +
+      (timelineLayerRowHeightIn(context) - timelineLayerRowHeight);
 
   final EditorSessionManager session;
   final double pixelsPerFrame;

@@ -107,7 +107,8 @@ import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'timeline/collapsed_row_overlay.dart';
-import 'timeline/timeline_grid_metrics.dart' show TimelineGridMetrics;
+import 'timeline/timeline_grid_metrics.dart'
+    show TimelineGridMetrics, timelineLayerRowHeightIn;
 import 'timeline/timeline_cel_content_source.dart'
     show TimelineCelContentSource;
 import 'timeline/timeline_frame_cells_row.dart' show TimelineFrameCellsRow;

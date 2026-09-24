@@ -6,7 +6,8 @@ import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../timeline/layer_label_controls.dart';
 import '../timeline/layer_rail_columns.dart';
-import '../timeline/timeline_grid_metrics.dart' show timelineLayerRowHeight;
+import '../timeline/timeline_grid_metrics.dart'
+    show timelineLayerRowHeightIn;
 
 /// The 9px boolean the export window's lists lead with: on = accent fill,
 /// off = a hairline box, [indeterminate] = half filled (a folder whose
@@ -145,7 +146,7 @@ class ExportCelLayerRow extends StatelessWidget {
       ],
     );
     return SizedBox(
-      height: timelineLayerRowHeight,
+      height: timelineLayerRowHeightIn(context),
       child: Opacity(
         // ⚠️0.45 is the rail's own 「off」 alpha (F-56) — a row that is not in
         // reads as off in the language every other off state already uses.

@@ -16,6 +16,7 @@ import '../theme/layer_mark_palette.dart';
 import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
+import '../text/text_measure.dart';
 // The fit math the band shares with the renderer (㉑): the cells a label
 // costs and the cells a span holds.
 import '../text/vertical_writing.dart'
@@ -318,6 +319,11 @@ enum RailSubject {
 /// left-aligned InkWell label, which read as text rather than a button and
 /// sat flush against the opacity bar instead of centered under the
 /// legend's BLND header.
+///
+/// [_blendFontSize] is the chip's word — the size it is set in and the size
+/// its box grows by.
+const double _blendFontSize = 9.5;
+
 class LayerBlendModeChip extends StatelessWidget {
   const LayerBlendModeChip({
     super.key,
@@ -364,9 +370,17 @@ class LayerBlendModeChip extends StatelessWidget {
     // rebuild, with English as the default. Asked here, at build, like
     // every other vocabulary ([AppText.language]).
     final language = AppText.language;
+    // The chip's word grows with the OS text size, and the box around it
+    // grows by as much (text-scale-rail-rows: the bars' law — a box drawn
+    // around one line at 1× grows as that line grows; 0 at 1×). Measured:
+    // 「Normal」 wanted 20 in its 16 at 1.5×.
+    final growth = TextMeasure(
+      context,
+      DefaultTextStyle.of(context).style.copyWith(fontSize: _blendFontSize),
+    ).lineGrowthOf(TextMeasure.everyScript);
     return SizedBox(
       width: vertical ? 20 : layerBlendSlotWidth,
-      height: vertical ? layerBlendSlotWidth : 20,
+      height: vertical ? layerBlendSlotWidth : 20 + growth,
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
@@ -379,7 +393,7 @@ class LayerBlendModeChip extends StatelessWidget {
               : AppText.strings.railLayerBlendMode,
           showCaret: false,
           expand: true,
-          fontSize: 9.5,
+          fontSize: _blendFontSize,
           fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
           labelColor: nonNormal
               ? AppColors.accent
@@ -475,6 +489,11 @@ Widget fxGlyph({
   final onSurface = Theme.of(context).colorScheme.onSurface;
   return Text(
     'fx',
+    // The switch's ICON, drawn in type — and icons do not follow the OS
+    // text size (the viewport pill's `1:1` is the same case). Scaled as
+    // text it folded onto two lines in its slot at 1.5×
+    // (text-scale-rail-rows); the eye and the bucket beside it keep theirs.
+    textScaler: TextScaler.noScaling,
     style: TextStyle(
       fontSize: fontSize,
       fontStyle: FontStyle.italic,

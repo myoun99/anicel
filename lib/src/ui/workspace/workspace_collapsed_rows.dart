@@ -117,13 +117,15 @@ class _WorkspaceCollapsedRows {
   /// space the region reserves above the canvas, and the floor inset. That
   /// was already the intent (「그래야 수정했을때 아무것도 안고치고
   /// 반영되니까」); it just had a constant to read instead of a row.
-  /// ⚠️The timeline half is `layerRowHeight` because that is what
-  /// [timelineDisplayRowExtent] answers for EVERY timeline row — the rule
-  /// is real, it simply has one answer today. If it ever grows a second,
-  /// that function is where it grows and this line follows it there.
+  /// ⚠️The timeline half is the row height the panel builds its metrics
+  /// from ([timelineLayerRowHeightIn] — a row grows with its words under the
+  /// OS text size), because that is what [timelineDisplayRowExtent] answers
+  /// for EVERY timeline row — the rule is real, it simply has one answer
+  /// today. If it ever grows a second, that function is where it grows and
+  /// this line follows it there.
   double collapsedRowHeight() => _collapsedRowIsStoryboard
       ? _state._storyboardTrackLaneHeight.value
-      : TimelineGridMetrics.defaults.layerRowHeight;
+      : timelineLayerRowHeightIn(_state.context);
 
   Widget _collapsedRow() {
     if (_collapsedRowIsStoryboard) {

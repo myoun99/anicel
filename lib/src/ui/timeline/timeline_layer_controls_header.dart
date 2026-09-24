@@ -616,6 +616,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget _buildOpacity(
+    BuildContext context,
     LayerLegendCallbacks? legend,
     bool isVertical,
     ColorScheme colorScheme,
@@ -630,7 +631,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
               // dragged (R4 #6) — the one bar whose resting text is not
               // its value.
               restingText: 'OPAC',
-              height: 18,
+              height: 18 + FieldSlider.growthIn(context),
               restingAccent: colorScheme.onSurfaceVariant.withValues(
                 alpha: 0.45,
               ),
@@ -835,7 +836,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // not a slider, and a rotated one would lose the arena
                     // (a vertical screen drag never reaches a horizontal
                     // recognizer). The column keeps its heading.
-                    opacity: _buildOpacity(legend, isVertical, colorScheme),
+                    opacity: _buildOpacity(
+                      context,
+                      legend,
+                      isVertical,
+                      colorScheme,
+                    ),
                     // R27 #6: the BLEND column header — one pick applies
                     // the mode to every displayed compositing row, the
                     // master opacity bar's logic in a flyout. Hosts

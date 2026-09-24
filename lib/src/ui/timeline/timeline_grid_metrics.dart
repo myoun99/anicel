@@ -22,7 +22,11 @@
 /// | frame-number rail width  | ruler height             |
 library;
 
+import 'package:flutter/widgets.dart';
+
+import '../text/text_measure.dart';
 import '../widgets/app_scrollbar_lane.dart';
+import 'layer_label_controls.dart' show layerRowNameStyle;
 
 /// Width of one frame cell on the frame axis.
 /// 48 → 24 (R-toolbar slim round, CSP/TVPaint density).
@@ -31,6 +35,21 @@ const double timelineFrameCellWidth = 24;
 /// Height of one layer row on the layer axis.
 /// 52 → 28 (same round).
 const double timelineLayerRowHeight = 28;
+
+/// A layer row's height where it is shown: [timelineLayerRowHeight] and
+/// its name's growth under the OS text size — 0 at 1×, so nothing drawn at
+/// 1× moves.
+///
+/// 🚨text-scale-rail-rows (유저 2026-09-24: 「행도 글자 크기를 따라
+/// 자란다」, with its stated cost — fewer rows on screen, and every surface
+/// that reads the row height follows it). The rail's row and the grid's
+/// cell are ONE row, so they are one number, and it is asked here.
+double timelineLayerRowHeightIn(BuildContext context) =>
+    timelineLayerRowHeight +
+    TextMeasure(
+      context,
+      layerRowNameStyle(context),
+    ).lineGrowthOf(TextMeasure.everyScript);
 
 /// Width of the fixed layer rail.
 /// 288 → 312 when the layer rows gained the fx switch (R3 ⑪); the row
@@ -122,15 +141,20 @@ class TimelineGridMetrics {
   /// condition: same width, independent in code). NOT for the splitter:
   /// the window size is a listenable precisely so it stays out of this
   /// memo key.
+  ///
+  /// And a different ROW HEIGHT, for the host that shows the grid: a row
+  /// grows with its words under the OS text size
+  /// ([timelineLayerRowHeightIn], text-scale-rail-rows).
   TimelineGridMetrics copyWith({
     double? frameCellWidth,
     double? layerControlsWidth,
+    double? layerRowHeight,
   }) {
     return TimelineGridMetrics(
       minimumVisibleFrameCells: minimumVisibleFrameCells,
       layerControlsWidth: layerControlsWidth ?? this.layerControlsWidth,
       frameCellWidth: frameCellWidth ?? this.frameCellWidth,
-      layerRowHeight: layerRowHeight,
+      layerRowHeight: layerRowHeight ?? this.layerRowHeight,
       verticalScrollbarWidth: verticalScrollbarWidth,
       sectionLabelGutterWidth: sectionLabelGutterWidth,
     );
