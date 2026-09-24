@@ -4,6 +4,8 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
+    show PlaybackScope;
 
 /// 🚨★★★I-41 — UNDO WALKS TO THE EDIT FIRST, AND REDO IS ITS MIRROR.
 ///
@@ -240,6 +242,77 @@ void main() {
 
     s.undo();
     expect(drawingsOn(s, made.row), made.made - 1, reason: '다음 언두가 그림');
+  });
+
+  test('a place whose ROW is gone is taken back where its cut and frame '
+      'match — a walk to it would arrive nowhere', () {
+    final s = session();
+    final row = s.activeLayerId!;
+    final cut = s.activeCutId!;
+    final other = otherRowOf(s);
+    s.cutVerbs.renameActiveCut('renamed'); // made standing on [row]
+    s.selectLayer(other);
+    // The row goes without the history hearing of it.
+    s.repository.updateProject(
+      (project) => project.copyWith(
+        tracks: [
+          for (final track in project.tracks)
+            track.copyWith(
+              cuts: [
+                for (final each in track.cuts)
+                  if (each.id == cut)
+                    each.copyWith(
+                      layers: [
+                        for (final layer in each.layers)
+                          if (layer.id != row) layer,
+                      ],
+                    )
+                  else
+                    each,
+              ],
+            ),
+        ],
+      ),
+    );
+    s.refreshAfterCutCommand();
+    final entries = s.historyManager.undoCount;
+
+    s.undo();
+    expect(
+      s.historyManager.undoCount,
+      entries - 1,
+      reason: '걷지 않고 바로 — 없는 행으로 걸으면 매번 제자리걸음이다',
+    );
+  });
+
+  test('the next edit settles the one before it — a new row and a drawing '
+      'on it undo in two presses', () {
+    // ⚠️No pause between them: the drawing's own push is the moment the
+    // new row's action is over, wherever it left the user.
+    final s = session();
+    final rows = s.layers.length;
+    s.layerStack.addLayer();
+    s.createDrawingAtCurrentFrame();
+
+    s
+      ..undo()
+      ..undo();
+    expect(s.layers.length, rows, reason: '새 행은 그 자리에서 바로 되돌렸다');
+  });
+
+  test('an edit settles by itself — playback carrying the playhead off '
+      'afterwards does not move where it was made', () async {
+    final s = session();
+    s.selectFrameIndex(2);
+    s.createDrawingAtCurrentFrame();
+    await settle();
+    s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
+    s.playbackRig.playback.seekToGlobalFrame(9);
+    s.playbackRig.playback.stop();
+    expect(s.currentFrameIndex, isNot(2), reason: '⛔전제: 재생이 옮겼다');
+
+    s.undo();
+    expect(s.currentFrameIndex, 2, reason: '편집한 자리로 걸어간다');
   });
 
   test('a new row seats the user on it, and its undo takes it back at once '

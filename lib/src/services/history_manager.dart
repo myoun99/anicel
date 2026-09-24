@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 
 import '../models/brush_frame_key.dart';
 import '../models/standing_place.dart';
+import 'history_places.dart';
 import 'cels_ahead.dart';
 import 'command.dart';
 import 'memory_pressure_budget.dart';
@@ -102,82 +101,18 @@ class HistoryManager extends ChangeNotifier {
   final List<Command> _undoStack = <Command>[];
   final List<Command> _redoStack = <Command>[];
 
-  /// 🚨★★★I-41 — WHERE EACH EDIT WAS MADE, asked as it lands and again once
-  /// the action that made it has settled ([_stampPlace]).
-  ///
-  /// 🗣️유저 2026-09-24: 「그곳으로 이동해서 편집되돌리고 리두대칭」 — the
-  /// first undo walks to the edit, the next one takes it back. So every
-  /// entry remembers where the user stood, and [_push] — the one door every
-  /// entry comes through, groups included — is where it is written. ⛔Not
-  /// per command: which kind of edit it is has nothing to do with where the
-  /// user was.
-  ///
-  /// Null keeps no places (a history no editor stands in).
-  StandingPlace? Function()? placeNow;
-
-  /// Weak, so an entry that falls off the deep end takes its place along.
-  final Expando<StandingPlace> _places = Expando<StandingPlace>('I-41');
-
-  /// The newest entry, until the action that pushed it has settled.
-  Command? _settling;
-
-  /// 🚨WHERE THE ACTION LEFT THE USER, not where it found them.
-  ///
-  /// The place is written as the entry lands — and as an undo or a redo
-  /// moves it to the other side, so a redo finds the user where the undo
-  /// left them — and written again once the action has settled
-  /// ([settlePlace]): the session calls that where a command's rebuild ends
-  /// and before the user's next move or step, and a microtask catches every
-  /// other action before the next input can arrive.
-  ///
-  /// ⚠️For every edit that does not move the user the two are one place —
-  /// the case 유저 answered (「다른 행의 블록을 옮긴 것처럼 … 「서 있던 곳」으로
-  /// 간다」: you stay on your row while another row's block moves). An edit
-  /// that SEATS the user — a new or pasted row, the folder a fold hands the
-  /// row to, a new cut — is looked at from the seat it gave. 🧪Stamped where
-  /// it found them, the first undo after a paste walked back to the row the
-  /// paste replaced and took nothing back (`home_frame_and_clipboard_test`).
-  void _stampPlace(Command command) {
-    final placeNow = this.placeNow;
-    if (placeNow == null) {
-      return;
-    }
-    final place = placeNow();
-    if (place != null) {
-      _places[command] = place;
-    }
-    _settling = command;
-    scheduleMicrotask(() {
-      if (identical(_settling, command)) {
-        settlePlace();
-      }
-    });
-  }
-
-  /// The action that pushed the newest entry has settled: its place is
-  /// where the user stands now. Once per entry — a later rebuild in the
-  /// same turn is not the edit's.
-  void settlePlace() {
-    final command = _settling;
-    _settling = null;
-    final placeNow = this.placeNow;
-    if (command == null || placeNow == null) {
-      return;
-    }
-    final place = placeNow();
-    if (place != null) {
-      _places[command] = place;
-    }
-  }
+  /// 🚨★★★I-41 — where each entry was made ([HistoryPlaces]): the first
+  /// undo walks there, the next one takes the edit back.
+  final HistoryPlaces places = HistoryPlaces();
 
   /// Where the next undo's edit was made, or null when nothing says.
   StandingPlace? get undoPlace =>
-      _undoStack.isEmpty ? null : _places[_undoStack.last];
+      _undoStack.isEmpty ? null : places.of(_undoStack.last);
 
   /// Where the next redo's edit was made, or null when nothing says — or
   /// when the next redo is a walk back ([redoWalksBack]).
   StandingPlace? get redoPlace =>
-      _redoStack.isEmpty ? null : _places[_redoStack.last];
+      _redoStack.isEmpty ? null : places.of(_redoStack.last);
 
   /// Whether the next redo returns the user to where they stood before an
   /// undo walked them away, rather than redoing an edit.
@@ -190,7 +125,7 @@ class HistoryManager extends ChangeNotifier {
   /// ⚠️It clears nothing: a walk is not an edit, and the redo stack under
   /// it is still the user's to take.
   void leaveWalkBack(WalkBack step) {
-    _settling = null;
+    places.forget();
     _redoStack.add(step);
     _revision += 1;
     notifyListeners();
@@ -284,7 +219,7 @@ class HistoryManager extends ChangeNotifier {
   }
 
   void _push(Command command) {
-    _stampPlace(command);
+    places.stamp(command);
     _undoStack.add(command);
     if (_undoStack.length > maxEntries) {
       // The oldest commands fall off the deep end, PS-style — and take
@@ -639,14 +574,14 @@ class HistoryManager extends ChangeNotifier {
     if (from.isEmpty) {
       return;
     }
-    _settling = null;
+    places.forget();
     final command = from.removeLast();
     apply(command);
     // A walk back is spent by the redo that takes it — it is not an edit,
     // so there is nothing for an undo to take back.
     if (command is! WalkBack) {
       to.add(command);
-      _stampPlace(command);
+      places.stamp(command);
     }
     _revision += 1;
     // The bytes did not move anywhere, but the budget may have been
@@ -657,7 +592,7 @@ class HistoryManager extends ChangeNotifier {
   }
 
   void clear() {
-    _settling = null;
+    places.forget();
     dropPayloadsOf(_undoStack);
     dropPayloadsOf(_redoStack);
     _undoStack.clear();
@@ -666,24 +601,4 @@ class HistoryManager extends ChangeNotifier {
     _revision += 1;
     notifyListeners();
   }
-}
-
-/// The way back from an undo that walked to an edit (I-41): redone, it
-/// walks the user back to where they stood. It is never an edit, so it
-/// never reaches the undo side ([HistoryManager.leaveWalkBack]).
-class WalkBack implements Command {
-  WalkBack(this._walk);
-
-  final VoidCallback _walk;
-
-  @override
-  String get description => 'Walk back';
-
-  @override
-  void execute() => _walk();
-
-  /// Never called: a walk back leaves the redo side only by being redone,
-  /// and a redone one is spent.
-  @override
-  void undo() {}
 }

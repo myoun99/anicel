@@ -646,13 +646,13 @@ class Standing {
   /// the question an undo asks before it takes an edit back (I-41).
   ///
   /// A different cut or frame is; a different row is only while [there]'s
-  /// row still exists. ⚠️An edit that REMOVED the row it was made on is
-  /// taken back right where the cut and frame match: the undo brings the
-  /// row back, and the standing law ([keepStandingShown]) stands the user
-  /// on it. A place whose cut is gone is nowhere to walk to.
+  /// row is still one of the cut's rows — asked of the rows the cut SHOWS
+  /// (a track SE row stands there too, and is not in the cut's document).
+  /// ⚠️A row that is gone is taken back right where the cut and frame
+  /// match: a walk to it would arrive nowhere, and every press after it
+  /// would walk again. A place whose cut is gone is nowhere to walk to.
   bool isElsewhere(StandingPlace there, {required StandingPlace from}) {
-    final cut = _project.cutById(there.cut);
-    if (cut == null) {
+    if (_project.cutById(there.cut) == null) {
       return false;
     }
     if (there.cut != from.cut || there.frame != from.frame) {
@@ -661,7 +661,7 @@ class Standing {
     final row = there.layer;
     return row != null &&
         row != from.layer &&
-        cut.layers.any((layer) => layer.id == row);
+        _project.layerById(row) != null;
   }
 
   /// 🚨★★★I-41 — WALKS THE USER TO [place]: its cut, its row, its frame, and

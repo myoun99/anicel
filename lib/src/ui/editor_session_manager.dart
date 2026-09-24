@@ -92,6 +92,7 @@ import '../services/memory_allowance.dart';
 import '../services/brush_tip_stamp_cache.dart';
 import '../services/brush_live_stroke_rasterizer.dart';
 import '../services/history_manager.dart';
+import '../services/history_places.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
@@ -213,7 +214,7 @@ class EditorSessionManager extends ChangeNotifier
        repository = ProjectRepository(initialProject: initialProject) {
     appSettings.attachOnionSkin(onionSkin.settings);
     appSettings.restore();
-    historyManager = HistoryManager()..placeNow = () => standingPlace;
+    historyManager = HistoryManager()..places.placeNow = () => standingPlace;
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
       editingSession: editingSession,
@@ -675,11 +676,11 @@ class EditorSessionManager extends ChangeNotifier
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId));
 
   // I-41: every move the user makes begins by settling the last edit where
-  // it left them ([HistoryManager.settlePlace]) — the move is theirs, not
+  // it left them ([HistoryPlaces.settle]) — the move is theirs, not
   // the edit's. The hand-offs inside an action go through [standing] and
   // the controllers, not through these.
   void selectCut(CutId cutId) {
-    historyManager.settlePlace();
+    historyManager.places.settle();
     standing.selectCut(cutId);
   }
 
@@ -692,7 +693,7 @@ class EditorSessionManager extends ChangeNotifier
     int? globalFrameIndex,
     bool takesLayerActive = true,
   }) {
-    historyManager.settlePlace();
+    historyManager.places.settle();
     standing.standOnRow(
       row,
       frameIndex: frameIndex,
@@ -703,12 +704,12 @@ class EditorSessionManager extends ChangeNotifier
 
   @override
   void selectLayer(LayerId layerId) {
-    historyManager.settlePlace();
+    historyManager.places.settle();
     standing.selectLayer(layerId);
   }
 
   void selectRow(TimelineRowAddress row) {
-    historyManager.settlePlace();
+    historyManager.places.settle();
     standing.selectRow(row);
   }
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
@@ -1144,9 +1145,6 @@ class EditorSessionManager extends ChangeNotifier
     // mode following it (or exit if the command switched cuts).
     visibilitySolo.syncVisibilitySolo();
     warmActiveCut();
-    // I-41: the command has put the user where they will look at it — that
-    // is where its undo finds them ([HistoryManager.settlePlace]).
-    historyManager.settlePlace();
   }
 
   /// The cut with [cutId] anywhere in the project, or `null`.
@@ -1919,7 +1917,7 @@ class EditorSessionManager extends ChangeNotifier
   /// what the press is for: asked first, the walk would carry the user away
   /// from it.
   void _settleAndAdopt() {
-    historyManager.settlePlace();
+    historyManager.places.settle();
     historyManager.onBeforeUndoRedo?.call();
   }
 
@@ -3036,7 +3034,7 @@ class EditorSessionManager extends ChangeNotifier
     if (editingInteractionBusy) {
       return;
     }
-    historyManager.settlePlace();
+    historyManager.places.settle();
     // A direct cut-local seek leaves any gap parking (R16-⑥); the global
     // seek re-parks AFTER this call when it lands in a gap.
     gapGlobalFrame = null;
@@ -3301,7 +3299,7 @@ class EditorSessionManager extends ChangeNotifier
     if (editingInteractionBusy) {
       return;
     }
-    historyManager.settlePlace();
+    historyManager.places.settle();
     final axis = onAxis ?? trackFrameAxis();
     if (axis.isEmpty) {
       return;
