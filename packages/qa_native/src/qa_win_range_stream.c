@@ -1,5 +1,6 @@
-// An IMFByteStream over a RANGE of a file — the Windows half of opening a
-// movie that lives inside the project file.
+// An IMFByteStream over a medium stored in a SPAN of a file — plain or
+// framed — the Windows half of opening a movie or a sound that lives inside
+// the project file.
 //
 // 🚨★★★**WHY THIS EXISTS AT ALL.** Media Foundation opens a URL or a byte
 // stream, and it ships no stream over a SUB-RANGE: `MFCreateFile` covers the
@@ -8,6 +9,14 @@
 // the cause. The other two platforms have their own answers — Android takes
 // a descriptor and a range outright, Apple needs a resource loader — and
 // this is Windows's.
+//
+// 🚨The BYTES come from `qa_media_span`, the library's one reader of a span
+// (2026-09-24). This file used to read the file itself — `ReadFile` at
+// `base + position`, the third copy of those three lines — and could only
+// serve a span that held the medium as it is. Through the span reader it
+// also serves a FRAMED one, decompressing a block at a time as Media
+// Foundation asks, so a movie the save compressed plays without its
+// original. ⛔Nothing here reads a file any more; keep it that way.
 //
 // ⛔Its own translation unit rather than 200 more lines inside
 // `qa_video_decode.c`: that file is the DECODE LAW plus three thin backends,
@@ -26,16 +35,18 @@
 
 #include <stdint.h>
 
+#include "qa_media_span.h"
+#include "qa_win_range_stream.h"
+
 typedef struct {
   // ⚠️FIRST, and that is not style: a COM interface pointer IS a pointer to
   // its vtable pointer, so this cast has to be free.
   const IMFByteStreamVtbl* lpVtbl;
   LONG ref;
-  HANDLE file;
-  /// Where the movie starts inside the file, and how long it is. Every
-  /// position below is relative to [base] — the stream is the RANGE, and
-  /// nothing above it ever learns the range is not the whole file.
-  int64_t base;
+  /// The medium. Every position below is the MEDIUM's — for a framed span,
+  /// a position in the decoded bytes — and nothing above this stream ever
+  /// learns that it is not a whole file.
+  qa_media_span* span;
   int64_t length;
   int64_t position;
   /// What the last [BeginRead] read, for the [EndRead] that follows it.
@@ -74,9 +85,7 @@ static ULONG STDMETHODCALLTYPE qa_range_release(IMFByteStream* self) {
   qa_range_stream* stream = qa_range_of(self);
   const LONG left = InterlockedDecrement(&stream->ref);
   if (left == 0) {
-    if (stream->file != INVALID_HANDLE_VALUE) {
-      CloseHandle(stream->file);
-    }
+    qa_media_span_close(stream->span);
     free(stream);
   }
   return (ULONG)left;
@@ -153,25 +162,23 @@ static HRESULT qa_range_read_at(qa_range_stream* stream,
                                 ULONG want,
                                 ULONG* got) {
   *got = 0;
+  if (stream->span == NULL) {
+    return E_FAIL;  // Closed: nothing left to read from.
+  }
   const int64_t left = stream->length - stream->position;
   if (left <= 0 || want == 0) {
     return S_OK;
   }
   const ULONG take = (int64_t)want > left ? (ULONG)left : want;
-  // 🚨The file offset is base + position. Reading at `position` alone is the
-  // bug this whole file exists to make impossible — it would hand back the
-  // archive's own header as if it were the movie.
-  OVERLAPPED where;
-  memset(&where, 0, sizeof(where));
-  const int64_t at = stream->base + stream->position;
-  where.Offset = (DWORD)(at & 0xFFFFFFFF);
-  where.OffsetHigh = (DWORD)((at >> 32) & 0xFFFFFFFF);
-  DWORD read = 0;
-  if (!ReadFile(stream->file, into, take, &read, &where)) {
-    return HRESULT_FROM_WIN32(GetLastError());
+  const int64_t read =
+      qa_media_span_read(stream->span, stream->position, into, (int64_t)take);
+  if (read < 0) {
+    // The file would not read, or a block would not decode: a broken
+    // medium, said as one rather than served as whatever the buffer held.
+    return E_FAIL;
   }
-  stream->position += (int64_t)read;
-  *got = read;
+  stream->position += read;
+  *got = (ULONG)read;
   return S_OK;
 }
 
@@ -282,10 +289,8 @@ static HRESULT STDMETHODCALLTYPE qa_range_flush(IMFByteStream* self) {
 
 static HRESULT STDMETHODCALLTYPE qa_range_close(IMFByteStream* self) {
   qa_range_stream* stream = qa_range_of(self);
-  if (stream->file != INVALID_HANDLE_VALUE) {
-    CloseHandle(stream->file);
-    stream->file = INVALID_HANDLE_VALUE;
-  }
+  qa_media_span_close(stream->span);
+  stream->span = NULL;
   return S_OK;
 }
 
@@ -301,42 +306,33 @@ static const IMFByteStreamVtbl qa_range_vtbl = {
     qa_range_seek,         qa_range_flush,        qa_range_close,
 };
 
-/// A readable, seekable stream over `[offset, offset + length)` of [path],
-/// or NULL. The caller owns one reference.
+/// A readable, seekable stream over the medium stored in
+/// `[offset, offset + length)` of [utf8_path] — its own bytes, or a framed
+/// blob of them when [framed] — or NULL. The caller owns one reference.
 ///
-/// ⚠️`FILE_SHARE_READ | FILE_SHARE_WRITE`: the file being read from is the
-/// project the app is still using, and refusing to share it would make
-/// opening a carried movie lock the save out.
-IMFByteStream* qa_win_range_stream_create(const wchar_t* path,
+/// ⚠️The file is opened by `qa_media_span`, which shares it for reading AND
+/// writing: it is the project the app is still using, and refusing to share
+/// it would make opening a carried movie lock the save out.
+IMFByteStream* qa_win_range_stream_create(const char* utf8_path,
                                           int64_t offset,
-                                          int64_t length) {
-  if (path == NULL || offset < 0 || length <= 0) {
+                                          int64_t length,
+                                          int32_t framed) {
+  if (utf8_path == NULL || offset < 0 || length <= 0) {
     return NULL;
   }
-  const HANDLE file =
-      CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-  if (file == INVALID_HANDLE_VALUE) {
-    return NULL;
-  }
-  LARGE_INTEGER size;
-  if (!GetFileSizeEx(file, &size) || offset + length > size.QuadPart) {
-    // ⛔The range must be INSIDE the file. A stream that reports a length
-    // the file cannot supply turns into a truncated movie rather than a
-    // refusal, and a truncated movie looks like a corrupt one.
-    CloseHandle(file);
+  qa_media_span* span = qa_media_span_open(utf8_path, offset, length, framed);
+  if (span == NULL) {
     return NULL;
   }
   qa_range_stream* stream = (qa_range_stream*)calloc(1, sizeof(*stream));
   if (stream == NULL) {
-    CloseHandle(file);
+    qa_media_span_close(span);
     return NULL;
   }
   stream->lpVtbl = &qa_range_vtbl;
   stream->ref = 1;
-  stream->file = file;
-  stream->base = offset;
-  stream->length = length;
+  stream->span = span;
+  stream->length = qa_media_span_size(span);
   stream->position = 0;
   return (IMFByteStream*)stream;
 }

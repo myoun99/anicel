@@ -166,6 +166,30 @@ int qa_ndk_media_encodes(const qa_ndk_media_api* api);
 /// Android 9 and later.
 int qa_ndk_media_reads_custom(const qa_ndk_media_api* api);
 
+/// A medium stored in a span of a file (qa_media_span.h), served to an
+/// extractor as a source of our own — how a FRAMED span, whose stored bytes
+/// are not the container, reaches MediaExtractor at all. Needs
+/// [qa_ndk_media_reads_custom].
+///
+/// ⚠️ONE serving for the video decoder and the audio decoder: each needed
+/// exactly this, and the lock below is the part a second copy forgets.
+typedef struct qa_ndk_served_span qa_ndk_served_span;
+
+/// NULL when the span will not open or the device cannot serve a source.
+qa_ndk_served_span* qa_ndk_served_span_open(const qa_ndk_media_api* api,
+                                            const char* utf8_path,
+                                            int64_t offset,
+                                            int64_t length,
+                                            int32_t framed);
+
+/// What to hand `AMediaExtractor_setDataSourceCustom`.
+AMediaDataSource* qa_ndk_served_span_source(const qa_ndk_served_span* served);
+
+/// ⚠️Only AFTER the extractor it was handed to is deleted: the extractor
+/// reads through it for as long as it lives. NULL is ignored.
+void qa_ndk_served_span_free(const qa_ndk_media_api* api,
+                             qa_ndk_served_span* served);
+
 #endif  // __ANDROID__
 
 #endif  // QA_NDK_MEDIA_H

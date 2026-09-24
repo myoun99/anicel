@@ -26,6 +26,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "qa_media_span.h"
+
 // Mirrors qa_video_encode.c's ABI v21 values.
 #define QA_VIDEO_CONTAINER_MP4 0
 #define QA_VIDEO_CONTAINER_MOV 1
@@ -487,7 +489,7 @@ void qa_video_apple_abort(void) {
 // One document at a time, matching qa_video_decode.c's contract.
 
 // ---------------------------------------------------------------------------
-// Serving a RANGE of a file to AVFoundation.
+// Serving a SPAN of a file to AVFoundation.
 //
 // 🚨★★★**AVFoundation HAS NO 「open this file from byte N」.** `AVURLAsset`
 // takes a URL; there is no offset parameter anywhere. Its answer is a URL
@@ -495,63 +497,76 @@ void qa_video_apple_abort(void) {
 // request for it — so where Windows writes an `IMFByteStream` and Android
 // passes a descriptor with a range, Apple SERVES the bytes.
 //
-// ⛔The file handle is opened once and kept: a resource loader is asked for
-// small ranges constantly while a movie plays, and opening the archive per
-// request would turn playback into a stream of opens.
+// 🚨The bytes come from `qa_media_span`, the library's one reader of a span
+// (2026-09-24) — the movie as it is, or FRAMED (compressed in blocks by the
+// save), decompressed a block at a time as AVFoundation asks. This used to
+// read through an `NSFileHandle` at `base + wanted`, the third copy of those
+// three lines, and could serve only a span that held the movie as it is.
+//
+// ⛔The span is opened once and kept: a resource loader is asked for small
+// ranges constantly while a movie plays, and opening the archive per request
+// would turn playback into a stream of opens.
 @interface QaRangeResourceLoader : NSObject <AVAssetResourceLoaderDelegate>
 @property(nonatomic, readonly) BOOL opened;
 @property(nonatomic, readonly) dispatch_queue_t queue;
 - (instancetype)initWithPath:(NSString*)path
                       offset:(int64_t)offset
-                      length:(int64_t)length;
+                      length:(int64_t)length
+                      framed:(BOOL)framed;
 - (void)close;
 @end
 
+/// The most one response hands AVFoundation at a time. A request 「to the end
+/// of the resource」 is the whole rest of the movie, and answering it in one
+/// piece was one allocation the size of the movie.
+static const int64_t kQaServedChunkBytes = 1024 * 1024;
+
 @implementation QaRangeResourceLoader {
-  NSFileHandle* _file;
-  int64_t _base;
+  qa_media_span* _span;
   int64_t _length;
 }
 
 - (instancetype)initWithPath:(NSString*)path
                       offset:(int64_t)offset
-                      length:(int64_t)length {
+                      length:(int64_t)length
+                      framed:(BOOL)framed {
   self = [super init];
   if (self == nil) {
     return nil;
   }
-  _base = offset;
-  _length = length;
   _queue = dispatch_queue_create("qa.range.loader", DISPATCH_QUEUE_SERIAL);
-  _file = [NSFileHandle fileHandleForReadingAtPath:path];
-  if (_file == nil || offset < 0 || length <= 0) {
-    _opened = NO;
-    return self;
-  }
-  // ⛔The range must be INSIDE the file. A loader that promises bytes the
-  // file cannot supply produces a truncated movie, which reads as a corrupt
-  // one rather than as a range that was wrong.
-  NSDictionary* attributes = [[NSFileManager defaultManager]
-      attributesOfItemAtPath:path
-                       error:nil];
-  const int64_t size = (int64_t)[attributes fileSize];
-  _opened = (offset + length <= size);
+  // ⛔The span refuses itself when it is not INSIDE the file, or when a
+  // framed header does not hold together: a loader that promised bytes the
+  // file cannot supply would produce a truncated movie, which reads as a
+  // corrupt one rather than as a span that was wrong.
+  _span = qa_media_span_open([path fileSystemRepresentation], offset, length,
+                             framed ? 1 : 0);
+  _length = qa_media_span_size(_span);
+  _opened = _span != NULL;
   return self;
 }
 
 - (void)close {
-  [_file closeFile];
-  _file = nil;
+  // ⚠️On the loader's own queue: a request being answered is reading the
+  // span, and closing it under that read is a read on a freed reader.
+  dispatch_sync(_queue, ^{
+    qa_media_span_close(self->_span);
+    self->_span = NULL;
+  });
 }
 
-/// What the range looks like from outside: a file of [_length] bytes whose
+- (void)dealloc {
+  qa_media_span_close(_span);
+}
+
+/// What the span looks like from outside: a file of [_length] bytes whose
 /// type AVFoundation must guess, because a URL with our own scheme carries
 /// no extension it could read one from.
 - (void)fillInformation:(AVAssetResourceLoadingRequest*)request {
   request.contentInformationRequest.contentLength = _length;
   request.contentInformationRequest.byteRangeAccessSupported = YES;
   // ⚠️`public.movie` rather than a precise type: this backend is handed a
-  // range, not a name, and claiming a specific container we have not parsed
+  // span, not a name, and claiming a specific container we have not parsed
   // would be a guess AVFoundation then has to live with. The generic type
   // lets it sniff the bytes it is about to be given.
   request.contentInformationRequest.contentType = @"public.movie";
@@ -561,7 +576,7 @@ void qa_video_apple_abort(void) {
     shouldWaitForLoadingOfRequestedResource:
         (AVAssetResourceLoadingRequest*)loadingRequest {
   (void)resourceLoader;
-  if (_file == nil) {
+  if (_span == NULL) {
     return NO;
   }
   if (loadingRequest.contentInformationRequest != nil) {
@@ -587,17 +602,26 @@ void qa_video_apple_abort(void) {
   if (take > _length - wanted) {
     take = _length - wanted;
   }
-  // 🚨base + wanted. Reading at `wanted` alone hands back the archive's own
-  // header as if it were the movie — the same arithmetic the other two
-  // backends have to get right, in the same one place each.
-  @try {
-    [_file seekToFileOffset:(unsigned long long)(_base + wanted)];
-    NSData* bytes = [_file readDataOfLength:(NSUInteger)take];
+  // A chunk at a time, so the largest thing held is one chunk however much
+  // was asked for — and a request AVFoundation gave up on stops being read.
+  while (take > 0 && !loadingRequest.isCancelled) {
+    const int64_t chunk = take < kQaServedChunkBytes ? take
+                                                     : kQaServedChunkBytes;
+    NSMutableData* bytes = [NSMutableData dataWithLength:(NSUInteger)chunk];
+    const int64_t read =
+        qa_media_span_read(_span, wanted, [bytes mutableBytes], chunk);
+    if (read <= 0) {
+      // The file would not read, or a block would not decode: said as a
+      // failure rather than served as whatever the buffer held.
+      [loadingRequest finishLoadingWithError:nil];
+      return YES;
+    }
+    [bytes setLength:(NSUInteger)read];
     [data respondWithData:bytes];
-    [loadingRequest finishLoading];
-  } @catch (NSException* failure) {
-    [loadingRequest finishLoadingWithError:nil];
+    wanted += read;
+    take -= read;
   }
+  [loadingRequest finishLoading];
   return YES;
 }
 
@@ -675,6 +699,7 @@ void qa_video_apple_decode_close(void) {
 int32_t qa_video_apple_decode_open(const char* utf8_path,
                                    int64_t range_offset,
                                    int64_t range_length,
+                                   int32_t framed,
                                    char* error,
                                    int32_t error_capacity) {
   @autoreleasepool {
@@ -701,11 +726,12 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
       g_decode_serving =
           [[QaRangeResourceLoader alloc] initWithPath:path
                                                offset:range_offset
-                                               length:range_length];
+                                               length:range_length
+                                               framed:framed != 0];
       if (g_decode_serving == nil || !g_decode_serving.opened) {
         g_decode_serving = nil;
         qa_apple_set_error(error, error_capacity,
-                           "that range is not inside the file");
+                           "that span does not hold a readable movie");
         return 0;
       }
       NSURL* served =

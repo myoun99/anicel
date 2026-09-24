@@ -9,7 +9,10 @@
 
 #include <dlfcn.h>
 #include <pthread.h>
+#include <stdlib.h>
 #include <string.h>
+
+#include "qa_media_span.h"
 
 static qa_ndk_media_api g_api;
 static int g_opened = 0;
@@ -140,6 +143,83 @@ int qa_ndk_media_reads_custom(const qa_ndk_media_api* api) {
          api->source_set_userdata != NULL &&
          api->source_set_read_at != NULL &&
          api->source_set_get_size != NULL;
+}
+
+/// ⚠️LOCKED: the extractor may ask from a thread of its own, and the span
+/// reader is ONE reader — its file position and its cached block are shared
+/// by every read.
+struct qa_ndk_served_span {
+  AMediaDataSource* source;
+  qa_media_span* span;
+  pthread_mutex_t lock;
+};
+
+/// `AMediaDataSourceReadAt`: -1 is BOTH the end and a failure, and 0 is only
+/// for a zero-byte ask.
+static ssize_t qa_ndk_served_read_at(void* user,
+                                     off64_t offset,
+                                     void* buffer,
+                                     size_t size) {
+  qa_ndk_served_span* served = (qa_ndk_served_span*)user;
+  if (size == 0) {
+    return 0;
+  }
+  pthread_mutex_lock(&served->lock);
+  const int64_t read =
+      qa_media_span_read(served->span, (int64_t)offset, buffer, (int64_t)size);
+  pthread_mutex_unlock(&served->lock);
+  return read > 0 ? (ssize_t)read : -1;
+}
+
+static ssize_t qa_ndk_served_size(void* user) {
+  return (ssize_t)qa_media_span_size(((qa_ndk_served_span*)user)->span);
+}
+
+void qa_ndk_served_span_free(const qa_ndk_media_api* api,
+                             qa_ndk_served_span* served) {
+  if (served == NULL) {
+    return;
+  }
+  if (served->source != NULL && api != NULL && api->source_delete != NULL) {
+    api->source_delete(served->source);
+  }
+  qa_media_span_close(served->span);
+  pthread_mutex_destroy(&served->lock);
+  free(served);
+}
+
+qa_ndk_served_span* qa_ndk_served_span_open(const qa_ndk_media_api* api,
+                                            const char* utf8_path,
+                                            int64_t offset,
+                                            int64_t length,
+                                            int32_t framed) {
+  if (!qa_ndk_media_reads_custom(api)) {
+    return NULL;
+  }
+  qa_ndk_served_span* served =
+      (qa_ndk_served_span*)calloc(1, sizeof(*served));
+  if (served == NULL) {
+    return NULL;
+  }
+  served->span = qa_media_span_open(utf8_path, offset, length, framed);
+  if (served->span == NULL) {
+    free(served);
+    return NULL;
+  }
+  pthread_mutex_init(&served->lock, NULL);
+  served->source = api->source_new();
+  if (served->source == NULL) {
+    qa_ndk_served_span_free(api, served);
+    return NULL;
+  }
+  api->source_set_userdata(served->source, served);
+  api->source_set_read_at(served->source, qa_ndk_served_read_at);
+  api->source_set_get_size(served->source, qa_ndk_served_size);
+  return served;
+}
+
+AMediaDataSource* qa_ndk_served_span_source(const qa_ndk_served_span* served) {
+  return served == NULL ? NULL : served->source;
 }
 
 #endif  // __ANDROID__

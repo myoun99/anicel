@@ -15,11 +15,13 @@
 // as ONE piece of code both decoders call. A second copy of it here is the
 // only way the Korean filename comes back.
 //
-// Why a path at all: a container inside the project file is a RANGE of one,
+// Why a path at all: a container inside the project file is a SPAN of one,
 // and the whole point is not to hold the container in memory to decode it.
 // A three-gigabyte movie whose sound we want cannot arrive as a `Uint8List`.
-// Memory stays a first-class origin — a FRAMED archive entry is not a
-// contiguous range, so its bytes genuinely arrive assembled.
+// 🪦This went on 「Memory stays a first-class origin — a FRAMED archive entry
+// is not a contiguous range, so its bytes genuinely arrive assembled.」 It
+// stopped being true on 2026-09-24: the library's one span reader reads a
+// framed span itself (`qa_media_span.h`), so nothing arrives assembled.
 //
 // Nothing here is realtime. Decoding happens ONCE at import, which is the
 // entire point of conforming — a variable-length codec cannot promise to
@@ -42,7 +44,6 @@
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <shlwapi.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
@@ -56,6 +57,7 @@
 // ⚠️AFTER the block above, for the same reason the comment there gives: this
 // TU decides COBJMACROS and WIN32_LEAN_AND_MEAN, and a header that reached
 // windows.h first would settle both with the wrong answer.
+#include "qa_media_span.h"
 #include "qa_platform_path.h"
 
 // One implementation of each, here and nowhere else.
@@ -151,59 +153,62 @@ static int qa_pcm_append(qa_pcm_accumulator* accumulator,
 }
 
 // ---------------------------------------------------------------------------
-// 🚨★★★**WHERE THE BYTES ARE — ONE CURSOR, TWO ORIGINS, NO SECOND DISPATCH.**
+// 🚨★★★**WHERE THE BYTES ARE — ONE CURSOR, ONE READER, NO SECOND DISPATCH.**
 //
-// A container arrives either assembled in memory or as a range of a file, and
-// the naive shape is two of everything: two dispatch chains, two of each
-// decoder's setup, two places to forget a format. The decoders all take
-// read/seek callbacks, so instead there is one cursor and the origin is a
-// field in it. ⛔A `qa_audio_decode_range` that repeated the chain would be
-// exactly the copy this repo keeps deleting.
+// A container is a SPAN of a file: a sound in the project file, a movie
+// whose soundtrack we want, a loose file (a span from 0 to its length). The
+// decoders all take read/seek callbacks, so there is one cursor, and it reads
+// through the library's one span reader (`qa_media_span.h`) — which also
+// reads a span the save FRAMED, decompressing a block at a time.
+//
+// 🪦There were two origins until 2026-09-24: this span, and the container
+// assembled in memory. Memory existed only because a framed entry had no
+// native reader, so Dart decompressed the whole thing and handed it over —
+// the soundtrack of a carried movie arrived here as the whole movie in RAM.
+// The span reader reads framed spans itself now, and the memory origin went
+// with its reason. ⛔A `qa_audio_decode_memory` that came back would be the
+// copy this repo keeps deleting.
 //
 // ⚠️Positions are RELATIVE TO THE CONTAINER, never to the file. A decoder
 // that seeks to 0 must land on the container's first byte, not the archive's
 // — which for a carried sound is thousands of bytes earlier, and reads as a
-// corrupt file rather than as the arithmetic bug it is.
+// corrupt file rather than as the arithmetic bug it is. The span reader is
+// where that arithmetic lives, once.
 typedef struct {
-  /// Memory origin: the whole container. NULL when the origin is a file.
-  const uint8_t* data;
-  /// File origin: an open handle. NULL when the origin is memory.
-  FILE* file;
-  /// File origin: the same file's path, UTF-8. ⚠️Carried as well as the
-  /// handle because the OS decoders below do not take a `FILE*`: Media
-  /// Foundation wants a byte stream over a wide path, and the NDK extractor
-  /// wants a descriptor. Only AudioToolbox reads through the handle.
+  /// The container, read through the one span reader.
+  qa_media_span* span;
+  /// Where the span came from. ⚠️Carried as well as the reader because some
+  /// OS decoders below do not read through a callback: Media Foundation
+  /// wants a byte stream it opens over the span itself, and the NDK
+  /// extractor wants a descriptor. AudioToolbox and dr_libs read through
+  /// the cursor.
   const char* path;
-  /// File origin: where the container starts in that file.
   int64_t base;
-  /// How many bytes the container has, either way.
+  int64_t stored_length;
+  int32_t framed;
+  /// How many bytes the CONTAINER has — for a framed span, the decoded
+  /// length.
   int64_t size;
   /// Where the next read starts, 0..size.
   int64_t position;
 } qa_audio_cursor;
 
 /// Reads up to [want] bytes into [out], returning how many. Short at the end
-/// of the container, and 0 past it — every decoder here treats that as EOF.
+/// of the container, and 0 past it — every decoder here treats that as EOF,
+/// and a span that would not read is treated the same way rather than handed
+/// on as bytes.
 static size_t qa_cursor_read(void* user, void* out, size_t want) {
   qa_audio_cursor* cursor = (qa_audio_cursor*)user;
   if (cursor->position >= cursor->size) {
     return 0;
   }
-  const int64_t left = cursor->size - cursor->position;
-  size_t take = want;
-  if ((int64_t)take > left) {
-    take = (size_t)left;
+  const int64_t read = qa_media_span_read(cursor->span, cursor->position, out,
+                                          (int64_t)want);
+  if (read <= 0) {
+    return 0;
   }
-  if (cursor->data != NULL) {
-    memcpy(out, cursor->data + cursor->position, take);
-  } else {
-    if (!qa_seek_absolute(cursor->file, cursor->base + cursor->position)) {
-      return 0;
-    }
-    take = fread(out, 1, take, cursor->file);
-  }
-  cursor->position += (int64_t)take;
-  return take;
+  cursor->position += read;
+  return (size_t)read;
 }
 
 /// Moves the cursor. [origin] is 0/1/2 — set, current, end — which is the
@@ -289,13 +294,11 @@ static void qa_cursor_rewind(qa_audio_cursor* cursor) {
 
 #if defined(_WIN32)
 
-// The video decoder's range stream, shared rather than written twice — see
-// qa_win_range_stream.c. ⛔A second `IMFByteStream` over a range is the one
-// thing this must not become: it is 200 lines of hand-written COM whose
-// whole job is `base + position`, and two of those drift.
-extern IMFByteStream* qa_win_range_stream_create(const wchar_t* path,
-                                                 int64_t offset,
-                                                 int64_t length);
+// The video decoder's span stream, shared rather than written twice — see
+// qa_win_range_stream.c. ⛔A second `IMFByteStream` over a span is the one
+// thing this must not become: it is 200 lines of hand-written COM, and two
+// of those drift.
+#include "qa_win_range_stream.h"
 
 // Media Foundation source reader over the container's bytes (headers at the
 // top of the file). MF inserts the AAC (or WMA, ...) decoder and its
@@ -303,27 +306,20 @@ extern IMFByteStream* qa_win_range_stream_create(const wchar_t* path,
 // leaves rate/channels at the source's own, which is exactly the conform
 // contract.
 //
-// 🚨MF opens a URL or a byte stream and nothing else, which is why BOTH
-// origins arrive here as an `IMFByteStream` and everything after the open is
-// one code path: memory gets `SHCreateMemStream`, a file range gets the
-// stream the video decoder already had.
+// 🚨MF opens a URL or a byte stream and nothing else, so the container
+// arrives as the stream the video decoder already had — over the same span,
+// plain or framed.
 static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
                                   float** out_samples,
                                   int64_t* out_frame_count,
                                   int32_t* out_channels,
                                   int32_t* out_sample_rate) {
-  const uint8_t* data = src->data;
-  const int64_t size = src->size;
-  if (data != NULL && size > 0x7FFFFFFF) {
-    return QA_AUDIO_FORMAT_UNKNOWN;  // SHCreateMemStream takes a UINT.
-  }
   // Per-thread COM, balanced on exit; RPC_E_CHANGED_MODE means the thread
   // already runs an incompatible apartment — proceed without the balance.
   const HRESULT co = CoInitializeEx(NULL, COINIT_MULTITHREADED);
   const int co_balanced = SUCCEEDED(co);
   int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
   int mf_started = 0;
-  IStream* stream = NULL;
   IMFByteStream* byte_stream = NULL;
   IMFSourceReader* reader = NULL;
   IMFMediaType* requested = NULL;
@@ -340,24 +336,10 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
   }
   mf_started = 1;
 
-  if (data != NULL) {
-    stream = SHCreateMemStream(data, (UINT)size);
-    if (stream == NULL) {
-      goto done;
-    }
-    if (FAILED(MFCreateMFByteStreamOnStream(stream, &byte_stream))) {
-      goto done;
-    }
-  } else {
-    wchar_t wide[1024];
-    if (!qa_widen_path(src->path, wide,
-                       (int)(sizeof(wide) / sizeof(wide[0])))) {
-      goto done;
-    }
-    byte_stream = qa_win_range_stream_create(wide, src->base, size);
-    if (byte_stream == NULL) {
-      goto done;
-    }
+  byte_stream = qa_win_range_stream_create(src->path, src->base,
+                                           src->stored_length, src->framed);
+  if (byte_stream == NULL) {
+    goto done;
   }
   if (FAILED(MFCreateSourceReaderFromByteStream(byte_stream, NULL, &reader))) {
     goto done;
@@ -446,9 +428,6 @@ done:
   }
   if (byte_stream != NULL) {
     IMFByteStream_Release(byte_stream);
-  }
-  if (stream != NULL) {
-    IStream_Release(stream);
   }
   if (mf_started) {
     MFShutdown();
@@ -607,20 +586,6 @@ done:
 // device the offset was read out of the wrong registers.
 #include "qa_ndk_media.h"
 
-static ssize_t qa_blob_read_at(void* user, off64_t offset, void* buffer,
-                               size_t size) {
-  qa_audio_cursor* cursor = (qa_audio_cursor*)user;
-  if (offset < 0 || offset >= cursor->size) {
-    return -1;  // EOS per the AMediaDataSource contract
-  }
-  cursor->position = (int64_t)offset;
-  return (ssize_t)qa_cursor_read(cursor, buffer, size);
-}
-
-static ssize_t qa_blob_get_size(void* user) {
-  return (ssize_t)((const qa_audio_cursor*)user)->size;
-}
-
 static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
                                   float** out_samples,
                                   int64_t* out_frame_count,
@@ -631,12 +596,9 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
     return QA_AUDIO_FORMAT_UNKNOWN;
   }
 
-  // ⚠️A COPY — the read callback moves the cursor, and this was handed a
-  // read-only view of the caller's.
-  qa_audio_cursor blob = *src;
   int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
   AMediaExtractor* extractor = NULL;
-  AMediaDataSource* source = NULL;
+  qa_ndk_served_span* served = NULL;
   AMediaCodec* codec = NULL;
   AMediaFormat* track_format = NULL;
   qa_pcm_accumulator pcm = {NULL, 0, 0};
@@ -649,32 +611,27 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
   if (extractor == NULL) {
     goto done;
   }
-  if (src->data == NULL) {
+  if (!src->framed) {
     // The API-21 form, and the one every supported device has.
     descriptor = open(src->path, O_RDONLY);
     if (descriptor < 0) {
       goto done;
     }
     if (ndk->extractor_set_source_fd(extractor, descriptor,
-                                         (off64_t)src->base,
-                                         (off64_t)src->size) != 0) {
+                                     (off64_t)src->base,
+                                     (off64_t)src->stored_length) != 0) {
       goto done;
     }
   } else {
-    // Assembled bytes with no range to point at — a framed archive entry.
-    // ⛔Absent below API 28, and that is an ANSWER: undecodable, the same
-    // one the caller already handles, not a crash and not a required symbol.
-    if (!qa_ndk_media_reads_custom(ndk)) {
-      goto done;
-    }
-    source = ndk->source_new();
-    if (source == NULL) {
-      goto done;
-    }
-    ndk->source_set_userdata(source, &blob);
-    ndk->source_set_read_at(source, qa_blob_read_at);
-    ndk->source_set_get_size(source, qa_blob_get_size);
-    if (ndk->extractor_set_source_custom(extractor, source) != 0) {
+    // A FRAMED span: its stored bytes are not the container, so it is served
+    // through a source of our own. ⛔Absent below API 28, and that is an
+    // ANSWER: undecodable, the same one the caller already handles, not a
+    // crash and not a required symbol.
+    served = qa_ndk_served_span_open(ndk, src->path, src->base,
+                                     src->stored_length, 1);
+    if (served == NULL ||
+        ndk->extractor_set_source_custom(
+            extractor, qa_ndk_served_span_source(served)) != 0) {
       goto done;
     }
   }
@@ -817,9 +774,8 @@ done:
   if (extractor != NULL) {
     ndk->extractor_delete(extractor);
   }
-  if (source != NULL) {
-    ndk->source_delete(source);
-  }
+  // After the extractor, which reads through it for as long as it lives.
+  qa_ndk_served_span_free(ndk, served);
   // ⚠️After the extractor, not before: it reads through this descriptor for
   // as long as it lives, and closing first turns a decode into a read error
   // somewhere with no name on it.
@@ -862,6 +818,95 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
 // Returns the QA_AUDIO_FORMAT_* that succeeded, or 0 when nothing could
 // read it. On success the caller owns *out_samples and must release it
 // with qa_audio_decode_free.
+/// stb_vorbis over [cursor]'s container, or UNKNOWN.
+///
+/// ⚠️The one decoder with no callback form — memory or a `FILE*` — so the
+/// span is handed over two ways. A PLAIN span is a FILE section: a position
+/// plus a length, a range exactly. A FRAMED span has no FILE that holds the
+/// container, so an ogg in one is assembled in memory — but only once its
+/// first four bytes say it IS one (`OggS`, which stb_vorbis requires anyway):
+/// asking every framed container in full would read a whole movie to learn
+/// it is not an ogg. A carried ogg is nearly never framed at all — it is
+/// already compressed, and a save frames only what shrinks.
+static int32_t qa_audio_decode_vorbis(qa_audio_cursor* cursor,
+                                      float** out_samples,
+                                      int64_t* out_frame_count,
+                                      int32_t* out_channels,
+                                      int32_t* out_sample_rate) {
+  if (cursor->size > 0x7FFFFFFF) {
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  int vorbis_error = 0;
+  stb_vorbis* vorbis = NULL;
+  FILE* section = NULL;
+  uint8_t* assembled = NULL;
+  if (!cursor->framed) {
+    // ⚠️The 2GB guard is stb's, not ours: it remembers where a section
+    // started with `ftell`, whose `long` is 32 bits on Windows. Past that it
+    // would read from the wrong place rather than fail, so the attempt is
+    // skipped instead — an ogg carried past the 2GB mark of a project file
+    // decodes as「not an ogg」, and no other format is affected.
+    if (cursor->base <= 0x7FFFFFFF) {
+      section = qa_open_path_read(cursor->path);
+      if (section != NULL && qa_seek_absolute(section, cursor->base)) {
+        vorbis = stb_vorbis_open_file_section(section, 0, &vorbis_error, NULL,
+                                              (unsigned)cursor->size);
+      }
+    }
+  } else {
+    uint8_t magic[4];
+    if (qa_media_span_read(cursor->span, 0, magic, 4) == 4 &&
+        memcmp(magic, "OggS", 4) == 0) {
+      assembled = (uint8_t*)malloc((size_t)cursor->size);
+      if (assembled != NULL &&
+          qa_media_span_read(cursor->span, 0, assembled, cursor->size) ==
+              cursor->size) {
+        vorbis = stb_vorbis_open_memory(assembled, (int)cursor->size,
+                                        &vorbis_error, NULL);
+      }
+    }
+  }
+  int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
+  if (vorbis != NULL) {
+    const stb_vorbis_info info = stb_vorbis_get_info(vorbis);
+    if (info.channels > 0 && info.sample_rate > 0) {
+      qa_pcm_accumulator pcm = {NULL, 0, 0};
+      enum { kVorbisChunkFrames = 4096 };
+      float* chunk = (float*)malloc(
+          (size_t)kVorbisChunkFrames * info.channels * sizeof(float));
+      int healthy = chunk != NULL;
+      while (healthy) {
+        const int frames = stb_vorbis_get_samples_float_interleaved(
+            vorbis, info.channels, chunk, kVorbisChunkFrames * info.channels);
+        if (frames <= 0) {
+          break;
+        }
+        if (!qa_pcm_append(&pcm, chunk,
+                           (size_t)frames * info.channels * sizeof(float))) {
+          healthy = 0;
+        }
+      }
+      free(chunk);
+      if (healthy && pcm.size >= sizeof(float) * (size_t)info.channels) {
+        *out_samples = (float*)pcm.bytes;
+        *out_frame_count =
+            (int64_t)(pcm.size / (sizeof(float) * (size_t)info.channels));
+        *out_channels = info.channels;
+        *out_sample_rate = (int32_t)info.sample_rate;
+        result = QA_AUDIO_FORMAT_VORBIS;
+      } else {
+        free(pcm.bytes);
+      }
+    }
+    stb_vorbis_close(vorbis);
+  }
+  if (section != NULL) {
+    fclose(section);
+  }
+  free(assembled);
+  return result;
+}
+
 static int32_t qa_audio_decode_cursor(
     qa_audio_cursor* cursor,
     float** out_samples,
@@ -903,60 +948,11 @@ static int32_t qa_audio_decode_cursor(
   // strict recognizer, while dr_mp3's frame-sync scan is the most
   // permissive of the bunch — it must always try LAST of the bundled
   // decoders or it will happily "decode" someone else's container.
-  //
-  // ⚠️The one decoder with no callback form: memory or a `FILE*`, so the two
-  // origins are two OPENS and everything after them is shared. The FILE form
-  // is `_section`, which is a position plus a length — a range, exactly.
-  if (cursor->size <= 0x7FFFFFFF) {
-    int vorbis_error = 0;
-    stb_vorbis* vorbis = NULL;
-    if (cursor->data != NULL) {
-      vorbis = stb_vorbis_open_memory(cursor->data, (int)cursor->size,
-                                      &vorbis_error, NULL);
-    } else if (cursor->base <= 0x7FFFFFFF &&
-               qa_seek_absolute(cursor->file, cursor->base)) {
-      // ⚠️The 2GB guard is stb's, not ours: it remembers where a section
-      // started with `ftell`, whose `long` is 32 bits on Windows. Past that
-      // it would read from the wrong place rather than fail, so the attempt
-      // is skipped instead — an ogg carried past the 2GB mark of a project
-      // file decodes as「not an ogg」, and no other format is affected.
-      vorbis = stb_vorbis_open_file_section(cursor->file, 0, &vorbis_error,
-                                            NULL, (unsigned)cursor->size);
-    }
-    if (vorbis != NULL) {
-      const stb_vorbis_info info = stb_vorbis_get_info(vorbis);
-      if (info.channels > 0 && info.sample_rate > 0) {
-        qa_pcm_accumulator pcm = {NULL, 0, 0};
-        enum { kVorbisChunkFrames = 4096 };
-        float* chunk = (float*)malloc(
-            (size_t)kVorbisChunkFrames * info.channels * sizeof(float));
-        int healthy = chunk != NULL;
-        while (healthy) {
-          const int frames = stb_vorbis_get_samples_float_interleaved(
-              vorbis, info.channels, chunk,
-              kVorbisChunkFrames * info.channels);
-          if (frames <= 0) {
-            break;
-          }
-          if (!qa_pcm_append(&pcm, chunk,
-                             (size_t)frames * info.channels * sizeof(float))) {
-            healthy = 0;
-          }
-        }
-        free(chunk);
-        stb_vorbis_close(vorbis);
-        if (healthy && pcm.size >= sizeof(float) * (size_t)info.channels) {
-          *out_samples = (float*)pcm.bytes;
-          *out_frame_count =
-              (int64_t)(pcm.size / (sizeof(float) * (size_t)info.channels));
-          *out_channels = info.channels;
-          *out_sample_rate = (int32_t)info.sample_rate;
-          return QA_AUDIO_FORMAT_VORBIS;
-        }
-        free(pcm.bytes);
-      } else {
-        stb_vorbis_close(vorbis);
-      }
+  {
+    const int32_t vorbis = qa_audio_decode_vorbis(
+        cursor, out_samples, out_frame_count, out_channels, out_sample_rate);
+    if (vorbis != QA_AUDIO_FORMAT_UNKNOWN) {
+      return vorbis;
     }
   }
   {
@@ -982,8 +978,8 @@ static int32_t qa_audio_decode_cursor(
                             out_sample_rate);
 }
 
-/// The two entry points, and the ONLY difference between them is where the
-/// bytes are. ⛔Neither repeats the chain above.
+/// The output slots, emptied before a decode fills them — or 0 when one is
+/// missing.
 static int32_t qa_audio_decode_begin(float** out_samples,
                                      int64_t* out_frame_count,
                                      int32_t* out_channels,
@@ -999,46 +995,24 @@ static int32_t qa_audio_decode_begin(float** out_samples,
   return 1;
 }
 
-/// A container the caller already holds. ⚠️Still needed after the range form
-/// arrived: a FRAMED archive entry is stored in pieces, so its bytes are
-/// genuinely assembled before anyone can decode them.
-QA_EXPORT int32_t qa_audio_decode_memory(
-    const uint8_t* data,
-    int64_t size,
-    float** out_samples,
-    int64_t* out_frame_count,
-    int32_t* out_channels,
-    int32_t* out_sample_rate) {
-  if (!qa_audio_decode_begin(out_samples, out_frame_count, out_channels,
-                             out_sample_rate)) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
-  }
-  if (data == NULL || size <= 0) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
-  }
-  qa_audio_cursor cursor;
-  memset(&cursor, 0, sizeof(cursor));
-  cursor.data = data;
-  cursor.size = size;
-  return qa_audio_decode_cursor(&cursor, out_samples, out_frame_count,
-                                out_channels, out_sample_rate);
-}
-
-/// A container that is [length] bytes of [path] starting at [offset] — the
-/// shape a sound inside the project file has, and the shape a movie whose
-/// soundtrack we want has whether it is carried or referenced.
+/// A container stored in `[offset, offset + length)` of [path] — as it is,
+/// or FRAMED (compressed in blocks) when [framed]: the shape a sound inside
+/// the project file has, the shape a staged copy has, and the shape a movie
+/// whose soundtrack we want has whether it is carried or referenced.
 ///
 /// 🚨★★★**THE POINT IS WHAT IS NOT HERE: a `Uint8List`.** The conform used to
 /// read the whole container into memory before a decoder was handed anything,
 /// which is why a three-gigabyte reference movie could not be asked for its
-/// sound at all. Nothing on this path holds more than a decode buffer.
+/// sound at all — and a FRAMED one still arrived that way until 2026-09-24.
+/// Nothing on this path holds more than a decode buffer and one block.
 ///
 /// [offset] `0` with [length] the file's own size is a whole file, and that
-/// is the ordinary case — a range is not an archive-only idea.
-QA_EXPORT int32_t qa_audio_decode_range(
+/// is the ordinary case — a span is not an archive-only idea.
+QA_EXPORT int32_t qa_audio_decode_span(
     const char* path,
     int64_t offset,
     int64_t length,
+    int32_t framed,
     float** out_samples,
     int64_t* out_frame_count,
     int32_t* out_channels,
@@ -1050,30 +1024,28 @@ QA_EXPORT int32_t qa_audio_decode_range(
   if (path == NULL || offset < 0 || length <= 0) {
     return QA_AUDIO_FORMAT_UNKNOWN;
   }
-  FILE* file = qa_open_path_read(path);
-  if (file == NULL) {
+  // ⛔A span that runs past the end is refused rather than clamped — the
+  // span reader's own rule: a short container decodes as a corrupt file,
+  // which is a much worse answer than 「that span is not in there」.
+  qa_media_span* span = qa_media_span_open(path, offset, length, framed);
+  if (span == NULL) {
     return QA_AUDIO_FORMAT_UNKNOWN;
   }
-  // ⛔A range that runs past the end is refused rather than clamped: a short
-  // container decodes as a corrupt file, which is a much worse answer than
-  // 「that range is not in there」.
-  int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
-  const int64_t total = qa_file_size(file);
-  if (total >= 0 && offset + length <= total) {
-    qa_audio_cursor cursor;
-    memset(&cursor, 0, sizeof(cursor));
-    cursor.file = file;
-    cursor.path = path;
-    cursor.base = offset;
-    cursor.size = length;
-    result = qa_audio_decode_cursor(&cursor, out_samples, out_frame_count,
-                                    out_channels, out_sample_rate);
-  }
-  fclose(file);
+  qa_audio_cursor cursor;
+  memset(&cursor, 0, sizeof(cursor));
+  cursor.span = span;
+  cursor.path = path;
+  cursor.base = offset;
+  cursor.stored_length = length;
+  cursor.framed = framed ? 1 : 0;
+  cursor.size = qa_media_span_size(span);
+  const int32_t result = qa_audio_decode_cursor(
+      &cursor, out_samples, out_frame_count, out_channels, out_sample_rate);
+  qa_media_span_close(span);
   return result;
 }
 
-// Releases a buffer from qa_audio_decode_memory. All three libraries route
+// Releases a buffer from qa_audio_decode_span. All three libraries route
 // their frees through the same default allocator, so drwav_free is correct
 // for any of them — but going through one named entry point keeps the
 // caller from having to know that.

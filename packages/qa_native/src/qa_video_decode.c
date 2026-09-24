@@ -191,13 +191,19 @@ static int32_t qa_backend_supported(void);
 /// Opens [path] and fills the size/rate/length fields of [g_doc]. Reports
 /// its own reason through [qa_decode_set_error] on failure.
 ///
-/// ⚠️[offset]/[length] name a RANGE inside [path] rather than the whole
-/// file — see [qa_video_decode_open_range]. A whole-file open passes
-/// `0, 0`, and a backend that has a plain path form should use it: the OS
-/// opening a file for itself beats anything wrapped around it.
+/// ⚠️[offset]/[length] name a SPAN inside [path] rather than the whole
+/// file — see [qa_video_decode_open_span] — and [framed] says the span holds
+/// the movie compressed in blocks rather than as it is. A whole-file open
+/// passes `0, 0, 0`, and a backend that has a plain path form should use it:
+/// the OS opening a file for itself beats anything wrapped around it.
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
-                               int64_t length);
+                               int64_t length,
+                               int32_t framed);
+
+/// Whether this backend can open a FRAMED span — every one that can serve a
+/// decoder bytes of its own can; Android can only from API 28.
+static int32_t qa_backend_reads_framed(void);
 
 /// Releases whatever [qa_backend_open] took. Called before every open and
 /// on close; must tolerate never having opened anything.
@@ -212,10 +218,11 @@ static int32_t qa_backend_reposition(int64_t index);
 /// to [rgba] as straight RGBA at the document's size.
 static int32_t qa_backend_read(int64_t index, uint8_t* rgba);
 
-/// The half of opening that is the same for a whole file and for a range.
+/// The half of opening that is the same for a whole file and for a span.
 static int32_t qa_decode_finish_open(const char* path,
                                      int64_t offset,
-                                     int64_t length);
+                                     int64_t length,
+                                     int32_t framed);
 
 /// A rate as an exact fraction. 🚨**30000/1001 IS NOT 29.97**, and rounding
 /// it is how a frame index drifts a second out over a long take — Apple
@@ -435,10 +442,8 @@ static void qa_yuv420_to_rgba(const uint8_t* data,
 
 /// The Windows half of opening a movie inside another file — see
 /// `qa_win_range_stream.c` for why Media Foundation needs one written by
-/// hand. NULL when the range is not inside the file.
-extern IMFByteStream* qa_win_range_stream_create(const wchar_t* path,
-                                                 int64_t offset,
-                                                 int64_t length);
+/// hand.
+#include "qa_win_range_stream.h"
 
 /// ⚠️What is left here is the PLATFORM's own state — the reader itself and
 /// how Media Foundation lays out its rows. Size, rate, length and 「where am
@@ -460,6 +465,8 @@ typedef char qa_win_state_fits[
 
 static int32_t qa_backend_supported(void) { return 1; }
 
+static int32_t qa_backend_reads_framed(void) { return 1; }
+
 static void qa_backend_close(void) {
   if (g_dec.reader != NULL) {
     IMFSourceReader_Release(g_dec.reader);
@@ -474,7 +481,8 @@ static void qa_backend_close(void) {
 
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
-                               int64_t length) {
+                               int64_t length,
+                               int32_t framed) {
   wchar_t wide[1024];
   if (!qa_widen_path(path, wide, (int)(sizeof(wide) / sizeof(wide[0])))) {
     qa_decode_set_error("path is not valid UTF-8");
@@ -499,17 +507,18 @@ static int32_t qa_backend_open(const char* path,
   IMFAttributes_SetUINT32(
       attributes, &MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, TRUE);
 
-  // A RANGE goes through a byte stream; a whole file goes through the URL.
+  // A SPAN goes through a byte stream — plain or framed, the stream serves
+  // the movie's own bytes either way; a whole file goes through the URL.
   // ⛔The URL form is not a shortcut being kept for its own sake — it lets
   // Media Foundation open the file itself, which is faster and better tested
-  // than anything wrapped around one, and the range form exists only where
+  // than anything wrapped around one, and the span form exists only where
   // there is no file to name.
   HRESULT hr;
   if (length > 0) {
     IMFByteStream* stream =
-        qa_win_range_stream_create(wide, offset, length);
+        qa_win_range_stream_create(path, offset, length, framed);
     if (stream == NULL) {
-      qa_decode_set_error("that range is not inside the file");
+      qa_decode_set_error("that span does not hold a readable movie");
       qa_backend_close();
       return 0;
     }
@@ -746,6 +755,7 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 extern int32_t qa_video_apple_decode_open(const char* utf8_path,
                                           int64_t range_offset,
                                           int64_t range_length,
+                                          int32_t framed,
                                           char* error,
                                           int32_t error_capacity);
 extern int32_t qa_video_apple_decode_info(int32_t* stored_width,
@@ -778,6 +788,8 @@ extern void qa_video_apple_decode_select(int32_t slot);
 
 static int32_t qa_backend_supported(void) { return 1; }
 
+static int32_t qa_backend_reads_framed(void) { return 1; }
+
 /// The selected slot, as an index the other file can hold.
 static void qa_apple_select(void) {
   qa_video_apple_decode_select((int32_t)(g_slot - g_docs));
@@ -790,12 +802,14 @@ static void qa_backend_close(void) {
 
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
-                               int64_t length) {
+                               int64_t length,
+                               int32_t framed) {
   qa_apple_select();
-  // ⚠️A range reaches AVFoundation through a resource loader rather than a
+  // ⚠️A span reaches AVFoundation through a resource loader rather than a
   // URL — see `qa_video_apple.m`, which is also the only compiler that ever
   // sees it.
-  if (!qa_video_apple_decode_open(path, offset, length, g_decode_error,
+  if (!qa_video_apple_decode_open(path, offset, length, framed,
+                                  g_decode_error,
                                   (int32_t)sizeof(g_decode_error))) {
     return 0;
   }
@@ -896,12 +910,19 @@ static const qa_ndk_media_api* qa_droid_ndk(void) {
   return qa_ndk_media_decodes(api) ? api : NULL;
 }
 
+static int32_t qa_backend_reads_framed(void) {
+  return qa_ndk_media_reads_custom(qa_droid_ndk());
+}
+
 /// ⚠️The PLATFORM's own state only — size, rate, length and 「where am I
 /// positioned」 live in [g_doc], where all three backends answer alike.
 typedef struct {
   AMediaExtractor* extractor;
   AMediaCodec* codec;
   int32_t track;
+  /// The source a FRAMED span is served through, or NULL. ⚠️Freed AFTER the
+  /// extractor: it reads through this for as long as it lives.
+  qa_ndk_served_span* served;
 } qa_video_droid_decode;
 
 /// ⚠️In the SLOT, like every backend's state — see [qa_decode_slot].
@@ -925,6 +946,7 @@ static void qa_backend_close(void) {
     ndk->extractor_delete(g_droid_dec.extractor);
     g_droid_dec.extractor = NULL;
   }
+  qa_ndk_served_span_free(ndk, g_droid_dec.served);
   memset(&g_droid_dec, 0, sizeof(g_droid_dec));
 }
 
@@ -932,7 +954,8 @@ static int32_t qa_backend_supported(void) { return qa_droid_ndk() != NULL; }
 
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
-                               int64_t length) {
+                               int64_t length,
+                               int32_t framed) {
   const qa_ndk_media_api* ndk = qa_droid_ndk();
   if (ndk == NULL) {
     qa_decode_set_error("no video decoder in this build");
@@ -947,10 +970,23 @@ static int32_t qa_backend_open(const char* path,
     qa_decode_set_error("could not open the container");
     return 0;
   }
-  // A RANGE opens by descriptor; a whole file opens by path. Both are the
+  // A FRAMED span is served through a source of our own; a plain span opens
+  // by descriptor; a whole file opens by path. The last two are the
   // extractor's own front doors — nothing is wrapped, copied or unpacked.
   int32_t sourced;
-  if (length > 0) {
+  if (length > 0 && framed) {
+    // ⚠️Kept in the slot AT ONCE: every failure below hands the slot to
+    // [qa_backend_close], which frees this after the extractor.
+    g_droid_dec.served =
+        qa_ndk_served_span_open(ndk, path, offset, length, 1);
+    if (g_droid_dec.served == NULL) {
+      ndk->extractor_delete(extractor);
+      qa_decode_set_error("that span does not hold a readable movie");
+      return 0;
+    }
+    sourced = ndk->extractor_set_source_custom(
+        extractor, qa_ndk_served_span_source(g_droid_dec.served));
+  } else if (length > 0) {
     const int fd = open(path, O_RDONLY);
     if (fd < 0) {
       ndk->extractor_delete(extractor);
@@ -1175,12 +1211,16 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 
 static int32_t qa_backend_supported(void) { return 0; }
 
+static int32_t qa_backend_reads_framed(void) { return 0; }
+
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
-                               int64_t length) {
+                               int64_t length,
+                               int32_t framed) {
   (void)path;
   (void)offset;
   (void)length;
+  (void)framed;
   qa_decode_set_error("no video decoder in this build");
   return 0;
 }
@@ -1271,32 +1311,54 @@ static int32_t qa_decode_handle_of(const qa_decode_slot* slot) {
 /// ⛔The alternative was unpacking it to a temp file, which leaves a COPY
 /// (유저 2026-08-27: 「사본 남으면 진짜 용서안할게」).
 ///
-/// ⚠️**THE RANGE MUST BE THE MOVIE'S OWN BYTES, contiguous and unmodified.**
-/// That is not a convenience: Android below API 28 has no arbitrary byte
-/// source at all — `AMediaExtractor_setDataSourceFd` is `__INTRODUCED_IN(21)`
-/// and `setDataSourceCustom` is `(28)`, while this app's `minSdk` is 21 —
-/// so 「a file descriptor and a range」 is the only shape every supported
-/// device can open. The archive side keeps such entries addressable for
-/// exactly this reason.
-QA_EXPORT int32_t qa_video_decode_open_range(const char* path,
-                                             int64_t offset,
-                                             int64_t length) {
+/// 🚨★★★**AND THE SPAN MAY HOLD THE MOVIE COMPRESSED — [framed].** A save
+/// compresses every carried file that shrinks by 5% or more, in blocks, and
+/// an MP4 shrinks by about 7% — so a carried movie is framed more often than
+/// not. Every backend reads a framed span through the library's one span
+/// reader (`qa_media_span.h`), decompressing a block at a time as its
+/// decoder asks (유저 2026-09-24: 「압축 유지 + 풀면서 디코더에 먹이는
+/// 리더를 플랫폼마다 만든다」).
+///
+/// 🪦This said 「the archive side keeps such entries addressable」 — that the
+/// save stores a movie uncompressed so a range could always name it. It was
+/// never true: nothing in the save ever did that, and the sentence was a
+/// guess written down as a fact.
+///
+/// ⚠️Android below API 28 cannot open a framed span:
+/// `AMediaExtractor_setDataSourceFd` is `__INTRODUCED_IN(21)` and takes only
+/// the file's own bytes, while `setDataSourceCustom` is `(28)` and this
+/// app's `minSdk` is 21. Such a device reads a carried movie only while its
+/// original is there — the cost the user accepted with the answer above.
+/// [qa_video_decode_framed_supported] says which device this is.
+QA_EXPORT int32_t qa_video_decode_open_span(const char* path,
+                                            int64_t offset,
+                                            int64_t length,
+                                            int32_t framed) {
   qa_decode_set_error(NULL);
   if (path == NULL || path[0] == '\0') {
     qa_decode_set_error("no path");
     return 0;
   }
   if (offset < 0 || length <= 0) {
-    qa_decode_set_error("that range is not inside the file");
+    qa_decode_set_error("that span is not inside the file");
+    return 0;
+  }
+  if (framed && !qa_backend_reads_framed()) {
+    qa_decode_set_error("this device cannot read a movie kept compressed");
     return 0;
   }
   qa_decode_slot* slot = qa_decode_take_slot();
   if (slot == NULL) {
     return 0;
   }
-  return qa_decode_finish_open(path, offset, length)
+  return qa_decode_finish_open(path, offset, length, framed)
              ? qa_decode_handle_of(slot)
              : 0;
+}
+
+/// Whether [qa_video_decode_open_span] can open a FRAMED span here.
+QA_EXPORT int32_t qa_video_decode_framed_supported(void) {
+  return qa_backend_supported() && qa_backend_reads_framed();
 }
 
 QA_EXPORT int32_t qa_video_decode_open(const char* path) {
@@ -1309,16 +1371,17 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   if (slot == NULL) {
     return 0;
   }
-  return qa_decode_finish_open(path, 0, 0) ? qa_decode_handle_of(slot) : 0;
+  return qa_decode_finish_open(path, 0, 0, 0) ? qa_decode_handle_of(slot) : 0;
 }
 
 /// Everything both opens do once the backend has answered — one copy, so
-/// 「open a file」 and 「open a range in a file」 cannot drift into meaning
+/// 「open a file」 and 「open a span of a file」 cannot drift into meaning
 /// different things about rotation, rate or length.
 static int32_t qa_decode_finish_open(const char* path,
                                      int64_t offset,
-                                     int64_t length) {
-  if (!qa_backend_open(path, offset, length)) {
+                                     int64_t length,
+                                     int32_t framed) {
+  if (!qa_backend_open(path, offset, length, framed)) {
     qa_decode_close_slot(g_slot);
     return 0;
   }

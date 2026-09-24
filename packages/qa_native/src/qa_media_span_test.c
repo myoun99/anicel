@@ -7,10 +7,8 @@
 // read (`qa_media_span_stats`) — that count is the only thing that tells the
 // two apart.
 //
-// ⚠️The fixture writer below exists because C has no other way to make one.
-// It is NOT the format's writer — that is `writeMediaBlob` in Dart, and the
-// Dart suite reads files that writer wrote through this same reader. This one
-// only has to agree with the layout in qa_media_span.h.
+// ⚠️Fixtures come from qa_framed_fixture.h, which says why C has a writer of
+// its own at all and why it is not the format's writer.
 
 #include <stdint.h>
 #include <stdio.h>
@@ -18,7 +16,7 @@
 #include <string.h>
 
 #include "qa_media_span.h"
-#include "third_party/zstd/zstd.h"
+#include "qa_framed_fixture.h"
 
 static int g_failures;
 
@@ -43,81 +41,39 @@ static uint8_t medium_byte(int64_t i) {
   return (uint8_t)((i / 7 + (i % 5)) & 0xFF);
 }
 
-static void put_u32(uint8_t* at, uint32_t value) {
-  at[0] = (uint8_t)(value & 0xFF);
-  at[1] = (uint8_t)((value >> 8) & 0xFF);
-  at[2] = (uint8_t)((value >> 16) & 0xFF);
-  at[3] = (uint8_t)((value >> 24) & 0xFF);
-}
-
-static void put_u64(uint8_t* at, uint64_t value) {
-  put_u32(at, (uint32_t)(value & 0xFFFFFFFFu));
-  put_u32(at + 4, (uint32_t)(value >> 32));
-}
-
 #define PREFIX_BYTES 1234
 #define SUFFIX_BYTES 777
 
 /// Writes junk, then a framed blob of a [total]-byte medium in blocks of
 /// [block_bytes], then more junk, to [path]. Answers the blob's length and
-/// each block's compressed length through [lengths] (room for 64).
+/// each block's compressed length through [lengths].
 static int64_t write_framed_fixture(const char* path,
                                     int64_t total,
                                     int64_t block_bytes,
                                     uint32_t* lengths) {
-  const int64_t count = (total + block_bytes - 1) / block_bytes;
-  uint8_t* plain = (uint8_t*)malloc((size_t)block_bytes);
-  const size_t bound = ZSTD_compressBound((size_t)block_bytes);
-  uint8_t* packed = (uint8_t*)malloc(bound * (size_t)count);
-  if (plain == NULL || packed == NULL || count > 64) {
-    free(plain);
-    free(packed);
-    return -1;
-  }
-  int64_t packed_bytes = 0;
-  for (int64_t b = 0; b < count; b += 1) {
-    const int64_t start = b * block_bytes;
-    const int64_t size = total - start < block_bytes ? total - start
-                                                     : block_bytes;
-    for (int64_t i = 0; i < size; i += 1) {
-      plain[i] = medium_byte(start + i);
-    }
-    const size_t wrote = ZSTD_compress(packed + packed_bytes, bound, plain,
-                                       (size_t)size, 9);
-    if (ZSTD_isError(wrote)) {
-      free(plain);
-      free(packed);
-      return -1;
-    }
-    lengths[b] = (uint32_t)wrote;
-    packed_bytes += (int64_t)wrote;
-  }
-  uint8_t header[16 + 4 * 64];
-  put_u32(header, (uint32_t)block_bytes);
-  put_u64(header + 4, (uint64_t)total);
-  put_u32(header + 12, (uint32_t)count);
-  for (int64_t b = 0; b < count; b += 1) {
-    put_u32(header + 16 + 4 * b, lengths[b]);
-  }
-  const int64_t header_bytes = 16 + 4 * count;
+  uint8_t* medium = (uint8_t*)malloc((size_t)total);
   FILE* file = fopen(path, "wb");
-  if (file == NULL) {
-    free(plain);
-    free(packed);
+  if (medium == NULL || file == NULL) {
+    free(medium);
+    if (file != NULL) {
+      fclose(file);
+    }
     return -1;
+  }
+  for (int64_t i = 0; i < total; i += 1) {
+    medium[i] = medium_byte(i);
   }
   for (int i = 0; i < PREFIX_BYTES; i += 1) {
     fputc((i * 13 + 7) & 0xFF, file);
   }
-  fwrite(header, 1, (size_t)header_bytes, file);
-  fwrite(packed, 1, (size_t)packed_bytes, file);
+  const int64_t blob =
+      qa_fixture_write_framed(file, medium, total, block_bytes, lengths);
   for (int i = 0; i < SUFFIX_BYTES; i += 1) {
     fputc((i * 29 + 3) & 0xFF, file);
   }
   fclose(file);
-  free(plain);
-  free(packed);
-  return header_bytes + packed_bytes;
+  free(medium);
+  return blob;
 }
 
 /// Whether [got] bytes of a window at [position] are the medium's own.
@@ -173,7 +129,7 @@ static void test_framed(void) {
   const char* path = "qa_media_span_framed.bin";
   const int64_t block_bytes = 64 * 1024;
   const int64_t total = block_bytes * 3 + 1000;
-  uint32_t lengths[64];
+  uint32_t lengths[QA_FIXTURE_MAX_BLOCKS];
   const int64_t blob = write_framed_fixture(path, total, block_bytes, lengths);
   expect_true("framed: fixture written", blob > 0);
   if (blob <= 0) {
@@ -245,7 +201,7 @@ static void test_framed_at_another_block_size(void) {
   const char* path = "qa_media_span_block_size.bin";
   const int64_t block_bytes = 4096;
   const int64_t total = block_bytes * 5 + 17;
-  uint32_t lengths[64];
+  uint32_t lengths[QA_FIXTURE_MAX_BLOCKS];
   const int64_t blob = write_framed_fixture(path, total, block_bytes, lengths);
   qa_media_span* span =
       blob > 0 ? qa_media_span_open(path, PREFIX_BYTES, blob, 1) : NULL;
@@ -266,7 +222,7 @@ static void test_corrupt_block(void) {
   const char* path = "qa_media_span_corrupt.bin";
   const int64_t block_bytes = 8192;
   const int64_t total = block_bytes * 2;
-  uint32_t lengths[64];
+  uint32_t lengths[QA_FIXTURE_MAX_BLOCKS];
   const int64_t blob = write_framed_fixture(path, total, block_bytes, lengths);
   if (blob <= 0) {
     expect_true("corrupt: fixture written", 0);

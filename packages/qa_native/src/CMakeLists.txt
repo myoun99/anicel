@@ -132,7 +132,9 @@ endif()
 if(NOT ANDROID AND NOT IOS)
   add_executable(qa_audio_range_test
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_range_test.c"
-    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c")
+    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
+    "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c")
   set_target_properties(qa_audio_range_test PROPERTIES
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
@@ -150,7 +152,7 @@ if(NOT ANDROID AND NOT IOS)
     target_sources(qa_audio_range_test PRIVATE
       "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
     target_link_libraries(qa_audio_range_test
-      mfplat mfreadwrite mfuuid shlwapi ole32)
+      mfplat mfreadwrite mfuuid ole32)
   else()
     find_library(QA_M_LIB m)
     if(QA_M_LIB)
@@ -175,7 +177,9 @@ endif()
 if(WIN32)
   add_executable(qa_win_range_stream_test
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream_test.c"
-    "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
+    "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
+    "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c")
   set_target_properties(qa_win_range_stream_test PROPERTIES
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
@@ -261,10 +265,11 @@ elseif(ANDROID)
   # so only OpenSLES (miniaudio) links here.
   target_link_libraries(qa_engine OpenSLES)
 elseif(WIN32)
-  # The OS decoder (AAC/m4a): Media Foundation source reader over an
-  # in-memory stream. shlwapi carries SHCreateMemStream, ole32 the COM
-  # runtime.
-  target_link_libraries(qa_engine mfplat mfreadwrite mfuuid shlwapi ole32)
+  # The OS decoders (AAC/m4a, and every movie): Media Foundation source
+  # readers over the span stream (qa_win_range_stream.c). ole32 carries the
+  # COM runtime. 🪦shlwapi went with the in-memory audio origin it served
+  # (SHCreateMemStream, 2026-09-24).
+  target_link_libraries(qa_engine mfplat mfreadwrite mfuuid ole32)
 endif()
 
 if(MSVC)
