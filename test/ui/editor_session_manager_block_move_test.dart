@@ -106,6 +106,16 @@ void main() {
     expect(selection!.layerId, b.id);
     expect(selection.frameId, frameId);
 
+    // I-41: the move was dropped standing on frame 0 and we looked at it on
+    // frame 1 — the first press walks back to where it was made.
+    s.undo();
+    expect(s.currentFrameIndex, 0, reason: 'a walk');
+    expect(
+      s.layers.firstWhere((l) => l.id == b.id).timeline[1]!.frameId,
+      frameId,
+      reason: '⛔nothing taken back yet',
+    );
+
     // ONE undo restores both layers AND the store keys.
     s.undo();
     final backA = s.layers.firstWhere((l) => l.id == a.id);

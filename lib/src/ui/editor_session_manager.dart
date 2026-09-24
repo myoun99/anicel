@@ -674,7 +674,15 @@ class EditorSessionManager extends ChangeNotifier
   // Where the user stands (Round 6): cut, row and layer.
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId));
 
-  void selectCut(CutId cutId) => standing.selectCut(cutId);
+  // I-41: every move the user makes begins by settling the last edit where
+  // it left them ([HistoryManager.settlePlace]) — the move is theirs, not
+  // the edit's. The hand-offs inside an action go through [standing] and
+  // the controllers, not through these.
+  void selectCut(CutId cutId) {
+    historyManager.settlePlace();
+    standing.selectCut(cutId);
+  }
+
   @override
   TimelineRowAddress get currentRow => standing.currentRow;
   @override
@@ -683,15 +691,26 @@ class EditorSessionManager extends ChangeNotifier
     int? frameIndex,
     int? globalFrameIndex,
     bool takesLayerActive = true,
-  }) => standing.standOnRow(
-    row,
-    frameIndex: frameIndex,
-    globalFrameIndex: globalFrameIndex,
-    takesLayerActive: takesLayerActive,
-  );
+  }) {
+    historyManager.settlePlace();
+    standing.standOnRow(
+      row,
+      frameIndex: frameIndex,
+      globalFrameIndex: globalFrameIndex,
+      takesLayerActive: takesLayerActive,
+    );
+  }
+
   @override
-  void selectLayer(LayerId layerId) => standing.selectLayer(layerId);
-  void selectRow(TimelineRowAddress row) => standing.selectRow(row);
+  void selectLayer(LayerId layerId) {
+    historyManager.settlePlace();
+    standing.selectLayer(layerId);
+  }
+
+  void selectRow(TimelineRowAddress row) {
+    historyManager.settlePlace();
+    standing.selectRow(row);
+  }
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
       standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
   void handOffCurrentRowOnAttachFold(LayerId baseId) =>
@@ -1125,6 +1144,9 @@ class EditorSessionManager extends ChangeNotifier
     // mode following it (or exit if the command switched cuts).
     visibilitySolo.syncVisibilitySolo();
     warmActiveCut();
+    // I-41: the command has put the user where they will look at it — that
+    // is where its undo finds them ([HistoryManager.settlePlace]).
+    historyManager.settlePlace();
   }
 
   /// The cut with [cutId] anywhere in the project, or `null`.
@@ -1856,7 +1878,7 @@ class EditorSessionManager extends ChangeNotifier
   /// elsewhere than the edit was made, the undo only WALKS there
   /// ([Standing.standOn]) and leaves the way back for redo.
   void undo() {
-    _adoptPendingWork();
+    _settleAndAdopt();
     final here = standingPlace;
     final there = historyManager.undoPlace;
     if (here != null &&
@@ -1875,7 +1897,7 @@ class EditorSessionManager extends ChangeNotifier
   /// The mirror of [undo]: a redo whose edit was made elsewhere walks there
   /// first, and the walk an undo left behind takes the user back.
   void redo() {
-    _adoptPendingWork();
+    _settleAndAdopt();
     final here = standingPlace;
     final there = historyManager.redoPlace;
     if (!historyManager.redoWalksBack &&
@@ -1891,11 +1913,15 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
-  /// ⚠️BEFORE the walk is decided, not inside the step: work still in hand
-  /// (a pending move) lands as an entry made HERE, and that entry is what
-  /// the press is for — asked first, the walk would carry the user away
+  /// ⚠️BEFORE the walk is decided, not inside the step. The last edit has
+  /// settled where it left the user — a press is a new action — and work
+  /// still in hand (a pending move) lands as an entry made HERE, which is
+  /// what the press is for: asked first, the walk would carry the user away
   /// from it.
-  void _adoptPendingWork() => historyManager.onBeforeUndoRedo?.call();
+  void _settleAndAdopt() {
+    historyManager.settlePlace();
+    historyManager.onBeforeUndoRedo?.call();
+  }
 
   // --- Layer state / commands --------------------------------------------
 
@@ -3010,6 +3036,7 @@ class EditorSessionManager extends ChangeNotifier
     if (editingInteractionBusy) {
       return;
     }
+    historyManager.settlePlace();
     // A direct cut-local seek leaves any gap parking (R16-⑥); the global
     // seek re-parks AFTER this call when it lands in a gap.
     gapGlobalFrame = null;
@@ -3274,6 +3301,7 @@ class EditorSessionManager extends ChangeNotifier
     if (editingInteractionBusy) {
       return;
     }
+    historyManager.settlePlace();
     final axis = onAxis ?? trackFrameAxis();
     if (axis.isEmpty) {
       return;

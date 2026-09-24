@@ -52,7 +52,12 @@ void main() {
     expect(notifies, greaterThan(0), reason: 'stop catches the UI up');
 
     // The whole ride left history untouched: the next undo is still the
-    // fixture's createCut, nothing selection-shaped sits on top of it.
+    // fixture's createCut, nothing selection-shaped sits on top of it. It
+    // left the playhead on frame 0 of the new cut, and the ride did not —
+    // so the first press walks back there (I-41) and the second takes it.
+    s.undo();
+    expect(s.activeCutId, second);
+    expect(s.currentFrameIndex, 0, reason: 'a walk, not a step');
     s.undo();
     expect(s.repository.requireProject().tracks.first.cuts, hasLength(1));
     expect(s.canUndo, isFalse);

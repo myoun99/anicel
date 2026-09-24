@@ -1472,7 +1472,11 @@ void main() {
       containsAll(<LayerId>[aId, bId]),
     );
     // The NEXT undo is the drawing that was made before the drag — the
-    // drag itself put no step on the stack.
+    // drag itself put no step on the stack. I-41 makes that visible: the
+    // press walks to B, where the drawing was made; a step the drag had
+    // pushed would have been taken back right here on A instead.
+    s.undo();
+    expect(s.activeLayerId, bId, reason: 'walked to the drawing, not a step');
     s.undo();
     expect(
       s.layers.firstWhere((l) => l.id == bId).timeline,

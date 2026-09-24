@@ -175,37 +175,83 @@ void main() {
     expect(cutIds(), contains(cuts.second));
   });
 
-  test('a row inside a shut FOLDER: the walk opens the folder — outside '
-      'history, so the next undo is still the edit\'s', () {
-    // 🗣️F-169 ②: 「언두시에 접혀있는 레이어로 이동하면 펼치고 해당 레이어에
-    // 서게」. The fold here is the user's own, and it is an undo entry
-    // (유저 08-29) — it is the walk's unfolding that must not be one.
-    final s = session();
+  /// What the app does between two inputs: the action settles.
+  Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+  /// A row inside a folder, and a drawing made on it.
+  ({LayerId row, LayerId folder, int made}) drawingInAFolder(
+    EditorSessionManager s,
+  ) {
     final row = s.activeLayerId!;
     s.folders.groupActiveLayerIntoFolder();
     final folder = s.layers.firstWhere((layer) => layer.kind.groupsLayers).id;
-    s.selectLayer(row);
-    s.createDrawingAtCurrentFrame();
-    final made = drawingsOn(s, row);
-    s.folders.toggleLayerCollapsed(folder);
-    bool shut() => s.layers.firstWhere((l) => l.id == folder).collapsed;
-    expect(shut(), isTrue, reason: '⛔전제: 폴더가 접혔다');
-    expect(s.activeLayerId, folder, reason: '⛔전제: 접힌 폴더 행이 받았다');
+    s
+      ..selectLayer(row)
+      ..createDrawingAtCurrentFrame();
+    return (row: row, folder: folder, made: drawingsOn(s, row));
+  }
+
+  bool shut(EditorSessionManager s, LayerId folder) =>
+      s.layers.firstWhere((layer) => layer.id == folder).collapsed;
+
+  test('a FOLD is undone where it left the user — on the folder row it '
+      'handed them to — so the first undo takes it back', () async {
+    // ⚠️Where the action LEFT the user: the fold seats them on the folder
+    // row, and that is the row they look at the fold from.
+    final s = session();
+    final made = drawingInAFolder(s);
+    await settle();
+    s.folders.toggleLayerCollapsed(made.folder);
+    await settle();
+    expect(shut(s, made.folder), isTrue, reason: '⛔전제: 폴더가 접혔다');
+    expect(s.activeLayerId, made.folder, reason: '⛔전제: 폴더 행이 받았다');
     final entries = s.historyManager.undoCount;
 
     s.undo();
-    expect(s.activeLayerId, row, reason: '편집한 행에 섰다');
-    expect(shut(), isFalse, reason: '그러려고 폴더를 폈다');
+    expect(shut(s, made.folder), isFalse, reason: '접기를 되돌렸다');
+    expect(s.historyManager.undoCount, entries - 1, reason: '걷지 않고 바로');
+  });
+
+  test('a row inside a folder shut OUTSIDE history: the walk opens it — '
+      'outside history too, so the next undo is still the edit\'s', () async {
+    // 🗣️F-169 ②: 「언두시에 접혀있는 레이어로 이동하면 펼치고 해당 레이어에
+    // 서게」. Written into history, the unfolding would clear the redo side
+    // and make the next undo the folder's instead of the edit's.
+    final s = session();
+    final made = drawingInAFolder(s);
+    await settle();
+    s.repository.updateLayer(
+      layerId: made.folder,
+      update: (layer) => layer.copyWith(collapsed: true),
+    );
+    s.refreshAfterCutCommand();
+    expect(shut(s, made.folder), isTrue, reason: '⛔전제: 폴더가 접혔다');
+    expect(s.activeLayerId, made.folder, reason: '⛔전제: 폴더 행이 받았다');
+    final entries = s.historyManager.undoCount;
+
+    s.undo();
+    expect(s.activeLayerId, made.row, reason: '편집한 행에 섰다');
+    expect(shut(s, made.folder), isFalse, reason: '그러려고 폴더를 폈다');
     expect(
       s.historyManager.undoCount,
       entries,
-      reason: '⛔편 것은 히스토리에 없다 — 다음 언두는 여전히 접기의 것이다',
+      reason: '⛔편 것은 히스토리에 없다',
     );
 
     s.undo();
-    expect(drawingsOn(s, row), made, reason: '접기를 되돌렸을 뿐, 그림은 그대로');
+    expect(drawingsOn(s, made.row), made.made - 1, reason: '다음 언두가 그림');
+  });
+
+  test('a new row seats the user on it, and its undo takes it back at once '
+      '— not a walk back to the row it replaced', () async {
+    final s = session();
+    final rows = s.layers.length;
+    s.layerStack.addLayer();
+    await settle();
+    expect(s.layers.length, rows + 1, reason: '⛔전제: 새 행');
+
     s.undo();
-    expect(drawingsOn(s, row), made - 1, reason: '그 다음이 그림');
+    expect(s.layers.length, rows, reason: '첫 언두가 바로 되돌린다');
   });
 
   test('a redo made from elsewhere walks to the edit first', () {
