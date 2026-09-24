@@ -314,6 +314,11 @@ void main() {
       expect(store.holdsAnyCopyOf(path), isTrue);
       expect(store.holdsAnyCopyOf(sourceFile('other.wav')), isFalse);
       expect(store.holdsAnyCopyOf('${root.path}/ake.wav'), isFalse);
+      expect(
+        store.holdsAnyCopyOf('${root.path}/elsewhere/take.wav'),
+        isFalse,
+        reason: 'the same file name in another folder is another path',
+      );
 
       final letGo = store.hold(carry(path, 'c7'));
       store.retire(carry(path, 'c7'));
