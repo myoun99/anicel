@@ -49,7 +49,6 @@
 #elif defined(__APPLE__)
 #include <AudioToolbox/AudioToolbox.h>
 #elif defined(__ANDROID__)
-#include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
 #endif
@@ -582,9 +581,9 @@ done:
 #elif defined(__ANDROID__)
 
 // NDK MediaCodec + MediaExtractor, resolved with dlsym rather than linked
-// (dlfcn.h at the top of the file): dlsym returning NULL on an older device
-// IS the graceful capability check — no weak-symbol machinery, no crash, the
-// file just reports undecodable and rides the fallback.
+// (the library's one table, qa_ndk_media.h): dlsym returning NULL on an
+// older device IS the graceful capability check — no weak-symbol machinery,
+// no crash, the file just reports undecodable and rides the fallback.
 //
 // 🚨★★★**THE FLOOR IS API 21 AGAIN, AND IT USED TO BE 28.**
 // The comment here said the AMediaDataSource entry points were「API 23+」.
@@ -602,124 +601,13 @@ done:
 // now the required one, and the data-source form is OPTIONAL — kept only
 // because a framed archive entry arrives assembled in memory and has no
 // range to point at. ⛔It must never go back to being required.
-typedef struct AMediaExtractor AMediaExtractor;
-typedef struct AMediaDataSource AMediaDataSource;
-typedef struct AMediaFormat AMediaFormat;
-typedef struct AMediaCodec AMediaCodec;
+// The NDK media API is the library's ONE table (qa_ndk_media.h). This file
+// resolved its own until 2026-09-24, and its custom-source read callback took
+// the offset as `off_t` where the NDK passes `off64_t` — on a 32-bit ARM
+// device the offset was read out of the wrong registers.
+#include "qa_ndk_media.h"
 
-typedef struct {
-  int32_t offset;
-  int32_t size;
-  int64_t presentationTimeUs;
-  uint32_t flags;
-} qa_codec_buffer_info;  // mirrors AMediaCodecBufferInfo
-
-#define QA_MEDIA_EOS_FLAG 4              // AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM
-#define QA_MEDIA_INFO_TRY_AGAIN (-1)     // AMEDIACODEC_INFO_TRY_AGAIN_LATER
-#define QA_MEDIA_INFO_FORMAT_CHANGED (-2)
-#define QA_MEDIA_INFO_BUFFERS_CHANGED (-3)
-
-typedef struct {
-  void* library;
-  AMediaExtractor* (*extractor_new)(void);
-  int (*extractor_delete)(AMediaExtractor*);
-  /// API 21 — the floor, and the reason this build runs on Android 5.0.
-  int (*extractor_set_data_source_fd)(AMediaExtractor*, int, off64_t, off64_t);
-  /// API 28 — OPTIONAL, see the section comment. NULL on an older device.
-  int (*extractor_set_data_source_custom)(AMediaExtractor*, AMediaDataSource*);
-  size_t (*extractor_track_count)(AMediaExtractor*);
-  AMediaFormat* (*extractor_track_format)(AMediaExtractor*, size_t);
-  int (*extractor_select_track)(AMediaExtractor*, size_t);
-  ssize_t (*extractor_read_sample)(AMediaExtractor*, uint8_t*, size_t);
-  int64_t (*extractor_sample_time)(AMediaExtractor*);
-  int (*extractor_advance)(AMediaExtractor*);
-  AMediaDataSource* (*source_new)(void);
-  void (*source_delete)(AMediaDataSource*);
-  void (*source_set_userdata)(AMediaDataSource*, void*);
-  void (*source_set_read_at)(AMediaDataSource*,
-                             ssize_t (*)(void*, off_t, void*, size_t));
-  void (*source_set_get_size)(AMediaDataSource*, ssize_t (*)(void*));
-  int (*format_delete)(AMediaFormat*);
-  int (*format_get_string)(AMediaFormat*, const char*, const char**);
-  int (*format_get_int32)(AMediaFormat*, const char*, int32_t*);
-  AMediaCodec* (*codec_create_decoder)(const char*);
-  int (*codec_delete)(AMediaCodec*);
-  int (*codec_configure)(AMediaCodec*, const AMediaFormat*, void*, void*,
-                         uint32_t);
-  int (*codec_start)(AMediaCodec*);
-  int (*codec_stop)(AMediaCodec*);
-  ssize_t (*codec_dequeue_input)(AMediaCodec*, int64_t);
-  uint8_t* (*codec_get_input)(AMediaCodec*, size_t, size_t*);
-  int (*codec_queue_input)(AMediaCodec*, size_t, off_t, size_t, uint64_t,
-                           uint32_t);
-  ssize_t (*codec_dequeue_output)(AMediaCodec*, qa_codec_buffer_info*,
-                                  int64_t);
-  uint8_t* (*codec_get_output)(AMediaCodec*, size_t, size_t*);
-  int (*codec_release_output)(AMediaCodec*, size_t, int);
-  AMediaFormat* (*codec_output_format)(AMediaCodec*);
-} qa_ndk_media;
-
-static int qa_ndk_media_load(qa_ndk_media* ndk) {
-  memset(ndk, 0, sizeof(*ndk));
-  ndk->library = dlopen("libmediandk.so", RTLD_NOW);
-  if (ndk->library == NULL) {
-    return 0;
-  }
-#define QA_SYM(field, name)                          \
-  *(void**)(&ndk->field) = dlsym(ndk->library, name); \
-  if (ndk->field == NULL) {                          \
-    dlclose(ndk->library);                           \
-    ndk->library = NULL;                             \
-    return 0;                                        \
-  }
-  QA_SYM(extractor_new, "AMediaExtractor_new")
-  QA_SYM(extractor_delete, "AMediaExtractor_delete")
-  QA_SYM(extractor_set_data_source_fd, "AMediaExtractor_setDataSourceFd")
-  QA_SYM(extractor_track_count, "AMediaExtractor_getTrackCount")
-  QA_SYM(extractor_track_format, "AMediaExtractor_getTrackFormat")
-  QA_SYM(extractor_select_track, "AMediaExtractor_selectTrack")
-  QA_SYM(extractor_read_sample, "AMediaExtractor_readSampleData")
-  QA_SYM(extractor_sample_time, "AMediaExtractor_getSampleTime")
-  QA_SYM(extractor_advance, "AMediaExtractor_advance")
-  // ⛔OPTIONAL — API 28. Resolved with the plain dlsym, NOT with QA_SYM:
-  // making these required is what silenced AAC on every Android below 9.
-  // The memory origin checks them before use; the range origin never needs
-  // them. See the section comment.
-#define QA_SYM_OPTIONAL(field, name) \
-  *(void**)(&ndk->field) = dlsym(ndk->library, name);
-  QA_SYM_OPTIONAL(extractor_set_data_source_custom,
-                  "AMediaExtractor_setDataSourceCustom")
-  QA_SYM_OPTIONAL(source_new, "AMediaDataSource_new")
-  QA_SYM_OPTIONAL(source_delete, "AMediaDataSource_delete")
-  QA_SYM_OPTIONAL(source_set_userdata, "AMediaDataSource_setUserdata")
-  QA_SYM_OPTIONAL(source_set_read_at, "AMediaDataSource_setReadAt")
-  QA_SYM_OPTIONAL(source_set_get_size, "AMediaDataSource_setGetSize")
-#undef QA_SYM_OPTIONAL
-  QA_SYM(format_delete, "AMediaFormat_delete")
-  QA_SYM(format_get_string, "AMediaFormat_getString")
-  QA_SYM(format_get_int32, "AMediaFormat_getInt32")
-  QA_SYM(codec_create_decoder, "AMediaCodec_createDecoderByType")
-  QA_SYM(codec_delete, "AMediaCodec_delete")
-  QA_SYM(codec_configure, "AMediaCodec_configure")
-  QA_SYM(codec_start, "AMediaCodec_start")
-  QA_SYM(codec_stop, "AMediaCodec_stop")
-  QA_SYM(codec_dequeue_input, "AMediaCodec_dequeueInputBuffer")
-  QA_SYM(codec_get_input, "AMediaCodec_getInputBuffer")
-  QA_SYM(codec_queue_input, "AMediaCodec_queueInputBuffer")
-  QA_SYM(codec_dequeue_output, "AMediaCodec_dequeueOutputBuffer")
-  QA_SYM(codec_get_output, "AMediaCodec_getOutputBuffer")
-  QA_SYM(codec_release_output, "AMediaCodec_releaseOutputBuffer")
-  QA_SYM(codec_output_format, "AMediaCodec_getOutputFormat")
-#undef QA_SYM
-  return 1;
-}
-
-typedef struct {
-  const uint8_t* data;
-  int64_t size;
-} qa_audio_blob;
-
-static ssize_t qa_blob_read_at(void* user, off_t offset, void* buffer,
+static ssize_t qa_blob_read_at(void* user, off64_t offset, void* buffer,
                                size_t size) {
   qa_audio_cursor* cursor = (qa_audio_cursor*)user;
   if (offset < 0 || offset >= cursor->size) {
@@ -738,8 +626,8 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
                                   int64_t* out_frame_count,
                                   int32_t* out_channels,
                                   int32_t* out_sample_rate) {
-  qa_ndk_media ndk;
-  if (!qa_ndk_media_load(&ndk)) {
+  const qa_ndk_media_api* ndk = qa_ndk_media();
+  if (!qa_ndk_media_decodes(ndk)) {
     return QA_AUDIO_FORMAT_UNKNOWN;
   }
 
@@ -757,7 +645,7 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
   int32_t sample_rate = 0;
   int32_t pcm_encoding = 2;  // ENCODING_PCM_16BIT — MediaCodec's default
 
-  extractor = ndk.extractor_new();
+  extractor = ndk->extractor_new();
   if (extractor == NULL) {
     goto done;
   }
@@ -767,7 +655,7 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
     if (descriptor < 0) {
       goto done;
     }
-    if (ndk.extractor_set_data_source_fd(extractor, descriptor,
+    if (ndk->extractor_set_source_fd(extractor, descriptor,
                                          (off64_t)src->base,
                                          (off64_t)src->size) != 0) {
       goto done;
@@ -776,52 +664,52 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
     // Assembled bytes with no range to point at — a framed archive entry.
     // ⛔Absent below API 28, and that is an ANSWER: undecodable, the same
     // one the caller already handles, not a crash and not a required symbol.
-    if (ndk.source_new == NULL || ndk.extractor_set_data_source_custom == NULL) {
+    if (!qa_ndk_media_reads_custom(ndk)) {
       goto done;
     }
-    source = ndk.source_new();
+    source = ndk->source_new();
     if (source == NULL) {
       goto done;
     }
-    ndk.source_set_userdata(source, &blob);
-    ndk.source_set_read_at(source, qa_blob_read_at);
-    ndk.source_set_get_size(source, qa_blob_get_size);
-    if (ndk.extractor_set_data_source_custom(extractor, source) != 0) {
+    ndk->source_set_userdata(source, &blob);
+    ndk->source_set_read_at(source, qa_blob_read_at);
+    ndk->source_set_get_size(source, qa_blob_get_size);
+    if (ndk->extractor_set_source_custom(extractor, source) != 0) {
       goto done;
     }
   }
 
-  const size_t tracks = ndk.extractor_track_count(extractor);
+  const size_t tracks = ndk->extractor_track_count(extractor);
   const char* mime = NULL;
   size_t audio_track = (size_t)-1;
   for (size_t index = 0; index < tracks; index += 1) {
-    AMediaFormat* format = ndk.extractor_track_format(extractor, index);
+    AMediaFormat* format = ndk->extractor_track_format(extractor, index);
     if (format == NULL) {
       continue;
     }
     const char* candidate = NULL;
-    if (ndk.format_get_string(format, "mime", &candidate) && candidate != NULL &&
+    if (ndk->format_get_string(format, "mime", &candidate) && candidate != NULL &&
         strncmp(candidate, "audio/", 6) == 0) {
       audio_track = index;
       mime = candidate;
       track_format = format;  // keep alive: `mime` points into it
       break;
     }
-    ndk.format_delete(format);
+    ndk->format_delete(format);
   }
   if (audio_track == (size_t)-1 || track_format == NULL) {
     goto done;
   }
-  ndk.format_get_int32(track_format, "sample-rate", &sample_rate);
-  ndk.format_get_int32(track_format, "channel-count", &channels);
-  if (ndk.extractor_select_track(extractor, audio_track) != 0) {
+  ndk->format_get_int32(track_format, "sample-rate", &sample_rate);
+  ndk->format_get_int32(track_format, "channel-count", &channels);
+  if (ndk->extractor_select_track(extractor, audio_track) != 0) {
     goto done;
   }
 
-  codec = ndk.codec_create_decoder(mime);
+  codec = ndk->codec_create_decoder(mime);
   if (codec == NULL ||
-      ndk.codec_configure(codec, track_format, NULL, NULL, 0) != 0 ||
-      ndk.codec_start(codec) != 0) {
+      ndk->codec_configure(codec, track_format, NULL, NULL, 0) != 0 ||
+      ndk->codec_start(codec) != 0) {
     goto done;
   }
 
@@ -831,64 +719,64 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
   while (!output_done && idle_spins < 10000) {
     int progressed = 0;
     if (!input_done) {
-      const ssize_t in_index = ndk.codec_dequeue_input(codec, 10000);
+      const ssize_t in_index = ndk->codec_dequeue_input(codec, 10000);
       if (in_index >= 0) {
         size_t capacity = 0;
-        uint8_t* in_buffer = ndk.codec_get_input(codec, (size_t)in_index,
+        uint8_t* in_buffer = ndk->codec_input_buffer(codec, (size_t)in_index,
                                                  &capacity);
         const ssize_t sample_size =
             in_buffer == NULL
                 ? -1
-                : ndk.extractor_read_sample(extractor, in_buffer, capacity);
+                : ndk->extractor_read_sample(extractor, in_buffer, capacity);
         if (sample_size < 0) {
-          ndk.codec_queue_input(codec, (size_t)in_index, 0, 0, 0,
-                                QA_MEDIA_EOS_FLAG);
+          ndk->codec_queue_input(codec, (size_t)in_index, 0, 0, 0,
+                                QA_NDK_FLAG_END_OF_STREAM);
           input_done = 1;
         } else {
-          ndk.codec_queue_input(codec, (size_t)in_index, 0,
+          ndk->codec_queue_input(codec, (size_t)in_index, 0,
                                 (size_t)sample_size,
-                                (uint64_t)ndk.extractor_sample_time(extractor),
+                                (uint64_t)ndk->extractor_sample_time(extractor),
                                 0);
-          ndk.extractor_advance(extractor);
+          ndk->extractor_advance(extractor);
         }
         progressed = 1;
       }
     }
-    qa_codec_buffer_info info;
+    qa_ndk_buffer_info info;
     memset(&info, 0, sizeof(info));
-    const ssize_t out_index = ndk.codec_dequeue_output(codec, &info, 10000);
+    const ssize_t out_index = ndk->codec_dequeue_output(codec, &info, 10000);
     if (out_index >= 0) {
       if (info.size > 0) {
         size_t capacity = 0;
-        uint8_t* out_buffer = ndk.codec_get_output(codec, (size_t)out_index,
+        uint8_t* out_buffer = ndk->codec_output_buffer(codec, (size_t)out_index,
                                                    &capacity);
         if (out_buffer == NULL ||
             !qa_pcm_append(&pcm, out_buffer + info.offset,
                            (size_t)info.size)) {
-          ndk.codec_release_output(codec, (size_t)out_index, 0);
+          ndk->codec_release_output(codec, (size_t)out_index, 0);
           goto done;
         }
       }
-      ndk.codec_release_output(codec, (size_t)out_index, 0);
-      if (info.flags & QA_MEDIA_EOS_FLAG) {
+      ndk->codec_release_output(codec, (size_t)out_index, 0);
+      if (info.flags & QA_NDK_FLAG_END_OF_STREAM) {
         output_done = 1;
       }
       progressed = 1;
-    } else if (out_index == QA_MEDIA_INFO_FORMAT_CHANGED) {
-      AMediaFormat* output_format = ndk.codec_output_format(codec);
+    } else if (out_index == QA_NDK_INFO_OUTPUT_FORMAT_CHANGED) {
+      AMediaFormat* output_format = ndk->codec_output_format(codec);
       if (output_format != NULL) {
-        ndk.format_get_int32(output_format, "sample-rate", &sample_rate);
-        ndk.format_get_int32(output_format, "channel-count", &channels);
-        ndk.format_get_int32(output_format, "pcm-encoding", &pcm_encoding);
-        ndk.format_delete(output_format);
+        ndk->format_get_int32(output_format, "sample-rate", &sample_rate);
+        ndk->format_get_int32(output_format, "channel-count", &channels);
+        ndk->format_get_int32(output_format, "pcm-encoding", &pcm_encoding);
+        ndk->format_delete(output_format);
       }
       progressed = 1;
-    } else if (out_index == QA_MEDIA_INFO_BUFFERS_CHANGED) {
+    } else if (out_index == QA_NDK_INFO_OUTPUT_BUFFERS_CHANGED) {
       progressed = 1;
     }
     idle_spins = progressed ? 0 : idle_spins + 1;
   }
-  ndk.codec_stop(codec);
+  ndk->codec_stop(codec);
 
   if (!output_done || channels <= 0 || sample_rate <= 0 || pcm.size == 0) {
     goto done;
@@ -921,16 +809,16 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
 done:
   free(pcm.bytes);
   if (codec != NULL) {
-    ndk.codec_delete(codec);
+    ndk->codec_delete(codec);
   }
   if (track_format != NULL) {
-    ndk.format_delete(track_format);
+    ndk->format_delete(track_format);
   }
   if (extractor != NULL) {
-    ndk.extractor_delete(extractor);
+    ndk->extractor_delete(extractor);
   }
   if (source != NULL) {
-    ndk.source_delete(source);
+    ndk->source_delete(source);
   }
   // ⚠️After the extractor, not before: it reads through this descriptor for
   // as long as it lives, and closing first turns a decode into a read error
@@ -938,7 +826,6 @@ done:
   if (descriptor >= 0) {
     close(descriptor);
   }
-  dlclose(ndk.library);
   return result;
 }
 

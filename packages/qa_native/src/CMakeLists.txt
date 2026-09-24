@@ -55,6 +55,12 @@ if(WIN32)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
 endif()
+# ⛔ANDROID only, for the same reason: the NDK media table is libmediandk's
+# answer and nobody else's (see qa_ndk_media.h for why there is one of it).
+if(ANDROID)
+  target_sources(qa_engine PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/qa_ndk_media.c")
+endif()
 
 set_target_properties(qa_engine PROPERTIES
   C_STANDARD 99
