@@ -477,13 +477,12 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     if (active == null || level <= 0 || !widget.activeCels.contains(key)) {
       return;
     }
-    TilePyramid.instance.seed(
-      active.lineage,
+    TilePyramid.instance.seed(active.lineage, (
       image: held.clone.clone(),
       level: level,
       worldRect: held.worldRect,
       madeFrom: held.madeFrom,
-    );
+    ));
   }
 
   void _dropImage(BrushFrameKey key, _HeldImage held) {

@@ -187,8 +187,8 @@ class TilePyramid {
   }
 
   /// The one level image the pyramid may draw a scope's blocks from instead
-  /// of making them — see [seed].
-  _Seed? _seed;
+  /// of making them, and whose it is — see [seed].
+  ({Object? scope, LevelSeed seed})? _seed;
 
   /// 🚨★★★A CEL THAT BECOMES THE ACTIVE ROW SHOWS WHAT IT SHOWED A FRAME
   /// AGO WITHOUT MAKING IT AGAIN (2026-09-24, board
@@ -203,41 +203,35 @@ class TilePyramid {
   /// raster thread busy 55–66 ms before it could draw it.
   ///
   /// So the stack hands over the image the row was drawn with, and what
-  /// every coordinate showed when it was composed ([madeFrom]). A block whose
-  /// coordinates all still show exactly that is drawn from the image, 1:1
-  /// ([seededBlock]); a block an edit or a stroke has touched is made as it
-  /// always was. On Windows (GLES) and in the test runner (Skia) a level of
-  /// the whole image is the same bytes as the halving of its blocks —
+  /// every coordinate showed when it was composed ([LevelSeed]). A block
+  /// whose coordinates all still show exactly that is drawn from the image,
+  /// 1:1 ([seededBlock]); a block an edit or a stroke has touched is made as
+  /// it always was. On Windows (GLES) and in the test runner (Skia) a level
+  /// of the whole image is the same bytes as the halving of its blocks —
   /// measured; on Vulkan the two differ by up to 2/255 at 50% and below,
   /// which is what the row showed a frame ago and what every other row
-  /// shows.
+  /// shows. The pyramid owns [seed]'s image handle from here on.
   ///
   /// ONE seed, the last handed over: one row is the active one, and the
   /// next switch replaces it — or [dropSeed] lets it go first.
-  void seed(
-    Object? scope, {
-    required ui.Image image,
-    required int level,
-    required ui.Rect worldRect,
-    required Map<TileCoord, Object> madeFrom,
-  }) {
-    _seed?.release();
-    _seed = _Seed(
-      scope: scope,
-      image: image,
-      level: level,
-      worldRect: worldRect,
-      madeFrom: madeFrom,
-    );
+  void seed(Object? scope, LevelSeed seed) {
+    _releaseSeed();
+    _seed = (scope: scope, seed: seed);
   }
 
   /// Lets [scope]'s seed go, if the one there is is its.
   void dropSeed(Object? scope) {
-    final seed = _seed;
-    if (seed == null || seed.scope != scope) {
+    if (_seed != null && _seed!.scope == scope) {
+      _releaseSeed();
+    }
+  }
+
+  void _releaseSeed() {
+    final held = _seed;
+    if (held == null) {
       return;
     }
-    seed.release();
+    DeferredImageDisposer.instance.retire(held.seed.image);
     _seed = null;
   }
 
@@ -259,13 +253,14 @@ class TilePyramid {
     required int level,
     required TileCoord coord,
   }) {
-    final seed = _seed;
-    if (seed == null ||
+    final held = _seed;
+    if (held == null ||
         level <= 0 ||
-        seed.level != level ||
-        seed.scope != ask.scope) {
+        held.seed.level != level ||
+        held.scope != ask.scope) {
       return null;
     }
+    final seed = held.seed;
     var showsAnything = false;
     for (final at in tilesOfBlock(level, coord)) {
       final key = ask.keyAt(at);
@@ -328,6 +323,18 @@ class TilePyramid {
       [for (final at in tilesOfBlock(level, coord)) ask.keyAt(at)];
 }
 
+/// A level image of a whole cel ([image], its own handle — a clone of the
+/// one the row was drawn with, the pixels shared), the level it is at, the
+/// canvas rect its texels cover there, and what every coordinate showed
+/// when it was composed ([madeFrom], `LayerFrameImage.madeFrom`) — what
+/// [TilePyramid.seed] takes.
+typedef LevelSeed = ({
+  ui.Image image,
+  int level,
+  ui.Rect worldRect,
+  Map<TileCoord, Object> madeFrom,
+});
+
 /// What one paint hands the pyramid with every ask: the grid's tile size,
 /// the scope the level tiles are filed under, the paint's one answer to
 /// what a coordinate shows — as a key (`keyAt`: null where the coordinate
@@ -346,31 +353,6 @@ typedef LevelTileAsk = ({
 class _ScopePyramid {
   int paints = 0;
   final Map<(int, TileCoord), _LevelTile> tiles = <(int, TileCoord), _LevelTile>{};
-}
-
-/// A level image of a whole cel and what its coordinates showed when it was
-/// composed — [TilePyramid.seed].
-class _Seed {
-  _Seed({
-    required this.scope,
-    required this.image,
-    required this.level,
-    required this.worldRect,
-    required this.madeFrom,
-  });
-
-  final Object? scope;
-
-  /// The pyramid's own handle — a clone of the image the row was drawn with,
-  /// its pixels shared.
-  final ui.Image image;
-  final int level;
-
-  /// The canvas rect the image's texels cover at [level].
-  final ui.Rect worldRect;
-  final Map<TileCoord, Object> madeFrom;
-
-  void release() => DeferredImageDisposer.instance.retire(image);
 }
 
 /// One level picture, what the coordinates under it showed when it was
