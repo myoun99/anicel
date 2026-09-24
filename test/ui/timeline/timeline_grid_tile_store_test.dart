@@ -517,7 +517,9 @@ void main() {
       return image;
     }
 
-    final off = painterFor(layer, store: store);
+    // ONE fact moves per step: the switch alone, then the fps alone — a key
+    // that saw only one of them would pass a step that moved both.
+    final off = painterFor(layer, store: store, framesPerSecond: 24);
     final first = await landed(off, null);
 
     final on = painterFor(

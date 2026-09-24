@@ -18,8 +18,9 @@ import '../../core/bake_once_lru.dart';
 
 /// The drawing rows' SUBSTRATE tile store (UI-R18 O7 T2, R18-T).
 ///
-/// A row's cells — the paper-block fills and their borders, plus the ink
-/// over them — rasterize ONCE per (row, span, look) through the native
+/// A row's cells — its paper and the frame lines on it
+/// ([TimelineTileRasterSource.substrateIn]), plus the ink over them —
+/// rasterize ONCE per (row, span, look) through the native
 /// `qa_grid_raster_tile` and land here as a premultiplied [ui.Image]; the
 /// row painter then draws one `drawImageRect` per span instead of 2-3
 /// canvas calls per cell.
@@ -45,8 +46,8 @@ import '../../core/bake_once_lru.dart';
 ///   [i*span, (i+1)*span) — scrolling reuses tiles bucket by bucket.
 /// - Keys carry the full LOOK identity (layer object identity — layers
 ///   are immutable, an edit is a new instance — extents, the paper's
-///   ground, scheme, DPR): any mismatch re-rasters, so edits
-///   invalidate exactly like `shouldRepaint`.
+///   ground, the block-frame-lines switch and the fps, scheme, DPR): any
+///   mismatch re-rasters, so edits invalidate exactly like `shouldRepaint`.
 /// - NO native engine (flutter_tester, unsupported platforms, load
 ///   failure) = the store stands down entirely ([tileFor] returns null
 ///   and requests nothing): rows keep the classic Dart paint, tests and
