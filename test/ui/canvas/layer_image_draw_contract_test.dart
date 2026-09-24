@@ -253,7 +253,11 @@ void main() {
 /// same bytes, at a fraction of the raster on the real app (70 tiles halved
 /// in 3.23 ms against 111.8), and it owns `FilterQuality.low` on its own
 /// Paint: bilinear at exactly 0.5 IS the box mean.
-const int _knownRawDraws = 29;
+/// **30** the same day (board `tip-icons-every-frame`, 유저 「한 번 그린
+/// 그림을 쓴다」): +1 in brush_tip_preview — a sampled tip's grid drawn once
+/// at the icon's device size and placed 1:1 every frame after. The 1:1 blit
+/// class, owning `FilterQuality.none` on its own Paint.
+const int _knownRawDraws = 30;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',
