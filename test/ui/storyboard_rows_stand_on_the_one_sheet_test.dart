@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
@@ -11,9 +12,11 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 /// 다름 … 줌 축소해도 1f마다 블록에 세로선이있음. 타임라인이랑 다른 법 절대로
 /// 두지말고 관련 로직 싹 다 통일」. F-92 made the paper spans draw the
 /// timeline's law across themselves; I-44 (「블록에 존재하는 그리드선만 싹 삭제」
-/// → 「합친다 — 그리드 한 장」) took every line off every block. ⇒ The paper
-/// draws none, and the frames are ruled by the SAME sheet the timeline
-/// mounts, under the rows, with the same cadence — one law by construction.
+/// → 「합친다 — 그리드 한 장」) took every line off every block. ⇒ The frames
+/// are ruled by the SAME sheet the timeline mounts, under the rows, with the
+/// same cadence — one law by construction. 유저 2026-09-24 made the lines on
+/// a block a switch (on by default): where it is on, the paper carries that
+/// same sheet's lines, asked of the one function every block asks.
 ///
 /// Measured on the real storyboard: an S row's sound block, painted into a
 /// recording canvas, and the sheet under it.
@@ -80,23 +83,61 @@ void main() {
               .painter!
           as TimelineGridSheetPainter;
 
+  // 🗣️유저 2026-09-24: the lines on a block are a switch, on by default — so
+  // the sound block carries the SAME lines the sheet rules beside it (F-92's
+  // 「타임라인이랑 다른 법 절대로 두지말고」) where it is on, and I-44's bare
+  // paper where it is off. Counted from where the sound stands: a span that
+  // did not know its start frame would thin and weight a grid of its own.
   for (final pixelsPerFrame in [2.4, 8.0, 24.0]) {
-    testWidgets('at ${pixelsPerFrame}px a frame, the sound block draws NO '
-        'line — its paper is paper', (tester) async {
-      final (_, key) = await storyboardWithASound(
-        tester,
-        pixelsPerFrame: pixelsPerFrame,
+    testWidgets('at ${pixelsPerFrame}px a frame, the sound block carries '
+        'exactly the sheet\'s lines where the switch shows them, and none '
+        'where it does not', (tester) async {
+      addTearDown(
+        () =>
+            AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
       );
-      final span = find.byKey(ValueKey<String>(key));
-      expect(span, findsOneWidget);
-      final spy = _LineSpy();
-      tester
-          .widget<CustomPaint>(
-            find.descendant(of: span, matching: find.byType(CustomPaint)).first,
-          )
-          .painter!
-          .paint(spy, tester.getSize(span));
-      expect(spy.lines, isEmpty);
+      for (final shown in [false, true]) {
+        AppFrameGridSettings.settings.value = AppFrameGridSettings(
+          blockFrameLines: shown,
+        );
+        final (_, key) = await storyboardWithASound(
+          tester,
+          pixelsPerFrame: pixelsPerFrame,
+        );
+        final span = find.byKey(ValueKey<String>(key));
+        expect(span, findsOneWidget);
+        final spy = _LineSpy();
+        tester
+            .widget<CustomPaint>(
+              find
+                  .descendant(of: span, matching: find.byType(CustomPaint))
+                  .first,
+            )
+            .painter!
+            .paint(spy, tester.getSize(span));
+        final sheet = sheetOf(tester);
+        final ruled = [
+          for (var offset = 1; offset < soundLength; offset += 1)
+            if (timelineFrameBoundaryLineInk(
+                  frameIndex: soundStart + offset,
+                  frameCellExtent: pixelsPerFrame,
+                  framesPerSecond: sheet.framesPerSecond,
+                  colorScheme: sheet.colorScheme,
+                ) !=
+                null)
+              timelineFrameBoundaryLinePosition(offset, pixelsPerFrame),
+        ];
+        final centres = [for (final bar in spy.bars) bar.center.dx];
+        expect(
+          centres,
+          hasLength(shown ? ruled.length : 0),
+          reason: 'switch $shown',
+        );
+        for (var i = 0; i < centres.length; i += 1) {
+          expect(centres[i], closeTo(ruled[i], 1e-9));
+        }
+        expect(spy.lines, isEmpty, reason: 'no stroke of a grid of its own');
+      }
     });
   }
 
@@ -150,9 +191,20 @@ void main() {
 class _LineSpy implements Canvas {
   final lines = <({double along, double to})>[];
 
+  /// Filled rects — a block's frame lines are laid as boxes on its paper
+  /// (the paper itself is a rounded rect).
+  final bars = <Rect>[];
+
   @override
   void drawLine(Offset p1, Offset p2, Paint paint) =>
       lines.add((along: p1.dx, to: p2.dy));
+
+  @override
+  void drawRect(Rect rect, Paint paint) {
+    if (paint.style == PaintingStyle.fill) {
+      bars.add(rect);
+    }
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

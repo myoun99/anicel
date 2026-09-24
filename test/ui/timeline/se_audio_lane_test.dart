@@ -13,10 +13,12 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/timeline/se_audio_lane.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show TimelineGridLaw, timelineLaneGround, timelineRowPaperExtent;
+    show TimelineGridLaw, timelineLaneGround;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineDrawingHeldColor;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
+    show SePaperSpan;
 
 // 2.0 s of peaks → 48 frames at fps 24.
 final _peaks = AudioPeaks(bucketsPerSecond: 80, peaks: Float32List(160));
@@ -158,29 +160,25 @@ void main() {
     final span = find.byKey(
       const ValueKey<String>('timeline-audio-lane-span-se-0-b2'),
     );
-    final paper = find.descendant(
-      of: span,
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is DecoratedBox &&
-            widget.decoration is BoxDecoration &&
-            (widget.decoration as BoxDecoration).borderRadius != null,
-      ),
-    );
+    // THE paper block every paper-less host lays — the storyboard's SE and
+    // transition rows too — so the box a seam short of the edge, the corner
+    // and the frame lines are that span's law, not this lane's own.
+    final paper = find.descendant(of: span, matching: find.byType(SePaperSpan));
     expect(paper, findsOneWidget);
-    final decoration =
-        tester.widget<DecoratedBox>(paper).decoration as BoxDecoration;
+    final block = tester.widget<SePaperSpan>(paper);
     expect(
-      decoration.color,
+      block.paper,
       Color.alphaBlend(
         timelineDrawingHeldColor.withValues(alpha: 0.6),
         timelineLaneGround(host),
       ),
     );
-    expect(decoration.color!.a, 1.0);
+    expect(block.paper.a, 1.0);
+    expect(block.startFrame, 2, reason: 'the lines count from where it is');
     expect(
       tester.getSize(paper).height,
-      timelineRowPaperExtent(TimelineGridMetrics.defaults.layerRowHeight),
+      TimelineGridMetrics.defaults.layerRowHeight,
+      reason: 'the span takes the lane; its paper stops a seam short inside',
     );
   });
 

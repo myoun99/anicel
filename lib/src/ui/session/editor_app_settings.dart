@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../../services/persistence/app_accent_settings_store.dart';
+import '../../services/persistence/app_frame_grid_settings_store.dart';
 import '../../services/persistence/app_onion_skin_settings_store.dart';
 import '../../services/persistence/app_input_settings_store.dart';
 import '../../services/persistence/app_language_settings_store.dart';
@@ -19,6 +20,7 @@ import '../../models/app_input_settings.dart';
 import '../../models/audio_sync_settings.dart';
 import '../text/app_strings.dart';
 import '../../models/app_accents.dart';
+import '../../models/app_frame_grid_settings.dart';
 import '../../models/onion_skin_settings.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../../models/app_workspace_colors.dart';
@@ -51,6 +53,7 @@ class EditorAppSettings {
     AudioSyncSettingsStore? audioSyncSettingsStore,
     AppUiScaleStore? uiScaleStore,
     AppOnionSkinSettingsStore? onionSkinSettingsStore,
+    AppFrameGridSettingsStore? frameGridSettingsStore,
     Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
        _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
@@ -61,9 +64,10 @@ class EditorAppSettings {
        _memorySettingsStore = memorySettingsStore,
        _audioSyncSettingsStore = audioSyncSettingsStore,
        _uiScaleStore = uiScaleStore,
-       _onionSkinSettingsStore = onionSkinSettingsStore;
+       _onionSkinSettingsStore = onionSkinSettingsStore,
+       _frameGridSettingsStore = frameGridSettingsStore;
 
-  /// Starts all six restores, in the order the session started them in.
+  /// Starts every restore, in the order the session started them in.
   ///
   /// Each is fired and not awaited (a missing or corrupt file yields the
   /// defaults), so the session is usable before any of them land.
@@ -77,7 +81,28 @@ class EditorAppSettings {
     unawaited(_restoreMemorySettings());
     unawaited(_restoreAudioSyncSettings());
     unawaited(_restoreOnionSkinSettings());
+    unawaited(_restoreFrameGridSettings());
   }
+
+  // --- Frame grid (block frame lines, 2026-09-24) ---------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppFrameGridSettingsStore? _frameGridSettingsStore;
+
+  /// The LIVE value lives app-wide on [AppFrameGridSettings.settings] — every
+  /// grid host's law reads it there; the session only restores/persists.
+  Future<void> _restoreFrameGridSettings() async {
+    final restored = await _frameGridSettingsStore?.load();
+    if (restored != null) {
+      AppFrameGridSettings.settings.value = restored;
+    }
+  }
+
+  void setFrameGridSettings(AppFrameGridSettings settings) => _publish(
+    AppFrameGridSettings.settings,
+    settings,
+    _frameGridSettingsStore?.save,
+  );
 
 
   // --- Onion skin (F-150) ---------------------------------------------------

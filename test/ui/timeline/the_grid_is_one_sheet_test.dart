@@ -183,6 +183,7 @@ void main() {
     TimelineRowCellsPainter painterFor({
       Color? paperGround,
       bool celHasContent = true,
+      bool blockFrameLines = false,
     }) => TimelineRowCellsPainter(
       layer: layer,
       geometry: testFrameGeometry(
@@ -198,22 +199,63 @@ void main() {
         revision: ValueNotifier<int>(0),
       ),
       paperGround: paperGround,
+      blockFrameLines: blockFrameLines,
+      framesPerSecond: 24,
     );
 
-    test('a row fills its PAPER and nothing else — no line, no ground', () {
+    // 🗣️유저 2026-09-24: the lines on a block are a switch, on by default.
+    // OFF is I-44's row exactly — paper and nothing else; ON puts the
+    // sheet's own lines on that paper, and still no ground and no seam.
+    test('switched off, a row fills its PAPER and nothing else — one box per '
+        'block, no line, no ground', () {
       final painter = painterFor(paperGround: host);
       final spy = _PaintSpy();
       painter.paint(spy, const Size(960, 28));
       expect(spy.lines, isEmpty, reason: 'the hold dash aside, no line');
       expect(
-        spy.fills.map((f) => f.rect).toSet(),
-        {
-          for (var frame = 10; frame < 14; frame += 1)
-            painter.paperRectFor(frame),
-        },
+        spy.fills.map((f) => f.rect).toList(),
+        [painter.paperRectFor(10).expandToInclude(painter.paperRectFor(13))],
         reason: 'an empty cell paints nothing (UI-R21 #2) — its ground is '
-            'the sheet\'s — and a block cell paints its paper box',
+            'the sheet\'s — and a block paints its paper as ONE box, not a '
+            'box per cell',
       );
+    });
+
+    test('switched on, the block carries the sheet\'s own lines on its '
+        'paper — at its inner boundaries, and no ground, no seam', () {
+      final painter = painterFor(paperGround: host, blockFrameLines: true);
+      final spy = _PaintSpy();
+      painter.paint(spy, const Size(960, 28));
+      final paper = painter.resolvedCellStyleFor(11).background;
+      expect(
+        spy.fills.first.rect,
+        painter.paperRectFor(10).expandToInclude(painter.paperRectFor(13)),
+      );
+      // The canvas keeps a paint's colour in 8 bits a channel.
+      ({Rect rect, int argb}) lawLineAt(int frame) {
+        final line = timelineBlockFrameLine(
+          axis: Axis.horizontal,
+          frameIndex: frame,
+          boundary: painter.cellRectFor(frame).left,
+          across: (from: 0, to: timelineRowPaperExtent(28)),
+          frameCellExtent: 24,
+          framesPerSecond: 24,
+          colorScheme: scheme,
+          paper: paper,
+        )!;
+        return (rect: line.rect, argb: line.color.toARGB32());
+      }
+
+      expect(
+        [
+          for (final fill in spy.fills.skip(1))
+            (rect: fill.rect, argb: fill.color.toARGB32()),
+        ],
+        [for (var frame = 11; frame < 14; frame += 1) lawLineAt(frame)],
+        reason: 'the line the sheet rules at each inner boundary, inked '
+            'onto the paper — 12 a beat, the rest base lines',
+      );
+      expect(spy.lines, isEmpty, reason: 'no stroke of a grid of its own');
     });
 
     test('the paper stops a seam short of the row\'s trailing edge', () {
@@ -317,11 +359,8 @@ void main() {
       final spy = _PaintSpy();
       ghosted.paint(spy, const Size(960, 28));
       expect(
-        spy.fills.map((f) => f.rect).toSet(),
-        {
-          for (var frame = 0; frame < 4; frame += 1)
-            ghosted.paperRectFor(frame),
-        },
+        spy.fills.map((f) => f.rect).toList(),
+        [ghosted.paperRectFor(0).expandToInclude(ghosted.paperRectFor(3))],
         reason: 'the real block\'s paper, and nothing under the ghosts',
       );
     });
@@ -360,9 +399,10 @@ void main() {
 /// An UNWORKED block is 43%-alpha paper, and the multiply was handed that
 /// translucent colour as if it were opaque — `lerp` climbs the ALPHA too,
 /// so the line came out MORE opaque than its surroundings and read white.
-/// No line crosses a block now (I-44), but every ground the sheet draws on
-/// still goes through [timelineGridGroundOver] first — the lane wash is
-/// exactly such a translucent colour.
+/// A line crosses a block only where the user's switch shows it (I-44 took
+/// them off, 유저 2026-09-24 made them a switch), but every ground a line is
+/// drawn on still goes through [timelineGridGroundOver] first — the lane
+/// wash is exactly such a translucent colour.
 void _grid43Round() {
   final scheme = buildAppTheme().colorScheme;
   double lum(Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;

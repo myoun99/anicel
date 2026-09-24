@@ -13,6 +13,7 @@ import '../models/app_language.dart';
 // signature even though nothing here reads them.
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_frame_grid_settings_store.dart';
 import '../services/persistence/app_onion_skin_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
@@ -195,6 +196,7 @@ class EditorSessionManager extends ChangeNotifier
     AppWorkspaceColorsStore? workspaceColorsStore,
     AppUiScaleStore? uiScaleStore,
     AppOnionSkinSettingsStore? onionSkinSettingsStore,
+    AppFrameGridSettingsStore? frameGridSettingsStore,
     ImageCache? frameworkImageCache,
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
@@ -210,6 +212,7 @@ class EditorSessionManager extends ChangeNotifier
          audioSyncSettingsStore: audioSyncSettingsStore,
          uiScaleStore: uiScaleStore,
          onionSkinSettingsStore: onionSkinSettingsStore,
+         frameGridSettingsStore: frameGridSettingsStore,
        ),
        repository = ProjectRepository(initialProject: initialProject) {
     appSettings.attachOnionSkin(onionSkin.settings);

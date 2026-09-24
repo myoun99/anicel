@@ -20,6 +20,7 @@ import 'timeline_grid_metrics.dart';
 import 'axis_turn.dart';
 import '../widgets/owning_axis_grip.dart';
 import 'timeline_beat_lines.dart';
+import 'timeline_se_row_visual.dart' show SePaperSpan;
 
 /// The SE audio lane: SE layers with sounds get ONE twirl-down lane — a
 /// waveform editing strip where dragging a span's MIDDLE along the frame
@@ -591,33 +592,23 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
   /// and its 60% paper pre-blended onto the lane's resting ground, the way
   /// an unworked block's is onto its row's, so the sheet's lines cannot show
   /// through a block (「블록에 존재하는 그리드선만 싹 삭제」).
-  Widget _backdrop(Color? hostGround) {
-    final horizontal = widget.axis == Axis.horizontal;
-    final paper = timelineRowPaperExtent(widget.crossExtent);
-    return Positioned(
-      left: 0,
-      top: 0,
-      right: horizontal ? 0 : null,
-      bottom: horizontal ? null : 0,
-      width: horizontal ? null : paper,
-      height: horizontal ? paper : null,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: timelineGridGroundOver(
-            under: timelineLaneGround(hostGround),
-            painted: timelineDrawingHeldColor.withValues(alpha: 0.6),
-          ),
-          borderRadius: BorderRadius.all(
-            timelineBlockCornerRadiusAt(
-              cellExtent: widget.frameCellExtent,
-              crossExtent: paper,
-            ),
-          ),
-          border: Border.all(color: timelineDrawingStartBorderColor),
-        ),
-      ),
-    );
-  }
+  ///
+  /// ⛔It is [SePaperSpan], not a box of its own. It was a `DecoratedBox`
+  /// stating the same block — the corner law on the paper box, the hairline
+  /// outline — beside the span the storyboard paints its SE blocks with; the
+  /// frame lines (유저 2026-09-24, a switch) would have made that the third
+  /// block drawn three ways.
+  Widget _backdrop(Color? hostGround) => Positioned.fill(
+    child: SePaperSpan(
+      axis: widget.axis,
+      frameCellExtent: widget.frameCellExtent,
+      startFrame: widget.span.startFrame,
+      paper: timelineGridGroundOver(
+        under: timelineLaneGround(hostGround),
+        painted: timelineDrawingHeldColor.withValues(alpha: 0.6),
+      )!,
+    ),
+  );
 
   Widget? _waveform(
     AudioPeaks? peaks,

@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/ui/dialogs/display_settings_section.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/ui_scale.dart';
+import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 
 void main() {
   late EditorSessionManager session;
@@ -97,5 +100,59 @@ void main() {
     // ⚠️Otherwise no stop would look selected and the row would read as
     // "the scale is off".
     expect(find.text('120%'), findsNothing);
+  });
+
+  // 🗣️유저 2026-09-24: 「블록 세로선 역시 있는것도 좋아서 환경설정에 옵션으로
+  // 두고싶어. 기본값은 있음으로」.
+  group('the frame lines on a block', () {
+    const row = ValueKey<String>('settings-block-frame-lines');
+
+    bool shown(WidgetTester tester) => tester
+        .widget<BooleanDot>(
+          find.descendant(of: find.byKey(row), matching: find.byType(BooleanDot)),
+        )
+        .value;
+
+    setUp(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+    tearDown(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+
+    testWidgets('are a switch in this section, ON by default', (tester) async {
+      await pump(tester);
+      expect(find.byKey(row), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(row),
+          matching: find.text(AppText.strings.blockFrameLinesLabel),
+        ),
+        findsOneWidget,
+      );
+      expect(shown(tester), isTrue);
+    });
+
+    testWidgets('a press flips the live setting, and a second one puts it '
+        'back', (tester) async {
+      await pump(tester);
+      await tester.tap(find.byKey(row));
+      await tester.pump();
+      expect(AppFrameGridSettings.settings.value.blockFrameLines, isFalse);
+      expect(shown(tester), isFalse);
+      await tester.tap(find.byKey(row));
+      await tester.pump();
+      expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
+      expect(shown(tester), isTrue);
+    });
+
+    testWidgets('the row follows a value it did not set', (tester) async {
+      await pump(tester);
+      session.appSettings.setFrameGridSettings(
+        const AppFrameGridSettings(blockFrameLines: false),
+      );
+      await tester.pump();
+      expect(shown(tester), isFalse);
+    });
   });
 }

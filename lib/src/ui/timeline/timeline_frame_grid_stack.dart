@@ -112,7 +112,9 @@ class TimelineFrameGridStack extends StatelessWidget {
         // 그리드선만 싹 삭제」. The blocks used to draw seams of their own on
         // their paper (heldSeamLineFor); they draw paper alone now, and the
         // only line crossing a block is the row seam, which the paper stops
-        // short of ([timelineRowPaperExtent]).
+        // short of ([timelineRowPaperExtent]). 유저 2026-09-24 made the frame
+        // lines on a block a switch (on by default): where it is on, the
+        // paper carries this sheet's own lines ([timelineBlockFrameLine]).
         if (gridSheet != null)
           Positioned.fill(
             child: IgnorePointer(child: RepaintBoundary(child: gridSheet)),

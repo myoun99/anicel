@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -15,7 +16,10 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show TimelineGridSheetPainter;
+    show
+        TimelineGridSheetPainter,
+        timelineFrameBoundaryLineInk,
+        timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart';
 
 import 'timeline_cell_probe.dart';
@@ -129,43 +133,113 @@ void main() {
     );
   });
 
-  testWidgets('and no row kind draws a line of its own — only its paper', (
+  // 「블록에 존재하는 그리드선만 싹 삭제」(I-44) is the switch's OFF now
+  // (유저 2026-09-24: 「블록 세로선 역시 있는것도 좋아서 환경설정에 옵션으로
+  // 두고싶어. 기본값은 있음으로」) — and the survey holds in both positions:
+  // off, every kind lays paper and nothing else; on, every kind that lays
+  // paper over its block carries the sheet's own lines at the block's inner
+  // boundaries. A kind that opted out of either is the F-3 shape again.
+  testWidgets('no row kind draws a line of its own: off, only its paper; on, '
+      'the sheet\'s own lines on it — every kind alike, flipped live', (
     tester,
   ) async {
+    addTearDown(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+    AppFrameGridSettings.settings.value = const AppFrameGridSettings(
+      blockFrameLines: false,
+    );
     await pumpWorkspace(tester);
 
-    final lined = <String>[];
-    for (final kind in LayerKind.values) {
-      if (kind == LayerKind.se) {
-        continue;
+    for (final shown in [false, true]) {
+      if (shown) {
+        // Flipped under a running grid: the host's law carries the switch
+        // to every row without a rebuild of the workspace.
+        AppFrameGridSettings.settings.value = const AppFrameGridSettings();
+        await tester.pumpAndSettle();
       }
-      final id = 'grid-${kind.name}';
-      if (find
-          .byKey(ValueKey<String>('timeline-row-cells-$id'))
-          .evaluate()
-          .isEmpty) {
-        continue;
+      final strays = <String>[];
+      final unruled = <String>[];
+      var papered = 0;
+      for (final kind in LayerKind.values) {
+        if (kind == LayerKind.se) {
+          continue;
+        }
+        final id = 'grid-${kind.name}';
+        if (find
+            .byKey(ValueKey<String>('timeline-row-cells-$id'))
+            .evaluate()
+            .isEmpty) {
+          continue;
+        }
+        final painter = timelineRowCellsPainterFor(tester, id);
+        expect(
+          painter.blockFrameLines,
+          shown,
+          reason: '${kind.name}: the law reaches every row',
+        );
+        final window = painter.visibleFrameWindow();
+        final substrate = painter.substrateIn(
+          window.startIndex,
+          window.endIndexExclusive,
+        );
+        final spy = _BoxSpy();
+        painter.paint(spy, const Size(2000, 28));
+        // The row paints span by span (its tiles, or their classic stand-in
+        // while they land), so its paper arrives cut at the span edges — the
+        // lines are what must come out exactly: the substrate's, and none
+        // of the kind's own. A box thinner than a cell is a line.
+        final lines = {
+          for (final box in spy.boxes)
+            if (box.width < painter.frameCellExtent) box,
+        };
+        if (lines.difference({
+          for (final line in substrate.lines) line.rect,
+        }).isNotEmpty) {
+          strays.add(kind.name);
+        }
+        // And not one box reaches the row's last pixel: that is the sheet's
+        // seam, under the row.
+        final paperExtent = timelineRowPaperExtent(painter.crossAxisExtent);
+        if (spy.boxes.any((box) => box.bottom > paperExtent)) {
+          strays.add('${kind.name} (seam)');
+        }
+        if (painter.resolvedCellStyleFor(2).background.a == 0) {
+          continue;
+        }
+        papered += 1;
+        // Wherever the kind lays its paper on without a corner between two
+        // cells — its block's inside, however long the kind makes it (the
+        // conte row fills the cut) — the sheet's line at that boundary.
+        final ruled = [
+          for (
+            var frame = window.startIndex + 1;
+            frame <= window.endIndexExclusive;
+            frame += 1
+          )
+            if (painter.resolvedCellStyleFor(frame - 1).background.a > 0 &&
+                painter.resolvedCellStyleFor(frame).background.a > 0 &&
+                (painter.resolvedCellStyleFor(frame).radius?.topLeft ??
+                        Radius.zero) ==
+                    Radius.zero &&
+                timelineFrameBoundaryLineInk(
+                      frameIndex: frame,
+                      frameCellExtent: painter.frameCellExtent,
+                      framesPerSecond: painter.framesPerSecond,
+                      colorScheme: painter.colorScheme,
+                    ) !=
+                    null)
+              frame,
+        ];
+        if (substrate.lines.length != (shown ? ruled.length : 0) ||
+            lines.length != substrate.lines.length) {
+          unruled.add(kind.name);
+        }
       }
-      final painter = timelineRowCellsPainterFor(tester, id);
-      final window = painter.visibleFrameWindow();
-      final papers = {
-        for (
-          var frame = window.startIndex;
-          frame < window.endIndexExclusive;
-          frame += 1
-        )
-          painter.paperRectFor(frame),
-      };
-      final spy = _BoxSpy();
-      painter.paint(spy, const Size(2000, 28));
-      // 「블록에 존재하는 그리드선만 싹 삭제」: every box a row fills is a
-      // cell's paper — a seam or a frame line would be a box of its own.
-      if (spy.boxes.any((box) => !papers.contains(box))) {
-        lined.add(kind.name);
-      }
+      expect(strays, isEmpty, reason: 'switch $shown');
+      expect(unruled, isEmpty, reason: 'switch $shown');
+      expect(papered, greaterThan(1), reason: 'fixture premise: blocks');
     }
-
-    expect(lined, isEmpty);
   });
 }
 

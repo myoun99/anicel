@@ -38,6 +38,19 @@ class TimelineRowCellModel {
   final String? semanticsLabel;
 }
 
+/// What a stretch of a row lays down under its ink.
+///
+/// [paper]: one piece per run of cells that share a colour and meet without
+/// a corner — a block is one fill, not a fill per cell. ⚡Per cell, every
+/// cell paid the corner field over its whole box and a margin round it, and
+/// neighbouring cells blended their shared edge twice at a fractional zoom.
+///
+/// [lines]: the frame lines across that paper, where the user shows them.
+typedef TimelineRowSubstrate = ({
+  List<({Rect rect, Color color, BorderRadius? radius})> paper,
+  List<({Rect rect, Color color})> lines,
+});
+
 /// The hold ghost's dash glyph — the probe VALUE tests read from
 /// [TimelineTileRasterSource.cellModelAt]. paint() renders it as an
 /// axis-aligned line (UI-R12 #18), never as text; the tile emitter (T3)
@@ -82,6 +95,14 @@ abstract interface class TimelineTileRasterSource {
   /// through a block). Baked into the tile, so it is part of the look.
   Color? get paperGround;
 
+  /// Whether the frame lines cross a block's paper (Preferences ▸ Display,
+  /// 유저 2026-09-24) — baked into the tile, so part of the look.
+  bool get blockFrameLines;
+
+  /// The counting fps: a second boundary's line is the strongest, so with
+  /// [blockFrameLines] on it is part of the look too.
+  int get framesPerSecond;
+
   /// What this row's COVERAGE follows, when that is not the layer itself
   /// (㉘: a camera row's keys live on `cut.camera`).
   Object? get coverageIdentity;
@@ -107,14 +128,9 @@ abstract interface class TimelineTileRasterSource {
   Rect cellRectFor(int frameIndex);
   TimelineRowCellModel cellModelAt(int frameIndex);
 
-  /// The cell's RESOLVED paint style (dim blends, band tint, block radius).
-  ({Color background, Color border, BorderRadius? radius}) resolvedCellStyleFor(
-    int frameIndex,
-  );
-
-  /// The cell's PAPER box — the cell short of the row seam, which the grid
-  /// sheet draws under the row (I-44). Both passes fill exactly this.
-  Rect paperRectFor(int frameIndex);
+  /// What frames [from, to) lay down UNDER their ink, row-local — the
+  /// classic pass paints exactly this and the tile bakes exactly this.
+  TimelineRowSubstrate substrateIn(int from, int to);
 
   /// The glyph's ink. The tile emitter tints glyph blits with exactly this.
   Color foregroundInkFor(TimelineRowCellModel model);

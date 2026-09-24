@@ -98,6 +98,7 @@ const List<String> appSettingsEntries = <String>[
   'brush_tips',
   'color_palette.json',
   'export_settings.json',
+  'frame_grid_settings.json',
   'input_settings.json',
   'language_settings.json',
   'memory_settings.json',

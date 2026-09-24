@@ -596,6 +596,7 @@ enum AppStrings {
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
+  String get blockFrameLinesLabel => _s('blockFrameLinesLabel');
 
   // --- Accent colours ---
   String get accentTitle => _s('accentTitle');
@@ -1996,6 +1997,7 @@ enum AppStrings {
         'it now if it is still in a trash: the drawings already saved live '
         'only inside that file.',
     'uiScaleLabel': 'Interface scale',
+    'blockFrameLinesLabel': 'Frame lines inside blocks',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
     'accent1Help': 'Selection, playhead, active toggles.',
@@ -3091,6 +3093,7 @@ enum AppStrings {
     'projectFileVanished':
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
+    'blockFrameLinesLabel': 'ブロック内のフレーム線',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
     'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
@@ -4405,6 +4408,7 @@ enum AppStrings {
     'projectFileVanished':
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
+    'blockFrameLinesLabel': '블록 안 프레임선',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
     'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',

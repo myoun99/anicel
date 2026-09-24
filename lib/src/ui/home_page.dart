@@ -16,6 +16,7 @@ import '../services/last_stroke_slot.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_frame_grid_settings_store.dart';
 import '../services/persistence/app_onion_skin_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
@@ -326,6 +327,7 @@ class _HomePageState extends State<HomePage> {
       // window out at 100% and then jump.
       uiScaleStore: _unlessTesting(AppUiScaleStore.new),
       onionSkinSettingsStore: _unlessTesting(AppOnionSkinSettingsStore.new),
+      frameGridSettingsStore: _unlessTesting(AppFrameGridSettingsStore.new),
     );
     // The census cannot reach this State; the session can be reached — the
     // same push the workspace makes for the cut piece.

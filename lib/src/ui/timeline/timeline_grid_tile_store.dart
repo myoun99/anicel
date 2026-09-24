@@ -270,6 +270,8 @@ class TimelineGridTileStore {
           spanEndIndexExclusive: request.spanEndIndexExclusive,
           devicePixelRatio: request.devicePixelRatio,
           paperGround: request.painter.paperGround,
+          blockFrameLines: request.painter.blockFrameLines,
+          framesPerSecond: request.painter.framesPerSecond,
           image: rastered.image,
         );
         while (_entries.length > capacity) {
@@ -702,6 +704,8 @@ class _TileEntry {
     required this.spanEndIndexExclusive,
     required this.devicePixelRatio,
     required this.paperGround,
+    required this.blockFrameLines,
+    required this.framesPerSecond,
     required this.image,
   });
 
@@ -739,11 +743,17 @@ class _TileEntry {
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
 
-  /// I-44: what the unworked paper was pre-blended onto. The counting fps
-  /// stood here while the tiles baked the seams (a second boundary's line
-  /// was the strongest); no line is baked any more, and the paper's ground
-  /// is the one fact of the host a tile now carries.
+  /// I-44: what the unworked paper was pre-blended onto.
   final Color? paperGround;
+
+  /// Whether the frame lines crossed the paper, and the fps that made a
+  /// second boundary's line the strongest. I-44 took both out of the key
+  /// when it took the lines off the blocks; the user's switch (2026-09-24)
+  /// can put the lines back, and a flip of it must re-bake — a stale tile
+  /// would otherwise keep the other look until an unrelated bump.
+  final bool blockFrameLines;
+  final int framesPerSecond;
+
   final ui.Image image;
 
   /// The `shouldRepaint` identity, tile edition: any changed look fact
@@ -779,6 +789,8 @@ class _TileEntry {
         celContentRevision == painter.celContentRevision &&
         baseTextStyle == painter.baseTextStyle &&
         paperGround == painter.paperGround &&
+        blockFrameLines == painter.blockFrameLines &&
+        framesPerSecond == painter.framesPerSecond &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
         this.devicePixelRatio == devicePixelRatio;
   }
@@ -817,13 +829,12 @@ class _TileAtlas {
 }
 
 /// Emits the SUBSTRATE op stream for [painter]'s cells in
-/// [spanStartIndex, spanEndIndexExclusive): the background fill and the
-/// block border per cell — geometry probed from the painter itself
-/// ([TimelineTileRasterSource.paperRectFor] / `resolvedCellStyleFor`), so
-/// the tile look can never drift from the classic paint's. Coordinates
-/// are tile-local physical pixels (row coords minus the span origin,
-/// times DPR). Foreground ink (glyphs, dashes) stays the painter's Dart
-/// pass.
+/// [spanStartIndex, spanEndIndexExclusive): the paper and the frame lines
+/// across it — asked of the painter itself
+/// ([TimelineTileRasterSource.substrateIn]), so the tile look can never
+/// drift from the classic paint's. Coordinates are tile-local physical
+/// pixels (row coords minus the span origin, times DPR). Foreground ink
+/// (glyphs, dashes) stays the painter's Dart pass.
 Int32List timelineGridSubstrateOps({
   required TimelineTileRasterSource painter,
   required int spanStartIndex,
@@ -852,83 +863,62 @@ void timelineGridEmitSubstrate(
 }) {
   final horizontal = painter.axis == Axis.horizontal;
   final originRect = painter.cellRectFor(spanStartIndex);
-  final originMain = horizontal ? originRect.left : originRect.top;
+  final toLocal = horizontal
+      ? Offset(-originRect.left, 0)
+      : Offset(0, -originRect.top);
+  // 🚨D43-2 재개 (유저 2026-08-22: 「아직도 레이어행에만 그리드 없거든?」)
+  // taught this: the emitter is a SECOND reader of the painter's contract,
+  // and the painter's own tests stay green when it drops an answer. So it
+  // decides nothing — every box, corner and colour below is asked of the
+  // painter.
+  final substrate = painter.substrateIn(spanStartIndex, spanEndIndexExclusive);
+  for (final piece in substrate.paper) {
+    final local = piece.rect.shift(toLocal);
+    final corner = _cornerOf(piece.radius);
+    // ⚡The field is paid for at the run's two ends; the rest is plain
+    // fills ([TimelineGridTileOpWriter.runFill] — the same bytes).
+    writer.runFill(
+      local.left * devicePixelRatio,
+      local.top * devicePixelRatio,
+      local.width * devicePixelRatio,
+      local.height * devicePixelRatio,
+      corner.radius * devicePixelRatio,
+      corner.mask,
+      timelineGridPackRgba(piece.color),
+      alongX: horizontal,
+    );
+  }
+  for (final line in substrate.lines) {
+    final local = line.rect.shift(toLocal);
+    writer.boxFill(
+      local.left * devicePixelRatio,
+      local.top * devicePixelRatio,
+      local.width * devicePixelRatio,
+      local.height * devicePixelRatio,
+      timelineGridPackRgba(line.color),
+    );
+  }
+}
 
-  for (
-    var frameIndex = spanStartIndex;
-    frameIndex < spanEndIndexExclusive;
-    frameIndex += 1
-  ) {
-    final style = painter.resolvedCellStyleFor(frameIndex);
-    final background = style.background;
-    final border = style.border;
-    // UI-R21 #2: an empty cell paints NOTHING. It used to emit its two
-    // grid lines here first (D43-2 재개, 유저 2026-08-22: 「아직도 레이어행에만
-    // 그리드 없거든?」 — the emptiness skip ran before them and swallowed
-    // exactly the cells they were for); I-44 moved every line into the
-    // grid sheet under the row, so an empty cell has nothing left to bake.
-    //
-    // 🚨What that round taught stays true: this emitter is a SECOND reader
-    // of the painter's contract, and the painter's own tests stay green
-    // when it drops an answer. So it decides nothing — every box and colour
-    // below is asked of the painter.
-    if (background.a <= 0 && border.a <= 0) {
-      continue;
-    }
-    final rect = painter.paperRectFor(frameIndex);
-    final local = horizontal
-        ? rect.shift(Offset(-originMain, 0))
-        : rect.shift(Offset(0, -originMain));
-
-    // Every rounded corner wears the one block corner law
-    // (`timelineCellBorderRadius`): a corner MASK captures it exactly.
-    final radius = style.radius;
-    var mask = 0;
-    var radiusValue = 0.0;
-    if (radius != null) {
-      if (radius.topLeft.x > 0) {
-        mask |= TimelineGridTileOp.cornerTopLeft;
-        radiusValue = radius.topLeft.x;
-      }
-      if (radius.topRight.x > 0) {
-        mask |= TimelineGridTileOp.cornerTopRight;
-        radiusValue = radius.topRight.x;
-      }
-      if (radius.bottomLeft.x > 0) {
-        mask |= TimelineGridTileOp.cornerBottomLeft;
-        radiusValue = radius.bottomLeft.x;
-      }
-      if (radius.bottomRight.x > 0) {
-        mask |= TimelineGridTileOp.cornerBottomRight;
-        radiusValue = radius.bottomRight.x;
-      }
-    }
-
-    if (background.a > 0) {
-      writer.rrectFill(
-        local.left * devicePixelRatio,
-        local.top * devicePixelRatio,
-        local.width * devicePixelRatio,
-        local.height * devicePixelRatio,
-        radiusValue * devicePixelRatio,
-        mask,
-        timelineGridPackRgba(background),
-      );
-    }
-    if (border.a > 0) {
-      // Border.all paints INSIDE the box: stroke centered half a pixel
-      // in (the painter's borderRect = rect.deflate(0.5), width 1).
-      final borderRect = local.deflate(0.5);
-      writer.rrectStroke(
-        borderRect.left * devicePixelRatio,
-        borderRect.top * devicePixelRatio,
-        borderRect.width * devicePixelRatio,
-        borderRect.height * devicePixelRatio,
-        radiusValue * devicePixelRatio,
-        mask,
-        1.0 * devicePixelRatio,
-        timelineGridPackRgba(border),
-      );
+/// A piece's corners as the op stream states them. Every rounded corner
+/// wears the one block corner law (`timelineCellBorderRadius`), so one
+/// radius and a corner MASK capture it exactly.
+({double radius, int mask}) _cornerOf(BorderRadius? radius) {
+  if (radius == null) {
+    return (radius: 0, mask: 0);
+  }
+  var mask = 0;
+  var value = 0.0;
+  for (final (corner, bit) in [
+    (radius.topLeft, TimelineGridTileOp.cornerTopLeft),
+    (radius.topRight, TimelineGridTileOp.cornerTopRight),
+    (radius.bottomLeft, TimelineGridTileOp.cornerBottomLeft),
+    (radius.bottomRight, TimelineGridTileOp.cornerBottomRight),
+  ]) {
+    if (corner.x > 0) {
+      mask |= bit;
+      value = corner.x;
     }
   }
+  return (radius: value, mask: mask);
 }

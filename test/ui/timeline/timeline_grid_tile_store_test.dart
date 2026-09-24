@@ -65,6 +65,8 @@ void main() {
     TimelineGridTileStore? store,
     TextStyle baseTextStyle = const TextStyle(fontSize: 11),
     Color? paperGround,
+    bool blockFrameLines = false,
+    int framesPerSecond = 0,
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
@@ -78,6 +80,8 @@ void main() {
       baseTextStyle: baseTextStyle,
       tileStore: store,
       paperGround: paperGround,
+      blockFrameLines: blockFrameLines,
+      framesPerSecond: framesPerSecond,
     );
   }
 
@@ -112,91 +116,70 @@ void main() {
     expect(store.revision.value, revisionBefore);
   });
 
-  // ⚠️CONTRACT CHANGED TWICE. D32/D38 (2026-08-18) took the per-cell border
-  // stroke out of the substrate and put the painter's seams in as plain
-  // rect fills; I-44 (2026-09-24, 「합친다 — 그리드 한 장」) took the seams
-  // out too — every line is the grid sheet's, under the row — so the
-  // stream is the paper and nothing else.
-  test('the emitter probes the painter: every papered cell is ONE fill at '
-      'its paper box, and an EMPTY span emits nothing', () {
+  // ⚠️CONTRACT CHANGED THREE TIMES. D32/D38 (2026-08-18) took the per-cell
+  // border stroke out of the substrate and put the painter's seams in as
+  // plain rect fills; I-44 (2026-09-24, 「합친다 — 그리드 한 장」) took the
+  // seams out too; and the block-frame-lines switch (유저 2026-09-24) made
+  // the lines the user's choice again and the paper ONE piece per block.
+  // What stays is the rule: the emitter decides nothing — it bakes what the
+  // painter answers ([TimelineRowCellsPainter.substrateIn]).
+  test('the emitter bakes what the painter answers: a block is ONE piece, '
+      'and an EMPTY span emits nothing', () {
     final painter = painterFor(blockLayer());
+    final substrate = painter.substrateIn(0, 4);
+    expect(
+      substrate.paper,
+      hasLength(1),
+      reason: 'a two-frame block is one piece of paper, not a fill per cell',
+    );
+    expect(
+      substrate.paper.single.rect,
+      painter.paperRectFor(0).expandToInclude(painter.paperRectFor(1)),
+    );
     final covered = timelineGridSubstrateOps(
       painter: painter,
       spanStartIndex: 0,
       spanEndIndexExclusive: 4,
       devicePixelRatio: 1.0,
     );
-    expect(covered, isNotEmpty);
-    expect(covered[0], TimelineGridTileOp.rrectFill);
-    // The block START cell rounds its LEFT corners only (the painter's
-    // radius map, mask TL|BL = 5).
-    expect(covered[6], 5, reason: 'corner mask');
-    expect(covered[5], timelineGridQ8(6), reason: 'radius 6 in q8');
-    // No border strokes anywhere in the stream — every op is a fill, so
-    // the stream walks in rrectFill strides of 8.
-    for (var i = 0; i < covered.length; i += 8) {
-      expect(
-        covered[i],
-        TimelineGridTileOp.rrectFill,
-        reason: 'no border strokes in the substrate any more',
+    // Rastered, the stream is that piece and nothing more: the field's own
+    // fill of the piece gives the same pixels.
+    final radius = substrate.paper.single.radius!;
+    final field = TimelineGridTileOpWriter()
+      ..rrectFill(
+        substrate.paper.single.rect.left,
+        substrate.paper.single.rect.top,
+        substrate.paper.single.rect.width,
+        substrate.paper.single.rect.height,
+        radius.topLeft.x,
+        TimelineGridTileOp.cornerTopLeft |
+            TimelineGridTileOp.cornerTopRight |
+            TimelineGridTileOp.cornerBottomLeft |
+            TimelineGridTileOp.cornerBottomRight,
+        timelineGridPackRgba(substrate.paper.single.color),
       );
-    }
-    // 🚨AND EVERY CELL GETS ITS OWN BOX. Emitting the SPAN-START cell's
-    // rect for all four frames left this test green (a mutation,
-    // 2026-09-07): the assertions above read the op KIND and the first
-    // cell's corners, so a tile that stacked four fills on cell 0 and left
-    // three cells blank passed. The probe-the-painter rule is about the
-    // geometry, so the geometry is what gets named — the PAPER box, short
-    // of the row seam the sheet draws under the row (I-44).
-    final origin = painter.cellRectFor(0);
-    final originMainCovered = painter.axis == Axis.horizontal
-        ? origin.left
-        : origin.top;
-    bool streamHasFillAt(Int32List ops, Rect local) {
-      for (var i = 0; i < ops.length; i += 8) {
-        if (ops[i] == TimelineGridTileOp.rrectFill &&
-            ops[i + 1] == timelineGridQ8(local.left) &&
-            ops[i + 2] == timelineGridQ8(local.top) &&
-            ops[i + 3] == timelineGridQ8(local.width) &&
-            ops[i + 4] == timelineGridQ8(local.height)) {
-          return true;
-        }
-      }
-      return false;
+    Uint8List raster(Int32List ops) {
+      final pixels = Uint8List(4 * 24 * 28 * 4);
+      expect(
+        timelineGridRasterTileReference(
+          pixels: pixels,
+          tileWidth: 4 * 24,
+          tileHeight: 28,
+          backgroundRgba: 0,
+          ops: ops,
+        ),
+        0,
+      );
+      return pixels;
     }
 
-    var papered = 0;
-    for (var frame = 0; frame < 4; frame += 1) {
-      final paper = painter.paperRectFor(frame);
-      final local = painter.axis == Axis.horizontal
-          ? paper.shift(Offset(-originMainCovered, 0))
-          : paper.shift(Offset(0, -originMainCovered));
-      final hasPaper = painter.resolvedCellStyleFor(frame).background.a > 0;
-      if (hasPaper) {
-        papered += 1;
-      }
-      expect(
-        streamHasFillAt(covered, local),
-        hasPaper,
-        reason:
-            'frame $frame: a cell with paper owes the stream a fill at ITS '
-            'own paper box, and one without owes none',
-      );
-    }
-    expect(papered, greaterThan(0), reason: 'fixture premise: a block');
-    expect(
-      covered.length,
-      papered * 8,
-      reason: 'one fill per papered cell and NOTHING more — a line on the '
-          'paper would be an op of its own (「블록에 존재하는 그리드선만 싹 '
-          '삭제」)',
-    );
+    expect(raster(covered), equals(raster(field.build())));
 
     // 🚨D43-2 재개 (유저 2026-08-22): 「아직도 레이어행에만 그리드 없거든?」.
     // This assertion once read `isEmpty` and that WAS the bug: the painter
     // drew the empty cells' lines and the emitter dropped them, so the
     // tiled rows went blank. It reads `isEmpty` again for the opposite
-    // reason — no row draws a line at all now, the sheet under the rows
+    // reason — no row draws a line on its ground, the sheet under the rows
     // does (I-44), so an empty cell has nothing left to bake.
     const emptyStart = 8;
     const emptyEndExclusive = 12;
@@ -496,5 +479,63 @@ void main() {
       reason: 'the paper\'s ground is part of the look the tile keys on — '
           'a fresh raster landed for it',
     );
+  });
+
+  // The block-frame-lines switch (유저 2026-09-24) bakes into the tile, and
+  // so does the fps that makes a second boundary's line the strongest — a
+  // flip of either is a changed LOOK, and a stale tile must not keep
+  // serving the other one.
+  test('the lines are part of the look — flipping the switch, or the fps '
+      'while they show, re-rasters the tile', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final store = TimelineGridTileStore.instance;
+    final layer = blockLayer();
+    ui.Image? tile(TimelineRowCellsPainter painter) => store.tileFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    // Bounded: a key that forgot the fact never lands a fresh tile, and
+    // that has to fail here rather than hang the file.
+    Future<ui.Image> landed(
+      TimelineRowCellsPainter painter,
+      ui.Image? stale,
+    ) async {
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      var image = tile(painter);
+      while (image == null || identical(image, stale)) {
+        if (DateTime.now().isAfter(deadline)) {
+          fail('no fresh tile landed — the key does not see the change');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        image = tile(painter);
+      }
+      return image;
+    }
+
+    final off = painterFor(layer, store: store);
+    final first = await landed(off, null);
+
+    final on = painterFor(
+      layer,
+      store: store,
+      blockFrameLines: true,
+      framesPerSecond: 24,
+    );
+    expect(tile(on), same(first), reason: 'stale-while-revalidate');
+    final second = await landed(on, first);
+
+    final otherFps = painterFor(
+      layer,
+      store: store,
+      blockFrameLines: true,
+      framesPerSecond: 30,
+    );
+    expect(tile(otherFps), same(second));
+    await landed(otherFps, second);
   });
 }

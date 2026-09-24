@@ -325,7 +325,11 @@ void main() {
             child: SizedBox(
               width: size.width,
               height: size.height,
-              child: SePaperSpan(axis: axis, frameCellExtent: 20),
+              child: SePaperSpan(
+                axis: axis,
+                frameCellExtent: 20,
+                startFrame: 0,
+              ),
             ),
           ),
         ),
