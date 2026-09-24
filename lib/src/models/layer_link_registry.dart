@@ -160,6 +160,12 @@ class LayerLinkRegistry {
     return groupOf(cutId: cutId, layerId: layerId)?.members.length ?? 1;
   }
 
+  /// Whether (cut, layer) shares its pictures with another use site — the
+  /// one question the badge, 독립시키기 and the link-independent button ask
+  /// of a row.
+  bool isLinked({required CutId cutId, required LayerId layerId}) =>
+      useCountOf(cutId: cutId, layerId: layerId) > 1;
+
   /// The CANONICAL cel key for [key]: itself when the layer is unlinked
   /// or already canonical, otherwise the same frame under the group's
   /// canonical (track, cut, layer). Linked members share FrameIds by

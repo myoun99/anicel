@@ -205,11 +205,10 @@ class LayerVerbs {
     if (cut == null) {
       return false;
     }
-    return _project.repository.requireProject().linkRegistry.useCountOf(
-          cutId: cut.id,
-          layerId: layerId,
-        ) >
-        1;
+    return _project.repository.requireProject().linkRegistry.isLinked(
+      cutId: cut.id,
+      layerId: layerId,
+    );
   }
 
   bool get canLinkDuplicateActiveLayer {
@@ -238,15 +237,54 @@ class LayerVerbs {
     if (activeLayer == null || cut == null) {
       return false;
     }
-    // The verb unlinks the whole attach group; it is offered when ANY
-    // member is linked (mirrors the coordinator's own guard).
-    final baseId = attachBaseIdOf(activeLayer);
+    return groupIsLinked(activeLayer, cut);
+  }
+
+  /// Whether [layer]'s attach group shares its pictures through a link —
+  /// the one question 독립시키기 answers, from the layer menu and from the
+  /// shared pill alike.
+  ///
+  /// The verb unlinks the WHOLE attach group, so it is offered when ANY
+  /// member is linked (mirrors the coordinator's own guard).
+  bool groupIsLinked(Layer layer, Cut cut) {
+    final baseId = attachBaseIdOf(layer);
     final registry = _project.repository.requireProject().linkRegistry;
     return cut.layers.any(
-      (layer) =>
-          (layer.id == baseId || layer.attachedToLayerId == baseId) &&
-          registry.useCountOf(cutId: cut.id, layerId: layer.id) > 1,
+      (member) =>
+          (member.id == baseId || member.attachedToLayerId == baseId) &&
+          registry.isLinked(cutId: cut.id, layerId: member.id),
     );
+  }
+
+  /// The selected rows whose attach group is linked — the ROWS rung of the
+  /// shared pill's link-independent button (I-45).
+  List<LayerId> linkedSelectedLayerIds() {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    return _selectedLayerIdsWhere((layer) => groupIsLinked(layer, cut));
+  }
+
+  /// 독립시키기 for every selected linked row, as ONE undo step. Two
+  /// selected rows of one attach group unlink once: the second finds its
+  /// group already forked, and the coordinator's own guard makes it a no-op.
+  void unlinkSelectedLayers() {
+    final ids = linkedSelectedLayerIds();
+    final cut = _project.activeCutOrNull;
+    if (ids.isEmpty || cut == null) {
+      return;
+    }
+    _project.historyManager.runAsOneStep('Unlink rows', () {
+      for (final layerId in ids) {
+        _project.cutCommandCoordinator.unlinkLayer(
+          cutId: cut.id,
+          layerId: layerId,
+        );
+      }
+    });
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: ids.first);
+    _changes.notifyChanged();
   }
 
   /// 독립시키기: forks the active layer's group out of its links — the

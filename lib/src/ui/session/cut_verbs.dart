@@ -376,6 +376,46 @@ class CutVerbs {
     _changes.notifyChanged();
   }
 
+  /// Whether any row of [cutId] shares its pictures through a link — what
+  /// the link-independent button asks of a cut (I-45: 「프레임 독립시키거나
+  /// 레이어나 컷이나」).
+  bool cutIsLinked(CutId cutId) {
+    final cut = _project.cutById(cutId);
+    if (cut == null) {
+      return false;
+    }
+    final registry = _project.repository.requireProject().linkRegistry;
+    return cut.layers.any(
+      (layer) => registry.isLinked(cutId: cutId, layerId: layer.id),
+    );
+  }
+
+  /// 독립시키기 for every linked row of every cut in [cutIds] — ONE undo
+  /// step. A row's whole attach group forks at once, so the members after it
+  /// find nothing left and stand down (the coordinator's own guard).
+  void unlinkCuts(Iterable<CutId> cutIds) {
+    final linked = [
+      for (final cutId in cutIds)
+        if (cutIsLinked(cutId)) cutId,
+    ];
+    if (linked.isEmpty) {
+      return;
+    }
+    _project.historyManager.runAsOneStep('Unlink cuts', () {
+      for (final cutId in linked) {
+        final layers = _project.cutById(cutId)?.layers ?? const [];
+        for (final layer in layers) {
+          _project.cutCommandCoordinator.unlinkLayer(
+            cutId: cutId,
+            layerId: layer.id,
+          );
+        }
+      }
+    });
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
+  }
+
   /// Releases the guide drag preview; the session's teardown calls it.
   void dispose() => guidesDragPreview.dispose();
 }

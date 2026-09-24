@@ -2967,6 +2967,36 @@ class EditorSessionManager extends ChangeNotifier
     }
   }
 
+  /// 🚨I-45 — WHAT the link-independent button would unlink right now, on
+  /// the TIMELINE: the selected linked rows, else the frame axis.
+  ///
+  /// 유저 2026-09-20: 「링크 독립버튼. 위치는 타임라인의 공용 알약부분? 프레임
+  /// 독립시키거나 레이어나 컷이나」, answered 2026-09-23 (link-independent-
+  /// button): 「정확히는 다른 편집버튼등의 로직 그대로 따라감 … 선택안하면
+  /// 현재프레임, 선택하면 해당 선택한 소재가 기준임」 — so it is the shared
+  /// pill's one ladder ([pillSubjectOn]) with the linked predicates.
+  ///
+  /// ⚠️No cuts rung here: cuts are the storyboard's noun (R5q1), and its
+  /// context resolves them through its own edit target.
+  PillSubject get unlinkSubject => pillSubjectOn(
+    cuts: false,
+    layers: () => layerVerbs.linkedSelectedLayerIds().isNotEmpty,
+    cells: () => cells.canUnlinkCells,
+  );
+
+  /// Runs whatever [unlinkSubject] names — one undo step either way.
+  void unlinkSelectionSubject() {
+    switch (unlinkSubject) {
+      case PillSubject.layers:
+        layerVerbs.unlinkSelectedLayers();
+      case PillSubject.cells:
+        cells.unlinkCells();
+      case PillSubject.cuts:
+      case PillSubject.nothing:
+        break;
+    }
+  }
+
   /// Whether a live band names rows this press would MISS.
   ///
   /// The ACTIVE-ROW verbs — X-here, the ● mark, the cell rename and

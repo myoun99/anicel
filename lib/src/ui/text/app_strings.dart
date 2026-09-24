@@ -781,6 +781,10 @@ enum AppStrings {
   /// ellipsized labels on device. The '…' convention belongs to menu
   /// ENTRIES that open a dialog, not to the buttons themselves.
   String get tlSharedEdit => _s('tlSharedEdit');
+
+  /// The shared pill's link-independent button (I-45) — the user's own
+  /// word for it, 「링크 독립」.
+  String get tlSharedUnlink => _s('tlSharedUnlink');
   String get tlAdd => _s('tlAdd');
   String get tlBlankX => _s('tlBlankX');
   String get tlMark => _s('tlMark');
@@ -2668,6 +2672,7 @@ enum AppStrings {
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlSharedEdit': 'Edit',
+    'tlSharedUnlink': 'Make independent',
     'tlAdd': 'Add',
     'tlPush': 'Push (open frames)',
     'tlPull': 'Pull (close frames)',
@@ -3983,6 +3988,7 @@ enum AppStrings {
     'tlAttachDropsFxTitle': '付属すると fx が失われます',
     'tlAttachDropsFxBody': '付属レイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlSharedEdit': '編集',
+    'tlSharedUnlink': 'リンクを独立',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -5292,6 +5298,7 @@ enum AppStrings {
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlSharedEdit': '편집',
+    'tlSharedUnlink': '링크 독립',
     'tlAdd': '추가',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
@@ -6678,6 +6685,7 @@ enum AppStrings {
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlSharedEdit': 'Modifier',
+    'tlSharedUnlink': 'Rendre indépendant',
     'tlAdd': 'Ajouter',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
@@ -7915,6 +7923,7 @@ enum AppStrings {
     'tlAttachDropsFxTitle': '附属后将失去 fx',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlSharedEdit': '编辑',
+    'tlSharedUnlink': '取消链接',
     'tlAdd': '添加',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',

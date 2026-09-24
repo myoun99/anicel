@@ -878,6 +878,7 @@ void main() {
     'tlAttachDropsFxBody': (s) => s.tlAttachDropsFxBody,
     'tlSelectRowSpan': (s) => s.tlSelectRowSpan,
     'tlSharedEdit': (s) => s.tlSharedEdit,
+    'tlSharedUnlink': (s) => s.tlSharedUnlink,
     'tlAdd': (s) => s.tlAdd,
     'tlBlankX': (s) => s.tlBlankX,
     'tlMark': (s) => s.tlMark,

@@ -343,6 +343,60 @@ class CellVerbs {
     _changes.notifyChanged();
   }
 
+  // --- 링크 독립 (I-45): the frame-axis rung --------------------------------
+
+  /// The runs a frame-axis 링크 독립 press means, one per row.
+  ///
+  /// ★DELETE'S TARGETS from the same press, read through the same claims
+  /// (유저 2026-09-23: 「다른 편집버튼등의 로직 그대로 … 선택안하면
+  /// 현재프레임, 선택하면 해당 선택한 소재가 기준」): a LANE row claims the
+  /// press and has no cels (F-87); a band means every block it touches on
+  /// every row it spans ([RangeSelections.selectionBlockStartsByLayer]); a
+  /// band that touches none claims the press with nothing in it; with no
+  /// band, the block under the playhead on the active row.
+  ///
+  /// ⚠️A row's blocks become ONE run, first start to last end — the band is
+  /// contiguous, so everything between them is the band's too.
+  List<UnlinkRun> _unlinkRuns() {
+    if (_laneVerbs.laneVerbRange != null) {
+      return const [];
+    }
+    final byLayer = _rangeSelections.selectionBlockStartsByLayer();
+    if (byLayer == null) {
+      if (cellSelectionClaimsSubject) {
+        return const [];
+      }
+      final layer = _selection.activeLayer;
+      if (layer == null || !rowHoldsLinks(layer)) {
+        return const [];
+      }
+      final run = _controllers.timelineController.runAtPlayheadForLayer(
+        layer.id,
+      );
+      return [(layer: layer, index: run.index, count: run.count)];
+    }
+    final runs = <UnlinkRun>[];
+    for (final MapEntry(key: layerId, value: starts) in byLayer.entries) {
+      final layer = _project.rangeLayerById(layerId);
+      if (layer == null || !rowHoldsLinks(layer) || starts.isEmpty) {
+        continue;
+      }
+      final first = starts.reduce((a, b) => a < b ? a : b);
+      final last = starts.reduce((a, b) => a > b ? a : b);
+      final end = last + (layer.timeline[last]?.length ?? 1);
+      runs.add((layer: layer, index: first, count: end - first));
+    }
+    return runs;
+  }
+
+  /// Whether the frame axis holds a cel this press would give a copy of its
+  /// own — the rung's gate, from the same runs its press takes.
+  bool get canUnlinkCells =>
+      _clipboard.sharedCelsIn(_unlinkRuns()).isNotEmpty;
+
+  /// 링크 독립 on the frame axis ([FrameClipboard.unlinkRuns]).
+  void unlinkCells() => _clipboard.unlinkRuns(_unlinkRuns());
+
   String get currentCellStatusText {
     final layer = _selection.activeLayer;
     if (layer == null) {

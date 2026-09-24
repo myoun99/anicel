@@ -1,5 +1,6 @@
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
+import '../../models/cut_id.dart';
 import '../../models/pill_subject.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -100,6 +101,11 @@ abstract class ToolbarPanelContext {
 
   PillSubject get deleteSubject;
   void deleteSelectionSubject();
+
+  /// 🚨I-45 — the link-independent button: whether this panel's press would
+  /// unlink anything, and the press. One answer for both (T25's law).
+  bool get canUnlink;
+  void unlink();
 }
 
 /// What each SHARED pill button does when it is pressed — null while it has
@@ -118,6 +124,8 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
 
   void Function()? get pasteLinkedPress =>
       canPasteLinkedFrame ? pasteLinkedFrame : null;
+
+  void Function()? get unlinkPress => canUnlink ? unlink : null;
 
   /// F: the ROWS rung asks first. It inherited that from the loose layer
   /// button this pill folded in — a delete that used to confirm must not
@@ -229,6 +237,12 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   @override
   void deleteSelectionSubject() =>
       session.deleteSelectionSubject(cutsAreThisPanels: false);
+
+  @override
+  bool get canUnlink => session.unlinkSubject != PillSubject.nothing;
+
+  @override
+  void unlink() => session.unlinkSelectionSubject();
 }
 
 /// What the storyboard's Edit Instance press opens — resolved ONCE
@@ -541,4 +555,28 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     }
     session.storyboardCursor.deleteBlockAtStoryboardCursor();
   }
+
+  /// The cuts this panel's 링크 독립 means: its EDIT TARGET's cuts rung —
+  /// the selected cut range, else the cut under the cursor on a track row.
+  ///
+  /// ★The storyboard's ladder is [editTarget], so the three verbs this
+  /// panel resolves for itself cannot disagree about which cut is meant.
+  /// 「컷이나」 (I-45) is this panel's only noun for it: a track row's blocks
+  /// are cuts, and an S row holds no pictures to link (F-115).
+  List<CutId> get _unlinkCutIds {
+    if (editTarget is! StoryboardEditCut) {
+      return const [];
+    }
+    if (session.trackFrameRangeSelection.value != null) {
+      return session.storyboardRows.storyboardSelectedCutIds;
+    }
+    final cut = session.activeCutOrNull;
+    return cut == null ? const [] : [cut.id];
+  }
+
+  @override
+  bool get canUnlink => _unlinkCutIds.any(session.cutVerbs.cutIsLinked);
+
+  @override
+  void unlink() => session.cutVerbs.unlinkCuts(_unlinkCutIds);
 }

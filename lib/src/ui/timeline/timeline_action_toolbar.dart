@@ -870,6 +870,8 @@ class TimelineActionToolbar extends StatelessWidget {
       onEditInstance != null && panelContext.canEditInstance,
       // The two pixel verbs read the same one-question gate their press runs.
       session.cells.canRunPixelVerb,
+      // I-45: the link-independent button, from its own one answer.
+      panelContext.canUnlink,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
@@ -946,6 +948,17 @@ class TimelineActionToolbar extends StatelessWidget {
           shortcuts: const [EditorActionIds.editPasteLinked],
           icon: Icons.link,
           onPressed: panelContext.pasteLinkedPress,
+        ),
+        // 🚨I-45 — 링크 독립, beside the paste that makes a link (유저
+        // 2026-09-20: 「링크 독립버튼. 위치는 타임라인의 공용 알약부분? 프레임
+        // 독립시키거나 레이어나 컷이나」). It asks what is selected, the pill's
+        // one ladder: rows → their links, the frame axis → its shared
+        // pictures, and on the storyboard the cuts.
+        _iconButton(
+          key: const ValueKey<String>('shared-unlink-button'),
+          tooltip: AppText.strings.tlSharedUnlink,
+          icon: Icons.link_off,
+          onPressed: panelContext.unlinkPress,
         ),
         _iconButton(
           key: const ValueKey<String>('shared-delete-button'),
