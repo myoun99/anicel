@@ -38,6 +38,34 @@ void main() {
   List<String> butTheOpacWord(List<String> cut) =>
       [for (final word in cut) if (!word.startsWith('「OPAC」')) word];
 
+  /// A row's opacity bar under [scope] — every rail keys it
+  /// `<surface>-layer-opacity-<id>`.
+  Rect rowOpacityBar(WidgetTester tester, Finder scope) => tester.getRect(
+    find
+        .descendant(
+          of: scope,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget.key is ValueKey<String> &&
+                (widget.key! as ValueKey<String>).value.contains(
+                  '-layer-opacity-',
+                ),
+          ),
+        )
+        .first,
+  );
+
+  /// The legend's opacity cell under [scope] — the master bar, or the
+  /// heading where there is none.
+  Rect legendOpacity(WidgetTester tester, Finder scope) => tester.getRect(
+    find
+        .descendant(
+          of: scope,
+          matching: find.byKey(const ValueKey<String>('legend-opacity')),
+        )
+        .first,
+  );
+
   for (final scale in [1.0, 1.5, 2.0]) {
     group('at $scale×', () {
       testWidgets('no word of a rail row is cut at its side, and the rail '
@@ -107,6 +135,13 @@ void main() {
         final heads = find.byType(TimelineLayerControlsRow);
         expect(heads, findsWidgets, reason: 'LIVENESS — the sheet shows');
         expect(wordsCutAcross(heads), isEmpty);
+
+        // The legend stands beside the headers, laid out from the same
+        // columns: its OPAC heading spans the headers' bar, down the column.
+        final bar = rowOpacityBar(tester, find.byType(Scaffold).first);
+        final heading = legendOpacity(tester, find.byType(Scaffold).first);
+        expect(heading.top, closeTo(bar.top, 0.5));
+        expect(heading.height, closeTo(bar.height, 0.5));
       });
 
       testWidgets('the storyboard\'s rail grows its opacity column the same '
@@ -128,6 +163,12 @@ void main() {
           StoryboardPanel.railWidthIn(tester.element(board)),
           scale == 1.0 ? 434 : greaterThan(434),
         );
+
+        // Its legend's master bar sits over its S rows' bars.
+        final bar = rowOpacityBar(tester, board);
+        final master = legendOpacity(tester, board);
+        expect(master.left, closeTo(bar.left, 0.5));
+        expect(master.width, closeTo(bar.width, 0.5));
       });
     });
   }
