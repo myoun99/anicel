@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
+import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_wav_export.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -133,6 +134,45 @@ void main() {
       readWav(out).pcm,
       Uint8List.sublistView(conform, ConformHeader.length, header.totalBytes),
     );
+  });
+
+  test('🚨a FRAMED conform is decoded once through — each block once, not '
+      'once per chunk that straddles it', () async {
+    if (!engineHere()) {
+      markTestSkipped('no engine on this run');
+      return;
+    }
+    // Several blocks, and a copy chunk the conform header knocks out of line
+    // with them, so every chunk straddles a boundary.
+    final conform = conformBytes(frames: 400000);
+    final written = writeMediaBlob(
+      basePath: at('long.wav.abc12345.wav'),
+      length: conform.length,
+      readInto: mediaBytesReader(conform),
+    );
+    expect(written.framed, isTrue, reason: 'fixture: a ramp compresses');
+    final entry = File(written.path).readAsBytesSync();
+    final blocks = ByteData.sublistView(entry).getUint32(12, Endian.little);
+    final costs = <({int blocksDecoded, int storedBytesRead})>[];
+    QaMediaSpan.debugOnClose = costs.add;
+    addTearDown(() => QaMediaSpan.debugOnClose = null);
+
+    expect(
+      await writeConformAsWav(
+        conform: mediaAppFileSource(written.path),
+        destinationPath: at('exported.wav'),
+      ),
+      isTrue,
+    );
+
+    expect(
+      costs.last.blocksDecoded,
+      blocks,
+      reason: 'the copy reads through ONE reader, whose block stays decoded '
+          'for the next chunk — a fresh read per chunk decodes the block a '
+          'chunk straddles once for each side of it',
+    );
+    expect(costs, hasLength(2), reason: 'the header, then the one copy');
   });
 
   test('⛔a file that is not a conform writes nothing and says so', () async {

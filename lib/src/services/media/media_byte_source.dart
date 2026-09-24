@@ -493,7 +493,7 @@ class MediaFramedBytes extends MediaByteSource {
       at.path,
       offset: at.offset,
       length: at.length,
-      framed: true,
+      framed: at.framed,
     );
     if (opened != null) {
       return opened;
