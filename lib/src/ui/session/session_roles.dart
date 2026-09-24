@@ -180,12 +180,8 @@ abstract interface class SessionInternals {
   ValueNotifier<int> get editingFrameCursor;
   bool get editingInteractionBusy;
   bool get editingPlayheadInGap;
-  double get lastMasterOpacity;
-  set lastMasterOpacity(double value);
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
   double layerOpacityAtFrame(Layer layer, int frameIndex);
-  ValueNotifier<({Set<LayerId> layerIds, double opacity})?>
-  get opacityDragPreview;
   PixelVerbCanvas Function()? get pixelVerbCanvas;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   PixelVerbSubject get pixelVerbSubject;
@@ -203,8 +199,6 @@ abstract interface class SessionInternals {
     int? globalFrameIndex,
     bool takesLayerActive = true,
   });
-  ValueNotifier<({TrackId trackId, double opacity})?>
-  get trackOpacityDragPreview;
   TrackSeWindow get trackSeWindow;
   ValueNotifier<Layer?> get transitionEdgeDragPreview;
   void updateActiveCutCameraTrack(

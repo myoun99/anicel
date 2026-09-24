@@ -299,7 +299,7 @@ void main() {
     opacity(s).commitLayerOpacity(id, 0.5);
     expect(notifies, 1);
     expect(s.layers.firstWhere((layer) => layer.id == id).opacity, 0.5);
-    expect(s.opacityDragPreview.value, isNull);
+    expect(s.opacityVerbs.dragPreview.value, isNull);
   });
 
   test('the master bar commit writes every targeted row, camera excluded '
@@ -324,17 +324,17 @@ void main() {
   test('the master bar RESTS on the last committed value — previews leave '
       'it alone (UI-R6 #2)', () {
     final s = session();
-    expect(s.lastMasterOpacity, 1.0);
+    expect(s.opacityVerbs.lastMasterOpacity, 1.0);
     final targets = {
       for (final layer in s.layers)
         if (layer.kind.hasPictureOpacity) layer.id,
     };
 
     opacity(s).previewLayersOpacity(targets, 0.42);
-    expect(s.lastMasterOpacity, 1.0);
+    expect(s.opacityVerbs.lastMasterOpacity, 1.0);
 
     opacity(s).commitLayersOpacity(targets, 0.42);
-    expect(s.lastMasterOpacity, closeTo(0.42, 1e-9));
+    expect(s.opacityVerbs.lastMasterOpacity, closeTo(0.42, 1e-9));
   });
 
   test('filter engagement moves a FAILING active selection to the nearest '

@@ -397,7 +397,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         // Opacity drags preview through the editing stack per move (R4 #4)
         // — the canvas is the ONLY session-notify consumer that follows
         // live; everything else waits for the release commit.
-        session.opacityDragPreview,
+        session.opacityVerbs.dragPreview,
+        // …and the V row's, which the canvas READ (the editing fade, the
+        // track stack) and never heard: a track opacity drag reached the
+        // canvas only when something else happened to rebuild it.
+        session.opacityVerbs.trackDragPreview,
         // brushToolState is deliberately NOT here (R18 UI-2): nothing in
         // the area's derivations reads it — only the brush host consumes
         // it, through its own boundary builder below. Merging it here

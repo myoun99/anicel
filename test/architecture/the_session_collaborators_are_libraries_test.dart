@@ -72,8 +72,12 @@ const _mayNameTheSession = <String, String>{
 /// that handed them over left with them. 49 → 47 (2026-09-23, the second
 /// family): the scrub's two flags moved into `FrameScrub`, which raises and
 /// drops them, and `CutUnderPlayhead` — whose only read of the role was one
-/// of them — now takes that flag instead of the role.
-const _sessionInternalsMembers = 47;
+/// of them — now takes that flag instead of the role. 47 → 43 (2026-09-24,
+/// the third family): the two opacity drag previews and the master bar's
+/// resting value moved into `OpacityVerbs`, which writes all three — and
+/// `OpacityVerbs`, whose only reads of the role were these, no longer takes
+/// it at all.
+const _sessionInternalsMembers = 43;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

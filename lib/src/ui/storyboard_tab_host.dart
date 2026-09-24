@@ -953,8 +953,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // Master-bar drags (UI-R6 #2): S-row sliders follow the
                     // preview channel live; the bar rests on the last committed
                     // value instead of an average.
-                    opacityDragPreview: _session.opacityDragPreview,
-                    legendOpacityValue: _session.lastMasterOpacity,
+                    opacityDragPreview: _session.opacityVerbs.dragPreview,
+                    legendOpacityValue: _session.opacityVerbs.lastMasterOpacity,
                     // The V row's picture eye (R9): session view state the
                     // playback display reads.
                     cutPictureVisibleOf: _session.isCutPictureVisible,

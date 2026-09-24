@@ -1264,7 +1264,7 @@ class EditorSessionManager extends ChangeNotifier
     selectionInteractionActive.dispose,
     dragPreview.dispose,
     transitionEdgeDragPreview.dispose,
-    opacityDragPreview.dispose,
+    opacityVerbs.dispose,
     onionSkin.dispose,
     cutVerbs.dispose,
     trackFrameRangeSelection.dispose,
@@ -1493,7 +1493,6 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     controllers: activeCutControllers,
     transitions: transitions,
-    internals: this,
   );
 
   // The frame verbs (Round 6): the playhead's frame and what stands there.
@@ -1730,12 +1729,6 @@ class EditorSessionManager extends ChangeNotifier
   // composited cut under the playhead (user 2026-08-08). It is TRACK data on
   // the GLOBAL axis, exactly like the pose and the fade beside it, so these
   // verbs take a TrackId and no cut is ever in the loop.
-
-  /// The live V-row opacity drag (session-owned, per the drag-verb rule):
-  /// per-move preview, ONE write on release.
-  @override
-  final ValueNotifier<({TrackId trackId, double opacity})?>
-  trackOpacityDragPreview = ValueNotifier(null);
 
   /// Cuts whose PICTURE is hidden in the playback display — the storyboard
   /// V-row eye (R9). The paper stays, the composite doesn't draw. A working
@@ -2092,23 +2085,6 @@ class EditorSessionManager extends ChangeNotifier
   @override
   final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
       ValueNotifier<Set<LayerId>>(const {});
-
-  // --- Opacity drag preview (R4 #4/#6) ------------------------------------
-
-  /// Live opacity-drag preview: per-move values ride this notifier into
-  /// the editing canvas only (the dragged FieldSlider echoes locally)
-  /// WITHOUT a session notify — the old per-move repo write rebuilt every
-  /// panel per pointer move and made the slider feel heavy. Release
-  /// commits ONE write + notify. The legend's master bar previews a SET of
-  /// rows through the same channel.
-  @override
-  final ValueNotifier<({Set<LayerId> layerIds, double opacity})?>
-  opacityDragPreview = ValueNotifier(null);
-
-  /// The master bar's LAST committed value — the bar rests on this, not a
-  /// live average (UI-R6 #2).
-  @override
-  double lastMasterOpacity = 1.0;
 
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.

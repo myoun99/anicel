@@ -93,7 +93,7 @@ class EditingCanvas {
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
-    final preview = _internals.opacityDragPreview.value;
+    final preview = _opacityVerbs.dragPreview.value;
     final stackCut = preview == null
         ? cut
         : cut.copyWith(layers: _withOpacityPreview(cut.layers, preview));
