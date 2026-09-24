@@ -30,6 +30,7 @@ add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_video_decode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
   "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
 )
 if(APPLE)
@@ -101,6 +102,25 @@ if(NOT ANDROID AND NOT IOS)
   endif()
   enable_testing()
   add_test(NAME qa_video_decode_law COMMAND qa_video_decode_law_test)
+endif()
+
+# The span reader — plain and framed — with nothing platform-specific in it,
+# so it runs on every host CI has. See qa_media_span_test.c for why it
+# COUNTS blocks rather than only comparing bytes.
+if(NOT ANDROID AND NOT IOS)
+  add_executable(qa_media_span_test
+    "${CMAKE_CURRENT_LIST_DIR}/qa_media_span_test.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
+    "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c")
+  set_target_properties(qa_media_span_test PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+  )
+  if(MSVC)
+    target_compile_options(qa_media_span_test PRIVATE /utf-8)
+  endif()
+  enable_testing()
+  add_test(NAME qa_media_span COMMAND qa_media_span_test)
 endif()
 
 # Decoding a container that is a RANGE of a file. ⚠️This one carries the
