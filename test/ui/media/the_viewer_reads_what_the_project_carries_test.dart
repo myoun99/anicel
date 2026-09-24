@@ -8,6 +8,10 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
+    show parseAnicelZipLayoutFile;
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
+    show anicelMediaEntryName;
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
@@ -263,6 +267,62 @@ void main() {
       () => session.projectFile.heldArchiveEntries.isEmpty,
     );
     expect(session.projectFile.heldArchiveEntries, isEmpty);
+  });
+
+  /// 🚨A movie on the page whose asset was taken out of the pool follows ITS
+  /// bytes — never the file its path names by then (audit 09-25): the
+  /// frames already drawn are that carry's.
+  group('a movie on the page taken out of the pool follows its own bytes', () {
+    Future<({EditorSessionManager session, String file, MediaCarry carry})>
+    shownThenTakenOut(WidgetTester tester) async {
+      final (:session, :path) = await carrying(
+        tester,
+        directory,
+        writeCarriedMovie,
+      );
+      await saveProject(tester, session, directory);
+      final carry = carryIn(session, path)!;
+      await view(tester, session, path, MediaAssetKind.video);
+      expect(page(), findsOneWidget, reason: 'the premise');
+      expect(session.mediaPool.removeMediaAsset(path), isTrue);
+      expect(File(path).existsSync(), isTrue, reason: 'the path names a file');
+      return (session: session, file: session.projectFile.path!, carry: carry);
+    }
+
+    testWidgets('through a save-as', (tester) async {
+      final (:session, file: _, :carry) = await shownThenTakenOut(tester);
+      final elsewhere = normalizedMediaPath('${directory.path}/as.anicel');
+
+      await tester.runAsync(
+        () => session.projectDoor.saveProjectToFile(
+          elsewhere,
+          asked: SaveAsked.byAPerson,
+        ),
+      );
+      await settleAsync(tester, () => movies.openedAt.last.path == elsewhere);
+
+      final entry = parseAnicelZipLayoutFile(
+        elsewhere,
+      ).entryNamed(anicelMediaEntryName(carry));
+      expect(entry, isNotNull, reason: 'carried into the new file for it');
+      expect(movies.openedAt.last.span?.offset, entry!.dataOffset);
+    });
+
+    testWidgets('when it lets go of the file for a whole write', (
+      tester,
+    ) async {
+      final (:session, :file, :carry) = await shownThenTakenOut(tester);
+      final opens = movies.openedAt.length;
+
+      unawaited(session.projectFile.readersLetGoOf(file));
+      await settleAsync(tester, () => movies.openedAt.length > opens);
+
+      final entry = parseAnicelZipLayoutFile(
+        file,
+      ).entryNamed(anicelMediaEntryName(carry))!;
+      expect(movies.openedAt.last.path, file);
+      expect(movies.openedAt.last.span?.offset, entry.dataOffset);
+    });
   });
 
   testWidgets('a movie let go of for a file it then cannot open says so — '

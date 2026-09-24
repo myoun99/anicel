@@ -143,13 +143,15 @@ void main() {
         () => fileOf(session).holdMediaBytes(path),
       ))!;
       var moved = false;
-      held.moved.listen((_) => moved = true);
+      var done = false;
+      held.moved.listen((_) => moved = true, onDone: () => done = true);
       held.release();
 
       await saveProject(tester, session, directory);
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
 
       expect(moved, isFalse, reason: 'nobody is reading it to be told');
+      expect(done, isTrue, reason: 'and nothing listens on for nothing');
     });
 
     testWidgets('a reader that does not follow is told once per answer, not '
@@ -387,6 +389,34 @@ void main() {
         fileOf(session).mediaByteSourceFor(path).span?.path,
         file,
         reason: 'the asset an undo brings back reads what the file kept',
+      );
+      held.release();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a carry whose own bytes are lost is not made up from its '
+        'original for the reader still on it', (tester) async {
+      final (:session, :path) = await carrying(
+        tester,
+        directory,
+        writeCarriedMovie,
+      );
+      final carry = carryIn(session, path)!;
+      File(stagedCopyIn(session, path)!.path).deleteSync();
+      final held = (await tester.runAsync(
+        () => fileOf(session).holdMediaBytes(path),
+      ))!;
+      expect(held.source.wholeFilePath, path, reason: 'the premise');
+      expect(session.mediaPool.removeMediaAsset(path), isTrue);
+
+      await saveProject(tester, session, directory);
+
+      expect(
+        parseAnicelZipLayoutFile(
+          fileOf(session).path!,
+        ).entryNamed(anicelMediaEntryName(carry)),
+        isNull,
+        reason: 'what the original is now is not what was carried',
       );
       held.release();
       await tester.pumpAndSettle();
