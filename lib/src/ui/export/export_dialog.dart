@@ -78,6 +78,7 @@ import '../timesheet/timesheet_notation.dart';
 import '../widgets/app_window.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
+import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
@@ -766,6 +767,11 @@ class ExportDialogState extends State<ExportDialog> {
   TimesheetNotation get _sheetNotation =>
       TimesheetNotation.of(_session.languageSettings.value.notationLanguage);
 
+  /// The app's face the documents export in — this window's, which is the
+  /// panels' (documents-in-which-face-Q1). Read before a render is queued:
+  /// the render may run after the window has closed.
+  TextStyle get _documentFace => appFaceOf(DefaultTextStyle.of(context).style);
+
   /// The cut's start on the TRACK axis (gaps included) — the SE column
   /// reads track-global spans, so the sheet needs the true origin.
   int _trackStartOf(Cut target) {
@@ -977,6 +983,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// preview showed a picture the file would not have been.
   Future<ui.Image> _renderEnvelope(
     ExportEnvelopeTask task, {
+    required TextStyle face,
     required Set<SheetPaintLayer> layers,
     ({int width, int height})? outputSize,
   }) async {
@@ -988,6 +995,7 @@ class ExportDialogState extends State<ExportDialog> {
       return await renderCutEnvelopeImage(
         layout: task.layout,
         source: task.source,
+        face: face,
         layers: layers,
         inkKeyFor: (boxId) => envelopeInkBoxKey(task.owner.id, boxId),
         inkImageFor: (key) => ink[key],
@@ -1452,14 +1460,16 @@ class ExportDialogState extends State<ExportDialog> {
     final (_, document, layout) = _sheetDocFor(task.cut);
     final page = layout.pageRect(task.pageIndex);
     final outputSize = _previewFit(page.width, page.height);
+    final face = _documentFace;
     _preview.request(
-      key: 'sheet:${task.cut.id.value}:${task.pageIndex}',
+      key: 'sheet:${task.cut.id.value}:${task.pageIndex}:${face.fontFamily}',
       caption: 'p${task.pageIndex + 1}',
       render: () => renderTimesheetPageImage(
         document: document,
         layout: layout,
         pageIndex: task.pageIndex,
         notation: _sheetNotation,
+        face: face,
         outputSize: outputSize,
       ),
     );
@@ -1507,6 +1517,7 @@ class ExportDialogState extends State<ExportDialog> {
       task.layout.paperWidth,
       task.layout.paperHeight,
     );
+    final face = _documentFace;
     _preview.request(
       // Every setting that changes the picture is in the key: two
       // different layer sets of the same SIZE must not share a
@@ -1514,10 +1525,12 @@ class ExportDialogState extends State<ExportDialog> {
       key:
           'envelope:${task.owner.id.value}:${spec.formId}:'
           '${spec.paperMode.toJson()}:${spec.sheetWidth}:'
-          '${[for (final layer in spec.orderedLayers) layer.jsonValue].join('+')}',
+          '${[for (final layer in spec.orderedLayers) layer.jsonValue].join('+')}'
+          ':${face.fontFamily}',
       caption: 'CUT${task.owner.name}',
       render: () => _renderEnvelope(
         task,
+        face: face,
         layers: spec.layers,
         outputSize: fitted == null
             ? null
@@ -2249,6 +2262,7 @@ class ExportDialogState extends State<ExportDialog> {
     final plan = _timesheetPagePlan();
     final scale = _specs.timesheet.sheetScale.toDouble();
     final notation = _sheetNotation;
+    final face = _documentFace;
     return _runImageExport(
       count: plan.length,
       renderImage: (index) {
@@ -2259,6 +2273,7 @@ class ExportDialogState extends State<ExportDialog> {
           layout: layout,
           pageIndex: task.pageIndex,
           notation: notation,
+          face: face,
           scale: scale,
         );
       },
@@ -2271,12 +2286,14 @@ class ExportDialogState extends State<ExportDialog> {
   /// export, so only the sheet being written holds its ink rasters.
   Future<String> _exportEnvelopes() {
     final files = _envelopeFilePlan();
+    final face = _documentFace;
     return _runImageExport(
       count: files.length,
       renderImage: (index) {
         final (task, layer) = files[index];
         return _renderEnvelope(
           task,
+          face: face,
           // One stratum per file when they ship separately, so only the
           // paper file is opaque and the rest stack over it.
           layers: layer == null ? _specs.envelope.layers : {layer},

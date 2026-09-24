@@ -122,7 +122,7 @@ class _TimesheetBandsPass {
       final painter = TextPainter(
         text: TextSpan(
           text: _painter.document.memoText,
-          style: const TextStyle(
+          style: _painter.face.copyWith(
             color: TimesheetDocumentPainter._ink,
             fontSize: 11,
           ),

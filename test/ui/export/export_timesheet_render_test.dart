@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/painting.dart' show TextStyle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -51,6 +52,7 @@ void main() {
       expect(document.pages.length, 3);
 
       Future<ui.Image> page(int index) => renderTimesheetPageImage(
+        face: const TextStyle(),
         document: document,
         layout: layout,
         pageIndex: index,
@@ -83,6 +85,7 @@ void main() {
       expect(nonPaper, greaterThan(100));
 
       final scaled = await renderTimesheetPageImage(
+        face: const TextStyle(),
         document: document,
         layout: layout,
         pageIndex: 0,
@@ -95,6 +98,7 @@ void main() {
       // conte page answer this the same way, and the preview relies on it
       // to raster a thumbnail at a size it chose.
       final forced = await renderTimesheetPageImage(
+        face: const TextStyle(),
         document: document,
         layout: layout,
         pageIndex: 0,

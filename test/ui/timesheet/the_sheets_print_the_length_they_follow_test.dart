@@ -48,6 +48,7 @@ void main() {
       TimesheetDocument document,
       ValueNotifier<TimelineDragPreview?> channel,
     ) => TimesheetDocumentPainter(
+      face: const TextStyle(),
       document: document,
       layout: TimesheetDocumentLayout(document: document),
       dragPreview: channel,

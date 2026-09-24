@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/painting.dart' show TextStyle;
+
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/timesheet_document.dart';
@@ -44,6 +46,7 @@ Future<ui.Image> renderTimesheetPageImage({
   required TimesheetDocumentLayout layout,
   required int pageIndex,
   required TimesheetNotation notation,
+  required TextStyle face,
   double scale = 2,
   CanvasSize? outputSize,
 }) {
@@ -64,12 +67,14 @@ Future<ui.Image> renderTimesheetPageImage({
       TimesheetDocumentPainter(
         document: document,
         layout: layout,
+        face: face,
         layers: const {SheetPaintLayer.paper, SheetPaintLayer.form},
         notation: notation,
       ).paint(canvas, layout.documentSize);
       TimesheetDocumentPainter(
         document: document,
         layout: layout,
+        face: face,
         layers: const {SheetPaintLayer.content},
         notation: notation,
       ).paint(canvas, layout.documentSize);

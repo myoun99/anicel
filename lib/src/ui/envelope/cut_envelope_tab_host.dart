@@ -14,6 +14,7 @@ import '../brush/sheet_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../editor_session_manager.dart';
+import '../text/app_face.dart';
 import '../widgets/app_icon_button.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../widgets/static_raster.dart';
@@ -191,6 +192,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                     painter: CutEnvelopePainter(
                       layout: layout,
                       source: source,
+                      face: appFaceOf(DefaultTextStyle.of(context).style),
                       viewport: viewport,
                       effectiveRatio: EffectiveDevicePixelRatio.of(context),
                       imageFor: widget.imageFor,

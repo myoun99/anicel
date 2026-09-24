@@ -198,7 +198,10 @@ class _TimesheetSePass {
       share.join(),
       topCenter: Offset(centerX, top),
       extent: bottom - top,
-      style: const TextStyle(color: TimesheetDocumentPainter._ink, fontSize: 9),
+      style: _painter.face.copyWith(
+        color: TimesheetDocumentPainter._ink,
+        fontSize: 9,
+      ),
     );
   }
 

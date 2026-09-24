@@ -149,6 +149,7 @@ void main() {
 
   TimesheetDocumentPainter painterAt(CanvasViewport viewport) =>
       TimesheetDocumentPainter(
+        face: const TextStyle(),
         document: document,
         layout: TimesheetDocumentLayout(document: document, continuous: true),
         viewport: viewport,
@@ -263,6 +264,7 @@ void main() {
     TimesheetDocument sheet,
     CanvasViewport viewport,
   ) => TimesheetDocumentPainter(
+    face: const TextStyle(),
     document: sheet,
     layout: TimesheetDocumentLayout(document: sheet),
     viewport: viewport,

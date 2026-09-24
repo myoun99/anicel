@@ -186,6 +186,7 @@ void main() {
         final layout = TimesheetDocumentLayout(document: doc);
         final recorder = ui.PictureRecorder();
         TimesheetDocumentPainter(
+          face: const TextStyle(),
           document: doc,
           layout: layout,
         ).paint(Canvas(recorder), layout.documentSize);

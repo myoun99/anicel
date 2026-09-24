@@ -212,7 +212,7 @@ class _TimesheetInstructionPass {
     paintVerticalText(
       canvas,
       label,
-      style: const TextStyle(
+      style: _painter.face.copyWith(
         color: TimesheetDocumentPainter._ink,
         fontSize: fontSize,
         fontWeight: FontWeight.bold,

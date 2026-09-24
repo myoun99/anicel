@@ -70,6 +70,7 @@ void main() {
     final document = _document();
     final spy = _WritingSpy();
     TimesheetDocumentPainter(
+      face: const TextStyle(),
       document: document,
       layout: TimesheetDocumentLayout(document: document),
       viewport: CanvasViewport(zoom: zoom, panX: 0, panY: 0),
