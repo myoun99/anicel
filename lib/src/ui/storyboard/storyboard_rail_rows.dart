@@ -237,11 +237,12 @@ class _StoryboardRailRows {
   /// twirled open. The same construction `railRowsForTrack` lays out, read
   /// back as a number.
   double _seRowGroupExtent(Track track, int slot) {
-    var extent = _seRowHeight;
+    final heights = _state._rowHeights;
+    var extent = heights.se;
     if (_state.widget.expandedSeAudioRows.contains(
       StoryboardPanel.seRowKey(track, slot),
     )) {
-      extent += _seLanes(track, slot).length * _laneHeight;
+      extent += _seLanes(track, slot).length * heights.lane;
     }
     return extent;
   }
@@ -254,14 +255,15 @@ class _StoryboardRailRows {
   /// counting in the V row's own 64px moved two tracks per group and the
   /// widget test caught it immediately.
   double _trackGroupExtent(Track track) {
-    var extent = _state.widget.trackLaneHeight + _transitionRowHeight;
+    final heights = _state._rowHeights;
+    var extent = _state.widget.trackLaneHeight + heights.transition;
     for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
       // Through the S row's own accounting, so an open S row is counted
       // once and identically by both drags.
       extent += _seRowGroupExtent(track, slot);
     }
     if (_state.widget.expandedTransformTracks.contains(track.id.value)) {
-      extent += _trackOwnLanes(track).length * _laneHeight;
+      extent += _trackOwnLanes(track).length * heights.lane;
     }
     return extent;
   }
@@ -275,7 +277,7 @@ class _StoryboardRailRows {
   /// [_trackGroupExtent] makes, minus the parts that come after, so the two
   /// cannot drift apart.
   double _trackGroupExtentAboveVRow(Track track) {
-    var extent = _transitionRowHeight;
+    var extent = _state._rowHeights.transition;
     for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
       extent += _seRowGroupExtent(track, slot);
     }
@@ -327,6 +329,7 @@ class _StoryboardRailRows {
       }
     }
 
+    final heights = _state._rowHeights;
     var top = 0.0;
     for (final track in _state.widget.project.tracks) {
       if (top > hi) {
@@ -337,9 +340,9 @@ class _StoryboardRailRows {
       take(
         (track: track, layer: track.transitionLayer, seSlot: null),
         top,
-        _transitionRowHeight,
+        heights.transition,
       );
-      var slotTop = top + _transitionRowHeight;
+      var slotTop = top + heights.transition;
       for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
         // The S ROW itself stands at the top of its group; the lanes that
         // follow it are the rest of [_seRowGroupExtent] and carry no column
@@ -348,7 +351,7 @@ class _StoryboardRailRows {
         take(
           (track: track, layer: _trackSeAt(track, slot), seSlot: slot),
           slotTop,
-          _seRowHeight,
+          heights.se,
         );
         slotTop += _seRowGroupExtent(track, slot);
       }
@@ -1206,6 +1209,7 @@ class _StoryboardRailRows {
   }
 
   List<_StoryboardRailSlot> _trackGroupRowGeometry(Track track) {
+    final heights = _state._rowHeights;
     final slots = <_StoryboardRailSlot>[];
     // Index 0 is the TOP of the group ([_trackRowBand] accumulates y from
     // here), and the transition row heads it — above the S rows, the way the
@@ -1215,7 +1219,7 @@ class _StoryboardRailRows {
       laneRow: null,
       bandRow: false,
       lane: false,
-      height: _transitionRowHeight,
+      height: heights.transition,
     ));
     for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) {
       final layer = _trackSeAt(track, slot);
@@ -1224,7 +1228,7 @@ class _StoryboardRailRows {
         laneRow: null,
         bandRow: false,
         lane: false,
-        height: _seRowHeight,
+        height: heights.se,
       ));
       if (layer != null &&
           _state.widget.expandedSeAudioRows.contains(
@@ -1240,7 +1244,7 @@ class _StoryboardRailRows {
             laneRow: audio ? null : LaneRowAddress(layer.id, lane.laneId),
             bandRow: !audio,
             lane: true,
-            height: _laneHeight,
+            height: heights.lane,
           ));
         }
       }
@@ -1266,7 +1270,7 @@ class _StoryboardRailRows {
           laneRow: LaneRowAddress(carrierId, lane.laneId),
           bandRow: true,
           lane: true,
-          height: _laneHeight,
+          height: heights.lane,
         ));
       }
     }
@@ -1340,6 +1344,7 @@ class _StoryboardRailRows {
     TimelineScale scale,
   ) {
     final seRowsInDisplayOrder = _seRowsInDisplayOrder(track);
+    final heights = _state._rowHeights;
     Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
       railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
         track: track,
@@ -1352,6 +1357,7 @@ class _StoryboardRailRows {
       layer: layer,
       layoutEntries: entries,
       width: width,
+      height: heights.se,
       timelineScale: scale,
       projectFrameRate: _state.widget.projectFrameRate,
       audioPeaksFor: _state.widget.audioPeaksFor,
@@ -1408,6 +1414,7 @@ class _StoryboardRailRows {
       frames: const [],
     );
     final laneEdit = _state.widget.trackLaneEditFor?.call(track);
+    final laneHeight = _state._rowHeights.lane;
     return [
       // The fx chain's strips, row for row with its labels — the rail and
       // the strips share no scaffolding, so the two lists are built from the
@@ -1439,6 +1446,7 @@ class _StoryboardRailRows {
                   carrier: carrier,
                   lane: lane,
                   width: width,
+                  height: laneHeight,
                   timelineScale: scale,
                   projectFrameRate: _state.widget.projectFrameRate,
                   laneEdit: laneEdit,
@@ -1479,6 +1487,7 @@ class _StoryboardRailRows {
               : layer,
           lane: lane,
           width: width,
+          height: _state._rowHeights.lane,
           timelineScale: scale,
           projectFrameRate: _state.widget.projectFrameRate,
           // The S row's lanes take the range gesture too (R5 ③b). Their

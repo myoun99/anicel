@@ -1132,6 +1132,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// splitter.
   double get _naturalRailWidth => StoryboardPanel.railWidthIn(context);
 
+  /// The S, transition and lane rows' heights where the panel is shown —
+  /// asked here, once, and handed to every row, so a label and its strip
+  /// cannot answer from two contexts ([_storyboardRowHeightsIn]).
+  _StoryboardRowHeights get _rowHeights => _storyboardRowHeightsIn(context);
+
   // ── the horizontal scroll: its own object, in its own file ──────────
   //
   // A collaborator (storyboard/storyboard_scroll.dart, a part of this library). The
@@ -2102,9 +2107,13 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               //
               // The legend's columns are this rail's rows' columns, and
               // its extent the rail's, as the rows lay them out
-              // (text-scale-rail-columns).
+              // (text-scale-rail-columns). Its row is the band's — the
+              // band grew with its words and the legend inside it must
+              // too, or its OPAC is cut at the foot
+              // (text-scale-storyboard-rows).
               metrics: TimelineGridMetrics.defaults.copyWith(
                 layerControlsWidth: _naturalRailWidth,
+                layerRowHeight: StoryboardPanel._headerBandHeightIn(context),
                 railColumns: layerRailColumnWidthsIn(context),
               ),
               legend: widget.legend,
@@ -2466,6 +2475,28 @@ const double _transitionRowHeight = 30;
 /// with that row before.
 const double _laneHeight = 26;
 
+/// The three rows above as they stand where the panel is shown — each the
+/// height it was drawn at plus as much as a row's name grew under the OS
+/// text size ([timelineLayerRowGrowthIn]), 0 at 1×.
+///
+/// 🚨text-scale-storyboard-rows (유저 2026-09-24, 「행도 글자 크기를 따라
+/// 자란다」). The rows round grew the timeline's rows and this panel's legend
+/// band, and not these three: at 2× an S row's name wanted 40 in its 29.
+/// ⛔Everything that lays a row out reads THIS, never the constants — the
+/// rail's labels, the strips beside them, and the one table the bands, the
+/// sheet and the select-drag read. Two of them on different numbers is a
+/// label and its strip parting ways.
+typedef _StoryboardRowHeights = ({double se, double transition, double lane});
+
+_StoryboardRowHeights _storyboardRowHeightsIn(BuildContext context) {
+  final growth = timelineLayerRowGrowthIn(context);
+  return (
+    se: _seRowHeight + growth,
+    transition: _transitionRowHeight + growth,
+    lane: _laneHeight + growth,
+  );
+}
+
 /// The track's SE row count: SE rows are TRACK-owned (list order is THE
 /// ordering every panel renders — timeline parity by identity).
 int _seSlotCount(Track track) => track.seLayers.length;
@@ -2584,6 +2615,7 @@ class _StoryboardSeLabel extends StatelessWidget {
   const _StoryboardSeLabel({
     required this.track,
     required this.slot,
+    required this.height,
     this.laneExpanded = false,
     this.onToggleLane,
     this.activeLayer,
@@ -2603,6 +2635,9 @@ class _StoryboardSeLabel extends StatelessWidget {
 
   final Track track;
   final int slot;
+
+  /// The row's height where the panel is shown ([_StoryboardRowHeights.se]).
+  final double height;
 
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
@@ -2664,7 +2699,7 @@ class _StoryboardSeLabel extends StatelessWidget {
       onTap: trackLayer == null || onSelect == null
           ? null
           : () => onSelect(trackLayer.id),
-      height: _seRowHeight,
+      height: height,
       active: active,
       semanticsLabel: active
           ? AppText.strings.semSelectedLayer
@@ -2689,7 +2724,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                           // above). Both would fire twice.
                           onTap: () {},
                           child: SizedBox(
-                            height: _seRowHeight,
+                            height: height,
                             child: Icon(
                               laneExpanded
                                   ? Icons.arrow_drop_down
@@ -2723,7 +2758,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                   keyPrefix: 'storyboard',
                   idValue: '${track.id.value}-s${slot + 1}',
                   kind: LayerKind.se,
-                  height: _seRowHeight,
+                  height: height,
                   onTap: trackLayer == null || onSelect == null
                       ? null
                       : () => onSelect(trackLayer.id),
@@ -2825,6 +2860,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
     required this.track,
     required this.layer,
     required this.active,
+    required this.height,
     this.onSelectLayer,
     this.onToggleLayerVisibility,
     this.onLayerMarkSelected,
@@ -2836,6 +2872,10 @@ class _StoryboardTransitionLabel extends StatelessWidget {
 
   /// Whether this row is THE selected row (same highlight as every other).
   final bool active;
+
+  /// The row's height where the panel is shown
+  /// ([_StoryboardRowHeights.transition]).
+  final double height;
   final ValueChanged<LayerId>? onSelectLayer;
 
   /// B5③: the timeline row's three controls, same verbs (see class doc).
@@ -2851,7 +2891,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
         'storyboard-transition-label-${track.id.value}',
       ),
       onTap: onSelect == null ? null : () => onSelect(layer.id),
-      height: _transitionRowHeight,
+      height: height,
       active: active,
       semanticsLabel: active
           ? AppText.strings.semSelectedLayer
@@ -2879,7 +2919,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                   keyPrefix: 'storyboard',
                   idValue: '${track.id.value}-transition',
                   kind: LayerKind.transition,
-                  height: _transitionRowHeight,
+                  height: height,
                   onTap: onSelect == null ? null : () => onSelect(layer.id),
                 ),
               ),
@@ -3073,6 +3113,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
     required this.track,
     required this.layer,
     required this.width,
+    required this.height,
     required this.timelineScale,
     this.defById,
     this.crossingTooltip,
@@ -3089,6 +3130,9 @@ class _StoryboardTransitionRow extends StatelessWidget {
   /// in-flight edge-drag form while a grip is held.
   final Layer layer;
   final double width;
+
+  /// Its label's height ([_StoryboardRowHeights.transition]) — one row.
+  final double height;
   final TimelineScale timelineScale;
   final CameraInstructionDef? Function(String instructionId)? defById;
 
@@ -3157,7 +3201,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
           child: IgnorePointer(
             child: TimelineFixedFrameSpanLayer(
               geometry: _geometry,
-              crossAxisExtent: _transitionRowHeight,
+              crossAxisExtent: height,
               axis: Axis.horizontal,
               children: timelineRowInstructionOverlays(
                 layer: layer,
@@ -3170,7 +3214,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
                 // one predicate, answered by global key here.
                 crossingWarningTooltip: crossingTooltip,
                 crossingWarningColor: Theme.of(context).colorScheme.error,
-                crossAxisExtent: _transitionRowHeight,
+                crossAxisExtent: height,
               ),
             ),
           ),
@@ -3237,7 +3281,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
           ),
           layer: layer,
           geometry: TimelineFrameGeometryHandle(_geometry),
-          crossAxisExtent: _transitionRowHeight,
+          crossAxisExtent: height,
           select: select,
           railRowAt: railRowAt,
           rows: [TimelineDisplayRow.layer(layer, layerIndex: 0)],
@@ -3256,14 +3300,14 @@ class _StoryboardTransitionRow extends StatelessWidget {
         resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
         commaDrag: commaDrag,
         axis: Axis.horizontal,
-        crossAxisExtent: _transitionRowHeight,
+        crossAxisExtent: height,
       );
       if (grips.isNotEmpty) {
         spans.add(
           Positioned.fill(
             child: TimelineFixedFrameSpanLayer(
               geometry: _geometry,
-              crossAxisExtent: _transitionRowHeight,
+              crossAxisExtent: height,
               axis: Axis.horizontal,
               children: grips,
             ),
@@ -3274,7 +3318,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
     return SizedBox(
       key: ValueKey<String>('storyboard-transition-row-${track.id.value}'),
       width: width,
-      height: _transitionRowHeight,
+      height: height,
       child: Stack(children: spans),
     );
   }
@@ -3291,6 +3335,7 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.layer,
     required this.layoutEntries,
     required this.width,
+    required this.height,
     required this.timelineScale,
     required this.projectFrameRate,
     this.audioPeaksFor,
@@ -3326,6 +3371,9 @@ class _StoryboardSeRow extends StatelessWidget {
   final Layer? layer;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final double width;
+
+  /// Its label's height ([_StoryboardRowHeights.se]) — one row.
+  final double height;
   final TimelineScale timelineScale;
   final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
@@ -3381,7 +3429,7 @@ class _StoryboardSeRow extends StatelessWidget {
     return SizedBox(
       key: ValueKey<String>('storyboard-se-row-$trackIndex-${slot + 1}'),
       width: width,
-      height: _seRowHeight,
+      height: height,
       child: Stack(children: spans),
     );
   }
@@ -3404,13 +3452,13 @@ class _StoryboardSeRow extends StatelessWidget {
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
         ),
-        crossAxisExtent: _seRowHeight,
+        crossAxisExtent: height,
         axis: Axis.horizontal,
         children: timelineRowClipMarkerOverlays(
           layer: layer,
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
-          crossAxisExtent: _seRowHeight,
+          crossAxisExtent: height,
           axis: Axis.horizontal,
           tooltip: tooltip,
           color: Theme.of(context).colorScheme.error,
@@ -3574,7 +3622,7 @@ class _StoryboardSeRow extends StatelessWidget {
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
         geometry: _rowFrames,
-        crossAxisExtent: _seRowHeight,
+        crossAxisExtent: height,
         axis: Axis.horizontal,
         children: grips,
       ),
@@ -3611,7 +3659,7 @@ class _StoryboardSeRow extends StatelessWidget {
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
         geometry: frames,
-        crossAxisExtent: _seRowHeight,
+        crossAxisExtent: height,
         axis: Axis.horizontal,
         children: [
           for (final gap in gaps)
@@ -3644,7 +3692,7 @@ class _StoryboardSeRow extends StatelessWidget {
         startIndex: block.startIndex,
         endIndexExclusive: block.endIndexExclusive,
         // I-44: on the SE paper, which stops a seam short of the row.
-        crossAxisExtent: timelineRowPaperExtent(_seRowHeight),
+        crossAxisExtent: timelineRowPaperExtent(height),
       ),
       child: TimelineBlockEdgeGrip(
         key: ValueKey<String>(
@@ -3669,7 +3717,7 @@ class _StoryboardSeRow extends StatelessWidget {
     key: ValueKey<String>('storyboard-se-range-gesture-slot-${layer.id}'),
     layer: layer,
     geometry: geometry,
-    crossAxisExtent: _seRowHeight,
+    crossAxisExtent: height,
     select: seSelect,
     railRowAt: railRowAt,
     rows: seRowsInDisplayOrder,
@@ -3816,6 +3864,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     required this.carrier,
     required this.lane,
     required this.width,
+    required this.height,
     required this.timelineScale,
     required this.projectFrameRate,
     this.laneEdit,
@@ -3839,6 +3888,9 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   final PropertyLaneRow lane;
 
   final double width;
+
+  /// Its label's height ([_StoryboardRowHeights.lane]) — one row.
+  final double height;
   final TimelineScale timelineScale;
   final ProjectFrameRate projectFrameRate;
   final PropertyLaneEditCallbacks? laneEdit;
@@ -3857,7 +3909,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final metrics = TimelineGridMetrics(
       frameCellWidth: timelineScale.pixelsPerFrame,
-      layerRowHeight: _laneHeight - 2,
+      layerRowHeight: height - 2,
     );
     final frames = timelineScale.pixelsPerFrame <= 0
         ? 0
@@ -3867,7 +3919,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     return SizedBox(
       key: ValueKey<String>(rowKey),
       width: width,
-      height: _laneHeight,
+      height: height,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
         child: laneIsSeAudio(lane)

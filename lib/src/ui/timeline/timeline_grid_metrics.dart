@@ -43,19 +43,45 @@ const double timelineFrameCellWidth = 24;
 const double timelineLayerRowHeight = 28;
 
 /// A layer row's height where it is shown: [timelineLayerRowHeight] and
-/// its name's growth under the OS text size — 0 at 1×, so nothing drawn at
-/// 1× moves.
+/// its name's growth under the OS text size ([timelineLayerRowGrowthIn]) —
+/// 0 at 1×, so nothing drawn at 1× moves.
 ///
 /// 🚨text-scale-rail-rows (유저 2026-09-24: 「행도 글자 크기를 따라
 /// 자란다」, with its stated cost — fewer rows on screen, and every surface
 /// that reads the row height follows it). The rail's row and the grid's
 /// cell are ONE row, so they are one number, and it is asked here.
 double timelineLayerRowHeightIn(BuildContext context) =>
-    timelineLayerRowHeight +
-    TextMeasure(
-      context,
-      layerRowNameStyle(context),
-    ).lineGrowthOf(TextMeasure.everyScript);
+    timelineLayerRowHeight + timelineLayerRowGrowthIn(context);
+
+/// How much taller a row's NAME stands where [context] lays it out than at
+/// 1× — what every row drawn around one line of it adds, whatever height
+/// it was drawn at: the timeline's row above, and the storyboard's S,
+/// transition and lane rows (text-scale-storyboard-rows).
+///
+/// Remembered against every input it reads — the text scaler, the name's
+/// style and the direction — so the storyboard's rows, which each ask, lay
+/// the line out once between them and not once per row. A change to any
+/// input is a different key, so the answer cannot go stale.
+double timelineLayerRowGrowthIn(BuildContext context) {
+  final style = layerRowNameStyle(context);
+  final key = (
+    scaler: MediaQuery.textScalerOf(context),
+    style: style,
+    direction: Directionality.of(context),
+  );
+  final remembered = _rowGrowthMemo;
+  if (remembered != null && remembered.key == key) {
+    return remembered.growth;
+  }
+  final growth = TextMeasure(
+    context,
+    style,
+  ).lineGrowthOf(TextMeasure.everyScript);
+  _rowGrowthMemo = (key: key, growth: growth);
+  return growth;
+}
+
+({Object key, double growth})? _rowGrowthMemo;
 
 /// Width of the fixed layer rail.
 /// 288 → 312 when the layer rows gained the fx switch (R3 ⑪); the row

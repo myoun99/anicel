@@ -46,7 +46,7 @@ class _StoryboardRowsAndLabels {
           return LayerRowDragTarget(
             subject: EffectRowSubject(carrierId, parsed!.effectId),
             slotBefore: slot,
-            rowExtent: _laneHeight,
+            rowExtent: _state._rowHeights.lane,
             axis: Axis.horizontal,
             hooks: hooks,
             grip: () => [effectRowDragChip(lanes[index])],
@@ -97,9 +97,10 @@ class _StoryboardRowsAndLabels {
     /// a header whose group has no reset route must not show one.
     void Function(PropertyLaneRow lane)? onResetGroup,
   }) {
+    final laneHeight = _state._rowHeights.lane;
     final metrics = TimelineGridMetrics(
       frameCellWidth: _state.widget.pixelsPerFrame,
-      layerRowHeight: _laneHeight - 2,
+      layerRowHeight: laneHeight - 2,
       railColumns: layerRailColumnWidthsIn(_state.context),
     );
     final onToggleGroup = _state.widget.onToggleTransformGroup;
@@ -108,7 +109,7 @@ class _StoryboardRowsAndLabels {
       lane: lane,
       metrics: metrics,
       width: _state._naturalRailWidth,
-      height: _laneHeight,
+      height: laneHeight,
       currentFrameIndex: frameIndex,
       onSelectFrame: active
           ? onSelectFrame
@@ -162,6 +163,7 @@ class _StoryboardRowsAndLabels {
       track: track,
       layer: layer,
       active: _state.widget.selectedRow == LayerRowAddress(layer.id),
+      height: _state._rowHeights.transition,
       onSelectLayer: _state.widget.onSelectLayer,
       onToggleLayerVisibility: _state.widget.onToggleLayerVisibility,
       onLayerMarkSelected: _state.widget.onLayerMarkSelected,
@@ -173,10 +175,12 @@ class _StoryboardRowsAndLabels {
   /// through the session's edge-drag form while a grip is held.
   Widget transitionStripRow(Track track, double width, TimelineScale scale) {
     final committed = track.transitionLayer;
+    final height = _state._rowHeights.transition;
     Widget row(Layer layer) => _StoryboardTransitionRow(
       track: track,
       layer: layer,
       width: width,
+      height: height,
       timelineScale: scale,
       defById: _state.widget.transitionDefById,
       crossingTooltip: _state.widget.transitionCrossingTooltip,
@@ -259,6 +263,7 @@ class _StoryboardRowsAndLabels {
     return _StoryboardSeLabel(
       track: track,
       slot: slot,
+      height: _state._rowHeights.se,
       active:
           trackLayer != null &&
           _state.widget.selectedRow == LayerRowAddress(trackLayer.id),

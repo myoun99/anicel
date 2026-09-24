@@ -431,11 +431,11 @@ class TimelinePanel extends StatefulWidget {
   ///
   /// …and the timeline's floor holds THREE rows of the grid — the ruler is
   /// one row thick and the body keeps two — which grow with their words too
-  /// ([timelineLayerRowHeightIn], text-scale-rail-rows).
+  /// ([timelineLayerRowGrowthIn], text-scale-rail-rows).
   static double minPanelHeightIn(BuildContext context) =>
       minPanelHeight +
       TimelineCommandBar.growthIn(context) +
-      3 * (timelineLayerRowHeightIn(context) - timelineLayerRowHeight);
+      3 * timelineLayerRowGrowthIn(context);
 
   static double minSheetPanelHeightIn(BuildContext context) =>
       minSheetPanelHeight + TimelineCommandBar.growthIn(context);
