@@ -38,6 +38,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
 import 'fake_ffmpeg_process.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -1170,13 +1171,14 @@ void main() {
       required String tab,
       required String family,
     }) async {
-      for (final entry in temp.listSync()) {
-        entry.deleteSync(recursive: true);
-      }
+      // A folder of its own each time, so the second export writes where
+      // the first did not.
+      final folder = Directory.systemTemp.createTempSync('qa-export-face');
+      deleteAfterSessionEnds(folder);
       final state = await pumpDialog(
         tester,
         exportSession(),
-        exportDirectoryPicker: () async => temp.path,
+        exportDirectoryPicker: () async => folder.path,
         face: TextStyle(fontFamily: family),
         dialogKey: ValueKey<String>('files-$tab-$family'),
       );
@@ -1185,8 +1187,8 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
       return {
-        for (final name in filesIn(temp))
-          name: File('${temp.path}/$name').readAsBytesSync(),
+        for (final name in filesIn(folder))
+          name: File('${folder.path}/$name').readAsBytesSync(),
       };
     }
 
