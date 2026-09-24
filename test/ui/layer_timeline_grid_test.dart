@@ -2768,49 +2768,39 @@ void main() {
     );
   });
 
-  test('cell style keeps covered cells paper-white; empty cells paint '
+  test('cell paper keeps covered cells paper-white; empty cells paint '
       'NOTHING (the grid sheet owns the ground, UI-R21 #2 → I-44)', () {
-    const colorScheme = ColorScheme.light();
-
-    final drawingStart = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.drawingStart,
-      selected: false,
+    expect(
+      timelineCellPaper(TimelineCellExposureState.held),
+      timelineDrawingHeldColor,
     );
-    final heldDrawing = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.held,
-      selected: false,
+    // UI-R20 #7: the block head's dark silhouette is GONE — a run is one
+    // sheet of paper, start and hold alike.
+    expect(
+      timelineCellPaper(TimelineCellExposureState.drawingStart),
+      timelineDrawingStartColor,
     );
-    final markHeld = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.markHeld,
-      selected: false,
+    expect(timelineDrawingStartColor, timelineDrawingHeldColor);
+    expect(
+      timelineCellPaper(TimelineCellExposureState.markHeld),
+      timelineDrawingHeldColor,
     );
-    final uncovered = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.uncovered,
-      selected: false,
-    );
-    final selectedDrawing = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.held,
-      selected: true,
-    );
-
-    expect(heldDrawing.background, timelineDrawingHeldColor);
-    expect(drawingStart.background, timelineDrawingStartColor);
-    expect(drawingStart.background, heldDrawing.background);
-    // UI-R20 #7: the block head's dark silhouette is GONE — the start
-    // seam sits on the same faint grid ink as the held seams.
-    expect(drawingStart.border, heldDrawing.border);
-    expect(markHeld.background, heldDrawing.background);
     // UI-R21 #2: empties are TRANSPARENT — the substrate carries no
     // per-row state, so switching the active layer re-rasters nothing.
-    expect(uncovered.background, Colors.transparent);
-    expect(uncovered.border, Colors.transparent);
-    expect(selectedDrawing.border, timelineSelectedFrameBorderColor);
-    expect(selectedDrawing.background, isNot(heldDrawing.background));
+    expect(
+      timelineCellPaper(TimelineCellExposureState.uncovered),
+      Colors.transparent,
+    );
+    expect(
+      timelineCellPaper(TimelineCellExposureState.markUncovered),
+      Colors.transparent,
+    );
+    // ⑲: a labelled layer's blocks are its label's colour.
+    const label = Color(0xFF55AA77);
+    expect(
+      timelineCellPaper(TimelineCellExposureState.held, paper: label),
+      label,
+    );
   });
 }
 

@@ -16,8 +16,9 @@ import '../../models/layer_process.dart';
 /// 셀검사 — and were marked as proposals in the design artifact.
 ///
 /// ⚠️A mark's colour is not just a chip: it is the PAPER of that layer's
-/// frame blocks (`timeline_frame_cell.dart`), which the user confirmed is the
-/// intended spec. A colour lands across whole rows, not on a small swatch.
+/// frame blocks (`timeline_row_cells_painter.dart`), which the user confirmed
+/// is the intended spec. A colour lands across whole rows, not on a small
+/// swatch.
 ///
 /// 🪦**네 톤이 있었고, 골랐고, 끝났다.** original · pastel · **cream** ·
 /// pencil 을 전부 구현해 설정에서 고르게 했던 것은 유저 요청이었다(I-4:

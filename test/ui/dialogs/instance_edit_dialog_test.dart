@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/ui/dialogs/instance_edit_preview.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
-import 'package:anicel/src/ui/timeline/timeline_frame_cell.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+
+/// The preview's paper — the timeline's own row painter.
+TimelineRowCellsPainter previewCellsOf(WidgetTester tester) =>
+    tester
+            .widget<CustomPaint>(
+              find.byKey(const ValueKey<String>('instance-preview-cells')),
+            )
+            .painter!
+        as TimelineRowCellsPainter;
 
 /// Opens [dialog] through a real route so pops deliver results.
 Future<void> _openDialog<T>(
@@ -162,9 +172,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      return tester
-          .widgetList<TimelineFrameCell>(find.byType(TimelineFrameCell))
-          .length;
+      return previewCellsOf(tester).frameEndIndexExclusive;
     }
 
     expect(await cellCountAt(100), 2);
@@ -193,5 +201,51 @@ void main() {
     );
     expect(preview.height, greaterThan(preview.width));
     expect(find.bySemanticsLabel('SE name 앨리스'), findsOneWidget);
+  });
+
+  // 🚨The preview's paper was a widget twin of the rows that kept a box
+  // round every koma (D32/D38 took it off the rows) and ignored the
+  // block-frame-lines switch (유저 2026-09-24). It asks the row painter now:
+  // one piece of paper, and the sheet's lines on it only where the switch
+  // shows them.
+  testWidgets('the preview\'s block is ONE piece of paper, crossed by the '
+      'frame lines exactly where the switch shows them', (tester) async {
+    addTearDown(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+    for (final shown in [false, true]) {
+      AppFrameGridSettings.settings.value = AppFrameGridSettings(
+        blockFrameLines: shown,
+      );
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 500,
+              child: InstanceEditPreview.se(
+                axis: Axis.horizontal,
+                dialogue: '대사',
+                seName: '',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final cells = previewCellsOf(tester);
+      final koma = cells.frameEndIndexExclusive;
+      final substrate = cells.substrateIn(0, koma);
+      expect(substrate.paper, hasLength(1), reason: 'switch $shown');
+      expect(
+        substrate.paper.single.rect,
+        cells.paperRectFor(0).expandToInclude(cells.paperRectFor(koma - 1)),
+      );
+      expect(
+        substrate.lines,
+        hasLength(shown ? koma - 1 : 0),
+        reason: 'switch $shown: a line at each koma boundary inside the '
+            'block, or none',
+      );
+    }
   });
 }

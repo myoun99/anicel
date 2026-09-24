@@ -359,12 +359,10 @@ class TimelineRowCellsPainter extends CustomPainter
     // A camera summary cell is empty-styled for the same reason — its
     // coverage is a key marker, not paper.
     final paper = layerMarkColor(layer.mark);
-    final styleColors = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: model.ghost || _cameraSummaryRow
+    final cellPaper = timelineCellPaper(
+      model.ghost || _cameraSummaryRow
           ? TimelineCellExposureState.uncovered
           : model.exposureState,
-      selected: false,
       // ⑲: the row's blocks are its layer's colour label.
       paper: paper,
     );
@@ -382,7 +380,7 @@ class TimelineRowCellsPainter extends CustomPainter
             under: paperGround,
             painted: timelineEmptyCelPaperColor(paper),
           )!
-        : styleColors.background;
+        : cellPaper;
     // D32/D38 (2026-08-18): the per-cell BORDER is gone. It existed to be
     // the seams ("the paper blocks' seams all sit on the shared faint
     // alpha" — UI-R20 #7 already killed the strong start edge), and as a
@@ -934,7 +932,7 @@ class TimelineRowCellsPainter extends CustomPainter
 /// The painted cell strip + its row-level interaction, shared by the
 /// horizontal row and the X-sheet column (Axis policy):
 /// - raw pointer-down selects the cell under the pointer (instant, the
-///   arena never delays it — the TimelineFrameCell contract);
+///   arena never delays it);
 /// - a no-op onTap keeps a tap recognizer in the arena so scroll slop
 ///   over cells behaves exactly as the widget cells did;
 /// - double-tap opens the cell editor.

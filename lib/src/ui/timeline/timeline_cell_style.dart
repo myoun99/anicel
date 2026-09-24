@@ -6,16 +6,6 @@ import '../theme/text_on_ground.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_exposure_state.dart';
 
-class TimelineCellStyleColors {
-  const TimelineCellStyleColors({
-    required this.background,
-    required this.border,
-  });
-
-  final Color background;
-  final Color border;
-}
-
 /// Drawing exposure blocks read like paper timesheet cells: near-white on
 /// the dark grid so held runs are unmistakable at a glance.
 ///
@@ -507,56 +497,32 @@ Color storyboardCutBlockEdgeColor(
   );
 }
 
-TimelineCellStyleColors timelineCellStyleColors({
-  required ColorScheme colorScheme,
-  required TimelineCellExposureState exposureState,
-  required bool selected,
+/// The paper a cell lays down in [exposureState] — [paper] on a covered cell,
+/// nothing on an empty one.
+///
+/// 🪦A per-cell BORDER and a SELECTED variant stood beside this. D32/D38
+/// (2026-08-18) took the border off the painted rows — a full rect per cell
+/// double-stroked every seam — and the selection is the cursor layer's band;
+/// the widget cell (`TimelineFrameCell`) was their last reader, and it went
+/// when the instance-edit preview started asking the row painter
+/// (2026-09-24).
+Color timelineCellPaper(
+  TimelineCellExposureState exposureState, {
   Color paper = timelineDrawingHeldColor,
-}) {
+}) => switch (exposureState) {
   // UI-R21 #2: empty cells paint NOTHING — the ground under them is the
   // grid sheet's (I-44: the host colour, the active-row wash), so the cell
   // substrate carries no per-row state at all.
-  const emptyBaseColor = Colors.transparent;
-  final exposureColor = switch (exposureState) {
-    TimelineCellExposureState.uncovered ||
-    TimelineCellExposureState.markUncovered => emptyBaseColor,
-    // ⑲ (user, 2026-08-12): 「블록 모드의 프레임블록은 레이어 색라벨 색을
-    // 그대로 따라간다 (…) 그냥 블록의 고정 하얀색을 레이어 색라벨
-    // 따라가도록」. START and HELD were two names for one number and stay
-    // that way — a run is one sheet of paper, and only its seams differ.
-    TimelineCellExposureState.drawingStart ||
-    TimelineCellExposureState.held ||
-    TimelineCellExposureState.markHeld => paper,
-  };
-  // UI-R18 #8: the GRID OVERLAY owns every plain per-cell line now —
-  // uncovered cells draw no border of their own, and the paper blocks'
-  // seams (block START included, UI-R20 #7: the dark head silhouette is
-  // gone) all sit on the shared faint alpha.
-  final exposureBorderColor = switch (exposureState) {
-    TimelineCellExposureState.uncovered ||
-    TimelineCellExposureState.markUncovered => Colors.transparent,
-    TimelineCellExposureState.drawingStart ||
-    TimelineCellExposureState.held ||
-    TimelineCellExposureState.markHeld => colorScheme.outlineVariant.withValues(
-      alpha: timelineBaseGridAlpha,
-    ),
-  };
-
-  if (!selected) {
-    return TimelineCellStyleColors(
-      background: exposureColor,
-      border: exposureBorderColor,
-    );
-  }
-
-  return TimelineCellStyleColors(
-    background: Color.alphaBlend(
-      timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-      exposureColor,
-    ),
-    border: timelineSelectedFrameBorderColor,
-  );
-}
+  TimelineCellExposureState.uncovered ||
+  TimelineCellExposureState.markUncovered => Colors.transparent,
+  // ⑲ (user, 2026-08-12): 「블록 모드의 프레임블록은 레이어 색라벨 색을
+  // 그대로 따라간다 (…) 그냥 블록의 고정 하얀색을 레이어 색라벨
+  // 따라가도록」. START and HELD were two names for one number and stay
+  // that way — a run is one sheet of paper, and only its seams differ.
+  TimelineCellExposureState.drawingStart ||
+  TimelineCellExposureState.held ||
+  TimelineCellExposureState.markHeld => paper,
+};
 
 /// 🪦**`timelineRowLabelSplash` · `timelineRowLabelHighlight` stood here.**
 ///

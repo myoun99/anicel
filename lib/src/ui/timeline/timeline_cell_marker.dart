@@ -8,11 +8,12 @@ import 'timeline_se_row_visual.dart';
 /// `X`, a drawing's name or the in-between mark, the mark on its own, or
 /// nothing.
 ///
-/// One table for the row painter and the dialog miniature
-/// (`TimelineFrameCell`). Until 2026-09-03 the miniature kept its own copy,
-/// and that copy still stopped the X at the playback range — the rule the
-/// user retired on 2026-08-02 (an empty run starts where it starts). Two
-/// spellings of one law drift; this is the one.
+/// One table for every row — the dialog miniature included, which draws
+/// through the row painter since 2026-09-24. Until 2026-09-03 the miniature
+/// (then a widget cell of its own) kept its own copy, and that copy still
+/// stopped the X at the playback range — the rule the user retired on
+/// 2026-08-02 (an empty run starts where it starts). Two spellings of one
+/// law drift; this is the one.
 String timelineCellMarker({
   required Layer layer,
   required TimelineCellExposureState exposureState,

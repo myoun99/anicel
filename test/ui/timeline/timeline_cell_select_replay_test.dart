@@ -5,8 +5,9 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:anicel/src/ui/timeline/timeline_exposure_block_visual.dart';
-import 'package:anicel/src/ui/timeline/timeline_frame_cell.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+
+import 'timeline_frame_geometry_probe.dart';
 
 /// Selection must NEVER rewind: with onDoubleTap registered, an InkWell
 /// onTap resolves ~300ms late, so tapping cell B right after cell A used to
@@ -19,44 +20,80 @@ import 'package:anicel/src/ui/timeline/timeline_frame_cell.dart';
 /// always has. The two tests at the bottom are the pair that pins it — one
 /// fails if a device starts acting on the press again, the other if a drag
 /// stops being exempt.
+///
+/// ↪️These ran on the widget cell (`TimelineFrameCell`) until 2026-09-24,
+/// when its last user — the instance-edit dialog's miniature — started
+/// drawing through the row painter and the widget went. The law was never
+/// the widget's: the painted rows every timeline draws take it from the
+/// same [InstantTapRegion], so it is pinned where the user presses now.
 void main() {
+  const extent = 24.0;
+  const cross = 28.0;
+  const frames = 8;
+
+  final layer = Layer(id: const LayerId('layer'), name: 'L', frames: const []);
+
+  Future<void> pumpRow(
+    WidgetTester tester, {
+    required ValueChanged<int> onSelectFrame,
+    void Function(LayerId layerId, int frameIndex)? onActivateCell,
+  }) async {
+    final geometry = testFrameGeometry(
+      frameCellExtent: extent,
+      frameEndIndexExclusive: frames,
+    );
+    addTearDown(geometry.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: frames * extent,
+              height: cross,
+              child: Builder(
+                builder: (context) => timelineRowCellsPaintArea(
+                  context: context,
+                  keyPrefix: 'timeline',
+                  layer: layer,
+                  geometry: geometry,
+                  crossAxisExtent: cross,
+                  axis: Axis.horizontal,
+                  exposureStateForLayer: (_, _) =>
+                      TimelineCellExposureState.uncovered,
+                  onSelectLayer: (_) {},
+                  onSelectFrame: onSelectFrame,
+                  onActivateCell: onActivateCell,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Offset cellCentre(WidgetTester tester, int frame) =>
+      tester.getTopLeft(
+        find.byKey(const ValueKey<String>('timeline-row-cells-layer')),
+      ) +
+      Offset(frame * extent + extent / 2, cross / 2);
+
   testWidgets('quick successive taps never re-select the previous cell', (
     tester,
   ) async {
     final selections = <int>[];
-    final layer = Layer(
-      id: const LayerId('layer'),
-      name: 'L',
-      frames: const [],
-    );
-
-    Widget cell(int frameIndex) => TimelineFrameCell(
-      layer: layer,
-      frameIndex: frameIndex,
-      active: true,
-      outsidePlaybackRange: false,
-      exposureState: TimelineCellExposureState.uncovered,
-      exposureBlockSegment: TimelineExposureBlockVisualSegment.none,
-      onSelectLayer: (_) {},
+    // Double-tap registered = the arena defers plain taps (the bug's
+    // precondition on every layer kind since the entrance unification).
+    await pumpRow(
+      tester,
       onSelectFrame: selections.add,
-      // Double-tap registered = the arena defers plain taps (the bug's
-      // precondition on every layer kind since the entrance unification).
       onActivateCell: (_, _) {},
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(body: Row(children: [cell(0), cell(1)])),
-      ),
-    );
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-0')),
-    );
+    await tester.tapAt(cellCentre(tester, 0));
     await tester.pump(const Duration(milliseconds: 120));
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1')),
-    );
+    await tester.tapAt(cellCentre(tester, 1));
     // Let every deferred recognizer deadline fire.
     await tester.pump(const Duration(milliseconds: 700));
 
@@ -75,34 +112,15 @@ void main() {
 
   testWidgets('double-tap still activates the cell editor', (tester) async {
     final activated = <int>[];
-    final layer = Layer(
-      id: const LayerId('layer'),
-      name: 'L',
-      frames: const [],
+    await pumpRow(
+      tester,
+      onSelectFrame: (_) {},
+      onActivateCell: (_, frame) => activated.add(frame),
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TimelineFrameCell(
-            layer: layer,
-            frameIndex: 3,
-            active: true,
-            outsidePlaybackRange: false,
-            exposureState: TimelineCellExposureState.uncovered,
-            exposureBlockSegment: TimelineExposureBlockVisualSegment.none,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onActivateCell: (_, frame) => activated.add(frame),
-          ),
-        ),
-      ),
-    );
-
-    final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-3'));
-    await tester.tap(cell);
+    await tester.tapAt(cellCentre(tester, 3));
     await tester.pump(const Duration(milliseconds: 80));
-    await tester.tap(cell);
+    await tester.tapAt(cellCentre(tester, 3));
     await tester.pumpAndSettle();
 
     expect(activated, [3]);
@@ -128,33 +146,14 @@ void main() {
   ]) {
     testWidgets('T10 a ${kind.name} press picks on the DOWN', (tester) async {
       final selections = <int>[];
-      final layer = Layer(
-        id: const LayerId('layer'),
-        name: 'L',
-        frames: const [],
+      await pumpRow(
+        tester,
+        onSelectFrame: selections.add,
+        onActivateCell: (_, _) {},
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: TimelineFrameCell(
-              layer: layer,
-              frameIndex: 2,
-              active: true,
-              outsidePlaybackRange: false,
-              exposureState: TimelineCellExposureState.uncovered,
-              exposureBlockSegment: TimelineExposureBlockVisualSegment.none,
-              onSelectLayer: (_) {},
-              onSelectFrame: selections.add,
-              onActivateCell: (_, _) {},
-            ),
-          ),
-        ),
-      );
-
-      final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-2'));
       final gesture = await tester.startGesture(
-        tester.getCenter(cell),
+        cellCentre(tester, 2),
         kind: kind,
       );
       await tester.pump(const Duration(milliseconds: 200));
@@ -179,7 +178,7 @@ void main() {
   /// 🚨The finger, BOTH ways — one body, driven twice.
   ///
   /// Written as a loop on purpose: the carve-out and its lift are the same
-  /// press through the same widget, and only the setting differs. Two
+  /// press through the same row, and only the setting differs. Two
   /// hand-written copies would let one drift while the other kept passing.
   for (final (draws, expectOnPress) in const [(true, true), (false, false)]) {
     testWidgets(
@@ -195,34 +194,14 @@ void main() {
         });
 
         final selections = <int>[];
-        final layer = Layer(
-          id: const LayerId('layer'),
-          name: 'L',
-          frames: const [],
-        );
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: TimelineFrameCell(
-                layer: layer,
-                frameIndex: 2,
-                active: true,
-                outsidePlaybackRange: false,
-                exposureState: TimelineCellExposureState.uncovered,
-                exposureBlockSegment: TimelineExposureBlockVisualSegment.none,
-                onSelectLayer: (_) {},
-                onSelectFrame: selections.add,
-                onActivateCell: (_, _) {},
-              ),
-            ),
-          ),
+        await pumpRow(
+          tester,
+          onSelectFrame: selections.add,
+          onActivateCell: (_, _) {},
         );
 
         final gesture = await tester.startGesture(
-          tester.getCenter(
-            find.byKey(const ValueKey<String>('timeline-cell-layer-2')),
-          ),
+          cellCentre(tester, 2),
           kind: PointerDeviceKind.touch,
         );
         await tester.pump(const Duration(milliseconds: 200));
@@ -252,33 +231,14 @@ void main() {
   testWidgets('T10 a press that TRAVELS has already picked, and that is the '
       'cost the user named', (tester) async {
     final selections = <int>[];
-    final layer = Layer(
-      id: const LayerId('layer'),
-      name: 'L',
-      frames: const [],
+    await pumpRow(
+      tester,
+      onSelectFrame: selections.add,
+      onActivateCell: (_, _) {},
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TimelineFrameCell(
-            layer: layer,
-            frameIndex: 5,
-            active: true,
-            outsidePlaybackRange: false,
-            exposureState: TimelineCellExposureState.uncovered,
-            exposureBlockSegment: TimelineExposureBlockVisualSegment.none,
-            onSelectLayer: (_) {},
-            onSelectFrame: selections.add,
-            onActivateCell: (_, _) {},
-          ),
-        ),
-      ),
-    );
-
-    final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-5'));
     final gesture = await tester.startGesture(
-      tester.getCenter(cell),
+      cellCentre(tester, 5),
       kind: PointerDeviceKind.stylus,
     );
     // Past the travel slop, in steps — one big jump is not how a drag
@@ -295,8 +255,8 @@ void main() {
       [5],
       reason:
           '⛔This used to assert `isEmpty` — 「a drag must not leave a pick '
-          'behind it」. T10 reverses it, and the user named the cost when he '
-          'chose it: 「범위 드래그를 시작만 해도 액티브가 옮겨간다」. What '
+          'behind it」. T10 reverses it, and the user named the cost when '
+          'they chose it: 「범위 드래그를 시작만 해도 액티브가 옮겨간다」. What '
           'protects the DRAG is not the pick being withheld, it is the '
           'clearing being withheld — a press inside a selection stands '
           'without wiping it, so the range the drag was about to carry '

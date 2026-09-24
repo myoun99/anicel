@@ -10,8 +10,6 @@ import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
-import 'package:anicel/src/ui/timeline/timeline_exposure_block_visual.dart';
-import 'package:anicel/src/ui/timeline/timeline_frame_cell.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SePaperSpan;
@@ -117,44 +115,6 @@ void main() {
     expect(painter.resolvedCellStyleFor(0).radius?.topLeft, law);
     expect(painter.resolvedCellStyleFor(2).radius?.bottomRight, law);
     expect(painter.resolvedCellStyleFor(1).radius?.topLeft, Radius.zero);
-  });
-
-  testWidgets('a widget cell rounds by the law too', (tester) async {
-    final frameCell = TimelineFrameCell(
-      layer: Layer(
-        id: const LayerId('a'),
-        name: 'A',
-        frames: const [],
-        timeline: const {},
-      ),
-      frameIndex: 0,
-      active: false,
-      outsidePlaybackRange: false,
-      exposureState: TimelineCellExposureState.drawingStart,
-      exposureBlockSegment: timelineExposureBlockSegmentAt(
-        frameIndex: 0,
-        stateAt: (index) => index == 0 || index == 1
-            ? TimelineCellExposureState.held
-            : TimelineCellExposureState.uncovered,
-      ),
-      onSelectLayer: (_) {},
-      onSelectFrame: (_) {},
-      width: cell,
-      height: cross,
-    );
-    await tester.pumpWidget(
-      MaterialApp(home: Material(child: Center(child: frameCell))),
-    );
-    final box = tester.widget<Container>(
-      find.descendant(
-        of: find.byType(TimelineFrameCell),
-        matching: find.byType(Container),
-      ),
-    );
-    final radius = (box.decoration! as BoxDecoration).borderRadius!
-        as BorderRadius;
-    expect(radius.topLeft, law);
-    expect(radius.topRight, Radius.zero);
   });
 
   testWidgets('the SE paper span rounds by the law', (tester) async {

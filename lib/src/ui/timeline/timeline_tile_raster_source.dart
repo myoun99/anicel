@@ -5,17 +5,16 @@ import '../text/word_condensation.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_block_visual.dart';
 
-/// One DRAWING row's frame cells as a single painter (UI-R9 #12b, the
-/// hybrid painterization): the dense, mostly-static cell strip — paper
-/// blocks, borders, glyphs, ghost dim, band tints — is pure canvas work,
-/// so the per-cell widget pipeline (Element + RenderObject + InkWell +
-/// Material ink + Semantics per cell) disappears for the rows that carry
-/// hundreds of cells. Sparse interactive chrome (edge grips, run handles,
-/// the range gesture layer, the cursor layer) stays widgets ON TOP.
+/// One row's frame cells as a single painter (UI-R9 #12b, the
+/// painterization): the dense, mostly-static cell strip — paper blocks,
+/// glyphs, ghost dim, band tints — is pure canvas work, so the per-cell
+/// widget pipeline (Element + RenderObject + InkWell + Material ink +
+/// Semantics per cell) is gone. Sparse interactive chrome (edge grips, run
+/// handles, the range gesture layer, the cursor layer) stays widgets ON TOP.
 ///
-/// The visual contract mirrors `TimelineFrameCell` exactly — that widget
-/// remains the renderer for the sparse row kinds (SE / instruction /
-/// camera).
+/// Every row kind draws through it, and so does the instance-edit dialog's
+/// miniature — the widget cell that once rendered the sparse kinds
+/// (`TimelineFrameCell`) is gone (2026-09-24).
 class TimelineRowCellModel {
   const TimelineRowCellModel({
     required this.frameIndex,
