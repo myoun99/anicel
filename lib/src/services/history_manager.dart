@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/brush_frame_key.dart';
+import '../models/standing_place.dart';
 import 'cels_ahead.dart';
 import 'command.dart';
 import 'memory_pressure_budget.dart';
@@ -99,6 +100,46 @@ class HistoryManager extends ChangeNotifier {
   final List<Command> _undoStack = <Command>[];
   final List<Command> _redoStack = <Command>[];
 
+  /// 🚨★★★I-41 — WHERE EACH EDIT WAS MADE, asked at the moment it lands.
+  ///
+  /// 🗣️유저 2026-09-24: 「그곳으로 이동해서 편집되돌리고 리두대칭」 — the
+  /// first undo walks to the edit, the next one takes it back. So every
+  /// entry remembers where the user stood, and [_push] — the one door every
+  /// entry comes through, groups included — is where it is written. ⛔Not
+  /// per command: which kind of edit it is has nothing to do with where the
+  /// user was.
+  ///
+  /// Null keeps no places (a history no editor stands in).
+  StandingPlace? Function()? placeNow;
+
+  /// Weak, so an entry that falls off the deep end takes its place along.
+  final Expando<StandingPlace> _places = Expando<StandingPlace>('I-41');
+
+  /// Where the next undo's edit was made, or null when nothing says.
+  StandingPlace? get undoPlace =>
+      _undoStack.isEmpty ? null : _places[_undoStack.last];
+
+  /// Where the next redo's edit was made, or null when nothing says — or
+  /// when the next redo is a walk back ([redoWalksBack]).
+  StandingPlace? get redoPlace =>
+      _redoStack.isEmpty ? null : _places[_redoStack.last];
+
+  /// Whether the next redo returns the user to where they stood before an
+  /// undo walked them away, rather than redoing an edit.
+  bool get redoWalksBack =>
+      _redoStack.isNotEmpty && _redoStack.last is WalkBack;
+
+  /// Leaves the way back on the redo side — the undo that walked to an edit
+  /// calls this, so the redo that answers it walks back (「리두대칭」).
+  ///
+  /// ⚠️It clears nothing: a walk is not an edit, and the redo stack under
+  /// it is still the user's to take.
+  void leaveWalkBack(WalkBack step) {
+    _redoStack.add(step);
+    _revision += 1;
+    notifyListeners();
+  }
+
   bool get canUndo => _undoStack.isNotEmpty;
 
   bool get canRedo => _redoStack.isNotEmpty;
@@ -187,6 +228,10 @@ class HistoryManager extends ChangeNotifier {
   }
 
   void _push(Command command) {
+    final place = placeNow?.call();
+    if (place != null) {
+      _places[command] = place;
+    }
     _undoStack.add(command);
     if (_undoStack.length > maxEntries) {
       // The oldest commands fall off the deep end, PS-style — and take
@@ -543,7 +588,11 @@ class HistoryManager extends ChangeNotifier {
     }
     final command = from.removeLast();
     apply(command);
-    to.add(command);
+    // A walk back is spent by the redo that takes it — it is not an edit,
+    // so there is nothing for an undo to take back.
+    if (command is! WalkBack) {
+      to.add(command);
+    }
     _revision += 1;
     // The bytes did not move anywhere, but the budget may have been
     // lowered by pressure since the last push — and nothing else runs
@@ -561,4 +610,24 @@ class HistoryManager extends ChangeNotifier {
     _revision += 1;
     notifyListeners();
   }
+}
+
+/// The way back from an undo that walked to an edit (I-41): redone, it
+/// walks the user back to where they stood. It is never an edit, so it
+/// never reaches the undo side ([HistoryManager.leaveWalkBack]).
+class WalkBack implements Command {
+  WalkBack(this._walk);
+
+  final VoidCallback _walk;
+
+  @override
+  String get description => 'Walk back';
+
+  @override
+  void execute() => _walk();
+
+  /// Never called: a walk back leaves the redo side only by being redone,
+  /// and a redone one is spent.
+  @override
+  void undo() {}
 }

@@ -47,6 +47,7 @@ import '../models/layer.dart';
 import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../models/layer_id.dart';
+import '../models/standing_place.dart';
 import '../models/layer_kind.dart';
 import '../models/media_asset.dart'
     show MediaAssetKind, mediaAssetKindForPath, normalizedMediaPath;
@@ -212,7 +213,7 @@ class EditorSessionManager extends ChangeNotifier
        repository = ProjectRepository(initialProject: initialProject) {
     appSettings.attachOnionSkin(onionSkin.settings);
     appSettings.restore();
-    historyManager = HistoryManager();
+    historyManager = HistoryManager()..placeNow = () => standingPlace;
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
       editingSession: editingSession,
@@ -1837,18 +1838,64 @@ class EditorSessionManager extends ChangeNotifier
     notifyListeners();
   }
 
+  /// Where the user stands — the cut, the row and the frame; null in the
+  /// gap between cuts. What the history writes beside every entry (I-41).
+  StandingPlace? get standingPlace {
+    final cut = activeCutId;
+    return cut == null
+        ? null
+        : (cut: cut, layer: activeLayerId, frame: currentFrameIndex);
+  }
+
   /// ⚠️Through [historyPictures], never straight to the history: a step
   /// whose pictures are not ready yet waits for them instead of showing a
   /// blank frame.
-  void undo() => historyPictures.step(
-    undo: true,
-    apply: () => _stepHistory(historyManager.undo),
-  );
+  ///
+  /// 🚨★★★I-41 (유저 2026-09-24): 「지금 위치가 그곳과 다르면 첫 언두는
+  /// 그곳으로 이동만, 다음 언두가 편집을 되돌린다 … 리두는 대칭」. Standing
+  /// elsewhere than the edit was made, the undo only WALKS there
+  /// ([Standing.standOn]) and leaves the way back for redo.
+  void undo() {
+    _adoptPendingWork();
+    final here = standingPlace;
+    final there = historyManager.undoPlace;
+    if (here != null &&
+        there != null &&
+        standing.isElsewhere(there, from: here)) {
+      historyManager.leaveWalkBack(WalkBack(() => standing.standOn(here)));
+      standing.standOn(there);
+      return;
+    }
+    historyPictures.step(
+      undo: true,
+      apply: () => _stepHistory(historyManager.undo),
+    );
+  }
 
-  void redo() => historyPictures.step(
-    undo: false,
-    apply: () => _stepHistory(historyManager.redo),
-  );
+  /// The mirror of [undo]: a redo whose edit was made elsewhere walks there
+  /// first, and the walk an undo left behind takes the user back.
+  void redo() {
+    _adoptPendingWork();
+    final here = standingPlace;
+    final there = historyManager.redoPlace;
+    if (!historyManager.redoWalksBack &&
+        here != null &&
+        there != null &&
+        standing.isElsewhere(there, from: here)) {
+      standing.standOn(there);
+      return;
+    }
+    historyPictures.step(
+      undo: false,
+      apply: () => _stepHistory(historyManager.redo),
+    );
+  }
+
+  /// ⚠️BEFORE the walk is decided, not inside the step: work still in hand
+  /// (a pending move) lands as an entry made HERE, and that entry is what
+  /// the press is for — asked first, the walk would carry the user away
+  /// from it.
+  void _adoptPendingWork() => historyManager.onBeforeUndoRedo?.call();
 
   // --- Layer state / commands --------------------------------------------
 

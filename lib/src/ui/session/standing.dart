@@ -2,6 +2,7 @@ import '../../services/editing/active_cut_helpers.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/standing_place.dart';
 import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
@@ -639,6 +640,81 @@ class Standing {
     if (changed) {
       _changes.notifyChanged();
     }
+  }
+
+  /// Whether standing at [from] is standing somewhere other than [there] —
+  /// the question an undo asks before it takes an edit back (I-41).
+  ///
+  /// A different cut or frame is; a different row is only while [there]'s
+  /// row still exists. ⚠️An edit that REMOVED the row it was made on is
+  /// taken back right where the cut and frame match: the undo brings the
+  /// row back, and the standing law ([keepStandingShown]) stands the user
+  /// on it. A place whose cut is gone is nowhere to walk to.
+  bool isElsewhere(StandingPlace there, {required StandingPlace from}) {
+    final cut = _project.cutById(there.cut);
+    if (cut == null) {
+      return false;
+    }
+    if (there.cut != from.cut || there.frame != from.frame) {
+      return true;
+    }
+    final row = there.layer;
+    return row != null &&
+        row != from.layer &&
+        cut.layers.any((layer) => layer.id == row);
+  }
+
+  /// 🚨★★★I-41 — WALKS THE USER TO [place]: its cut, its row, its frame, and
+  /// then shows the row.
+  ///
+  /// 🗣️유저 2026-09-24: 「그곳으로 이동해서 편집되돌리고」, with F-169's ②
+  /// 「언두시에 접혀있는 레이어로 이동하면 펼치고 해당 레이어에 서게」 and ③
+  /// 「스크롤밖이면 스크롤 조정」. What hides the row opens: its folders
+  /// ([_openFoldersAbove]), then the rail's view of it ([keepStandingShown]
+  /// with reveal), and the rails scroll it into view.
+  ///
+  /// ⚠️Only the cut, the row and the frame move (유저: 「화면 확대·스크롤·
+  /// 선택범위·도구는 그대로」).
+  void standOn(StandingPlace place) {
+    if (_project.cutById(place.cut) == null) {
+      return;
+    }
+    selectCut(place.cut);
+    final row = place.layer;
+    if (row != null && _project.layers.any((layer) => layer.id == row)) {
+      _openFoldersAbove(row);
+      selectLayer(row);
+    }
+    _selection.selectFrameIndex(place.frame);
+    keepStandingShown(reveal: true);
+    _rangeSelections.revealSelection();
+  }
+
+  /// Opens every shut folder above [row], OUTSIDE history.
+  ///
+  /// ⛔A fold is an edit that undoes (유저 2026-08-29) — but this one is not
+  /// the user's: it is the walk an undo makes, and written into history it
+  /// would clear the redo side and make the NEXT undo re-fold the folder
+  /// instead of taking the edit back, breaking both halves of I-41's
+  /// answer (「다음 언두가 편집을 되돌린다」, 「리두대칭」). Decided on the
+  /// I-41 card at 착수, 2026-09-24.
+  void _openFoldersAbove(LayerId row) {
+    final stack = _project.layers;
+    final layer = stack.firstWhere((layer) => layer.id == row);
+    final shut = [
+      for (final folder in LayerFolderIndex(stack).ancestryOf(layer.folderId))
+        if (folder.collapsed) folder.id,
+    ];
+    if (shut.isEmpty) {
+      return;
+    }
+    for (final folder in shut) {
+      _project.repository.updateLayer(
+        layerId: folder,
+        update: (layer) => layer.copyWith(collapsed: false),
+      );
+    }
+    _changes.notifyChanged();
   }
 
   /// 🚨★★THE STANDING LAW (F-169, 유저 2026-09-24): ①「보이는거만 선택가능하고
