@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kTouchSlop;
 import 'package:flutter/widgets.dart';
 
@@ -41,10 +44,25 @@ class TouchShortcutLayer extends StatefulWidget {
   const TouchShortcutLayer({
     super.key,
     required this.onGesture,
+    this.playing,
     required this.child,
   });
 
   final ValueChanged<TouchGesture> onGesture;
+
+  /// Whether anything plays. A gesture whose FIRST finger lands while this
+  /// reads true fires nothing when its fingers lift.
+  ///
+  /// 🚨T28-c (유저): 「재생 중 첫 작동은 정지이고, **정지일 뿐이다**」. On the
+  /// playing canvas the fingers pass through to navigate (D13), and the
+  /// panel's own tap-to-stop stops playback when the first of them lifts —
+  /// so by the time the gesture fired, nothing played any more and the
+  /// action funnel's playback check let it through. Measured 2026-09-24: a
+  /// four-finger tap stopped playback and then started it again, and a
+  /// two-finger tap stopped it AND undid. The question has to be asked when
+  /// the gesture BEGINS, which only this layer sees.
+  final ValueListenable<bool>? playing;
+
   final Widget child;
 
   /// Releases faster than this are taps; slower ones are holds.
@@ -62,6 +80,9 @@ class _TouchShortcutLayerState extends State<TouchShortcutLayer> {
   int _maxSimultaneous = 0;
   bool _moved = false;
 
+  /// The gesture began while something played ([TouchShortcutLayer.playing]).
+  bool _spentOnStop = false;
+
   /// Event timestamps (not wall clock): correct under the test binding's
   /// fake clock AND the engine's event times on device.
   Duration? _firstDown;
@@ -70,6 +91,7 @@ class _TouchShortcutLayerState extends State<TouchShortcutLayer> {
     _downPositions.clear();
     _maxSimultaneous = 0;
     _moved = false;
+    _spentOnStop = false;
     _firstDown = null;
   }
 
@@ -80,6 +102,7 @@ class _TouchShortcutLayerState extends State<TouchShortcutLayer> {
     if (_downPositions.isEmpty) {
       _moved = false;
       _maxSimultaneous = 0;
+      _spentOnStop = widget.playing?.value ?? false;
       _firstDown = event.timeStamp;
     }
     _downPositions[event.pointer] = event.position;
@@ -108,8 +131,9 @@ class _TouchShortcutLayerState extends State<TouchShortcutLayer> {
     final firstDown = _firstDown;
     final fingers = _maxSimultaneous;
     final moved = _moved;
+    final spentOnStop = _spentOnStop;
     _reset();
-    if (moved || firstDown == null || fingers < 2) {
+    if (spentOnStop || moved || firstDown == null || fingers < 2) {
       return;
     }
     final held = event.timeStamp - firstDown;
@@ -125,9 +149,27 @@ class _TouchShortcutLayerState extends State<TouchShortcutLayer> {
       (3, true) => TouchGesture.threeFingerLongPress,
       _ => null,
     };
-    if (gesture != null) {
-      widget.onGesture(gesture);
+    if (gesture == null) {
+      return;
     }
+    // 🚨★★★THE GESTURE FIRES ONCE ITS LIFT HAS BEEN HEARD EVERYWHERE — after
+    // this event's dispatch, not inside it.
+    //
+    // 유저 2026-09-24: 「두손가락 핑거로 언두랑 세손가락 리두가
+    // 안먹히는거같으니」. This listener hears the last finger's up BEFORE the
+    // pointer router does (hit-test targets first, the router last), and the
+    // router is where the app counts the contacts that are down. Fired here,
+    // undo and redo asked F-173's 「is a verb in flight」 while that count
+    // still held the finger that was leaving — and refused, every time.
+    //
+    // A microtask runs the moment the pointer queue drains: the same frame,
+    // no latency. A contact that is REALLY still down — a pen mid-stroke —
+    // is still counted then, so F-173 holds.
+    scheduleMicrotask(() {
+      if (mounted) {
+        widget.onGesture(gesture);
+      }
+    });
   }
 
   void _handleCancel(PointerCancelEvent event) {

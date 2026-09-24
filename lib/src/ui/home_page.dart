@@ -936,6 +936,9 @@ class _HomePageState extends State<HomePage> {
                       // action funnel as key bindings; the layer only observes raw
                       // touches, so drawing and pinch navigation are untouched.
                       child: TouchShortcutLayer(
+                        // T28-c at the gesture's first contact — see the
+                        // field; the funnel's own check comes too late here.
+                        playing: _session.playbackRig.transports,
                         onGesture: (gesture) {
                           final actionId = _shortcuts.actionIdForTouchGesture(
                             gesture,
