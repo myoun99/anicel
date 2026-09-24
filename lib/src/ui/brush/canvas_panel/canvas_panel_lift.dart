@@ -58,6 +58,7 @@ class _CanvasPanelLift {
 
   void openSession({
     required CanvasSelectionRegion region,
+    required CanvasSelectionRegion? userSelection,
     required int token,
     required BitmapSurface holed,
     required BrushDab eraseDab,
@@ -65,6 +66,7 @@ class _CanvasPanelLift {
   }) {
     final session = _MoveSession(
       region: region,
+      userSelection: userSelection,
       token: token,
       key: key,
       eraseDab: eraseDab,
@@ -129,7 +131,17 @@ class _CanvasPanelLift {
   /// ⛔**THE SAME MOVE, NOT THE SAME PIXELS.** The float carries what was
   /// lifted from the cel the session started on; stamping it onto another
   /// cel would paste that drawing into this one. Each cel lifts its OWN
-  /// pixels through the session's region and takes the same displacement.
+  /// pixels and takes the same transform.
+  ///
+  /// 🚨★★★**THROUGH THE USER'S SELECTION, ELSE ITS OWN WHOLE PICTURE** —
+  /// 🗣️유저 2026-09-24 (H41): 「선택도구 사용했으면 어떤프레임이든 선택도구
+  /// 안쪽만, 아니면 각자 그림 전체적용」 · 「다른 프레임 그림의 잘려서
+  /// 변형안먹힌 부분이 있었어」. With nothing selected the session's region
+  /// is the move tool's box around the STANDING cel's ink, and every other
+  /// cel was cut through that same box: whatever of its drawing lay outside
+  /// the standing cel's picture stayed where it was. Each cel now frames
+  /// its own ink ([CanvasSelectionShape.wholePicture], the one the standing
+  /// cel's box is), and only a selection the user made is shared.
   ///
   /// 🚨★★★**ONE LANDING PER CEL, AND THE MAP IS WHAT SAYS SO.** [landOn] —
   /// the standing cel's, carrying the float the preview already resampled —
@@ -190,9 +202,17 @@ class _CanvasPanelLift {
       if (landings.containsKey(cel)) {
         continue;
       }
+      final surface = coordinator.currentSurfaceOf(key);
       final lift = buildSelectionLiftDabs(
-        region: session.region,
-        surface: coordinator.currentSurfaceOf(key),
+        region:
+            session.userSelection ??
+            CanvasSelectionRegion.shape(
+              CanvasSelectionShape.wholePicture(
+                _state.widget.canvasSize,
+                bitmapSurfaceContentBounds(surface),
+              ),
+            ),
+        surface: surface,
         liftId: '${session.token}-${landings.length}',
         options:
             _state.widget.selectionMaskOptions?.value ??
@@ -361,6 +381,7 @@ class _MoveSession {
     required this.token,
     required this.key,
     required this.region,
+    required this.userSelection,
     required this.eraseDab,
     required this.holed,
   });
@@ -368,13 +389,21 @@ class _MoveSession {
   final int token;
   final BrushFrameKey key;
 
-  /// The region this session was cut from.
+  /// The region THIS cel was cut from — the user's selection, or the move
+  /// tool's box around this cel's own ink.
+  final CanvasSelectionRegion region;
+
+  /// The selection the USER made when this session was cut, or null when
+  /// [region] is the move tool's own whole-picture box.
   ///
-  /// 🚨★★★**IT IS WHAT THE OTHER CELS ARE CUT FROM TOO** (F-116-b / F-164).
-  /// A confirm over a frame range moves every cel in it, and each one lifts
-  /// its OWN pixels through this same outline — the float carries the
-  /// pixels of the cel it started on, so stamping it elsewhere would paste
-  /// that cel's drawing into the others.
+  /// 🚨★★★**IT IS WHAT THE OTHER CELS ARE CUT FROM TOO** (F-116-b / F-164)
+  /// — and ONLY it (H41, 유저 2026-09-24: 「선택도구 사용했으면 어떤프레임이든
+  /// 선택도구 안쪽만, 아니면 각자 그림 전체적용」). A confirm over a frame
+  /// range moves every cel in it, and each lifts its OWN pixels: through
+  /// this outline when there is one, through its own whole picture when
+  /// there is not. ↩️Until 09-24 the other cels were cut through [region]
+  /// either way, so with nothing selected they were cut by the STANDING
+  /// cel's ink box and their drawing past it stayed behind.
   ///
   /// ⛔**THE SESSION'S OWN RECORD, NOT THE LIVE CHANNEL** — even though the
   /// two carry the same shape at confirm time today. 🧪Measured 2026-09-18:
@@ -385,7 +414,7 @@ class _MoveSession {
   /// ORDER, not about what this field means: what the other cels must be
   /// cut through is where this session started, and only the session can
   /// answer that without the order having to stay put.
-  final CanvasSelectionRegion region;
+  final CanvasSelectionRegion? userSelection;
   final BrushDab eraseDab;
 
   /// Null after a memory warning took it — never a lost edit, only a lost

@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
+import '../models/pasteboard_bounds.dart';
 
 /// A selection region in canvas coordinates (P9): a closed polygon — the
 /// rectangle marquee is its 4-corner special case, the lasso is the
@@ -25,6 +27,59 @@ class CanvasSelectionShape {
       CanvasPoint(x: maxX, y: minY),
       CanvasPoint(x: maxX, y: maxY),
       CanvasPoint(x: minX, y: maxY),
+    ]);
+  }
+
+  /// 🚨THE WHOLE PICTURE — what a transform takes from a cel when nothing is
+  /// selected (R26 #13: 「선택하지 않은 상황이어도 그림 전체를 이동」): the
+  /// cel's tight INK bounds [content] (PS-style — the box frames the
+  /// picture), the full canvas rect when there are none.
+  ///
+  /// ★ONE SHAPE PER CEL, AND EVERY CEL ASKS IT OF ITSELF. 🗣️유저 2026-09-24
+  /// (H41): 「선택도구 사용했으면 어떤프레임이든 선택도구 안쪽만, 아니면 각자
+  /// 그림 전체적용」 — the cel you stand on frames its own ink, and so does
+  /// every other cel a range confirm lands on. Written once so the two
+  /// cannot disagree about what 「the whole picture」 is.
+  ///
+  /// "The whole picture" means the whole PICTURE, pasteboard included. This
+  /// used to clamp to the canvas rect, which was defended as "the same
+  /// coverage the canvas-rect box had" — but the pasteboard is a first-class
+  /// part of the drawing here, so a transform with nothing selected left the
+  /// off-canvas ink standing still while the rest of the picture moved out
+  /// from under it. The clamp stays, widened to the pasteboard: it is what
+  /// keeps the box inside the finite wall every stage downstream (lift,
+  /// resample, preview, commit) treats as the edge of the world.
+  factory CanvasSelectionShape.wholePicture(
+    CanvasSize canvasSize,
+    ({int left, int top, int rightExclusive, int bottomExclusive})? content,
+  ) {
+    final width = canvasSize.width.toDouble();
+    final height = canvasSize.height.toDouble();
+    var left = 0.0;
+    var top = 0.0;
+    var right = width;
+    var bottom = height;
+    if (content != null) {
+      final wallLeft = canvasSize.pasteboardLeft.toDouble();
+      final wallTop = canvasSize.pasteboardTop.toDouble();
+      final wallRight = canvasSize.pasteboardRightExclusive.toDouble();
+      final wallBottom = canvasSize.pasteboardBottomExclusive.toDouble();
+      left = content.left.toDouble().clamp(wallLeft, wallRight);
+      top = content.top.toDouble().clamp(wallTop, wallBottom);
+      right = content.rightExclusive.toDouble().clamp(wallLeft, wallRight);
+      bottom = content.bottomExclusive.toDouble().clamp(wallTop, wallBottom);
+      if (right <= left || bottom <= top) {
+        left = 0;
+        top = 0;
+        right = width;
+        bottom = height;
+      }
+    }
+    return CanvasSelectionShape([
+      CanvasPoint(x: left, y: top),
+      CanvasPoint(x: right, y: top),
+      CanvasPoint(x: right, y: bottom),
+      CanvasPoint(x: left, y: bottom),
     ]);
   }
 

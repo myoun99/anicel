@@ -677,52 +677,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// selection history entry (the user never selected anything).
   bool _shapeIsImplicitWholePicture = false;
 
-  /// The implicit whole-picture shape: the cel's tight INK bounds when
-  /// the host provides them (PS-style — the box frames the picture), the
-  /// full canvas rect otherwise. Lifting it lifts the whole picture (the
-  /// tool guard upstream already refuses the MOVE tool when the cel has
-  /// no picture at all).
-  ///
-  /// "The whole picture" means the whole PICTURE, pasteboard included.
-  /// This used to clamp to the canvas rect, which was defended as "the
-  /// same coverage the canvas-rect box had" — but the pasteboard is a
-  /// first-class part of the drawing here, so a transform with nothing
-  /// selected left the off-canvas ink standing still while the rest of
-  /// the picture moved out from under it. The clamp stays, widened to
-  /// the pasteboard: it is what keeps the box inside the finite wall
-  /// every stage downstream (lift, resample, preview, commit) treats as
-  /// the edge of the world.
-  CanvasSelectionShape _wholeCanvasShape() {
-    final width = widget.canvasSize.width.toDouble();
-    final height = widget.canvasSize.height.toDouble();
-    var left = 0.0;
-    var top = 0.0;
-    var right = width;
-    var bottom = height;
-    final content = widget.contentBoundsProvider?.call();
-    if (content != null) {
-      final wallLeft = widget.canvasSize.pasteboardLeft.toDouble();
-      final wallTop = widget.canvasSize.pasteboardTop.toDouble();
-      final wallRight = widget.canvasSize.pasteboardRightExclusive.toDouble();
-      final wallBottom = widget.canvasSize.pasteboardBottomExclusive.toDouble();
-      left = content.left.toDouble().clamp(wallLeft, wallRight);
-      top = content.top.toDouble().clamp(wallTop, wallBottom);
-      right = content.rightExclusive.toDouble().clamp(wallLeft, wallRight);
-      bottom = content.bottomExclusive.toDouble().clamp(wallTop, wallBottom);
-      if (right <= left || bottom <= top) {
-        left = 0;
-        top = 0;
-        right = width;
-        bottom = height;
-      }
-    }
-    return CanvasSelectionShape([
-      CanvasPoint(x: left, y: top),
-      CanvasPoint(x: right, y: top),
-      CanvasPoint(x: right, y: bottom),
-      CanvasPoint(x: left, y: bottom),
-    ]);
-  }
+  /// The implicit whole-picture shape of the cel you stand on
+  /// ([CanvasSelectionShape.wholePicture], from the host's ink bounds).
+  /// Lifting it lifts the whole picture (the tool guard upstream already
+  /// refuses the MOVE tool when the cel has no picture at all).
+  CanvasSelectionShape _wholeCanvasShape() => CanvasSelectionShape.wholePicture(
+    widget.canvasSize,
+    widget.contentBoundsProvider?.call(),
+  );
 
   /// Installs [shape] as the live implicit whole-picture selection.
   /// Callers wrap in setState.

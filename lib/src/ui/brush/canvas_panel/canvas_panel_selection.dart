@@ -146,6 +146,9 @@ class _CanvasPanelSelection {
       eraseDab: lift.eraseDab,
       key: coordinator.activeFrameKey,
       region: region,
+      // What the USER selected (F-108's [CanvasSelectionCommands.region]) —
+      // null when this box is the move tool's own whole-picture target.
+      userSelection: _state.widget.selectionCommands?.region,
     );
     _state._rebuild(() {});
     return (liftToken: token, stampDab: lift.stampDab);

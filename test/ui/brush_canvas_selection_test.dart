@@ -1539,6 +1539,67 @@ void main() {
     );
   });
 
+  /// 🚨★★★**H41 — WITH NOTHING SELECTED, EVERY CEL MOVES ITS WHOLE PICTURE.**
+  ///
+  /// 🗣️유저 2026-09-24, 실기: 「현재 프레임의 그림을 기준으로 선택해서 다른
+  /// 프레임도 변형하는느낌? 선택도구 사용했으면 어떤프레임이든 선택도구
+  /// 안쪽만, 아니면 각자 그림 전체적용이 안지켜지고있는거같아. 다른 프레임
+  /// 그림의 잘려서 변형안먹힌 부분이 있었어」. With nothing selected the box
+  /// frames the STANDING cel's ink, and the other cels were cut through that
+  /// same box: frame two's drawing outside frame one's picture stayed put.
+  /// (The selected half of the law is the case above: its witness outside
+  /// the outline stays where it was.)
+  testWidgets('🚨with NOTHING selected every cel in the range moves its whole '
+      'picture — not what the standing cel\'s box happens to cover', (
+    tester,
+  ) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      transformTargetKeys: () => [keys[0], keys[1]],
+    );
+    // Frame two: ink where frame one has ink too, and ink FAR outside frame
+    // one's picture (the fixture draws 30..60).
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(
+      sourceDabs: [dab(45, 45), dab(120, 120)],
+    );
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    expect(env.commands.region, isNull, reason: '⛔전제: 아무것도 선택 안 함');
+
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 10,
+      ty: 5,
+      rotationDegrees: 0,
+      scale: 1,
+    );
+    await tester.pump();
+    env.commands.applyTransform();
+    await tester.pump();
+
+    env.coordinator.selectFrame(keys[1]);
+    expect(
+      inkAt(env.coordinator, 130, 125),
+      isNonZero,
+      reason: '「각자 그림 전체적용」 — frame two\'s ink outside frame one\'s '
+          'picture moved with the rest of it',
+    );
+    expect(
+      inkAt(env.coordinator, 120, 120),
+      0,
+      reason: '⛔left behind here is the defect: cut by frame one\'s box',
+    );
+    expect(
+      inkAt(env.coordinator, 55, 50),
+      isNonZero,
+      reason: 'and its ink inside that box moved too',
+    );
+  });
+
   /// ⛔**A LADDER THAT NAMES THE STANDING CEL COSTS THE SAME.** The range a
   /// user selects normally DOES include the cel they are standing on, so
   /// the confirm must not land that one twice.
