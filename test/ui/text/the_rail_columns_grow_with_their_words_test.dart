@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/words_cut_off.dart';
@@ -142,6 +143,19 @@ void main() {
         final heading = legendOpacity(tester, find.byType(Scaffold).first);
         expect(heading.top, closeTo(bar.top, 0.5));
         expect(heading.height, closeTo(bar.height, 0.5));
+        // …and runs the whole block the headers run, grown columns and all.
+        final legend = find.byType(TimelineLayerControlsHeader).first;
+        expect(
+          tester.getSize(legend).height,
+          closeTo(
+            XSheetTimelineGrid.naturalHeaderBlockExtent(
+              hasOnionColumn: true,
+              hasBlendColumn: true,
+              columns: layerRailColumnWidthsIn(tester.element(legend)),
+            ),
+            0.5,
+          ),
+        );
       });
 
       testWidgets('the storyboard\'s rail grows its opacity column the same '
