@@ -928,12 +928,17 @@ class LayerMarkChip extends StatelessWidget {
   /// shown」 (see [isVisible]). The three rail surfaces used to pull the
   /// three fields off the layer each in their own argument list (the
   /// round-8 audit, 2026-09-06).
+  ///
+  /// [isVisible] is the row's EYE where the row reads it live (`RailEyes` —
+  /// a memoized timeline row keeps the [layer] it was built with); a surface
+  /// that rebuilds its rows whole leaves it to [layer].
   LayerMarkChip.forLayer(
     Layer layer, {
     Key? key,
     required String keyPrefix,
     required void Function(LayerId layerId, LayerMark mark) onMarkSelected,
     Axis axis = Axis.horizontal,
+    bool? isVisible,
   }) : this(
          key: key,
          keyPrefix: keyPrefix,
@@ -941,7 +946,7 @@ class LayerMarkChip extends StatelessWidget {
          mark: layer.mark,
          onMarkSelected: onMarkSelected,
          axis: axis,
-         isVisible: layer.isVisible,
+         isVisible: isVisible ?? layer.isVisible,
        );
 
   final String keyPrefix;

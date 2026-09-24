@@ -49,6 +49,7 @@ import 'timeline_grid_shell.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'memo_token.dart';
 import 'timeline_layer_controls_row.dart';
+import 'rail_eyes.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
