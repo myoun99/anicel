@@ -1,6 +1,7 @@
 import '../../services/editing/layer_standing_after_change.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -148,25 +149,42 @@ class LayerVerbs {
     };
   }
 
-  /// ⑨: every selected row duplicated, in ONE undo — the rename's twin.
-  void duplicateSelectedLayers() {
+  /// ⑨'s row verbs, ONE undo step over [ids] in the active cut: [command]
+  /// per row, then the refresh — standing on the row the last [command]
+  /// answered with, or on the first of [ids] when none answers.
+  ///
+  /// ★Written once when the THIRD verb of this shape arrived (the link-
+  /// independent button, I-45): duplicate, rename and unlink each spelled
+  /// it out, and the clone ratchet named the pair the third one made.
+  void _eachRowAsOneStep(
+    List<LayerId> ids,
+    String description,
+    LayerId? Function(CutId cutId, LayerId layerId) command,
+  ) {
     final cut = _project.activeCutOrNull;
-    final ids = duplicatableSelectedLayerIds();
     if (cut == null || ids.isEmpty) {
       return;
     }
-    LayerId? landed;
-    _project.historyManager.runAsOneStep('Duplicate rows', () {
+    LayerId? stand;
+    _project.historyManager.runAsOneStep(description, () {
       for (final layerId in ids) {
-        landed = _project.cutCommandCoordinator.duplicateLayer(
-          cutId: cut.id,
-          sourceLayerId: layerId,
-        );
+        stand = command(cut.id, layerId) ?? stand;
       }
     });
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: landed);
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: stand ?? ids.first);
     _changes.notifyChanged();
   }
+
+  /// ⑨: every selected row duplicated, in ONE undo — the rename's twin —
+  /// standing on the last copy.
+  void duplicateSelectedLayers() => _eachRowAsOneStep(
+    duplicatableSelectedLayerIds(),
+    'Duplicate rows',
+    (cutId, layerId) => _project.cutCommandCoordinator.duplicateLayer(
+      cutId: cutId,
+      sourceLayerId: layerId,
+    ),
+  );
 
   /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and
   /// falls back to the row you are standing on. Every caller — the pill
@@ -269,23 +287,17 @@ class LayerVerbs {
   /// 독립시키기 for every selected linked row, as ONE undo step. Two
   /// selected rows of one attach group unlink once: the second finds its
   /// group already forked, and the coordinator's own guard makes it a no-op.
-  void unlinkSelectedLayers() {
-    final ids = linkedSelectedLayerIds();
-    final cut = _project.activeCutOrNull;
-    if (ids.isEmpty || cut == null) {
-      return;
-    }
-    _project.historyManager.runAsOneStep('Unlink rows', () {
-      for (final layerId in ids) {
-        _project.cutCommandCoordinator.unlinkLayer(
-          cutId: cut.id,
-          layerId: layerId,
-        );
-      }
-    });
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: ids.first);
-    _changes.notifyChanged();
-  }
+  void unlinkSelectedLayers() => _eachRowAsOneStep(
+    linkedSelectedLayerIds(),
+    'Unlink rows',
+    (cutId, layerId) {
+      _project.cutCommandCoordinator.unlinkLayer(
+        cutId: cutId,
+        layerId: layerId,
+      );
+      return null;
+    },
+  );
 
   /// 독립시키기: forks the active layer's group out of its links — the
   /// pictures stay identical but stop being shared from here on.
@@ -400,24 +412,18 @@ class LayerVerbs {
   /// One undo step, and the SAME name on every row — the user's words are
   /// "all of them to the same name", not "a numbered series", so nothing
   /// here invents suffixes.
-  void renameSelectedLayers(String name) {
-    final cut = _project.activeCutOrNull;
-    final ids = renameableSelectedLayerIds();
-    if (cut == null || ids.isEmpty) {
-      return;
-    }
-    _project.historyManager.runAsOneStep('Rename rows', () {
-      for (final layerId in ids) {
-        _project.cutCommandCoordinator.renameLayer(
-          cutId: cut.id,
-          layerId: layerId,
-          name: name,
-        );
-      }
-    });
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: ids.first);
-    _changes.notifyChanged();
-  }
+  void renameSelectedLayers(String name) => _eachRowAsOneStep(
+    renameableSelectedLayerIds(),
+    'Rename rows',
+    (cutId, layerId) {
+      _project.cutCommandCoordinator.renameLayer(
+        cutId: cutId,
+        layerId: layerId,
+        name: name,
+      );
+      return null;
+    },
+  );
 
   /// Renames any row by id — folders included, because a folder is a row.
   void renameLayer(LayerId layerId, String name) {

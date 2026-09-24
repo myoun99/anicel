@@ -268,6 +268,38 @@ void main() {
       expect(s.historyManager.undoCount, entries + 1, reason: 'ONE step');
     });
 
+    test('the three row verbs share one step-and-stand: a duplicate stands '
+        'on its last copy, a rename on the first row', () {
+      final s = session();
+      final LayerVerbs layers = s.layerVerbs;
+      final first = row(s).id;
+      s.layerStack.addLayerOfKind(LayerKind.animation);
+      final second = row(s).id;
+      void selectBoth() {
+        s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(first));
+        s.rowSelectionVerbs.rowSelection.value = [
+          LayerRowAddress(first),
+          LayerRowAddress(second),
+        ];
+      }
+
+      selectBoth();
+      final before = {for (final layer in s.layers) layer.id};
+      final undos = s.historyManager.undoCount;
+      layers.duplicateSelectedLayers();
+      expect(s.historyManager.undoCount, undos + 1, reason: 'ONE step');
+      expect(
+        before.contains(s.activeLayerId),
+        isFalse,
+        reason: 'standing on a copy — the last one made',
+      );
+
+      s.selectLayer(second);
+      selectBoth();
+      layers.renameSelectedLayers('X');
+      expect(s.activeLayerId, first, reason: 'a rename stands on the first');
+    });
+
     test('⛔a selected row with no link holds nothing on this rung — the '
         'ladder goes on, as it does for every pill verb', () {
       final s = session();
