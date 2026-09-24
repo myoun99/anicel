@@ -458,6 +458,7 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches: renderCaches,
     frameRate: () => projectSettings.projectFrameRate,
     holdBytes: projectFile.holdMediaBytes,
+    carryFor: projectFile.mediaCarryFor,
   );
 
   late final PlaybackRig playbackRig = PlaybackRig(
@@ -1308,6 +1309,7 @@ class EditorSessionManager extends ChangeNotifier
               resolveConformPath: projectFile.conformPathFor,
               resolveByteSource: projectFile.mediaByteSourceFor,
               resolveCarriedConform: projectFile.carriedConformFor,
+              resolveCarry: projectFile.mediaCarryFor,
               resolveProjectSampleRate: () =>
                   repository.requireProject().audioSampleRate,
               resolveAudioSpeed: () => repository.requireProject().audioSpeed,

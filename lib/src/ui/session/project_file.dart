@@ -71,8 +71,11 @@ class ProjectFile {
   Set<String> _mediaInFile = const {};
 
   /// The carry the pool's [poolPath] asset is right now, or null when the
-  /// pool points at the file ([projectMediaCarryOf]).
-  MediaCarry? _carryOf(String poolPath) =>
+  /// pool points at the file ([projectMediaCarryOf]) — the first half of
+  /// 「where are these bytes」, and what a reader that KEEPS an answer keys
+  /// it by (the conform store, the canvas's movie rows): a path's bytes are
+  /// one carry's, and the pool can come to name another.
+  MediaCarry? mediaCarryFor(String poolPath) =>
       projectMediaCarryOf(_requireProject(), poolPath);
 
   /// What [poolPath]'s bytes ACTUALLY occupy right now, or null when only
@@ -98,7 +101,7 @@ class ProjectFile {
   /// file first — so the size shown is the size of the bytes that are READ.
   /// 🪦The staged copy answered first here alone.
   int? mediaStoredBytesFor(String poolPath) {
-    final carry = _carryOf(poolPath);
+    final carry = mediaCarryFor(poolPath);
     if (carry == null) {
       return null;
     }
@@ -273,10 +276,11 @@ class ProjectFile {
   /// ⚠️Cheap on purpose: a set lookup and a stat. The pool draws a row per
   /// asset and must not open the archive to do it.
   ///
-  /// ⛔The bytes of the carry the pool names NOW ([_carryOf]) — an earlier
-  /// carry of the same path is not this asset's, and a reference has none.
+  /// ⛔The bytes of the carry the pool names NOW ([mediaCarryFor]) — an
+  /// earlier carry of the same path is not this asset's, and a reference
+  /// has none.
   bool projectHoldsMediaBytes(String poolPath) {
-    final carry = _carryOf(poolPath);
+    final carry = mediaCarryFor(poolPath);
     return carry != null &&
         (mediaEntryHeld(_mediaInFile, carry) || _staging.find(carry) != null);
   }
@@ -310,7 +314,7 @@ class ProjectFile {
   /// original, and a staged copy was held under a key the save's
   /// retirement never asked about (audit 2026-09-24).
   ///
-  /// 🚨★★★**THE CARRY THE POOL NAMES NOW, NOT THE PATH** ([_carryOf]).
+  /// 🚨★★★**THE CARRY THE POOL NAMES NOW, NOT THE PATH** ([mediaCarryFor]).
   /// Removed and carried again before a save, one path has two carries —
   /// the old one's entry still in the file for an undo to bring back — and
   /// asked by path, the old entry answered first (card
@@ -319,7 +323,7 @@ class ProjectFile {
   /// same path left in the file or the store.
   ({MediaByteSource source, void Function() Function()? hold})
   _whereTheBytesAre(String poolPath) {
-    final carry = _carryOf(poolPath);
+    final carry = mediaCarryFor(poolPath);
     if (carry == null) {
       return (source: MediaFileBytes(poolPath), hold: null);
     }

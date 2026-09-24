@@ -131,7 +131,16 @@ class MediaPool {
       for (final entry in entries)
         if (seen.add(entry.path)) entry,
     ];
-    await holdCarriedBytes(fresh);
+    final toHold = _carriesToHold(fresh);
+    // ⚠️Waited for ONLY when there is something to hold. Nothing carried,
+    // the entries are recorded in the same breath as the call — the order
+    // an unawaited caller counts on: `AudioClips` registers the sound and
+    // places its clip right after, and a wait here moved the registration
+    // behind the clip, onto the undo the clip should have had
+    // (`audio_import_test`).
+    if (toHold.isNotEmpty) {
+      await _staging.stageCarriedBytes(toHold);
+    }
     // Read after the wait: what landed meanwhile is kept, not written over.
     final pool = mediaAssets;
     final known = {for (final asset in pool) asset.path};
@@ -161,14 +170,19 @@ class MediaPool {
   /// answered yes to, so the new carry's bytes were never taken (card
   /// `recarry-after-remove-reads-the-old`). Each carry is its own now
   /// ([MediaAsset.carriedAs]), and one that arrives is new by definition.
-  Future<void> holdCarriedBytes(Iterable<MediaAsset> arriving) {
+  Future<void> holdCarriedBytes(Iterable<MediaAsset> arriving) =>
+      _staging.stageCarriedBytes(_carriesToHold(arriving));
+
+  /// The carries among [arriving] whose bytes a landing needs held — the
+  /// question [holdCarriedBytes] and [_admit] both ask.
+  List<MediaCarry> _carriesToHold(Iterable<MediaAsset> arriving) {
     final known = {for (final asset in mediaAssets) asset.path};
-    return _staging.stageCarriedBytes([
+    return [
       for (final asset in arriving)
         // The first of a path only — the one a landing records.
         if (known.add(asset.path))
           ?asset.carry,
-    ]);
+    ];
   }
 
   /// Renames the [path] asset's display name; one undo step.

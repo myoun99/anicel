@@ -4,12 +4,21 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
+import 'package:anicel/src/services/audio/wav16_header.dart'
+    show wav16HeaderBytes;
 import 'package:anicel/src/services/media/project_media_sources.dart';
+import 'package:anicel/src/services/media/video_decode_worker.dart'
+    show debugVideoDecodeBackend;
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
+    show anicelMediaEntryName;
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/session/media_pool.dart';
 import 'package:anicel/src/ui/session/project_file.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -47,6 +56,24 @@ void main() {
   final second = Uint8List.fromList(
     List<int>.generate(64 * 1024, (i) => (i ~/ 5 + 101) & 0xFF),
   );
+
+  /// A mono 48k 16-bit WAV [seconds] long — a sound the decoder reads, so
+  /// the conform measures it for real.
+  Uint8List wavOf({required int seconds}) {
+    final samples = Int16List(48000 * seconds);
+    for (var i = 0; i < samples.length; i += 1) {
+      samples[i] = (i * 37) % 4000 - 2000;
+    }
+    final data = samples.buffer.asUint8List();
+    return Uint8List.fromList([
+      ...wav16HeaderBytes(
+        dataBytes: data.length,
+        sampleRate: 48000,
+        channels: 1,
+      ),
+      ...data,
+    ]);
+  }
 
   EditorSessionManager aSession(String staged) => EditorSessionManager(
     initialProject: createDefaultProject(),
@@ -272,6 +299,149 @@ void main() {
     );
   });
 
+  test('a file holds a carry by the carry\'s own name — not because it holds '
+      'another carry of the path', () {
+    final one = (poolPath: path, token: 'c1');
+    final two = (poolPath: path, token: 'c2');
+    expect(
+      mediaEntryHeld({anicelMediaEntryName(one, framed: true)}, one),
+      isTrue,
+    );
+    expect(mediaEntryHeld({anicelMediaEntryName(one)}, one), isTrue);
+    expect(mediaEntryHeld({anicelMediaEntryName(one)}, two), isFalse);
+  });
+
+  test('a carried file whose bytes were never taken is LEFT OUT of a save '
+      'beside media the file holds — not refused', () async {
+    await pool.addMediaAssets([path], carried: true);
+    await save();
+    final gone = normalizedMediaPath('${root.path}/never-there.wav');
+    await pool.addMediaAssets([gone]);
+    expect(await pool.promoteMediaAssetIntoProject(gone), isTrue);
+    expect(stagedCopyIn(session, gone), isNull, reason: 'the premise');
+
+    await save();
+
+    expect(file.projectHoldsMediaBytes(gone), isFalse);
+    pool.refreshMediaExistence();
+    expect(
+      pool.missingMediaPaths,
+      contains(gone),
+      reason: 'a findable absence, for the relink hunt',
+    );
+  });
+
+  test('🚨the sound a path plays is the carry the pool names — the first '
+      'carry\'s conform does not answer for the second', () async {
+    final s = EditorSessionManager(
+      initialProject: createDefaultProject(),
+      mediaStagingStore: MediaStagingStore(
+        directoryPath: '${root.path}/Sounds',
+      ),
+    );
+    addTearDown(s.dispose);
+    final sound = normalizedMediaPath('${root.path}/line.wav');
+    File(sound).writeAsBytesSync(wavOf(seconds: 1));
+    await s.mediaPool.addMediaAssets([sound], carried: true);
+    expect(await s.audioConformStore.ensureFor(sound), isNotNull);
+    expect(s.audioConformStore.durationSecondsFor(sound), closeTo(1, 0.01));
+
+    s.mediaPool.removeMediaAsset(sound);
+    File(sound).writeAsBytesSync(wavOf(seconds: 2));
+    await s.mediaPool.addMediaAssets([sound], carried: true);
+    await s.audioConformStore.ensureFor(sound);
+    expect(
+      s.audioConformStore.durationSecondsFor(sound),
+      closeTo(2, 0.01),
+      reason: 'kept by path, the waveform and playback stayed the old sound',
+    );
+
+    s.undo();
+    s.undo();
+    await s.audioConformStore.ensureFor(sound);
+    expect(s.audioConformStore.durationSecondsFor(sound), closeTo(1, 0.01));
+  });
+
+  group('a movie on the canvas', () {
+    late _ClosingBackend movies;
+
+    setUp(() => debugVideoDecodeBackend = movies = _ClosingBackend());
+    tearDown(() => debugVideoDecodeBackend = null);
+
+    Future<void> placeMovie(
+      WidgetTester tester,
+      String movie,
+      ImportFileMode mode,
+    ) async {
+      final placed = await tester.runAsync(
+        () => session.importDoors.importVideoFile(
+          path: movie,
+          settings: ImportFileSettings(mode: mode, sound: false),
+        ),
+      );
+      expect(placed, isTrue);
+    }
+
+    Future<void> hydrate(WidgetTester tester) => tester.runAsync(
+      () => session.movieCels.hydrate(session.requireActiveCut, 0),
+    );
+
+    Future<String> aMovie(WidgetTester tester, {int length = 4096}) async =>
+        normalizedMediaPath(
+          (await tester.runAsync(
+            () => writeCarriedMovie(root, length: length),
+          ))!,
+        );
+
+    testWidgets('🚨a movie carried again shows the NEW carry — and lets go of '
+        'the first', (tester) async {
+      final movie = await aMovie(tester);
+      await placeMovie(tester, movie, ImportFileMode.keepInside);
+      await hydrate(tester);
+      final first = stagedCopyIn(session, movie)!.path;
+      expect(movies.openedAt.last.path, first, reason: 'the premise');
+
+      pool.removeMediaAsset(movie);
+      await aMovie(tester, length: 8192);
+      await placeMovie(tester, movie, ImportFileMode.keepInside);
+      await hydrate(tester);
+
+      final second = stagedCopyIn(session, movie)!.path;
+      expect(second, isNot(first), reason: 'the premise: two carries');
+      expect(
+        movies.openedAt.last.path,
+        second,
+        reason: 'kept by path, the canvas went on showing the first carry',
+      );
+      expect(
+        movies.closed,
+        contains(first),
+        reason: 'the first carry\'s document was closed, and its bytes let go',
+      );
+      await tester.runAsync(() => session.movieCels.dispose());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a row placed as a LINK and carried afterwards reads the '
+        'carry', (tester) async {
+      final movie = await aMovie(tester);
+      await placeMovie(tester, movie, ImportFileMode.reference);
+      await hydrate(tester);
+      expect(movies.openedAt.last.path, movie, reason: 'the premise');
+
+      await tester.runAsync(() => pool.promoteMediaAssetIntoProject(movie));
+      await hydrate(tester);
+
+      expect(
+        movies.openedAt.last.path,
+        stagedCopyIn(session, movie)!.path,
+        reason: 'opened once, the row read the original for the session',
+      );
+      await tester.runAsync(() => session.movieCels.dispose());
+      await tester.pumpAndSettle();
+    });
+  });
+
   test('a carry from before carries had names reads as the path-named one',
       () {
     final legacy = MediaAsset.fromJson({
@@ -293,4 +463,31 @@ void main() {
       isNull,
     );
   });
+}
+
+/// A reader that READS what it is handed ([ReadingVideoBackend]), and says
+/// which files the movies it was asked to close were read from.
+class _ClosingBackend extends ReadingVideoBackend {
+  final List<String> closed = [];
+  final Map<int, String> _openAt = {};
+  var _tokens = 0;
+
+  @override
+  Future<({int token, QaVideoInfo info})?> open(
+    String path, {
+    ({int offset, int length, bool framed})? span,
+  }) async {
+    final opened = await super.open(path, span: span);
+    if (opened == null) {
+      return null;
+    }
+    final token = _tokens += 1;
+    _openAt[token] = path;
+    return (token: token, info: opened.info);
+  }
+
+  @override
+  Future<void> close(int token) async {
+    closed.add(_openAt[token]!);
+  }
 }
