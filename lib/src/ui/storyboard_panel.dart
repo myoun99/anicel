@@ -171,7 +171,8 @@ part 'storyboard/storyboard_sheet.dart';
 /// One row of the storyboard rail, as the shared swipe sees it.
 ///
 /// Three kinds share the rail and they do not share a subject — see
-/// `_StoryboardRailRows.railRowsIn`, the only place that builds one.
+/// `_StoryboardRailRows._trackGroupRowGeometry`, the only place that builds
+/// one, and `railRowsIn`, which walks them.
 typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 
 /// One row of a track group's rail, as the strip column lays it out.
@@ -188,11 +189,16 @@ typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 /// as a property lane — which is what the grid sheet paints the lane ground
 /// under (I-44). Neither address says it: the Audio lane keeps none, and an
 /// S slot with no layer keeps none either.
+///
+/// [railRow] is the row as the rail's column swipe sees it — the transition,
+/// S and V rows, which carry the columns. A lane carries none, so it has
+/// none, and the walk steps over it.
 typedef _StoryboardRailSlot = ({
   TimelineRowAddress? row,
   LaneRowAddress? laneRow,
   bool bandRow,
   bool lane,
+  StoryboardRailRow? railRow,
   double height,
 });
 

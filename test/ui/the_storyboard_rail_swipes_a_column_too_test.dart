@@ -397,4 +397,105 @@ void main() {
       );
     });
   }
+
+  testWidgets('🚨a stroke that stops on the upper S row paints THAT row — the '
+      'walk names the S rows in the order the rail draws them', (tester) async {
+    // Two S rows, and the rail draws the TOP slot first (S2 above S1, the
+    // timeline's stack). The walk once kept its own sum and counted slot 0
+    // first, so a stroke that reached S2 and stopped there hid S1 and left
+    // S2 alone (measured: [false, true]) — found while the storyboard's rows
+    // learned to grow with their words (text-scale-storyboard-rows).
+    await tester.binding.setSurfaceSize(const Size(1400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    Layer se(String id, String name) => Layer(
+      id: LayerId(id),
+      name: name,
+      kind: LayerKind.se,
+      frames: const [],
+      timeline: const {},
+    );
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('swipe-order-project'),
+        name: 'Swipe order',
+        createdAt: DateTime.utc(2026, 9, 25),
+        tracks: [
+          Track(
+            id: const TrackId('t1'),
+            name: 'One',
+            seLayers: [se('t1-s1', 'S1'), se('t1-s2', 'S2')],
+            cuts: [
+              Cut(
+                id: const CutId('t1-cut'),
+                name: 'One cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  Layer(
+                    id: const LayerId('t1-cel'),
+                    name: 'A',
+                    frames: const [],
+                    timeline: const {},
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: session,
+            builder: (context, _) => StoryboardTabHost(
+              session: session,
+              pixelsPerFrame: 12,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+              thumbnailFor: null,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Track theTrack() => session.repository.requireProject().tracks.single;
+    Finder eye(String id) =>
+        find.byKey(ValueKey<String>('storyboard-layer-visibility-$id'));
+    final cue = tester.getCenter(eye('${theTrack().transitionLayer.id}'));
+    final upper = tester.getRect(eye('t1-s2'));
+    expect(
+      upper.top,
+      lessThan(tester.getRect(eye('t1-s1')).top),
+      reason: 'the fixture: S2 is drawn above S1',
+    );
+
+    // From the transition row's eye down to the middle of the row under it,
+    // S2 — and no further.
+    final gesture = await tester.startGesture(cue);
+    for (var step = 1; step <= 6; step += 1) {
+      await gesture.moveTo(
+        Offset(cue.dx, cue.dy + (upper.center.dy - cue.dy) * step / 6),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      theTrack().transitionLayer.isVisible,
+      isFalse,
+      reason: 'LIVENESS — the press hid the row it started on',
+    );
+    expect(
+      [for (final layer in theTrack().seLayers) layer.isVisible],
+      [true, false],
+      reason: 'the stroke reached S2 and stopped there; S1 was never crossed',
+    );
+  });
 }
