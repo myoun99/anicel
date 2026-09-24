@@ -664,6 +664,63 @@ void main() {
       );
     });
 
+    // 🚨A HALF ROUNDS AWAY FROM ZERO IN EVERY TRANSCRIPTION — the engine's
+    // arithmetic contract (Dart's round() is llround). The C kernel rounds a
+    // channel inline now (`qa_round_byte`), and only an exact half can tell
+    // that from rounding a half to even: a hard dab at flow 0.5 over opaque
+    // ink lands every channel on (source + destination) / 2 exactly, so
+    // (100 + 53) / 2 = 76.5 must come out 77, not 76.
+    test('a channel that lands on an exact half rounds away from zero', () {
+      final opaque = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(
+            x: 40,
+            y: 40,
+            size: 30,
+            color: 0xFF351E00,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+          ),
+        ]),
+      ).surface;
+      expectParity(
+        surface: opaque,
+        sequence: strokeOf([
+          dab(
+            x: 40.5,
+            y: 40.5,
+            size: 20,
+            color: 0xFF641507,
+            opacity: 1,
+            flow: 0.5,
+            hardness: 1,
+          ),
+        ]),
+        reason: 'exact halves',
+      );
+      final pixel = readRgbaColorFromBitmapTile(
+        tile: materializeBrushDabSequenceOnBitmapSurface(
+          surface: opaque,
+          sequence: strokeOf([
+            dab(
+              x: 40.5,
+              y: 40.5,
+              size: 20,
+              color: 0xFF641507,
+              opacity: 1,
+              flow: 0.5,
+              hardness: 1,
+            ),
+          ]),
+        ).surface.tileAt(TileCoord(x: 0, y: 0))!,
+        x: 40,
+        y: 40,
+      );
+      expect([pixel.r, pixel.g, pixel.b, pixel.a], [77, 26, 4, 255]);
+    });
+
     test('translucent color over translucent destination', () {
       final base = materializeBrushDabSequenceOnBitmapSurface(
         surface: blankSurface(),

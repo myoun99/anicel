@@ -46,6 +46,20 @@
 #define QA_EXPORT __attribute__((visibility("default")))
 #endif
 
+// The arithmetic contract's rounding (above) for a channel byte: llround,
+// then clamped to [0, 255] — the ONE spelling every blend here uses, and
+// without the library call (board `brush-kernel-next`). Inside
+// [0.5, 254.5) llround's half-away-from-zero is the integer part plus one
+// when the fraction reaches a half, and that fraction is exact for any
+// double this small; below the range llround is at most 0 and above it at
+// least 255, which is where the clamp put them.
+static inline int32_t qa_round_byte(double value) {
+  if (!(value >= 0.5)) return 0;
+  if (value >= 254.5) return 255;
+  const int32_t whole = (int32_t)value;
+  return whole + (value - (double)whole >= 0.5 ? 1 : 0);
+}
+
 // Blends one stamp row span into a tile row (straight-alpha RGBA both
 // sides) - the inner loop of the stamp dab path
 // (materializeBrushDabSequenceOnBitmapSurface._blendStampDab).
@@ -105,10 +119,10 @@ QA_EXPORT int32_t qa_stamp_blend_row(
     const uint8_t dest_a = dst[3];
     const double destination_alpha = (double)dest_a / 255.0;
 
-    int64_t out_r;
-    int64_t out_g;
-    int64_t out_b;
-    int64_t out_a;
+    int32_t out_r;
+    int32_t out_g;
+    int32_t out_b;
+    int32_t out_a;
     if (erase) {
       const double out_alpha = destination_alpha * (1.0 - source_alpha);
       if (out_alpha == 0.0) {
@@ -120,9 +134,7 @@ QA_EXPORT int32_t qa_stamp_blend_row(
         out_r = dest_r;
         out_g = dest_g;
         out_b = dest_b;
-        out_a = llround(out_alpha * 255.0);
-        if (out_a < 0) out_a = 0;
-        if (out_a > 255) out_a = 255;
+        out_a = qa_round_byte(out_alpha * 255.0);
       }
     } else {
       const double out_alpha =
@@ -134,27 +146,19 @@ QA_EXPORT int32_t qa_stamp_blend_row(
         out_a = 0;
       } else {
         const double inverse_source_alpha = 1.0 - source_alpha;
-        out_r = llround(((double)src[0] * source_alpha +
-                         (double)dest_r * destination_alpha *
-                             inverse_source_alpha) /
-                        out_alpha);
-        out_g = llround(((double)src[1] * source_alpha +
-                         (double)dest_g * destination_alpha *
-                             inverse_source_alpha) /
-                        out_alpha);
-        out_b = llround(((double)src[2] * source_alpha +
-                         (double)dest_b * destination_alpha *
-                             inverse_source_alpha) /
-                        out_alpha);
-        out_a = llround(out_alpha * 255.0);
-        if (out_r < 0) out_r = 0;
-        if (out_r > 255) out_r = 255;
-        if (out_g < 0) out_g = 0;
-        if (out_g > 255) out_g = 255;
-        if (out_b < 0) out_b = 0;
-        if (out_b > 255) out_b = 255;
-        if (out_a < 0) out_a = 0;
-        if (out_a > 255) out_a = 255;
+        out_r = qa_round_byte(((double)src[0] * source_alpha +
+                               (double)dest_r * destination_alpha *
+                                   inverse_source_alpha) /
+                              out_alpha);
+        out_g = qa_round_byte(((double)src[1] * source_alpha +
+                               (double)dest_g * destination_alpha *
+                                   inverse_source_alpha) /
+                              out_alpha);
+        out_b = qa_round_byte(((double)src[2] * source_alpha +
+                               (double)dest_b * destination_alpha *
+                                   inverse_source_alpha) /
+                              out_alpha);
+        out_a = qa_round_byte(out_alpha * 255.0);
       }
     }
 
@@ -332,12 +336,6 @@ static double qa_clamp01(double value) {
 }
 
 // Dart .round().clamp(0, 255): llround is half-away-from-zero like Dart.
-static int32_t qa_round_byte(double value) {
-  int64_t rounded = llround(value);
-  if (rounded < 0) return 0;
-  if (rounded > 255) return 255;
-  return (int32_t)rounded;
-}
 
 // sampleBrushTipMaskCoverage: scalar bilinear tip sample (rotated tips).
 static double qa_sample_tip_scalar(
@@ -1296,7 +1294,7 @@ static void qa_finish_band_item(int32_t item_index, void* context) {
     default:
       // Anti-alias: boundary pixels average their 4-neighbors; the
       // Dart formula rounds a double division, so this stays double +
-      // llround for byte identity.
+      // the contract's rounding (qa_round_byte) for byte identity.
       for (int32_t y = y0; y < y1; y += 1) {
         const uint8_t* src_row = c->src + (ptrdiff_t)y * width;
         uint8_t* dst_row = c->dst + (ptrdiff_t)y * width;
@@ -1312,9 +1310,8 @@ static void qa_finish_band_item(int32_t item_index, void* context) {
               : 0;
           const int32_t sum = center + left_v + right_v + up_v + down_v;
           if (sum != center * 5) {
-            const int64_t rounded =
-                llround((double)(center * 3 + (sum - center)) / 7.0);
-            dst_row[x] = (uint8_t)rounded;
+            dst_row[x] = (uint8_t)qa_round_byte(
+                (double)(center * 3 + (sum - center)) / 7.0);
           }
         }
       }
@@ -2241,10 +2238,7 @@ QA_EXPORT void qa_stamp_blend_tiles(
 // the dab spec (v33): the dab kernel's dual mask reads the same table.
 
 static inline int32_t qa_stroke_clamp_byte(double value) {
-  int64_t rounded = llround(value * 255.0);
-  if (rounded < 0) return 0;
-  if (rounded > 255) return 255;
-  return (int32_t)rounded;
+  return qa_round_byte(value * 255.0);
 }
 
 // `_blendChannel` transcribed: the separable B(Cs, Cd) table. overlay is
