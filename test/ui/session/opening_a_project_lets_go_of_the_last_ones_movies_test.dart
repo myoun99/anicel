@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 import '../../models/import/tvpp_test_builder.dart';
 
@@ -52,8 +53,10 @@ void main() {
     );
     addTearDown(session.dispose);
     session.playbackRig.prerenderScheduler.beginInputHold();
+    String? staged;
     await tester.runAsync(() async {
       await session.mediaPool.importMediaFiles([movie], copyIntoProject: true);
+      staged = stagedCopyIn(session, movie)?.path;
       await session.importDoors.importVideoFile(
         path: movie,
         settings: const ImportFileSettings(
@@ -66,6 +69,17 @@ void main() {
         asked: SaveAsked.byAPerson,
       );
     });
+    // The row it placed follows its bytes from the staged copy onto the file
+    // the save wrote (`a_reader_follows_what_the_save_absorbed_test`), and
+    // the copy goes from the disk once it has — let that land before
+    // anything counts the opens the one decoder here has seen.
+    bool followed() => staged == null || !File(staged!).existsSync();
+    for (var i = 0; i < 60 && !followed(); i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+    }
+    expect(followed(), isTrue, reason: 'the premise');
     return session;
   }
 

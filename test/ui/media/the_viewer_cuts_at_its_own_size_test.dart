@@ -25,7 +25,7 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드 존재안하니
 /// 한손가락 핑거시 팬 … 그리고 뷰어패널의 잘라내기툴 사용 가능하도록.
@@ -264,7 +264,7 @@ void main() {
       'its piece — the same bytes are on screen, and the viewer follows once '
       'it has landed', (tester) async {
     final directory = Directory.systemTemp.createTempSync('anicel-cut-moves');
-    addTearDown(() => deleteTempQuietly(directory));
+    deleteAfterSessionEnds(directory);
     final (session: carried, path: carriedPath) = await carrying(
       tester,
       directory,
@@ -298,7 +298,7 @@ void main() {
       'is asked again of where the bytes are now — the document let go of '
       'fails it', (tester) async {
     final directory = Directory.systemTemp.createTempSync('anicel-page-moves');
-    addTearDown(() => deleteTempQuietly(directory));
+    deleteAfterSessionEnds(directory);
     final (session: carried, path: carriedPath) = await carrying(
       tester,
       directory,
