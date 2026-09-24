@@ -296,6 +296,92 @@ void main() {
     });
   });
 
+  group('the panel still on the screen answers (유저 2026-09-25 「화면에 남은 '
+      '쪽이 받는다」)', () {
+    final timelineSurface = Object();
+    final storyboardSurface = Object();
+
+    void sight(
+      EditorSessionManager s,
+      WorkingPanel panel, {
+      required bool inSight,
+      Object? surface,
+    }) => s.panelInSight(
+      panel,
+      surface:
+          surface ??
+          (panel == WorkingPanel.timeline ? timelineSurface : storyboardSurface),
+      inSight: inSight,
+    );
+
+    EditorSessionManager bothInSight() {
+      final s = session();
+      sight(s, WorkingPanel.timeline, inSight: true);
+      sight(s, WorkingPanel.storyboard, inSight: true);
+      return s;
+    }
+
+    test('the storyboard put away hands the work to the timeline', () {
+      final s = bothInSight();
+      s.claimStoryboardRow();
+      sight(s, WorkingPanel.storyboard, inSight: false);
+      expect(s.workingPanel, WorkingPanel.timeline);
+      expect(s.currentRow, const LayerRowAddress(celA));
+    });
+
+    test('… and the timeline put away hands it to the storyboard', () {
+      final s = bothInSight();
+      sight(s, WorkingPanel.timeline, inSight: false);
+      expect(s.workingPanel, WorkingPanel.storyboard);
+    });
+
+    test('with the other off the screen too, nothing moves', () {
+      final s = bothInSight();
+      sight(s, WorkingPanel.timeline, inSight: false);
+      s.claimStoryboardRow();
+      sight(s, WorkingPanel.storyboard, inSight: false);
+      expect(s.workingPanel, WorkingPanel.storyboard);
+    });
+
+    test('a panel that never said is not on the screen', () {
+      final s = session();
+      s.claimStoryboardRow();
+      sight(s, WorkingPanel.storyboard, inSight: false);
+      expect(s.workingPanel, WorkingPanel.storyboard);
+    });
+
+    test('a panel saying it IS on the screen keeps the work', () {
+      final s = bothInSight();
+      s.claimStoryboardRow();
+      sight(s, WorkingPanel.storyboard, inSight: true);
+      expect(s.workingPanel, WorkingPanel.storyboard);
+    });
+
+    test('coming back is no touch — the tab or a press claims it again', () {
+      final s = bothInSight();
+      s.claimStoryboardRow();
+      sight(s, WorkingPanel.storyboard, inSight: false);
+      sight(s, WorkingPanel.storyboard, inSight: true);
+      expect(s.workingPanel, WorkingPanel.timeline);
+    });
+
+    test('a panel moving between docks is on the screen while either of its '
+        'surfaces is — the new one mounts before the old one goes', () {
+      final s = bothInSight();
+      s.claimStoryboardRow();
+      final moved = Object();
+      sight(s, WorkingPanel.storyboard, inSight: true, surface: moved);
+      sight(s, WorkingPanel.storyboard, inSight: false);
+      expect(
+        s.workingPanel,
+        WorkingPanel.storyboard,
+        reason: 'the old dock let go of a panel the new one shows',
+      );
+      sight(s, WorkingPanel.storyboard, inSight: false, surface: moved);
+      expect(s.workingPanel, WorkingPanel.timeline);
+    });
+  });
+
   group('a fold hands on where ITS panel stands (R5 #11, both rails)', () {
     test('an S row\'s lanes folding in the storyboard hand the storyboard '
         'its row', () {

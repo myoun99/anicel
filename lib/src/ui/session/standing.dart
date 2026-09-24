@@ -299,6 +299,47 @@ class Standing {
     publishCurrentRow();
   }
 
+  /// The surfaces showing each panel on the screen right now
+  /// ([panelInSight]). A panel is on the screen while any of them is — and
+  /// there are two while it moves between docks, because the new one mounts
+  /// before the old one is gone. A panel that never said is not on it.
+  final Map<WorkingPanel, Set<Object>> _surfacesInSight = {
+    for (final panel in WorkingPanel.values) panel: <Object>{},
+  };
+
+  /// 🗣️유저 2026-09-25 (the-touched-panel-out-of-sight-Q1): 「화면에 남은
+  /// 쪽이 받는다」. The panel being worked in leaving the screen — its tab put
+  /// behind another, its rail group shut, the panel closed — hands the work
+  /// to the other panel while THAT one is on the screen. With both off it,
+  /// nothing moves. Coming back is no touch: its tab, or a press inside it,
+  /// claims it again.
+  ///
+  /// ↩️The 09-24 doors all brought a panel forward; putting it away touched
+  /// nothing, so the arrows, the flip and the keys went on walking a panel
+  /// nobody could see.
+  void panelInSight(
+    WorkingPanel panel, {
+    required Object surface,
+    required bool inSight,
+  }) {
+    final surfaces = _surfacesInSight[panel]!;
+    if (inSight) {
+      surfaces.add(surface);
+      return;
+    }
+    surfaces.remove(surface);
+    if (surfaces.isNotEmpty || _working.value != panel) {
+      return;
+    }
+    final other = switch (panel) {
+      WorkingPanel.timeline => WorkingPanel.storyboard,
+      WorkingPanel.storyboard => WorkingPanel.timeline,
+    };
+    if (_surfacesInSight[other]!.isNotEmpty) {
+      _engage(other);
+    }
+  }
+
   /// The row a frame-axis VERB acts on (R10 #13): the standing row of the
   /// panel being worked in.
   ///

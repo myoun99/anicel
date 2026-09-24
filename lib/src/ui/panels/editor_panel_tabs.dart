@@ -456,20 +456,33 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                           final shown = overflowing
                               ? math.max(0, fits - 1)
                               : tabs.length;
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var index = 0; index < shown; index += 1)
-                                _buildTabButton(index),
-                              if (overflowing)
-                                _TabOverflowButton(
-                                  groupId: widget.groupId,
-                                  hidden: tabs.sublist(shown),
-                                  activeTabId: widget.activeTabId,
-                                  onTabSelected: widget.onTabSelected,
-                                ),
-                            ],
+                          // Room for less than one tab — a timeline or a
+                          // storyboard docked in a rail, whose sill takes
+                          // nearly the rail's whole width — still holds the
+                          // overflow button, the one way to its tabs. It is
+                          // cut at the room's edge rather than laid out
+                          // past it: ↩️the Row overflowed by the button's
+                          // missing width and threw.
+                          return ClipRect(
+                            child: OverflowBox(
+                              alignment: AlignmentDirectional.centerStart,
+                              maxWidth: double.infinity,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (var index = 0; index < shown; index += 1)
+                                    _buildTabButton(index),
+                                  if (overflowing)
+                                    _TabOverflowButton(
+                                      groupId: widget.groupId,
+                                      hidden: tabs.sublist(shown),
+                                      activeTabId: widget.activeTabId,
+                                      onTabSelected: widget.onTabSelected,
+                                    ),
+                                ],
+                              ),
+                            ),
                           );
                         },
                       ),

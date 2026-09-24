@@ -56,6 +56,31 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Finder rightRailButton(int slot) => find.byKey(
+    ValueKey<String>(
+      'rail-group-${EditorWorkspace.railGroupId(right: true, slot: slot)}',
+    ),
+  );
+
+  /// Lifts [tabId]'s tab by its grip and lets go on [target] — found only
+  /// once the tab is in the air, since the free rail slot is offered only
+  /// then.
+  Future<void> dropTab(WidgetTester tester, String tabId, Finder target) async {
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(ValueKey<String>('panel-grip-$tabId'))),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
+    expect(target, findsOneWidget, reason: 'premise: the target is on offer');
+    await gesture.moveTo(tester.getCenter(target) + const Offset(0, -5));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(target));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('a panel brought forward by its tab button is the panel being '
       'worked in — both tabs, both ways', (tester) async {
     await pumpHome(tester);
@@ -112,38 +137,9 @@ void main() {
     final session = sessionOf(tester);
     expect(session.workingPanel, WorkingPanel.timeline, reason: 'premise');
 
-    // A rail wide enough for the storyboard's strip and its sill, widened
-    // by the rail's own edge.
-    await tester.drag(
-      find.byKey(
-        ValueKey<String>(
-          'dock-resize-${EditorWorkspace.railGroupId(right: true, slot: 2)}',
-        ),
-      ),
-      const Offset(-400, 0),
-    );
-    await tester.pumpAndSettle();
-    // A slot of its own, so the group's strip holds this one tab.
-    final slot = find.byKey(
-      ValueKey<String>(
-        'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 6)}',
-      ),
-    );
-    final gesture = await tester.startGesture(
-      tester.getCenter(
-        find.byKey(const ValueKey<String>('panel-grip-storyboard')),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 20));
-    await gesture.moveBy(const Offset(30, 0));
-    await tester.pump();
-    expect(slot, findsOneWidget, reason: 'premise: the free slot is on offer');
-    await gesture.moveTo(tester.getCenter(slot) + const Offset(0, -5));
-    await tester.pump();
-    await gesture.moveTo(tester.getCenter(slot));
-    await tester.pump();
-    await gesture.up();
-    await tester.pumpAndSettle();
+    // A slot of its own: the free one a drag offers.
+    final slot = rightRailButton(6);
+    await dropTab(tester, 'storyboard', slot);
     expect(find.byType(StoryboardPanel), findsOneWidget, reason: 'premise');
     expect(
       session.workingPanel,
@@ -213,6 +209,54 @@ void main() {
     await tester.tap(twirl);
     await tester.pumpAndSettle();
     expect(session.currentRow, const LayerRowAddress(conteSeId));
+  });
+
+  group('the panel still on the screen answers (유저 2026-09-25 「화면에 남은 '
+      '쪽이 받는다」)', () {
+    testWidgets('the storyboard\'s rail group shut hands the work to the '
+        'timeline', (tester) async {
+      await pumpHome(tester);
+      final session = sessionOf(tester);
+      await dropTab(tester, 'storyboard', rightRailButton(6));
+      expect(
+        session.workingPanel,
+        WorkingPanel.storyboard,
+        reason: 'premise: the drop was a touch — and the dock it left letting '
+            'go of it was no hand-off',
+      );
+
+      await tester.tap(rightRailButton(6));
+      await tester.pumpAndSettle();
+      expect(find.byType(StoryboardPanel), findsNothing, reason: 'premise');
+      expect(session.workingPanel, WorkingPanel.timeline);
+    });
+
+    testWidgets('a tab put in front of the storyboard hands the work on', (
+      tester,
+    ) async {
+      await pumpHome(tester);
+      final session = sessionOf(tester);
+      await dropTab(tester, 'storyboard', rightRailButton(6));
+      await dropTab(tester, 'timesheet', rightRailButton(6));
+      expect(
+        find.byType(StoryboardPanel, skipOffstage: false),
+        findsOneWidget,
+        reason: 'premise: still docked there, behind the sheet',
+      );
+      expect(session.workingPanel, WorkingPanel.timeline);
+    });
+
+    testWidgets('the storyboard closed from the Panels list hands the work '
+        'on', (tester) async {
+      await pumpHome(tester);
+      final session = sessionOf(tester);
+      await showStoryboardPanel(tester);
+      expect(session.workingPanel, WorkingPanel.storyboard, reason: 'premise');
+
+      workspaceOf(tester).panelsMenu!.toggle(EditorWorkspace.storyboardTabId);
+      await tester.pumpAndSettle();
+      expect(session.workingPanel, WorkingPanel.timeline);
+    });
   });
 
   testWidgets('↑ from the V row is the S1 row, and the storyboard\'s walk '

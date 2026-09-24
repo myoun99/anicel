@@ -21,6 +21,7 @@ import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
+import 'panels/working_panel_surface.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
@@ -462,10 +463,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     // The panel being worked in owns the frame-axis verbs (user,
     // 2026-08-05): touching the storyboard hands the flip its rail's row,
     // so the arrows count CUTS from here without having to pick a row
-    // first. Translucent — this only listens.
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => _session.claimStoryboardRow(),
+    // first. Putting it away hands the work on to the timeline when that is
+    // on the screen (user, 2026-09-25).
+    return WorkingPanelSurface(
+      onTouch: _session.claimStoryboardRow,
+      onSight: (surface, {required inSight}) => _session.panelInSight(
+        WorkingPanel.storyboard,
+        surface: surface,
+        inSight: inSight,
+      ),
       child: Material(
         color: colorScheme.surfaceContainerHighest,
         child: Column(

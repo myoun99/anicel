@@ -786,6 +786,19 @@ class EditorSessionManager extends ChangeNotifier
   );
 
   void claimStoryboardRow() => standing.claimStoryboardRow();
+
+  /// A panel surface's word on whether it is on the screen
+  /// ([Standing.panelInSight]). Its last word comes as it is unmounted, which
+  /// at teardown can be after this session is gone.
+  void panelInSight(
+    WorkingPanel panel, {
+    required Object surface,
+    required bool inSight,
+  }) {
+    if (!disposed) {
+      standing.panelInSight(panel, surface: surface, inSight: inSight);
+    }
+  }
   void updateStoryboardCutSelectionByFrame({
     required int anchorGlobalFrame,
     required int headGlobalFrame,
