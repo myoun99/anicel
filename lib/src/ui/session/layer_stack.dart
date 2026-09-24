@@ -23,6 +23,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/working_panel.dart';
 import '../../services/commands/cut_command_input_planner.dart'
     show nextFolderName;
 import '../../services/commands/track_se_layer_commands.dart';
@@ -214,7 +215,10 @@ class LayerStack {
     if (_project.activeCutOrNull == null) {
       // A gap has no cut row list to make the lane active in; it is stood
       // on the way the storyboard stands on its S rows.
-      _standing.standOnRow(LayerRowAddress(layerId), takesLayerActive: false);
+      _standing.standOnRow(
+        LayerRowAddress(layerId),
+        panel: WorkingPanel.storyboard,
+      );
     } else {
       _controllers.layerController.selectLayer(layerId);
     }

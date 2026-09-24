@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
@@ -339,7 +340,7 @@ void main() {
       // draw on (유저 2026-07-27): this is the stand the refusal missed.
       manager.standing.standOnRow(
         LayerRowAddress(laneId),
-        takesLayerActive: false,
+        panel: WorkingPanel.storyboard,
       );
       expect(manager.activeLayerId, isNot(laneId), reason: 'fixture');
       final lanesBefore = laneIdsOf(manager);
@@ -417,7 +418,7 @@ void main() {
       final laneId = manager.activeTrack.seLayers.first.id;
       manager.standing.standOnRow(
         LayerRowAddress(laneId),
-        takesLayerActive: false,
+        panel: WorkingPanel.storyboard,
       );
       manager.trackFrameRangeSelection.value = TrackFrameRangeSelection(
         trackId: manager.selectedTrackId,
@@ -448,6 +449,28 @@ void main() {
       ).single;
       expect(block.startIndex, 13);
       expect(block.length, 3);
+      manager.dispose();
+    });
+
+    test('on the storyboard too: standing on the V row opens a lane, and the '
+        'storyboard stands on it — the next take goes there', () async {
+      final manager = session();
+      manager.standing.standOnRow(
+        TrackRowAddress(manager.selectedTrackId),
+        panel: WorkingPanel.storyboard,
+      );
+      final lanesBefore = laneIdsOf(manager);
+      manager.voiceRecording.debugVoiceRecorderFactory =
+          () => _FakeRecorder(takeOfSeconds(0.5));
+
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+      final opened = laneIdsOf(manager).difference(lanesBefore).single;
+      expect(manager.standing.workingPanel, WorkingPanel.storyboard);
+      expect(manager.currentRow, LayerRowAddress(opened));
+      expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
       manager.dispose();
     });
 
