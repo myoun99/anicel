@@ -199,6 +199,32 @@ int32_t qa_video_apple_open(const char* utf8_path,
         [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo
                                        outputSettings:video_settings];
     g_video_input.expectsMediaDataInRealTime = NO;
+    // 🚨THE TRACK KEEPS TIME IN A UNIT THAT HOLDS ONE FRAME EXACTLY. Frame
+    // i is appended at exactly i * den / num seconds, but an input left at
+    // its default time scale lets the writer pick its own, and in 1/600 s a
+    // 24000/1001 frame is 25.025 units: it rounds to 25, every frame lasts
+    // exactly 1/24 s, and the file says 24.0 fps. A trimmed 23.976 take came
+    // back as 24 on the Apple engine only (2026-09-25, first run of
+    // `a_trimmed_file_is_carried_as_its_piece_test` on a Mac). A multiple
+    // of the rate's numerator holds every frame time exactly; it is lifted
+    // to at least 600 so a 12 or 24 fps track keeps a conventional unit.
+    //
+    // ⚠️Guarded: AVFoundation raises when the output file type has no media
+    // time scale to set, and an exception here would take the process down
+    // over a property that only ever refines the timing.
+    {
+      int64_t scale = g_apple.fps_num;
+      if (scale > 0 && scale < 600) {
+        scale *= (600 + scale - 1) / scale;
+      }
+      if (scale > 0 && scale <= INT32_MAX) {
+        @try {
+          g_video_input.mediaTimeScale = (CMTimeScale)scale;
+        } @catch (NSException* ignored) {
+          (void)ignored;
+        }
+      }
+    }
     g_adaptor = [[AVAssetWriterInputPixelBufferAdaptor alloc]
         initWithAssetWriterInput:g_video_input
      sourcePixelBufferAttributes:@{

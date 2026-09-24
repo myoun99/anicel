@@ -404,6 +404,11 @@ void main() {
       await tester.pumpAndSettle();
     }, skip: skip);
 
+    /// How far apart two neighbouring frames' reds are in [writeMovie] —
+    /// and therefore how far a piece frame may drift and still be THAT
+    /// frame rather than its neighbour (see [cutsWhatTheProjectShows]).
+    const redStep = 30;
+
     /// Eight movie frames at [fps], each its own flat red, over a sound —
     /// the size and sound the other encoder fixtures use (the OS encoder
     /// turns tiny frames away).
@@ -430,7 +435,7 @@ void main() {
       for (var frame = 0; frame < 8; frame += 1) {
         final rgba = Uint8List(64 * 48 * 4);
         for (var i = 0; i < 64 * 48; i += 1) {
-          rgba[i * 4] = 20 + frame * 30;
+          rgba[i * 4] = 20 + frame * redStep;
           rgba[i * 4 + 3] = 255;
         }
         expect(encoder.writeFrame(rgba), isTrue, reason: encoder.lastError);
@@ -508,9 +513,15 @@ void main() {
           final at = span.first + n;
           final shown = decoder.frameOf(original, clock.movieFrameAt(at))!;
           final piece = decoder.frameOf(cut, n)!;
+          // ⚠️The question is WHICH frame, so the bound is half the step
+          // between neighbouring reds: nearer than that is this frame and
+          // no other. 12 was a margin read off the Windows encoder; the
+          // Apple one lands a flat red 13 away after the take and its
+          // piece are each encoded (2026-09-25, first run on a Mac) — the
+          // right frame, just noisier. A neighbour would sit ~30 away.
           expect(
             (piece[0] - shown[0]).abs(),
-            lessThan(12),
+            lessThan(redStep ~/ 2),
             reason: 'piece frame $n is what project frame $at showed',
           );
         }
