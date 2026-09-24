@@ -1133,10 +1133,9 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       slot.right - _padding / 2,
       slot.bottom - 1,
     );
-    final ground = _bandGround(block);
     final mark = head.mark;
     if (mark != null) {
-      _paintPlatedMark(canvas, mark, room, ground);
+      _paintPlatedMark(canvas, mark, room, _bandGround(block));
     } else if (head.word.isNotEmpty) {
       final style = _panelNameStyle;
       _paintPlatedGlyph(
@@ -1144,7 +1143,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         room.topLeft,
         head.word,
         style,
-        ground: ground,
+        ground: _bandGround(block),
         fit: wordFit(timelineGlyphPainter(head.word, style).size, room.size),
       );
     }

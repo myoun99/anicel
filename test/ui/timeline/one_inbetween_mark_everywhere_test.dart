@@ -215,43 +215,53 @@ void main() {
   });
 
   test('a tile bakes each mark where the row draws it — a disc in the '
-      'cell\'s ink — and no glyph for it', () async {
-    final painter = rowPainter(Axis.horizontal);
-    for (final dpr in [1.0, 1.5, 2.0]) {
-      for (final (start, end) in [(0, 4), (1, 4)]) {
-        final ops = await TimelineGridTileStore.instance.debugForegroundOps(
-          painter: painter,
-          spanStartIndex: start,
-          spanEndIndexExclusive: end,
-          devicePixelRatio: dpr,
-        );
-        final origin = painter.cellRectFor(start).left;
-        final expected = TimelineGridTileOpWriter();
-        for (final frame in [0, 2]) {
-          if (frame < start) {
-            continue;
-          }
-          final place = painter.inbetweenMarkLayoutFor(frame);
-          final disc = Rect.fromCircle(
-            center: place.center.translate(-origin, 0) * dpr,
-            radius: place.radius * dpr,
+      'cell\'s ink, in the tile\'s own pixels — and no glyph for it', () async {
+    for (final axis in Axis.values) {
+      final painter = rowPainter(axis);
+      for (final dpr in [1.0, 1.5, 2.0]) {
+        for (final (start, end) in [(0, 4), (1, 4)]) {
+          final ops = await TimelineGridTileStore.instance.debugForegroundOps(
+            painter: painter,
+            spanStartIndex: start,
+            spanEndIndexExclusive: end,
+            devicePixelRatio: dpr,
           );
-          expected.rrectFill(
-            disc.left,
-            disc.top,
-            disc.width,
-            disc.height,
-            disc.width / 2,
-            TimelineGridTileOp.cornerTopLeft |
-                TimelineGridTileOp.cornerTopRight |
-                TimelineGridTileOp.cornerBottomLeft |
-                TimelineGridTileOp.cornerBottomRight,
-            timelineGridPackRgba(
-              painter.foregroundInkFor(painter.cellModelAt(frame)),
-            ),
+          // The tile starts at its first cell, along the frame axis.
+          final first = painter.cellRectFor(start);
+          final origin = axis == Axis.horizontal
+              ? Offset(first.left, 0)
+              : Offset(0, first.top);
+          final expected = TimelineGridTileOpWriter();
+          for (final frame in [0, 2]) {
+            if (frame < start) {
+              continue;
+            }
+            final place = painter.inbetweenMarkLayoutFor(frame);
+            final disc = Rect.fromCircle(
+              center: (place.center - origin) * dpr,
+              radius: place.radius * dpr,
+            );
+            expected.rrectFill(
+              disc.left,
+              disc.top,
+              disc.width,
+              disc.height,
+              disc.width / 2,
+              TimelineGridTileOp.cornerTopLeft |
+                  TimelineGridTileOp.cornerTopRight |
+                  TimelineGridTileOp.cornerBottomLeft |
+                  TimelineGridTileOp.cornerBottomRight,
+              timelineGridPackRgba(
+                painter.foregroundInkFor(painter.cellModelAt(frame)),
+              ),
+            );
+          }
+          expect(
+            ops,
+            expected.build(),
+            reason: '$axis, span [$start, $end) at $dpr',
           );
         }
-        expect(ops, expected.build(), reason: 'span [$start, $end) at $dpr');
       }
     }
   });

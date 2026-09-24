@@ -450,6 +450,13 @@ void main() {
         reason: 'the timeline row\'s mark at the same type size',
       );
       expect(
+        // By its bytes: a Paint hands its colour back through float32.
+        plate.color.toARGB32(),
+        storyboardCarriedWritingGround(block, painter.colorScheme).toARGB32(),
+        reason: 'D29-2: the CARRIED ground — the band\'s fill the cut\'s '
+            'title and a panel name receive, never the picture\'s',
+      );
+      expect(
         mark.color,
         timelineTextOnColor(plate.color),
         reason: 'the ground law resolves the mark as it resolves a name',
