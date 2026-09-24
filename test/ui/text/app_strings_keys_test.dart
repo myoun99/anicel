@@ -320,6 +320,7 @@ void main() {
     'closeProjectFailedCopyBody': (s) => s.closeProjectFailedCopyBody,
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
+    'blockFrameLinesLabel': (s) => s.blockFrameLinesLabel,
     'accentTitle': (s) => s.accentTitle,
     'accent1Label': (s) => s.accent1Label,
     'accent1Help': (s) => s.accent1Help,
