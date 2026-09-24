@@ -362,9 +362,12 @@ void main() {
         // whole write in.
         final reading = File(file).openSync();
         unawaited(
-          held.moved.then((move) {
+          held.moved.then((move) async {
             told = move;
             lengthWhenTold = File(file).lengthSync();
+            // A decoder closes on its own thread and answers a turn later:
+            // the save WAITS for the letting go, not merely asks for it.
+            await Future<void>.delayed(const Duration(milliseconds: 50));
             reading.closeSync();
             held.release();
           }),
