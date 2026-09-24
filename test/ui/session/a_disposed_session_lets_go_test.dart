@@ -119,6 +119,10 @@ void main() {
       'frameScrub.outOfTerritory',
       () => session.frameScrub.outOfTerritory.addListener(() {}),
     );
+    expectReleased(
+      'cutVerbs.guidesDragPreview',
+      () => session.cutVerbs.guidesDragPreview.addListener(() {}),
+    );
   });
 
   test('the lane-range listener is dropped, and nothing reports an error', () {

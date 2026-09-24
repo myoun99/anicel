@@ -70,6 +70,7 @@ void main() {
           guides: guides,
           selectedGuideId: selected,
           onGuidesCommitted: onCommitted,
+          onGuidesPreview: (_) {},
         ),
       ),
     ),

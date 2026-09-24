@@ -1266,6 +1266,7 @@ class EditorSessionManager extends ChangeNotifier
     transitionEdgeDragPreview.dispose,
     opacityDragPreview.dispose,
     onionSkin.dispose,
+    cutVerbs.dispose,
     trackFrameRangeSelection.dispose,
     railView.dispose,
     historyPictures.dispose,

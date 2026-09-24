@@ -371,15 +371,26 @@ class GuideSettings extends StatelessWidget {
     required this.guides,
     required this.selectedGuideId,
     required this.onGuidesCommitted,
+    required this.onGuidesPreview,
   });
 
   final CutGuides guides;
   final GuideId? selectedGuideId;
   final ValueChanged<CutGuides> onGuidesCommitted;
 
-  void _replaceShape(DrawingGuide guide, GuideShape shape) {
-    onGuidesCommitted(guides.replacing(guide.copyWith(shape: shape)));
-  }
+  /// A drag in flight: shown, not written — the release goes to
+  /// [onGuidesCommitted] (guide-slider-one-undo: one drag of the count bar
+  /// was eleven undo entries).
+  ///
+  /// ⛔Required, not a fallback to committing: a host with nowhere to show a
+  /// preview would be back to one entry per sample.
+  final ValueChanged<CutGuides> onGuidesPreview;
+
+  CutGuides _withShape(DrawingGuide guide, GuideShape shape) =>
+      guides.replacing(guide.copyWith(shape: shape));
+
+  void _replaceShape(DrawingGuide guide, GuideShape shape) =>
+      onGuidesCommitted(_withShape(guide, shape));
 
   @override
   Widget build(BuildContext context) {
@@ -439,7 +450,12 @@ class GuideSettings extends StatelessWidget {
           divisions: shape.lineSymmetry
               ? (maxSymmetryLineCount - 2) ~/ 2
               : maxSymmetryLineCount - 2,
-          onChanged: (value) => _replaceShape(
+          // ⛔PREVIEW while the bar moves, COMMIT on release — one drag,
+          // one undo. The canvas still follows every sample.
+          onChanged: (value) => onGuidesPreview(
+            _withShape(guide, shape.copyWith(lineCount: value.round())),
+          ),
+          onChangeEnd: (value) => _replaceShape(
             guide,
             shape.copyWith(lineCount: value.round()),
           ),

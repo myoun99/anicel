@@ -172,13 +172,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// is uniform at every size.
   double? _brushSizeDragStartSize;
 
-  /// The guides as they look MID-DRAG, before the release commits them.
-  ///
-  /// Null except while a handle is moving. The project is not written until
-  /// the finger lifts, so dragging an axis across the canvas is one undo
-  /// entry rather than one per pointer sample.
-  CutGuides? _liveGuides;
-
   /// Null until something frames the canvas — the user, playback fit, or a
   /// camera restore.
   ///
@@ -884,18 +877,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     EditorSessionManager session,
     CanvasViewport viewport,
   ) {
+    final verbs = session.cutVerbs;
     return Positioned.fill(
       child: GuideEditLayer(
-        guides: _liveGuides ?? session.cutVerbs.activeCutGuides,
+        guides: verbs.activeCutGuidesForDisplay,
         viewport: viewport,
         onGuideSelected: (id) => session.selectedGuideId = id,
-        // Live while dragging: the project is not
-        // touched, so a drag is one undo entry.
-        onGuidesChanged: (guides) => setState(() => _liveGuides = guides),
-        onGuidesCommitted: (guides) {
-          setState(() => _liveGuides = null);
-          session.cutVerbs.setActiveCutGuides(guides);
-        },
+        // A drag PREVIEWS and the release COMMITS, so it is one undo entry.
+        // ⛔Through the cut verbs' one preview, not a copy kept here: the
+        // settings panel edits the same guides from another subtree
+        // (guide-slider-one-undo).
+        onGuidesChanged: verbs.previewActiveCutGuides,
+        onGuidesCommitted: verbs.setActiveCutGuides,
       ),
     );
   }
@@ -907,21 +900,25 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasTool tool,
     BuildContext context,
   ) {
+    final verbs = session.cutVerbs;
     return Positioned.fill(
       child: IgnorePointer(
-        child: CustomPaint(
-          painter: GuideOverlayPainter(
-            // The live drag value while a handle is
-            // moving, so the drawn guide follows the
-            // finger without a project write.
-            guides: _liveGuides ?? session.cutVerbs.activeCutGuides,
-            viewport: viewport,
-            canvasSize: canvasSize,
-            emphasized: tool == CanvasTool.guide,
-            vanishingPointLabel: AppText.strings.guideVanishingPoint,
-            color: Theme.of(context).colorScheme.primary,
-            face: appFaceOf(DefaultTextStyle.of(context).style),
-            selectedGuideId: session.selectedGuideId,
+        // The drag in flight repaints the guides and nothing else: the
+        // preview is a channel of its own, where a `setState` here used to
+        // rebuild the whole canvas area per pointer sample.
+        child: ValueListenableBuilder<CutGuides?>(
+          valueListenable: verbs.guidesDragPreview,
+          builder: (context, _, _) => CustomPaint(
+            painter: GuideOverlayPainter(
+              guides: verbs.activeCutGuidesForDisplay,
+              viewport: viewport,
+              canvasSize: canvasSize,
+              emphasized: tool == CanvasTool.guide,
+              vanishingPointLabel: AppText.strings.guideVanishingPoint,
+              color: Theme.of(context).colorScheme.primary,
+              face: appFaceOf(DefaultTextStyle.of(context).style),
+              selectedGuideId: session.selectedGuideId,
+            ),
           ),
         ),
       ),
