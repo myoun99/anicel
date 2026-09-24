@@ -6,7 +6,7 @@ import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/transform_track.dart' show TransformPose;
-import 'layer_pose_matrix.dart' show layerPoseMatrix;
+import 'layer_pose_matrix.dart' show canvasToArtwork;
 import 'canvas_selection.dart' show SelectionMaskOptions, buildSelectionMask;
 import 'canvas_selection_region.dart';
 import 'cel_pixel_overwrite.dart';
@@ -116,8 +116,8 @@ CelPixelWalk celPixelWalkFor({
 /// recolour a different part of every posed row than the one the user
 /// drew over.
 ///
-/// The inverse is the eyedropper's answer (`canvas_color_sampler`'s
-/// `_artworkPointFor`, R28 #7), applied to the region's points instead of
+/// The inverse is [canvasToArtwork] — the one the eyedropper's pick (R28 #7)
+/// and the fill's raster ask — applied to the region's points instead of
 /// to one pick. An unposed layer — the overwhelming majority — gets the
 /// region back unchanged, so the pass stays byte-identical to what a lift
 /// on the same selection would take.
@@ -135,15 +135,9 @@ CanvasSelectionRegion? regionInArtworkSpace({
   if (pose == null) {
     return region;
   }
-  final matrix = layerPoseMatrix(pose, canvasSize, anchorPoint: anchorPoint);
-  if (matrix.invert() == 0) {
-    return null;
-  }
-  final inverse = matrix.storage;
-  return region.mapped(
-    (point) => CanvasPoint(
-      x: inverse[0] * point.x + inverse[4] * point.y + inverse[12],
-      y: inverse[1] * point.x + inverse[5] * point.y + inverse[13],
-    ),
+  final toArtwork = canvasToArtwork(
+    (pose: pose, anchorPoint: anchorPoint),
+    canvasSize,
   );
+  return toArtwork == null ? null : region.mapped(toArtwork.apply);
 }

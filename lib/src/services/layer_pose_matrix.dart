@@ -5,6 +5,7 @@ import 'package:vector_math/vector_math_64.dart' show Matrix4;
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/transform_track.dart';
+import 'guide_geometry.dart';
 
 /// A layer's resolved GEOMETRIC transform at one frame: the shared pose
 /// (position/scale/rotation) plus the optional anchor point (null = the
@@ -39,4 +40,43 @@ Matrix4 layerPoseMatrix(
     ).multiplied(Matrix4.rotationZ(pose.rotationDegrees * math.pi / 180))
     ..multiply(Matrix4.diagonal3Values(pose.zoom, pose.zoom, 1))
     ..multiply(Matrix4.translationValues(-anchorX, -anchorY, 0));
+}
+
+/// A posed layer's ARTWORK space → CANVAS space: [layerPoseMatrix]'s plane
+/// part, as the affine a point-mapping caller wants.
+GuideTransform artworkToCanvas(LayerPoseSample sample, CanvasSize canvasSize) =>
+    _planeOf(
+      layerPoseMatrix(
+        sample.pose,
+        canvasSize,
+        anchorPoint: sample.anchorPoint,
+      ),
+    );
+
+/// CANVAS space → a posed layer's ARTWORK space: the inverse of
+/// [artworkToCanvas]. Null when the pose is singular — a zero zoom collapses
+/// the layer, and [TransformPose] refuses one, so that is a backstop rather
+/// than a path.
+///
+/// ⛔ONE INVERSE. The eyedropper's pick (R28 #7), a region restated in a
+/// posed layer's pixels, the guides the pen draws against and the fill's
+/// raster (I-36) each inverted the pose on their own; they ask this.
+GuideTransform? canvasToArtwork(
+  LayerPoseSample sample,
+  CanvasSize canvasSize,
+) {
+  final matrix = layerPoseMatrix(
+    sample.pose,
+    canvasSize,
+    anchorPoint: sample.anchorPoint,
+  );
+  if (matrix.invert() == 0) {
+    return null;
+  }
+  return _planeOf(matrix);
+}
+
+GuideTransform _planeOf(Matrix4 matrix) {
+  final m = matrix.storage;
+  return GuideTransform(m[0], m[1], m[4], m[5], m[12], m[13]);
 }

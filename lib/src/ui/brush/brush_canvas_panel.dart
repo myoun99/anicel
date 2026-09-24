@@ -1837,11 +1837,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       viewport: _viewportState._viewport,
       // A held mapped button's live pick (PEN-7a) — the eyedropper's own
       // pick, because the tool IS the eyedropper while it is held.
+      //
+      // ⛔It arrives from INSIDE the draw-through wrap, in the posed layer's
+      // artwork, and the sampler reads the CANVAS — the space the tool's own
+      // tap and the hover swatch ask in (I-36: one space for a pick). The
+      // pose carries it back out, as it carried the pointer in.
       onHoldPick:
           widget.sampleColorAt == null || widget.onEyedropperPick == null
           ? null
           : (point) {
-              final color = widget.sampleColorAt!(point);
+              final pose = widget.interactiveContentPose;
+              final color = widget.sampleColorAt!(
+                pose == null
+                    ? point
+                    : artworkToCanvas(pose, widget.canvasSize).apply(point),
+              );
               if (color != null) {
                 widget.onEyedropperPick!(color);
               }

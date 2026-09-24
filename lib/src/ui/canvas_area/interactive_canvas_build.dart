@@ -481,6 +481,9 @@ class _InteractiveCanvasBuild {
         // The 「현재」 of the fill's reference source (I-36) — the same
         // layer the eyedropper's reads, above.
         activeLayerId: session.activeLayer?.id,
+        // The seed arrives through the draw-through wrap, in the posed
+        // layer's artwork — the raster is laid in the same space (I-36).
+        space: _interactivePose,
         // The same guide the brush obeys, handed down by the view
         // that read it — a symmetry that replicates strokes
         // replicates fills.

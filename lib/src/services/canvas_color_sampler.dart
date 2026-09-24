@@ -13,7 +13,7 @@ import '../models/project_background.dart';
 import '../models/tile_coord.dart';
 import 'composite_effect_paint.dart'
     show resolveColorMatrixIgnoringSpatial;
-import 'layer_pose_paint.dart' show layerPoseMatrix;
+import 'layer_pose_matrix.dart' show canvasToArtwork;
 import 'canvas_read_source.dart';
 import 'cel_source_effect_pass.dart';
 import 'cut_frame_composite_plan.dart';
@@ -106,9 +106,9 @@ List<double>? _adjustmentColorMatrix({
 }
 
 /// The canvas point mapped into [entry]'s ARTWORK space — the inverse of
-/// the pose [applyLayerPoseTransform] paints with. Null when the pose is
-/// singular (a zero zoom collapses the layer to nothing, so there is no
-/// pixel under the pointer).
+/// the pose every composite route paints with ([canvasToArtwork], the one
+/// inverse). Null when the pose is singular (a zero zoom collapses the
+/// layer to nothing, so there is no pixel under the pointer).
 ///
 /// R28 #7: posed layers used to be SKIPPED here, which meant any layer
 /// carrying a transform — or merely sitting inside a folder that did —
@@ -124,19 +124,10 @@ CanvasPoint? _artworkPointFor(
   if (pose == null) {
     return point;
   }
-  final matrix = layerPoseMatrix(
-    pose,
+  return canvasToArtwork(
+    (pose: pose, anchorPoint: entry.anchorPoint),
     canvasSize,
-    anchorPoint: entry.anchorPoint,
-  );
-  if (matrix.invert() == 0) {
-    return null;
-  }
-  final mapped = matrix.storage;
-  return CanvasPoint(
-    x: mapped[0] * point.x + mapped[4] * point.y + mapped[12],
-    y: mapped[1] * point.x + mapped[5] * point.y + mapped[13],
-  );
+  )?.apply(point);
 }
 
 /// Samples the color at [point] (P5 eyedropper); returns opaque ARGB.
