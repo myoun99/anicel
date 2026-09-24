@@ -110,7 +110,13 @@ void main() {
   /// paper it is inked onto. Asking the ink apart from placing it would put
   /// that composition back at each block that draws the line — the copy the
   /// function exists to end.
-  const wideSignatures = 391;
+  ///
+  /// ⚠️391 → 389 on 2026-09-25, lowered as the rule asks: master stood at
+  /// 390, and the carry round (`recarry-after-remove-reads-the-old`) took
+  /// one off — `storedMediaBytesFor` asks by the carry now, and a carry
+  /// knows its path, so the path left its parameters. 🔬`clean_code_diff`
+  /// between master and the lane names that one and nothing added.
+  const wideSignatures = 389;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
@@ -185,7 +191,23 @@ void main() {
   /// by it. 🔬`clean_code_diff.dart` between HEAD and the lane names it and
   /// no other class this round touches. ⛔Splitting the flip window's
   /// painter to get back under is a round of its own, not this one's.
-  const longClasses = 59;
+  ///
+  /// ⚠️59 → 60 on 2026-09-25, ONE name: `MediaPool` crossed (560 → 605)
+  /// in the carry round (`recarry-after-remove-reads-the-old`). It took in
+  /// the question the placement doors and the cut folder had each spelled
+  /// — which arriving carried files need their bytes held
+  /// (`holdCarriedBytes`), so `ProjectImportDoors` shrank as it grew — and
+  /// the decisions on why `_admit` waits only when something is to be held
+  /// and why a relink keeps the carry's token. 🔬`clean_code_diff` between
+  /// master and the lane names this one and no other. ⛔Not split to fit:
+  /// the pool's verbs are one conversation (its header says why), and the
+  /// question joined it.
+  /// ⚠️The diff tool reads one class fewer than this test, on both trees:
+  /// handed an absolute root it drops `lib/dev/` as the scan says, while
+  /// this test's `'lib'` gives paths with no leading slash, which the
+  /// `'/lib/dev/'` check never matches — so the dev tool's own long class
+  /// counts here. Read the count off this test, not off the tool.
+  const longClasses = 60;
 
   late CleanCodeScan scan;
   setUpAll(() {
