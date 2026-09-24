@@ -197,6 +197,25 @@ int32_t qa_video_apple_open(const char* utf8_path,
       video_settings[AVVideoCompressionPropertiesKey] =
           @{AVVideoAverageBitRateKey : @(bitrate_bps)};
     }
+    // 🚨★★★**THE MATRIX THE PICTURES ARE TURNED INTO YCbCr WITH IS NAMED,
+    // AND WRITTEN INTO THE FILE — BT.601, the one the other two halves
+    // use.** Frames arrive as BGRA. With no colour properties the encoder
+    // chose a matrix and the file said nothing of it, and the reader turned
+    // the pictures back with another: a flat red lost what BT.709 in and
+    // BT.601 out take (0.2126 + 1.402 × 0.5 = 0.9136 of it), once for a take
+    // and again for a piece cut from it. It passed for noise — 13 away at
+    // red 140 — until the NTSC trim test met red 200 and came back 17 away,
+    // on the Apple runner only (2026-09-25, board
+    // `trimmed-piece-apple-parity`): a loss that grows with the red is a
+    // matrix, not noise. Media Foundation and the Android writer both write
+    // BT.601 studio range (`qa_video_encode.c` converts by hand with exactly
+    // that matrix), so this one joins them and TAGS it, and every reader
+    // turns a picture back with the matrix it went in with.
+    video_settings[AVVideoColorPropertiesKey] = @{
+      AVVideoColorPrimariesKey : AVVideoColorPrimaries_SMPTE_C,
+      AVVideoTransferFunctionKey : AVVideoTransferFunction_ITU_R_709_2,
+      AVVideoYCbCrMatrixKey : AVVideoYCbCrMatrix_ITU_R_601_4,
+    };
     g_video_input =
         [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo
                                        outputSettings:video_settings];

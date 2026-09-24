@@ -505,18 +505,24 @@ void main() {
         );
         for (var n = 0; n < span.count; n += 1) {
           final at = span.first + n;
-          final shown = decoder.frameOf(original, clock.movieFrameAt(at))!;
+          final movieFrame = clock.movieFrameAt(at);
+          final shown = decoder.frameOf(original, movieFrame)!;
           final piece = decoder.frameOf(cut, n)!;
           // ⚠️The question is WHICH frame, so the bound is half the step
           // between neighbouring reds: nearer than that is this frame and
-          // no other. 12 was a margin read off the Windows encoder; the
-          // Apple one lands a flat red 13 away after the take and its
-          // piece are each encoded (2026-09-25, first run on a Mac) — the
-          // right frame, just noisier. A neighbour would sit ~30 away.
+          // no other. A neighbour would sit ~30 away.
+          // 🪦The Apple engine landed a flat red 13 away here and it was
+          // read as that encoder's noise (2026-09-25, first run on a Mac).
+          // It was the writer's colour matrix — a loss that grows with the
+          // red, 17 at red 200 — and it is pinned where it lives, by the
+          // colour test below. The reds go into the reason so a failure
+          // says which it is.
           expect(
             (piece[0] - shown[0]).abs(),
             lessThan(redStep ~/ 2),
-            reason: 'piece frame $n is what project frame $at showed',
+            reason: 'piece frame $n is what project frame $at showed — '
+                'red ${piece[0]} in the piece, ${shown[0]} in the take, '
+                '${20 + movieFrame * redStep} written',
           );
         }
       } finally {
@@ -526,6 +532,45 @@ void main() {
       await tester.pumpAndSettle();
       return span.count;
     }
+
+    /// How far a flat red may move through ONE encode and one decode.
+    ///
+    /// ⚠️Measured, not chosen: Media Foundation brings every red of
+    /// [writeMovie] back within 3 (2026-09-25). A writer and reader that
+    /// disagree about the YCbCr matrix lose a share of the red instead —
+    /// BT.709 in and BT.601 out keeps 0.9136 of it, 17 short at red 200 —
+    /// and this bound is what tells that loss from a codec's noise.
+    const colourSlack = 8;
+
+    testWidgets('🚨a frame the app writes comes back the colour it was '
+        'written — one encode and one decode, on every engine', (
+      tester,
+    ) async {
+      final encoder = QaVideoEncoder.instance;
+      if (encoder == null || !encoder.isSupported) {
+        return;
+      }
+      final source = inTemp('colours.mp4');
+      writeMovie(encoder, source, (numerator: 12, denominator: 1));
+      final decoder = QaVideoDecoder.instance!;
+      final movie = decoder.openDocument(source)!;
+      try {
+        for (var frame = 0; frame < 8; frame += 1) {
+          final written = 20 + frame * redStep;
+          final red = decoder.frameOf(movie, frame)![0];
+          expect(
+            (red - written).abs(),
+            lessThan(colourSlack),
+            reason: 'frame $frame was written red $written and came back '
+                '$red — a loss that grows with the red is the writer and '
+                'the reader using two matrices',
+          );
+        }
+      } finally {
+        decoder.closeDocument(movie);
+      }
+      await tester.pumpAndSettle();
+    }, skip: skip);
 
     testWidgets('🎯a trimmed movie is carried as an MP4 of the frames the '
         'project shows, one per project frame', (tester) async {
