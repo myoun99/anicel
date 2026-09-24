@@ -27,12 +27,17 @@ abstract final class TimelineGridTileOp {
   static const int vline = 3;
   static const int glyph = 4;
 
-  /// Rounded-rect ops (T2, the cell BLOCK chrome): every geometry field
+  /// The rounded-rect fill (T2, the cell BLOCK chrome): every geometry field
   /// is 24.8 fixed point (pixels * 256 — [q8]) so fractional-zoom cell
   /// rects ride sub-pixel; corner mask bit0=TL, bit1=TR, bit2=BL,
   /// bit3=BR (unset corners square). AA from the rounded-box SDF.
   static const int rrectFill = 5;
-  static const int rrectStroke = 6;
+
+  // 🪦6 was the rounded-rect STROKE — the per-cell block border's. D32/D38
+  // (2026-08-18) made that border transparent for good, and the substrate
+  // rewrite of 2026-09-24 took the emitter branch that could still have
+  // asked for it; nothing wrote a 6 after that, so the op left the writer,
+  // the reference and the engine together.
 
   static const int cornerTopLeft = 1;
   static const int cornerTopRight = 2;
@@ -280,29 +285,6 @@ class TimelineGridTileOpWriter {
     }
   }
 
-  /// A stroked rounded rect, [thickness] centered on the boundary.
-  void rrectStroke(
-    double x,
-    double y,
-    double width,
-    double height,
-    double radius,
-    int cornerMask,
-    double thickness,
-    int rgba,
-  ) {
-    _words
-      ..add(TimelineGridTileOp.rrectStroke)
-      ..add(timelineGridQ8(x))
-      ..add(timelineGridQ8(y))
-      ..add(timelineGridQ8(width))
-      ..add(timelineGridQ8(height))
-      ..add(timelineGridQ8(radius))
-      ..add(cornerMask)
-      ..add(timelineGridQ8(thickness))
-      ..add(rgba);
-  }
-
   /// Blits a [width]x[height] window of the A8 atlas at (atlasX, atlasY)
   /// to (destX, destY), tinted by [rgba] (atlas coverage scales its
   /// alpha).
@@ -401,7 +383,6 @@ void _blendRRect(
   required double h,
   required double radius,
   required int cornerMask,
-  required double strokeThickness, // <= 0 = fill
   required int rgba,
 }) {
   final colorA = (rgba >> 24) & 0xFF;
@@ -420,12 +401,11 @@ void _blendRRect(
   final radiusBr = (cornerMask & 8) != 0 ? radius : 0.0;
   final centerX = x + halfW;
   final centerY = y + halfH;
-  final reach = strokeThickness > 0.0 ? strokeThickness * 0.5 : 0.0;
 
-  var left = (x - reach - 1.0).toInt();
-  var top = (y - reach - 1.0).toInt();
-  var right = (x + w + reach + 2.0).toInt();
-  var bottom = (y + h + reach + 2.0).toInt();
+  var left = (x - 1.0).toInt();
+  var top = (y - 1.0).toInt();
+  var right = (x + w + 2.0).toInt();
+  var bottom = (y + h + 2.0).toInt();
   if (left < 0) {
     left = 0;
   }
@@ -456,13 +436,7 @@ void _blendRRect(
         radiusBl,
         radiusBr,
       );
-      double coverage;
-      if (strokeThickness > 0.0) {
-        final ad = d < 0.0 ? -d : d;
-        coverage = 0.5 - (ad - reach);
-      } else {
-        coverage = 0.5 - d;
-      }
+      var coverage = 0.5 - d;
       if (coverage > 0.0) {
         if (coverage > 1.0) {
           coverage = 1.0;
@@ -593,28 +567,9 @@ int timelineGridRasterTileReference({
           h: ops[cursor + 4] / 256.0,
           radius: ops[cursor + 5] / 256.0,
           cornerMask: ops[cursor + 6],
-          strokeThickness: 0.0,
           rgba: ops[cursor + 7],
         );
         cursor += 8;
-      case TimelineGridTileOp.rrectStroke:
-        if (cursor + 9 > ops.length) {
-          return -2;
-        }
-        _blendRRect(
-          pixels,
-          tileWidth,
-          tileHeight,
-          x: ops[cursor + 1] / 256.0,
-          y: ops[cursor + 2] / 256.0,
-          w: ops[cursor + 3] / 256.0,
-          h: ops[cursor + 4] / 256.0,
-          radius: ops[cursor + 5] / 256.0,
-          cornerMask: ops[cursor + 6],
-          strokeThickness: ops[cursor + 7] / 256.0,
-          rgba: ops[cursor + 8],
-        );
-        cursor += 9;
       case TimelineGridTileOp.glyph:
         if (cursor + 8 > ops.length) {
           return -2;

@@ -81,7 +81,7 @@ void main() {
         // past-extent): clipping must agree exactly.
         final x = random.nextInt(tileWidth + 24) - 12;
         final y = random.nextInt(tileHeight + 24) - 12;
-        switch (random.nextInt(6)) {
+        switch (random.nextInt(5)) {
           case 0:
             writer.fillRect(
               x,
@@ -126,17 +126,6 @@ void main() {
               1 + random.nextInt(24) + random.nextDouble(),
               random.nextDouble() * 8,
               random.nextInt(16),
-              randomRgba(random),
-            );
-          case 5:
-            writer.rrectStroke(
-              x + random.nextDouble(),
-              y + random.nextDouble(),
-              1 + random.nextInt(40) + random.nextDouble(),
-              1 + random.nextInt(24) + random.nextDouble(),
-              random.nextDouble() * 8,
-              random.nextInt(16),
-              0.5 + random.nextDouble() * 2,
               randomRgba(random),
             );
         }
@@ -275,6 +264,14 @@ void main() {
     final unknown = Int32List.fromList([99]);
     expect(native(unknown), -4);
     expect(reference(unknown), -4);
+
+    // The retired rounded-rect STROKE (6, 2026-09-24) is unknown to both —
+    // a stream that still asked for it fails on either side alike.
+    final retiredStroke = Int32List.fromList([
+      6, 0, 0, 256, 256, 0, 0, 256, -1, //
+    ]);
+    expect(native(retiredStroke), -4);
+    expect(reference(retiredStroke), -4);
   });
 
   test('timelineGridPackRgba lays ARGB out as the op stream\'s little-endian '

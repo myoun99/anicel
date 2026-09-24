@@ -3196,14 +3196,11 @@ enum {
   QA_GRID_OP_HLINE = 2,
   QA_GRID_OP_VLINE = 3,
   QA_GRID_OP_GLYPH = 4,
-  // Rounded-rect ops (T2: the cell BLOCK chrome - block start/end corners
-  // round, so the tile path needs analytic-AA corners to match the Skia
-  // painter's look):
+  // The rounded-rect fill (T2: the cell BLOCK chrome - block start/end
+  // corners round, so the tile path needs analytic-AA corners to match the
+  // Skia painter's look):
   //   QA_GRID_OP_RRECT_FILL   (5): x_q8, y_q8, w_q8, h_q8, radius_q8,
   //                                corner_mask, rgba         = 8 words
-  //   QA_GRID_OP_RRECT_STROKE (6): x_q8, y_q8, w_q8, h_q8, radius_q8,
-  //                                corner_mask, thickness_q8,
-  //                                rgba                      = 9 words
   // Every _q8 field is 24.8 fixed point (pixels * 256): cell rects are
   // FRACTIONAL at fractional zooms, so the whole geometry rides
   // sub-pixel. corner_mask bit0=TL, bit1=TR, bit2=BL, bit3=BR (unset
@@ -3211,7 +3208,10 @@ enum {
   // with float sqrt - IEEE correctly-rounded, so bytes stay identical
   // across platforms.
   QA_GRID_OP_RRECT_FILL = 5,
-  QA_GRID_OP_RRECT_STROKE = 6,
+  // 6 was the rounded-rect STROKE - the per-cell block border's. D32/D38
+  // (2026-08-18) made that border transparent for good and the substrate
+  // rewrite of 2026-09-24 took the last branch that could ask for it, so
+  // it left the Dart writer, the Dart reference and this engine together.
 };
 
 static inline void qa_grid_blend_span(
@@ -3307,9 +3307,8 @@ static inline double qa_grid_rrect_distance(
   return outside + inside - r;
 }
 
-// Shared raster loop for RRECT_FILL/STROKE: analytic-AA coverage from
-// the rounded-box SDF (fill: 0.5 - d; stroke of thickness t centered on
-// the boundary: 0.5 - (|d| - t/2)), blended source-over per pixel.
+// The RRECT_FILL raster loop: analytic-AA coverage 0.5 - d from the
+// rounded-box SDF, blended source-over per pixel.
 static void qa_grid_blend_rrect(
     uint8_t* pixels,
     int32_t tile_width,
@@ -3320,7 +3319,6 @@ static void qa_grid_blend_rrect(
     double h,
     double radius,
     int32_t corner_mask,
-    double stroke_thickness,  // <= 0 = fill
     uint32_t rgba) {
   const int32_t color_a = (int32_t)(rgba >> 24) & 0xFF;
   if (color_a == 0 || w <= 0.0 || h <= 0.0) {
@@ -3338,12 +3336,11 @@ static void qa_grid_blend_rrect(
   const double radius_br = (corner_mask & 8) != 0 ? radius : 0.0;
   const double center_x = x + half_w;
   const double center_y = y + half_h;
-  const double reach = stroke_thickness > 0.0 ? stroke_thickness * 0.5 : 0.0;
 
-  int32_t left = (int32_t)(x - reach - 1.0);
-  int32_t top = (int32_t)(y - reach - 1.0);
-  int32_t right = (int32_t)(x + w + reach + 2.0);
-  int32_t bottom = (int32_t)(y + h + reach + 2.0);
+  int32_t left = (int32_t)(x - 1.0);
+  int32_t top = (int32_t)(y - 1.0);
+  int32_t right = (int32_t)(x + w + 2.0);
+  int32_t bottom = (int32_t)(y + h + 2.0);
   if (left < 0) left = 0;
   if (top < 0) top = 0;
   if (right > tile_width) right = tile_width;
@@ -3358,13 +3355,7 @@ static void qa_grid_blend_rrect(
       const double d = qa_grid_rrect_distance(
           (double)px + 0.5, (double)py + 0.5, center_x, center_y, half_w,
           half_h, radius_tl, radius_tr, radius_bl, radius_br);
-      double coverage;
-      if (stroke_thickness > 0.0) {
-        const double ad = d < 0.0 ? -d : d;
-        coverage = 0.5 - (ad - reach);
-      } else {
-        coverage = 0.5 - d;
-      }
+      double coverage = 0.5 - d;
       if (coverage > 0.0) {
         if (coverage > 1.0) {
           coverage = 1.0;
@@ -3444,20 +3435,9 @@ QA_EXPORT int32_t qa_grid_raster_tile(
             pixels, tile_width, tile_height,
             (double)ops[cursor + 1] / 256.0, (double)ops[cursor + 2] / 256.0,
             (double)ops[cursor + 3] / 256.0, (double)ops[cursor + 4] / 256.0,
-            (double)ops[cursor + 5] / 256.0, ops[cursor + 6], 0.0,
+            (double)ops[cursor + 5] / 256.0, ops[cursor + 6],
             (uint32_t)ops[cursor + 7]);
         cursor += 8;
-        break;
-      }
-      case QA_GRID_OP_RRECT_STROKE: {
-        if (cursor + 9 > op_word_count) return -2;
-        qa_grid_blend_rrect(
-            pixels, tile_width, tile_height,
-            (double)ops[cursor + 1] / 256.0, (double)ops[cursor + 2] / 256.0,
-            (double)ops[cursor + 3] / 256.0, (double)ops[cursor + 4] / 256.0,
-            (double)ops[cursor + 5] / 256.0, ops[cursor + 6],
-            (double)ops[cursor + 7] / 256.0, (uint32_t)ops[cursor + 8]);
-        cursor += 9;
         break;
       }
       case QA_GRID_OP_GLYPH: {
