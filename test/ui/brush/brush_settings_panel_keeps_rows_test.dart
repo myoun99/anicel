@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart'
+    show
+        RenderObject,
+        RenderRepaintBoundary,
+        debugOnProfilePaint,
+        debugProfilePaintsEnabled;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
@@ -134,35 +140,70 @@ void main() {
     expect(identical(tester.widget(find.byKey(flowKey)), flow), isFalse);
   });
 
-  testWidgets('🚨a new brush re-bakes the rows whose numbers changed and no '
-      'other — every row is its own zone (H40, 2026-09-24)', (tester) async {
+  testWidgets('🚨where nothing bakes, a new brush repaints the rows whose '
+      'numbers changed and no other (H40, 2026-09-24)', (tester) async {
+    // Impeller: the test renderer is Skia, so the override takes the branch.
+    StaticRaster.debugCapturePaysOverride = false;
+    addTearDown(() => StaticRaster.debugCapturePaysOverride = null);
     final (notifier, _) = await pumpPanel(tester);
-    RenderStaticRaster zoneOf(Key key) =>
-        tester.renderObject<RenderStaticRaster>(
+    RenderRepaintBoundary rowOf(Key key) =>
+        tester.renderObject<RenderRepaintBoundary>(
           find
-              .ancestor(of: find.byKey(key), matching: find.byType(StaticRaster))
+              .ancestor(
+                of: find.byKey(key),
+                matching: find.byType(RepaintBoundary),
+              )
               .first,
         );
-    final flow = zoneOf(flowKey);
-    final jitter = zoneOf(jitterKey);
+    final flow = rowOf(flowKey);
+    final jitter = rowOf(jitterKey);
     expect(
       identical(flow, jitter),
       isFalse,
-      reason: 'two rows, two zones — not one bake over the column',
+      reason: 'two rows, two boundaries — not one over the column',
     );
-    final flowBakes = flow.captureCount;
-    final jitterBakes = jitter.captureCount;
-    expect(flowBakes, greaterThan(0), reason: 'fixture: the zones bake here');
 
-    notifier.value = a.copyWith(flow: 0.9);
-    await tester.pump();
+    final painted = <RenderObject>[];
+    debugOnProfilePaint = painted.add;
+    debugProfilePaintsEnabled = true;
+    try {
+      notifier.value = a.copyWith(flow: 0.9);
+      await tester.pump();
+    } finally {
+      debugProfilePaintsEnabled = false;
+      debugOnProfilePaint = null;
+    }
 
-    expect(flow.captureCount, flowBakes + 1, reason: 'the flow row changed');
+    // ⚠️A boundary's OWN entry says nothing: `debugOnProfilePaint` fires in
+    // the parent's `paintChild`, and a boundary that is only composited —
+    // its layer reused — is handed to that too. What its CHILD does says
+    // whether it painted again.
+    expect(painted, contains(flow.child), reason: 'the flow row changed');
     expect(
-      jitter.captureCount,
-      jitterBakes,
+      painted,
+      isNot(contains(jitter.child)),
       reason: 'the jitter row shows the same number, so it is not painted '
-          'or baked again',
+          'again',
+    );
+  });
+
+  testWidgets('where the body bakes, no row boundary stands it down', (
+    tester,
+  ) async {
+    // Skia, the old tablets: the 09-22 round made this body bakeable, and a
+    // boundary inside it is the nesting that would stand it down again.
+    StaticRaster.debugCapturePaysOverride = true;
+    addTearDown(() => StaticRaster.debugCapturePaysOverride = null);
+    await pumpPanel(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('brush-settings-panel')),
+        matching: find.ancestor(
+          of: find.byKey(flowKey),
+          matching: find.byType(RepaintBoundary),
+        ),
+      ),
+      findsNothing,
     );
   });
 }

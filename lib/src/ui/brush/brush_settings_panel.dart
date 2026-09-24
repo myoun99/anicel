@@ -108,31 +108,28 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   void Function(BrushTipEntry tip)? get _deleteTip =>
       widget.onDeleteTip == null ? null : _deleteTipNow;
 
-  /// Every row its own ZONE — a sibling bake, the timeline command groups'
-  /// law, so a row's repaint stops at its own boundary (H40, 2026-09-24).
+  /// Every row its own repaint boundary where nothing is baked, so a row's
+  /// repaint stops at its own edge (H40, 2026-09-24).
   ///
-  /// A brush pick changes three or four rows. With the column one bake,
-  /// every one of the forty rows was painted again — 884 render objects of
-  /// ± buttons alone — and the whole 1.9 MB column captured again. Measured
-  /// on the real Windows app (profile, the user's work file open): the
-  /// pick's worst frame 14.3 → 11.3 ms with every row its own boundary.
+  /// A brush pick changes three or four rows, and every one of the forty
+  /// was painted again — 884 render objects of ± buttons alone. Measured on
+  /// the real Windows app (profile, the user's work file open): the pick's
+  /// worst frame 14.3 → 11.3 ms with every row its own boundary.
   ///
-  /// ⚠️The body's own bake stands down around them (nested) — the ledger
-  /// in `panel_static_raster_test` says so. Under Impeller nothing bakes
-  /// either way ([StaticRaster.capturePays]); the zones are what is left.
-  List<Widget> _zoned(List<Widget> rows) => [
-    for (final row in rows)
-      StaticRaster(debugLabel: 'settings:${_zoneName(row)}', child: row),
-  ];
-
-  /// Names a row's zone in the bake report.
-  static String _zoneName(Widget row) => switch (row) {
-    _GroupHeader(:final label) => 'header $label',
-    _PanelSlider(:final keyValue) || _PanelSwitch(:final keyValue) =>
-      keyValue,
-    BrushTipPickerRow(:final role) => 'tip picker ${role.name}',
-    _ => '${row.runtimeType}',
-  };
+  /// ⛔Only where nothing is captured ([StaticRaster.capturePays] false —
+  /// Impeller). Where the body bakes (Skia, the old tablets), a boundary
+  /// inside it stands the bake down and the whole panel would paint every
+  /// frame again: the 09-22 round took the `Opacity` out of a switch and a
+  /// bar precisely so this body could bake (`panel_static_raster_test`).
+  ///
+  /// ⛔A boundary and not a [StaticRaster] zone per row: a zone paints
+  /// through inside a clip to its box, and a row's segmented control draws
+  /// the outer half of its outline past the row's edge — the cut moved one
+  /// pixel by 1/255 at the user's screen size. A boundary changes no
+  /// pixel; the body keeps its own clip, the edge the panel always had.
+  List<Widget> _zoned(List<Widget> rows) => StaticRaster.capturePays
+      ? rows
+      : [for (final row in rows) RepaintBoundary(child: row)];
 
   /// [fresh], with every row that shows what the kept row at its place
   /// showed replaced by that kept instance.
