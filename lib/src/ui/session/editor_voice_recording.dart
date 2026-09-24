@@ -1,4 +1,4 @@
-import 'dart:async' show Timer, scheduleMicrotask;
+import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -14,6 +14,7 @@ import '../../models/media_asset.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_frame_range.dart';
 import '../playback/audio_device_transport.dart';
 import '../../models/audio_sync_settings.dart';
 import '../playback/canvas_playback_controller.dart';
@@ -46,7 +47,7 @@ import '../audio/audio_conform_store.dart';
 /// still called on the session — every one of them has a one-line delegation
 /// there.
 ///
-/// What it needs from the session it NAMES: the twenty members in the
+/// What it needs from the session it NAMES: the twenty-one members in the
 /// constructor below. That width is the finding, not an accident of the move
 /// — this block is a client of most of the session's audio and timeline
 /// state rather than a passenger on it, and a constructor that lists them is
@@ -84,6 +85,8 @@ class EditorVoiceRecording {
     required MediaStagingStore staging,
     required ValueNotifier<TimelineFrameRangeSelection?> Function()
     frameRangeSelection,
+    required ValueNotifier<TrackFrameRangeSelection?> Function()
+    trackFrameRangeSelection,
     required void Function() notify,
   }) : _playback = playback,
        _audioDeviceTransport = audioDeviceTransport,
@@ -104,6 +107,7 @@ class EditorVoiceRecording {
        _mediaAssets = mediaAssets,
        _rememberMediaFingerprint = rememberMediaFingerprint,
        _frameRangeSelection = frameRangeSelection,
+       _trackFrameRangeSelection = trackFrameRangeSelection,
        _notify = notify;
 
   // --- The session, seen from here -----------------------------------------
@@ -191,6 +195,9 @@ class EditorVoiceRecording {
   _frameRangeSelection;
   ValueNotifier<TimelineFrameRangeSelection?> get frameRangeSelection =>
       _frameRangeSelection();
+
+  final ValueNotifier<TrackFrameRangeSelection?> Function()
+  _trackFrameRangeSelection;
 
   // 🪦**`_projectFilePath` STOOD HERE** and its one reader was
   // `releaseShelfTakesToProject`, which asked「has this project got a file
@@ -668,9 +675,7 @@ class EditorVoiceRecording {
     _voiceRecordPunchEndFrame = punchEnd == null
         ? reached
         : math.min(punchEnd, reached);
-    // Off the frame notifier's own call: finishing stops the roll this take
-    // started, and the controller is still mid-tick here.
-    scheduleMicrotask(finishTakeThroughTheNotice);
+    unawaited(finishTakeThroughTheNotice());
     return true;
   }
 
@@ -854,25 +859,39 @@ class EditorVoiceRecording {
             (gapParkedGlobalFrame ?? editingGlobalFrame))
       : (gapParkedGlobalFrame ?? editingGlobalFrame);
 
-  /// The punch window: a range selection on the armed lane, mapped from
-  /// its cut-local display axis onto the track axis. Without one the
-  /// take simply anchors at the roll.
+  /// The punch window: a range selection on the armed lane, on the track
+  /// axis. Without one the take simply anchors at the roll.
   ({int anchor, int? end}) _voicePunchWindow(
     LayerId laneId, {
     required int rollStart,
   }) {
-    final selection = frameRangeSelection.value;
-    if (selection == null || !selection.coversLayer(laneId)) {
+    final span = _rangeOnLane(laneId);
+    if (span == null || rollStart >= span.end) {
       return (anchor: rollStart, end: null);
+    }
+    return (anchor: math.max(rollStart, span.start), end: span.end);
+  }
+
+  /// The range selected on [laneId], from whichever panel made it.
+  ///
+  /// #16's law (유저: 「스토리보드패널에서 S행의 프레임생성이 안됨」): THE
+  /// TRACK RANGE SPEAKS FIRST. The storyboard's S-row drag writes it (on the
+  /// track axis already) and clears the cut-local one, so a punch that read
+  /// the timeline's cells alone ignored every range made on the storyboard —
+  /// which F-178 made reachable, by letting a take start from an S row there.
+  ({int start, int end})? _rangeOnLane(LayerId laneId) {
+    final rows = _trackFrameRangeSelection().value;
+    if (rows != null && rows.coversRow(LayerRowAddress(laneId))) {
+      return (start: rows.startFrame, end: rows.endFrameExclusive);
+    }
+    final cells = frameRangeSelection.value;
+    if (cells == null || !cells.coversLayer(laneId)) {
+      return null;
     }
     final offset = activeCutGlobalStartFrame;
-    final windowEnd = selection.endIndexExclusive + offset;
-    if (rollStart >= windowEnd) {
-      return (anchor: rollStart, end: null);
-    }
     return (
-      anchor: math.max(rollStart, selection.startIndex + offset),
-      end: windowEnd,
+      start: cells.startIndex + offset,
+      end: cells.endIndexExclusive + offset,
     );
   }
 

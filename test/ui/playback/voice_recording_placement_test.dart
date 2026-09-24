@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
@@ -365,7 +366,9 @@ void main() {
     test('standing on any other row opens the lane 「Add layer ▸ SE」 makes, '
         'stands on it, and lands the take there', () async {
       final manager = session();
-      expect(manager.currentRow, isNot(isA<TrackRowAddress>()));
+      // Stood on on purpose: a stand nobody made reads the active layer,
+      // which would follow the new lane without the lane being stood on.
+      manager.selectLayer(manager.activeLayerId!);
       final lanesBefore = laneIdsOf(manager);
       manager.voiceRecording.debugVoiceRecorderFactory =
           () => _FakeRecorder(takeOfSeconds(0.5));
@@ -403,6 +406,48 @@ void main() {
         menuLanes.firstWhere((lane) => lane.id == menuLane).name,
       );
       byMenu.dispose();
+      manager.dispose();
+    });
+
+    test('a range selected on the S row in the storyboard is the punch '
+        'window, as one selected on the timeline is (#16: the track range '
+        'speaks first)', () async {
+      final manager = session();
+      manager.projectSettings.setProjectFps(4); // 1 s = 4 frames.
+      final laneId = manager.activeTrack.seLayers.first.id;
+      manager.standing.standOnRow(
+        LayerRowAddress(laneId),
+        takesLayerActive: false,
+      );
+      manager.trackFrameRangeSelection.value = TrackFrameRangeSelection(
+        trackId: manager.selectedTrackId,
+        anchorRow: LayerRowAddress(laneId),
+        startFrame: 13,
+        endFrameExclusive: 16,
+      );
+      // Outlasts the 13-frame run-up the head trim eats.
+      manager.voiceRecording.debugVoiceRecorderFactory =
+          () => _FakeRecorder(takeOfSeconds(4));
+
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+      expect(
+        manager.voiceRecording.voiceRecordCueClips.map(
+          (clip) => clip.startFrame,
+        ),
+        [1, 5, 9],
+        reason: 'the count-down into the punch a timeline range builds',
+      );
+      expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
+      final block = drawingBlocks(
+        manager.activeTrack.seLayers
+            .firstWhere((lane) => lane.id == laneId)
+            .timeline,
+      ).single;
+      expect(block.startIndex, 13);
+      expect(block.length, 3);
       manager.dispose();
     });
 

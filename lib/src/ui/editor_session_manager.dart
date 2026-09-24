@@ -2283,7 +2283,7 @@ class EditorSessionManager extends ChangeNotifier
   // --- Voice recording, ADR, input meter, take preview ----------------------
   //
   // The section moved to [EditorVoiceRecording]. Unlike the settings block,
-  // it did not come free: its constructor there lists the twenty session
+  // it did not come free: its constructor there lists the twenty-one session
   // members it reads back, which is what this block's coupling actually is.
   //
   // ⛔The twenty-one forwarders that used to stand here are gone (G3,
@@ -2314,6 +2314,7 @@ class EditorSessionManager extends ChangeNotifier
     rememberMediaFingerprint: mediaFingerprints.rememberMediaFingerprint,
     staging: mediaStagingStore,
     frameRangeSelection: () => frameRangeSelection,
+    trackFrameRangeSelection: () => trackFrameRangeSelection,
     notify: notifyListeners,
   );
   @override
