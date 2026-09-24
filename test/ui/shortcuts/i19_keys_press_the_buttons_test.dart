@@ -35,6 +35,21 @@ Future<void> _press(
   await tester.pumpAndSettle();
 }
 
+/// [key] pressed under Shift, TYPING [typed] — how a layout that puts a
+/// character on Shift delivers it: Windows names a printable key by what it
+/// types unshifted, so a JIS `=` arrives as `minus` with Shift held.
+Future<void> _typeUnderShift(
+  WidgetTester tester,
+  LogicalKeyboardKey key,
+  String typed,
+) async {
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+  await tester.sendKeyDownEvent(key, character: typed);
+  await tester.sendKeyUpEvent(key);
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+  await tester.pumpAndSettle();
+}
+
 const _row = 'default-layer-1';
 
 List<String> _glyphs() => [
@@ -149,6 +164,72 @@ void main() {
 
     await _press(tester, LogicalKeyboardKey.equal);
     expect(session.visibilitySolo.layerVisibilitySoloEnabled, isFalse);
+  });
+
+  // 🚨A KEY IS THE CHARACTER IT TYPES (a-key-is-the-character-it-types) —
+  // 유저 2026-09-13: 「일본어 키보드나 한국어 상태등 키보드가 영어가 아닐때도
+  // 대응하도록」. The IME half landed first; this is the LAYOUT half.
+  testWidgets('a JIS `=` — Shift+- TYPING it — is the same Solo', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const AnicelApp());
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    expect(session.visibilitySolo.layerVisibilitySoloEnabled, isFalse);
+
+    await _typeUnderShift(tester, LogicalKeyboardKey.minus, '=');
+    expect(session.visibilitySolo.layerVisibilitySoloEnabled, isTrue);
+
+    await _typeUnderShift(tester, LogicalKeyboardKey.minus, '=');
+    expect(session.visibilitySolo.layerVisibilitySoloEnabled, isFalse);
+  });
+
+  testWidgets('⛔the same keys typing something else are not Solo — Shift+- '
+      'is `_` on a US board', (tester) async {
+    await tester.pumpWidget(const AnicelApp());
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+
+    await _typeUnderShift(tester, LogicalKeyboardKey.minus, '_');
+    expect(
+      session.visibilitySolo.layerVisibilitySoloEnabled,
+      isFalse,
+      reason: 'the binding is the character `=`, not the `-` key',
+    );
+  });
+
+  testWidgets('⛔a key that types the character with NO Shift is not the '
+      'binding — the numpad `.` steps no frame', (tester) async {
+    await tester.pumpWidget(const AnicelApp());
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    final standingAt = session.currentFrameIndex;
+
+    await tester.sendKeyEvent(
+      LogicalKeyboardKey.numpadDecimal,
+      character: '.',
+    );
+    await tester.pumpAndSettle();
+    expect(
+      session.currentFrameIndex,
+      standingAt,
+      reason: 'only a layout that puts the character on SHIFT reaches it '
+          'under another key — the numpad is a key of its own',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.period, character: '.');
+    await tester.pumpAndSettle();
+    expect(
+      session.currentFrameIndex,
+      isNot(standingAt),
+      reason: '⛔전제: `.` itself steps the frame here',
+    );
   });
 
   testWidgets('Shift+. and Shift+, take the canvas bar\'s zoom step, along '

@@ -716,9 +716,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Timeline',
     defaultActivators: [],
   ),
-  // 🗣️I-19: 「= 버튼은 활성레이어 솔로 버튼으로 연결」. ⚠️On a JIS keyboard
-  // `=` is Shift+- and this default does not match it — the dialog records
-  // whatever key the hand presses.
+  // 🗣️I-19: 「= 버튼은 활성레이어 솔로 버튼으로 연결」. On a JIS keyboard
+  // `=` is Shift+-, which presses this through the character it types
+  // (`pressableForms`, a-key-is-the-character-it-types).
   const EditorActionDefinition(
     id: EditorActionIds.layerVisibilitySolo,
     label: 'Solo active layer',

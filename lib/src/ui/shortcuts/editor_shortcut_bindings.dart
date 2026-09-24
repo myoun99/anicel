@@ -59,11 +59,24 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// the question the playback gate asks for R6q3.
   bool zoomsViewOn(KeyEvent event) {
     for (final definition in definitions) {
-      if (!definition.zoomsView) {
-        continue;
+      if (definition.zoomsView && presses(definition.id, event)) {
+        return true;
       }
-      for (final activator in activatorsFor(definition.id)) {
-        if (activator.accepts(event, HardwareKeyboard.instance)) {
+    }
+    return false;
+  }
+
+  /// Whether [event] presses [actionId] through one of its live keys, in
+  /// any of the forms [pressableForms] names.
+  ///
+  /// ★THE ONE ANSWER to 「does this key press that action」: the app-level
+  /// [shortcuts] map is built from the same forms, and the held keys and the
+  /// playback gate ask here — so a key a layout types differently presses
+  /// all three or none of them.
+  bool presses(String actionId, KeyEvent event) {
+    for (final activator in activatorsFor(actionId)) {
+      for (final form in pressableForms(activator)) {
+        if (form.accepts(event, HardwareKeyboard.instance)) {
           return true;
         }
       }
@@ -89,7 +102,9 @@ class EditorShortcutBindings extends ChangeNotifier {
         continue;
       }
       for (final activator in activatorsFor(definition.id)) {
-        map[activator] = EditorActionIntent(definition.id);
+        for (final form in pressableForms(activator)) {
+          map[form] = EditorActionIntent(definition.id);
+        }
       }
     }
     return map;
@@ -276,6 +291,67 @@ class EditorShortcutBindings extends ChangeNotifier {
     };
     _pendingPersist = _pendingPersist.then((_) => store.save(payload));
   }
+}
+
+/// Every form in which [activator] can be pressed: the key itself, and —
+/// where a layout puts the character that key names on Shift — the
+/// combination that TYPES it.
+///
+/// 🚨★★A KEY IS THE CHARACTER IT TYPES (a-key-is-the-character-it-types).
+/// 🗣️유저 2026-09-13 (I-19): 「일본어 키보드나 한국어 상태등 키보드가 영어가
+/// 아닐때도 대응하도록」. A binding like `=` names a character, but a
+/// [SingleActivator] matches a logical KEY, and Windows names a printable
+/// key by what it types UNSHIFTED. On a JIS keyboard `=` is Shift+-: the
+/// event is `minus` with Shift held, typing '=', and `SingleActivator(equal)`
+/// never sees it — the Solo key had no way in at all.
+///
+/// ⛔ONLY UNDER SHIFT, and that is not a preference. Shift is the one way a
+/// character arrives under ANOTHER key's name (a key is named by its
+/// unshifted character), so it is exactly the case a key binding misses. A
+/// plain [CharacterActivator] would also answer keys that type the same
+/// character without Shift — the numpad's `.` would step a frame the way
+/// `.` does, which nobody asked for.
+///
+/// ⚠️Only a binding with no Shift of its own names a character; Shift+.
+/// names the `>` KEY. And only one printed character that is not a letter:
+/// a letter key reports its own letter on every layout already.
+/// ⚠️Where the platform types no character — Windows under Ctrl — the typed
+/// form never matches, and the key alone answers as it always did.
+/// ⚠️A key bound explicitly beats the typed form of another binding: the
+/// Shortcuts manager tries keyed activators before unkeyed ones.
+Iterable<ShortcutActivator> pressableForms(SingleActivator activator) sync* {
+  yield activator;
+  final label = activator.trigger.keyLabel;
+  final namesACharacter =
+      !activator.shift &&
+      label.runes.length == 1 &&
+      label.trim().isNotEmpty &&
+      label.toLowerCase() == label.toUpperCase();
+  if (namesACharacter) {
+    yield ShiftTypedActivator(
+      CharacterActivator(
+        label,
+        control: activator.control,
+        alt: activator.alt,
+        meta: activator.meta,
+      ),
+    );
+  }
+}
+
+/// [typed]'s character reached with Shift held — the form [pressableForms]
+/// adds for a layout that puts that character on Shift.
+class ShiftTypedActivator extends ShortcutActivator {
+  const ShiftTypedActivator(this.typed);
+
+  final CharacterActivator typed;
+
+  @override
+  bool accepts(KeyEvent event, HardwareKeyboard state) =>
+      state.isShiftPressed && typed.accepts(event, state);
+
+  @override
+  String debugDescribeKeys() => 'Shift-typed ${typed.debugDescribeKeys()}';
 }
 
 /// The app-level ShortcutManager, and what it leaves to a text field.
