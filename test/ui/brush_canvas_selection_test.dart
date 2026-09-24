@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/app_icon_button_probe.dart';
 import '../helpers/device_viewport.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart'
     show debugRawRgbaUploader;
@@ -4034,6 +4035,24 @@ void main() {
         env.history.undoCount,
         entriesAfterFirst + 1,
         reason: '두 번째가 확정한다',
+      );
+    });
+
+    testWidgets('…and over an untouched box with nothing to replay the ✓ is '
+        'grey — the answer the rail\'s ↵ reads too', (tester) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 열림');
+      expect(env.commands.canApplyTransform, isFalse);
+      expect(
+        tester
+            .appIconButton(
+              find.byKey(const ValueKey<String>('selection-move-confirm')),
+            )
+            .onPressed,
+        isNull,
+        reason: '할 게 없으면 회색',
       );
     });
 

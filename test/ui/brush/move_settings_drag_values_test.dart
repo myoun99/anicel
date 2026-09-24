@@ -34,6 +34,7 @@ void main() {
     ResampleMode resampleMode = ResampleMode.blend,
     ValueChanged<ResampleMode>? onResampleModeChanged,
     bool canEdit = true,
+    bool canApply = false,
     TransformMode mode = TransformMode.normal,
   }) async {
     // The panel now takes the whole knob set as one object; this suite
@@ -44,6 +45,7 @@ void main() {
       Object(),
       hasSelection: () => false,
       canEditTransform: () => canEdit,
+      canApplyTransform: () => canApply,
       deselect: () {},
       transformValues: () => null,
       setTransformValues:
@@ -349,6 +351,21 @@ void main() {
           .onPressed,
       isNull,
     );
+  });
+
+  testWidgets('적용 is grey when 적용 has nothing to do, though the tool can '
+      'edit — it asks the verb, as the rail\'s ↵ does', (tester) async {
+    // confirm-button (유저 2026-09-24): 「할 게 없으면 회색」. ↩️It asked
+    // whether the TOOL could edit, so it lit over a box with nothing to
+    // confirm and nothing to replay, and pressing it did nothing.
+    FilledButton apply() => tester.widget<FilledButton>(
+      find.byKey(const ValueKey<String>('move-apply-button')),
+    );
+    await pumpMoveSettings(tester, applied: []);
+    expect(apply().onPressed, isNull);
+
+    await pumpMoveSettings(tester, applied: [], canApply: true);
+    expect(apply().onPressed, isNotNull);
   });
 
   testWidgets('the four buttons come in the order the user asked for, and '

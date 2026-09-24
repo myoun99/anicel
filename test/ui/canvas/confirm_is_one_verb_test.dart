@@ -193,6 +193,73 @@ void main() {
     expect(inkIn(pixelsOf(tester, frameB)), 0, reason: '되돌리기 한 번에 사라진다');
   });
 
+  /// Within one level a channel — see the erase pin for why a stroke laid
+  /// down again can round an edge one level off the one drawn live.
+  int worstGap(List<int> a, List<int> b) {
+    var worst = 0;
+    for (var i = 0; i < a.length; i += 1) {
+      for (var shift = 0; shift < 32; shift += 8) {
+        final gap = (((a[i] >> shift) & 0xFF) - ((b[i] >> shift) & 0xFF))
+            .abs();
+        worst = gap > worst ? gap : worst;
+      }
+    }
+    return worst;
+  }
+
+  testWidgets('a stroke drawn at 40% comes back at 40% — the tool\'s '
+      'opacity travels with it', (tester) async {
+    // 🧪The dabs carry only their own variation; the tool's opacity is a
+    // ceiling on the WHOLE stroke (F-12). A stroke laid down again without
+    // it lands at full strength.
+    await pumpApp(tester);
+    final brush = workspaceOf(tester).brushTool!;
+    brush.value = brush.value.copyWith(opacity: 0.4);
+    await pumpFrames(tester);
+    await strokeAt(tester, Offset.zero);
+    final drawn = pixelsOf(tester, frameA);
+    expect(inkIn(drawn), greaterThan(0), reason: '⛔CONTROL: the rig draws');
+
+    await seekTo(tester, 1);
+    await pressEnter(tester);
+    expect(
+      worstGap(pixelsOf(tester, frameB), drawn),
+      lessThanOrEqualTo(1),
+      reason: '40% 로 그린 선은 40% 로 덮인다',
+    );
+  });
+
+  testWidgets('the bucket comes back too — its picture is what it holds, and '
+      'the memory census sees it', (tester) async {
+    await pumpApp(tester);
+    await useTool(tester, CanvasTool.fill);
+    await tester.pumpAndSettle();
+    await tester.tapAt(
+      visibleCanvasPoint(tester),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pumpAndSettle();
+    // The flood is worked out off the frame and lands after it — real time
+    // for the one, pumps for the other.
+    for (var i = 0; i < 6; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 40)),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final filled = pixelsOf(tester, frameA);
+    expect(inkIn(filled), greaterThan(0), reason: '⛔CONTROL: the bucket filled');
+    expect(
+      sessionOf(tester).renderCaches.lastStrokeBytes,
+      greaterThan(0),
+      reason: '들고 있는 그림은 메모리 집계에 보인다',
+    );
+
+    await seekTo(tester, 1);
+    await pressEnter(tester);
+    expect(pixelsOf(tester, frameB), filled);
+  });
+
   testWidgets('an ERASE comes back as an erase — the blend travels with '
       'the pixels', (tester) async {
     await pumpApp(tester);
@@ -223,26 +290,20 @@ void main() {
     await seekTo(tester, 1);
     await pressEnter(tester);
     // ⚠️Within one level a channel, not byte for byte: the live erase on A
-    // landed through the pen-up's own path and the one laid down here
-    // through the commit's, and the two round an erased edge one level
-    // apart (measured: one sample, 10 against 11). An erase that did not
-    // come back as an erase would differ by the whole line.
-    final laid = pixelsOf(tester, frameB);
-    var worst = 0;
-    for (var i = 0; i < laid.length; i += 1) {
-      for (var shift = 0; shift < 32; shift += 8) {
-        final gap =
-            (((laid[i] >> shift) & 0xFF) - ((erased[i] >> shift) & 0xFF)).abs();
-        worst = gap > worst ? gap : worst;
-      }
-    }
-    expect(worst, lessThanOrEqualTo(1), reason: '지우개면 지우는 모양으로 덮는다');
+    // landed as the tiles the pen drew (promoted), and the one laid down
+    // here is re-derived from its dabs, and the two round an erased edge
+    // one level apart (measured: one sample, 10 against 11). An erase that
+    // did not come back as an erase would differ by the whole line.
+    expect(
+      worstGap(pixelsOf(tester, frameB), erased),
+      lessThanOrEqualTo(1),
+      reason: '지우개면 지우는 모양으로 덮는다',
+    );
   });
 
-  testWidgets('on an EMPTY cell it takes the stroke\'s door: with the auto '
-      'frame on the cel is made and the stroke lands in it as ONE undo', (
-    tester,
-  ) async {
+  testWidgets('on an EMPTY cell it takes the STROKE\'s door whatever tool is '
+      'up: with the auto frame on the cel is made and the stroke lands in it '
+      'as ONE undo', (tester) async {
     AppInput.settings.value = const AppInputSettings(
       autoCreateFrameOnDraw: true,
     );
@@ -250,6 +311,10 @@ void main() {
     await strokeAt(tester, Offset.zero);
     final drawn = pixelsOf(tester, frameA);
 
+    // ⚠️The SELECT tool: a press with it on an empty cell makes nothing,
+    // because selecting marks no cel. 재입력 is a stroke whichever tool is
+    // up, so it asks the stroke's question — the tool's would refuse here.
+    await useTool(tester, CanvasTool.select);
     await seekTo(tester, 2);
     final session = sessionOf(tester);
     expect(

@@ -332,6 +332,12 @@ class _BrushEditStroke {
         // F-12: promoted tiles already carry the ceiling (it is folded into
         // the mask the pre-blend runs), and the commit's promotion path
         // installs them untouched.
+        // ⚠️The payload carries it ALL THE SAME: every route that does not
+        // install these tiles re-derives the stroke from its dabs — the
+        // commit when the surface moved under it, and 확정 laying the stroke
+        // down on another cel (confirm-button) — and a stroke re-derived
+        // without its ceiling lands at full strength.
+        strokeOpacity: rasterizer.strokeOpacity,
       ),
     );
   }
