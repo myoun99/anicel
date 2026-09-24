@@ -60,6 +60,19 @@ static inline int32_t qa_round_byte(double value) {
   return whole + (value - (double)whole >= 0.5 ? 1 : 0);
 }
 
+// The SIMD this build has — one fact for the file, read by the flood
+// fill's spans and the dab's pixel pairs. SSE2 is baseline on x64 and NEON
+// on aarch64, so neither needs a runtime dispatch; 32-bit ARM keeps the
+// scalar paths.
+#if defined(_M_X64) || defined(__x86_64__) || defined(__SSE2__) || \
+    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#define QA_SSE2 1
+#include <emmintrin.h>
+#elif defined(__aarch64__)
+#define QA_NEON 1
+#include <arm_neon.h>
+#endif
+
 // Blends one stamp row span into a tile row (straight-alpha RGBA both
 // sides) - the inner loop of the stamp dab path
 // (materializeBrushDabSequenceOnBitmapSurface._blendStampDab).
@@ -374,33 +387,41 @@ static double qa_sample_tip_scalar(
   return qa_clamp01(top * (1.0 - fraction_y) + bottom * fraction_y);
 }
 
+// The unrotated tip's mask row `y`, or NULL off the mask.
+static inline const double* qa_tip_row(const qa_dab_spec* s, int32_t y) {
+  return y >= 0 && y < s->tip_size
+      ? s->tip_alpha + (ptrdiff_t)y * s->tip_size
+      : NULL;
+}
+
+// The texel at column `x` of a mask row (NULL off the mask), 0.0 off the
+// mask — the one read of an unrotated tip, for a pixel alone or a pair.
+static inline double qa_tip_texel(const double* row, int32_t x, int32_t size) {
+  return row != NULL && x >= 0 && x < size ? row[x] : 0.0;
+}
+
 // sampleBrushTipMaskCoverageLattice: unrotated tip through axis lattices.
 static double qa_sample_tip_lattice(
     const qa_dab_spec* s,
     int32_t u_index,
     int32_t v_index) {
   const int32_t size = s->tip_size;
-  const double* alpha = s->tip_alpha;
   const int32_t x0 = s->tip_u_texel0[u_index];
   const int32_t y0 = s->tip_v_texel0[v_index];
-  const int32_t x1 = x0 + 1;
-  const int32_t y1 = y0 + 1;
+  const double* row0 = qa_tip_row(s, y0);
+  const double* row1 = qa_tip_row(s, y0 + 1);
   const double fraction_x = s->tip_u_fraction[u_index];
   const double one_minus_fraction_x = s->tip_u_one_minus[u_index];
-  const int x0_in = x0 >= 0 && x0 < size;
-  const int x1_in = x1 >= 0 && x1 < size;
 
   double top = 0.0;
-  if (y0 >= 0 && y0 < size) {
-    const int32_t row = y0 * size;
-    top = (x0_in ? alpha[row + x0] : 0.0) * one_minus_fraction_x +
-          (x1_in ? alpha[row + x1] : 0.0) * fraction_x;
+  if (row0 != NULL) {
+    top = qa_tip_texel(row0, x0, size) * one_minus_fraction_x +
+          qa_tip_texel(row0, x0 + 1, size) * fraction_x;
   }
   double bottom = 0.0;
-  if (y1 >= 0 && y1 < size) {
-    const int32_t row = y1 * size;
-    bottom = (x0_in ? alpha[row + x0] : 0.0) * one_minus_fraction_x +
-             (x1_in ? alpha[row + x1] : 0.0) * fraction_x;
+  if (row1 != NULL) {
+    bottom = qa_tip_texel(row1, x0, size) * one_minus_fraction_x +
+             qa_tip_texel(row1, x0 + 1, size) * fraction_x;
   }
   return qa_clamp01(
       top * s->tip_v_one_minus[v_index] + bottom * s->tip_v_fraction[v_index]);
@@ -434,6 +455,227 @@ static double qa_sample_tiled_lattice(
   return qa_clamp01(
       top * v_one_minus[v_index] + bottom * v_fraction[v_index]);
 }
+
+// The brush's own EDGE on a coverage, in place — the anti-alias setting,
+// before anything tiles over it. Same place and same arithmetic as
+// blendDabTilesDart (유저 확정). Returns 0 when the pixel ends up bare.
+static inline int qa_dab_edge(
+    double* coverage,
+    int aa_threshold,
+    double aa_contrast) {
+  if (aa_threshold) {
+    *coverage = *coverage >= 0.5 ? 1.0 : 0.0;
+    return !(*coverage <= 0.0);
+  }
+  if (aa_contrast != 1.0) {
+    double edged = (*coverage - 0.5) * aa_contrast + 0.5;
+    if (edged < 0.0) {
+      edged = 0.0;
+    } else if (edged > 1.0) {
+      edged = 1.0;
+    }
+    *coverage = edged;
+    return !(edged <= 0.0);
+  }
+  return 1;
+}
+
+// 🚨A PLAIN TIPPED DAB BLENDS TWO PIXELS AT A TIME (board `brush-kernel-next`
+// ①, 유저 2026-09-25 「1번 할 생각 있어」 — SIMD). Every canvas dab is a
+// prerendered tip mask (BrushTipStampCache) and most carry no dual or
+// texture mask, so this path is nearly all the brush work there is. Two
+// doubles a register on both baselines (SSE2 / NEON): the four divisions a
+// pixel pays, and the sampling and alpha arithmetic around them, run for a
+// pair at once.
+//
+// ⛔BYTE-IDENTICAL BY CONSTRUCTION: each lane runs the scalar loop's own
+// arithmetic, operation by operation and in the scalar's order — a multiply
+// is a multiply and an add an add, nothing fused (MSVC /fp:precise, clang
+// -ffp-contract=off) — and an IEEE add, subtract, multiply or divide rounds
+// the same in a lane as in a scalar. The texel reads, the clamp, the edge
+// step and the byte rounding are the scalar's own functions, called per
+// lane. A lane the scalar loop would `continue` on is never written, and a
+// row's odd pixel is left to the scalar loop.
+#if defined(QA_SSE2) || defined(QA_NEON)
+#define QA_DAB_PAIRS 1
+#if defined(QA_SSE2)
+typedef __m128d qa_d2;
+static inline qa_d2 qa_d2_splat(double v) { return _mm_set1_pd(v); }
+static inline qa_d2 qa_d2_load(const double* p) { return _mm_loadu_pd(p); }
+static inline void qa_d2_store(double* p, qa_d2 v) { _mm_storeu_pd(p, v); }
+static inline qa_d2 qa_d2_add(qa_d2 a, qa_d2 b) { return _mm_add_pd(a, b); }
+static inline qa_d2 qa_d2_sub(qa_d2 a, qa_d2 b) { return _mm_sub_pd(a, b); }
+static inline qa_d2 qa_d2_mul(qa_d2 a, qa_d2 b) { return _mm_mul_pd(a, b); }
+static inline qa_d2 qa_d2_div(qa_d2 a, qa_d2 b) { return _mm_div_pd(a, b); }
+#else
+typedef float64x2_t qa_d2;
+static inline qa_d2 qa_d2_splat(double v) { return vdupq_n_f64(v); }
+static inline qa_d2 qa_d2_load(const double* p) { return vld1q_f64(p); }
+static inline void qa_d2_store(double* p, qa_d2 v) { vst1q_f64(p, v); }
+static inline qa_d2 qa_d2_add(qa_d2 a, qa_d2 b) { return vaddq_f64(a, b); }
+static inline qa_d2 qa_d2_sub(qa_d2 a, qa_d2 b) { return vsubq_f64(a, b); }
+static inline qa_d2 qa_d2_mul(qa_d2 a, qa_d2 b) { return vmulq_f64(a, b); }
+static inline qa_d2 qa_d2_div(qa_d2 a, qa_d2 b) { return vdivq_f64(a, b); }
+#endif
+
+// One channel of a pair's source-over: (source * alpha + destination *
+// its alpha * (1 - alpha)) / out alpha, in the scalar's grouping.
+static inline qa_d2 qa_d2_over(
+    qa_d2 source,
+    qa_d2 source_alpha,
+    const double* destination,
+    qa_d2 destination_alpha,
+    qa_d2 inverse,
+    qa_d2 out_alpha) {
+  return qa_d2_div(
+      qa_d2_add(qa_d2_mul(source, source_alpha),
+                qa_d2_mul(qa_d2_mul(qa_d2_load(destination),
+                                    destination_alpha),
+                          inverse)),
+      out_alpha);
+}
+
+// Blends pixels [x, x_end) of one row of a plain tipped dab two at a time
+// while a pair fits; returns the first pixel it left for the scalar loop.
+// `row` is the tile row's first pixel (canvas x = tile_left).
+static int32_t qa_dab_blend_pairs(
+    const qa_dab_spec* s,
+    uint8_t* row,
+    int32_t tile_left,
+    int32_t x,
+    int32_t x_end,
+    int32_t v_index,
+    int erase,
+    int aa_threshold,
+    double aa_contrast,
+    int32_t* changed) {
+  const int32_t size = s->tip_size;
+  const int32_t y0 = s->tip_v_texel0[v_index];
+  const double* row0 = qa_tip_row(s, y0);
+  const double* row1 = qa_tip_row(s, y0 + 1);
+  const qa_d2 v_one_minus = qa_d2_splat(s->tip_v_one_minus[v_index]);
+  const qa_d2 v_fraction = qa_d2_splat(s->tip_v_fraction[v_index]);
+  const qa_d2 one = qa_d2_splat(1.0);
+  const qa_d2 byte_max = qa_d2_splat(255.0);
+  const qa_d2 alpha_norm = qa_d2_splat(s->source_alpha_norm);
+  const qa_d2 flow = qa_d2_splat(s->dab_flow);
+
+  for (; x + 1 < x_end; x += 2) {
+    const int32_t u = x - s->region_left;
+    int keep[2];
+    double t00[2], t01[2], t10[2], t11[2];
+    for (int i = 0; i < 2; i += 1) {
+      keep[i] = s->tip_u_in_range[u + i] != 0;
+      const int32_t x0 = s->tip_u_texel0[u + i];
+      t00[i] = qa_tip_texel(row0, x0, size);
+      t01[i] = qa_tip_texel(row0, x0 + 1, size);
+      t10[i] = qa_tip_texel(row1, x0, size);
+      t11[i] = qa_tip_texel(row1, x0 + 1, size);
+    }
+    if (!keep[0] && !keep[1]) {
+      continue;
+    }
+    // A mask row off the mask reads as a row of zeros here, where the
+    // scalar sampler skips it: 0.0 times a fraction in [0, 1] plus 0.0 is
+    // the same +0.0 it starts from.
+    const qa_d2 one_minus_x = qa_d2_load(s->tip_u_one_minus + u);
+    const qa_d2 fraction_x = qa_d2_load(s->tip_u_fraction + u);
+    const qa_d2 top = qa_d2_add(qa_d2_mul(qa_d2_load(t00), one_minus_x),
+                                qa_d2_mul(qa_d2_load(t01), fraction_x));
+    const qa_d2 bottom = qa_d2_add(qa_d2_mul(qa_d2_load(t10), one_minus_x),
+                                   qa_d2_mul(qa_d2_load(t11), fraction_x));
+    double coverage[2];
+    qa_d2_store(coverage, qa_d2_add(qa_d2_mul(top, v_one_minus),
+                                    qa_d2_mul(bottom, v_fraction)));
+    double effective[2];
+    for (int i = 0; i < 2; i += 1) {
+      effective[i] = 0.0;
+      if (!keep[i]) {
+        continue;
+      }
+      coverage[i] = qa_clamp01(coverage[i]);
+      if (coverage[i] <= 0.0 ||
+          !qa_dab_edge(&coverage[i], aa_threshold, aa_contrast)) {
+        keep[i] = 0;
+        continue;
+      }
+      effective[i] = s->dab_opacity * coverage[i];
+      if (effective[i] == 0.0) {
+        keep[i] = 0;
+      }
+    }
+    if (!keep[0] && !keep[1]) {
+      continue;
+    }
+
+    uint8_t* pixel = row + (ptrdiff_t)(x - tile_left) * 4;
+    const double lanes_a[2] = {(double)pixel[3], (double)pixel[7]};
+    const qa_d2 source_alpha =
+        qa_d2_mul(qa_d2_mul(alpha_norm, qa_d2_load(effective)), flow);
+    const qa_d2 destination_alpha = qa_d2_div(qa_d2_load(lanes_a), byte_max);
+    const qa_d2 inverse = qa_d2_sub(one, source_alpha);
+    double out_alpha[2];
+    double red[2];
+    double green[2];
+    double blue[2];
+    if (erase) {
+      qa_d2_store(out_alpha, qa_d2_mul(destination_alpha, inverse));
+    } else {
+      const qa_d2 alpha =
+          qa_d2_add(source_alpha, qa_d2_mul(destination_alpha, inverse));
+      const double lanes_r[2] = {(double)pixel[0], (double)pixel[4]};
+      const double lanes_g[2] = {(double)pixel[1], (double)pixel[5]};
+      const double lanes_b[2] = {(double)pixel[2], (double)pixel[6]};
+      qa_d2_store(out_alpha, alpha);
+      qa_d2_store(red, qa_d2_over(qa_d2_splat((double)s->source_r),
+                                  source_alpha, lanes_r, destination_alpha,
+                                  inverse, alpha));
+      qa_d2_store(green, qa_d2_over(qa_d2_splat((double)s->source_g),
+                                    source_alpha, lanes_g, destination_alpha,
+                                    inverse, alpha));
+      qa_d2_store(blue, qa_d2_over(qa_d2_splat((double)s->source_b),
+                                   source_alpha, lanes_b, destination_alpha,
+                                   inverse, alpha));
+    }
+
+    for (int i = 0; i < 2; i += 1) {
+      if (!keep[i]) {
+        continue;
+      }
+      uint8_t* p = pixel + i * 4;
+      int32_t out_r;
+      int32_t out_g;
+      int32_t out_b;
+      int32_t out_a;
+      if (out_alpha[i] == 0.0) {
+        out_r = 0;
+        out_g = 0;
+        out_b = 0;
+        out_a = 0;
+      } else if (erase) {
+        out_r = p[0];
+        out_g = p[1];
+        out_b = p[2];
+        out_a = qa_round_byte(out_alpha[i] * 255.0);
+      } else {
+        out_r = qa_round_byte(red[i]);
+        out_g = qa_round_byte(green[i]);
+        out_b = qa_round_byte(blue[i]);
+        out_a = qa_round_byte(out_alpha[i] * 255.0);
+      }
+      if ((uint8_t)out_r != p[0] || (uint8_t)out_g != p[1] ||
+          (uint8_t)out_b != p[2] || (uint8_t)out_a != p[3]) {
+        p[0] = (uint8_t)out_r;
+        p[1] = (uint8_t)out_g;
+        p[2] = (uint8_t)out_b;
+        p[3] = (uint8_t)out_a;
+        *changed = 1;
+      }
+    }
+  }
+  return x;
+}
+#endif
 
 // 🚨A ROW OF AN UNROTATED TIP VISITS ONLY THE PIXELS WHOSE TEXELS CAN HOLD
 // INK (ABI 39, 2026-09-25, board `brush-kernel-next` ②; 유저 「2번도
@@ -511,6 +753,9 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   const int has_tex = s->tex_alpha != NULL;
   const int aa_threshold = (flags & QA_DAB_FLAG_AA_THRESHOLD) != 0;
   const double aa_contrast = s->aa_contrast;
+#if defined(QA_DAB_PAIRS)
+  const int pairs = has_tip && unrotated_tip && !has_dual && !has_tex;
+#endif
   int32_t changed = 0;
 
   for (int32_t y = span_top; y < span_bottom_exclusive; y += 1) {
@@ -528,7 +773,16 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       continue;
     }
 
-    for (int32_t x = row_left; x < row_right; x += 1) {
+    int32_t x = row_left;
+#if defined(QA_DAB_PAIRS)
+    if (pairs) {
+      x = qa_dab_blend_pairs(
+          s, tile_pixels + (ptrdiff_t)local_row_offset * 4, tile_left,
+          row_left, row_right, v_index, erase, aa_threshold, aa_contrast,
+          &changed);
+    }
+#endif
+    for (; x < row_right; x += 1) {
       double coverage;
       if (has_tip) {
         if (unrotated_tip) {
@@ -584,23 +838,8 @@ QA_EXPORT int32_t qa_dab_blend_tile(
         coverage = 1.0;
       }
 
-      // The brush's own EDGE, before anything tiles over it. Same place and
-      // same arithmetic as blendDabTilesDart (유저 확정).
-      if (aa_threshold) {
-        coverage = coverage >= 0.5 ? 1.0 : 0.0;
-        if (coverage <= 0.0) {
-          continue;
-        }
-      } else if (aa_contrast != 1.0) {
-        coverage = (coverage - 0.5) * aa_contrast + 0.5;
-        if (coverage < 0.0) {
-          coverage = 0.0;
-        } else if (coverage > 1.0) {
-          coverage = 1.0;
-        }
-        if (coverage <= 0.0) {
-          continue;
-        }
+      if (!qa_dab_edge(&coverage, aa_threshold, aa_contrast)) {
+        continue;
       }
 
       if (has_dual) {
@@ -814,21 +1053,18 @@ QA_EXPORT void qa_copy_bytes(
 // DECISION byte-identical to the Dart reference (which stays scalar
 // RGBX - the parity suite pins identical filled sets).
 
-#if defined(_M_X64) || defined(__x86_64__) || defined(__SSE2__) || \
-    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#if defined(QA_SSE2)
 #define QA_FLOOD_SSE2 1
-#include <emmintrin.h>
 typedef __m128i qa_vec4;
 static inline qa_vec4 qa_vec4_splat(uint32_t word) {
   return _mm_set1_epi32((int32_t)word);
 }
-#elif defined(__aarch64__)
+#elif defined(QA_NEON)
 // R28 NEON port: the ARM mirror of the SSE2 compare - same saturating
 // abs-diff (vabd), same X-lane mask, same <= tol semantics, so the
 // decisions stay byte-identical (the permanent Dart oracle pins them
 // on-device). aarch64 only (vaddvq); 32-bit ARM keeps the scalar path.
 #define QA_FLOOD_NEON 1
-#include <arm_neon.h>
 typedef uint8x16_t qa_vec4;
 static inline qa_vec4 qa_vec4_splat(uint32_t word) {
   return vreinterpretq_u8_u32(vdupq_n_u32(word));
