@@ -29,8 +29,8 @@ class _WorkspaceDocumentViews {
 
   /// R28 #6: the eyedropper's reference source (Tool Settings knob). The
   /// user's default is "pick what you SEE".
-  final ValueNotifier<CanvasColorSampleSource> _eyedropperSource =
-      ValueNotifier(CanvasColorSampleSource.display);
+  final ValueNotifier<CanvasReadSource> _eyedropperSource =
+      ValueNotifier(CanvasReadSource.display);
 
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueNotifier<bool> _cameraViewEnabled = ValueNotifier(false);

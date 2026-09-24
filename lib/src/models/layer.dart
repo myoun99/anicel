@@ -146,10 +146,10 @@ class Layer {
   /// keep the invariant).
   final LayerId? folderId;
 
-  /// Reference layer for the FILL tool (R20-C2, the CSP lighthouse):
-  /// when any visible layer of the cut carries this flag, fills read
-  /// ONLY the flagged layers as their source picture — paint on a color
-  /// layer never blocks or leaks a fill traced against the line art.
+  /// Reference layer for the FILL tool (R20-C2, the CSP lighthouse): a
+  /// fill set to read its references reads ONLY the flagged layers — paint
+  /// on a color layer never blocks or leaks a fill traced against the line
+  /// art — and the current layer when no layer is flagged (I-36).
   /// Display/export composite untouched.
   final bool isFillReference;
 

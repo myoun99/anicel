@@ -23,6 +23,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/clipboard/layer_copy_payload.dart';
 import 'package:anicel/src/services/commands/cut_command_input_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -311,7 +312,7 @@ void main() {
 
     int sample(
       List<Layer> layers, {
-      CanvasColorSampleSource source = CanvasColorSampleSource.display,
+      CanvasReadSource source = CanvasReadSource.display,
       int ink = 0xFF808080,
     }) => sampleCompositeColor(
       cut: Cut(
@@ -426,7 +427,7 @@ void main() {
       expect(
         (sample([
                   drawing(effects: [brightness(20)]),
-                ], source: CanvasColorSampleSource.layer) >>
+                ], source: CanvasReadSource.layer) >>
                 16) &
             0xFF,
         closeTo(0x80 + 51, 1),
@@ -442,14 +443,14 @@ void main() {
       final own =
           (sample([
                 drawing(effects: [brightness(20)]),
-              ], source: CanvasColorSampleSource.layer) >>
+              ], source: CanvasReadSource.layer) >>
               16) &
           0xFF;
       final withAdjustment =
           (sample([
                 drawing(effects: [brightness(20)]),
                 adjustment,
-              ], source: CanvasColorSampleSource.layer) >>
+              ], source: CanvasReadSource.layer) >>
               16) &
           0xFF;
       expect(

@@ -39,6 +39,18 @@ class _WorkspaceTabs {
     _state._mutatingLayout(() => _state._layout.removeTab(tabId));
   }
 
+  /// The fill settings' bucket for the ACTIVE layer (I-36) — the rail's own
+  /// verb, so one press is one undo step either way. Null while the active
+  /// row is not one the flag belongs on.
+  VoidCallback? _activeLayerFillReferenceToggle() {
+    final session = _state.widget.session;
+    final layer = session.activeLayer;
+    if (layer == null || !layer.kind.carriesFillReference) {
+      return null;
+    }
+    return () => session.layerSwitches.toggleLayerFillReference(layer.id);
+  }
+
   /// Both viewers, built from one place: same panel, same code, different
   /// [MediaViewerSlot]. Anything that reads as "the main one does X"
   /// belongs in the slot or in the callbacks, never in a second copy of
@@ -450,7 +462,7 @@ class _WorkspaceTabs {
                             valueListenable:
                                 _state._views._selectionMaskOptions,
                             builder: (context, maskOptions, _) =>
-                                ValueListenableBuilder<CanvasColorSampleSource>(
+                                ValueListenableBuilder<CanvasReadSource>(
                                   valueListenable:
                                       _state._views._eyedropperSource,
                                   // The tip library loads in two passes,
@@ -513,6 +525,27 @@ class _WorkspaceTabs {
                                                       ._eyedropperSource
                                                       .value =
                                                   source,
+                                          readLayerNames: (source) =>
+                                              layerNamesReadBy(
+                                                source,
+                                                _state
+                                                    .widget
+                                                    .session
+                                                    .activeCutOrNull,
+                                                _state
+                                                    .widget
+                                                    .session
+                                                    .activeLayerId,
+                                              ),
+                                          activeLayerIsFillReference:
+                                              _state
+                                                  .widget
+                                                  .session
+                                                  .activeLayer
+                                                  ?.isFillReference ??
+                                              false,
+                                          onToggleActiveLayerFillReference:
+                                              _activeLayerFillReferenceToggle(),
                                           selectionMaskOptions: maskOptions,
                                           onSelectionMaskOptionsChanged:
                                               (options) =>

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/fill_reference_button.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
@@ -740,7 +741,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   List<Widget> _trailingCells(ColorScheme colorScheme) =>
       layerRailTrailingCells(
         axis: axis,
-        fillReference: _fillReferenceToggle(colorScheme),
+        fillReference: _fillReferenceToggle(),
         fx: _fxSwitch(),
         hasOnionColumn: onToggleLayerOnionSkin != null,
         onion: _onionToggle(colorScheme),
@@ -754,24 +755,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// Fill-reference toggle (R20-C2): drawing rows only — every OTHER kind
   /// reserves the slot so the legend header's column icons line up over one
   /// Excel-style grid (R-toolbar round).
-  Widget? _fillReferenceToggle(ColorScheme colorScheme) {
+  Widget? _fillReferenceToggle() {
     final onToggle = onToggleLayerFillReference;
-    if (onToggle == null || layer.kind != LayerKind.animation) return null;
+    if (onToggle == null || !layer.kind.carriesFillReference) return null;
     return acrossBox(
       axis,
       26,
-      child: AppIconButton(
+      child: FillReferenceButton(
         keyValue: '$keyPrefix-layer-fill-reference-${layer.id}',
-        tooltip: layer.isFillReference
-            ? AppText.strings.railFillReferenceOn
-            : AppText.strings.railFillReference,
+        isOn: layer.isFillReference,
         size: _box(slot: layerFillReferenceSlotWidth, across: 26, iconSize: 16),
-        icon: Icon(
-          Icons.format_color_fill,
-          color: layer.isFillReference
-              ? colorScheme.primary
-              : colorScheme.outline.withValues(alpha: 0.45),
-        ),
         onPressed: () => onToggle(layer.id),
       ),
     );

@@ -12,6 +12,7 @@ import '../models/cut.dart' show Cut;
 import '../models/layer_id.dart';
 import '../models/project_background.dart';
 import '../services/canvas_color_sampler.dart';
+import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/cut_piece_slot.dart';
@@ -148,7 +149,7 @@ class EditorCanvasArea extends StatefulWidget {
 
   /// R28 #6: the eyedropper's reference source (Tool Settings knob); null
   /// keeps "pick what you see".
-  final ValueListenable<CanvasColorSampleSource>? eyedropperSource;
+  final ValueListenable<CanvasReadSource>? eyedropperSource;
 
   /// The Select tool's lift-time mask knobs (R26); null keeps the
   /// classic byte-preserving hard mask.

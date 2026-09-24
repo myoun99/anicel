@@ -1387,7 +1387,9 @@ enum AppStrings {
   String get toolCutFlipHorizontal => _s('toolCutFlipHorizontal');
   String get toolCutFlipVertical => _s('toolCutFlipVertical');
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
-  String get toolEyedropperReference => _s('toolEyedropperReference');
+  String get toolReadSource => _s('toolReadSource');
+  String get toolReadReferences => _s('toolReadReferences');
+  String get toolReadsEveryVisibleLayer => _s('toolReadsEveryVisibleLayer');
   String get brushSettingsTitle => _s('brushSettingsTitle');
   String get toolShapeRect => _s('toolShapeRect');
   String get toolShapeEllipse => _s('toolShapeEllipse');
@@ -2420,7 +2422,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': 'Flip horizontal',
     'toolCutFlipVertical': 'Flip vertical',
     'toolCutRegisterTip': 'Register as Tip…',
-    'toolEyedropperReference': 'Reference',
+    'toolReadSource': 'Reference',
+    'toolReadReferences': 'References',
+    'toolReadsEveryVisibleLayer': 'Every visible layer',
     'brushSettingsTitle': 'Brush Settings',
     'toolShapeRect': 'Rectangle',
     'toolShapeEllipse': 'Ellipse',
@@ -3635,7 +3639,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': '左右反転',
     'toolCutFlipVertical': '上下反転',
     'toolCutRegisterTip': '先端として登録…',
-    'toolEyedropperReference': '参照',
+    'toolReadSource': '参照',
+    'toolReadReferences': '塗り参照',
+    'toolReadsEveryVisibleLayer': '表示中のすべてのレイヤー',
     'brushSettingsTitle': 'ブラシ設定',
     'toolShapeRect': '矩形',
     'toolShapeEllipse': '楕円',
@@ -4945,7 +4951,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': '좌우 반전',
     'toolCutFlipVertical': '상하 반전',
     'toolCutRegisterTip': '팁으로 등록…',
-    'toolEyedropperReference': '참조',
+    'toolReadSource': '참조',
+    'toolReadReferences': '채색 참조',
+    'toolReadsEveryVisibleLayer': '보이는 레이어 전부',
     'brushSettingsTitle': '브러시 설정',
     'toolShapeRect': '사각형',
     'toolShapeEllipse': '타원',
@@ -6347,7 +6355,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': 'Miroir horizontal',
     'toolCutFlipVertical': 'Miroir vertical',
     'toolCutRegisterTip': 'Enregistrer comme pointe…',
-    'toolEyedropperReference': 'Référence',
+    'toolReadSource': 'Référence',
+    'toolReadReferences': 'Références',
+    'toolReadsEveryVisibleLayer': 'Tous les calques visibles',
     'brushSettingsTitle': 'Réglages de brosse',
     'toolShapeRect': 'Rectangle',
     'toolShapeEllipse': 'Ellipse',
@@ -7608,7 +7618,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': '水平翻转',
     'toolCutFlipVertical': '垂直翻转',
     'toolCutRegisterTip': '注册为笔尖…',
-    'toolEyedropperReference': '参考',
+    'toolReadSource': '参考',
+    'toolReadReferences': '填充参考',
+    'toolReadsEveryVisibleLayer': '所有可见图层',
     'brushSettingsTitle': '笔刷设置',
     'toolShapeRect': '矩形',
     'toolShapeEllipse': '椭圆',

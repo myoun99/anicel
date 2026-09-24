@@ -12,11 +12,13 @@ import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/cut.dart';
 import '../models/drawing_guide.dart';
+import '../models/layer_id.dart';
 import '../models/tiles_covering.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
 import '../core/rgb_tolerance.dart';
 import 'canvas_color_sampler.dart';
+import 'canvas_read_source.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 import 'cut_frame_composite_plan.dart';
@@ -32,7 +34,14 @@ class FloodFillOptions {
     this.antiAlias = true,
     this.gapClosePx = 0,
     this.extendBeyondCanvas = false,
+    this.source = CanvasReadSource.display,
   });
+
+  /// Which layers the flood reads (I-36) — the eyedropper's question, with
+  /// the fill's three answers. The default is the user's first mode, 「참조
+  /// (보이는거 전부)」, which is also what a fill with no reference flag has
+  /// always read.
+  final CanvasReadSource source;
 
   /// Max per-channel distance from the seed color that still fills.
   final int tolerance;
@@ -65,6 +74,7 @@ class FloodFillOptions {
     bool? antiAlias,
     int? gapClosePx,
     bool? extendBeyondCanvas,
+    CanvasReadSource? source,
   }) {
     return FloodFillOptions(
       tolerance: tolerance ?? this.tolerance,
@@ -72,6 +82,7 @@ class FloodFillOptions {
       antiAlias: antiAlias ?? this.antiAlias,
       gapClosePx: gapClosePx ?? this.gapClosePx,
       extendBeyondCanvas: extendBeyondCanvas ?? this.extendBeyondCanvas,
+      source: source ?? this.source,
     );
   }
 
@@ -82,11 +93,18 @@ class FloodFillOptions {
       other.expandPx == expandPx &&
       other.antiAlias == antiAlias &&
       other.gapClosePx == gapClosePx &&
-      other.extendBeyondCanvas == extendBeyondCanvas;
+      other.extendBeyondCanvas == extendBeyondCanvas &&
+      other.source == source;
 
   @override
-  int get hashCode =>
-      Object.hash(tolerance, expandPx, antiAlias, gapClosePx, extendBeyondCanvas);
+  int get hashCode => Object.hash(
+    tolerance,
+    expandPx,
+    antiAlias,
+    gapClosePx,
+    extendBeyondCanvas,
+    source,
+  );
 }
 
 /// The extended fill's apron width per side: one canvas size, capped so
@@ -136,6 +154,8 @@ class LazyCanvasRasterRgb {
     required LayerFrameSurfaceResolver surfaceResolver,
     int paperColor = canvasPaperColor,
     bool extendBeyondCanvas = false,
+    CanvasReadSource source = CanvasReadSource.display,
+    LayerId? activeLayerId,
   }) {
     // Extended (pasteboard) fills widen the raster by a finite apron and
     // shift its origin into negative world space; the default raster IS
@@ -157,6 +177,7 @@ class LazyCanvasRasterRgb {
       cut: cut,
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
+      read: layersReadBy(source, cut, activeLayerId),
       paperColor: paperColor,
       handles: handles,
       originX: -marginX,
@@ -170,6 +191,7 @@ class LazyCanvasRasterRgb {
     required Cut cut,
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
+    required Set<LayerId>? read,
     required int paperColor,
     required QaFloodNativeHandles? handles,
     required this.originX,
@@ -191,20 +213,17 @@ class LazyCanvasRasterRgb {
                  ((rasterHeight + _tileSize - 1) ~/ _tileSize),
            ) {
     // Surfaces resolve ONCE (a cold resolve may replay paint commands).
-    final entries = [
-      for (final entry in resolveCutFrameCompositeEntries(
-        cut: cut,
-        frameIndex: frameIndex,
-      ))
-        if (entry.pose == null) entry,
-    ];
-    // R20-C2 reference layers (the CSP lighthouse): when any visible
-    // layer carries the fill-reference flag, the fill reads ONLY the
-    // flagged layers — paint layers stop blocking or leaking fills
-    // traced against the line art. No flag = today's fill-what-you-see.
-    final hasReference = entries.any((entry) => entry.layer.isFillReference);
-    for (final entry in entries) {
-      if (hasReference && !entry.layer.isFillReference) {
+    //
+    // WHICH layers is [read] — the reference source's answer, the one the
+    // eyedropper reads by too. R20-C2's flag (the CSP lighthouse: paint on a
+    // colour layer never blocks or leaks a fill traced against the line
+    // art) is one of its three answers since I-36.
+    for (final entry in resolveCutFrameCompositeEntries(
+      cut: cut,
+      frameIndex: frameIndex,
+    )) {
+      if (entry.pose != null ||
+          (read != null && !read.contains(entry.layer.id))) {
         continue;
       }
       final surface = surfaceResolver(entry.layer, entry.frame);
@@ -1075,6 +1094,9 @@ BrushDab? buildShapeFillDab({
 /// [symmetry] makes the tap fill every copy of the seed, unioned into the
 /// same single dab — see the loop below for why the stroke path's dab
 /// replication is the wrong tool here.
+///
+/// [activeLayerId] is the 「현재」 of [FloodFillOptions.source] — the layer
+/// the dab lands on.
 BrushDab? buildFillDab({
   required Cut cut,
   required int frameIndex,
@@ -1084,6 +1106,7 @@ BrushDab? buildFillDab({
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
+  LayerId? activeLayerId,
   SymmetryShape? symmetry,
   void Function()? onOpenRegion,
 }) {
@@ -1095,6 +1118,8 @@ BrushDab? buildFillDab({
       surfaceResolver: surfaceResolver,
       paperColor: paperColor,
       extendBeyondCanvas: options.extendBeyondCanvas,
+      source: options.source,
+      activeLayerId: activeLayerId,
     ),
   );
   // A symmetry guide fills every copy of the SEED, not every copy of the

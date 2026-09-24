@@ -707,6 +707,11 @@ enum LayerKind {
   /// apart the way these two just did.
   bool get takesAuthoredCels => holdsDrawings || isDrawingCel;
 
+  /// Whether a layer of this kind can be a FILL REFERENCE (R20-C2: the
+  /// bucket sits on drawing rows only). The rail's bucket and the fill
+  /// settings' bucket for the active layer (I-36) both ask this.
+  bool get carriesFillReference => this == LayerKind.animation;
+
   /// Whether this kind is a FIXED kind — one the user can neither convert a
   /// layer into nor convert away from (the camera fixture, folders and
   /// adjustments, whose kind IS their structure; instruction rows carry

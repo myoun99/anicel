@@ -25,7 +25,7 @@ import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
-import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
+import '../services/canvas_read_source.dart';
 import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
