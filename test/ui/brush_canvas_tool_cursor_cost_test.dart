@@ -264,11 +264,18 @@ void main() {
       return false;
     }
 
+    // A boundary beside the path is handed on with its layer as it was —
+    // the artwork's is — and is reported all the same; only what it paints
+    // inside would mean it painted again.
+    bool handedOn(RenderObject object) =>
+        object.isRepaintBoundary && !paintedInside(painted, object);
+
     expect(painted, contains(sprite));
     expect(
       [
         for (final object in painted)
-          if (!leadsToTheCursor(object)) object.runtimeType,
+          if (!leadsToTheCursor(object) && !handedOn(object))
+            object.runtimeType,
       ],
       isEmpty,
       reason: 'nothing beside the path to the cursor — the pill, the '

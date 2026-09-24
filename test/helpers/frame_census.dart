@@ -10,6 +10,12 @@ import 'package:flutter_test/flutter_test.dart';
 /// rebuilt and every render object painted, so a claim like "a brush change
 /// rebuilds no panel" is checked against the whole tree rather than a
 /// counter someone remembered to put in one widget.
+///
+/// ⚠️`painted` is what a parent handed to `paintChild` — and a repaint
+/// boundary whose layer is only reused is handed to it too. Whether a
+/// boundary painted AGAIN shows in what it paints inside
+/// ([paintedInside]), never in its own entry (2026-09-24: read the other
+/// way, every settings row "repainted" when one did).
 Future<({List<Type> rebuilt, List<RenderObject> painted})> frameCensus(
   WidgetTester tester,
   void Function() act,
@@ -30,3 +36,16 @@ Future<({List<Type> rebuilt, List<RenderObject> painted})> frameCensus(
   }
   return (rebuilt: rebuilt, painted: painted);
 }
+
+/// Whether anything in [painted] lies strictly inside [boundary] — the one
+/// sign that a repaint boundary painted again rather than being handed on
+/// with its layer as it was (see [frameCensus]).
+bool paintedInside(List<RenderObject> painted, RenderObject boundary) =>
+    painted.any((object) {
+      for (var node = object.parent; node != null; node = node.parent) {
+        if (identical(node, boundary)) {
+          return true;
+        }
+      }
+      return false;
+    });
