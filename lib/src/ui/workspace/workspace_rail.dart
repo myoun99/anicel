@@ -75,8 +75,9 @@ class _WorkspaceRail {
         session.historyManager,
         session.onionSkin.layerIds,
         // 확정 answers from the tool, the selection, the transform mode and
-        // the held stroke — [ConfirmVerb.changes] is that list, so this
-        // button hears exactly what its answer reads.
+        // the held stroke ([ConfirmVerb.changes]) — and, through 적용, from
+        // the cel under the playhead, which the session and the history
+        // below already bring.
         ?confirm?.changes,
         // ㉜: the deselect button's enablement is the SELECTION's news, and
         // it arrives on that object's own channel — the selection layer

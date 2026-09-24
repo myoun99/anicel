@@ -20,6 +20,7 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
+import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -379,6 +380,35 @@ void main() {
     await tester.tap(railConfirm);
     await pumpFrames(tester);
     expect(pixelsOf(tester, frameC, cut: otherCutId), drawn);
+  });
+
+  testWidgets('the ↵ follows the transform MODE — a 일반 transform to replay '
+      'lights it in 일반 and not in 퍼스', (tester) async {
+    // ⚠️Nothing but the mode changes here: no history entry, no box, no
+    // selection news. The button has to hear the verb's own inputs.
+    await pumpApp(tester);
+    await strokeAt(tester, Offset.zero);
+    await useTool(tester, CanvasTool.move);
+    final commands = workspaceOf(tester).canvasSelectionCommands!;
+    commands.setTransformValues(tx: 10, ty: 0, rotationDegrees: 0, scale: 1);
+    await pumpFrames(tester);
+    commands.applyTransform();
+    await pumpFrames(tester);
+    expect(commands.transformActive, isFalse, reason: '⛔전제: 일반 변형 확정');
+    expect(
+      tester.widget<RailButton>(railConfirm).onPressed,
+      isNotNull,
+      reason: '일반에서 재현할 변형이 있다',
+    );
+
+    final options = workspaceOf(tester).transformOptions!;
+    options.value = options.value.copyWith(mode: TransformMode.perspective);
+    await pumpFrames(tester);
+    expect(
+      tester.widget<RailButton>(railConfirm).onPressed,
+      isNull,
+      reason: '퍼스에는 재현할 변형이 없다 — 모드마다 따로 기억한다',
+    );
   });
 
   testWidgets('the TRANSFORM tool never lays the stroke down: with nothing '

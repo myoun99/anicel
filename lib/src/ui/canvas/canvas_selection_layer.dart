@@ -1181,6 +1181,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _preview.schedule();
       _syncAnts();
     }
+    // 🧪The MODE picks which transform 적용 would replay, so it is news to
+    // everything that shows whether 적용 can act. They hear the mode
+    // themselves — and may ask before this layer has it, which is the
+    // frame a button answered from the old mode and was never asked again
+    // (confirm-button's ↵, measured).
+    if (oldWidget.transformOptions.mode != widget.transformOptions.mode) {
+      widget.selectionCommands?.notifySessionChanged();
+    }
     // The preview is clipped to what is on screen, so MOVING the screen
     // changes what it has to compute. Nothing else would notice: the
     // resample is scheduled by pointer moves and mode switches, and a pan
