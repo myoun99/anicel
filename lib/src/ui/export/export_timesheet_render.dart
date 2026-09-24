@@ -57,6 +57,15 @@ Future<ui.Image> renderTimesheetPageImage({
     scale: scale,
     outputSize: outputSize,
   );
+  // The panel's two strata, which differ in nothing but the strata.
+  TimesheetDocumentPainter strata(Set<SheetPaintLayer> layers) =>
+      TimesheetDocumentPainter(
+        document: document,
+        layout: layout,
+        face: face,
+        layers: layers,
+        notation: notation,
+      );
   return rasterizeOffscreen(
     width: width,
     height: height,
@@ -64,20 +73,14 @@ Future<ui.Image> renderTimesheetPageImage({
       canvas.scale(width / page.width, height / page.height);
       canvas.translate(-page.left, -page.top);
       canvas.clipRect(page);
-      TimesheetDocumentPainter(
-        document: document,
-        layout: layout,
-        face: face,
-        layers: const {SheetPaintLayer.paper, SheetPaintLayer.form},
-        notation: notation,
-      ).paint(canvas, layout.documentSize);
-      TimesheetDocumentPainter(
-        document: document,
-        layout: layout,
-        face: face,
-        layers: const {SheetPaintLayer.content},
-        notation: notation,
-      ).paint(canvas, layout.documentSize);
+      strata(const {
+        SheetPaintLayer.paper,
+        SheetPaintLayer.form,
+      }).paint(canvas, layout.documentSize);
+      strata(const {SheetPaintLayer.content}).paint(
+        canvas,
+        layout.documentSize,
+      );
     },
   );
 }

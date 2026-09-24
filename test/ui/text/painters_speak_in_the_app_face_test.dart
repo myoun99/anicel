@@ -21,10 +21,14 @@ import 'package:anicel/src/ui/canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_overlay.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/envelope/cut_envelope_painter.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/text/app_face.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
 import '../../helpers/app_faces.dart';
 import '../timeline/timeline_row_chrome_probe.dart';
@@ -179,6 +183,56 @@ void main() {
       reason: 'the premise: the two faces set the name at different widths',
     );
     expect(painted.widths, contains(closeTo(name, 0.01)));
+  });
+
+  testWidgets('the sheet and the envelope are handed the app\'s face where '
+      'they stand (documents-in-which-face-Q1)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: HomePage(initialProject: _project()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Future<void> open(String tabId) async {
+      tester
+          .widgetList<EditorPanelTabs>(find.byType(EditorPanelTabs))
+          .firstWhere((host) => host.tabs.any((tab) => tab.id == tabId))
+          .onTabSelected(tabId);
+      await tester.pumpAndSettle();
+    }
+
+    void expectHanded(String key, TextStyle Function(CustomPainter) faceOf) {
+      final at = find.byKey(ValueKey<String>(key));
+      final ambient = DefaultTextStyle.of(tester.element(at)).style;
+      expect(
+        ambient.fontFamily,
+        isNotNull,
+        reason: 'the premise: the theme names the app\'s face',
+      );
+      expect(
+        faceOf(tester.widget<CustomPaint>(at).painter!),
+        appFaceOf(ambient),
+        reason: key,
+      );
+    }
+
+    await open(EditorWorkspace.timesheetTabId);
+    expectHanded(
+      'timesheet-form-paint',
+      (painter) => (painter as TimesheetDocumentPainter).face,
+    );
+    expectHanded(
+      'timesheet-document-paint',
+      (painter) => (painter as TimesheetDocumentPainter).face,
+    );
+    await open(EditorWorkspace.envelopeTabId);
+    expectHanded(
+      'cut-envelope-page',
+      (painter) => (painter as CutEnvelopePainter).face,
+    );
   });
 }
 

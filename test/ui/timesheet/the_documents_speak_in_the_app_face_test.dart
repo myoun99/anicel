@@ -103,6 +103,40 @@ void main() {
       );
     }
   });
+
+  test('a changed face repaints both documents — the face turns with the '
+      'language', () {
+    final document = _sheet();
+    final layout = TimesheetDocumentLayout(document: document);
+    TimesheetDocumentPainter sheetIn(String family) => TimesheetDocumentPainter(
+      document: document,
+      layout: layout,
+      face: TextStyle(fontFamily: family),
+    );
+    expect(
+      sheetIn('First').shouldRepaint(sheetIn('First')),
+      isFalse,
+      reason: 'the premise: the same inputs do not repaint',
+    );
+    expect(sheetIn('First').shouldRepaint(sheetIn('Second')), isTrue);
+
+    final envelope = CutEnvelopeLayout.fit(
+      form: CutEnvelopePresets.analog,
+      paperWidth: 1280,
+      paperHeight: 720,
+    );
+    CutEnvelopePainter envelopeIn(String family) => CutEnvelopePainter(
+      layout: envelope,
+      source: const CutEnvelopeSource(),
+      face: TextStyle(fontFamily: family),
+    );
+    expect(
+      envelopeIn('First').shouldRepaint(envelopeIn('First')),
+      isFalse,
+      reason: 'the premise: the same inputs do not repaint',
+    );
+    expect(envelopeIn('First').shouldRepaint(envelopeIn('Second')), isTrue);
+  });
 }
 
 /// A cut that makes every writer on the sheet write: a drawing held with

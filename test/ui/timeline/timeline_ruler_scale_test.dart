@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -459,6 +460,19 @@ void main() {
       }
     });
 
+    test('the number the ruler PAINTS is the narrowed one', () {
+      // A placement that says narrow and a paint that draws wide would pass
+      // every test that reads the placement.
+      final ruler = scale(frameEndIndexExclusive: 144, playbackFrameCount: 144);
+      final drawn = _DrawnWidths();
+      TimelineFrameRulerPainter(scale: ruler).paint(drawn, const Size(3456, 28));
+      final numbers = drawn.widths.where((width) => width > 12).toList();
+      expect(numbers, isNotEmpty, reason: 'the premise: three digits drawn');
+      for (final width in numbers) {
+        expect(width, lessThanOrEqualTo(24 - timelineMarkGap + 1e-9));
+      }
+    });
+
     test('a number that fits its cell keeps its width', () {
       final ruler = scale();
       final number = TimelineFrameRulerPainter.glyphsAt(
@@ -492,4 +506,28 @@ void main() {
       expect(number.rect.center.dx, closeTo(row.center.dx, 1e-9));
     });
   });
+}
+
+/// The width every paragraph is DRAWN at — through the canvas's scale, since
+/// a narrowed number is drawn at the origin of a scaled canvas.
+class _DrawnWidths implements Canvas {
+  final widths = <double>[];
+  final _saved = <double>[];
+  var _scaleX = 1.0;
+
+  @override
+  void save() => _saved.add(_scaleX);
+
+  @override
+  void restore() => _scaleX = _saved.removeLast();
+
+  @override
+  void scale(double sx, [double? sy]) => _scaleX *= sx;
+
+  @override
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) =>
+      widths.add(paragraph.maxIntrinsicWidth * _scaleX);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

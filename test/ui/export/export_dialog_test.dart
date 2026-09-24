@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,6 +36,7 @@ import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/app_faces.dart';
 import '../../helpers/native_engine_path.dart';
 import 'fake_ffmpeg_process.dart';
 import '../../helpers/temp_dir.dart';
@@ -135,6 +137,7 @@ void main() {
     AppExportSettingsStore? settingsStore,
     ExportFormatAvailability? formatAvailability,
     Key? dialogKey,
+    TextStyle face = const TextStyle(),
   }) async {
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -144,18 +147,21 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ExportDialog(
-            // A distinct key forces a COLD State — same-type pumps reuse
-            // the element and skip initState (the store-restore path).
-            key: dialogKey,
-            session: session,
-            exportDirectoryPicker: exportDirectoryPicker,
-            videoExportService: videoExportService,
-            settingsStore: settingsStore,
-            // Permissive by default: the fake ffmpeg carries any pair in
-            // tests; availability-gating gets its own dedicated test.
-            formatAvailability:
-                formatAvailability ?? ExportFormatAvailability.permissive(),
+          body: DefaultTextStyle.merge(
+            style: face,
+            child: ExportDialog(
+              // A distinct key forces a COLD State — same-type pumps reuse
+              // the element and skip initState (the store-restore path).
+              key: dialogKey,
+              session: session,
+              exportDirectoryPicker: exportDirectoryPicker,
+              videoExportService: videoExportService,
+              settingsStore: settingsStore,
+              // Permissive by default: the fake ffmpeg carries any pair in
+              // tests; availability-gating gets its own dedicated test.
+              formatAvailability:
+                  formatAvailability ?? ExportFormatAvailability.permissive(),
+            ),
           ),
         ),
       ),
@@ -1151,5 +1157,91 @@ void main() {
             'user renamed, persisted so the NEXT launch starts right',
       );
     });
+  });
+
+  group('the documents export in the window\'s face '
+      '(documents-in-which-face-Q1)', () {
+    // 🗣️유저 2026-09-24 「둘다 앱글꼴로 통일」: the export window hands the
+    // face it stands in to every sheet and envelope it renders — the files
+    // and the preview. Rendered in two faces the pictures must differ: a
+    // render handed no face comes out the same both times.
+    Future<Map<String, List<int>>> filesExportedIn(
+      WidgetTester tester, {
+      required String tab,
+      required String family,
+    }) async {
+      for (final entry in temp.listSync()) {
+        entry.deleteSync(recursive: true);
+      }
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+        face: TextStyle(fontFamily: family),
+        dialogKey: ValueKey<String>('files-$tab-$family'),
+      );
+      await switchTab(tester, tab);
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      return {
+        for (final name in filesIn(temp))
+          name: File('${temp.path}/$name').readAsBytesSync(),
+      };
+    }
+
+    Future<List<int>> previewIn(
+      WidgetTester tester, {
+      required String tab,
+      required String family,
+    }) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        face: TextStyle(fontFamily: family),
+        dialogKey: ValueKey<String>('preview-$tab-$family'),
+      );
+      await switchTab(tester, tab);
+      await tester.runAsync(state.debugFlushPreview);
+      await tester.pump();
+      final image = tester
+          .widget<RawImage>(
+            find.byKey(const ValueKey<String>('export-preview-image')),
+          )
+          .image!;
+      final bytes = await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+      );
+      return bytes!.buffer.asUint8List().toList();
+    }
+
+    for (final tab in ['timesheet', 'envelope']) {
+      testWidgets('$tab: the files', (tester) async {
+        await loadTheAppFaces();
+        final biz = await filesExportedIn(
+          tester,
+          tab: tab,
+          family: 'BIZ UDPGothic',
+        );
+        final nanum = await filesExportedIn(
+          tester,
+          tab: tab,
+          family: 'Nanum Gothic',
+        );
+        expect(biz.keys, isNotEmpty, reason: 'the premise: files were written');
+        expect(nanum.keys, biz.keys);
+        for (final name in biz.keys) {
+          expect(biz[name], isNot(nanum[name]), reason: name);
+        }
+      });
+
+      testWidgets('$tab: the preview', (tester) async {
+        await loadTheAppFaces();
+        expect(
+          await previewIn(tester, tab: tab, family: 'BIZ UDPGothic'),
+          isNot(await previewIn(tester, tab: tab, family: 'Nanum Gothic')),
+        );
+      });
+    }
   });
 }
