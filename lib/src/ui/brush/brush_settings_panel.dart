@@ -82,6 +82,12 @@ class BrushSettingsPanel extends StatefulWidget {
 /// at CALL time, and the rows keep closing over those names as they always
 /// did. ⛔A row that holds the state ITSELF as a field cannot be kept at all
 /// (tip rotation, the dual blend): it would write that snapshot back.
+///
+/// ⛔Not a repaint boundary per row (tried 2026-09-24, H40): on the real
+/// Windows app at the user's screen size it bought nothing — a pick's worst
+/// frame 29.1 ms against 21.3 without, opening the panel 68 against 38.5 —
+/// and the boundary itself moved one pixel of a segmented control's outline
+/// by 1/255. A kept row is skipped at build; the column paints as one.
 class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   BrushToolState get state => widget.state;
   ValueChanged<BrushToolState> get onChanged => widget.onChanged;

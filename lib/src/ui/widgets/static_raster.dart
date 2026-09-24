@@ -73,11 +73,13 @@ import '../panels/panel_visibility_scope.dart';
 /// costs nothing.
 ///
 /// ⛔A capture on Impeller is not a copy either. Measured 2026-09-24 on the
-/// real Windows app: a library cell baked came out 264 pixels different
-/// (≤9/255) from the same cell painted, and a tip preview baked ≤19/255 —
-/// translucent content composited from an offscreen does not round as it
-/// does painted in place. The panel-sized bakes happened to agree; the
-/// renderer switch keeps everything painting, so nothing depends on luck.
+/// real Windows app at the user's screen size: the tool settings column
+/// baked came out 145 pixels (≤1/255) off the same column painted — 368
+/// across the window's bakes — a library cell 264 (≤9/255) and a tip
+/// preview ≤19/255. Translucent content composited from an offscreen does
+/// not round as it does painted in place. (That the panel-sized bakes
+/// agreed was read first at 1264×681, where the settings column sat below
+/// the window and the library's body never baked at all.)
 ///
 /// ## 🚨 The second invariant: a baked subtree may not paint outside its
 /// own box
@@ -125,22 +127,37 @@ class StaticRaster extends SingleChildRenderObjectWidget {
   /// suspicious rendering can be A/B'd against the same build.
   static final ValueNotifier<bool> globallyEnabled = ValueNotifier<bool>(true);
 
-  /// Whether a capture can pay for itself on the renderer this app runs on.
-  /// Where it cannot, every surface is a zone and nothing more: its own
-  /// repaint boundary, clipped as a bake would be, painting through.
+  /// Whether a capture belongs on the renderer this app runs on. Where it
+  /// does not, every surface is a zone and nothing more: its own repaint
+  /// boundary, clipped as a bake would be, painting through.
   ///
-  /// 🔬Measured 2026-09-24 on the real Windows app, a profile build with
-  /// the user's work file open, under Impeller (GLES through ANGLE there):
-  /// switching EVERY bake in the app off moved an idle frame's raster from
-  /// 4.78 to 4.82 ms — nothing — while one capture of the tool settings
-  /// panel added about 2.7 ms to the frame that took it (a brush pick's
-  /// worst frame, 14.3 ms baking against 11.6 ms not). The engine's
-  /// snapshot (`DisplayListToTexture`) allocates a fresh MSAA target
-  /// outside its render-target cache and builds a whole mip chain on every
-  /// capture, and Impeller replays a panel's display list about as cheaply
-  /// as it would blit the image standing in for it. So a bake there costs
-  /// at every change and buys nothing between them; zones cut into single
-  /// rows made it worse, 38 captures in the frame that opened the panel.
+  /// Not under Impeller — measured 2026-09-24 on the real Windows app, a
+  /// profile build with the user's work file and layout open (GLES through
+  /// ANGLE there):
+  ///
+  /// - A capture is not a copy (see the class doc): the settings column
+  ///   baked is 145 pixels off the column painted. Results come first.
+  /// - A capture is dear. The engine's snapshot (`DisplayListToTexture`)
+  ///   allocates a fresh MSAA target outside its render-target cache and
+  ///   builds a whole mip chain every time: about 2.7 ms on the frame of a
+  ///   brush pick that re-baked the settings column, and zones cut into
+  ///   single rows took 38 captures in the frame that opened the panel.
+  ///
+  /// What painting instead costs, at the user's screen size with the
+  /// measured app at High priority: about 1 ms more on an idle frame
+  /// (6.5–7.1 against 5.6–5.8 ms with the bakes) and about 2.5 ms less on
+  /// a brush pick's worst frame (12.6–13.2 against 15.3). An idle frame is
+  /// the floor of every hover, stroke and slider frame, so this is a price
+  /// paid for the pixels, not a win.
+  ///
+  /// ⚠️"4.78 → 4.82 ms with every bake off, nothing" was read first — at
+  /// 1264×681, where the settings column sat below the window and was never
+  /// painted. It is not a number to quote.
+  ///
+  /// ⛔A ground under the content inside the bake is not the way round
+  /// either: the settings column baked over its own opaque surface still
+  /// came out 56 pixels (≤1/255) off, at the rounded corners of one
+  /// control.
   ///
   /// Skia keeps baking: that is where the bakes were measured (2026-08-09)
   /// and nothing here was measured against it.
@@ -308,9 +325,9 @@ enum StandDownReason {
   /// Switched off by the caller or by the global A/B switch.
   disabled,
 
-  /// The renderer replays the subtree about as cheaply as it would blit a
-  /// bake, and a capture costs a whole offscreen render — see
-  /// [StaticRaster.capturePays]. Correct, and nothing to fix.
+  /// A capture on this renderer is not a copy of the paint, and costs a
+  /// whole offscreen render — see [StaticRaster.capturePays]. Correct, and
+  /// nothing to fix.
   renderer,
 
   /// The panel is parked behind another tab.
