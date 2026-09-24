@@ -103,7 +103,9 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ);
+    // The character a real keyboard types here — a typed form for letters
+    // would take exactly this for Z.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ, character: 'Z');
     expect(CanvasPanHold.held.value, isFalse, reason: 'Shift+Z is not Z');
     await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
