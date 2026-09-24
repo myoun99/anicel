@@ -7,6 +7,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
+import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
     show trackTransformLaneCarrierId;
 import '../services/import/import_layer_spot.dart';
@@ -22,10 +23,12 @@ import 'timeline/session_lane_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
+import 'storyboard/storyboard_rows_channel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
-import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
+import 'timeline/property_lane_model.dart'
+    show PropertyLaneEditCallbacks, parseLaneGroupKey;
 import 'timeline/layer_row_drag.dart'
     show TimelineRowDragHooks, timelineRowAddressOfDragSubject;
 import 'timeline/se_layer_mixer.dart';
@@ -57,12 +60,17 @@ class StoryboardTabHost extends StatefulWidget {
     required this.thumbnailFor,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
+    this.rowsChannel,
   });
 
   /// The legend's row filter, shared with the timeline and the sheet
   /// (R5 #9). Null [onSetRowFilter] leaves the chips inert.
   final TimelineRowFilter rowFilter;
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
+
+  /// Where the panel hands its stacked rows to the shell's walkers — see
+  /// [StoryboardPanel.rowsChannel].
+  final StoryboardRowsChannel? rowsChannel;
 
   /// The shortest this tab is laid out at — the dock splitter's floor and
   /// the tab shell's minimum content height. See
@@ -209,12 +217,36 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     super.dispose();
   }
 
-  void _toggleSetEntry(Set<String> set, String key) {
+  /// One twirl of this rail. A twirl FOLDING shut hands on where the
+  /// storyboard stands ([onFold]) — the fold law the timeline's twirls keep
+  /// (R5 #11: 「what disappears never keeps the selection」), for this rail's
+  /// own rows.
+  void _toggleSetEntry(
+    Set<String> set,
+    String key, {
+    required VoidCallback onFold,
+  }) {
+    final folding = set.contains(key);
     setState(() {
       if (!set.add(key)) {
         set.remove(key);
       }
     });
+    if (folding) {
+      onFold();
+    }
+  }
+
+  /// [_toggleSetEntry]'s fold for [layerId]'s lanes — or, with [laneId],
+  /// one group of them.
+  void _foldLanes(LayerId? layerId, {String? laneId}) {
+    if (layerId != null) {
+      _session.handOffCurrentRowOnFold(
+        layerId,
+        laneId: laneId,
+        panel: WorkingPanel.storyboard,
+      );
+    }
   }
 
   /// Lane edit hooks for the V TRACK's own lanes — its EFFECT chain, which is
@@ -314,19 +346,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   StoryboardToolbarPanelContext get _toolbarPanel =>
       StoryboardToolbarPanelContext(_session);
 
-  /// The transition row as the RAIL sees it, or null when the user is standing
-  /// somewhere else.
-  ///
-  /// 🚨Asked of `selectedRow` and not `activeLayer`: this rail's standing row is
-  /// separate state from the cut's drawing target (user 2026-07-27, and the
-  /// reason the transition row could not be reached through the shared
-  /// `editActiveInstance` at all).
-  bool get _standingOnTransitionRow {
-    final row = _session.selectedRow;
-    return row is LayerRowAddress &&
-        _session.isTrackTransitionLayerId(row.layerId);
-  }
-
   /// ③/B8 Edit Instance on THIS panel: THE BLOCK UNDER THE CURSOR, whatever
   /// the standing row holds — the cut's rename, the SE entry's dialog, the
   /// transition span's editor, a lane key's rename. One resolver
@@ -354,34 +373,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       case null:
         break;
     }
-  }
-
-  /// ⑬/B8 CREATE on this panel: the selection rungs first (this panel's own
-  /// selections — the S-row range, a lane span, the strip's cut-local
-  /// range), then the standing row. On the transition row the two verbs are
-  /// one: `editTransitionSpanInstance` creates on an empty frame and edits
-  /// on a covered one (「그게아니라 인스턴스편집버튼으로 작동하도록」); on
-  /// an S row the `＋` authors a fresh entry at the cursor.
-  ///
-  /// ↩️The two verbs are two again (F-105, 유저 2026-09-15 「통일 — 편집
-  /// 버튼은 빈 칸에서 꺼진다」 · 「만약 내가 말했던거라면 철회야」): on the
-  /// transition row the `＋` creates, as it does on every row.
-  void _createInstanceHere() {
-    if (_session.cellInstances.createInstancesForSelection()) {
-      return;
-    }
-    if (_standingOnTransitionRow) {
-      _session.transitions.createTransitionSpanAtPlayhead();
-      return;
-    }
-    // D28: on the cut row with a storyboard layer, the ＋ divides the
-    // panel under the cursor (self-gated by the one cursor resolver).
-    if (_session.storyboardCursor.canCreateStoryboardPanelAtCursor) {
-      _session.storyboardCursor.createStoryboardPanelAtCursor();
-      return;
-    }
-    // Self-gated: only a standing S row with an EMPTY cursor frame authors.
-    _session.storyboardCursor.createSeEntryAtStoryboardCursor();
   }
 
   /// ONE command-bar row — the timeline's own widget now, not a parallel
@@ -430,15 +421,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               // transition row, `＋` makes a span — that row's only creation
               // verb, and the one the rail's own `＋` carried before #926
               // retired it.
-              onCreateInstance: _createInstanceHere,
+              onCreateInstance: _toolbarPanel.createInstance,
               // This panel reads left-to-right like the horizontal timeline,
               // so its dialogs' miniatures do too.
               onEditInstance: _editInstanceHere,
-              // Which rail is asking: with nothing selected the frame pill's
-              // shove aims at the row THIS rail is standing on (a cut row
-              // shoves cuts, an S row shoves sounds), which is not the
-              // session's active-layer fallback.
-              currentRow: _session.selectedRow,
+              // Which rail is asking — this panel's own answer, the one its
+              // push/pull KEYS read too ([ToolbarPanelContext.shiftCurrentRow]).
+              currentRow: _toolbarPanel.shiftCurrentRow,
             ),
           ),
           // ⛔The storyboard's own tail is GONE (B7, 유저 2026-08-17: 「완전
@@ -595,7 +584,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // active (a gap still parks, on either).
                     selectedRow: _session.selectedRow,
                     // A CLICK CLEARS (유저 확정) — this rail's taps too, through
-                    // the same verb since T4. `takesLayerActive: false` is this
+                    // the same verb since T4. Standing on THIS panel is this
                     // panel's own rule: the row you stand on and the layer you
                     // draw on are separate states here (유저 2026-07-27). The
                     // seek afterwards is the storyboard's — a row press says
@@ -603,7 +592,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onSelectLayer: (layerId) {
                       _session.standOnRow(
                         LayerRowAddress(layerId),
-                        takesLayerActive: false,
+                        panel: WorkingPanel.storyboard,
                       );
                       final frame = storyboardPlayheadFrame(_session);
                       if (frame != null) {
@@ -745,17 +734,27 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleSeRowLane: (track, slot) => _toggleSetEntry(
                       _expandedSeAudioRows,
                       StoryboardPanel.seRowKey(track, slot),
+                      onFold: () =>
+                          _foldLanes(track.seLayers.elementAtOrNull(slot)?.id),
                     ),
                     expandedTransformTracks: _expandedTransformTracks,
                     onToggleTrackLane: (track) => _toggleSetEntry(
                       _expandedTransformTracks,
                       track.id.value,
+                      onFold: () =>
+                          _foldLanes(trackTransformLaneCarrierId(track.id)),
                     ),
                     // AE group collapse for the V tracks' and S rows'
                     // Transform groups (default collapsed).
                     expandedTransformGroups: _expandedTransformGroups,
-                    onToggleTransformGroup: (groupKey) =>
-                        _toggleSetEntry(_expandedTransformGroups, groupKey),
+                    onToggleTransformGroup: (groupKey) => _toggleSetEntry(
+                      _expandedTransformGroups,
+                      groupKey,
+                      onFold: () {
+                        final group = parseLaneGroupKey(groupKey);
+                        _foldLanes(group?.layerId, laneId: group?.laneId);
+                      },
+                    ),
                     // The V track's OWN Transform lanes (AE precomp: the
                     // whole picture moving on the screen; R4b: global axis,
                     // no cut needed) and the S rows' layer Transform lanes.
@@ -781,7 +780,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                             laneId: laneId,
                             anchorIndex: anchorIndex,
                             headIndex: headIndex,
-                            framesAreGlobal: true,
+                            panel: WorkingPanel.storyboard,
                             headLaneId: headLaneId,
                             spanLaneIds: span,
                           ),
@@ -802,15 +801,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // press law) an unguarded clear would wipe the very
                       // lane selection a move-press was about to slide.
                       //
-                      // `takesLayerActive: false` is this rail's one stated
+                      // Standing on THIS panel is this rail's one stated
                       // difference (유저 2026-07-27) — it also keeps a V
                       // row's SYNTHETIC carrier id out of the layer
                       // selection, which was the old shape's whole reason.
                       onTapAt: (layerId, laneId, globalFrame) =>
                           _session.standOnRow(
                             LaneRowAddress(layerId, laneId),
+                            panel: WorkingPanel.storyboard,
                             globalFrameIndex: globalFrame,
-                            takesLayerActive: false,
                           ),
                       // H18: the cells family's release rule, here too.
                       onTapClear: _session.clearLaneRangeSelection,
@@ -821,7 +820,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         if (_session.laneVerbs.canNameLaneKeys) {
                           unawaited(editActiveInstance(context, _session));
                         } else {
-                          _createInstanceHere();
+                          _toolbarPanel.createInstance();
                         }
                       },
                       onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
@@ -840,7 +839,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // 바꾸면 풀리도록」 is not a timeline-only law.
                       onStandOnLane: (layerId, laneId) => _session.standOnRow(
                         LaneRowAddress(layerId, laneId),
-                        takesLayerActive: false,
+                        panel: WorkingPanel.storyboard,
                       ),
                     ),
                     // The S rows take the rail's row-order drag; the V rows
@@ -1029,6 +1028,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // row is track-owned and its spans address the global
                     // axis, so the cut timeline shows them read-only.
                     transitionDefById: _session.camera.cameraInstructionSet.defById,
+                    rowsChannel: widget.rowsChannel,
                     // D26: crossing fades are refused and wear the red
                     // corner — the session answers by global key on this
                     // authoring axis, with the SAME predicate the ramp and

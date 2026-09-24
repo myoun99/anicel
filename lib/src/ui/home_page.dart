@@ -10,6 +10,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 import 'dialogs/app_confirm_dialog.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
+import '../models/working_panel.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/last_stroke_slot.dart';
@@ -45,7 +46,6 @@ import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
-import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import 'menu/editor_top_strip.dart';
@@ -704,26 +704,34 @@ class _HomePageState extends State<HomePage> {
         _history.redo();
       case EditorActionIds.onionSkinToggle:
         _session.onionSkin.toggleOnionSkin();
-      // The film verbs. Each one guards itself the way the toolbar button
-      // above it does — a key that fires on a row with nothing to do is a
-      // no-op, not an error.
+      // The film verbs, pressed by key — each through the button it names on
+      // the panel being worked in (I-19), behind the very gate that button
+      // reads: a key that fires on a row with nothing to do is a no-op, not
+      // an error.
       case EditorActionIds.frameNewDrawing:
-        createActiveInstance(_session);
+        final panel = _workingPanel;
+        if (panel.canCreateInstance) {
+          panel.createInstance();
+        }
       case EditorActionIds.frameBlankExposure:
-        if (_session.exposureVerbs.canBlankExposureAtCurrentFrame) {
-          _session.exposureVerbs.blankExposureAtCurrentFrame();
+        final panel = _workingPanel;
+        if (panel.canBlankExposure) {
+          panel.blankExposure();
         }
       case EditorActionIds.frameToggleMark:
-        if (_session.layerMarks.canToggleMarkAtCurrentFrame) {
-          _session.layerMarks.toggleMarkAtCurrentFrame();
+        final panel = _workingPanel;
+        if (panel.canToggleMark) {
+          panel.toggleMark();
         }
       case EditorActionIds.timelinePushBlocks:
-        if (_session.blockShift.canPushBlocks()) {
-          _session.blockShift.pushBlocks(1);
+        final row = _workingPanel.shiftCurrentRow;
+        if (_session.blockShift.canPushBlocks(currentRow: row)) {
+          _session.blockShift.pushBlocks(1, currentRow: row);
         }
       case EditorActionIds.timelinePullBlocks:
-        if (_session.blockShift.canPullBlocks()) {
-          _session.blockShift.pullBlocks(1);
+        final row = _workingPanel.shiftCurrentRow;
+        if (_session.blockShift.canPullBlocks(currentRow: row)) {
+          _session.blockShift.pullBlocks(1, currentRow: row);
         }
       case EditorActionIds.canvasRotateCcw:
         _canvasViewCommands.rotateBy(-15);
@@ -741,33 +749,36 @@ class _HomePageState extends State<HomePage> {
         _confirm.confirm();
       case EditorActionIds.selectionTransformCancel:
         _abandonPolygonOrCancelTransform();
-      // The comma set row (UI-R17 #7): current block or whole selection.
+      // The comma set row (UI-R17 #7): current block or whole selection —
+      // this panel's 1/2/3/4/N buttons, pressed by key.
       case EditorActionIds.timelineComma1:
-        _session.exposureVerbs.setCommaForSelectionOrCurrent(1);
+        _setCommaByKey(1);
       case EditorActionIds.timelineComma2:
-        _session.exposureVerbs.setCommaForSelectionOrCurrent(2);
+        _setCommaByKey(2);
       case EditorActionIds.timelineComma3:
-        _session.exposureVerbs.setCommaForSelectionOrCurrent(3);
+        _setCommaByKey(3);
       case EditorActionIds.timelineComma4:
-        _session.exposureVerbs.setCommaForSelectionOrCurrent(4);
+        _setCommaByKey(4);
       case EditorActionIds.timelineCommaN:
-        if (_session.exposureVerbs.canSetCommaForSelectionOrCurrent) {
-          unawaited(showTimelineCommaCountDialog(context, _session));
+        final panel = _workingPanel;
+        if (panel.canSetComma) {
+          unawaited(
+            showTimelineCommaCountDialog(context, _session, panel: panel),
+          );
         }
-      // 🗣️I-19: the shared pill's own buttons, pressed by key. The
-      // TIMELINE's context answers, as it does for the film verbs above —
-      // through the very getters the buttons fire, so a key cannot act
-      // where its button is dim.
+      // 🗣️I-19: the shared pill's own buttons, pressed by key — through the
+      // very getters the buttons fire, so a key cannot act where its button
+      // is dim.
       case EditorActionIds.editCut:
-        _timelinePanel.cutPress?.call();
+        _workingPanel.cutPress?.call();
       case EditorActionIds.editCopy:
-        _timelinePanel.copyPress?.call();
+        _workingPanel.copyPress?.call();
       case EditorActionIds.editPasteLinked:
-        _timelinePanel.pasteLinkedPress?.call();
+        _workingPanel.pasteLinkedPress?.call();
       case EditorActionIds.editPasteIndependent:
-        _timelinePanel.pasteIndependentPress?.call();
+        _workingPanel.pasteIndependentPress?.call();
       case EditorActionIds.editDelete:
-        _timelinePanel
+        _workingPanel
             .deletePress(
               onDeleteRowSelection: () =>
                   unawaited(deleteRowSelectionWithDialog(context, _session)),
@@ -786,10 +797,26 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// The panel a key speaks to: the cut timeline's, the context every
-  /// bound film verb already dispatches against.
-  ToolbarPanelContext get _timelinePanel =>
-      TimelineToolbarPanelContext(_session);
+  /// The panel a key speaks to: the one being worked in — the one last
+  /// touched (유저 2026-09-24: 「마지막으로 만진 패널 … 입구같은거나 규칙/법
+  /// 완벽하게 통일」). A key presses the button that panel shows.
+  ///
+  /// ↩️It was the cut timeline's whatever panel you were in (09-13, the
+  /// context every bound film verb spoke to then — a session's pick, not a
+  /// ruling: the order was 「여러 단축키 기존 버튼에 연결」), so the
+  /// storyboard's own pill and its keys answered differently.
+  ToolbarPanelContext get _workingPanel => switch (_session.workingPanel) {
+    WorkingPanel.timeline => TimelineToolbarPanelContext(_session),
+    WorkingPanel.storyboard => StoryboardToolbarPanelContext(_session),
+  };
+
+  /// A 1/2/3/4 key: that button, on the panel being worked in.
+  void _setCommaByKey(int comma) {
+    final panel = _workingPanel;
+    if (panel.canSetComma) {
+      panel.setComma(comma);
+    }
+  }
 
   /// 🚨T28: play or stop, and nothing in between. The middle branch
   /// used to resume a paused transport — a state that no longer

@@ -628,8 +628,11 @@ void main() {
         reason: 'the row you draw on is the row you stand on by default',
       );
 
-      // Standing on a property inside it MOVES the answer.
-      session.selectRow(LaneRowAddress(layerId, 'position'));
+      // Standing on a property inside it MOVES the answer — through the
+      // timeline's own door: ↩️this stood on the lane through the
+      // STORYBOARD's pick (`selectRow`), which wrote both panels' rows at
+      // once; each panel stands on its own row now.
+      session.standOnRow(LaneRowAddress(layerId, 'position'));
       expect(
         session.currentRowListenable.value,
         LaneRowAddress(layerId, 'position'),
@@ -638,9 +641,10 @@ void main() {
 
       // Pressing the same lane again is free — the claim on pointer-down
       // fires inside gestures whose contract is silence until release, so
-      // "no change" must cost nothing.
+      // "no change" must cost nothing. The layer and its lane are taken in
+      // ONE step, so re-standing does not flicker through the layer row.
       final settled = notifications;
-      session.selectRow(LaneRowAddress(layerId, 'position'));
+      session.standOnRow(LaneRowAddress(layerId, 'position'));
       session.claimTimelineRow();
       expect(notifications, settled);
 

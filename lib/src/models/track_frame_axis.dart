@@ -171,4 +171,29 @@ class TrackFrameAxis {
         : (localFrame > lastLocal ? lastLocal : localFrame);
     return entry.startFrame + local;
   }
+
+  /// Where the STORYBOARD stands for an EDITING playhead: a gap parking at
+  /// its exact frame, else the active cut's local frame clamped into that cut
+  /// ([clampedToCutGlobalOf]) — the storyboard shows the cut's territory
+  /// (UI-R9 #4), so an index past the cut's end, where the timeline may
+  /// stand, would address the NEXT cut there. Null with no cut to clamp into
+  /// and no parking.
+  ///
+  /// ★One answer for where the storyboard DRAWS its playhead and where its
+  /// flip STARTS: counted from the unclamped frame, a V-row flip from a
+  /// playhead the storyboard showed on this cut's last frame jumped clean
+  /// over the next cut's first panel.
+  int? storyboardFrameOf({
+    required int? parkedGlobalFrame,
+    required CutId? activeCutId,
+    required int localFrame,
+  }) {
+    if (parkedGlobalFrame != null) {
+      return parkedGlobalFrame;
+    }
+    if (activeCutId == null) {
+      return null;
+    }
+    return clampedToCutGlobalOf(activeCutId, localFrame);
+  }
 }

@@ -182,14 +182,8 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
         entry.cutId: layer.name,
   },
   // The STRIP's content: the cut's panels, under the coverage rule — the
-  // same reading the row's edge grips hang on.
-  storyboardCellsByCut: {
-    for (final entry in entries)
-      entry.cutId: storyboardCoverageCells(
-        timeline: storyboardLayerForCut(entry.cut)?.timeline,
-        cutDuration: entry.duration,
-      ),
-  },
+  // same reading the row's edge grips hang on and its flip steps through.
+  storyboardCellsByCut: storyboardCellsByCut(entries),
   geometry: geometry,
   crossAxisExtent: crossAxisExtent,
   minBlockWidth: minBlockWidth,

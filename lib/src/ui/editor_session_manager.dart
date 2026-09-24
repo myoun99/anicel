@@ -64,6 +64,7 @@ import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
+import '../models/working_panel.dart';
 import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
@@ -159,6 +160,7 @@ import 'session/cell_verbs.dart';
 import 'session/folders_and_attachments.dart';
 import 'session/project_settings.dart';
 import 'session/frame_verbs.dart';
+import 'session/track_axis_walk.dart';
 import 'session/standing.dart';
 import 'session/cut_move_drag.dart';
 import 'session/trimmed_pieces.dart';
@@ -692,19 +694,32 @@ class EditorSessionManager extends ChangeNotifier
 
   @override
   TimelineRowAddress get currentRow => standing.currentRow;
+
+  /// The panel the arrows, the flip and the bound keys answer to — the one
+  /// last touched ([Standing.workingPanel]).
+  WorkingPanel get workingPanel => standing.workingPanel;
+  ValueListenable<WorkingPanel> get workingPanelListenable =>
+      standing.workingPanelListenable;
+
+  /// The row the STORYBOARD's verbs act on — [selectedRow], or a lane of a
+  /// row that rail shows ([Standing.storyboardStandingRow]).
+  @override
+  TimelineRowAddress get storyboardStandingRow =>
+      standing.storyboardStandingRow;
+
   @override
   void standOnRow(
     TimelineRowAddress row, {
+    WorkingPanel panel = WorkingPanel.timeline,
     int? frameIndex,
     int? globalFrameIndex,
-    bool takesLayerActive = true,
   }) {
     historyManager.places.settle();
     standing.standOnRow(
       row,
+      panel: panel,
       frameIndex: frameIndex,
       globalFrameIndex: globalFrameIndex,
-      takesLayerActive: takesLayerActive,
     );
   }
 
@@ -715,8 +730,11 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   void selectRow(TimelineRowAddress row) => standing.selectRow(row);
-  void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
-      standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
+  void handOffCurrentRowOnFold(
+    LayerId layerId, {
+    String? laneId,
+    WorkingPanel panel = WorkingPanel.timeline,
+  }) => standing.handOffCurrentRowOnFold(layerId, laneId: laneId, panel: panel);
   void handOffCurrentRowOnAttachFold(LayerId baseId) =>
       standing.handOffCurrentRowOnAttachFold(baseId);
   void claimTimelineRow() => standing.claimTimelineRow();
@@ -872,7 +890,7 @@ class EditorSessionManager extends ChangeNotifier
     required int headIndex,
     String? headLaneId,
     required List<String> spanLaneIds,
-    bool framesAreGlobal = false,
+    WorkingPanel panel = WorkingPanel.timeline,
   }) => rangeSelections.updateLaneRangeSelectionDrag(
     layerId: layerId,
     laneId: laneId,
@@ -880,7 +898,7 @@ class EditorSessionManager extends ChangeNotifier
     headIndex: headIndex,
     headLaneId: headLaneId,
     spanLaneIds: spanLaneIds,
-    framesAreGlobal: framesAreGlobal,
+    panel: panel,
   );
   void clearLaneRangeSelection() => rangeSelections.clearLaneRangeSelection();
   bool standingInsideSelection(
@@ -1016,7 +1034,6 @@ class EditorSessionManager extends ChangeNotifier
   // would be a second name for the same verb (round 8, G4).
   late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
 
-  @override
   TimelineRowAddress get selectedRow => standing.selectedRow;
 
   /// Makes a V row THE selected row and nothing else — no cut promotion, no
@@ -1275,6 +1292,7 @@ class EditorSessionManager extends ChangeNotifier
     railView.dispose,
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
+    standing.dispose,
     historyManager.dispose,
   ];
 
@@ -1510,7 +1528,18 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     internals: this,
     renderCaches: renderCaches,
+    trackAxis: trackAxisWalk,
+    workingPanel: () => standing.workingPanel,
+  );
+
+  // The track's axis, walked: the storyboard's rows and a gap's steps.
+  late final TrackAxisWalk trackAxisWalk = TrackAxisWalk(
+    project: this,
+    selection: this,
+    timeline: this,
+    controllers: activeCutControllers,
     projectSettings: projectSettings,
+    trackSe: trackSe,
   );
 
   @override

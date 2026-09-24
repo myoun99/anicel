@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
 import 'package:anicel/src/models/canvas_size.dart';
@@ -623,7 +624,7 @@ void main() {
         anchorIndex: 2,
         headIndex: 3,
         spanLaneIds: const [],
-        framesAreGlobal: true,
+        panel: WorkingPanel.storyboard,
       );
       expect(session.trackFrameRangeSelection.value, isNull);
     });

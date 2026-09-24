@@ -25,6 +25,10 @@ import '../models/timeline_coverage.dart'
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_transform_lane_carrier.dart';
+import 'canvas/flip_hud_controller.dart' show FlipHudAxis;
+import 'canvas/flip_hud_model.dart';
+import 'canvas/flip_hud_rows.dart';
+import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import 'audio/waveform_painter.dart';
 import 'storyboard_cut_blocks_painter.dart';
@@ -113,7 +117,6 @@ import 'timeline/timeline_frame_range_gesture.dart'
 import '../models/storyboard_coverage.dart'
     show
         StoryboardCoverageCell,
-        storyboardCoverageCells,
         storyboardDivisionKeys;
 import '../models/timeline_frame_range.dart'
     show TimelineFrameRangeSelection, TimelineLaneSelection;
@@ -163,6 +166,7 @@ part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
 part 'storyboard/storyboard_scroll.dart';
 part 'storyboard/storyboard_rail_rows.dart';
+part 'storyboard/storyboard_sheet.dart';
 
 /// One row of the storyboard rail, as the shared swipe sees it.
 ///
@@ -509,6 +513,7 @@ class StoryboardPanel extends StatefulWidget {
     this.seSelect,
     this.audioLane,
     this.transitionDefById,
+    this.rowsChannel,
     this.transitionCrossingTooltip,
     this.transitionPreview,
     this.transitionCommaDrag,
@@ -1013,6 +1018,11 @@ class StoryboardPanel extends StatefulWidget {
   /// spans unmarked.
   final CameraInstructionDef? Function(String instructionId)? transitionDefById;
 
+  /// Where this panel hands its stacked rows to the shell — the ↑/↓ walk and
+  /// the flip window read them while the storyboard is the panel being
+  /// worked in ([_StoryboardSheet]). Null for a mount nothing walks.
+  final StoryboardRowsChannel? rowsChannel;
+
   /// D26: crossing-fade warning resolver for the AUTHORING row — global
   /// start keys (this axis is where spans really live).
   final String? Function(int spanStartKey)? transitionCrossingTooltip;
@@ -1186,7 +1196,17 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _horizontalController.addListener(_frameAxis.handleScroll);
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
     widget.playheadFrame?.addListener(_handlePlaybackPage);
+    _bindSheet(widget.rowsChannel);
   }
+
+  /// THE STORYBOARD AS A SHEET, handed to the shell's walkers.
+  late final _StoryboardSheet _sheet = _StoryboardSheet(this);
+
+  void _bindSheet(StoryboardRowsChannel? channel) => channel?.bind(
+    this,
+    rows: _sheet.rows,
+    snapshotOf: _sheet.flipHudSnapshot,
+  );
 
   /// R5: the same "bring the selection back into view" tick the timeline
   /// answers, in THIS surface's terms — the strips run on the GLOBAL frame
@@ -1252,6 +1272,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       widget.playheadFrame,
       _handlePlaybackPage,
     );
+    if (!identical(oldWidget.rowsChannel, widget.rowsChannel)) {
+      oldWidget.rowsChannel?.unbind(this);
+      _bindSheet(widget.rowsChannel);
+    }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
     // anchors. Shared policy with the timeline grids.
@@ -1276,6 +1300,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   void dispose() {
+    widget.rowsChannel?.unbind(this);
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.playheadFrame?.removeListener(_handlePlaybackPage);
     _horizontalController.removeListener(_frameAxis.handleScroll);
@@ -4350,13 +4375,8 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// the row's grip material, resolved once for both. A cut with no
   /// storyboard row still answers with ONE cell over the whole cut, so
   /// neither consumer has an empty case to handle.
-  Map<CutId, List<StoryboardCoverageCell>> _cellsByCut() => {
-    for (final entry in layoutEntries)
-      entry.cutId: storyboardCoverageCells(
-        timeline: storyboardLayerForCut(entry.cut)?.timeline,
-        cutDuration: entry.duration,
-      ),
-  };
+  Map<CutId, List<StoryboardCoverageCell>> _cellsByCut() =>
+      storyboardCellsByCut(layoutEntries);
 
   /// One entry per PANEL of the row, in track order — what the edit chrome
   /// hangs its grips on.

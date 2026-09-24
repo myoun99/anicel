@@ -821,7 +821,7 @@ class _WorkspaceTabs {
               orientation: _state._timelineOrientation.value,
               onOrientationChanged: (orientation) {
                 _state._timelineOrientation.value = orientation;
-                _state._flipHud.syncFlipAxisWithTimeline();
+                _state._flipHud.syncFlipAxis();
               },
               pixelsPerFrame: _state._timelinePixelsPerFrame.value,
               pixelsPerFrameListenable: _state._timelinePixelsPerFrame,
@@ -930,6 +930,9 @@ class _WorkspaceTabs {
               // and the planned V-track splitter is the next writer.
               trackLaneHeight: _state._storyboardTrackLaneHeight.value,
               thumbnailFor: _state._storyboardThumbnails.thumbnailFor,
+              // The rows the ↑/↓ walk and the flip window read while the
+              // storyboard is the panel being worked in.
+              rowsChannel: _state._storyboardRows,
               // ⛔The camera-view notifier no longer comes through here:
               // R28 #1's toggle rides the sill with the transport now
               // (`sillTrailing` above), so the panel does not see it.
@@ -1097,6 +1100,7 @@ class _WorkspaceTabs {
   /// predates it. Fetching it back is what makes the switch mean the same
   /// thing every time it is pressed.
   void selectFloorTab(String tabId) {
+    _state._claimPanelOf(tabId);
     final tabs = _state._layout.tabsIn(EditorWorkspace.centerGroupId);
     if (tabs.contains(tabId)) {
       _state._mutatingLayout(() {

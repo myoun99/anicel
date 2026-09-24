@@ -88,19 +88,13 @@ int? storyboardPlayheadFrame(
     // Editing playhead: a GAP PARKING reads its exact stored global
     // (R16-⑥); otherwise the playhead clamps to the CUT's last frame
     // (UI-R9 #4 — the timeline's over-end runway is a clipped view of
-    // the cut, never the trailing gap) — the same math the session's
-    // editingGlobalFrame speaks. No cut + no parking = no playhead.
-    final parked = session.gapParkedGlobalFrame;
-    if (parked != null) {
-      return parked;
-    }
-    final cutId = session.activeCutId;
-    if (cutId == null) {
-      return null;
-    }
-    return TrackFrameAxis(
-      layout,
-    ).clampedToCutGlobalOf(cutId, session.currentFrameIndex);
+    // the cut, never the trailing gap). No cut + no parking = no playhead.
+    // ★The storyboard's flip starts from this very answer.
+    return TrackFrameAxis(layout).storyboardFrameOf(
+      parkedGlobalFrame: session.gapParkedGlobalFrame,
+      activeCutId: session.activeCutId,
+      localFrame: session.currentFrameIndex,
+    );
   }
   for (final entry in layout) {
     if (entry.cutId == playbackPosition.cutId) {

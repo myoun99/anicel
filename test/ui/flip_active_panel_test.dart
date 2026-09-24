@@ -72,7 +72,7 @@ void main() {
     const lane = LaneRowAddress(LayerId('layer-1'), 'opacity');
     expect(layerId, lane.layerId);
 
-    session.selectRow(lane);
+    session.standOnRow(lane);
     expect(session.currentRow, lane);
 
     // Away to the storyboard and back.

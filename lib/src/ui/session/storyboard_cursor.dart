@@ -106,7 +106,7 @@ class StoryboardCursor {
   /// span. Null where the cursor covers nothing (a gap is an honest
   /// nothing, not a fallback to the other panel's subject).
   StoryboardCursorBlock? storyboardCursorBlockOrNull() {
-    switch (_selection.selectedRow) {
+    switch (_selection.storyboardStandingRow) {
       case LayerRowAddress(:final layerId)
           when _project.isTrackTransitionLayerId(layerId):
         final span = _transitions.transitionSpanAt(_selection.editingGlobalFrame);
@@ -244,7 +244,7 @@ class StoryboardCursor {
     // Standing on one of the row's LANES answers with the row (C3-lane-move,
     // and [LaneRowAddress]'s own law: standing on a property must never cost
     // you the layer).
-    final rowLayerId = _selection.selectedRow.owningLayerId;
+    final rowLayerId = _selection.storyboardStandingRow.owningLayerId;
     if (rowLayerId == null || _project.isTrackTransitionLayerId(rowLayerId)) {
       return false;
     }
@@ -262,8 +262,9 @@ class StoryboardCursor {
     if (!canCreateSeEntryAtStoryboardCursor) {
       return;
     }
-    final row = _selection.selectedRow as LayerRowAddress;
-    final layerId = row.layerId;
+    // The gate's own question — a lane answers with its row — so a lane
+    // stood on is not a cast away from a crash.
+    final layerId = _selection.storyboardStandingRow.owningLayerId!;
     // ⚠️The fills funnel re-applies the track-SE display lens on the way in
     // (the active cut's global start) — pre-subtract the SAME expression,
     // exactly as [_createTrackSeEntriesForRange] does, or the entry lands

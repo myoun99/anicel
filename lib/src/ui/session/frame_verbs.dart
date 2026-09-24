@@ -7,18 +7,16 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/flip_column_step.dart';
-import '../../models/timeline_repeat.dart';
 import '../../models/timeline_row_address.dart';
-import '../../models/track_frame_axis.dart';
-import '../../models/track_id.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_pose_paint.dart';
+import '../../models/working_panel.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart';
-import 'project_settings.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
+import 'track_axis_walk.dart';
 
 /// The FRAME VERBS — the playhead's frame and what stands there: stepping
 /// and flipping to a frame, the selected frame's name, duration and status
@@ -40,7 +38,8 @@ class FrameVerbs {
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required RenderCaches renderCaches,
-    required ProjectSettings projectSettings,
+    required TrackAxisWalk trackAxis,
+    required WorkingPanel Function() workingPanel,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -49,7 +48,8 @@ class FrameVerbs {
        _controllers = controllers,
        _internals = internals,
        _renderCaches = renderCaches,
-       _projectSettings = projectSettings;
+       _trackAxis = trackAxis,
+       _workingPanel = workingPanel;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -59,7 +59,13 @@ class FrameVerbs {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final RenderCaches _renderCaches;
-  final ProjectSettings _projectSettings;
+
+  /// The TRACK's axis, walked — the storyboard's rows and a gap's steps.
+  final TrackAxisWalk _trackAxis;
+
+  /// The panel being worked in ([Standing.workingPanel]): the storyboard's
+  /// rows walk the track's axis, the timeline's the cut's.
+  final WorkingPanel Function() _workingPanel;
 
   /// The geometric pose sample the interactive canvas shows for [layerId]
   /// at the playhead — the draw-through wrap input. Null = identity (no
@@ -363,59 +369,6 @@ class FrameVerbs {
   /// 였다.** 걷기는 이 축 위의 한 걸음이고 축은 하나다 — 🧪컷의 마지막
   /// 프레임에서 세 행 전부 제자리였다(2026-09-17). 걷기는 이제
   /// [_stepOneFrame] 을 통해 같은 착지로 온다.
-  /// The V-row half: the track's CUTS are its columns, on the global axis.
-  ///
-  /// The same column step the layer row takes, with the track's cuts as
-  /// the covering material instead of a layer's blocks — which is the
-  /// whole point of stating the rule as columns. It carried the identical
-  /// key-stepping defect before, so a gap between two cuts was skipped in
-  /// both directions here too.
-  ///
-  /// This is also the axis a GAP is walked on: `selectGlobalFrame` lands
-  /// the result inside a cut or parks it in the void, so a playhead
-  /// standing between cuts can step out under its own power.
-  void _flipCuts(TrackId trackId, {required bool forward}) {
-    // The MEMOIZED layout (identity-keyed on the project): a flip step is
-    // a per-move cost, and rebuilding the whole cross-track layout for
-    // each one is exactly the tax that memo exists to remove.
-    final entries = [
-      for (final entry in _projectSettings.projectLayout())
-        if (entry.trackId == trackId) entry,
-    ];
-    if (entries.isEmpty) {
-      return;
-    }
-    final axis = TrackFrameAxis(entries);
-    final globalFrame = _selection.editingGlobalFrame;
-    final next = flipColumnStep(
-      frame: globalFrame,
-      direction: forward ? 1 : -1,
-      columnAt: (frame) {
-        final block = axis.cutBlockAt(frame);
-        return block == null
-            ? null
-            : (start: block.startIndex, endExclusive: block.endIndexExclusive);
-      },
-    );
-    // The start of the film is the only floor; rightward the runway past
-    // the last cut is a place you may stand. F-21: and a step that falls
-    // through that floor lands ON it rather than doing nothing — the layer
-    // row's law, on the axis this row counts.
-    final landing = next < 0 ? 0 : next;
-    if (landing != globalFrame) {
-      // Land on the axis the step was measured on: this row may name a
-      // track that is not the selected one.
-      //
-      // ⛔DROPPING `onAxis` SURVIVES MUTATION (2026-09-07), and the
-      // classification is AN INNER GUARD ALREADY ANSWERS: standing on a
-      // cut row TAKES its track, so by the time the landing resolves
-      // `trackFrameAxis()` is the same axis. Kept because it makes the
-      // step and the landing one axis BY CONSTRUCTION rather than by
-      // that coincidence — the standing rule is free to change.
-      _selection.selectGlobalFrame(landing, onAxis: axis);
-    }
-  }
-
   void _flipToFrame(int landing) {
     final floored = landing < 0 ? 0 : landing;
     if (floored != _controllers.timelineController.currentFrameIndex) {
@@ -428,19 +381,21 @@ class FrameVerbs {
   ///
   /// ⛔**축을 먼저 정하고, 그 축 위에서 잰다.** 컷 위에 서 있으면 컷 지역
   /// 프레임이고, 갭에 서 있으면 그런 축이 없으니 **전역 프레임**이다 — 컷 지역
-  /// 인덱스는 갭에서 0 이라 그걸로 재면 걸음이 어디로도 가지 않는다. [_flipCuts]
-  /// 가 「잰 축 위에 내린다」고 적어 둔 그 규칙의 나머지 절반이다.
+  /// 인덱스는 갭에서 0 이라 그걸로 재면 걸음이 어디로도 가지 않는다.
+  /// [TrackAxisWalk.flipPanels] 가 「잰 축 위에 내린다」고 적어 둔 그 규칙의
+  /// 나머지 절반이다.
+  ///
+  /// The storyboard's rows ALL live on the track's axis, so while it is the
+  /// panel being worked in a step is a track frame too: Ctrl+→ on its V row
+  /// crosses into the next cut the way its flip does.
   void _stepOneFrame({required bool forward}) {
-    final direction = forward ? 1 : -1;
-    if (_project.activeCutOrNull == null) {
-      final landing = _selection.editingGlobalFrame + direction;
-      if (landing >= 0) {
-        _selection.selectGlobalFrame(landing);
-      }
+    if (_workingPanel() == WorkingPanel.storyboard ||
+        _project.activeCutOrNull == null) {
+      _trackAxis.stepOneFrame(forward: forward);
       return;
     }
     _flipToFrame(
-      _controllers.timelineController.currentFrameIndex + direction,
+      _controllers.timelineController.currentFrameIndex + (forward ? 1 : -1),
     );
   }
 
@@ -467,15 +422,20 @@ class FrameVerbs {
     _selection.clearTimelineSelections();
     switch (_internals.currentRow) {
       case TrackRowAddress(:final trackId):
-        _flipCuts(trackId, forward: forward);
+        _trackAxis.flipPanels(trackId, forward: forward);
+      case LayerRowAddress(:final layerId)
+          when _workingPanel() == WorkingPanel.storyboard:
+        // The panel being worked in is the one whose row this is — and an S
+        // row or the transition row stands on BOTH panels under one address.
+        _trackAxis.flipTrackRow(layerId, forward: forward);
       case LayerRowAddress(:final layerId):
         final layer = _project.layerById(layerId) ?? _selection.activeLayer;
         if (layer == null) {
           // No such layer to stand on — the playhead is parked in a GAP
           // (no cut, so no rows), or the stored row outlived its cut. The
-          // row you are actually on is the TRACK, so walk cuts rather
+          // row you are actually on is the TRACK, so walk its panels rather
           // than dead-ending: that is how a gap is stepped out of.
-          _flipCuts(_selection.selectedTrackId, forward: forward);
+          _trackAxis.flipPanels(_selection.selectedTrackId, forward: forward);
           return;
         }
         _flipBlocks(layer, forward: forward);
@@ -519,13 +479,7 @@ class FrameVerbs {
     final next = flipColumnStep(
       frame: current,
       direction: forward ? 1 : -1,
-      // A7① (2026-08-17): a HOLD is one flip unit — the column absorbs
-      // hold-mode ghost tails/lead-ins into their owning run, so the flip
-      // never lands inside a hold the HUD draws as empty. Repeat ghosts
-      // stay their own columns; the merge lives HERE, in the flip's
-      // column definition only (creation gates, painters and playback
-      // keep reading raw coverage).
-      columnAt: (frame) => holdMergedFlipColumnAt(layer, frame),
+      columnAt: (frame) => flipColumnOfRow(layer, frame),
     );
     // 🚨F-21 (유저 2026-08-24): 「1번인덱스에 홀드인 블록하나 있을때
     // 중간인덱스, 5번인덱스인 상태에서 왼쪽 플립하면 인덱스 이동안함. 해당

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -73,7 +74,7 @@ void main() {
       anchorIndex: cutStart + 2,
       headIndex: cutStart + 3,
       spanLaneIds: const [],
-      framesAreGlobal: true,
+      panel: WorkingPanel.storyboard,
     );
     expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
     session.laneMove.updateLaneRangeMoveDrag(frameDelta: 5);
@@ -164,7 +165,7 @@ void main() {
       anchorIndex: firstDuration + 2,
       headIndex: firstDuration + 3,
       spanLaneIds: const [],
-      framesAreGlobal: true,
+      panel: WorkingPanel.storyboard,
     );
     expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
     session.laneMove.updateLaneRangeMoveDrag(frameDelta: 5);

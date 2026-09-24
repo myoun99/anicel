@@ -29,6 +29,7 @@ import '../../models/layer_id.dart';
 import '../../models/pill_subject.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/working_panel.dart';
 import '../../models/track.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
@@ -96,7 +97,7 @@ abstract interface class SelectionAccess {
   void selectFrameIndex(int frameIndex);
   void selectGlobalFrame(int globalFrame, {TrackFrameAxis? onAxis});
   Frame? get selectedFrame;
-  TimelineRowAddress get selectedRow;
+  TimelineRowAddress get storyboardStandingRow;
   TrackId get selectedTrackId;
   ValueNotifier<TrackFrameRangeSelection?> get trackFrameRangeSelection;
 }
@@ -195,9 +196,9 @@ abstract interface class SessionInternals {
   ValueNotifier<Set<LayerId>> get soloedSeLayerIds;
   void standOnRow(
     TimelineRowAddress row, {
+    WorkingPanel panel = WorkingPanel.timeline,
     int? frameIndex,
     int? globalFrameIndex,
-    bool takesLayerActive = true,
   });
   TrackSeWindow get trackSeWindow;
   ValueNotifier<Layer?> get transitionEdgeDragPreview;

@@ -72,19 +72,44 @@ TimelineRowAddress? adjacentDisplayedRow({
     current: currentRow ?? LayerRowAddress(activeLayerId ?? const LayerId('')),
     activeLayerId: activeLayerId,
   );
+  return stepAlongRows(
+    [for (final row in rows) row.address],
+    fromIndex: activeIndex,
+    direction: direction,
+    current: currentRow,
+  );
+}
 
+/// ONE ↑/↓ STEP through a panel's stacked rows — the walk both panels take,
+/// each over the rows it shows (UI-R20 #14; 유저 2026-09-24: 「v행에
+/// 서있다가 위 키 누르면 S1행으로」 — the storyboard's walk had been the
+/// timeline's, so from the V row it fell back to a layer inside the cut).
+///
+/// From [fromIndex], [direction] rows on (-1 = screen-up), clamped at the
+/// ends. A [fromIndex] of -1 — the row you stand on is not on screen —
+/// enters the rows from the matching end: ↓ lands on the top row, ↑ on the
+/// bottom. Null = no move.
+TimelineRowAddress? stepAlongRows(
+  List<TimelineRowAddress> rows, {
+  required int fromIndex,
+  required int direction,
+  TimelineRowAddress? current,
+}) {
+  if (rows.isEmpty || direction == 0) {
+    return null;
+  }
   final int targetIndex;
-  if (activeIndex == -1) {
+  if (fromIndex == -1) {
     targetIndex = direction > 0 ? 0 : rows.length - 1;
   } else {
-    final next = (activeIndex + direction).clamp(0, rows.length - 1);
-    if (next == activeIndex) {
+    final next = (fromIndex + direction).clamp(0, rows.length - 1);
+    if (next == fromIndex) {
       return null;
     }
     targetIndex = next;
   }
-  final target = rows[targetIndex].address;
-  return target == currentRow ? null : target;
+  final target = rows[targetIndex];
+  return target == current ? null : target;
 }
 
 /// The imperative layer-nav channel (UI-R20 #14): the app-level ↑/↓

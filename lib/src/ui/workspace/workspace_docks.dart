@@ -64,16 +64,14 @@ class _WorkspaceDocks {
       draggingTab: _state._draggingTab,
       compact: compact,
       canAcceptTab: (data) => _canDockAccept(dockId, data),
-      onTabSelected: (tabId) => _state._mutatingLayout(() {
-        _state._layout.selectTab(dockId, tabId);
-      }),
-      onTabMoved: (data, insertIndex) => _state._mutatingLayout(() {
-        _state._layout.moveTab(
-          tabId: data.tabId,
-          toDockId: dockId,
-          insertIndex: insertIndex,
-        );
-      }),
+      onTabSelected: (tabId) {
+        _state._claimPanelOf(tabId);
+        _state._mutatingLayout(() {
+          _state._layout.selectTab(dockId, tabId);
+        });
+      },
+      onTabMoved: (data, insertIndex) =>
+          _state._placeTab(data, dockId, insertIndex),
       onTabDragChanged: (data) => _state._draggingTab.value = data,
       onToggleLock: _toggleTabLock,
       onCloseTab: _state._tabs.closeTab,
@@ -82,13 +80,7 @@ class _WorkspaceDocks {
   }
 
   void _dropIntoEmptyDock(String dockId, EditorPanelTabDragData data) {
-    _state._mutatingLayout(() {
-      _state._layout.moveTab(
-        tabId: data.tabId,
-        toDockId: dockId,
-        insertIndex: 0,
-      );
-    });
+    _state._placeTab(data, dockId, 0);
     _state._rail.ensureRailOpen(dockId);
   }
 
