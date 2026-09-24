@@ -110,11 +110,13 @@ void main() {
     );
   });
 
-  testWidgets('double-tap still activates the cell editor', (tester) async {
+  testWidgets('double-tap still activates the cell editor, standing on the '
+      'cell it opened', (tester) async {
     final activated = <int>[];
+    final selections = <int>[];
     await pumpRow(
       tester,
-      onSelectFrame: (_) {},
+      onSelectFrame: selections.add,
       onActivateCell: (_, frame) => activated.add(frame),
     );
 
@@ -124,6 +126,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(activated, [3]);
+    expect(
+      selections.toSet(),
+      {3},
+      reason: 'the editor opens on the cell that was double-tapped, and the '
+          'selection stands there — not on a neighbour',
+    );
   });
 
   /// 🚨T10 (유저 확정 2026-08-14): a press PICKS again.
