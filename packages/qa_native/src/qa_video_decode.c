@@ -47,6 +47,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "qa_yuv601.h"
+
 #if defined(_WIN32)
 #define QA_EXPORT __declspec(dllexport)
 #else
@@ -344,77 +346,12 @@ static void qa_rotate_rgba(const uint8_t* stored,
   }
 }
 
-/// YUV420 → RGBA, BT.601 limited range — the same matrix the encoder half
-/// writes.
-///
-/// [stride] is BYTES PER LUMA ROW and [slice] the rows between the Y plane
-/// and the chroma that follows it. Both are ≥ the picture, and assuming
-/// either equals it is the classic way to get a green-striped frame on one
-/// vendor's hardware and a correct one on another's. [semi_planar] picks
-/// NV12 (interleaved chroma) over planar I420.
-///
-/// 🚨★★★**IT LIVES IN THE LAW BECAUSE IT IS ARITHMETIC, AND BECAUSE IT WAS
-/// NEVER RUN.** This was inside the `__ANDROID__` backend, where it
-/// compiles on every PR and executes on no machine anybody has — the card
-/// `android-decoder-branch-never-runs` is about exactly that gap. Nothing
-/// in it touches a platform: it reads bytes and writes bytes, so it can be
-/// proven on the bench like the rotation above it, which used to be an
-/// Apple-only secret for the same reason.
-///
-/// ⛔The picture size comes in as ARGUMENTS. It used to read the decoder's
-/// global document, which is what tied a pure calculation to a backend
-/// having opened something.
-///
-/// ⚠️It is the one piece of law behind a `#if`, and the reason is narrow:
-/// exactly one backend calls it, so on a Windows or Apple host it would be
-/// dead code plus a `-Wunused-function` line. The law build defines
-/// `QA_DECODE_LAW_ONLY`, so what proves it still compiles on every host the
-/// test runs on. ⛔This is not licence to put the NEXT rule behind a `#if`:
-/// a rule two backends share belongs in the open, where the split above
-/// put everything else.
-#if defined(__ANDROID__) || defined(QA_DECODE_LAW_ONLY)
-static void qa_yuv420_to_rgba(const uint8_t* data,
-                              int32_t width,
-                              int32_t height,
-                              int32_t stride,
-                              int32_t slice,
-                              int semi_planar,
-                              uint8_t* rgba) {
-  const uint8_t* y_plane = data;
-  const uint8_t* u_plane = data + (int64_t)stride * slice;
-  const uint8_t* v_plane =
-      semi_planar ? u_plane + 1
-                  : u_plane + ((int64_t)stride / 2) * (slice / 2);
-  const int32_t chroma_stride = semi_planar ? stride : stride / 2;
-  const int32_t chroma_step = semi_planar ? 2 : 1;
-
-  for (int32_t y = 0; y < height; y += 1) {
-    const uint8_t* y_row = y_plane + (int64_t)y * stride;
-    const int32_t cy = y / 2;
-    for (int32_t x = 0; x < width; x += 1) {
-      const int32_t cx = x / 2;
-      const int32_t luma = (int32_t)y_row[x] - 16;
-      const int32_t cb =
-          (int32_t)u_plane[(int64_t)cy * chroma_stride + cx * chroma_step] -
-          128;
-      const int32_t cr =
-          (int32_t)v_plane[(int64_t)cy * chroma_stride + cx * chroma_step] -
-          128;
-      int32_t r = (298 * luma + 409 * cr + 128) >> 8;
-      int32_t g = (298 * luma - 100 * cb - 208 * cr + 128) >> 8;
-      int32_t b = (298 * luma + 516 * cb + 128) >> 8;
-      r = r < 0 ? 0 : (r > 255 ? 255 : r);
-      g = g < 0 ? 0 : (g > 255 ? 255 : g);
-      b = b < 0 ? 0 : (b > 255 ? 255 : b);
-      uint8_t* out = rgba + ((int64_t)y * width + x) * 4;
-      out[0] = (uint8_t)r;
-      out[1] = (uint8_t)g;
-      out[2] = (uint8_t)b;
-      out[3] = 255;
-    }
-  }
-}
-#endif  // __ANDROID__ || QA_DECODE_LAW_ONLY
+// 🪦YUV420 → RGBA lived here, behind `#if defined(__ANDROID__) ||
+// defined(QA_DECODE_LAW_ONLY)` — 「the one piece of law behind a `#if`」,
+// because one backend called it and anywhere else it would have been an
+// unused `static`. It is `qa_yuv420_to_rgba` in `qa_yuv601.h` now, beside
+// the conversion every writer makes the other way, so the matrix the writers
+// write and the one this reads are one file (2026-09-25).
 
 // 🚨**QA_DECODE_LAW_ONLY: the law without a platform under it.**
 //

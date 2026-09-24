@@ -40,6 +40,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "qa_yuv601.h"
+
 #if defined(_WIN32)
 #define QA_EXPORT __declspec(dllexport)
 #else
@@ -933,39 +935,15 @@ QA_EXPORT int32_t qa_video_export_write_frame(const uint8_t* rgba) {
   const int32_t height = g_droid.height;
   const size_t luma_size = (size_t)width * (size_t)height;
   const int semi_planar = g_droid.nv12[luma_size * 3 / 2] != 0;
-  // RGBA → YUV420 (BT.601 studio range — the convention H.264 players
-  // assume for unflagged content). Pad pixels render white.
-  for (int32_t y = 0; y < height; y += 1) {
-    for (int32_t x = 0; x < width; x += 1) {
-      int32_t r = 255;
-      int32_t g = 255;
-      int32_t b = 255;
-      if (x < g_droid.src_width && y < g_droid.src_height) {
-        const uint8_t* pixel =
-            rgba + ((size_t)y * (size_t)g_droid.src_width + (size_t)x) * 4;
-        r = pixel[0];
-        g = pixel[1];
-        b = pixel[2];
-      }
-      g_droid.nv12[(size_t)y * (size_t)width + (size_t)x] =
-          (uint8_t)(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
-      if ((x & 1) == 0 && (y & 1) == 0) {
-        const uint8_t u = (uint8_t)(((-38 * r - 74 * g + 112 * b + 128) >> 8) +
-                                    128);
-        const uint8_t v = (uint8_t)(((112 * r - 94 * g - 18 * b + 128) >> 8) +
-                                    128);
-        const size_t chroma_index =
-            (size_t)(y / 2) * (size_t)(width / 2) + (size_t)(x / 2);
-        if (semi_planar) {
-          g_droid.nv12[luma_size + chroma_index * 2] = u;
-          g_droid.nv12[luma_size + chroma_index * 2 + 1] = v;
-        } else {
-          g_droid.nv12[luma_size + chroma_index] = u;
-          g_droid.nv12[luma_size + luma_size / 4 + chroma_index] = v;
-        }
-      }
-    }
-  }
+  // RGBA → YUV420 in the app's colour law (BT.601 studio range — the
+  // convention H.264 players assume for unflagged content), through the
+  // one conversion every writer makes (`qa_yuv601.h`). Pad pixels render
+  // white.
+  uint8_t* chroma = g_droid.nv12 + luma_size;
+  qa_yuv601_from_rgba(rgba, g_droid.src_width, g_droid.src_height, width,
+                      height, g_droid.nv12, width, chroma,
+                      semi_planar ? chroma + 1 : chroma + luma_size / 4,
+                      semi_planar ? width : width / 2, semi_planar ? 2 : 1);
 
   const ssize_t input =
       ndk->codec_dequeue_input(g_droid.video_codec, 100000);

@@ -27,6 +27,7 @@
 #include <stdio.h>
 
 #include "qa_media_span.h"
+#include "qa_yuv601.h"
 
 // Mirrors qa_video_encode.c's ABI v21 values.
 #define QA_VIDEO_CONTAINER_MP4 0
@@ -52,6 +53,9 @@ typedef struct {
   int32_t channels;
   int32_t open;
   int32_t preserve_alpha;
+  // Frames go to the encoder as NV12 this file made (`qa_yuv601.h`) rather
+  // than BGRA for VideoToolbox to convert — every codec but ProRes.
+  int32_t writes_ycbcr;
 } qa_video_apple_state;
 
 // The v10 pair matrix on Apple: H.264 in both containers, H.265 in MP4,
@@ -197,25 +201,26 @@ int32_t qa_video_apple_open(const char* utf8_path,
       video_settings[AVVideoCompressionPropertiesKey] =
           @{AVVideoAverageBitRateKey : @(bitrate_bps)};
     }
-    // 🚨★★★**THE MATRIX THE PICTURES ARE TURNED INTO YCbCr WITH IS NAMED,
-    // AND WRITTEN INTO THE FILE — BT.601, the one the other two halves
-    // use.** Frames arrive as BGRA. With no colour properties the encoder
-    // chose a matrix and the file said nothing of it, and the reader turned
-    // the pictures back with another: a flat red lost what BT.709 in and
-    // BT.601 out take (0.2126 + 1.402 × 0.5 = 0.9136 of it), once for a take
-    // and again for a piece cut from it. It passed for noise — 13 away at
-    // red 140 — until the NTSC trim test met red 200 and came back 17 away,
-    // on the Apple runner only (2026-09-25, board
-    // `trimmed-piece-apple-parity`): a loss that grows with the red is a
-    // matrix, not noise. Media Foundation and the Android writer both write
-    // BT.601 studio range (`qa_video_encode.c` converts by hand with exactly
-    // that matrix), so this one joins them and TAGS it, and every reader
-    // turns a picture back with the matrix it went in with.
-    video_settings[AVVideoColorPropertiesKey] = @{
-      AVVideoColorPrimariesKey : AVVideoColorPrimaries_SMPTE_C,
-      AVVideoTransferFunctionKey : AVVideoTransferFunction_ITU_R_709_2,
-      AVVideoYCbCrMatrixKey : AVVideoYCbCrMatrix_ITU_R_601_4,
-    };
+    // 🚨★★★**THE H.26x PICTURES ARE MADE YCbCr HERE, IN THE APP'S COLOUR
+    // LAW, AND THE FILE SAYS SO** (`qa_yuv601.h`, BT.601 studio range —
+    // what the Android writer has always written). They used to go in as
+    // BGRA for VideoToolbox to convert, and what the Apple reader turned
+    // back had lost red in exact proportion — 0.9136 of it, BT.709 in and
+    // BT.601 out: red 110 came back 101, and a piece cut from a take 168
+    // where the take showed 185 (2026-09-25, board
+    // `trimmed-piece-apple-parity`). Naming BT.601 in these properties
+    // alone moved none of those numbers, so the pictures are converted
+    // before the encoder sees them, and these properties now describe what
+    // was really written. ⚠️ProRes stays BGRA: 4444 carries alpha, and its
+    // conversion is still VideoToolbox's to choose.
+    if (!is_prores) {
+      g_apple.writes_ycbcr = 1;
+      video_settings[AVVideoColorPropertiesKey] = @{
+        AVVideoColorPrimariesKey : AVVideoColorPrimaries_SMPTE_C,
+        AVVideoTransferFunctionKey : AVVideoTransferFunction_ITU_R_709_2,
+        AVVideoYCbCrMatrixKey : AVVideoYCbCrMatrix_ITU_R_601_4,
+      };
+    }
     g_video_input =
         [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo
                                        outputSettings:video_settings];
@@ -249,7 +254,9 @@ int32_t qa_video_apple_open(const char* utf8_path,
     g_adaptor = [[AVAssetWriterInputPixelBufferAdaptor alloc]
         initWithAssetWriterInput:g_video_input
      sourcePixelBufferAttributes:@{
-       (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA),
+       (id)kCVPixelBufferPixelFormatTypeKey : g_apple.writes_ycbcr
+           ? @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+           : @(kCVPixelFormatType_32BGRA),
        (id)kCVPixelBufferWidthKey : @(g_apple.width),
        (id)kCVPixelBufferHeightKey : @(g_apple.height),
      }];
@@ -326,6 +333,88 @@ int32_t qa_video_apple_open(const char* utf8_path,
   }
 }
 
+/// [rgba] into [pixel_buffer] as BGRA — the ProRes road, where VideoToolbox
+/// still makes the YCbCr (4444 carries alpha). 0 when the buffer is not the
+/// shape asked for.
+static int qa_apple_fill_bgra(CVPixelBufferRef pixel_buffer,
+                              const uint8_t* rgba) {
+  uint8_t* base = (uint8_t*)CVPixelBufferGetBaseAddress(pixel_buffer);
+  const size_t stride = CVPixelBufferGetBytesPerRow(pixel_buffer);
+  if (base == NULL || stride < (size_t)g_apple.width * 4 ||
+      CVPixelBufferGetHeight(pixel_buffer) < (size_t)g_apple.height) {
+    return 0;
+  }
+  // Opaque codecs bake white pad pixels and force A=0xFF; ProRes 4444
+  // with alpha keeps the real channel and pads TRANSPARENT (a hairline
+  // of paper would read as content in a compositing master).
+  const int keep_alpha = g_apple.preserve_alpha;
+  const uint8_t pad_value = keep_alpha ? 0x00 : 0xFF;
+  for (int32_t y = 0; y < g_apple.height; y += 1) {
+    uint8_t* out_row = base + (size_t)y * stride;
+    if (y >= g_apple.src_height) {
+      memset(out_row, pad_value, (size_t)g_apple.width * 4);
+      continue;
+    }
+    const uint8_t* in_row = rgba + (size_t)y * (size_t)g_apple.src_width * 4;
+    for (int32_t x = 0; x < g_apple.src_width; x += 1) {
+      out_row[x * 4 + 0] = in_row[x * 4 + 2];  // B
+      out_row[x * 4 + 1] = in_row[x * 4 + 1];  // G
+      out_row[x * 4 + 2] = in_row[x * 4 + 0];  // R
+      out_row[x * 4 + 3] = keep_alpha ? in_row[x * 4 + 3] : 0xFF;
+    }
+    for (int32_t x = g_apple.src_width; x < g_apple.width; x += 1) {
+      out_row[x * 4 + 0] = pad_value;
+      out_row[x * 4 + 1] = pad_value;
+      out_row[x * 4 + 2] = pad_value;
+      out_row[x * 4 + 3] = pad_value;
+    }
+  }
+  return 1;
+}
+
+/// [rgba] into [pixel_buffer] as NV12 in the app's colour law
+/// (`qa_yuv601.h`) — the H.26x road — and the buffer TOLD what it holds,
+/// so nothing between here and the encoder converts it again. 0 when the
+/// buffer is not the two-plane shape asked for.
+static int qa_apple_fill_ycbcr(CVPixelBufferRef pixel_buffer,
+                               const uint8_t* rgba) {
+  if (!CVPixelBufferIsPlanar(pixel_buffer) ||
+      CVPixelBufferGetPlaneCount(pixel_buffer) != 2) {
+    return 0;
+  }
+  uint8_t* luma =
+      (uint8_t*)CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 0);
+  uint8_t* chroma =
+      (uint8_t*)CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 1);
+  const size_t luma_stride =
+      CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 0);
+  const size_t chroma_stride =
+      CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 1);
+  if (luma == NULL || chroma == NULL ||
+      luma_stride < (size_t)g_apple.width ||
+      chroma_stride < (size_t)g_apple.width ||
+      CVPixelBufferGetHeightOfPlane(pixel_buffer, 0) <
+          (size_t)g_apple.height ||
+      CVPixelBufferGetHeightOfPlane(pixel_buffer, 1) <
+          (size_t)g_apple.height / 2) {
+    return 0;
+  }
+  qa_yuv601_from_rgba(rgba, g_apple.src_width, g_apple.src_height,
+                      g_apple.width, g_apple.height, luma,
+                      (int32_t)luma_stride, chroma, chroma + 1,
+                      (int32_t)chroma_stride, 2);
+  CVBufferSetAttachment(pixel_buffer, kCVImageBufferYCbCrMatrixKey,
+                        kCVImageBufferYCbCrMatrix_ITU_R_601_4,
+                        kCVAttachmentMode_ShouldPropagate);
+  CVBufferSetAttachment(pixel_buffer, kCVImageBufferColorPrimariesKey,
+                        kCVImageBufferColorPrimaries_SMPTE_C,
+                        kCVAttachmentMode_ShouldPropagate);
+  CVBufferSetAttachment(pixel_buffer, kCVImageBufferTransferFunctionKey,
+                        kCVImageBufferTransferFunction_ITU_R_709_2,
+                        kCVAttachmentMode_ShouldPropagate);
+  return 1;
+}
+
 int32_t qa_video_apple_write_frame(const uint8_t* rgba) {
   if (!g_apple.open || rgba == NULL) {
     return 0;
@@ -355,41 +444,14 @@ int32_t qa_video_apple_write_frame(const uint8_t* rgba) {
       CVPixelBufferRelease(pixel_buffer);
       return 0;
     }
-    uint8_t* base = (uint8_t*)CVPixelBufferGetBaseAddress(pixel_buffer);
-    const size_t stride = CVPixelBufferGetBytesPerRow(pixel_buffer);
-    if (base == NULL || stride < (size_t)g_apple.width * 4 ||
-        CVPixelBufferGetHeight(pixel_buffer) < (size_t)g_apple.height) {
-      CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
+    const int filled = g_apple.writes_ycbcr
+                           ? qa_apple_fill_ycbcr(pixel_buffer, rgba)
+                           : qa_apple_fill_bgra(pixel_buffer, rgba);
+    CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
+    if (!filled) {
       CVPixelBufferRelease(pixel_buffer);
       return 0;
     }
-    // Opaque codecs bake white pad pixels and force A=0xFF; ProRes 4444
-    // with alpha keeps the real channel and pads TRANSPARENT (a hairline
-    // of paper would read as content in a compositing master).
-    const int keep_alpha = g_apple.preserve_alpha;
-    const uint8_t pad_value = keep_alpha ? 0x00 : 0xFF;
-    for (int32_t y = 0; y < g_apple.height; y += 1) {
-      uint8_t* out_row = base + (size_t)y * stride;
-      if (y >= g_apple.src_height) {
-        memset(out_row, pad_value, (size_t)g_apple.width * 4);
-        continue;
-      }
-      const uint8_t* in_row =
-          rgba + (size_t)y * (size_t)g_apple.src_width * 4;
-      for (int32_t x = 0; x < g_apple.src_width; x += 1) {
-        out_row[x * 4 + 0] = in_row[x * 4 + 2];  // B
-        out_row[x * 4 + 1] = in_row[x * 4 + 1];  // G
-        out_row[x * 4 + 2] = in_row[x * 4 + 0];  // R
-        out_row[x * 4 + 3] = keep_alpha ? in_row[x * 4 + 3] : 0xFF;
-      }
-      for (int32_t x = g_apple.src_width; x < g_apple.width; x += 1) {
-        out_row[x * 4 + 0] = pad_value;
-        out_row[x * 4 + 1] = pad_value;
-        out_row[x * 4 + 2] = pad_value;
-        out_row[x * 4 + 3] = pad_value;
-      }
-    }
-    CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
 
     // frame i shows at i * den / num seconds — exact fraction, like every
     // other timing conversion in this program.
