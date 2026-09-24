@@ -747,9 +747,10 @@ class _LayerStackPaintPass {
     // 🚨THE LIVE LAYER'S OWN CONTENT, AS A CLOSURE — because a
     // colour key BELOW a painted effect has to key what that
     // effect made, and a shader cannot sample a `saveLayer`.
-    // ⛔Only that case rasterises. A plainly buffered layer keeps
-    // the cheaper `saveLayer`: 🧪measured, the image route costs
-    // 3.2x on the path a stroke redraws every step.
+    // ⛔Only that case and an advanced blend (below) rasterise. A
+    // plainly buffered layer keeps the cheaper `saveLayer`:
+    // 🧪measured, the image route costs 3.2x on the path a stroke
+    // redraws every step.
     void paintLiveBody(Canvas into) {
       into.save();
       into.clipRect(_painter.activeSurfacePainter!.pasteboardRect);
@@ -780,7 +781,26 @@ class _LayerStackPaintPass {
       into.restore();
     }
 
-    if (activePlan.preSteps.isNotEmpty) {
+    // 🚨★★★F-172 (유저 2026-09-20: 「다른 레이어에 곱하기 레이어가
+    // 있을때, 잘라내기의 스탬프 사용시 해당 레이어가 뭔가 색이 진해짐 …
+    // 스탬프의 사각형 실루엣만큼 흰 색이 생기고」): AN ADVANCED BLEND
+    // NEVER RIDES A `saveLayer`. On Impeller, a layer restored through
+    // multiply, screen and the rest composited the rows ABOVE this one a
+    // second time, everywhere outside what the layer itself drew —
+    // measured on the Windows app (2026-09-24): with B at 24% above, every
+    // pixel came out as the right picture with B laid over it once more.
+    // The test VM rasters with Skia and never showed it.
+    // 🧪Splitting the layer — the blend outside at full alpha, the
+    // opacity inside — still doubled: it is the blend on a `saveLayer`,
+    // not the opacity riding with it. Blending an IMAGE with the same
+    // paint, which every other row and every group already does, did
+    // not. The price is this route's, paid only while a buffered row
+    // wears a blend that is not srcOver (a stamp ghost, a lifted float):
+    // a brush or eraser stroke on the same row showed nothing either way
+    // and its frame cost did not move (median UI 1.6 vs 1.4 ms).
+    final blendsAsImage =
+        needsBuffer && activePaint.blendMode != BlendMode.srcOver;
+    if (activePlan.preSteps.isNotEmpty || blendsAsImage) {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
