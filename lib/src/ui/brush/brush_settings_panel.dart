@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_pressure_curve.dart';
-import '../../models/brush_shape.dart' show BrushMaskSlot;
+import '../../models/brush_shape.dart' show BrushMaskSlot, BrushShape;
 import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/separable_blend_mode.dart';
@@ -281,8 +281,8 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             unit: '%',
             displayScale: 100,
             value: BrushToolState.clampSpacing(state.spacing),
-            min: BrushToolState.minSpacing,
-            max: BrushToolState.maxSpacing,
+            min: BrushShape.minSpacing,
+            max: BrushShape.maxSpacing,
             scale: FieldSliderScale.exponential,
             keyValue: 'brush-tool-spacing-slider',
             onChanged: (value) => onChanged(state.copyWith(spacing: value)),

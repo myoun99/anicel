@@ -13,8 +13,10 @@ import '../../models/brush_dab.dart';
 import '../../models/brush_settings.dart';
 import '../../models/canvas_point.dart';
 import '../../services/brush_dab_coverage.dart';
+import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
+import 'brush_tool_state.dart';
 
 /// The APP-WIDE stroke-preview raster cache (UI-R18 R18-B).
 ///
@@ -471,7 +473,13 @@ Uint8List rasterizeBrushStrokeSample(
 ) {
   final accumulated = Float64List(width * height);
   final baseSize = height * 0.62;
-  final spacing = math.max(1.0, baseSize * settings.spacing.clamp(0.02, 4.0));
+  // The canvas's own step for this size and spacing — the preview draws by
+  // the canvas's law (R20-B), and a floor of its own (0.02) stood here
+  // while the canvas clamped at 0.05.
+  final spacing = const BrushDabInterpolator().spacingForBrushSize(
+    baseSize,
+    BrushToolState.clampSpacing(settings.spacing),
+  );
   final margin = baseSize * 0.5 + 1;
 
   const curveSteps = 512;

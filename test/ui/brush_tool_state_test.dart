@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -64,18 +65,18 @@ void main() {
       expect(BrushToolState.clamped(opacity: 2).opacity, 1);
       expect(
         BrushToolState.clamped(spacing: -1).spacing,
-        BrushToolState.minSpacing,
+        BrushShape.minSpacing,
       );
       expect(
         BrushToolState.clamped(spacing: 100).spacing,
-        BrushToolState.maxSpacing,
+        BrushShape.maxSpacing,
       );
     });
 
     test('public constructor and copyWith clamp spacing', () {
       expect(BrushToolState().spacing, BrushToolState.defaultSpacing);
-      expect(BrushToolState(spacing: -1).spacing, BrushToolState.minSpacing);
-      expect(BrushToolState(spacing: 100).spacing, BrushToolState.maxSpacing);
+      expect(BrushToolState(spacing: -1).spacing, BrushShape.minSpacing);
+      expect(BrushToolState(spacing: 100).spacing, BrushShape.maxSpacing);
       expect(
         BrushToolState(spacing: double.nan).spacing,
         BrushToolState.defaultSpacing,
@@ -87,7 +88,7 @@ void main() {
 
       expect(
         BrushToolState.defaults.copyWith(spacing: 100).spacing,
-        BrushToolState.maxSpacing,
+        BrushShape.maxSpacing,
       );
       expect(
         BrushToolState.defaults.copyWith(spacing: double.nan).spacing,
@@ -315,7 +316,7 @@ void main() {
         BrushSettings(size: 5000, spacing: 100, angleDegrees: 720),
       );
       expect(state.size, BrushToolState.maxSize);
-      expect(state.spacing, BrushToolState.maxSpacing);
+      expect(state.spacing, BrushShape.maxSpacing);
       expect(state.angleDegrees, BrushToolState.maxAngleDegrees);
     });
   });
