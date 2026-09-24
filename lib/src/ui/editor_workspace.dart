@@ -46,6 +46,7 @@ import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/confirm_verb.dart';
+import 'brush/history_verbs.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'brush/paint_tool_state_notifier.dart';
@@ -192,6 +193,7 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasSelectionCommands,
     this.lastStroke,
     this.confirm,
+    this.history,
     this.layerNav,
     this.onInvokeAction,
     this.flipHud,
@@ -239,6 +241,10 @@ class EditorWorkspace extends StatefulWidget {
   /// are its other doors. Null keeps both on their old verbs' absence
   /// (focused widget tests).
   final ConfirmVerb? confirm;
+
+  /// Undo and redo (shell-owned, the keys' verbs): the rail's ↶ ↷ are their
+  /// other doors. Null leaves the two buttons shut (focused widget tests).
+  final HistoryVerbs? history;
 
   /// The shell-owned ↑/↓ layer-nav channel (UI-R20 #14): this state binds
   /// the handler because it owns the timeline view state (row filter,

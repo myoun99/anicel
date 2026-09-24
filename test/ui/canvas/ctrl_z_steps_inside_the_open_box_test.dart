@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -28,6 +29,10 @@ import '../../helpers/panel_finders.dart';
 ///
 /// 🗣️유저 2026-09-20: 「**변형도구 사용시 변형에 대한 조작마다 언두로 기록**
 /// 된단거야 … **확정하면 변형 하나로서의 언두만 작동**」.
+///
+/// 🆕**AND EVERY DOOR, not only the key** (H42, 2026-09-24): the rail's ↶
+/// took the document's undo past the box, the polygon and F-173 until the
+/// survey found it. The scripts below run once per door.
 ///
 /// ⛔**IT NEEDS A RIG THAT DRAWS, and that is the whole reason this file
 /// exists.** The channel's own pins call `undoTransformStep()` themselves,
@@ -132,14 +137,9 @@ void main() {
     await pumpFrames(tester);
   }
 
-  testWidgets('Ctrl+Z takes the last transform operation back, and the box '
-      'stays open', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: oneFrameProject())),
-    );
-    await tester.pumpAndSettle();
-
-    // Ink first: a transform lifts PIXELS.
+  /// A stroke, so there is something for the document to take back — and a
+  /// transform something to lift.
+  Future<void> drawAStroke(WidgetTester tester) async {
     final pen = await tester.startGesture(
       visibleCanvasPoint(tester),
       kind: PointerDeviceKind.stylus,
@@ -151,95 +151,209 @@ void main() {
     await tester.pump();
     await pen.up();
     await pumpFrames(tester);
+  }
 
-    // ⚠️Ctrl+T picks the TOOL. The box opens on the GRAB (R17-U 핸들 상시),
-    // so the drag below is both the opening and operation number one.
-    await pressCtrl(tester, LogicalKeyboardKey.keyT);
-    final commands = commandsOf(tester);
-    expect(
-      commands.transformActive,
-      isFalse,
-      reason: '⛔전제: the key alone opens nothing',
-    );
-
-    final grab = await tester.startGesture(
-      visibleCanvasPoint(tester),
-      kind: PointerDeviceKind.stylus,
-    );
-    await tester.pump();
-    await grab.moveBy(const Offset(30, 20));
-    await tester.pump();
-    await grab.up();
+  Future<void> tapRail(WidgetTester tester, String key) async {
+    await tester.tap(find.byKey(ValueKey<String>(key)));
     await pumpFrames(tester);
+  }
 
-    expect(commands.transformActive, isTrue, reason: '⛔전제: the grab opened it');
-    final moved = commands.transformValues!;
-    // ⚠️WHICHEVER grip the press found. The box frames a stroke about 50
-    // screen px across, and nine 16px targets do not fit on that — so this
-    // asks 「it is no longer as it opened」 rather than naming one channel.
-    expect(
-      moved.scale != 1 || moved.tx != 0 || moved.rotationDegrees != 0,
-      isTrue,
-      reason: '⛔전제: the drag really changed the box — $moved',
-    );
+  /// 🚨THE DOORS. H42 (유저 2026-09-24, 「다른부분도 조사해줘」) found the
+  /// rail's ↶ reaching the document past everything the key asks first — so
+  /// every script below runs once per door, and a door that stops opening
+  /// the one verb fails here rather than in the user's hand.
+  final undoDoors = <String, Future<void> Function(WidgetTester tester)>{
+    'Ctrl+Z': (tester) => pressCtrl(tester, LogicalKeyboardKey.keyZ),
+    'the rail ↶': (tester) => tapRail(tester, 'undo-button'),
+  };
 
-    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+  /// Each undo door's own redo door.
+  final redoDoors = <String, Future<void> Function(WidgetTester tester)>{
+    'Ctrl+Z': (tester) async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await pumpFrames(tester);
+    },
+    'the rail ↶': (tester) => tapRail(tester, 'redo-button'),
+  };
 
-    final back = commands.transformValues;
-    expect(
-      back?.scale == 1 && back?.tx == 0 && back?.rotationDegrees == 0,
-      isTrue,
-      reason: 'the KEY took the step — 유저: 「조작마다 언두 기록」 ($back)',
-    );
-    expect(
-      commands.transformActive,
-      isTrue,
-      reason:
-          '⛔and the box is still open: undo did not land the session and '
-          'reach past it into the document',
-    );
-    expect(
-      commands.undoTransformStep(),
-      isFalse,
-      reason: '⛔한 걸음뿐이었으니 이제 비었다 — 그 다음 Ctrl+Z 는 문서의 것',
-    );
+  for (final MapEntry(key: door, value: pressUndo) in undoDoors.entries) {
+    testWidgets('$door takes the last transform operation back, and the box '
+        'stays open', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: oneFrameProject())),
+      );
+      await tester.pumpAndSettle();
 
-    // ⛔CLOSE THE SESSION BEFORE THE TEST ENDS. A box left open outlives
-    // the widget tree: the teardown disposes the HistoryManager and the
-    // lift's deferred confirm then lands on it — 「A HistoryManager was
-    // used after being disposed」, which is a failure of this script and
-    // not of the app.
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await pumpFrames(tester);
-  });
+      // Ink first: a transform lifts PIXELS.
+      await drawAStroke(tester);
 
-  testWidgets('⛔with no box open the SAME key still undoes the document', (
+      // ⚠️Ctrl+T picks the TOOL. The box opens on the GRAB (R17-U 핸들
+      // 상시), so the drag below is both the opening and operation number
+      // one.
+      await pressCtrl(tester, LogicalKeyboardKey.keyT);
+      final commands = commandsOf(tester);
+      expect(
+        commands.transformActive,
+        isFalse,
+        reason: '⛔전제: the key alone opens nothing',
+      );
+
+      final grab = await tester.startGesture(
+        visibleCanvasPoint(tester),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump();
+      await grab.moveBy(const Offset(30, 20));
+      await tester.pump();
+      await grab.up();
+      await pumpFrames(tester);
+
+      expect(
+        commands.transformActive,
+        isTrue,
+        reason: '⛔전제: the grab opened it',
+      );
+      final moved = commands.transformValues!;
+      // ⚠️WHICHEVER grip the press found. The box frames a stroke about 50
+      // screen px across, and nine 16px targets do not fit on that — so this
+      // asks 「it is no longer as it opened」 rather than naming one channel.
+      expect(
+        moved.scale != 1 || moved.tx != 0 || moved.rotationDegrees != 0,
+        isTrue,
+        reason: '⛔전제: the drag really changed the box — $moved',
+      );
+
+      await pressUndo(tester);
+
+      final back = commands.transformValues;
+      expect(
+        back?.scale == 1 && back?.tx == 0 && back?.rotationDegrees == 0,
+        isTrue,
+        reason: '$door took the step — 유저: 「조작마다 언두 기록」 ($back)',
+      );
+      expect(
+        commands.transformActive,
+        isTrue,
+        reason:
+            '⛔and the box is still open: undo did not land the session and '
+            'reach past it into the document',
+      );
+      expect(
+        commands.undoTransformStep(),
+        isFalse,
+        reason: '⛔한 걸음뿐이었으니 이제 비었다 — 그 다음 언두는 문서의 것',
+      );
+
+      // ⛔CLOSE THE SESSION BEFORE THE TEST ENDS. A box left open outlives
+      // the widget tree: the teardown disposes the HistoryManager and the
+      // lift's deferred confirm then lands on it — 「A HistoryManager was
+      // used after being disposed」, which is a failure of this script and
+      // not of the app.
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+    });
+
+    testWidgets('⛔with no box open $door still undoes the document', (
+      tester,
+    ) async {
+      // 🚨THE CONTROL, and it has to be the document's own outcome. Without
+      // it, 「undo is the box's」 would also pass on a build where the
+      // transform channel ATE undo whether or not anything was open — the
+      // failure the polygon trace already refused by answering false once
+      // its own stack runs out. Asking the channel for false would be asking
+      // the accused; this asks the cel.
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: oneFrameProject())),
+      );
+      await tester.pumpAndSettle();
+
+      await drawAStroke(tester);
+      final drawn = inkOn(tester);
+      expect(drawn, greaterThan(0), reason: '⛔전제: the rig draws at all');
+
+      await pressUndo(tester);
+      expect(
+        inkOn(tester),
+        0,
+        reason: 'the stroke went back — undo still undoes',
+      );
+    });
+
+    testWidgets('$door takes an open polygon\'s last vertex back, not an '
+        'edit — and its redo puts the vertex back', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: oneFrameProject())),
+      );
+      await tester.pumpAndSettle();
+      await drawAStroke(tester);
+      final drawn = inkOn(tester);
+      // ⚠️From the WORKSPACE, not [commandsOf]: the selection layer mounts
+      // only under a selection tool, and a trace outlives the tool — the
+      // shell hands the one channel to both.
+      final commands = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .canvasSelectionCommands!;
+      for (final at in const [(10.0, 10.0), (60.0, 10.0), (60.0, 60.0)]) {
+        commands.addPolygonPoint(CanvasPoint(x: at.$1, y: at.$2));
+      }
+      await pumpFrames(tester);
+
+      await pressUndo(tester);
+
+      expect(
+        commands.polygonPoints,
+        hasLength(2),
+        reason: 'a vertex went back',
+      );
+      expect(
+        inkOn(tester),
+        drawn,
+        reason: '⛔and the stroke did not — 유저 확정: the trace\'s taps are '
+            'not document history',
+      );
+
+      await redoDoors[door]!(tester);
+
+      expect(
+        commands.polygonPoints,
+        hasLength(3),
+        reason: 'the vertex came back',
+      );
+      commands.abandonPolygon();
+      await pumpFrames(tester);
+    });
+  }
+
+  testWidgets('🚨the rail\'s ↶ refuses while a pen is down — F-173 at every '
+      'door (유저 2026-09-21: 「도구를 사용중이면 언두/리두 작동불가」)', (
     tester,
   ) async {
-    // 🚨THE CONTROL, and it has to be the document's own outcome. Without
-    // it, 「Ctrl+Z is the box's」 would also pass on a build where the
-    // transform channel ATE undo whether or not anything was open — the
-    // failure the polygon trace already refused by answering false once its
-    // own stack runs out. Asking the channel for false would be asking the
-    // accused; this asks the cel.
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: oneFrameProject())),
     );
     await tester.pumpAndSettle();
+    await drawAStroke(tester);
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    expect(session.canUndo, isTrue, reason: '⛔전제: an edit to take back');
 
     final pen = await tester.startGesture(
-      visibleCanvasPoint(tester),
+      visibleCanvasPoint(tester) + const Offset(0, 30),
       kind: PointerDeviceKind.stylus,
     );
     await tester.pump();
-    await pen.moveBy(const Offset(24, 12));
-    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+    await pumpFrames(tester);
+
+    expect(
+      session.canRedo,
+      isFalse,
+      reason: 'a contact down is a verb in flight, whichever door is pressed',
+    );
     await pen.up();
     await pumpFrames(tester);
-    final drawn = inkOn(tester);
-    expect(drawn, greaterThan(0), reason: '⛔전제: the rig draws at all');
-
-    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
-    expect(inkOn(tester), 0, reason: 'the stroke went back — undo still undoes');
   });
 }

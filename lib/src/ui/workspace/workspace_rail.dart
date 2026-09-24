@@ -69,6 +69,7 @@ class _WorkspaceRail {
     final session = _state.widget.session;
     final selection = _state.widget.canvasSelectionCommands;
     final confirm = _state.widget.confirm;
+    final history = _state.widget.history;
     return ListenableBuilder(
       listenable: Listenable.merge([
         session,
@@ -79,6 +80,7 @@ class _WorkspaceRail {
         // the cel under the playhead, which the session and the history
         // below already bring.
         ?confirm?.changes,
+        ?history?.changes,
         // ㉜: the deselect button's enablement is the SELECTION's news, and
         // it arrives on that object's own channel — the selection layer
         // mutates inside builds and gesture handlers, so its notify is
@@ -104,13 +106,24 @@ class _WorkspaceRail {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 🚨THE KEYS' OWN VERBS — [HistoryVerbs]. These two called the
+            // document's undo straight past the polygon, the transform box
+            // and F-173 until H42's survey (유저 2026-09-24).
+            //
+            // ⚠️After the lift: a rail button opens on its press's release,
+            // and the contact census hears that release last — pressed
+            // inside the release, the verb counted the button's own contact
+            // as a tool in flight and refused. The finger taps wait for the
+            // same reason (`TouchShortcutLayer._handleUp`).
             RailButton(
               keyValue: 'undo-button',
               tooltip: editorActionLabel(EditorActionIds.undo),
               shortcuts: const [EditorActionIds.undo],
               icon: Icons.undo,
               selected: false,
-              onPressed: session.canUndo ? session.undo : null,
+              onPressed: history != null && history.canUndo
+                  ? () => scheduleMicrotask(history.undo)
+                  : null,
             ),
             const SizedBox(height: 4),
             RailButton(
@@ -119,7 +132,9 @@ class _WorkspaceRail {
               shortcuts: const [EditorActionIds.redo],
               icon: Icons.redo,
               selected: false,
-              onPressed: session.canRedo ? session.redo : null,
+              onPressed: history != null && history.canRedo
+                  ? () => scheduleMicrotask(history.redo)
+                  : null,
             ),
             const SizedBox(height: 4),
             RailButton(

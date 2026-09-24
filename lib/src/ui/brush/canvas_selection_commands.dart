@@ -136,6 +136,10 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// the least that encloses anything.
   bool get canClosePolygon => _polygonPoints.length >= 3;
 
+  /// Whether [redoPolygonPoint] would put a vertex back — the question it
+  /// answers by acting, asked without acting.
+  bool get canRedoPolygonPoint => _polygonRedo.isNotEmpty;
+
   void addPolygonPoint(CanvasPoint point) {
     _polygonPoints.add(point);
     _polygonRedo.clear();
@@ -222,6 +226,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
   _setTransformValues;
   void Function({required double x, required double y})? _setTransformAnchor;
   bool Function()? _undoTransformStep;
+  bool Function()? _canUndoTransformStep;
   VoidCallback? _beginTransformStep;
   void Function({required bool horizontal})? _flipTransform;
   VoidCallback? _resetTransform;
@@ -256,6 +261,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     setTransformValues,
     void Function({required double x, required double y})? setTransformAnchor,
     bool Function()? undoTransformStep,
+    bool Function()? canUndoTransformStep,
     VoidCallback? beginTransformStep,
     void Function({required bool horizontal})? flipTransform,
     VoidCallback? resetTransform,
@@ -283,6 +289,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _setTransformValues = setTransformValues;
     _setTransformAnchor = setTransformAnchor;
     _undoTransformStep = undoTransformStep;
+    _canUndoTransformStep = canUndoTransformStep;
     _beginTransformStep = beginTransformStep;
     notifySessionChanged();
   }
@@ -306,6 +313,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _setTransformValues = null;
     _setTransformAnchor = null;
     _undoTransformStep = null;
+    _canUndoTransformStep = null;
     _beginTransformStep = null;
     _flipTransform = null;
     _resetTransform = null;
@@ -471,6 +479,10 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// same question: 「is the key the user pressed about the thing they are
   /// in the middle of, or about the document?」
   bool undoTransformStep() => _undoTransformStep?.call() ?? false;
+
+  /// Whether [undoTransformStep] would take an operation back — the
+  /// question it answers by acting, asked without acting.
+  bool get canUndoTransformStep => _canUndoTransformStep?.call() ?? false;
 
   /// Marks the start of an operation that is NOT a canvas gesture — a
   /// scrub on a tool-settings channel, or a typed value.

@@ -1251,6 +1251,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       setTransformValues: _setTransformValues,
       setTransformAnchor: _setTransformAnchor,
       undoTransformStep: _undoTransformStep,
+      canUndoTransformStep: () => _box?.steps.isNotEmpty ?? false,
       beginTransformStep: _pushTransformStep,
       canEditTransform: _canEditTransform,
       flipTransform: _flipTransform,
