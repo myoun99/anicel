@@ -531,24 +531,37 @@ void main() {
       expect(session.mediaStagingStore.list(), hasLength(1));
     });
 
-    test('a batch move the pool refuses moves no facts', () async {
+    test('a batch move the pool refuses moves no facts — beside one it '
+        'makes, which moves its own', () async {
       final from = compressibleFile('take.wav');
       final taken = otherFile('taken.wav');
-      await pool.addMediaAssets([from, taken.path]);
-      session.mediaFingerprints
+      final lost = otherFile('lost.wav');
+      await pool.addMediaAssets([from, taken.path, lost.path]);
+      final ledger = session.mediaFingerprints
         ..rememberMediaFingerprint(from, File(from).readAsBytesSync())
-        ..rememberMediaFingerprint(taken.path, taken.bytes);
+        ..rememberMediaFingerprint(taken.path, taken.bytes)
+        ..rememberMediaFingerprint(lost.path, lost.bytes);
       final facts = [
-        session.mediaFingerprints.recordedMediaIdentity(from),
-        session.mediaFingerprints.recordedMediaIdentity(taken.path),
+        ledger.recordedMediaIdentity(from),
+        ledger.recordedMediaIdentity(taken.path),
       ];
+      final lostFacts = ledger.recordedMediaIdentity(lost.path);
+      final found = '${root.path}/found.wav'.replaceAll(r'\', '/');
+      File(found).writeAsBytesSync(lost.bytes);
 
-      pool.relinkMediaAssets({from: taken.path});
+      pool.relinkMediaAssets({from: taken.path, lost.path: found});
 
-      expect([
-        session.mediaFingerprints.recordedMediaIdentity(from),
-        session.mediaFingerprints.recordedMediaIdentity(taken.path),
-      ], facts);
+      expect(
+        [
+          ledger.recordedMediaIdentity(from),
+          ledger.recordedMediaIdentity(taken.path),
+        ],
+        facts,
+        reason:
+            '🪦the facts followed every move asked for, onto the other '
+            'asset\'s path — the very facts a relink is decided by',
+      );
+      expect(ledger.recordedMediaIdentity(found), lostFacts);
     });
 
     test('a by-hand relink of a REFERENCED asset stages nothing', () async {
