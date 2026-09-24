@@ -390,20 +390,18 @@ class _ConteTabHostState extends State<ConteTabHost> {
     CanvasViewport viewport,
   ) {
     return Positioned.fill(
-      // The tool-state boundary (R18 UI-3): only this overlay
-      // follows the brush/eraser.
-      child: ValueListenableBuilder<BrushToolState>(
-        valueListenable: brushToolState,
-        builder: (context, toolState, _) => ConteInkLayer(
-          key: const ValueKey<String>('conte-ink-layer'),
-          controller: inkController,
-          page: page,
-          brushToolState: toolState,
-          historyManager: _session.historyManager,
-          viewport: viewport,
-          strokeActive: _inkStrokeActive,
-          cacheInvalidationSink: _cacheInvalidationSink,
-        ),
+      // The tool-state boundary (R18 UI-3) went one step further down (H40
+      // ②, 2026-09-24): the overlay no longer rebuilds for the brush at all —
+      // its windows read it when a stroke starts.
+      child: ConteInkLayer(
+        key: const ValueKey<String>('conte-ink-layer'),
+        controller: inkController,
+        page: page,
+        brushToolState: brushToolState,
+        historyManager: _session.historyManager,
+        viewport: viewport,
+        strokeActive: _inkStrokeActive,
+        cacheInvalidationSink: _cacheInvalidationSink,
       ),
     );
   }

@@ -93,9 +93,9 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.fill,
-            ),
+            )),
             fillDabAt: (_, color, _) => fillDab(color),
           ),
         ),
@@ -141,9 +141,9 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.fill,
-            ),
+            )),
             // 🚨Each fill lands somewhere ELSE, so a second one cannot hide
             // under the first. ⛔Not the seed point — the canvas is 2340px
             // wide inside a small viewport, so a local offset is nowhere
@@ -239,10 +239,10 @@ void main() {
           coordinator: coordinator,
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.fill,
             fillBlendMode: BrushBlendMode.erase,
-          ),
+          )),
           fillDabAt: (_, color, _) => fillDab(color),
         ),
       ),
@@ -292,9 +292,9 @@ void main() {
           ),
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.eyedropper,
-          ),
+          )),
         ),
       ),
     );
@@ -319,9 +319,9 @@ void main() {
           coordinator: coordinator,
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.eyedropper,
-          ),
+          )),
           sampleColorAt: (point) {
             sampledPoints.add(point);
             return 0xFF123456;
@@ -361,9 +361,9 @@ void main() {
           ),
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.eyedropper,
-          ),
+          )),
           sampleColorAt: (point) {
             sampled.add(point);
             return next += 1;
@@ -419,9 +419,9 @@ void main() {
           ),
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.eyedropper,
-          ),
+          )),
           sampleColorAt: (_) => null,
           onEyedropperPick: picks.add,
         ),
@@ -459,9 +459,9 @@ void main() {
           ),
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.eyedropper,
-          ),
+          )),
           sampleColorAt: (_) => 0xFF123456,
           onEyedropperPick: picks.add,
         ),
@@ -507,10 +507,10 @@ void main() {
           coordinator: coordinator,
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.fill,
             color: 0xFF3366CC,
-          ),
+          )),
           fillDabAt: (point, color, _) {
             fillColors.add(color);
             return fillDab(color);
@@ -577,9 +577,9 @@ void main() {
           coordinator: coordinator,
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.fill,
-          ),
+          )),
           fillDabAt: (_, color, _) => fillDab(color).copyWith(
             center: CanvasPoint(x: 0, y: 0),
             size: 64,
@@ -629,9 +629,9 @@ void main() {
           coordinator: coordinator,
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.fill,
-          ),
+          )),
           fillDabAt: (_, _, _) => null,
         ),
       ),
@@ -762,7 +762,9 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            brushToolState: BrushToolState.defaults.copyWith(tool: tool),
+            brushToolState: ValueNotifier(
+              BrushToolState.defaults.copyWith(tool: tool),
+            ),
             sampleColorAt: (_) => 0xFFAABBCC,
             onEyedropperPick: (_) {},
           ),
@@ -788,9 +790,9 @@ void main() {
           ),
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.eyedropper,
-          ),
+          )),
           sampleColorAt: (_) => 0xFF123456,
           onEyedropperPick: (_) {},
         ),
@@ -822,9 +824,9 @@ void main() {
           ),
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.eyedropper,
-          ),
+          )),
           sampleColorAt: (point) {
             samples.add(point);
             return 0xFF000000 | (point.x.round() & 0xFF);
@@ -879,9 +881,9 @@ void main() {
           ),
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          brushToolState: BrushToolState.defaults.copyWith(
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.eyedropper,
-          ),
+          )),
           sampleColorAt: (point) {
             sampledPoints.add(point);
             return null;
@@ -964,9 +966,9 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.cutStamp,
-            ),
+            )),
             cutPieceSlot: slot,
           ),
         ),
@@ -1124,9 +1126,9 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.eyedropper,
-            ),
+            )),
             sampleColorAt: (_) => 0xFF123456,
             onEyedropperPick: picks.add,
           ),

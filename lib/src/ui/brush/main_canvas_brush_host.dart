@@ -57,7 +57,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.viewport,
     this.viewportController,
     this.onViewportChanged,
-    this.brushToolState = BrushToolState.defaults,
+    this.brushToolState,
     this.viewportOverlayBuilder,
     this.viewportUnderlayBuilder,
     this.activeStrokeOverlayModel,
@@ -158,7 +158,9 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
-  final BrushToolState brushToolState;
+  /// Forwarded to [BrushCanvasPanel.brushToolState] — heard, not handed
+  /// over (H40 ②).
+  final ValueListenable<BrushToolState>? brushToolState;
 
   /// Forwarded to [BrushCanvasPanel]: stacked over the canvas inside the
   /// editor viewport (e.g. the camera frame overlay).

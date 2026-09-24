@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
@@ -161,7 +162,8 @@ class ConteInkLayer extends StatelessWidget {
   /// surfaces keep their ink, they just have no window.
   final ContePageLayout page;
 
-  final BrushToolState brushToolState;
+  /// Forwarded to [SheetInkLayer.brushToolState] — heard, not handed over.
+  final ValueListenable<BrushToolState> brushToolState;
   final HistoryManager historyManager;
 
   /// The live panel viewport (the same transform the page painter applies).

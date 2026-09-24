@@ -156,8 +156,20 @@ void main() {
     // by the harness ratio.
     var liveViewport = viewport ?? seedFromRender(tester, CanvasViewport());
     var liveTool = tool;
+    // ONE brush, HELD, the way the workspace holds it: a tool switch is a
+    // change IN HAND that the panel hears (H40 ②), not a new panel.
+    final brush = ValueNotifier(
+      BrushToolState.defaults.copyWith(
+        tool: tool,
+        selectShape: shapeKind,
+        fillShape: shapeKind,
+        fillBlendMode: blendMode,
+      ),
+    );
+    addTearDown(brush.dispose);
     Future<void> pumpWith(CanvasTool tool) async {
       liveTool = tool;
+      brush.value = brush.value.copyWith(tool: tool);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -174,12 +186,7 @@ void main() {
                 cacheInvalidationSink: cacheSink,
                 transformTargetKeys: transformTargetKeys,
                 historyManager: history,
-                brushToolState: BrushToolState.defaults.copyWith(
-                  tool: tool,
-                  selectShape: shapeKind,
-                  fillShape: shapeKind,
-                  fillBlendMode: blendMode,
-                ),
+                brushToolState: brush,
                 selectionCommands: commands,
                 viewport: liveViewport,
                 shapeFillDabFor: (shape, color) => buildShapeFillDab(
@@ -5664,9 +5671,9 @@ void main() {
             availableFrameKeys: const [],
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             historyManager: HistoryManager(),
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.select,
-            ),
+            )),
             selectionCommands: commands,
             // The production no-frame configuration: the blank-canvas
             // placeholder carries the viewport.

@@ -47,7 +47,8 @@ void main() {
             sessionState: sessionState(),
             layerId: layerId,
             frameId: frameId,
-            inputSettings: BrushEditCanvasInputSettings(color: 0xFFFF0000),
+            inputSettings: () =>
+                BrushEditCanvasInputSettings(color: 0xFFFF0000),
             guides: guides,
             onSourceStrokeCommitted: commits.add,
           ),

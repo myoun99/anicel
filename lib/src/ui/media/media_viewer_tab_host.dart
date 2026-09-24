@@ -1206,20 +1206,29 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// 🗣️유저 2026-09-16 (F-80): 「작동 가능한 거면 해당 도구 작동시키고,
   /// 불가능하면 팬」 — null IS that answer, and the panel turns it into a
   /// press that moves the page ([BrushCanvasPanel.runsTheSelectedTool]).
-  static BrushToolState? _toolStateFor(BrushToolState workspaceTool) {
+  ///
+  /// The panel HEARS its brush (H40 ②), and this one never changes while it
+  /// is held — an outline is a different tool — so each is a listenable
+  /// that stands still: Flutter's own [AlwaysStoppedAnimation].
+  static ValueListenable<BrushToolState>? _toolFor(
+    BrushToolState workspaceTool,
+  ) {
     final shape = armedCutShape(workspaceTool);
     return shape == null
         ? null
         : _cutTools.putIfAbsent(
             shape,
-            () => BrushToolState.defaults.copyWith(
-              tool: CanvasTool.cut,
-              cutShape: shape,
+            () => AlwaysStoppedAnimation<BrushToolState>(
+              BrushToolState.defaults.copyWith(
+                tool: CanvasTool.cut,
+                cutShape: shape,
+              ),
             ),
           );
   }
 
-  static final Map<CanvasShapeKind, BrushToolState> _cutTools = {};
+  static final Map<CanvasShapeKind, ValueListenable<BrushToolState>>
+  _cutTools = {};
 
   /// A finished cut outline over the page on screen: read its box at the
   /// page's OWN size and hold it as the cut tool's piece.
@@ -1362,7 +1371,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
     final message = request == null ? strings.mediaViewerEmpty : _message;
 
-    BrushCanvasPanel panelWith(BrushToolState? toolState) => BrushCanvasPanel(
+    BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
+        BrushCanvasPanel(
       coordinator: null,
       availableFrameKeys: const [],
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -1385,10 +1395,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // 존재안하니 한손가락 핑거시 팬」 — whatever the one-finger slot says,
       // and so a finger drives no tool here: the cut takes a pen or a mouse.
       oneFingerAction: CanvasTouchDragAction.navigate,
-      brushToolState: toolState ?? BrushToolState.defaults,
+      brushToolState: tool,
       // F-80: with no cut armed nothing here can act on a press, so it
       // moves the page instead.
-      runsTheSelectedTool: toolState != null,
+      runsTheSelectedTool: tool != null,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
       // Reframe ONCE per loaded document: the workspace-owned viewport
       // survives asset switches, and a deep zoom/pan from a large scan
@@ -1528,7 +1538,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         : SlicedValueListenableBuilder<BrushToolState, CanvasShapeKind?>(
             valueListenable: brushTool,
             slice: armedCutShape,
-            builder: (context, tool) => panelWith(_toolStateFor(tool)),
+            builder: (context, tool) => panelWith(_toolFor(tool)),
           );
 
     final surface = ColoredBox(

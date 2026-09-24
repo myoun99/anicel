@@ -70,7 +70,9 @@ void main() {
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               historyManager: history,
-              brushToolState: BrushToolState.defaults.copyWith(tool: tool),
+              brushToolState: ValueNotifier(
+                BrushToolState.defaults.copyWith(tool: tool),
+              ),
               selectionCommands: commands,
               // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to
               // canvas coordinates one for one, and an uncontrolled panel

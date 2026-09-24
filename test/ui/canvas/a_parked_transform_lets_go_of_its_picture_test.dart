@@ -94,9 +94,9 @@ void main() {
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             historyManager: history,
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.select,
-            ),
+            )),
             selectionCommands: commands,
             viewport: seedFromRender(tester, CanvasViewport(zoom: 0.5)),
             transformOptions: transformOptions,

@@ -318,9 +318,9 @@ class _Walk {
             availableFrameKeys: keys,
             cacheInvalidationSink: sink,
             historyManager: history,
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.move,
-            ),
+            )),
             selectionCommands: selectionCommands,
             viewport: view,
             shapeFillDabFor: (shape, color) => buildShapeFillDab(

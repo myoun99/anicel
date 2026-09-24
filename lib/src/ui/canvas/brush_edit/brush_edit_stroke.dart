@@ -38,11 +38,11 @@ class _BrushEditStroke {
     // mapped-erase press with a separable brush blend would have taken
     // the commit's blend branch and PAINTED instead of erasing.
     final strokeSettings = mappedErase
-        ? _state.widget.inputSettings.copyWith(
+        ? _state.widget.inputSettings().copyWith(
             erase: true,
             blendMode: BrushBlendMode.erase,
           )
-        : _state.widget.inputSettings;
+        : _state.widget.inputSettings();
     _state._activeStrokeInputSettings = strokeSettings;
     _state._pressure.noteSample(event);
     _state.widget.onActiveStrokeChanged?.call(true);
@@ -283,7 +283,7 @@ class _BrushEditStroke {
     final rasterizer = _state._liveRasterizer;
     final base = _state._overlay._overlayModel.preBlendBase;
     final blendMode =
-        (_state._activeStrokeInputSettings ?? _state.widget.inputSettings)
+        (_state._activeStrokeInputSettings ?? _state.widget.inputSettings())
             .blendMode;
     final erase = _state._overlay._overlayModel.erase;
     _state._liveRasterizer = null;
@@ -388,7 +388,7 @@ class _BrushEditStroke {
   /// same place without threading a random source through it.
   double get activeStrokeSpacing {
     final settings =
-        _state._activeStrokeInputSettings ?? _state.widget.inputSettings;
+        _state._activeStrokeInputSettings ?? _state.widget.inputSettings();
     final jitter = settings.spacingJitter;
     if (jitter <= 0.0) {
       return settings.spacing;

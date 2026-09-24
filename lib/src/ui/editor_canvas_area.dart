@@ -27,6 +27,9 @@ import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
+import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel;
+import 'sliced_value_listenable_builder.dart';
+import '../models/canvas_shape_kind.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
 import 'canvas/bitmap_surface_painter.dart';
@@ -642,8 +645,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
-  bool _pressNeedsCel(BrushToolState toolState, EditorSessionManager session) {
-    if (!canvasToolMarksCel(toolState.tool)) {
+  bool _pressNeedsCel(CanvasTool tool, EditorSessionManager session) {
+    if (!canvasToolMarksCel(tool)) {
       return false;
     }
     return _strokeNeedsCel(session);
@@ -901,7 +904,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     EditorSessionManager session,
     CanvasViewport viewport,
     CanvasSize canvasSize,
-    BrushToolState toolState,
+    CanvasTool tool,
     BuildContext context,
   ) {
     return Positioned.fill(
@@ -914,7 +917,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             guides: _liveGuides ?? session.cutVerbs.activeCutGuides,
             viewport: viewport,
             canvasSize: canvasSize,
-            emphasized: toolState.tool == CanvasTool.guide,
+            emphasized: tool == CanvasTool.guide,
             vanishingPointLabel: AppText.strings.guideVanishingPoint,
             color: Theme.of(context).colorScheme.primary,
             face: appFaceOf(DefaultTextStyle.of(context).style),

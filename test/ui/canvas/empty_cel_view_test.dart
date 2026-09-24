@@ -553,7 +553,7 @@ void main() {
             ),
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),
-            inputSettings: BrushEditCanvasInputSettings(),
+            inputSettings: BrushEditCanvasInputSettings.new,
             onSourceStrokeCommitted: (_) {},
             editable: false,
             onPressNeedsCel: () {
@@ -625,7 +625,7 @@ void main() {
             ),
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),
-            inputSettings: BrushEditCanvasInputSettings(),
+            inputSettings: BrushEditCanvasInputSettings.new,
             onSourceStrokeCommitted: (_) {},
             editable: editable,
           ),

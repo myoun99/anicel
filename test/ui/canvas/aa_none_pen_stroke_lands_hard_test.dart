@@ -73,7 +73,7 @@ void main() {
                 sessionState: store.getOrCreate(key),
                 layerId: const LayerId('layer'),
                 frameId: const FrameId('frame'),
-                inputSettings: state.toInputSettings(),
+                inputSettings: () => state.toInputSettings(),
                 onSourceStrokeCommitted: commits.add,
               ),
             ),

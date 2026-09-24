@@ -39,10 +39,10 @@ void main() {
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             floorCover: EdgeInsets.zero,
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: tool,
               size: 40,
-            ),
+            )),
             sampleColorAt: (point) => sample == null ? 0x336699 : sample(point),
             onEyedropperPick: (_) {},
           ),

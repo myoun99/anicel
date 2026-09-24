@@ -66,7 +66,7 @@ void main() {
                       sessionState: store.getOrCreate(key),
                       layerId: const LayerId('layer'),
                       frameId: const FrameId('frame'),
-                      inputSettings: BrushEditCanvasInputSettings(),
+                      inputSettings: BrushEditCanvasInputSettings.new,
                       onSourceStrokeCommitted: commits.add,
                       onStrokeLanderChanged: (lander) => published = lander,
                       onActiveStrokeChanged: strokeActive.add,

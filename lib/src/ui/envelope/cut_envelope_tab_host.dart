@@ -209,20 +209,19 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
               ),
               if (inking)
                 Positioned.fill(
-                  // The tool-state boundary: only this overlay follows the
-                  // brush/eraser, so a tool switch never reprints the sheet.
-                  child: ValueListenableBuilder<BrushToolState>(
-                    valueListenable: brushToolState,
-                    builder: (context, toolState, _) => CutEnvelopeInkOverlay(
-                      key: const ValueKey<String>('cut-envelope-ink-layer'),
-                      controller: inkController,
-                      windows: mounted,
-                      brushToolState: toolState,
-                      historyManager: session.historyManager,
-                      viewport: viewport,
-                      strokeActive: _strokeActive,
-                      cacheInvalidationSink: _cacheInvalidationSink,
-                    ),
+                  // The tool-state boundary: the brush reaches only this
+                  // overlay, so a tool switch never reprints the sheet — and
+                  // since H40 ② (2026-09-24) not even the overlay rebuilds
+                  // for it: its windows read the brush when a stroke starts.
+                  child: CutEnvelopeInkOverlay(
+                    key: const ValueKey<String>('cut-envelope-ink-layer'),
+                    controller: inkController,
+                    windows: mounted,
+                    brushToolState: brushToolState,
+                    historyManager: session.historyManager,
+                    viewport: viewport,
+                    strokeActive: _strokeActive,
+                    cacheInvalidationSink: _cacheInvalidationSink,
                   ),
                 ),
             ],

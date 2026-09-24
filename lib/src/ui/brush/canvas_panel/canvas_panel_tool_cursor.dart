@@ -43,29 +43,29 @@ class _CanvasPanelToolCursor {
         width,
         height,
       ),
-      opacity: _state.widget.brushToolState.cutStampOpacity,
-      blendMode: _state.widget.brushToolState.cutStampBlendMode,
+      opacity: _state._brush.cutStampOpacity,
+      blendMode: _state._brush.cutStampBlendMode,
     );
   }
 
   /// R26 #23: the fill tool's own cursor icon (no sampling involved).
   bool get fillCursorActive =>
       _state.widget.toolCursorsEnabled &&
-      _state.widget.brushToolState.tool == CanvasTool.fill;
+      _state._brush.tool == CanvasTool.fill;
 
   /// The brush/eraser tip outline — the selection tools own the pointer
   /// outright, and a held eyedropper is a tool switch now (I-15), so it
   /// never shares the pointer with the outline.
   bool get brushCursorActive =>
       _state.widget.toolCursorsEnabled &&
-      canvasToolPaints(_state.widget.brushToolState.tool);
+      canvasToolPaints(_state._brush.tool);
 
   /// Whether the eyedropper cursor + hover swatch are armed: the tool is
   /// the eyedropper — picked, or held (a mapped button or Alt switches to it
   /// for as long as it is held, I-15).
   bool get eyedropperCursorActive =>
       _state.widget.sampleColorAt != null &&
-      _state.widget.brushToolState.tool == CanvasTool.eyedropper &&
+      _state._brush.tool == CanvasTool.eyedropper &&
       _state.widget.onEyedropperPick != null;
 
   /// R27 #17: the last pointer position seen on the canvas — hovers AND
@@ -184,9 +184,9 @@ class _CanvasPanelToolCursor {
   ToolCursorLook _brushLook() => brushCursorLook(
     brushCursorShape(
       viewport: _state._viewportState._viewport,
-      size: _state.widget.brushToolState.size,
-      roundness: _state.widget.brushToolState.roundness,
-      angleDegrees: _state.widget.brushToolState.angleDegrees,
+      size: _state._brush.size,
+      roundness: _state._brush.roundness,
+      angleDegrees: _state._brush.angleDegrees,
     ),
   );
 
@@ -269,7 +269,7 @@ class _CanvasPanelToolCursor {
       // ⛔It still MOUNTS here, because the decoded image belongs to
       // [CutPieceImageHost] and the publisher drops the reference in the
       // same dispose that frees it.
-      if (canvasToolStamps(_state.widget.brushToolState.tool) &&
+      if (canvasToolStamps(_state._brush.tool) &&
           _state.widget.cutPieceSlot != null)
         ListenableBuilder(
           listenable: _state.widget.cutPieceSlot!,
@@ -281,30 +281,54 @@ class _CanvasPanelToolCursor {
                 preview: null,
               );
             }
-            return ValueListenableBuilder<Offset?>(
-              valueListenable: aim,
-              builder: (context, position, _) => CutPieceImageHost(
-                piece: piece,
-                builder: (context, image) => CutStampPreviewPublisher(
-                  sink: _state._stampPreview,
-                  preview: position == null
-                      ? null
-                      : _stampPreviewAt(position, piece, image),
-                ),
-              ),
+            // The ghost wears the stamp's opacity and blend, so it hears the
+            // brush as well as the aim — the panel no longer rebuilds for
+            // either (H40 ②).
+            final brush = _state.widget.brushToolState;
+            return ListenableBuilder(
+              listenable: brush == null ? aim : Listenable.merge([aim, brush]),
+              builder: (context, _) {
+                final position = aim.value;
+                return CutPieceImageHost(
+                  piece: piece,
+                  builder: (context, image) => CutStampPreviewPublisher(
+                    sink: _state._stampPreview,
+                    preview: position == null
+                        ? null
+                        : _stampPreviewAt(position, piece, image),
+                  ),
+                );
+              },
             );
           },
         ),
       // The painting tools wear their own footprint: an outline of the tip
       // that follows the pointer, so a stroke can be aimed before it starts.
-      if (brushCursorActive)
-        Positioned.fill(
-          child: ToolCursorSprite(
-            key: const ValueKey<String>('brush-cursor-overlay'),
-            position: aim,
-            look: _brushLook(),
-          ),
-        ),
+      if (brushCursorActive) Positioned.fill(child: _brushCursor(aim)),
     ];
+  }
+
+  /// The brush cursor. The tip's footprint — size, roundness, angle — is
+  /// the one part of the brush it SHOWS, so it hears those three for
+  /// itself: the panel around it no longer rebuilds for the brush
+  /// (H40 ②, see [BrushCanvasPanel.brushToolState]).
+  Widget _brushCursor(ValueListenable<Offset?> aim) {
+    Widget sprite() => ToolCursorSprite(
+      key: const ValueKey<String>('brush-cursor-overlay'),
+      position: aim,
+      look: _brushLook(),
+    );
+    final brush = _state.widget.brushToolState;
+    if (brush == null) {
+      return sprite();
+    }
+    return SlicedValueListenableBuilder<
+      BrushToolState,
+      (double, double, double)
+    >(
+      valueListenable: brush,
+      slice: (state) => (state.size, state.roundness, state.angleDegrees),
+      builder: (context, _) => sprite(),
+    );
   }
 }

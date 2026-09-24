@@ -148,7 +148,7 @@ void main() {
           sessionState: store.getOrCreate(_key),
           layerId: _key.layerId,
           frameId: _key.frameId,
-          inputSettings: BrushToolState.defaults.toInputSettings(),
+          inputSettings: () => BrushToolState.defaults.toInputSettings(),
           onSourceStrokeCommitted: (_) {},
         ),
       ),
