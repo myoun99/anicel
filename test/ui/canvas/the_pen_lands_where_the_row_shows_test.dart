@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/layer_folder.dart';
@@ -106,6 +107,21 @@ void main() {
 
     expect(s.frameVerbs.layerCanvasPoseSample(row), isNull);
     expect(painted(s), isNull);
+  });
+
+  test('an ATTACH row takes the pen through its base\'s pose — the fx it '
+      'wears (W5)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final base = s.activeLayer!;
+    s.updateLayerTransformTrack(base.id, keyed(twice));
+    s.folders.addAttachedLayer(AttachedPlacement.above);
+    final attach = s.activeLayer!;
+    expect(attach.id, isNot(base.id), reason: 'fixture: on the attach row');
+
+    final wrap = s.frameVerbs.layerCanvasPoseSample(attach.id);
+    expect(wrap, isNotNull, reason: 'the base is posed');
+    expect(wrap, painted(s));
   });
 
   test('a HIDDEN folder still places its row: what is drawn inside lands '
