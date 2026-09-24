@@ -704,18 +704,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   }) {
     final glyph = timelineGlyphPainter(text, style);
     // The plate carries the word as it is DRAWN — narrowed, when it is.
-    final plate = Rect.fromLTWH(
-      offset.dx - 1,
-      offset.dy - 1,
-      glyph.width * fit.x + 2,
-      glyph.height * fit.y + 2,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        plate,
-        const Radius.circular(AppShapes.wellRadius),
-      ),
-      Paint()..color = ground,
+    _paintPlate(
+      canvas,
+      offset & Size(glyph.width * fit.x, glyph.height * fit.y),
+      ground,
     );
     paintTimelineGlyphOnGround(
       canvas,
@@ -726,6 +718,16 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       fit: fit,
     );
   }
+
+  /// The plate carried writing sits on (D29-2): a pixel round [box], the
+  /// writing's own, in [ground] — a word's and a mark's alike.
+  void _paintPlate(Canvas canvas, Rect box, Color ground) => canvas.drawRRect(
+    RRect.fromRectAndRadius(
+      box.inflate(1),
+      const Radius.circular(AppShapes.wellRadius),
+    ),
+    Paint()..color = ground,
+  );
 
   /// An in-between mark on its OWN plate — [_paintPlatedGlyph]'s carry
   /// (D29-2) for a panel whose drawing has no cel number: the plate is a
@@ -746,21 +748,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     if (side <= 0) {
       return;
     }
-    final plate = Rect.fromLTWH(
-      room.left - 1,
-      room.top - 1,
-      side + 2,
-      side + 2,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        plate,
-        const Radius.circular(AppShapes.wellRadius),
-      ),
-      Paint()..color = ground,
-    );
+    final box = room.topLeft & Size(side, side);
+    _paintPlate(canvas, box, ground);
     paintInbetweenMark(canvas, mark, (
-      center: plate.center,
+      center: box.center,
       radius: timelineInbetweenMarkRadius(
         style.fontSize ?? 12,
         cellExtent: room.width,

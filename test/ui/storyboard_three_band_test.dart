@@ -433,7 +433,7 @@ void main() {
       final mark = spy.circles.singleWhere(
         (circle) => plate.rect.contains(circle.center),
       );
-      expect(mark.center, plate.rect.center);
+      expect((mark.center - plate.rect.center).distance, lessThan(1e-9));
       final fontSize = painter.baseTextStyle.fontSize ?? 12;
       expect(
         block.strip.height,
