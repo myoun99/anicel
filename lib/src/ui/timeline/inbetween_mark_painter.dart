@@ -33,6 +33,9 @@ double timelineInbetweenMarkRadius(
 /// its 10px cel-number text, about twice across.
 const double timesheetInbetweenMarkRadius = 2.8;
 
+/// Where an in-between mark stands and how large it is.
+typedef InbetweenMarkPlace = ({Offset center, double radius});
+
 /// THE drawer of an in-between mark — every surface that shows one asks
 /// here, so a mark is one shape wherever it stands and whatever put it there
 /// (a dot inside a block, a drawing with no cel number: one mark, 유저
@@ -42,13 +45,12 @@ const double timesheetInbetweenMarkRadius = 2.8;
 /// was a size and a baseline of its own — and a circle is where its centre is.
 void paintInbetweenMark(
   Canvas canvas,
-  InbetweenMark mark, {
-  required Offset center,
-  required double radius,
-  required Color color,
-}) {
+  InbetweenMark mark,
+  InbetweenMarkPlace place,
+  Color color,
+) {
   switch (mark) {
     case InbetweenMark.one:
-      canvas.drawCircle(center, radius, Paint()..color = color);
+      canvas.drawCircle(place.center, place.radius, Paint()..color = color);
   }
 }

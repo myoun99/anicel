@@ -566,16 +566,15 @@ class TimelineGridTileStore {
       final model = painter.cellModelAt(frameIndex);
       final mark = model.mark;
       if (mark != null) {
-        final layout = painter.inbetweenMarkLayoutFor(frameIndex);
+        final place = painter.inbetweenMarkLayoutFor(frameIndex);
+        final center = horizontal
+            ? place.center.translate(-originMain, 0)
+            : place.center.translate(0, -originMain);
         _emitInbetweenMark(
           writer,
           mark,
-          center: horizontal
-              ? layout.center.translate(-originMain, 0)
-              : layout.center.translate(0, -originMain),
-          radius: layout.radius,
-          rgba: timelineGridPackRgba(painter.foregroundInkFor(model)),
-          devicePixelRatio: dpr,
+          Rect.fromCircle(center: center * dpr, radius: place.radius * dpr),
+          timelineGridPackRgba(painter.foregroundInkFor(model)),
         );
         continue;
       }
@@ -702,26 +701,24 @@ class TimelineGridTileStore {
     return _TileAtlas(width: atlasWidth, height: atlasHeight, alpha: atlas);
   }
 
-  /// An in-between mark as tile ops — the shape [paintInbetweenMark] draws
-  /// on the classic pass, where the painter lays it.
+  /// An in-between mark as tile ops over [disc], its box in tile pixels —
+  /// the shape [paintInbetweenMark] draws on the classic pass, where the
+  /// painter lays it.
   static void _emitInbetweenMark(
     TimelineGridTileOpWriter writer,
-    InbetweenMark mark, {
-    required Offset center,
-    required double radius,
-    required int rgba,
-    required double devicePixelRatio,
-  }) {
-    final dpr = devicePixelRatio;
+    InbetweenMark mark,
+    Rect disc,
+    int rgba,
+  ) {
     switch (mark) {
       case InbetweenMark.one:
         // A rounded rect as round as it is large is the disc.
         writer.rrectFill(
-          (center.dx - radius) * dpr,
-          (center.dy - radius) * dpr,
-          2 * radius * dpr,
-          2 * radius * dpr,
-          radius * dpr,
+          disc.left,
+          disc.top,
+          disc.width,
+          disc.height,
+          disc.width / 2,
           15,
           rgba,
         );

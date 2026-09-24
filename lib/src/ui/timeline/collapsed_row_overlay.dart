@@ -675,17 +675,14 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
   /// its name: its first cell, at the size of the strip's type.
   void _headMark(Canvas canvas, Rect room, InbetweenMark mark) {
     final cellExtent = math.min(pixelsPerFrame, room.width);
-    paintInbetweenMark(
-      canvas,
-      mark,
+    paintInbetweenMark(canvas, mark, (
       center: Offset(room.left + cellExtent / 2, room.center.dy),
       radius: timelineInbetweenMarkRadius(
         _labelFontSize,
         cellExtent: cellExtent,
         crossExtent: room.height,
       ),
-      color: _headInk,
-    );
+    ), _headInk);
   }
 
   /// The strip's type — its own size, the one law every block word keeps.

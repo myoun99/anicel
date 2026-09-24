@@ -787,7 +787,7 @@ class TimelineRowCellsPainter extends CustomPainter
   /// It keeps to its cell, so the tile that holds the cell is the only one
   /// that draws it — a word growing past its cell needed [wordCellBefore].
   @override
-  ({Offset center, double radius}) inbetweenMarkLayoutFor(int frameIndex) {
+  InbetweenMarkPlace inbetweenMarkLayoutFor(int frameIndex) {
     final paper = paperRectFor(frameIndex);
     return (
       center: paper.center,
@@ -850,68 +850,68 @@ class TimelineRowCellsPainter extends CustomPainter
     final model = cellModelAt(frameIndex);
     final mark = model.mark;
     if (mark != null) {
-      final layout = inbetweenMarkLayoutFor(frameIndex);
       paintInbetweenMark(
         canvas,
         mark,
-        center: layout.center,
-        radius: layout.radius,
-        color: foregroundInkFor(model),
+        inbetweenMarkLayoutFor(frameIndex),
+        foregroundInkFor(model),
       );
       return;
     }
     if (model.glyph.isEmpty) {
       return;
     }
-    final rect = cellRectFor(frameIndex);
-    {
-      final ink = foregroundInkFor(model);
-      if (model.ghost && model.glyph == _holdDashGlyph) {
-        // UI-R12 #18: the hold dash is a PAINTED line along the frame
-        // axis, spanning nearly the whole cell — neighbors read as one
-        // continuing stroke, with a deliberate 3px break per boundary so
-        // it never fuses into a solid rule (user: 이어진 느낌, 완벽하게는
-        // 안 이어지게). The text glyph was too short to chain.
-        final dashPaint = Paint()
-          ..color = ink
-          ..strokeWidth = 1.4
-          ..strokeCap = StrokeCap.round;
-        if (axis == Axis.horizontal) {
-          if (rect.width > 4) {
-            canvas.drawLine(
-              Offset(rect.left + 1.5, rect.center.dy),
-              Offset(rect.right - 1.5, rect.center.dy),
-              dashPaint,
-            );
-          }
-        } else if (rect.height > 4) {
-          canvas.drawLine(
-            Offset(rect.center.dx, rect.top + 1.5),
-            Offset(rect.center.dx, rect.bottom - 1.5),
-            dashPaint,
-          );
-        }
-        return;
+    if (model.ghost && model.glyph == _holdDashGlyph) {
+      _paintHoldDash(canvas, cellRectFor(frameIndex), foregroundInkFor(model));
+      return;
+    }
+    final glyph = _glyphPainter(model.glyph, glyphStyleFor(model));
+    // Snap the draw to the PHYSICAL pixel grid (UI-R20 #6): the tile
+    // path blits glyphs at integer physical positions, so the classic
+    // pass must land on the same grid — otherwise the classic↔tile
+    // swap on row activation reads as the text thinning/thickening.
+    // F-96: centred while the word fits its cell, growing on into the
+    // block when it does not, narrowed only past the block
+    // ([cellWordLayoutFor]).
+    final layout = cellWordLayoutFor(frameIndex, glyph.size);
+    final raw = layout.origin;
+    final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
+    paintFittedText(
+      canvas,
+      glyph,
+      Offset(
+        (raw.dx * dpr).roundToDouble() / dpr,
+        (raw.dy * dpr).roundToDouble() / dpr,
+      ),
+      layout.fit,
+    );
+  }
+
+  /// A hold ghost's dash across the cell [rect].
+  ///
+  /// UI-R12 #18: the hold dash is a PAINTED line along the frame
+  /// axis, spanning nearly the whole cell — neighbors read as one
+  /// continuing stroke, with a deliberate 3px break per boundary so
+  /// it never fuses into a solid rule (user: 이어진 느낌, 완벽하게는
+  /// 안 이어지게). The text glyph was too short to chain.
+  void _paintHoldDash(Canvas canvas, Rect rect, Color ink) {
+    final dashPaint = Paint()
+      ..color = ink
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+    if (axis == Axis.horizontal) {
+      if (rect.width > 4) {
+        canvas.drawLine(
+          Offset(rect.left + 1.5, rect.center.dy),
+          Offset(rect.right - 1.5, rect.center.dy),
+          dashPaint,
+        );
       }
-      final glyph = _glyphPainter(model.glyph, glyphStyleFor(model));
-      // Snap the draw to the PHYSICAL pixel grid (UI-R20 #6): the tile
-      // path blits glyphs at integer physical positions, so the classic
-      // pass must land on the same grid — otherwise the classic↔tile
-      // swap on row activation reads as the text thinning/thickening.
-      // F-96: centred while the word fits its cell, growing on into the
-      // block when it does not, narrowed only past the block
-      // ([cellWordLayoutFor]).
-      final layout = cellWordLayoutFor(frameIndex, glyph.size);
-      final raw = layout.origin;
-      final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
-      paintFittedText(
-        canvas,
-        glyph,
-        Offset(
-          (raw.dx * dpr).roundToDouble() / dpr,
-          (raw.dy * dpr).roundToDouble() / dpr,
-        ),
-        layout.fit,
+    } else if (rect.height > 4) {
+      canvas.drawLine(
+        Offset(rect.center.dx, rect.top + 1.5),
+        Offset(rect.center.dx, rect.bottom - 1.5),
+        dashPaint,
       );
     }
   }

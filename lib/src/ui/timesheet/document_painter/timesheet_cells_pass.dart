@@ -454,13 +454,10 @@ class _TimesheetCellsPass {
 
   /// An in-between mark, at the centre of its row.
   void _paintMark(Canvas canvas, _CellSlot slot, InbetweenMark mark) =>
-      paintInbetweenMark(
-        canvas,
-        mark,
+      paintInbetweenMark(canvas, mark, (
         center: Offset(slot.centerX, slot.cellCenterY),
         radius: timesheetInbetweenMarkRadius,
-        color: TimesheetDocumentPainter._ink,
-      );
+      ), TimesheetDocumentPainter._ink);
 
   /// A held cell's bar, by column: the SE red bar or the action hold bar.
   void _paintHeldCell(Canvas canvas, _CellSlot slot) {

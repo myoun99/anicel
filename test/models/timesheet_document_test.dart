@@ -319,6 +319,28 @@ void main() {
       expect(cells[6].mark, unnamedDrawingMark, reason: 'a blank name is the mark too');
     });
 
+    test('a block whose drawing the layer does not hold prints `?` — never '
+        'a number, and never the mark', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer(
+              'A',
+              timeline: {
+                0: const TimelineExposure.drawing(FrameId('gone'), length: 2),
+              },
+            ),
+          ],
+          duration: 4,
+        ),
+      );
+
+      final cells = _firstActionColumn(document).cells;
+      expect(cells[0].kind, TimesheetCellKind.drawing);
+      expect(cells[0].label, '?');
+      expect(cells[0].mark, isNull);
+    });
+
     test('X sits only on the first row of an empty run; block-owned dots '
         'show ● on their held rows', () {
       final document = _document(

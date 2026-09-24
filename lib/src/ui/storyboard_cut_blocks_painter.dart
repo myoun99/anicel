@@ -729,16 +729,16 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
 
   /// An in-between mark on its OWN plate — [_paintPlatedGlyph]'s carry
   /// (D29-2) for a panel whose drawing has no cel number: the plate is a
-  /// square as high as a word in [style], narrowed into [room] as the word
-  /// would be, and the mark sits at its centre in the ground law's ink.
+  /// square as high as a panel name, at the top-left of [room] and narrowed
+  /// into it as the name would be, and the mark sits at its centre in the
+  /// ground law's ink.
   void _paintPlatedMark(
     Canvas canvas,
-    Offset offset,
     InbetweenMark mark,
-    TextStyle style, {
-    required Size room,
-    required Color ground,
-  }) {
+    Rect room,
+    Color ground,
+  ) {
+    final style = _panelNameStyle;
     final side = math.min(
       timelineGlyphPainter('', style).height,
       math.min(room.width, room.height),
@@ -747,8 +747,8 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       return;
     }
     final plate = Rect.fromLTWH(
-      offset.dx - 1,
-      offset.dy - 1,
+      room.left - 1,
+      room.top - 1,
       side + 2,
       side + 2,
     );
@@ -759,17 +759,14 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       ),
       Paint()..color = ground,
     );
-    paintInbetweenMark(
-      canvas,
-      mark,
+    paintInbetweenMark(canvas, mark, (
       center: plate.center,
       radius: timelineInbetweenMarkRadius(
         style.fontSize ?? 12,
         cellExtent: room.width,
         crossExtent: room.height,
       ),
-      color: timelineTextOnColor(ground),
-    );
+    ), timelineTextOnColor(ground));
   }
 
   @override
@@ -1109,6 +1106,50 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     }
   }
 
+  /// A panel name's type. One size at every zoom, narrowed into the panel
+  /// instead (B, 유저 2026-09-24). ↩️It shrank with the cell (R26 #38).
+  TextStyle get _panelNameStyle => baseTextStyle.copyWith(
+    color: timelineDrawingInkColor,
+    fontWeight: FontWeight.bold,
+    fontSize: baseTextStyle.fontSize ?? 12,
+  );
+
+  /// A panel's head (#15): its frame's cel number, or — with none — the
+  /// mark, each on its own plate.
+  void _paintPanelHead(
+    Canvas canvas,
+    StoryboardCutBlockVisual block,
+    TimelineCellWriting head,
+    Rect slot,
+  ) {
+    // TOP-LEFT, the cut block title's own anchor (user 2026-07-29):
+    // thumbnail-display writing sits where the sheet's cut number does,
+    // not centred the way block-display glyphs are — the two thumbnail
+    // surfaces read as one.
+    // D29-2: carried on its own plate, so its ground IS the cut title's.
+    final room = Rect.fromLTRB(
+      slot.left + _padding / 2,
+      slot.top + 1,
+      slot.right - _padding / 2,
+      slot.bottom - 1,
+    );
+    final ground = _bandGround(block);
+    final mark = head.mark;
+    if (mark != null) {
+      _paintPlatedMark(canvas, mark, room, ground);
+    } else if (head.word.isNotEmpty) {
+      final style = _panelNameStyle;
+      _paintPlatedGlyph(
+        canvas,
+        room.topLeft,
+        head.word,
+        style,
+        ground: ground,
+        fit: wordFit(timelineGlyphPainter(head.word, style).size, room.size),
+      );
+    }
+  }
+
   /// A panel's own writing (#15, the timeline row's conventions carried
   /// over): the frame NAME centred in the panel's first frame cell, the
   /// COMMA COUNT bottom-centred in its last — both through the ground law,
@@ -1125,44 +1166,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         _cellExtent <= 0) {
       return;
     }
-    final head = block.cellHeads[index];
-    // One size at every zoom, narrowed into the panel instead (B, 유저
-    // 2026-09-24). ↩️It shrank with the cell (R26 #38).
-    final nameStyle = baseTextStyle.copyWith(
-      color: timelineDrawingInkColor,
-      fontWeight: FontWeight.bold,
-      fontSize: baseTextStyle.fontSize ?? 12,
-    );
-    // TOP-LEFT, the cut block title's own anchor (user 2026-07-29):
-    // thumbnail-display writing sits where the sheet's cut number does,
-    // not centred the way block-display glyphs are — the two thumbnail
-    // surfaces read as one.
-    // D29-2: carried on its own plate, so its ground IS the cut title's.
-    final at = Offset(slot.left + _padding / 2, slot.top + 1);
-    final room = Size(
-      slot.right - _padding / 2 - at.dx,
-      slot.bottom - 1 - at.dy,
-    );
-    final mark = head.mark;
-    if (mark != null) {
-      _paintPlatedMark(
-        canvas,
-        at,
-        mark,
-        nameStyle,
-        room: room,
-        ground: _bandGround(block),
-      );
-    } else if (head.word.isNotEmpty) {
-      _paintPlatedGlyph(
-        canvas,
-        at,
-        head.word,
-        nameStyle,
-        ground: _bandGround(block),
-        fit: wordFit(timelineGlyphPainter(head.word, nameStyle).size, room),
-      );
-    }
+    _paintPanelHead(canvas, block, block.cellHeads[index], slot);
     final comma = block.cellCommaLabels[index];
     if (comma.isNotEmpty) {
       // D29: the CUT-BLOCK text grade — the same 11 the band labels wear

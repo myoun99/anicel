@@ -24,8 +24,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
+import '../../helpers/run_edge_fixtures.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 void main() {
@@ -63,14 +64,17 @@ void main() {
     timeline: const {},
   );
 
-  TimelineRowCellsPainter rowPainter(Axis axis, {double cell = 24}) =>
-      TimelineRowCellsPainter(
+  TimelineRowCellsPainter rowPainter(
+    Axis axis, {
+    double cell = 24,
+    double crossExtent = rowExtent,
+  }) => TimelineRowCellsPainter(
         layer: layer,
         geometry: testFrameGeometry(
           frameCellExtent: cell,
           frameEndIndexExclusive: frames,
         ),
-        crossAxisExtent: rowExtent,
+        crossAxisExtent: crossExtent,
         exposureStateForLayer: stateFor,
         frameNameForLayer: (_, frame) => frame == 4 ? 'A1' : null,
         colorScheme: const ColorScheme.dark(),
@@ -124,32 +128,86 @@ void main() {
     });
   }
 
-  test('the mark shrinks with a tight cell as every mark does (D39-2), and '
-      'never leaves its cell — the tile that holds the cell is the only one '
-      'that draws it', () {
-    for (
-      var cell = TimelineZoomLimits.minPixelsPerFrame;
-      cell <= TimelineZoomLimits.maxPixelsPerFrame;
-      cell += 0.6
-    ) {
-      for (final axis in Axis.values) {
-        final painter = rowPainter(axis, cell: cell);
-        for (final frame in [0, 2]) {
-          final layout = painter.inbetweenMarkLayoutFor(frame);
-          final disc = Rect.fromCircle(
-            center: layout.center,
-            radius: layout.radius,
+  test('a repeat GHOST wears the same marks — its unnamed head and its '
+      'dot, text-only like every ghost (UI-R10 #11)', () {
+    final repeated = rederiveRunBehaviors(
+      Layer(
+        id: const LayerId('ghosts'),
+        name: 'G',
+        frames: [
+          Frame(id: const FrameId('g1'), duration: 1, strokes: const []),
+        ],
+        timeline: const {
+          0: TimelineExposure.drawing(
+            FrameId('g1'),
+            length: 2,
+            endEdge: repeatMark,
+          ),
+        },
+      ),
+      cutFrameCount: 8,
+    );
+    final painter = TimelineRowCellsPainter(
+      layer: repeated,
+      geometry: testFrameGeometry(
+        frameCellExtent: 24,
+        frameEndIndexExclusive: frames,
+      ),
+      crossAxisExtent: rowExtent,
+      // The ghost chain restarts the block at 2; its dot rides at 3.
+      exposureStateForLayer: (_, frame) => switch (frame) {
+        0 || 2 => TimelineCellExposureState.drawingStart,
+        3 => TimelineCellExposureState.markHeld,
+        _ => TimelineCellExposureState.held,
+      },
+      colorScheme: const ColorScheme.dark(),
+      baseTextStyle: const TextStyle(fontSize: font),
+    );
+
+    final head = painter.cellModelAt(2);
+    final dot = painter.cellModelAt(3);
+    expect(head.ghost && dot.ghost, isTrue, reason: '⛔전제: ghost cells');
+    expect(head.mark, unnamedDrawingMark);
+    expect(dot.mark, breakdownMark);
+    expect(head.glyph, isEmpty);
+    expect(dot.glyph, isEmpty);
+  });
+
+  test('the mark shrinks with a tight cell or a squeezed row as every mark '
+      'does (D39-2), and never leaves its cell — the tile that holds the '
+      'cell is the only one that draws it', () {
+    for (final crossExtent in [rowExtent, 12.0, 8.0]) {
+      for (
+        var cell = TimelineZoomLimits.minPixelsPerFrame;
+        cell <= TimelineZoomLimits.maxPixelsPerFrame;
+        cell += 0.6
+      ) {
+        for (final axis in Axis.values) {
+          final painter = rowPainter(
+            axis,
+            cell: cell,
+            crossExtent: crossExtent,
           );
-          final paper = painter.paperRectFor(frame);
-          final where = 'cell $cell, $axis, frame $frame';
-          expect(disc.left, greaterThanOrEqualTo(paper.left - 1e-9), reason: where);
-          expect(disc.top, greaterThanOrEqualTo(paper.top - 1e-9), reason: where);
-          expect(disc.right, lessThanOrEqualTo(paper.right + 1e-9), reason: where);
-          expect(disc.bottom, lessThanOrEqualTo(paper.bottom + 1e-9), reason: where);
-          if (cell >= 14) {
-            expect(layout.radius, roomy, reason: where);
-          } else {
-            expect(layout.radius, lessThan(roomy), reason: where);
+          for (final frame in [0, 2]) {
+            final place = painter.inbetweenMarkLayoutFor(frame);
+            final disc = Rect.fromCircle(
+              center: place.center,
+              radius: place.radius,
+            );
+            final paper = painter.paperRectFor(frame);
+            final where = 'cell $cell, row $crossExtent, $axis, frame $frame';
+            expect(
+              paper.inflate(1e-9).contains(disc.topLeft) &&
+                  paper.inflate(1e-9).contains(disc.bottomRight),
+              isTrue,
+              reason: '$where: $disc leaves $paper',
+            );
+            final roomyCell = cell >= 14 && crossExtent == rowExtent;
+            expect(
+              place.radius,
+              roomyCell ? roomy : lessThan(roomy),
+              reason: where,
+            );
           }
         }
       }
@@ -173,14 +231,17 @@ void main() {
           if (frame < start) {
             continue;
           }
-          final layout = painter.inbetweenMarkLayoutFor(frame);
-          final r = layout.radius;
+          final place = painter.inbetweenMarkLayoutFor(frame);
+          final disc = Rect.fromCircle(
+            center: place.center.translate(-origin, 0) * dpr,
+            radius: place.radius * dpr,
+          );
           expected.rrectFill(
-            (layout.center.dx - origin - r) * dpr,
-            (layout.center.dy - r) * dpr,
-            2 * r * dpr,
-            2 * r * dpr,
-            r * dpr,
+            disc.left,
+            disc.top,
+            disc.width,
+            disc.height,
+            disc.width / 2,
             TimelineGridTileOp.cornerTopLeft |
                 TimelineGridTileOp.cornerTopRight |
                 TimelineGridTileOp.cornerBottomLeft |

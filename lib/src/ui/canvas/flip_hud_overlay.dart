@@ -749,26 +749,28 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
       ),
       Paint()..color = timelineDrawingHeldColor,
     );
+    _paintRunHead(canvas, rect, run);
+  }
+
+  /// A block's head in its slot [rect]: its cel number, or — with none —
+  /// the mark, at the size the number would take.
+  void _paintRunHead(Canvas canvas, Rect rect, FlipHudRun run) {
     final head = drawingHeadOf(run.label);
     final mark = head.mark;
     if (mark != null) {
-      // At the size its word would take.
-      paintInbetweenMark(
-        canvas,
-        mark,
+      paintInbetweenMark(canvas, mark, (
         center: rect.center,
         radius: timelineInbetweenMarkRadius(
           _headWordSize,
           cellExtent: rect.width,
           crossExtent: rect.height,
         ),
-        color: timelineDrawingInkColor,
-      );
+      ), timelineDrawingInkColor);
       return;
     }
     _paintGlyph(
       canvas,
-      Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height),
+      rect,
       head.word,
       color: timelineDrawingInkColor,
       bold: true,
