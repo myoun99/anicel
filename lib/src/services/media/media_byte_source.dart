@@ -654,25 +654,41 @@ MediaByteSource mediaAppFileSource(String path) => mediaSourceDecodingFrames(
 );
 
 /// A medium's bytes a reader holds (`ProjectFile.holdMediaBytes`), how it
-/// gives them back, and when — and how — they have [moved].
+/// gives them back, how they have [moved], and how to hold them [again].
 ///
-/// 🚨★★★**[moved] completes when the answer to 「where are these bytes」 is
-/// somewhere else now** — a save absorbed the staged copy the reader holds
-/// into the project file, or wrote that file anew elsewhere (a save-as) — or
-/// is ABOUT to be, because a save is replacing the very file they are in. A
-/// reader that keeps reading (a document the viewer shows, a movie a canvas
-/// row decodes) opens again on the new answer, in the order the move says
-/// ([HeldBytesMove]): held, the bytes would stay where they are for as long
-/// as it lives — a staged copy on disk beside the entry that replaced it
-/// (card `canvas-holds-staged-for-session`; 유저 08-27: 「사본 남으면 진짜
-/// 용서안할게」), a file a save cannot replace (card
+/// 🚨★★★**[moved] says each time the answer to 「where are these bytes」 is
+/// somewhere else — or is ABOUT to be.** A save absorbed the staged copy
+/// the reader holds into the project file, or wrote that file anew
+/// elsewhere (a save-as); or a save is replacing the very file they are in.
+/// A reader that keeps reading (a document the viewer shows, a movie a
+/// canvas row decodes) holds them [again], in the order the move says
+/// ([HeldBytesMove]): held where they were, the bytes would stay there for
+/// as long as it lives — a staged copy on disk beside the entry that
+/// replaced it (card `canvas-holds-staged-for-session`; 유저 08-27: 「사본
+/// 남으면 진짜 용서안할게」), a file a save cannot replace (card
 /// `rewrite-under-offset-readers`). A reader that is done in a moment never
-/// looks.
-typedef HeldMediaBytes = ({
-  MediaByteSource source,
-  void Function() release,
-  Future<HeldBytesMove> moved,
-});
+/// looks. A STREAM, because a reader can be told more than once: one that
+/// could not follow a move is told the next, and a save replacing the file
+/// still reaches it (audit 09-25, `audit-0925-carry-follow`).
+///
+/// 🚨★★★**[again] holds THESE bytes, not what the path names now.** Removed
+/// from the pool or carried again, a path means another carry — and a
+/// reader that followed the path switched carries under the pictures it
+/// had already drawn, and let go of the bytes an undo would need (the same
+/// audit).
+final class HeldMediaBytes {
+  const HeldMediaBytes({
+    required this.source,
+    required this.release,
+    required this.moved,
+    required this.again,
+  });
+
+  final MediaByteSource source;
+  final void Function() release;
+  final Stream<HeldBytesMove> moved;
+  final Future<HeldMediaBytes> Function() again;
+}
 
 /// How a reader's bytes moved ([HeldMediaBytes.moved]) — and so the order
 /// it opens again in.
@@ -709,8 +725,8 @@ Future<Uint8List> readHeldMediaBytes(HoldMediaBytes hold, String path) async {
 
 /// [open] on the bytes [hold] answers for [path], HELD for as long as what it
 /// opened lives — [keep] ties the hold to it: the release to run once it has
-/// closed, and the move to follow ([HeldMediaBytes.moved]) — and given back
-/// at once when nothing opens.
+/// closed, and the moves to follow ([HeldMediaBytes.moved], held
+/// [HeldMediaBytes.again]) — and given back at once when nothing opens.
 ///
 /// 🚨The one shape of 「a reader that keeps reading」: a document the viewer
 /// shows, a PDF a placement renders page by page, a movie a canvas row or a

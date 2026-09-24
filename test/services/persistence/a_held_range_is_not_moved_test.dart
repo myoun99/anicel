@@ -146,11 +146,14 @@ void main() {
     expect(backend.openedAt, [
       (path: archive, span: (offset: 4096, length: 512, framed: false)),
     ], reason: 'the premise: opened on its stretch of the archive');
-    final document = HeldViewerDocument(movie!, (
+    late final HeldMediaBytes held;
+    held = HeldMediaBytes(
       source: MediaFileBytes(archive),
       release: () => events.add('released'),
-      moved: Completer<HeldBytesMove>().future,
-    ));
+      moved: const Stream<HeldBytesMove>.empty(),
+      again: () async => held,
+    );
+    final document = HeldViewerDocument(movie!, held);
 
     await document.dispose();
 

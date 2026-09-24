@@ -325,18 +325,19 @@ class ProjectFile {
   /// `recarry-after-remove-reads-the-old`). An asset the pool points at
   /// rather than carries reads its file, whatever an earlier carry of the
   /// same path left in the file or the store.
-  ({
-    MediaByteSource source,
-    void Function() Function()? hold,
-    MediaCarry? carry,
-    MediaByteSource stored,
-  })
-  _whereTheBytesAre(String poolPath) {
+  _Whereabouts _whereTheBytesAre(String poolPath) {
     final carry = mediaCarryFor(poolPath);
     if (carry == null) {
       final file = MediaFileBytes(poolPath);
       return (source: file, hold: null, carry: null, stored: file);
     }
+    return _whereTheCarryIs(carry);
+  }
+
+  /// Where [carry]'s bytes are — [_whereTheBytesAre] for a carry already
+  /// known: what a reader following its bytes asks ([HeldMediaBytes.again]),
+  /// THESE bytes whatever the pool names at their path by then.
+  _Whereabouts _whereTheCarryIs(MediaCarry carry) {
     final (:stored, :at) = _storedFor(
       carry,
       () => readableAnicelLayout(_projectFilePath),
@@ -375,23 +376,43 @@ class ProjectFile {
     staging: _staging,
   );
 
-  /// Every hold handed out and not given back yet that has a carry, the
-  /// answer it was given, and when it is given back — what a save asks
-  /// about, to tell each whose bytes it moved ([HeldMediaBytes.moved]) and
-  /// to wait for the ones it asked to let go ([readersLetGoOf]).
-  final List<
-    ({
-      MediaCarry carry,
-      MediaByteSource stored,
-      Completer<HeldBytesMove> moved,
-      Completer<void> released,
-    })
-  >
-  _liveHolds = [];
+  /// Every hold handed out and not given back yet that has a carry — what a
+  /// save asks about: to store what they read ([heldCarries]), to tell each
+  /// whose bytes it moved ([HeldMediaBytes.moved]), and to wait for the ones
+  /// it asked to let go ([readersLetGoOf]).
+  final List<_LiveHold> _liveHolds = [];
 
-  /// Completes [HeldMediaBytes.moved] for every live hold whose carry the
-  /// file just saved answers from somewhere else — the save absorbed the
-  /// staged copy it reads, or wrote the file it reads somewhere new.
+  /// What the readers hold that is the project's own — an entry of the file
+  /// or a staged copy — by carry: what a save stores beside what the pool
+  /// names (`ProjectFileDoor._carryFor`).
+  ///
+  /// ⛔A HELD carry does not leave, even when the project no longer carries
+  /// it: something reads it by offset right now — a viewer on an asset just
+  /// taken out of the pool, a canvas row an undo may bring back — and
+  /// leaving would make its span a hole the push-down writes over. It leaves
+  /// with the first save after the reader lets go (audit 2026-09-24,
+  /// `carried-bytes-audit-0924`).
+  /// 🆕STORED, not merely kept (audit 09-25, `audit-0925-carry-follow`): it
+  /// used to be a name the in-place save declined to drop, so a whole write
+  /// — a save-as, a torn tail healed — left it behind, and the record of
+  /// what the file holds ([mediaInFile]) never listed it: a reader holding
+  /// it was told its bytes had moved to the ORIGINAL and followed there, and
+  /// an undo that brought the asset back read the original too.
+  Map<MediaCarry, MediaByteSource> get heldCarries {
+    late final layout = readableAnicelLayout(_projectFilePath);
+    return {
+      for (final live in _liveHolds)
+        if (_storedFor(live.carry, () => layout) case (
+          :final stored,
+          :final at,
+        ) when at != MediaBytesAt.original)
+          live.carry: stored,
+    };
+  }
+
+  /// Tells every live hold whose carry the file just saved answers from
+  /// somewhere else — the save absorbed the staged copy it reads, or wrote
+  /// the file it reads somewhere new ([HeldBytesMove.elsewhere]).
   ///
   /// 🚨★★★**THE READER MOVES, NOT THE BYTES.** The staged copy is retired by
   /// the save whether or not anyone holds it; held, it only waits for its
@@ -410,9 +431,12 @@ class ProjectFile {
     // save is the cost this would otherwise add to every save.
     late final layout = readableAnicelLayout(_projectFilePath);
     for (final live in _liveHolds) {
-      if (!live.moved.isCompleted &&
-          _storedFor(live.carry, () => layout).stored != live.stored) {
-        live.moved.complete(HeldBytesMove.elsewhere);
+      final now = _storedFor(live.carry, () => layout).stored;
+      // Told once per answer: a reader still on its way there — or one
+      // that could not follow — hears again only when the answer moves on.
+      if (now != live.stored && now != live.toldOf) {
+        live.toldOf = now;
+        live.moves.add(HeldBytesMove.elsewhere);
       }
     }
   }
@@ -444,10 +468,10 @@ class ProjectFile {
             when AnicelFileService.samePath(path, filePath))
           live,
     ];
+    // Every one of them, told before or not: one that could not follow an
+    // earlier move still holds this file.
     for (final live in holding) {
-      if (!live.moved.isCompleted) {
-        live.moved.complete(HeldBytesMove.replacing);
-      }
+      live.moves.add(HeldBytesMove.replacing);
     }
     await Future.wait([
       for (final live in holding) live.released.future,
@@ -491,30 +515,29 @@ class ProjectFile {
   ///
   /// `release` is idempotent — call it once the reader has CLOSED, not
   /// when it decides to.
-  Future<HeldMediaBytes> holdMediaBytes(String poolPath) async {
+  Future<HeldMediaBytes> holdMediaBytes(String poolPath) =>
+      _hold(() => _whereTheBytesAre(poolPath));
+
+  /// [where]'s bytes, held — [holdMediaBytes] for any answer, and what
+  /// [HeldMediaBytes.again] asks again.
+  Future<HeldMediaBytes> _hold(_Whereabouts Function() where) async {
     // The wait and the hold in ONE step — see [saveSettled]: a save that
     // woke on the same completion must not begin between them, or it moves
     // what this is about to hold without having counted it.
     while (_saveInFlight) {
       await _saveEnded.future;
     }
-    final (:source, :hold, :carry, :stored) = _whereTheBytesAre(poolPath);
+    final whereabouts = where();
+    final (:source, :hold, :carry, :stored) = whereabouts;
     final letGo = hold?.call();
     // A file the pool points at is not the project's to move: nothing
     // follows it.
-    final live = carry == null
-        ? null
-        : (
-            carry: carry,
-            stored: stored,
-            moved: Completer<HeldBytesMove>(),
-            released: Completer<void>(),
-          );
+    final live = carry == null ? null : _LiveHold(carry, stored);
     if (live != null) {
       _liveHolds.add(live);
     }
     var released = false;
-    return (
+    return HeldMediaBytes(
       source: source,
       release: () {
         if (released) {
@@ -524,8 +547,12 @@ class ProjectFile {
         _liveHolds.remove(live);
         letGo?.call();
         live?.released.complete();
+        unawaited(live?.moves.close());
       },
-      moved: live?.moved.future ?? Completer<HeldBytesMove>().future,
+      moved: live?.moves.stream ?? const Stream<HeldBytesMove>.empty(),
+      again: carry == null
+          ? () => _hold(() => whereabouts)
+          : () => _hold(() => _whereTheCarryIs(carry)),
     );
   }
 
@@ -882,4 +909,36 @@ class ProjectFile {
     _failedCopy = null;
     _failedCopyEdits = null;
   }
+}
+
+/// Where a medium's bytes are, how to keep them there while they are read,
+/// and whose they are ([ProjectFile._whereTheBytesAre]).
+typedef _Whereabouts = ({
+  MediaByteSource source,
+  void Function() Function()? hold,
+  MediaCarry? carry,
+  MediaByteSource stored,
+});
+
+/// A hold handed out and not given back yet, that has a carry
+/// ([ProjectFile.holdMediaBytes]) — what a save stores, tells when its bytes
+/// move, and waits for when it must replace their file.
+final class _LiveHold {
+  _LiveHold(this.carry, this.stored);
+
+  final MediaCarry carry;
+
+  /// The answer the hold was given.
+  final MediaByteSource stored;
+
+  /// The answer it was last told its bytes moved to — so a save that finds
+  /// them still there does not tell it again.
+  MediaByteSource? toldOf;
+
+  /// [HeldMediaBytes.moved]. ONE listener, the reader — and what is told
+  /// before it listens waits for it: a movie opens slowly enough for a save
+  /// to bind in between.
+  final moves = StreamController<HeldBytesMove>();
+
+  final released = Completer<void>();
 }

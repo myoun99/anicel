@@ -307,6 +307,47 @@ enum _RenderAsk {
   failed,
 }
 
+/// In the place of a document let go of while a save replaces its file
+/// (`_MediaViewerTabHostState._letGoThenFollow`): the page on screen keeps
+/// its size and the document its page count — so nothing on screen moves —
+/// and nothing is read through it. A page asked of it fails, and is asked
+/// again of the document that takes its place.
+final class _LetGoOf implements ViewerDocument {
+  _LetGoOf(ViewerDocument document, {required int page})
+    : pageCount = document.pageCount,
+      framesPerSecond = document.framesPerSecond,
+      _size = document.pageCount == 0
+          ? ui.Size.zero
+          : document.pageSize(page.clamp(0, document.pageCount - 1));
+
+  @override
+  final int pageCount;
+
+  @override
+  final double? framesPerSecond;
+
+  final ui.Size _size;
+
+  @override
+  ui.Size pageSize(int pageIndex) => _size;
+
+  @override
+  Future<ui.Image> renderPage(
+    int pageIndex, {
+    required int width,
+    required int height,
+  }) => Future.error(StateError('let go of while its file is replaced'));
+
+  @override
+  Future<Uint8List> readRegionRgba(
+    int pageIndex,
+    ({int left, int top, int width, int height}) box,
+  ) => Future.error(StateError('let go of while its file is replaced'));
+
+  @override
+  Future<void> dispose() async {}
+}
+
 class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     implements PlaybackTransport {
   /// Commit sink required by the panel API; the viewer never invalidates
@@ -689,11 +730,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       }
     });
     if (document is HeldViewerDocument) {
-      unawaited(_follow(document, request));
+      _watch(document, request);
     }
     // The page request goes out on the build this setState causes; the
     // record lands after it, so the NEXT open of this document sees it.
     _rememberFramed();
+  }
+
+  /// Follows [held] each time the bytes it reads move
+  /// ([HeldViewerDocument.moved]).
+  void _watch(HeldViewerDocument held, MediaViewerRequest request) {
+    held.moved.listen((move) => unawaited(_follow(held, request, move)));
   }
 
   /// The bytes [was] reads have an answer somewhere else now
@@ -708,11 +755,16 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// left open kept one on disk beside the entry that replaced it (card
   /// `canvas-holds-staged-for-session`). ⛔Not through [_load]: that empties
   /// the panel first, for a new document.
+  ///
+  /// 🚨Opened again on [was]'s OWN bytes ([HeldViewerDocument.again]), never
+  /// on what [request]'s path names by then: removed from the pool or
+  /// carried again, it names another carry — and the pages already drawn
+  /// are this one's (audit 09-25).
   Future<void> _follow(
     HeldViewerDocument was,
     MediaViewerRequest request,
+    HeldBytesMove move,
   ) async {
-    final move = await was.moved;
     if (!mounted || !identical(_document, was)) {
       return;
     }
@@ -721,7 +773,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     final ViewerDocument? fresh;
     try {
-      fresh = await _openDocument(request);
+      fresh = await _openDocument(request, hold: (_) => was.again());
     } on Object {
       return; // The old answer still reads; nothing is gained by losing it.
     }
@@ -738,11 +790,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   }
 
   /// A save is REPLACING the file [was] reads, and cannot while it is held
-  /// open ([HeldBytesMove.replacing]) — so [was] goes FIRST, and the same
-  /// [request] opens once the save lets it: the open waits for the save to
-  /// end (card `rewrite-under-offset-readers`). The pages already drawn
-  /// stay on screen meanwhile; a page asked in between is asked again of
-  /// the new document, and a cut waits for it.
+  /// open ([HeldBytesMove.replacing]) — so [was] goes FIRST, and its bytes
+  /// open again once the save lets them: the open waits for the save to end
+  /// (card `rewrite-under-offset-readers`). The pages already drawn stay on
+  /// screen meanwhile; a page asked in between is asked again of the new
+  /// document, and a cut waits for it.
+  ///
+  /// 🚨★★★**NOTHING TOUCHES [was] ONCE IT IS LET GO OF.** It stayed the
+  /// document shown until the new one opened, and a picture's descriptor
+  /// read after its dispose — a render, a second dispose — is a native
+  /// crash (audit 09-25). A stand-in with its size and page count takes
+  /// its place ([_LetGoOf]).
   Future<void> _letGoThenFollow(
     HeldViewerDocument was,
     MediaViewerRequest request,
@@ -759,20 +817,20 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     final reopened = Completer<void>();
     _cuts = reopened.future;
+    final standIn = _LetGoOf(was, page: _page);
+    setState(() => _document = standIn);
     try {
-      // A page asked of [was] from here on fails, and is asked again of
-      // the document that takes its place ([_takeUp]).
       await was.dispose();
       final ViewerDocument? fresh;
       try {
-        fresh = await _openDocument(request);
+        fresh = await _openDocument(request, hold: (_) => was.again());
       } on Object catch (error) {
-        if (mounted && identical(_document, was)) {
+        if (mounted && identical(_document, standIn)) {
           setState(() => _message = _couldNotOpen(error));
         }
         return;
       }
-      if (!mounted || !identical(_document, was) || fresh == null) {
+      if (!mounted || !identical(_document, standIn) || fresh == null) {
         await fresh?.dispose();
         return;
       }
@@ -804,7 +862,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       _document = fresh;
     });
     if (fresh is HeldViewerDocument) {
-      unawaited(_follow(fresh, request));
+      _watch(fresh, request);
     }
   }
 
@@ -831,11 +889,18 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// original wins whenever it is still there: an OS opening a file for
   /// itself beats any range wrapped around one」. It does, and it showed the
   /// EDITED file for a carried movie whose original had changed since.
-  Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
+  ///
+  /// [hold] is where the bytes are asked for — the project, or, for a
+  /// document following its bytes, those same bytes again
+  /// ([HeldViewerDocument.again]).
+  Future<ViewerDocument?> _openDocument(
+    MediaViewerRequest request, {
+    HoldMediaBytes? hold,
+  }) async {
     Future<ViewerDocument?> held(
       Future<ViewerDocument?> Function(MediaByteSource source) open,
     ) => openOnHeldBytes<ViewerDocument, ViewerDocument>(
-      widget.session.projectFile.holdMediaBytes,
+      hold ?? widget.session.projectFile.holdMediaBytes,
       request.path,
       open,
       HeldViewerDocument.new,
@@ -1349,18 +1414,24 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// arrives in document units whatever the zoom, and the read is in those
   /// same units, so the piece is the source's own pixels and the stamp's
   /// 100% is that size.
+  ///
+  /// ⚠️Of the page it was drawn on, taken NOW: a cut can wait its turn — a
+  /// cut before it, a document being let go of — and a page turned in the
+  /// meantime would have the outline cut out of the wrong page (audit
+  /// 09-25).
   void _cutFromPage(CanvasSelectionShape shape) {
-    _cuts = _cuts.then((_) => _cut(shape));
+    final page = _page;
+    _cuts = _cuts.then((_) => _cut(shape, page));
   }
 
-  Future<void> _cut(CanvasSelectionShape shape) async {
+  Future<void> _cut(CanvasSelectionShape shape, int page) async {
     final slot = widget.cutPieceSlot;
     final document = _document;
     final pageCount = _pageCount;
     if (!mounted || slot == null || document == null || pageCount == 0) {
       return;
     }
-    final pageIndex = _page.clamp(0, pageCount - 1);
+    final pageIndex = page.clamp(0, pageCount - 1);
     final pixels = viewerPagePixels(document.pageSize(pageIndex));
     // 📨THE BUDGET THE PAGES LIVE UNDER (the import-export session,
     // 2026-09-11: 「뷰어 예산 … 을 따르면 됩니다」). The read is billed as the

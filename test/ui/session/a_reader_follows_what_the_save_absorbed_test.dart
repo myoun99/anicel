@@ -9,6 +9,8 @@ import 'package:anicel/src/services/media/video_decode_worker.dart'
     show debugVideoDecodeBackend;
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show parseAnicelZipLayoutFile;
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
+    show anicelMediaEntryName;
 import 'package:anicel/src/services/persistence/folder_grant.dart'
     show FolderPicker;
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -68,7 +70,7 @@ void main() {
         () => fileOf(session).holdMediaBytes(path),
       ))!;
       var moved = false;
-      unawaited(held.moved.then((_) => moved = true));
+      held.moved.listen((_) => moved = true);
 
       await saveProject(tester, session, directory);
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
@@ -90,7 +92,7 @@ void main() {
         () => fileOf(session).holdMediaBytes(path),
       ))!;
       var moved = false;
-      unawaited(held.moved.then((_) => moved = true));
+      held.moved.listen((_) => moved = true);
 
       await saveProject(tester, session, directory);
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
@@ -112,7 +114,7 @@ void main() {
         () => fileOf(session).holdMediaBytes(path),
       ))!;
       var moved = false;
-      unawaited(held.moved.then((_) => moved = true));
+      held.moved.listen((_) => moved = true);
 
       final elsewhere = normalizedMediaPath('${directory.path}/as.anicel');
       await tester.runAsync(
@@ -141,13 +143,36 @@ void main() {
         () => fileOf(session).holdMediaBytes(path),
       ))!;
       var moved = false;
-      unawaited(held.moved.then((_) => moved = true));
+      held.moved.listen((_) => moved = true);
       held.release();
 
       await saveProject(tester, session, directory);
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
 
       expect(moved, isFalse, reason: 'nobody is reading it to be told');
+    });
+
+    testWidgets('a reader that does not follow is told once per answer, not '
+        'once per save', (tester) async {
+      final (:session, :path) = await carrying(
+        tester,
+        directory,
+        writeCarriedMovie,
+      );
+      final held = (await tester.runAsync(
+        () => fileOf(session).holdMediaBytes(path),
+      ))!;
+      final told = <HeldBytesMove>[];
+      held.moved.listen(told.add);
+
+      await saveProject(tester, session, directory);
+      await saveProject(tester, session, directory);
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+
+      expect(told, [
+        HeldBytesMove.elsewhere,
+      ], reason: 'the second save found the bytes where the first had put them');
+      held.release();
     });
 
     testWidgets('a file the pool points at — never moved', (tester) async {
@@ -164,7 +189,7 @@ void main() {
         () => fileOf(session).holdMediaBytes(linked),
       ))!;
       var moved = false;
-      unawaited(held.moved.then((_) => moved = true));
+      held.moved.listen((_) => moved = true);
 
       await saveProject(tester, session, directory);
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
@@ -329,6 +354,86 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  /// 🚨★★★**WHAT A READER HOLDS STAYS THE PROJECT'S, WHATEVER THE POOL NAMES
+  /// AT ITS PATH** (audit 09-25, `audit-0925-carry-follow`). Taken out of
+  /// the pool — or carried again — a path names another carry. A reader
+  /// still on the first reads THOSE bytes: the save stores them for it, and
+  /// it follows them, never the path.
+  group('what a reader holds, whatever the pool names at its path', () {
+    testWidgets('🚨taken out of the pool while read: not told it moved — its '
+        'entry stays in the file, and an undo reads it there', (tester) async {
+      final (:session, :path) = await carrying(
+        tester,
+        directory,
+        writeCarriedMovie,
+      );
+      await saveProject(tester, session, directory);
+      final file = fileOf(session).path!;
+      final told = <HeldBytesMove>[];
+      final held = (await tester.runAsync(() async {
+        final held = await fileOf(session).holdMediaBytes(path);
+        held.moved.listen(told.add);
+        return held;
+      }))!;
+      File(path).deleteSync();
+
+      expect(session.mediaPool.removeMediaAsset(path), isTrue);
+      await saveProject(tester, session, directory);
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+
+      expect(told, isEmpty, reason: 'its bytes are still where it reads them');
+      session.undo();
+      expect(
+        fileOf(session).mediaByteSourceFor(path).span?.path,
+        file,
+        reason: 'the asset an undo brings back reads what the file kept',
+      );
+      held.release();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('🚨a movie still open for an asset taken out of the pool goes '
+        'with a save-as, and follows ITS bytes there — not the file its path '
+        'names', (tester) async {
+      final (:session, :path, :staged, closes: _) = await placedOnTheCanvas(
+        tester,
+      );
+      await saveProject(tester, session, directory);
+      await settle(tester, () => !File(staged).existsSync());
+      final first = carryIn(session, path)!;
+      // The row goes with the asset; the canvas keeps its movie open — for
+      // an undo that brings both back.
+      expect(session.mediaPool.removeMediaAsset(path), isTrue);
+      expect(
+        File(path).existsSync(),
+        isTrue,
+        reason: 'the path still names a file',
+      );
+
+      final elsewhere = normalizedMediaPath('${directory.path}/as.anicel');
+      await tester.runAsync(
+        () => session.projectDoor.saveProjectToFile(
+          elsewhere,
+          asked: SaveAsked.byAPerson,
+        ),
+      );
+      await settle(tester, () => movies.openedAt.last.path == elsewhere);
+
+      final entry = parseAnicelZipLayoutFile(
+        elsewhere,
+      ).entryNamed(anicelMediaEntryName(first));
+      expect(entry, isNotNull, reason: 'carried into the new file for it');
+      expect(
+        movies.openedAt.last.span?.offset,
+        entry!.dataOffset,
+        reason: 'its own bytes, not the file its path names now',
+      );
+
+      await tester.runAsync(() => session.movieCels.dispose());
+      await tester.pumpAndSettle();
+    });
+  });
+
   /// 🚨★★★**A WHOLE WRITE ASKS THE READERS OF THE FILE IT REPLACES TO LET GO
   /// FIRST** (card `rewrite-under-offset-readers`). A torn tail — what an
   /// append crash leaves — makes the next save write the file whole and
@@ -362,7 +467,7 @@ void main() {
         // whole write in.
         final reading = File(file).openSync();
         unawaited(
-          held.moved.then((move) async {
+          held.moved.first.then((move) async {
             told = move;
             lengthWhenTold = File(file).lengthSync();
             // A decoder closes on its own thread and answers a turn later:
@@ -415,9 +520,8 @@ void main() {
     }, timeout: const Timeout(Duration(minutes: 1)));
 
     testWidgets('a reader that does not let go holds the save up no longer '
-        'than the bound — and is told once, whatever saves come after', (
-      tester,
-    ) async {
+        'than the bound — and is told of each move, one that did not follow '
+        'the last one included', (tester) async {
       ProjectFile.lettingGoAtMost = const Duration(milliseconds: 100);
       final (:session, :path) = await carrying(
         tester,
@@ -430,7 +534,7 @@ void main() {
         () => fileOf(session).holdMediaBytes(path),
       ))!;
       final told = <HeldBytesMove>[];
-      unawaited(held.moved.then(told.add));
+      held.moved.listen(told.add);
 
       // Told ELSEWHERE by a save as another file, and never let go …
       await tester.runAsync(
@@ -448,7 +552,10 @@ void main() {
       );
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
 
-      expect(told, [HeldBytesMove.elsewhere]);
+      expect(told, [
+        HeldBytesMove.elsewhere,
+        HeldBytesMove.replacing,
+      ], reason: 'it still holds the file, having not followed');
       expect(fileOf(session).failedCopy, isNull, reason: 'the file took it');
       expect(fileOf(session).path, file);
       held.release();
@@ -481,7 +588,7 @@ void main() {
 
       await tester.runAsync(() async {
         final held = await fileOf(session).holdMediaBytes(later);
-        unawaited(held.moved.then(told.add));
+        held.moved.listen(told.add);
         await session.projectDoor.saveProjectToFile(
           file,
           asked: SaveAsked.byAPerson,
@@ -528,7 +635,7 @@ void main() {
         final held = await fileOf(session).holdMediaBytes(path);
         final reading = File(file).openSync();
         unawaited(
-          held.moved.then((move) {
+          held.moved.first.then((move) {
             told = move;
             reading.closeSync();
             held.release();

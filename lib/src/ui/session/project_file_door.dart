@@ -617,12 +617,18 @@ class ProjectFileDoor {
     );
     return (
       project: project,
-      mediaToStore: projectMediaSources(
-        project: project,
-        projectFilePath: _file.path,
-        mediaInFile: _file.mediaInFile,
-        staging: _staging,
-      ),
+      // What the readers hold is stored too, whatever the pool names now
+      // ([ProjectFile.heldCarries]) — the pool's answer for a carry it
+      // names wins, being the same bytes resolved the save's own way.
+      mediaToStore: {
+        ..._file.heldCarries,
+        ...projectMediaSources(
+          project: project,
+          projectFilePath: _file.path,
+          mediaInFile: _file.mediaInFile,
+          staging: _staging,
+        ),
+      },
       conforms: _file.conformsToStore(),
       onProgress: onProgress,
     );

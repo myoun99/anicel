@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,13 +61,35 @@ void main() {
         (kind: MediaAssetKind.video, write: writeCarriedMovie),
       ];
 
-  Future<void> settleAsync(WidgetTester tester, bool Function() ready) async {
+  Future<void> settleAsync(
+    WidgetTester tester,
+    bool Function() ready, {
+    void Function()? everyFrame,
+  }) async {
     for (var i = 0; i < 60 && !ready(); i += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
       await tester.pump();
+      everyFrame?.call();
     }
+  }
+
+  /// The least the viewer held drawn over the frames [settleAsync] pumps
+  /// with it as `everyFrame`, from the first page it drew — ZERO the moment
+  /// the panel empties its pages, which is what a blink is.
+  Future<({int Function() least, void Function() everyFrame})>
+  drawnAtEveryFrame(WidgetTester tester, EditorSessionManager session) async {
+    await settleAsync(
+      tester,
+      () => session.renderCaches.viewerRasterBytes > 0,
+    );
+    var least = session.renderCaches.viewerRasterBytes;
+    return (
+      least: () => least,
+      everyFrame: () =>
+          least = math.min(least, session.renderCaches.viewerRasterBytes),
+    );
   }
 
   Finder page() => find.byKey(const ValueKey<String>('media-viewer-page'));
@@ -133,9 +156,15 @@ void main() {
 
       final slot = await view(tester, session, path, kind);
       expect(page(), findsOneWidget, reason: 'the staged copy opened');
+      final drawn = await drawnAtEveryFrame(tester, session);
+      expect(drawn.least(), greaterThan(0), reason: 'the premise: drawn');
 
       await saveProject(tester, session, directory);
-      await settleAsync(tester, () => !File(staged).existsSync());
+      await settleAsync(
+        tester,
+        () => !File(staged).existsSync(),
+        everyFrame: drawn.everyFrame,
+      );
       expect(
         File(staged).existsSync(),
         isFalse,
@@ -143,7 +172,11 @@ void main() {
             'while it showed, the copy used to stay beside the entry that '
             'replaced it (「사본 남으면 진짜 용서안할게」)',
       );
-      expect(page(), findsOneWidget, reason: 'nothing on screen blinked');
+      expect(
+        drawn.least(),
+        greaterThan(0),
+        reason: 'the page drawn stayed drawn at every frame: nothing blinked',
+      );
       expect(
         session.projectFile.heldArchiveEntries,
         hasLength(1),
@@ -201,18 +234,28 @@ void main() {
     final file = session.projectFile.path!;
     final slot = await view(tester, session, path, MediaAssetKind.video);
     expect(page(), findsOneWidget, reason: 'the premise');
+    final drawn = await drawnAtEveryFrame(tester, session);
+    expect(drawn.least(), greaterThan(0), reason: 'the premise: drawn');
     closing.events.clear();
 
     // Asked straight, not through a save: the page's reader answers on the
     // test's own clock, which a save run on the real one never pumps.
     unawaited(session.projectFile.readersLetGoOf(file));
-    await settleAsync(tester, () => closing.events.length >= 2);
+    await settleAsync(
+      tester,
+      () => closing.events.length >= 2,
+      everyFrame: drawn.everyFrame,
+    );
 
     expect(closing.events, [
       'close $file',
       'open $file',
     ], reason: 'let go of first, then opened again');
-    expect(page(), findsOneWidget, reason: 'nothing on screen blinked');
+    expect(
+      drawn.least(),
+      greaterThan(0),
+      reason: 'the page drawn stayed drawn at every frame: nothing blinked',
+    );
 
     slot.request.value = null;
     await settleAsync(

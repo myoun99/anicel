@@ -15,15 +15,20 @@ import 'viewer_document.dart';
 final class HeldViewerDocument implements ViewerDocument {
   HeldViewerDocument(this._document, HeldMediaBytes held)
     : _release = held.release,
-      moved = held.moved;
+      moved = held.moved,
+      again = held.again;
 
   final ViewerDocument _document;
   final void Function() _release;
 
-  /// When the bytes this document reads have an answer somewhere else — or
-  /// are about to ([HeldMediaBytes.moved]) — the viewer opens the same
-  /// request again and lets this one go, in the order the move says.
-  final Future<HeldBytesMove> moved;
+  /// Each time the bytes this document reads have an answer somewhere else
+  /// — or are about to ([HeldMediaBytes.moved]) — the viewer opens them
+  /// [again] and lets this one go, in the order the move says.
+  final Stream<HeldBytesMove> moved;
+
+  /// The bytes this document reads, held again wherever they are now
+  /// ([HeldMediaBytes.again]) — never what the path names by then.
+  final Future<HeldMediaBytes> Function() again;
 
   @override
   int get pageCount => _document.pageCount;

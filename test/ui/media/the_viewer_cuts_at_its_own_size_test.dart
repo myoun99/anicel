@@ -341,11 +341,15 @@ void main() {
     );
   });
 
-  /// A carried PDF in the project file, shown — and every document the
-  /// viewer opens on it, in order. [reopen], when given, holds back every
-  /// open after the first until it completes.
+  /// A carried PDF of [pages] pages in the project file, shown — and every
+  /// document the viewer opens on it, in order. [reopen], when given, holds
+  /// back every open after the first until it completes.
   Future<({EditorSessionManager session, List<FakePdfDocument> opened})>
-  shownFromTheFile(WidgetTester tester, {Completer<void>? reopen}) async {
+  shownFromTheFile(
+    WidgetTester tester, {
+    Completer<void>? reopen,
+    int pages = 1,
+  }) async {
     final directory = Directory.systemTemp.createTempSync('anicel-lets-go');
     deleteAfterSessionEnds(directory);
     final (session: carried, path: carriedPath) = await carrying(
@@ -360,7 +364,9 @@ void main() {
       if (opened.isNotEmpty) {
         await reopen?.future;
       }
-      final fresh = FakePdfDocument(pageSizes: const [pageSize]);
+      final fresh = FakePdfDocument(
+        pageSizes: List<ui.Size>.filled(pages, pageSize),
+      );
       opened.add(fresh);
       return fresh;
     };
@@ -390,10 +396,51 @@ void main() {
     expect(opened, hasLength(2), reason: 'and opened again');
   });
 
-  testWidgets('a cut asked while the document is let go of waits for the one '
-      'that replaces it', (tester) async {
+  testWidgets('🚨nothing asks the document let go of for a page — a page '
+      'turned to meanwhile is asked of the one that replaces it', (
+    tester,
+  ) async {
     final reopen = Completer<void>();
-    final (:session, :opened) = await shownFromTheFile(tester, reopen: reopen);
+    final (:session, :opened) = await shownFromTheFile(
+      tester,
+      reopen: reopen,
+      pages: 2,
+    );
+    final was = opened.single;
+
+    unawaited(session.projectFile.readersLetGoOf(session.projectFile.path!));
+    await tester.pump();
+    await tester.pump();
+    expect(was.disposed, isTrue, reason: 'the premise: let go of');
+    final askedBefore = was.renderRequests.length;
+    slot.position.value = 1;
+    await tester.pump();
+    await tester.pump();
+    expect(
+      was.renderRequests,
+      hasLength(askedBefore),
+      reason: 'a picture read after its dispose is a native crash',
+    );
+
+    reopen.complete();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(
+      opened.last.renderRequests.map((ask) => ask.$1),
+      contains(1),
+      reason: 'asked of the document that took its place',
+    );
+  });
+
+  testWidgets('a cut asked while the document is let go of waits for the one '
+      'that replaces it — and cuts the page it was drawn on', (tester) async {
+    final reopen = Completer<void>();
+    final (:session, :opened) = await shownFromTheFile(
+      tester,
+      reopen: reopen,
+      pages: 2,
+    );
     final was = opened.single;
 
     unawaited(session.projectFile.readersLetGoOf(session.projectFile.path!));
@@ -403,6 +450,9 @@ void main() {
     expect(opened, hasLength(1), reason: 'the premise: not open again yet');
     await cutDrag(tester);
     expect(was.regionReads, isEmpty, reason: 'never asked of what was let go');
+    // Turned while the cut waits its turn.
+    slot.position.value = 1;
+    await tester.pump();
 
     reopen.complete();
     await tester.pump();
@@ -411,6 +461,11 @@ void main() {
 
     expect(opened, hasLength(2));
     expect(opened.last.regionReads, hasLength(1), reason: 'asked of this one');
+    expect(
+      opened.last.regionReads.single.$1,
+      0,
+      reason: 'the page the outline was drawn on, not the one turned to since',
+    );
     expect(held.isNotEmpty, isTrue);
   });
 

@@ -382,8 +382,8 @@ class AnicelFileService {
     /// Entries something reads by OFFSET right now
     /// (`ProjectFile.heldArchiveEntries`): a save that packs the file in
     /// place leaves them where they are ([compactAnicelInPlace]'s
-    /// `staying`), and keeps them in the directory even when the project
-    /// no longer carries them.
+    /// `staying`). That they stay in the directory at all is [mediaToStore]'s
+    /// — the caller stores what its readers hold.
     Set<String> heldEntries = const {},
 
     /// False writes a COPY: the stores do not adopt refs into [filePath]
@@ -879,17 +879,13 @@ class AnicelFileService {
           // above and the append below must agree on what leaves.
           namesLeaving: (layout) => {
             ...removedNames,
-            // ⛔A HELD entry does not leave, even when the project no longer
-            // carries it: something reads it by offset right now — a viewer
-            // on an asset just taken out of the pool, a canvas row an undo
-            // may bring back — and leaving would make its span a hole the
-            // push-down writes over. It leaves with the first save after the
-            // reader lets go (audit 2026-09-24, `carried-bytes-audit-0924`).
+            // A held entry is not among them: what a reader holds is in
+            // [mediaToStore] (`ProjectFileDoor._carryFor`).
             ..._namesToDrop(
               layout,
               mediaToStore: mediaToStore,
               conforms: conforms,
-            ).difference(heldEntries),
+            ),
           },
         );
         if (sound == null) {

@@ -81,11 +81,17 @@ class ReadingVideoBackend extends FakeVideoBackend {
 
 /// A [ReadingVideoBackend] that says which files the movies it was asked to
 /// close were read from — what 「the old document was let go」 is measured by.
+///
+/// ⚠️It holds each file OPEN from the open until a turn after the close, as
+/// a real decoder does on its own thread: held open, Windows refuses a
+/// rename onto the file, so a save that swapped a file in before its reader
+/// had let go fails here the way it fails in the app.
 class ClosingVideoBackend extends ReadingVideoBackend {
   ClosingVideoBackend({super.refuses});
 
   final List<String> closed = [];
   final Map<int, String> _openAt = {};
+  final Map<int, RandomAccessFile> _handles = {};
   var _tokens = 0;
 
   /// Every open and close, in the order they happened — `open <path>` and
@@ -108,6 +114,7 @@ class ClosingVideoBackend extends ReadingVideoBackend {
     }
     final token = _tokens += 1;
     _openAt[token] = path;
+    _handles[token] = File(path).openSync();
     events.add('open $path');
     return (token: token, info: opened.info);
   }
@@ -116,6 +123,8 @@ class ClosingVideoBackend extends ReadingVideoBackend {
   Future<void> close(int token) async {
     closed.add(_openAt[token]!);
     events.add('close ${_openAt[token]}');
+    await Future<void>.value();
+    _handles.remove(token)?.closeSync();
   }
 }
 
