@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -143,14 +142,55 @@ void main() {
     });
   });
 
-  test('the halving is a texture draw, never an image shader', () {
-    // The same bytes either way, so no picture above can tell them apart —
-    // but on the real app (Impeller GLES, 2026-09-24) 70 tiles halved
-    // through image-shader rects rastered in 111.8 ms against 3.23 as
-    // texture draws, and a level tile in 4.25 against 2.43.
-    final source = File(
-      'lib/src/ui/canvas/level_image.dart',
-    ).readAsStringSync();
-    expect(source, isNot(contains('ImageShader(')));
+  testWidgets('an even image is halved by one texture draw, an image with '
+      'an odd edge by the shader rect', (tester) async {
+    // The two draws make the same bytes, so no picture above can tell them
+    // apart — the spy reads which one each source took. On the real app
+    // (Impeller GLES, 2026-09-24) 70 tiles halved through shader rects
+    // rastered in 111.8 ms against 3.23 as texture draws; an odd image
+    // drawn by texture draws moved bytes on the tester's Vulkan.
+    await tester.runAsync(() async {
+      final even = await image(4, 2, (x, y) => [0, 0, 0, 255]);
+      final oddWidth = await image(3, 2, (x, y) => [0, 0, 0, 255]);
+      final oddHeight = await image(2, 3, (x, y) => [0, 0, 0, 255]);
+      final spy = _SpyCanvas();
+      drawHalvings(spy, [
+        (image: even, at: const ui.Offset(2, 1)),
+        (image: oddWidth, at: ui.Offset.zero),
+        (image: oddHeight, at: const ui.Offset(0, 4)),
+      ]);
+      expect(spy.drawn, [
+        (
+          'texture',
+          const ui.Rect.fromLTWH(0, 0, 4, 2),
+          const ui.Rect.fromLTWH(2, 1, 2, 1),
+        ),
+        ('shader', null, const ui.Rect.fromLTWH(0, 0, 2, 1)),
+        ('shader', null, const ui.Rect.fromLTWH(0, 4, 1, 2)),
+      ]);
+    });
   });
+}
+
+/// Records each image draw as (how, from, to); everything else is a no-op.
+class _SpyCanvas implements ui.Canvas {
+  final List<(String, ui.Rect?, ui.Rect)> drawn = [];
+
+  @override
+  void drawImageRect(
+    ui.Image image,
+    ui.Rect src,
+    ui.Rect dst,
+    ui.Paint paint,
+  ) => drawn.add(('texture', src, dst));
+
+  @override
+  void drawRect(ui.Rect rect, ui.Paint paint) => drawn.add((
+    paint.shader is ui.ImageShader ? 'shader' : 'fill',
+    null,
+    rect,
+  ));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

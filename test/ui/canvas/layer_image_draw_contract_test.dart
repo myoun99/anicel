@@ -247,12 +247,12 @@ void main() {
 /// image the cel was drawn with as a stack row (`TilePyramid.seed`). The
 /// 1:1 blit class, on the tile paint (`FilterQuality.none`), standing in
 /// for the level tile the block would otherwise have made in that frame.
-/// **29** the same day, same card: +1 in level_image — the halving is a
-/// texture draw now (`_drawHalved`), no longer a rect under an image
-/// shader. The same bytes, at a fraction of the raster on the real app
-/// (70 tiles halved in 3.23 ms against 111.8), and it owns
-/// `FilterQuality.low` on its own Paint: bilinear at exactly 0.5 IS the
-/// box mean.
+/// **29** the same day, same card: +1 in level_image — an even image (every
+/// tile) is halved by a texture draw now (`drawHalvings`), no longer a rect
+/// under an image shader; an image with an odd edge keeps the shader. The
+/// same bytes, at a fraction of the raster on the real app (70 tiles halved
+/// in 3.23 ms against 111.8), and it owns `FilterQuality.low` on its own
+/// Paint: bilinear at exactly 0.5 IS the box mean.
 const int _knownRawDraws = 29;
 
 final RegExp _rawImageDraw = RegExp(
