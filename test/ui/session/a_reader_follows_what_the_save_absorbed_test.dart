@@ -260,6 +260,31 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('a movie row let go of while its new answer opens — what '
+      'opened for nobody is closed, and holds nothing', (tester) async {
+    final (:session, path: _, :staged, closes: _) = await placedOnTheCanvas(
+      tester,
+    );
+    final opening = movies.openGate = Completer<void>();
+
+    await saveProject(tester, session, directory);
+    // The new answer is held the moment it is asked for, before the decoder
+    // is: one entry held means the follow is waiting at the decoder.
+    await settle(tester, () => fileOf(session).heldArchiveEntries.isNotEmpty);
+    expect(fileOf(session).heldArchiveEntries, hasLength(1));
+    await tester.runAsync(() => session.movieCels.reset());
+    opening.complete();
+    await settle(tester, () => fileOf(session).heldArchiveEntries.isEmpty);
+
+    expect(
+      fileOf(session).heldArchiveEntries,
+      isEmpty,
+      reason: 'a hold nobody reads through pins its entry until the app quits',
+    );
+    expect(movies.closed.last, fileOf(session).path);
+    expect(File(staged).existsSync(), isFalse);
+  });
+
   testWidgets('a movie row whose new answer will not open keeps reading '
       'where it was', (tester) async {
     var refused = 0;

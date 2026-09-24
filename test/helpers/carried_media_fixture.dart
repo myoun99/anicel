@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -85,11 +86,16 @@ class ClosingVideoBackend extends ReadingVideoBackend {
   final Map<int, String> _openAt = {};
   var _tokens = 0;
 
+  /// While set, every open waits for it — the moment a reader has asked
+  /// and the decoder has not answered yet.
+  Completer<void>? openGate;
+
   @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
     ({int offset, int length, bool framed})? span,
   }) async {
+    await openGate?.future;
     final opened = await super.open(path, span: span);
     if (opened == null) {
       return null;
