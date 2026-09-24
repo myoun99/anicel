@@ -31,7 +31,13 @@ import 'package:archive/archive.dart';
 import '../../core/path_names.dart';
 import '../../models/audio_clip.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/media_asset.dart' show MediaCarry, normalizedMediaPath;
+import '../../models/media_asset.dart'
+    show
+        MediaCarry,
+        mediaCarryName,
+        mediaNameParts,
+        mintMediaCarry,
+        normalizedMediaPath;
 import '../../models/project.dart';
 import '../media/media_fingerprints.dart';
 import 'anicel_payload_codec.dart';
@@ -228,10 +234,10 @@ bool anicelNeedsCompaction({
 
 /// The archive entry a piece of media is stored under.
 ///
-/// Derived from the pool path so the same asset lands on the same name
-/// every save — the entry has to be findable again after a compaction has
-/// moved every byte in the file, and the only thing that survives that is
-/// the name. The basename rides along ahead of the hash because a person
+/// The carry's name ([mediaCarryName]) so the same carry lands on the same
+/// name every save — the entry has to be findable again after a compaction
+/// has moved every byte in the file, and the only thing that survives that
+/// is the name. The basename rides along behind the hash because a person
 /// looking inside a `.anicel` with an unzip tool should be able to tell
 /// what they are looking at.
 ///
@@ -248,17 +254,13 @@ bool anicelNeedsCompaction({
 /// is not written again — so a name has to mean ONE set of bytes for good.
 /// The path alone did not: carried again after a removal, the same path
 /// found the old entry and kept its bytes (card
-/// `recarry-after-remove-reads-the-old`). The carry's token rides between
-/// the hash and the file name; the carry a project had before carries had
-/// names (`''`) gets the name the path alone gave, which is what that
-/// project's file holds.
+/// `recarry-after-remove-reads-the-old`). The name is minted with the carry
+/// ([mintMediaCarry]) and goes where it goes — a relink moves the path, not
+/// the name; the carry a project had before carries had names (`''`) gets
+/// the name the path alone gave, which is what that project's file holds.
 String anicelMediaEntryName(MediaCarry carry, {bool framed = false}) =>
-    _anicelPoolEntryName(
-      anicelMediaEntryPrefix,
-      carry.poolPath,
-      framed: framed,
-      infix: carry.token,
-    );
+    '$anicelMediaEntryPrefix${mediaCarryName(carry)}'
+    '${framed ? mediaFramedEntrySuffix : ''}';
 
 /// Both names [carry]'s entry may wear — whether it compressed is a
 /// property of the bytes ([anicelConformEntryNames]'s rule).
@@ -269,9 +271,9 @@ List<String> anicelMediaEntryNames(MediaCarry carry) => [
 
 /// The archive entry a piece of media's CONFORM is stored under.
 ///
-/// The same derivation as [anicelMediaEntryName] under a different prefix,
-/// so one asset's audio and its conform sit side by side and are found the
-/// same way. 유저 2026-08-30 chose to carry these (`conform-in-project` =
+/// Made of the same parts as a carry's name ([mediaNameParts]) under a
+/// different prefix, so one asset's audio and its conform sit side by side.
+/// 유저 2026-08-30 chose to carry these (`conform-in-project` =
 /// always): opening the project on another machine plays immediately
 /// instead of decoding every sound first.
 ///
@@ -306,15 +308,15 @@ String anicelConformEntryName(
   required int speedNumerator,
   required int speedDenominator,
   bool framed = false,
-}) => _anicelPoolEntryName(
-  anicelConformEntryPrefix,
-  poolPath,
-  framed: framed,
+}) {
+  final (:hash, :safe) = mediaNameParts(poolPath);
   // Readable rather than folded into the hash: someone looking inside a
   // `.anicel` should be able to see WHY there are two conforms of one
   // sound, and the answer is right there in the name.
-  infix: '$sampleRate-${speedNumerator}x$speedDenominator',
-);
+  final settings = '$sampleRate-${speedNumerator}x$speedDenominator';
+  return '$anicelConformEntryPrefix$hash-$settings-$safe'
+      '${framed ? mediaFramedEntrySuffix : ''}';
+}
 
 /// Every name [poolPath]'s conform may legitimately wear at these settings
 /// — both spellings, because whether it compressed is a property of the
@@ -334,27 +336,6 @@ List<String> anicelConformEntryNames(
       framed: framed,
     ),
 ];
-
-/// One derivation for both, so a media entry and its conform can never
-/// disagree about which asset they belong to.
-String _anicelPoolEntryName(
-  String prefix,
-  String poolPath, {
-  required bool framed,
-  String infix = '',
-}) {
-  final normalized = normalizedMediaPath(poolPath);
-  var hash = 0x811c9dc5;
-  for (final unit in normalized.codeUnits) {
-    hash ^= unit;
-    hash = (hash * 0x01000193) & 0xFFFFFFFF;
-  }
-  final base = normalized.split('/').last;
-  final safe = base.replaceAll(RegExp('[^A-Za-z0-9._-]'), '_');
-  return '$prefix${hash.toRadixString(16).padLeft(8, '0')}'
-      '${infix.isEmpty ? '' : '-$infix'}'
-      '-$safe${framed ? mediaFramedEntrySuffix : ''}';
-}
 
 /// The cel's STABLE archive entry name (R22-C): derived from the key
 /// alone, so an incremental append of the same cel SHADOWS its previous

@@ -1,27 +1,80 @@
 import 'dart:math' as math;
 
+import '../core/path_names.dart' show fileNameOfPath, pathHash;
 import 'media_identity.dart';
 
 export 'media_identity.dart' show MediaIdentity, MediaIdentityMatch;
 
-/// One 품기 of a file: the pool path it was carried under, and WHICH time
+/// One 품기 of a file: the pool path it is at now, and WHICH carry
 /// ([MediaAsset.carriedAs]).
 ///
 /// Everything that keeps a carried file's bytes — the staged copy, the
-/// project file's entry — is named from this, never from the path alone.
+/// project file's entry — is named from this ([mediaCarryName]), never from
+/// the path alone.
 typedef MediaCarry = ({String poolPath, String token});
 
-/// A fresh [MediaAsset.carriedAs], one per 품기.
+/// A fresh [MediaAsset.carriedAs] for carrying [poolPath], one per 품기 —
+/// the NAME its bytes are stored under for good,
+/// `<path hash>-<random>-<file name>` ([mediaCarryName]).
 ///
 /// ⚠️Minted, not derived. Not from the path — two carries of one path are
 /// the whole reason this exists — and not from the content either: the
 /// staged copy is written UNDER this name, so it has to exist before the
 /// bytes are read, and hashing them first would read a multi-gigabyte
 /// movie once more just to learn what to call it.
-String mintMediaCarry() =>
-    _carryTokens.nextInt(1 << 32).toRadixString(16).padLeft(8, '0');
+///
+/// 🚨★★★**THE WHOLE NAME IS MINTED, NOT ONLY ITS RANDOM PART.** Until
+/// 09-25 only the middle was, and the rest was derived from the path each
+/// time it was asked for — so a relink, which moves an asset's path and
+/// keeps its carry, gave the same bytes a new name: the staged copy was
+/// RENAMED after it, an undo of the relink looked for the old name and
+/// found nothing, and a save wrote the entry again under the new one
+/// (audit 09-25). Minted whole, the name goes where the carry goes, and an
+/// undo finds its bytes before a save and after one. The path's parts stay
+/// in it so a person looking in the staging room, or inside a `.anicel`,
+/// can tell what they are looking at.
+String mintMediaCarry(String poolPath) => _carryName(
+  poolPath,
+  _carryTokens.nextInt(1 << 32).toRadixString(16).padLeft(8, '0'),
+);
 
 final math.Random _carryTokens = math.Random.secure();
+
+/// The name [carry]'s bytes are stored under — the staged copy's, and the
+/// project file entry's behind `media/`.
+///
+/// A name minted whole ([mintMediaCarry]) is itself. A carry from before
+/// that — `''` for the one a project had before carries had names, a bare
+/// token for one minted before 09-25 — gets the name the same rule gives
+/// it from the path it is at now, which is what those projects hold.
+String mediaCarryName(MediaCarry carry) => carry.token.contains('-')
+    ? carry.token
+    : _carryName(carry.poolPath, carry.token);
+
+String _carryName(String poolPath, String token) {
+  final (:hash, :safe) = mediaNameParts(poolPath);
+  return token.isEmpty ? '$hash-$safe' : '$hash-$token-$safe';
+}
+
+/// A pool path's two halves of every name its bytes are stored under: the
+/// path's hash ([pathHash]) and its file name made safe for any file
+/// system.
+///
+/// 🚨★★★**ONE DERIVATION FOR THE PROJECT FILE AND THE STAGING ROOM.** The
+/// staged copy's name and the archive entry's were the same algorithm
+/// written twice — the same hash, the same sanitising, the same token rule
+/// — and were fixed side by side when carries got names (audit 09-25,
+/// connascence). Carries ([mintMediaCarry]), conforms and the room's walk
+/// for a path nobody holds all ask here.
+({String hash, String safe}) mediaNameParts(String poolPath) {
+  final normalized = normalizedMediaPath(poolPath);
+  return (
+    hash: pathHash(normalized).toRadixString(16).padLeft(8, '0'),
+    safe: fileNameOfPath(
+      normalized,
+    ).replaceAll(RegExp('[^A-Za-z0-9._-]'), '_'),
+  );
+}
 
 /// What a media pool entry holds.
 enum MediaAssetKind {
@@ -207,13 +260,16 @@ class MediaAsset {
   /// without a name for its bytes is the state this replaces, and two
   /// fields could say it.
   ///
+  /// It IS the name the bytes are stored under ([mintMediaCarry]), so a
+  /// relink — `copyWith(path:)` — takes it along unchanged.
+  ///
   /// ⚠️`''` is the carry an asset had before carries had names — its bytes
   /// are under the name the path alone derives, which is what a project
-  /// written then holds.
+  /// written then holds ([mediaCarryName]).
   final String? carriedAs;
 
-  /// [carriedAs] with the path it was carried under — what the bytes are
-  /// named from.
+  /// [carriedAs] with the path the asset is at now — what the bytes are
+  /// found by ([mediaCarryName]).
   MediaCarry? get carry {
     final token = carriedAs;
     return token == null ? null : (poolPath: path, token: token);

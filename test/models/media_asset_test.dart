@@ -185,4 +185,70 @@ void main() {
       expect(project.mediaAssetByPath('/missing.wav'), isNull);
     });
   });
+
+  /// What a carry's bytes are called — in the staging room, and behind
+  /// `media/` in the project file.
+  group('a carry\'s name', () {
+    const path = r'C:\media\take 1.wav';
+
+    test('🚨is minted with the carry, so a relink does not change it '
+        '(audit 09-25)', () {
+      final asset = MediaAsset(
+        path: path,
+        name: 'take 1',
+        carriedAs: mintMediaCarry(path),
+      );
+      final relinked = asset.copyWith(path: 'D:/moved/other.wav');
+
+      expect(
+        mediaCarryName(relinked.carry!),
+        mediaCarryName(asset.carry!),
+        reason:
+            '🪦derived from the path, the name moved with a relink — and an '
+            'undo of it looked for the old one and found nothing',
+      );
+      expect(
+        MediaAsset.fromJson(relinked.toJson()).carry,
+        relinked.carry,
+        reason: 'and it is what the project file records',
+      );
+    });
+
+    test('keeps the file\'s name behind its path\'s hash, for a person '
+        'looking in the folder', () {
+      final minted = mintMediaCarry(path);
+      final (:hash, :safe) = mediaNameParts(path);
+
+      expect(minted, startsWith('$hash-'));
+      expect(minted, endsWith('-take_1.wav'));
+      expect(safe, 'take_1.wav');
+      expect(mediaCarryName((poolPath: path, token: minted)), minted);
+    });
+
+    test('two carries of one path are two names', () {
+      expect(mintMediaCarry(path), isNot(mintMediaCarry(path)));
+    });
+
+    test('both spellings of one path make one name', () {
+      expect(
+        mediaNameParts('C:/media/take 1.wav'),
+        mediaNameParts(path),
+      );
+      expect(
+        mediaCarryName((poolPath: 'C:/media/take 1.wav', token: '')),
+        mediaCarryName((poolPath: path, token: '')),
+      );
+    });
+
+    test('a carry from before names were minted is named from the path it '
+        'is at — what those projects hold', () {
+      final (:hash, :safe) = mediaNameParts(path);
+
+      expect(mediaCarryName((poolPath: path, token: '')), '$hash-$safe');
+      expect(
+        mediaCarryName((poolPath: path, token: 'c0ffee01')),
+        '$hash-c0ffee01-$safe',
+      );
+    });
+  });
 }

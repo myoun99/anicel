@@ -300,9 +300,10 @@ ProjectConforms projectConformSources({
 /// were live. One field cannot disagree with itself.
 ///
 /// ⚠️A separate TYPE rather than a bare map, because the map beside it in
-/// every signature ([AnicelFileService.save]'s `mediaToStore`) is keyed by
-/// POOL PATH. Two maps of the same Dart type meaning different things is
-/// how a call site gets them the wrong way round.
+/// every signature ([AnicelFileService.save]'s `mediaToStore`) was keyed by
+/// POOL PATH then — by the carry now — and two maps of the same Dart type
+/// meaning different things is how a call site gets them the wrong way
+/// round.
 @immutable
 class ProjectConforms {
   const ProjectConforms(this.entries);

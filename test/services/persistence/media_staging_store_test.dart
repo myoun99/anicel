@@ -3,7 +3,9 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/media_asset.dart' show MediaCarry;
+import 'package:anicel/src/core/path_names.dart';
+import 'package:anicel/src/models/media_asset.dart'
+    show MediaCarry, mintMediaCarry;
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -327,21 +329,19 @@ void main() {
       expect(store.holdsAnyCopyOf(path), isFalse);
     });
 
-    test('the carry a project had before carries had names is staged under '
-        'the name the path alone gave', () {
-      final path = '${root.path}/take.wav'.replaceAll(r'\', '/');
+    test('a copy is staged under its carry\'s name — the path alone gives '
+        'the name of a carry from before names were minted', () async {
+      final path = sourceFile('take.wav');
+      final minted = mintMediaCarry(path);
+
+      final legacy = (await store.stage(carry(path, '')))!;
+      final named = (await store.stage(carry(path, minted)))!;
+
       expect(
-        MediaStagingStore.stagedNameFor(carry(path, '')),
-        isNot(contains('--')),
+        fileNameOfPath(legacy.path),
+        matches(RegExp(r'^[0-9a-f]{8}-take\.wav(\.z)?$')),
       );
-      expect(
-        MediaStagingStore.stagedNameFor(carry(path, 'c1')),
-        endsWith('-c1-take.wav'),
-      );
-      expect(
-        MediaStagingStore.stagedNameFor(carry(path, '')),
-        endsWith('-take.wav'),
-      );
+      expect(fileNameOfPath(named.path), startsWith(minted));
     });
 
     test('a copy held under the OS spelling of its path is the copy the save '
@@ -437,53 +437,37 @@ void main() {
     );
   });
 
-  group('a relink takes the staged bytes with it', () {
-    test('🚨the derived name follows the pool path', () async {
+  group('a relink moves the asset, not its bytes', () {
+    test('🚨a carry minted at one path is found at the next — one copy, '
+        'answering both', () async {
       final from = sourceFile('take.wav');
       final original = File(from).readAsBytesSync();
-      final staged = (await store.stage(carry(from)))!;
+      final minted = mintMediaCarry(from);
+      final staged = (await store.stage(carry(from, minted)))!;
       final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
 
-      store.rename(carry(from), to);
+      final moved = store.find(carry(to, minted));
 
       expect(
-        store.find(carry(from)),
-        isNull,
-        reason: 'nothing is left under the old key',
-      );
-      final moved = store.find(carry(to));
-      expect(
-        moved,
-        isNotNull,
+        moved?.path,
+        staged.path,
         reason:
-            '⛔otherwise the asset looks unstaged — back to the promise '
-            'being kept at save time — while its bytes wait under a name '
-            'nothing points at',
+            '🪦the name followed the path, so a relink RENAMED the copy — and '
+            'an undo of it looked for the old name and found nothing',
       );
-      expect(moved!.framed, staged.framed);
-      expect(mediaAppFileSource(moved.path).readSync(), original);
-      expect(store.list(), hasLength(1), reason: 'moved, not copied');
-    });
-
-    test('renaming something never staged does nothing', () async {
-      store.rename(carry('${root.path}/never.wav'), '${root.path}/other.wav');
-      expect(store.list(), isEmpty);
-    });
-
-    test('a destination that already holds bytes is replaced', () async {
-      // The caller has just pointed the pool path at a different file, so
-      // whatever was staged under it belongs to the asset being replaced.
-      final from = sourceFile('take.wav');
-      final to = sourceFile('other.wav', length: 120 * 1024);
-      await store.stage(carry(from));
-      await store.stage(carry(to));
-      expect(store.list(), hasLength(2));
-
-      store.rename(carry(from), to);
-
+      expect(mediaAppFileSource(moved!.path).readSync(), original);
+      expect(store.find(carry(from, minted))?.path, staged.path);
       expect(store.list(), hasLength(1));
-      expect(store.find(carry(to)), isNotNull);
-      expect(store.find(carry(from)), isNull);
+    });
+
+    test('a carry from before names were minted is found by the path it is '
+        'at', () async {
+      final from = sourceFile('take.wav');
+      await store.stage(carry(from, 'c1'));
+      final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
+
+      expect(store.find(carry(to, 'c1')), isNull);
+      expect(store.find(carry(from, 'c1')), isNotNull);
     });
   });
 

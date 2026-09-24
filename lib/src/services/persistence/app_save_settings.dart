@@ -198,23 +198,6 @@ abstract final class AppSave {
   static final ValueNotifier<AppSaveSettings> settings =
       ValueNotifier<AppSaveSettings>(const AppSaveSettings());
 
-  /// FNV-1a over [text] — the one hash a derived cache name in the app is
-  /// built from, so two of them cannot disagree about what "the same path"
-  /// means.
-  ///
-  /// 🪦It had a sibling, `encodeProjectKey`, that turned a project path
-  /// into `basename.<hash>` for the two per-project folders. Both are gone
-  /// with the recovery snapshots; the audio conform key is the one caller
-  /// left, and it hashes what it actually varies by rather than a path.
-  static int pathHash(String text) {
-    var hash = 0x811c9dc5;
-    for (final unit in text.codeUnits) {
-      hash ^= unit;
-      hash = (hash * 0x01000193) & 0xFFFFFFFF;
-    }
-    return hash;
-  }
-
   /// Where a conform waits until a save absorbs it — **the one place that
   /// decides**, which is what makes the decision reversible.
   ///

@@ -1275,7 +1275,7 @@ class EditorVoiceRecording {
         if (taken.contains(name) || _staging.holdsAnyCopyOf(poolPath)) {
           continue;
         }
-        final carry = (poolPath: poolPath, token: mintMediaCarry());
+        final carry = (poolPath: poolPath, token: mintMediaCarry(poolPath));
         await _staging.stageCarriedBytesInMemory(carry, bytes);
         // We just wrote these, so we know what they hash to without
         // reading anything back.

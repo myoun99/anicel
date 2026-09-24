@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/path_names.dart';
-import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 
 /// One basename rule, in `core/`, for the services that plan an import or
@@ -31,24 +30,7 @@ void main() {
     );
   });
 
-  test('a staged name keeps the source file name after its hash', () {
-    expect(
-      MediaStagingStore.stagedNameFor((
-        poolPath: r'C:\media\take 1.wav',
-        token: 'c1',
-      )),
-      endsWith('-take_1.wav'),
-    );
-    expect(
-      MediaStagingStore.stagedNameFor((
-        poolPath: 'C:/media/take 1.wav',
-        token: 'c1',
-      )),
-      MediaStagingStore.stagedNameFor((
-        poolPath: r'C:\media\take 1.wav',
-        token: 'c1',
-      )),
-      reason: 'both spellings of one path are one staged file',
-    );
-  });
+  // 🪦「a staged name keeps the source file name after its hash」 lived here
+  // while the staging store spelled the name itself; the name is the
+  // carry's now (`mediaCarryName`), and so is the test — `media_asset_test`.
 }
