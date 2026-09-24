@@ -4,10 +4,11 @@ part of '../bitmap_surface_painter.dart';
 /// 2026-09-16): above level 0 the surface pass draws each 2^k × 2^k block
 /// of coordinates as its level tile ([TilePyramid]) — an exact box mean of
 /// what the coordinates show, one tile's worth of pixels, 1:1 in a level
-/// buffer's pixels. Every block that shows anything is drawn that way, in
-/// the paint that shows it: no block falls back to its coordinates under
-/// the caller's scale (the ration that once made some do is the pyramid's
-/// 🪦).
+/// buffer's pixels — or, while the block still shows what the cel showed as
+/// a stack row a frame ago, as that row's image ([TilePyramid.seed]). Every
+/// block that shows anything is drawn one of those two ways, in the paint
+/// that shows it: no block falls back to its coordinates under the caller's
+/// scale (the ration that once made some do is the pyramid's 🪦).
 ///
 /// The pyramid's leaf is the pass's one answer to what a coordinate shows
 /// ([_CoordinatePicture]): the live stroke's result tile and a committed
@@ -48,6 +49,23 @@ class _LevelBlocks {
           _pass._coordinates.of(at, withPicture: true)?.picture,
     );
     for (final coord in tileCoordsIn(blocks)) {
+      // A block that still shows what the cel showed as a stack row a frame
+      // ago is drawn from the image it was drawn with — nothing made in the
+      // frame the row became the active one ([TilePyramid.seed]).
+      final seeded = TilePyramid.instance.seededBlock(
+        ask,
+        level: _pass._level,
+        coord: coord,
+      );
+      if (seeded != null) {
+        _pass._canvas.drawImageRect(
+          seeded.image,
+          seeded.src,
+          seeded.dst,
+          _pass._tileImagePaint,
+        );
+        continue;
+      }
       final levelTile = TilePyramid.instance.imageFor(
         ask,
         level: _pass._level,
