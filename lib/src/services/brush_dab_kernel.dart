@@ -555,6 +555,8 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     texVTexel1: plan.textureVLattice?.texel1,
     texVFraction: plan.textureVLattice?.fraction,
     texVOneMinus: plan.textureVLattice?.oneMinusFraction,
+    // Only the lattice path narrows its rows by the ink (ABI 39).
+    tipRowInk: plan.unrotatedTip ? plan.tipMask!.inkedColumns : null,
   );
 }
 

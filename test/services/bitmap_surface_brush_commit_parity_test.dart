@@ -24,6 +24,7 @@ import 'package:anicel/src/services/bitmap_tile_operation_materialization.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_dab_kernel.dart' show NativeDabBatcher;
 import 'package:anicel/src/services/brush_dab_sequence_blend.dart';
+import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 
 import '../helpers/native_engine_path.dart';
 
@@ -841,6 +842,78 @@ void main() {
             ),
         ]),
         reason: 'a batch cut at the mask allowance',
+      );
+    });
+
+    // 🚨A ROW VISITS ONLY THE PIXELS ITS TIP ROWS CAN INK (ABI 39, board
+    // `brush-kernel-next` ②). The C kernel narrows each pixel row of an
+    // unrotated tip to the columns its two mask rows ink, and skips a row
+    // whose two rows are bare. The pixels it leaves out must be exactly the
+    // ones the loop threw away at coverage 0: fractional centres put the
+    // edge pixel — the one whose second texel is the first inked — half on
+    // the ink.
+    test('a tip with bare margins blends the same bytes', () {
+      final margins = BrushTipMask(
+        id: 'parity-bare-margins',
+        size: 16,
+        alpha: Uint8List.fromList([
+          for (var y = 0; y < 16; y += 1)
+            for (var x = 0; x < 16; x += 1)
+              if (y >= 5 && y < 11 && x >= 3 && x < 12)
+                40 + (x * 13 + y * 7) % 200
+              else
+                0,
+        ]),
+      );
+      final ring = BrushTipMask(
+        id: 'parity-bare-ring',
+        size: 12,
+        alpha: Uint8List.fromList([
+          for (var y = 0; y < 12; y += 1)
+            for (var x = 0; x < 12; x += 1)
+              if ((x == 2 || x == 9) && y >= 2 && y < 10 ||
+                  (y == 2 || y == 9) && x >= 2 && x < 10)
+                230
+              else
+                0,
+        ]),
+      );
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          for (var i = 0; i < 6; i += 1)
+            dab(
+              x: 60.37 + i * 9.61,
+              y: 58.13 + i * 4.29,
+              size: [23.0, 57.5, 118.0][i % 3],
+              tipMask: i.isEven ? margins : ring,
+              sequence: i,
+            ),
+        ]),
+        reason: 'tips with bare margins and a hole',
+      );
+    });
+
+    test('round tips prerendered per size — the canvas path — blend the same '
+        'bytes', () {
+      // Every canvas dab is resolved to a mask like these before it is
+      // blended, and a round one is bare in its corners.
+      final cache = BrushTipStampCache();
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          for (var i = 0; i < 8; i += 1)
+            cache.resolveDab(
+              dab(
+                x: 70.21 + i * 7.3,
+                y: 64.77 + i * 3.1,
+                size: 9.5 + i * 17.25,
+                hardness: i.isEven ? 0.25 : 0.9,
+                sequence: i,
+              ),
+            ),
+        ]),
+        reason: 'resolved round tips',
       );
     });
   });

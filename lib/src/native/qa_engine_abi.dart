@@ -197,7 +197,15 @@ import 'dart:io';
 ///   `preset-spacing-minimum`), one pooled call per dab woke the workers
 ///   once a dab — ~0.2 ms, as long as a 100 px dab takes alone — and the
 ///   pool bought nothing below 200 px.
-const int kQaEngineAbiVersion = 38;
+/// - v39: `qa_dab_spec.tip_row_ink` — each tip mask row's first and last
+///   inked column (`BrushTipMask.inkedColumns`) — and an unrotated tip's row
+///   visits only the pixels whose texels can hold ink. Every brush dab
+///   reaches the kernel as a mask prerendered per quantized size, and a
+///   round one is bare in its corners, about a fifth of the box that was
+///   sampled to a coverage of 0 and thrown away (board `brush-kernel-next`
+///   ②). Skipped pixels are exactly those the loop would `continue` on, so
+///   the bytes do not move. `qa_dab_spec_sizeof` moves.
+const int kQaEngineAbiVersion = 39;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

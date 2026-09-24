@@ -315,6 +315,9 @@ typedef struct {
   const int32_t* tex_v_texel1;
   const double* tex_v_fraction;
   const double* tex_v_one_minus;
+  // For each tip mask row, its first and last inked column (first > last:
+  // a bare row). Null when the tip is rotated or absent. v39.
+  const int32_t* tip_row_ink;
 } qa_dab_spec;
 
 QA_EXPORT int32_t qa_dab_spec_sizeof(void) {
@@ -434,6 +437,58 @@ static double qa_sample_tiled_lattice(
       top * v_one_minus[v_index] + bottom * v_fraction[v_index]);
 }
 
+// 🚨A ROW OF AN UNROTATED TIP VISITS ONLY THE PIXELS WHOSE TEXELS CAN HOLD
+// INK (ABI 39, 2026-09-25, board `brush-kernel-next` ②; 유저 「2번도
+// 있고」 — the skip of the pixels outside the dab). Every brush dab reaches
+// this kernel as a mask prerendered per quantized size (BrushTipStampCache),
+// so the ROUND case is this path, not the analytic one below: a round mask
+// is bare in its corners, about a fifth of the box, and each of those
+// pixels was sampled bilinearly to a coverage of 0 and thrown away.
+//
+// A pixel samples texels texel0 and texel0 + 1 of the two mask rows its row
+// maps to, so it can meet ink only when texel0 lies in [first - 1, last] of
+// the columns those two rows ink together. Narrows [*left, *right) to the
+// pixels inside that reach, from both ends, and returns 0 when neither row
+// holds any ink.
+//
+// ⛔BYTE-IDENTICAL BY CONSTRUCTION: only a pixel whose four texels are all
+// bare leaves — its coverage is exactly 0, which the pixel loop `continue`s
+// on — and a row whose two mask rows are bare is such a pixel end to end.
+static int qa_tip_row_reach(
+    const qa_dab_spec* s,
+    int32_t v_index,
+    int32_t* left,
+    int32_t* right) {
+  const int32_t size = s->tip_size;
+  const int32_t y0 = s->tip_v_texel0[v_index];
+  int32_t first = INT32_MAX;
+  int32_t last = INT32_MIN;
+  for (int32_t ty = y0; ty <= y0 + 1; ty += 1) {
+    if (ty < 0 || ty >= size) {
+      continue;
+    }
+    const int32_t row_first = s->tip_row_ink[ty * 2];
+    const int32_t row_last = s->tip_row_ink[ty * 2 + 1];
+    if (row_first > row_last) {
+      continue;
+    }
+    if (row_first < first) first = row_first;
+    if (row_last > last) last = row_last;
+  }
+  if (first > last) {
+    return 0;
+  }
+  while (*left < *right &&
+         s->tip_u_texel0[*left - s->region_left] < first - 1) {
+    *left += 1;
+  }
+  while (*right > *left &&
+         s->tip_u_texel0[*right - 1 - s->region_left] > last) {
+    *right -= 1;
+  }
+  return 1;
+}
+
 // Blends one dab into one tile over the given canvas-space spans. Pixel
 // visit set and math are identical to the Dart loop (which walks rows
 // outermost; per-dab each pixel is touched exactly once either way).
@@ -468,8 +523,14 @@ QA_EXPORT int32_t qa_dab_blend_tile(
     const double dy = (double)y + 0.5 - s->center_y;
     const double dy_squared = dy * dy;
     const int32_t local_row_offset = (y - tile_top) * tile_size;
+    int32_t row_left = span_left;
+    int32_t row_right = span_right_exclusive;
+    if (has_tip && unrotated_tip && s->tip_row_ink != NULL &&
+        !qa_tip_row_reach(s, v_index, &row_left, &row_right)) {
+      continue;
+    }
 
-    for (int32_t x = span_left; x < span_right_exclusive; x += 1) {
+    for (int32_t x = row_left; x < row_right; x += 1) {
       double coverage;
       if (has_tip) {
         if (unrotated_tip) {
@@ -5269,4 +5330,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // every dab it has (specs, and a clip each), the tiles they cover once, and
 // the kernel cuts those tiles into row bands, each applying every dab that
 // reaches it in order. One wake of the pool a call instead of one a dab.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 38; }
+// v39: qa_dab_spec gains tip_row_ink - each tip mask row's first and last
+// inked column - and an unrotated tip's row visits only the pixels whose
+// texels can hold ink (qa_tip_row_reach). Sizeof moves.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 39; }

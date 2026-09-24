@@ -2141,6 +2141,7 @@ class QaNativeEngine {
     Int32List? texVTexel1,
     Float64List? texVFraction,
     Float64List? texVOneMinus,
+    Int32List? tipRowInk,
   }) {
     final clip = _dabClips.pointer + index * 4;
     clip[0] = clipLeft;
@@ -2233,6 +2234,7 @@ class QaNativeEngine {
     spec.texVOneMinus = texVOneMinus == null
         ? nullptr
         : _arenaFloat64(texVOneMinus);
+    spec.tipRowInk = tipRowInk == null ? nullptr : _arenaInt32(tipRowInk);
   }
 }
 
@@ -2487,6 +2489,9 @@ final class QaDabSpecStruct extends Struct {
   external Pointer<Int32> texVTexel1;
   external Pointer<Double> texVFraction;
   external Pointer<Double> texVOneMinus;
+
+  /// ABI 39: each tip mask row's first and last inked column, or null.
+  external Pointer<Int32> tipRowInk;
 }
 
 /// Mirror of the C `qa_cel_pixel_spec` (ABI 34) — field order/types must

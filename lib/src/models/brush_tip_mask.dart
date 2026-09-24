@@ -164,6 +164,32 @@ class BrushTipMask {
     return normalized;
   }
 
+  /// For each row, its first and its last column holding any ink — two
+  /// ints a row, `size` and `-1` for a bare one. The native dab kernel
+  /// narrows each pixel row to the columns its mask rows ink (ABI 39).
+  /// Derived render data only.
+  late final Int32List inkedColumns = _inkedColumns();
+
+  Int32List _inkedColumns() {
+    final ink = Int32List(size * 2);
+    for (var row = 0; row < size; row += 1) {
+      var first = size;
+      var last = -1;
+      final offset = row * size;
+      for (var column = 0; column < size; column += 1) {
+        if (alpha[offset + column] != 0) {
+          if (column < first) {
+            first = column;
+          }
+          last = column;
+        }
+      }
+      ink[row * 2] = first;
+      ink[row * 2 + 1] = last;
+    }
+    return ink;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'size': size,
