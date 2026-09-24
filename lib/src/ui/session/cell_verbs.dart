@@ -6,6 +6,7 @@ import '../../models/layer.dart';
 import '../../models/pixel_verb_subject.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
+import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import 'render_caches.dart';
@@ -209,25 +210,36 @@ class CellVerbs {
     List<BrushFrameKey> keys,
     CanvasSelectionRegion? region,
   ) {
-    final size = _project.requireActiveCut.canvasSize;
+    final cut = _project.requireActiveCut;
     final frameIndex = _selection.currentFrameIndex;
-    final byId = {for (final layer in _project.layers) layer.id: layer};
+    // ⚠️Mapped into each layer's OWN artwork space: a posed layer draws its
+    // pixels somewhere else than the marquee was drawn, and the region has
+    // to follow. An unposed layer — the overwhelming majority — gets it
+    // back unchanged.
+    //
+    // Through the placement the stack PAINTS the row with
+    // ([layerPlacementAt]): the raw track value it read before missed the
+    // anchor, the fx switch and every folder above the row.
+    CanvasSelectionRegion? onLayer(BrushFrameKey key) {
+      final layer = cut.layers.byId(key.layerId);
+      if (region == null || layer == null) {
+        return region;
+      }
+      final placement = layerPlacementAt(
+        cut: cut,
+        layer: layer,
+        frameIndex: frameIndex,
+      );
+      return regionInArtworkSpace(
+        region: region,
+        pose: placement?.pose,
+        anchorPoint: placement?.anchorPoint,
+        canvasSize: cut.canvasSize,
+      );
+    }
+
     return [
-      for (final key in keys)
-        CelPixelTarget(
-          key: key,
-          // ⚠️Mapped into each layer's OWN artwork space: a posed layer draws
-          // its pixels somewhere else than the marquee was drawn, and the
-          // region has to follow. An unposed layer — the overwhelming
-          // majority — gets it back unchanged.
-          region: region == null || byId[key.layerId] == null
-              ? region
-              : regionInArtworkSpace(
-                  region: region,
-                  pose: _timeline.layerPoseAtFrame(byId[key.layerId]!, frameIndex),
-                  canvasSize: size,
-                ),
-        ),
+      for (final key in keys) CelPixelTarget(key: key, region: onLayer(key)),
     ];
   }
 

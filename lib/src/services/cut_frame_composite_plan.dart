@@ -361,23 +361,8 @@ resolveFolderChainAt({
                       : 1.0))
               .clamp(0.0, 1.0);
     }
-    if (!fxEnabled) {
-      continue;
-    }
-    final track = folder.transformTrack;
-    final hasGeometry =
-        track.anchorPoint.isNotEmpty ||
-        track.position.isNotEmpty ||
-        track.scale.isNotEmpty ||
-        track.rotation.isNotEmpty;
-    if (hasGeometry) {
-      poses.add((
-        pose: track.resolveAt(
-          frameIndex: frameIndex,
-          orElse: () => layerIdentityPose(cut.canvasSize),
-        ),
-        anchorPoint: resolveAnchorTrackAt(track.anchorPoint, frameIndex),
-      ));
+    if (_folderPoseAt(folder, frameIndex, cut.canvasSize) case final pose?) {
+      poses.add(pose);
     }
   }
   return (
@@ -385,6 +370,84 @@ resolveFolderChainAt({
     opacityFactor: opacityFactor,
     blendMode: chainBlend,
     poses: List.unmodifiable(poses),
+  );
+}
+
+/// A folder's own contribution to where its members land: its pose while
+/// its fx is on and its track carries geometry, else null.
+LayerPoseSample? _folderPoseAt(
+  Layer folder,
+  int frameIndex,
+  CanvasSize canvasSize,
+) {
+  final track = folder.transformTrack;
+  final hasGeometry =
+      track.anchorPoint.isNotEmpty ||
+      track.position.isNotEmpty ||
+      track.scale.isNotEmpty ||
+      track.rotation.isNotEmpty;
+  if (!folder.transformEnabled || !hasGeometry) {
+    return null;
+  }
+  return (
+    pose: track.resolveAt(
+      frameIndex: frameIndex,
+      orElse: () => layerIdentityPose(canvasSize),
+    ),
+    anchorPoint: resolveAnchorTrackAt(track.anchorPoint, frameIndex),
+  );
+}
+
+/// [carrier]'s own placement: its pose and anchor while its fx is on, null
+/// when the switch bypasses them or the track carries no geometry.
+LayerPoseSample? _ownPlacementAt(Cut cut, Layer carrier, int frameIndex) {
+  final pose = carrier.transformEnabled
+      ? resolveLayerPoseAt(
+          layer: carrier,
+          canvasSize: cut.canvasSize,
+          frameIndex: frameIndex,
+        )
+      : null;
+  return pose == null
+      ? null
+      : (
+          pose: pose,
+          anchorPoint: resolveLayerAnchorPointAt(
+            layer: carrier,
+            frameIndex: frameIndex,
+          ),
+        );
+}
+
+/// Where [layer]'s pixels land on the canvas at [frameIndex] — THE placement
+/// the composite paints it with: its FX carrier's own pose (the base's, for
+/// an attach row) under every folder pose above it. Null = identity.
+///
+/// 🚨ONE answer for every trip between the canvas and a row's artwork: the
+/// pen's draw-through, the fill's seed, the held pick, the pixel verbs'
+/// marquee. The draw-through used to read the row's OWN pose, so inside a
+/// posed folder a stroke landed where the folder then moved it — away from
+/// the pen (measured 2026-09-25: a folder keyed to 2× gave the draw-through
+/// identity while the stack painted the row at 2×). The pixel verbs read
+/// the raw track value, which also ignored the anchor and the fx switch.
+///
+/// A hidden folder still places its members: what is drawn inside it lands
+/// where it will show when the folder is shown again.
+LayerPoseSample? layerPlacementAt({
+  required Cut cut,
+  required Layer layer,
+  required int frameIndex,
+}) {
+  final carrier = isAttachedLayer(layer)
+      ? (attachedBaseOf(layer, cut.layers) ?? layer)
+      : layer;
+  return composeFolderAndLayerPose(
+    folderPoses: [
+      for (final folder in cut.layers.ancestryOf(layer.folderId).reversed)
+        ?_folderPoseAt(folder, frameIndex, cut.canvasSize),
+    ],
+    layerSample: _ownPlacementAt(cut, carrier, frameIndex),
+    canvasSize: cut.canvasSize,
   );
 }
 
@@ -530,13 +593,6 @@ CutFrameCompositeRow? _resolveLayerNode(
           frameIndex: frameIndex,
         );
 
-  final layerPose = fxEnabled
-      ? resolveLayerPoseAt(
-          layer: fxCarrier,
-          canvasSize: cut.canvasSize,
-          frameIndex: frameIndex,
-        )
-      : null;
   // R6: effects ride the FX carrier exactly like the pose and the
   // animated opacity — an attach row wears its base's chain, and the
   // carrier's fx switch bypasses it.
@@ -548,19 +604,11 @@ CutFrameCompositeRow? _resolveLayerNode(
     effects: fxCarrier.effects,
     frameIndex: frameIndex,
   );
+  // The placement is [layerPlacementAt]'s: the same own part, under the
+  // folder poses this walk already gathered with the chain's gates.
   final combined = composeFolderAndLayerPose(
     folderPoses: folderChain.poses,
-    layerSample: layerPose == null
-        ? null
-        : (
-            pose: layerPose,
-            anchorPoint: fxEnabled
-                ? resolveLayerAnchorPointAt(
-                    layer: fxCarrier,
-                    frameIndex: frameIndex,
-                  )
-                : null,
-          ),
+    layerSample: _ownPlacementAt(cut, fxCarrier, frameIndex),
     canvasSize: cut.canvasSize,
   );
   // The blend is the ROW's own (attach rows keep theirs — their pixels

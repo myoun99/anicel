@@ -67,46 +67,25 @@ class FrameVerbs {
   /// rows walk the track's axis, the timeline's the cut's.
   final WorkingPanel Function() _workingPanel;
 
-  /// The geometric pose sample the interactive canvas shows for [layerId]
-  /// at the playhead — the draw-through wrap input. Null = identity (no
-  /// transform work, fx bypassed, or no such layer), which skips the wrap:
-  /// the ALWAYS-APPLIED rule (the active layer shows its transform too; the
-  /// old edit-in-artwork-space rule is retired, R3 ⑩).
+  /// The placement the interactive canvas shows [layerId] with at the
+  /// playhead — the draw-through wrap input, and so the space the pen, the
+  /// fill's seed and the held pick are in. Null = identity (no transform
+  /// work, fx bypassed, or no such layer), which skips the wrap: the
+  /// ALWAYS-APPLIED rule (the active layer shows its transform too; the old
+  /// edit-in-artwork-space rule is retired, R3 ⑩).
+  ///
+  /// It is [layerPlacementAt] — the one the stack paints the row with — so a
+  /// row inside a posed folder takes the pen where it shows.
   LayerPoseSample? layerCanvasPoseSample(LayerId layerId) {
     final cut = _project.activeCutOrNull;
-    if (cut == null) {
-      return null;
-    }
-    for (final layer in cut.layers) {
-      if (layer.id != layerId) {
-        continue;
-      }
-      // An attach layer rides its BASE's transform (fx shared, W5): the
-      // interactive view wraps in the base's pose so drawing on the attach
-      // row lines up with the composite.
-      final fxCarrier = isAttachedLayer(layer)
-          ? (attachedBaseOf(layer, cut.layers) ?? layer)
-          : layer;
-      if (!fxCarrier.transformEnabled) {
-        return null;
-      }
-      final pose = resolveLayerPoseAt(
-        layer: fxCarrier,
-        canvasSize: cut.canvasSize,
-        frameIndex: _controllers.timelineController.currentFrameIndex,
-      );
-      if (pose == null) {
-        return null;
-      }
-      return (
-        pose: pose,
-        anchorPoint: resolveLayerAnchorPointAt(
-          layer: fxCarrier,
-          frameIndex: _controllers.timelineController.currentFrameIndex,
-        ),
-      );
-    }
-    return null;
+    final layer = cut?.layers.byId(layerId);
+    return cut == null || layer == null
+        ? null
+        : layerPlacementAt(
+            cut: cut,
+            layer: layer,
+            frameIndex: _controllers.timelineController.currentFrameIndex,
+          );
   }
 
   Frame? get selectedFrame {
