@@ -1,9 +1,9 @@
 import 'dart:ffi' show Pointer, Uint8;
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/dirty_region.dart';
 import '../models/tile_coord.dart';
+import '../models/tiles_covering.dart';
 import '../native/qa_native_engine.dart';
 
 /// Stages one span per tile that [clip] touches into the engine's span
@@ -46,23 +46,15 @@ List<TileCoord> stageTileSpansCovering(
 }) {
   final spans = <TileCoord, DirtyRegion>{};
   for (final clip in clips) {
-    final (:firstX, :lastX, :firstY, :lastY) = clip.tileRange(
-      tileSize: tileSize,
-    );
-    for (var tileY = firstY; tileY <= lastY; tileY += 1) {
-      final tileTop = tileY * tileSize;
-      for (var tileX = firstX; tileX <= lastX; tileX += 1) {
-        final tileLeft = tileX * tileSize;
-        final span = DirtyRegion(
-          left: math.max(clip.left, tileLeft),
-          top: math.max(clip.top, tileTop),
-          rightExclusive: math.min(clip.rightExclusive, tileLeft + tileSize),
-          bottomExclusive: math.min(clip.bottomExclusive, tileTop + tileSize),
-        );
-        final coord = TileCoord(x: tileX, y: tileY);
-        final held = spans[coord];
-        spans[coord] = held == null ? span : held.union(span);
-      }
+    for (final part in tileSpansOf(clip, tileSize: tileSize)) {
+      final span = DirtyRegion(
+        left: part.left,
+        top: part.top,
+        rightExclusive: part.rightExclusive,
+        bottomExclusive: part.bottomExclusive,
+      );
+      final held = spans[part.coord];
+      spans[part.coord] = held == null ? span : held.union(span);
     }
   }
   final coords = spans.keys.toList()
