@@ -54,7 +54,6 @@ void main() {
     'recordVoiceStopTooltip': (s) => s.recordVoiceStopTooltip,
     'recordMicOpenFailed': (s) => s.recordMicOpenFailed,
     'recordMicPermissionDenied': (s) => s.recordMicPermissionDenied,
-    'recordSelectSeLane': (s) => s.recordSelectSeLane,
     'recordTakeClipped': (s) => s.recordTakeClipped,
     'recordClipMarkerTooltip': (s) => s.recordClipMarkerTooltip,
     // D26: the crossing-fade refusal warning (red corner marker).

@@ -1,3 +1,4 @@
+import AVFoundation
 import FileProvider
 import Flutter
 import UIKit
@@ -116,9 +117,26 @@ import UniformTypeIdentifiers
         let arguments = call.arguments as? [String: Any]
         AppDelegate.touchFileCoordinated(
           sourcePath: arguments?["sourcePath"] as? String, result: result)
+      case "requestMicrophone":
+        AppDelegate.requestMicrophone(result: result)
       default:
         result(FlutterMethodNotImplemented)
       }
+    }
+  }
+
+  /// F-178: the record permission, answered AFTER the user has spoken — the
+  /// take must not roll while the system dialog is still up. A grant or a
+  /// refusal already given answers at once (iOS never asks twice; a refusal
+  /// is undone in Settings).
+  static func requestMicrophone(result: @escaping FlutterResult) {
+    let answer: (Bool) -> Void = { granted in
+      DispatchQueue.main.async { result(granted) }
+    }
+    if #available(iOS 17.0, *) {
+      AVAudioApplication.requestRecordPermission(completionHandler: answer)
+    } else {
+      AVAudioSession.sharedInstance().requestRecordPermission(answer)
     }
   }
 

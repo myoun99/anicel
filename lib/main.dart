@@ -150,6 +150,15 @@ Future<void> main() async {
   MemoryBlackBox.lastUnfinished = MemoryBlackBox.unfinishedEntry();
   MemoryBlackBox.reset();
   runApp(const AnicelApp());
+  // 🗣️F-178 (유저 2026-09-24): 「ios에서 녹음누르면 권한묻는데 그게아니라 앱
+  // 실행시로 못하나? 한번 권한 얻으면 심플하잖아」. Once, at launch, after the
+  // first frame so the system dialog lands on the app rather than on an empty
+  // window. The record button still awaits the same ask, so no take rolls
+  // before the answer is in — and an answer already given comes back at
+  // once, which is what makes this cheap on every later launch.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => unawaited(AppStorage.ensureMicrophoneAccess()),
+  );
 }
 
 class AnicelApp extends StatelessWidget {

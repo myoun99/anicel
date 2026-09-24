@@ -1,4 +1,4 @@
-import 'dart:async' show Timer;
+import 'dart:async' show Timer, scheduleMicrotask;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -13,6 +13,7 @@ import '../../models/layer_id.dart';
 import '../../models/media_asset.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_frame_range.dart';
+import '../../models/timeline_row_address.dart';
 import '../playback/audio_device_transport.dart';
 import '../../models/audio_sync_settings.dart';
 import '../playback/canvas_playback_controller.dart';
@@ -45,7 +46,7 @@ import '../audio/audio_conform_store.dart';
 /// still called on the session — every one of them has a one-line delegation
 /// there.
 ///
-/// What it needs from the session it NAMES: the nineteen members in the
+/// What it needs from the session it NAMES: the twenty members in the
 /// constructor below. That width is the finding, not an accident of the move
 /// — this block is a client of most of the session's audio and timeline
 /// state rather than a passenger on it, and a constructor that lists them is
@@ -74,7 +75,8 @@ class EditorVoiceRecording {
     required int Function() activeCutGlobalStartFrame,
     required int Function() editingGlobalFrame,
     required int? Function() gapParkedGlobalFrame,
-    required LayerId? Function() activeLayerId,
+    required TimelineRowAddress Function() standingRow,
+    required LayerId Function() openSeLane,
     required Layer? Function(LayerId) trackSeGlobalLayerById,
     required FrameId Function(LayerId) mintFrameId,
     required List<MediaAsset> Function() mediaAssets,
@@ -95,7 +97,8 @@ class EditorVoiceRecording {
        _activeCutGlobalStartFrame = activeCutGlobalStartFrame,
        _editingGlobalFrame = editingGlobalFrame,
        _gapParkedGlobalFrame = gapParkedGlobalFrame,
-       _activeLayerId = activeLayerId,
+       _standingRow = standingRow,
+       _openSeLane = openSeLane,
        _trackSeGlobalLayerById = trackSeGlobalLayerById,
        _mintFrameIdRef = mintFrameId,
        _mediaAssets = mediaAssets,
@@ -144,8 +147,21 @@ class EditorVoiceRecording {
   final int? Function() _gapParkedGlobalFrame;
   int? get gapParkedGlobalFrame => _gapParkedGlobalFrame();
 
-  final LayerId? Function() _activeLayerId;
-  LayerId? get activeLayerId => _activeLayerId();
+  /// The row the user stands on — on either panel.
+  final TimelineRowAddress Function() _standingRow;
+
+  /// Adds a track SE lane and answers its id — the verb 「Add layer ▸ SE」
+  /// runs, so the new lane lands and reads as that one would.
+  final LayerId Function() _openSeLane;
+
+  /// The track SE lane under the user's feet, or null when they stand on
+  /// any other row.
+  LayerId? _laneUnderfoot() {
+    final layerId = _standingRow().owningLayerId;
+    return layerId != null && trackSeGlobalLayerById(layerId) != null
+        ? layerId
+        : null;
+  }
 
   final Layer? Function(LayerId) _trackSeGlobalLayerById;
   Layer? trackSeGlobalLayerById(LayerId layerId) =>
@@ -592,6 +608,9 @@ class EditorVoiceRecording {
     if (lane == null || global == null) {
       return;
     }
+    if (_takeEndsWhereThePlayheadTurnedBack(global)) {
+      return;
+    }
     // The playhead's frame is the one being spoken into: it counts.
     var end = global + 1;
     final punchEnd = _voiceRecordPunchEndFrame;
@@ -628,11 +647,49 @@ class EditorVoiceRecording {
     voiceRecordPreviewLane.value = plan?.layer;
   }
 
+  /// The frame the roll last showed during this take; null until it rolls.
+  int? _voiceRecordLastGlobal;
+
+  /// 🗣️F-178 ④ (유저 2026-09-24): 「지금 루프재생켜두면 녹음이 매번? 되서 뭔가
+  /// 꼬이는거같은데」. A take lands at ONE anchor and runs forward from it, so
+  /// it is one pass: once the playhead steps BACK — the loop wrapping, or a
+  /// seek — what the microphone hears next belongs somewhere else on the
+  /// track, and the take ends where the playhead had reached. Carrying on is
+  /// what tangled it: the preview regrew from the anchor every lap, and the
+  /// take landed as one block several laps long.
+  bool _takeEndsWhereThePlayheadTurnedBack(int global) {
+    final last = _voiceRecordLastGlobal;
+    _voiceRecordLastGlobal = global;
+    if (last == null || global >= last) {
+      return false;
+    }
+    final reached = last + 1;
+    final punchEnd = _voiceRecordPunchEndFrame;
+    _voiceRecordPunchEndFrame = punchEnd == null
+        ? reached
+        : math.min(punchEnd, reached);
+    // Off the frame notifier's own call: finishing stops the roll this take
+    // started, and the controller is still mid-tick here.
+    scheduleMicrotask(finishTakeThroughTheNotice);
+    return true;
+  }
+
+  /// Finishes a rolling take where no button waits for the answer — the
+  /// transport stopping, over a cut or a gap, or the playhead turning back —
+  /// so what it has to say goes out on [voiceRecordingNotice].
+  Future<void> finishTakeThroughTheNotice() async {
+    if (!isVoiceRecording.value) {
+      return;
+    }
+    voiceRecordingNotice.value = await stopVoiceRecordingAndPlace();
+  }
+
   void _clearVoiceRecordPreview() {
     playback.globalFrameIndexListenable.removeListener(_syncVoiceRecordPreview);
     _voiceRecordLivePeaks = null;
     _voiceRecordPeakFold = null;
     _voiceRecordLastPreviewLength = 0;
+    _voiceRecordLastGlobal = null;
     voiceRecordClipLit.value = false;
     // The ADR cueing retires with the take (REC1-E): the stop's own
     // notify rebuilds the schedules without the beeps.
@@ -685,18 +742,20 @@ class EditorVoiceRecording {
   /// play + capture, the DAW rule — the playhead moves, every other row
   /// is audible, and the take lands where the roll started.
   ///
-  /// The take lands on the ACTIVE track SE lane; any other active layer
-  /// refuses (the armed-track contract — nothing records without an
-  /// armed destination). A range selection on that lane is the PUNCH
-  /// window: capture begins when playback enters it and ends at its far
-  /// edge, however long the transport keeps rolling.
+  /// The take lands on the track SE lane the user STANDS ON, and on a new
+  /// lane when they stand anywhere else. A range selection on that lane is
+  /// the PUNCH window: capture begins when playback enters it and ends at
+  /// its far edge, however long the transport keeps rolling.
+  ///
+  /// 🗣️F-178 (유저 2026-09-24): 「일단 지금 se행에 서있는데도 녹음버튼누르면
+  /// se행에 서있으라고 메시지뜸. 그리고 서있으라고 할게아니라 어디에 서있든
+  /// 녹음가능하게하고, 동작을 se행에 안서있으면 새 se레이어만들고 거기서하고,
+  /// 서있으면 해당se행에서 시작하도록」. ⛔The refusal read the ACTIVE layer,
+  /// and the storyboard's SE rows stand a row apart from the layer you draw
+  /// on (유저 2026-07-27) — so standing on one there never counted.
   VoiceRecordStartResult startVoiceRecording() {
     if (isVoiceRecording.value) {
       return VoiceRecordStartResult.alreadyRecording;
-    }
-    final laneId = activeLayerId;
-    if (laneId == null || trackSeGlobalLayerById(laneId) == null) {
-      return VoiceRecordStartResult.needsSeLane;
     }
     // The settings meter yields the microphone to the take (REC1-D2).
     _inputMonitor?.stop();
@@ -704,6 +763,9 @@ class EditorVoiceRecording {
     if (opened == null) {
       return VoiceRecordStartResult.deviceFailed;
     }
+    // Only once the microphone is open: a device that refused leaves no
+    // empty lane behind.
+    final laneId = _laneUnderfoot() ?? _openSeLane();
     final rollStart = _voiceRollStartFrame();
     final punch = _voicePunchWindow(laneId, rollStart: rollStart);
 

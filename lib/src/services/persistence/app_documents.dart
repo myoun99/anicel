@@ -106,14 +106,21 @@ abstract final class AppStorage {
     }
   }
 
-  /// Whether the microphone may be captured (AUDIO-PRO R5). Android asks
-  /// its runtime RECORD_AUDIO grant through the channel — the Future
-  /// completes AFTER the user answers the system dialog. Everywhere else
-  /// the OS gates the device open itself (macOS/iOS prompt on first use;
-  /// desktop Windows/Linux have no app-level grant), so the answer is yes
-  /// and a refusal surfaces as the capture failing to open.
+  /// Whether the microphone may be captured (AUDIO-PRO R5), asked through
+  /// the channel on the platforms with an app-level grant — Android's
+  /// RECORD_AUDIO, iOS's record permission, macOS's audio capture access.
+  /// The Future completes AFTER the user answers the system dialog, and a
+  /// grant or refusal already given answers at once. Windows and Linux have
+  /// no app-level grant, so the answer there is yes and a refusal surfaces
+  /// as the capture failing to open.
+  ///
+  /// 🗣️F-178 (유저 2026-09-24): 「권한 묻는거랑 녹음시작이랑 동시인거같은데
+  /// 권한 얻는거 확인하고 녹음시작이어야할거같고」. ⛔iOS and macOS used to
+  /// answer yes here and let the capture open trigger the prompt — so the
+  /// take rolled while the dialog was still up, recording a microphone the
+  /// app did not have yet.
   static Future<bool> ensureMicrophoneAccess() async {
-    if (!Platform.isAndroid) {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) {
       return true;
     }
     try {

@@ -18,9 +18,11 @@ import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart' show createFolderLayer;
+import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart';
+import '../../models/timeline_row_address.dart';
 import '../../services/commands/cut_command_input_planner.dart'
     show nextFolderName;
 import '../../services/commands/track_se_layer_commands.dart';
@@ -87,6 +89,9 @@ class LayerStack {
   /// dead menu item never looks like a bug.
 
   bool canAddLayerOfKind(LayerKind kind) {
+    if (kind == LayerKind.se) {
+      return true; // TRACK-owned: a gap takes one as well as a cut does.
+    }
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return false;
@@ -98,12 +103,9 @@ class LayerStack {
   /// Kind-explicit Add Layer (the split button's ▾ list): the same naming
   /// and insertion rules as [addLayer] with the requested kind.
   void addLayerOfKind(LayerKind kind) {
-    if (_project.activeCutOrNull == null) {
-      return; // Gap state: no cut to add into (SE rows need one too —
-      //         selection lives in the cut-scoped row list).
-    }
     if (!canAddLayerOfKind(kind)) {
-      return; // The cut already holds its one row of a singleton kind.
+      return; // A gap has no cut to add a cut's row into, and a cut holds
+      //         one row of a singleton kind.
     }
     final layerId = _layerIds.mint();
     switch (kind) {
@@ -113,29 +115,7 @@ class LayerStack {
         // exhaustive and the intent stated).
         return;
       case LayerKind.se:
-        // SE rows are track-owned: insert directly above the active SE row
-        // in the TRACK list (the same S1,S3,S2 insertion order the
-        // timeline shows — the single ordering every panel renders).
-        final seLayers = _selection.activeTrack.seLayers;
-        final activeIndex = seLayers.indexWhere(
-          (layer) => layer.id == _selection.activeLayerId,
-        );
-        final newLayer = Layer(
-          id: layerId,
-          name: nextSeLayerName(seLayers),
-          frames: const [],
-          timeline: const {},
-          kind: LayerKind.se,
-        );
-        _project.historyManager.execute(
-          AddTrackSeLayerCommand(
-            repository: _project.repository,
-            trackId: _selection.selectedTrackId,
-            layer: newLayer,
-            insertionIndex: activeIndex < 0 ? null : activeIndex + 1,
-          ),
-        );
-        _controllers.layerController.selectLayer(layerId);
+        _addSeLane(layerId);
       case LayerKind.instruction:
         _controllers.layerController.addLayer(
           layer: Layer(
@@ -192,9 +172,58 @@ class LayerStack {
       case LayerKind.camera:
         _controllers.layerController.addLayerWithDefaults(layerId: layerId);
     }
-    // F-20: the row you just made IS the subject now. Every arm above seats
-    // the controller's active layer directly, so none of them went through
-    // [selectLayer].
+    _standOnTheNewRow();
+  }
+
+  /// 「Add layer ▸ SE」, answered with the new lane's id: the recorder opens
+  /// a lane through this when the user stands on no SE row (F-178), so the
+  /// lane it lands a take on is the one the menu would have made.
+  ///
+  /// SE rows are TRACK-owned, so a gap takes one too — the recording roll
+  /// starts from a gap like from anywhere else on the track.
+  LayerId addSeLane() {
+    final layerId = _layerIds.mint();
+    _addSeLane(layerId);
+    _standOnTheNewRow();
+    return layerId;
+  }
+
+  /// SE rows are track-owned: insert directly above the active SE row in the
+  /// TRACK list (the same S1,S3,S2 insertion order the timeline shows — the
+  /// single ordering every panel renders).
+  void _addSeLane(LayerId layerId) {
+    final seLayers = _selection.activeTrack.seLayers;
+    final activeIndex = seLayers.indexWhere(
+      (layer) => layer.id == _selection.activeLayerId,
+    );
+    final newLayer = Layer(
+      id: layerId,
+      name: nextSeLayerName(seLayers),
+      frames: const [],
+      timeline: const {},
+      kind: LayerKind.se,
+    );
+    _project.historyManager.execute(
+      AddTrackSeLayerCommand(
+        repository: _project.repository,
+        trackId: _selection.selectedTrackId,
+        layer: newLayer,
+        insertionIndex: activeIndex < 0 ? null : activeIndex + 1,
+      ),
+    );
+    if (_project.activeCutOrNull == null) {
+      // A gap has no cut row list to make the lane active in; it is stood
+      // on the way the storyboard stands on its S rows.
+      _standing.standOnRow(LayerRowAddress(layerId), takesLayerActive: false);
+    } else {
+      _controllers.layerController.selectLayer(layerId);
+    }
+  }
+
+  void _standOnTheNewRow() {
+    // F-20: the row you just made IS the subject now. Every arm of
+    // [addLayerOfKind] seats the controller's active layer directly, so none
+    // of them went through [selectLayer].
     _standing.seatVerbRowOnActiveLayer();
     // F-169 ②: you went there, so what the rail's view hides it with opens
     // (a new SE row in a hidden SE section shows the section).

@@ -173,10 +173,6 @@ enum VoiceRecordStartResult {
   started,
   alreadyRecording,
 
-  /// The active layer is not a track SE lane: recording has no armed
-  /// destination (the DAW armed-track contract).
-  needsSeLane,
-
   /// The device would not open (no binary, no microphone, no OS grant).
   deviceFailed,
 }

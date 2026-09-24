@@ -487,9 +487,12 @@ class EditorSessionManager extends ChangeNotifier
     // Transport stop finishes a rolling take (REC1-B): record = play +
     // capture, so ending one ends the other. The result message goes out
     // on the notice channel — this path has no button to return through.
+    //
+    // ⚠️The guard stays at the call: awaiting on a stop that rolled no take
+    // would push everything below to a later microtask, and every stop
+    // lands its cut and frame synchronously today.
     if (voiceRecording.isVoiceRecording.value) {
-      voiceRecording.voiceRecordingNotice.value =
-          await voiceRecording.stopVoiceRecordingAndPlace();
+      await voiceRecording.finishTakeThroughTheNotice();
     }
     if (lastPosition.cutId != editingSession.activeCutId) {
       selectCut(lastPosition.cutId);
@@ -513,8 +516,7 @@ class EditorSessionManager extends ChangeNotifier
     // The gap-stop twin of _onPlaybackStopped's take finish: a lane is
     // cut-independent, so a take may legitimately end over a gap.
     if (voiceRecording.isVoiceRecording.value) {
-      voiceRecording.voiceRecordingNotice.value =
-          await voiceRecording.stopVoiceRecordingAndPlace();
+      await voiceRecording.finishTakeThroughTheNotice();
     }
     gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
@@ -2281,7 +2283,7 @@ class EditorSessionManager extends ChangeNotifier
   // --- Voice recording, ADR, input meter, take preview ----------------------
   //
   // The section moved to [EditorVoiceRecording]. Unlike the settings block,
-  // it did not come free: its constructor there lists the nineteen session
+  // it did not come free: its constructor there lists the twenty session
   // members it reads back, which is what this block's coupling actually is.
   //
   // ⛔The twenty-one forwarders that used to stand here are gone (G3,
@@ -2304,7 +2306,8 @@ class EditorSessionManager extends ChangeNotifier
     activeCutGlobalStartFrame: () => activeCutGlobalStartFrame,
     editingGlobalFrame: () => editingGlobalFrame,
     gapParkedGlobalFrame: () => gapParkedGlobalFrame,
-    activeLayerId: () => activeLayerId,
+    standingRow: () => currentRow,
+    openSeLane: () => layerStack.addSeLane(),
     trackSeGlobalLayerById: trackSeGlobalLayerById,
     mintFrameId: mintFrameId,
     mediaAssets: () => mediaPool.mediaAssets,

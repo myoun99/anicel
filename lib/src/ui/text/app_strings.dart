@@ -212,9 +212,6 @@ enum AppStrings {
   String get recordMicOpenFailed => _s('recordMicOpenFailed');
   String get recordMicPermissionDenied => _s('recordMicPermissionDenied');
 
-  /// REC1-B: the armed-track refusal — recording needs an SE lane active.
-  String get recordSelectSeLane => _s('recordSelectSeLane');
-
   // --- Capture chain (REC1-D) ---
   String get recordTakeClipped => _s('recordTakeClipped');
   String get recordClipMarkerTooltip => _s('recordClipMarkerTooltip');
@@ -1658,9 +1655,8 @@ enum AppStrings {
     'recordVoiceStopTooltip': 'Stop recording (places the take)',
     'recordMicOpenFailed':
         'Could not open the microphone — check Preferences ▸ Audio and the OS microphone permission.',
-    'recordMicPermissionDenied': 'Microphone permission was not granted.',
-    'recordSelectSeLane':
-        'Recording lands on the selected SE track — select one first.',
+    'recordMicPermissionDenied':
+        'Microphone access is off — allow it for Anicel in Settings.',
     'recordTakeClipped': 'The take clipped — the red corner marks the block.',
     'recordClipMarkerTooltip': 'This take clipped (recorded too hot)',
     'tlTransitionCrossingWarning': 'Crosses the cut boundary — not applied',
@@ -2741,8 +2737,7 @@ enum AppStrings {
     'recordVoiceTooltip': '再生ヘッド位置にボイスを録音',
     'recordVoiceStopTooltip': '録音を停止（テイクを配置）',
     'recordMicOpenFailed': 'マイクを開けませんでした — 環境設定▸オーディオとOSのマイク権限を確認してください。',
-    'recordMicPermissionDenied': 'マイクの権限が許可されませんでした。',
-    'recordSelectSeLane': '録音は選択中のSEトラックに配置されます — 先にSEトラックを選択してください。',
+    'recordMicPermissionDenied': 'マイクへのアクセスがオフです — 設定でAnicelのマイクを許可してください。',
     'recordTakeClipped': 'テイクがクリッピングしました — ブロックの赤い角が目印です。',
     'recordClipMarkerTooltip': 'このテイクはクリッピングしています（入力過大）',
     'tlTransitionCrossingWarning': 'カット境界を越えています — 適用されません',
@@ -4059,8 +4054,7 @@ enum AppStrings {
     'recordVoiceTooltip': '플레이헤드 위치에 보이스 녹음',
     'recordVoiceStopTooltip': '녹음 정지(테이크 배치)',
     'recordMicOpenFailed': '마이크를 열 수 없습니다 — 환경설정▸오디오와 OS 마이크 권한을 확인하세요.',
-    'recordMicPermissionDenied': '마이크 권한이 허용되지 않았습니다.',
-    'recordSelectSeLane': '녹음은 선택된 SE 트랙에 배치됩니다 — 먼저 SE 트랙을 선택하세요.',
+    'recordMicPermissionDenied': '마이크 접근이 꺼져 있습니다 — 설정에서 Anicel의 마이크를 허용하세요.',
     'recordTakeClipped': '테이크에 클리핑이 감지되었습니다 — 블록의 빨간 모서리가 표시입니다.',
     'recordClipMarkerTooltip': '이 테이크는 클리핑되었습니다(입력 과대)',
     'tlTransitionCrossingWarning': '컷 경계를 넘어 적용되지 않습니다',
@@ -5373,9 +5367,8 @@ enum AppStrings {
     'recordVoiceStopTooltip': 'Arrêter l\'enregistrement (place la prise)',
     'recordMicOpenFailed':
         'Impossible d\'ouvrir le micro — vérifiez Préférences ▸ Audio et l\'autorisation micro du système.',
-    'recordMicPermissionDenied': 'L\'autorisation micro a été refusée.',
-    'recordSelectSeLane':
-        'L\'enregistrement se place sur la piste SE sélectionnée — sélectionnez-en une d\'abord.',
+    'recordMicPermissionDenied':
+        'L\'accès au micro est désactivé — autorisez-le pour Anicel dans les Réglages.',
     'recordTakeClipped': 'La prise a saturé — le coin rouge marque le bloc.',
     'recordClipMarkerTooltip': 'Prise saturée (niveau trop fort)',
     'tlTransitionCrossingWarning': 'Dépasse la limite du plan — non appliqué',
@@ -6763,8 +6756,7 @@ enum AppStrings {
     'recordVoiceTooltip': '在播放头位置录制语音',
     'recordVoiceStopTooltip': '停止录音（放置素材）',
     'recordMicOpenFailed': '无法打开麦克风 — 请检查首选项▸音频以及系统麦克风权限。',
-    'recordMicPermissionDenied': '麦克风权限未被授予。',
-    'recordSelectSeLane': '录音将放置到所选SE轨道 — 请先选择一个SE轨道。',
+    'recordMicPermissionDenied': '麦克风访问已关闭 — 请在设置中允许 Anicel 使用麦克风。',
     'recordTakeClipped': '录音发生削波 — 块上的红角为标记。',
     'recordClipMarkerTooltip': '该录音已削波（电平过高）',
     'tlTransitionCrossingWarning': '超出镜头边界 — 未应用',
