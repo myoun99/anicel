@@ -30,10 +30,12 @@ import 'timeline_frame_geometry_probe.dart';
 /// line). Against them, today's emitter with the block frame lines off and
 /// on (유저 2026-09-24: a switch, and 「좀 더 성능적으로 개선해주면 좋아」).
 ///
-/// 🔬Measured 2026-09-24 (median of 60, four tiles): 24px pre-I-44 2.8ms ·
-/// I-44 2.0 · off 1.45 · on 1.45; 12px 1.26 · 1.16 · 0.56 · 0.61; 8px
-/// 0.77 · 0.62 · 0.33 · 0.41 — the lines on cost less than I-44's bare
-/// paper did.
+/// 🔬Measured 2026-09-24 (median of 60, four tiles), pre-I-44 · I-44 · off ·
+/// on — a quiet machine: 24px 2.8 · 2.0 · 1.45 · 1.45ms, 12px 1.26 · 1.16 ·
+/// 0.56 · 0.61, 8px 0.77 · 0.62 · 0.33 · 0.41; with six other test runs on
+/// it: 24px 3.9 · 3.4 · 1.7 · 1.8, 12px 1.8 · 1.4 · 0.82 · 0.85, 8px 1.2 ·
+/// 0.89 · 0.48 · 0.54. Read the ratios, not the milliseconds: the lines on
+/// cost 27–48% less than I-44's bare paper did.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final dllPath = nativeEngineLibraryPathOrNull();
