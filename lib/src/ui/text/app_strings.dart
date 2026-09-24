@@ -3988,7 +3988,7 @@ enum AppStrings {
     'tlAttachDropsFxTitle': '付属すると fx が失われます',
     'tlAttachDropsFxBody': '付属レイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlSharedEdit': '編集',
-    'tlSharedUnlink': 'リンクを独立',
+    'tlSharedUnlink': 'リンクから独立',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
