@@ -225,6 +225,29 @@ void main() {
       expect(mediaAppFileSource(kept!.path).readSync(), edited);
     });
 
+    test('🚨a take written again under the name whose old copy waits: the '
+        'new take is the one kept when the old reader lets go', () async {
+      // A take has no original — the staged file is the only copy, so
+      // losing it here is losing the performance.
+      final path = '${root.path}/S1_T01.wav'.replaceAll(r'\', '/');
+      final first = Uint8List.fromList(
+        List<int>.generate(64 * 1024, (i) => (i * 3) & 0xFF),
+      );
+      final second = Uint8List.fromList(
+        List<int>.generate(64 * 1024, (i) => (i * 7 + 1) & 0xFF),
+      );
+      await store.stageCarriedBytesInMemory(path, first);
+      final letGo = store.hold(path);
+      store.retire(path);
+
+      await store.stageCarriedBytesInMemory(path, second);
+      letGo();
+
+      final kept = store.find(path);
+      expect(kept, isNotNull, reason: 'letting go takes its OWN copy only');
+      expect(mediaAppFileSource(kept!.path).readSync(), second);
+    });
+
     test('a copy held under the OS spelling of its path is the copy the save '
         'retires', () async {
       final path = sourceFile('take.wav');

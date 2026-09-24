@@ -451,12 +451,12 @@ class MediaStagingStore {
     ];
   }
 
-  /// A stable, filesystem-safe name for [poolPath].
+  /// The staged file's name for [poolPath] — derived, never recorded, and
+  /// safe on every filesystem.
   ///
   /// The basename rides ahead of the hash for the same reason the archive
   /// entry's does: a person looking in the folder should be able to tell
   /// what they are looking at.
-  /// The staged file's name for [poolPath] — derived, never recorded.
   ///
   /// Public because [_stageBytes] runs in an isolate and has to derive the
   /// same name over there; a second spelling of this rule is exactly the
