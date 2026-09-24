@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
@@ -42,10 +44,17 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final made = drawingsOn(s, row);
     s.selectFrameIndex(7);
+    final reveals = s.revealSelectionTick.value;
 
     s.undo();
     expect(s.currentFrameIndex, 2, reason: '그곳으로 이동만');
     expect(drawingsOn(s, row), made, reason: '⛔되돌리지는 않았다');
+    expect(
+      s.revealSelectionTick.value,
+      greaterThan(reveals),
+      reason: 'F-169 ③ 「스크롤밖이면 스크롤 조정」 — the rails are asked to '
+          'bring the place into view, a row on screen or not',
+    );
 
     s.undo();
     expect(drawingsOn(s, row), made - 1, reason: '다음 언두가 편집을 되돌린다');
@@ -158,23 +167,91 @@ void main() {
     expect(drawingsOn(s, row), made - 1);
   });
 
+  /// Takes [cut] away without the history hearing of it.
+  ///
+  /// ⚠️The only way an entry's place can be gone by the time the entry is on
+  /// top again: through history, everything done after it has been taken
+  /// back first — its cut and its row with it. 🧪A cut deleted THROUGH
+  /// history never reached the check: the delete is looked at from the cut
+  /// it handed the user to, so its undo was never a walk to begin with.
+  void dropCutOutsideHistory(EditorSessionManager s, CutId cut) {
+    s.repository.updateProject(
+      (project) => project.copyWith(
+        tracks: [
+          for (final track in project.tracks)
+            track.copyWith(
+              cuts: [
+                for (final each in track.cuts)
+                  if (each.id != cut) each,
+              ],
+            ),
+        ],
+      ),
+    );
+    s.refreshAfterCutCommand();
+  }
+
+  /// Takes [row] out of [cut] without the history hearing of it (see
+  /// [dropCutOutsideHistory]).
+  void dropRowOutsideHistory(EditorSessionManager s, CutId cut, LayerId row) {
+    s.repository.updateProject(
+      (project) => project.copyWith(
+        tracks: [
+          for (final track in project.tracks)
+            track.copyWith(
+              cuts: [
+                for (final each in track.cuts)
+                  if (each.id == cut)
+                    each.copyWith(
+                      layers: [
+                        for (final layer in each.layers)
+                          if (layer.id != row) layer,
+                      ],
+                    )
+                  else
+                    each,
+              ],
+            ),
+        ],
+      ),
+    );
+    s.refreshAfterCutCommand();
+  }
+
   test('a place whose cut is GONE is nowhere to walk to — the undo takes the '
       'edit back at once', () {
     final s = session();
     final cuts = twoCuts(s);
-    Iterable<CutId> cutIds() => s.repository
-        .requireProject()
-        .tracks
-        .expand((track) => track.cuts)
-        .map((cut) => cut.id);
     s.selectCut(cuts.second);
+    final fps = s.projectSettings.projectFps;
+    // A project edit, so taking it back needs nothing of the cut.
+    s.projectSettings.setProjectFps(fps + 1);
+    s.selectCut(cuts.first);
+    dropCutOutsideHistory(s, cuts.second);
     final entries = s.historyManager.undoCount;
-    s.cutVerbs.deleteActiveCut();
-    expect(cutIds(), isNot(contains(cuts.second)), reason: '⛔전제: 컷이 지워졌다');
 
     s.undo();
-    expect(s.historyManager.undoCount, entries, reason: '걷지 않고 바로 되돌렸다');
-    expect(cutIds(), contains(cuts.second));
+    expect(
+      s.historyManager.undoCount,
+      entries - 1,
+      reason: '걷지 않고 바로 — 없는 컷으로 걸으면 매번 제자리걸음이다',
+    );
+    expect(s.projectSettings.projectFps, fps);
+  });
+
+  test('the way back to a cut that has gone since walks nowhere', () {
+    final s = session();
+    final cuts = twoCuts(s);
+    s.selectCut(cuts.first);
+    s.createDrawingAtCurrentFrame();
+    s.selectCut(cuts.second);
+    s.undo();
+    expect(s.activeCutId, cuts.first, reason: '⛔전제: 첫 컷으로 걸어갔다');
+    dropCutOutsideHistory(s, cuts.second);
+
+    s.redo();
+    expect(s.activeCutId, cuts.first, reason: '돌아갈 컷이 없으니 그 자리에');
+    expect(s.historyManager.canRedo, isFalse, reason: '돌아가는 걸음은 쓰였다');
   });
 
   /// What the app does between two inputs: the action settles.
@@ -244,6 +321,32 @@ void main() {
     expect(drawingsOn(s, made.row), made.made - 1, reason: '다음 언두가 그림');
   });
 
+  test('a row a folded ATTACH group hides: the walk opens the group — the '
+      'rail\'s view, the same door every landing uses', () async {
+    // 🗣️F-169 ②: 「언두시에 접혀있는 레이어로 이동하면 펼치고 해당 레이어에
+    // 서게」. Walked without it, the row would be handed straight back to a
+    // shown one (①) and the walk would arrive nowhere.
+    final s = session();
+    final base = s.activeLayerId!;
+    s.folders.addAttachedLayer(AttachedPlacement.below);
+    final attached = s.activeLayerId!;
+    expect(attached, isNot(base), reason: '⛔전제: 붙인 행에 섰다');
+    s.createDrawingAtCurrentFrame();
+    final made = drawingsOn(s, attached);
+    await settle();
+    s.selectLayer(base);
+    s.railView.collapsedAttachBaseIds.value = {base};
+
+    s.undo();
+    expect(s.activeLayerId, attached, reason: '그 편집의 행에 섰다');
+    expect(
+      s.railView.collapsedAttachBaseIds.value,
+      isEmpty,
+      reason: '그러려고 그룹을 폈다',
+    );
+    expect(drawingsOn(s, attached), made, reason: '⛔되돌리지는 않았다');
+  });
+
   test('a place whose ROW is gone is taken back where its cut and frame '
       'match — a walk to it would arrive nowhere', () {
     final s = session();
@@ -252,29 +355,7 @@ void main() {
     final other = otherRowOf(s);
     s.cutVerbs.renameActiveCut('renamed'); // made standing on [row]
     s.selectLayer(other);
-    // The row goes without the history hearing of it.
-    s.repository.updateProject(
-      (project) => project.copyWith(
-        tracks: [
-          for (final track in project.tracks)
-            track.copyWith(
-              cuts: [
-                for (final each in track.cuts)
-                  if (each.id == cut)
-                    each.copyWith(
-                      layers: [
-                        for (final layer in each.layers)
-                          if (layer.id != row) layer,
-                      ],
-                    )
-                  else
-                    each,
-              ],
-            ),
-        ],
-      ),
-    );
-    s.refreshAfterCutCommand();
+    dropRowOutsideHistory(s, cut, row);
     final entries = s.historyManager.undoCount;
 
     s.undo();
@@ -283,6 +364,23 @@ void main() {
       entries - 1,
       reason: '걷지 않고 바로 — 없는 행으로 걸으면 매번 제자리걸음이다',
     );
+  });
+
+  test('a walk to a place whose row has gone still arrives at its frame', () {
+    final s = session();
+    final row = s.activeLayerId!;
+    final cut = s.activeCutId!;
+    final other = otherRowOf(s);
+    s.selectFrameIndex(2);
+    s.cutVerbs.renameActiveCut('renamed'); // made on [row], at frame 2
+    s
+      ..selectLayer(other)
+      ..selectFrameIndex(7);
+    dropRowOutsideHistory(s, cut, row);
+
+    s.undo();
+    expect(s.currentFrameIndex, 2, reason: '프레임까지는 간다');
+    expect(s.activeLayerId, other, reason: '없는 행에는 설 수 없다');
   });
 
   test('the next edit settles the one before it — a new row and a drawing '
@@ -343,5 +441,55 @@ void main() {
 
     s.redo();
     expect(drawingsOn(s, row), made);
+  });
+
+  test('an undo that MOVES the user is redone from where it left them, at '
+      'once — a deleted row comes back and is stood on', () async {
+    // ⚠️A step is stamped where it leaves the user, like a push: the redo
+    // side is looked at from there. Kept at the delete's own place, the
+    // redo would walk off the row the undo had just stood the user on.
+    final s = session();
+    bool present(LayerId row) => s.layers.any((layer) => layer.id == row);
+    s.layerStack.addLayer();
+    final doomed = s.activeLayerId!;
+    await settle();
+    s.layerVerbs.deleteActiveLayer();
+    await settle();
+    expect(present(doomed), isFalse, reason: '⛔전제: 지웠다');
+
+    s.undo();
+    expect(s.activeLayerId, doomed, reason: '⛔전제: 돌아온 행에 섰다');
+
+    s.redo();
+    expect(present(doomed), isFalse, reason: '걷지 않고 바로 다시 지운다');
+  });
+
+  test('the rail\'s own door settles the edit first — a row stood on in the '
+      'same breath as the edit is still a move of the user\'s', () {
+    final s = session();
+    final row = s.activeLayerId!;
+    s.createDrawingAtCurrentFrame();
+    final made = drawingsOn(s, row);
+    s.standOnRow(LayerRowAddress(otherRowOf(s)));
+
+    s.undo();
+    expect(s.activeLayerId, row, reason: '그 편집의 행으로 걸어간다');
+    expect(drawingsOn(s, row), made, reason: '⛔되돌리지는 않았다');
+  });
+
+  test('parking in the runway settles the edit first — the new row it seated '
+      'the user on is where its undo is taken back', () {
+    final s = session();
+    final cut = s.activeCutId!;
+    final rows = s.layers.length;
+    s.layerStack.addLayer();
+    final made = s.activeLayerId!;
+    s.selectGlobalFrame(9999);
+    expect(s.activeCutId, isNull, reason: '⛔전제: 컷 밖에 주차했다');
+    s.selectCut(cut);
+    expect(s.activeLayerId, made, reason: '⛔전제: 새 행으로 돌아왔다');
+
+    s.undo();
+    expect(s.layers.length, rows, reason: '걷지 않고 바로 되돌린다');
   });
 }

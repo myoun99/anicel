@@ -109,15 +109,12 @@ class HistoryManager extends ChangeNotifier {
   StandingPlace? get undoPlace =>
       _undoStack.isEmpty ? null : places.of(_undoStack.last);
 
-  /// Where the next redo's edit was made, or null when nothing says — or
-  /// when the next redo is a walk back ([redoWalksBack]).
+  /// Where the next redo's edit was made, or null when nothing says.
+  ///
+  /// ⚠️A walk back never says: it is not an edit, so nothing ever stamps
+  /// it — which is what keeps a redo from walking to a walk.
   StandingPlace? get redoPlace =>
       _redoStack.isEmpty ? null : places.of(_redoStack.last);
-
-  /// Whether the next redo returns the user to where they stood before an
-  /// undo walked them away, rather than redoing an edit.
-  bool get redoWalksBack =>
-      _redoStack.isNotEmpty && _redoStack.last is WalkBack;
 
   /// Leaves the way back on the redo side — the undo that walked to an edit
   /// calls this, so the redo that answers it walks back (「리두대칭」).
@@ -125,7 +122,6 @@ class HistoryManager extends ChangeNotifier {
   /// ⚠️It clears nothing: a walk is not an edit, and the redo stack under
   /// it is still the user's to take.
   void leaveWalkBack(WalkBack step) {
-    places.forget();
     _redoStack.add(step);
     _revision += 1;
     notifyListeners();
@@ -574,7 +570,6 @@ class HistoryManager extends ChangeNotifier {
     if (from.isEmpty) {
       return;
     }
-    places.forget();
     final command = from.removeLast();
     apply(command);
     // A walk back is spent by the redo that takes it — it is not an edit,
@@ -592,7 +587,6 @@ class HistoryManager extends ChangeNotifier {
   }
 
   void clear() {
-    places.forget();
     dropPayloadsOf(_undoStack);
     dropPayloadsOf(_redoStack);
     _undoStack.clear();

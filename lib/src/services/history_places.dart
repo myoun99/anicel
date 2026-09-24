@@ -79,9 +79,6 @@ class HistoryPlaces {
       _places[entry] = place;
     }
   }
-
-  /// The stacks moved past whatever was settling; it keeps its stamp.
-  void forget() => _settling = null;
 }
 
 /// The way back from an undo that walked to an edit (I-41): redone, it

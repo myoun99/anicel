@@ -675,10 +675,12 @@ class EditorSessionManager extends ChangeNotifier
   // Where the user stands (Round 6): cut, row and layer.
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId));
 
-  // I-41: every move the user makes begins by settling the last edit where
-  // it left them ([HistoryPlaces.settle]) — the move is theirs, not
-  // the edit's. The hand-offs inside an action go through [standing] and
-  // the controllers, not through these.
+  // I-41: every door that MOVES where the user stands — the cut, the row,
+  // the frame, the gap — first settles the last edit where it left them
+  // ([HistoryPlaces.settle]): the move is theirs, not the edit's. A door
+  // that only passes through these (`selectRow`, `selectGlobalFrame`)
+  // leaves it to them. The hand-offs inside an action go through
+  // [standing] and the controllers, not through these.
   void selectCut(CutId cutId) {
     historyManager.places.settle();
     standing.selectCut(cutId);
@@ -708,10 +710,7 @@ class EditorSessionManager extends ChangeNotifier
     standing.selectLayer(layerId);
   }
 
-  void selectRow(TimelineRowAddress row) {
-    historyManager.places.settle();
-    standing.selectRow(row);
-  }
+  void selectRow(TimelineRowAddress row) => standing.selectRow(row);
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
       standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
   void handOffCurrentRowOnAttachFold(LayerId baseId) =>
@@ -1898,8 +1897,7 @@ class EditorSessionManager extends ChangeNotifier
     _settleAndAdopt();
     final here = standingPlace;
     final there = historyManager.redoPlace;
-    if (!historyManager.redoWalksBack &&
-        here != null &&
+    if (here != null &&
         there != null &&
         standing.isElsewhere(there, from: here)) {
       standing.standOn(there);
@@ -3284,6 +3282,7 @@ class EditorSessionManager extends ChangeNotifier
     if (trackFrameAxis().isEmpty) {
       return;
     }
+    historyManager.places.settle();
     gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
     frameSeekCommitted.value += 1;
@@ -3299,7 +3298,6 @@ class EditorSessionManager extends ChangeNotifier
     if (editingInteractionBusy) {
       return;
     }
-    historyManager.places.settle();
     final axis = onAxis ?? trackFrameAxis();
     if (axis.isEmpty) {
       return;
