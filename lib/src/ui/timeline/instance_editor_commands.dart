@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
-import '../../models/edit_instance_subject.dart';
+import '../../models/pill_subject.dart';
 import '../../models/frame.dart' show Frame;
 import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
@@ -167,8 +167,8 @@ Future<void> activateCellOnDoubleTap(
 /// **선택범위 통해 동사통일화** 가능하게. 그러고 **레이어 이름변경 버튼
 /// 필요없어지니 삭제**」.
 ///
-/// ★The ladder is delete's ([EditInstanceSubject]), and each rung was
-/// already a working verb — this gives the three of them one door.
+/// ★The ladder is the shared pill's one ([pillSubjectOn]), and each rung
+/// was already a working verb — this gives the three of them one door.
 ///
 /// ⚠️The layer rung in particular was ALREADY the batch confirmed #20 asks
 /// for (「선택된 편집가능 레이어 전부를 같은 이름으로 일괄 변경」):
@@ -188,13 +188,13 @@ Future<void> editSelectionInstance(
   switch (session.cellInstances.editInstanceSubjectFor(
     cutsAreThisPanels: cutsAreThisPanels,
   )) {
-    case EditInstanceSubject.cuts:
+    case PillSubject.cuts:
       await renameActiveCutWithDialog(context, session);
-    case EditInstanceSubject.layers:
+    case PillSubject.layers:
       await renameActiveLayerWithDialog(context, session);
-    case EditInstanceSubject.cells:
+    case PillSubject.cells:
       await editActiveInstance(context, session, previewAxis: previewAxis);
-    case EditInstanceSubject.nothing:
+    case PillSubject.nothing:
       break;
   }
 }

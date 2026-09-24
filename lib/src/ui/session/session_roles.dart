@@ -26,7 +26,7 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/canvas_selection_region.dart';
 import '../../models/layer_id.dart';
-import '../../models/delete_subject.dart';
+import '../../models/pill_subject.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart';
@@ -175,7 +175,7 @@ abstract interface class SessionInternals {
   void Function()? get clearCanvasSelection;
   TimelineRowAddress get currentRow;
   ValueNotifier<TimelineRowAddress?> get currentRowListenable;
-  DeleteSubject get deleteSubject;
+  PillSubject get deleteSubject;
   ValueNotifier<TimelineDragPreview?> get dragPreview;
   ValueNotifier<int> get editingFrameCursor;
   bool get editingInteractionBusy;

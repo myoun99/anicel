@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/delete_subject.dart';
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -85,7 +85,7 @@ void main() {
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
-    expect(session.deleteSubject, DeleteSubject.cells);
+    expect(session.deleteSubject, PillSubject.cells);
 
     // A cut range outranks it — 「컷도 마찬가지로 컷 선택하고 삭제버튼누르면」.
     session.updateStoryboardCutSelectionByFrame(
@@ -95,13 +95,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       session.deleteSubject,
-      DeleteSubject.cuts,
+      PillSubject.cuts,
       reason: 'a selected cut is what the press is about, not the cel beneath',
     );
 
     session.clearStoryboardCutSelection();
     await tester.pumpAndSettle();
-    expect(session.deleteSubject, DeleteSubject.cells);
+    expect(session.deleteSubject, PillSubject.cells);
   });
 
   testWidgets('the glyph is RED wherever it is, and goes dark with the button',
@@ -119,7 +119,7 @@ void main() {
         matching: find.byType(Icon),
       ),
     );
-    expect(session.deleteSubject, isNot(DeleteSubject.nothing));
+    expect(session.deleteSubject, isNot(PillSubject.nothing));
     expect(glyph().color, AppColors.danger);
     // CONTRACT CHANGED (T16, 2026-08-13): disabled used to be `null`, which
     // handed the icon to the BUTTON's own ink — and a button has two of

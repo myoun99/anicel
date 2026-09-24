@@ -755,7 +755,7 @@ class TimelineActionToolbar extends StatelessWidget {
         // ⛔THE LAYER DELETE IS GONE FROM HERE — ⑰ is finished.
         //
         // It stood beside this `＋` on ONE stated condition: the shared
-        // delete asks WHAT IS SELECTED, and `DeleteSubject.layers` was a rung
+        // delete asks WHAT IS SELECTED, and `PillSubject.layers` was a rung
         // nothing could reach while rows had no selection. ⑨ (#952) built
         // that selection and F carried the confirmation across
         // (`onDeleteRowSelection`), so the successor does this button's whole

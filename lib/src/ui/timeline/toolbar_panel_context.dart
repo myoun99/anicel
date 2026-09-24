@@ -1,7 +1,6 @@
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
-import '../../models/delete_subject.dart';
-import '../../models/edit_instance_subject.dart';
+import '../../models/pill_subject.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
@@ -99,7 +98,7 @@ abstract class ToolbarPanelContext {
   bool get canPasteLinkedFrame;
   void pasteLinkedFrame();
 
-  DeleteSubject get deleteSubject;
+  PillSubject get deleteSubject;
   void deleteSelectionSubject();
 }
 
@@ -126,8 +125,8 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
   /// The cell rung goes straight through, as it always has.
   void Function()? deletePress({void Function()? onDeleteRowSelection}) =>
       switch (deleteSubject) {
-        DeleteSubject.nothing => null,
-        DeleteSubject.layers when onDeleteRowSelection != null =>
+        PillSubject.nothing => null,
+        PillSubject.layers when onDeleteRowSelection != null =>
           onDeleteRowSelection,
         _ => deleteSelectionSubject,
       };
@@ -196,7 +195,7 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   /// reach for them — 「타임라인에서는 타임라인의 것을」.
   bool get canEditInstance =>
       session.cellInstances.editInstanceSubjectFor(cutsAreThisPanels: false) !=
-      EditInstanceSubject.nothing;
+      PillSubject.nothing;
 
   @override
   bool get canCutRun => session.clipboard.canCutRunAtCurrentFrame;
@@ -224,7 +223,7 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   void pasteLinkedFrame() => session.pasteLinkedFrameAtCurrentFrame();
 
   @override
-  DeleteSubject get deleteSubject =>
+  PillSubject get deleteSubject =>
       session.deleteSubjectFor(cutsAreThisPanels: false);
 
   @override
@@ -508,23 +507,23 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   /// blocks — this panel's lanes and strips write those), then THE BLOCK
   /// UNDER THE CURSOR, whatever its kind.
   @override
-  DeleteSubject get deleteSubject {
+  PillSubject get deleteSubject {
     if (session.trackFrameRangeSelection.value != null) {
-      return DeleteSubject.cuts;
+      return PillSubject.cuts;
     }
     if (session.cells.canDeleteCellForSelection) {
-      return DeleteSubject.cells;
+      return PillSubject.cells;
     }
     // A live CELL band claims the press even when it holds nothing this
     // panel may delete — the same guard the strip's comma verb already
     // states. Without it a band the collector refuses fell through to the
     // cursor rung, where a TRACK-ROW cursor means "delete the cut".
     if (session.cells.cellSelectionClaimsSubject) {
-      return DeleteSubject.nothing;
+      return PillSubject.nothing;
     }
     return session.storyboardCursor.canDeleteBlockAtStoryboardCursor
-        ? DeleteSubject.cells
-        : DeleteSubject.nothing;
+        ? PillSubject.cells
+        : PillSubject.nothing;
   }
 
   @override

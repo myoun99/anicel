@@ -2,7 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/delete_subject.dart';
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -139,7 +139,7 @@ void main() {
           );
           expect(
             session.deleteSubjectFor(cutsAreThisPanels: false),
-            DeleteSubject.cells,
+            PillSubject.cells,
             reason: '$where: so the session arms the one delete',
           );
           expect(deleteButton, findsOneWidget, reason: '$where: the pill');

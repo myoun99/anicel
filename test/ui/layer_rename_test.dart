@@ -64,7 +64,7 @@ void main() {
     tester,
   ) async {
     // The subject ladder's bottom rung: no cut selection, no rows, no cell
-    // to name — `EditInstanceSubject.nothing`, and the one verb dims. It
+    // to name — `PillSubject.nothing`, and the one verb dims. It
     // used to be the loose button's own `_canEditActiveLayer`; the answer
     // is the same and now only one thing computes it.
     await _pumpHome(tester, project: _project(layers: const []));

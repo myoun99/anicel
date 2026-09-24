@@ -3,7 +3,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/edit_instance_subject.dart';
+import '../../models/pill_subject.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../services/command.dart';
 import 'active_cut_controllers.dart';
@@ -340,16 +340,9 @@ class CellInstances {
   /// 유저 확정 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동. 그래서
   /// **선택범위 통해 동사통일화** 가능하게.」
   ///
-  /// ★Deliberately the SAME ladder as [_internals.deleteSubject], in the same order and
-  /// for the same reason. Two shared-pill verbs that both ask 「지금 무엇이
-  /// 선택됐나」 and answer it differently would be a rule the user has to
-  /// hold two versions of.
-  ///
-  /// ⚠️Where the two DIFFER is only in the predicate each rung uses:
-  /// deleting asks what is deletable, renaming asks what is renameable, and
-  /// those are not the same set (a camera row selects and renames but does
-  /// not delete).
-  EditInstanceSubject get editInstanceSubject =>
+  /// ★The shared pill's ONE ladder ([pillSubjectOn]) — this verb supplies
+  /// only what its rungs may rename.
+  PillSubject get editInstanceSubject =>
       editInstanceSubjectFor(cutsAreThisPanels: true);
 
   /// [editInstanceSubject], asked of a PANEL.
@@ -363,18 +356,12 @@ class CellInstances {
   /// panel decides is which selections are ITS nouns, and CUTS are the
   /// storyboard's. The two later rulings (D28, then this) win on the
   /// repo's own tie-break: 확정이 둘이면 나중 것이 이긴다.
-  EditInstanceSubject editInstanceSubjectFor({
-    required bool cutsAreThisPanels,
-  }) {
-    if (cutsAreThisPanels &&
-        _selection.trackFrameRangeSelection.value != null) {
-      return EditInstanceSubject.cuts;
-    }
-    if (_layerVerbs.renameableSelectedLayerIds().isNotEmpty) {
-      return EditInstanceSubject.layers;
-    }
-    return canEditCellInstanceAtCurrentFrame
-        ? EditInstanceSubject.cells
-        : EditInstanceSubject.nothing;
-  }
+  PillSubject editInstanceSubjectFor({required bool cutsAreThisPanels}) =>
+      pillSubjectOn(
+        cuts:
+            cutsAreThisPanels &&
+            _selection.trackFrameRangeSelection.value != null,
+        layers: () => _layerVerbs.renameableSelectedLayerIds().isNotEmpty,
+        cells: () => canEditCellInstanceAtCurrentFrame,
+      );
 }

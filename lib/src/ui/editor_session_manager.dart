@@ -58,7 +58,7 @@ import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/timeline_empty_gaps.dart';
-import '../models/delete_subject.dart';
+import '../models/pill_subject.dart';
 import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
@@ -2941,36 +2941,28 @@ class EditorSessionManager extends ChangeNotifier
   /// each hard-wired to one noun, which is why the same word did different
   /// things depending on where you reached for it.
   @override
-  DeleteSubject get deleteSubject => deleteSubjectFor(cutsAreThisPanels: true);
+  PillSubject get deleteSubject => deleteSubjectFor(cutsAreThisPanels: true);
 
   /// [deleteSubject], asked of a PANEL — see [editInstanceSubjectFor] for
   /// why the cuts rung is a question and not a given (R5q1).
-  DeleteSubject deleteSubjectFor({required bool cutsAreThisPanels}) {
-    if (cutsAreThisPanels && trackFrameRangeSelection.value != null) {
-      return DeleteSubject.cuts;
-    }
-    // ⑨: rows outrank cells. A row selection is the more specific statement
-    // — you named the rows out loud — while the cell rung answers from where
-    // the playhead happens to stand.
-    if (layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
-      return DeleteSubject.layers;
-    }
-    return cells.canDeleteCellAtCurrentFrame
-        ? DeleteSubject.cells
-        : DeleteSubject.nothing;
-  }
+  PillSubject deleteSubjectFor({required bool cutsAreThisPanels}) =>
+      pillSubjectOn(
+        cuts: cutsAreThisPanels && trackFrameRangeSelection.value != null,
+        layers: () => layerVerbs.deletableSelectedLayerIds().isNotEmpty,
+        cells: () => cells.canDeleteCellAtCurrentFrame,
+      );
 
   /// Runs whatever [deleteSubject] names. One undo step either way — the cell
   /// path already composes its own.
   void deleteSelectionSubject({bool cutsAreThisPanels = true}) {
     switch (deleteSubjectFor(cutsAreThisPanels: cutsAreThisPanels)) {
-      case DeleteSubject.cuts:
+      case PillSubject.cuts:
         cutVerbs.deleteActiveCut();
-      case DeleteSubject.layers:
+      case PillSubject.layers:
         layerVerbs.deleteSelectedLayers();
-      case DeleteSubject.cells:
+      case PillSubject.cells:
         cells.deleteCellAtCurrentFrame();
-      case DeleteSubject.nothing:
+      case PillSubject.nothing:
         break;
     }
   }

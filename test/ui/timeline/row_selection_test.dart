@@ -3,7 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/delete_subject.dart';
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -255,9 +255,9 @@ void main() {
         (layer) => layer.kind == LayerKind.animation,
       );
 
-      expect(s.deleteSubject, isNot(DeleteSubject.layers));
+      expect(s.deleteSubject, isNot(PillSubject.layers));
       s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(drawing.id));
-      expect(s.deleteSubject, DeleteSubject.layers);
+      expect(s.deleteSubject, PillSubject.layers);
     });
 
     test('deleting a row selection takes them all, in ONE undo', () {
@@ -301,7 +301,7 @@ void main() {
       s.deleteSelectionSubject();
 
       expect(s.rowSelection.value, isEmpty);
-      expect(s.deleteSubject, isNot(DeleteSubject.layers));
+      expect(s.deleteSubject, isNot(PillSubject.layers));
     });
 
     test('rename gives every selected editable row the SAME name', () {
