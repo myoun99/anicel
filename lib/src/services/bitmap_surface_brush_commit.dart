@@ -63,6 +63,18 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       : NativeCommitScratch(native, surface);
   final scratch = nativeScratch ?? DartCommitScratch(surface);
   final changedCoords = <TileCoord>{};
+  // Native kernel (R18 A-1): identical pixel visits and float math, the
+  // run's dabs in pooled batches straight into the native-backed scratch
+  // (see NativeDabBatcher). The Dart loop below stays byte-for-byte as the
+  // reference fallback.
+  final dabBatch = nativeScratch == null
+      ? null
+      : NativeDabBatcher(
+          nativeScratch.native,
+          tileSize: tileSize,
+          pointerFor: nativeScratch.pointerFor,
+          onTileChanged: changedCoords.add,
+        );
 
   for (final dab in sequence.dabs) {
     // RGBA stamp dabs (R14-④ bitmap lift) take a dedicated 1:1 blend path
@@ -71,6 +83,9 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     // because stamps only enter through programmatic commits).
     final stamp = dab.stamp;
     if (stamp != null) {
+      // The dabs before it land first — a stamp is blended on what they
+      // left.
+      dabBatch?.flush();
       _blendStampDab(
         dab: dab,
         stamp: stamp,
@@ -96,17 +111,8 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       continue;
     }
 
-    // Native kernel (R18 A-1): identical pixel visits and float math, one
-    // pooled batch per dab straight into the native-backed scratch. The
-    // Dart loop below stays byte-for-byte as the reference fallback.
-    if (nativeScratch != null) {
-      final blended = blendDabTilesNative(
-        plan,
-        nativeScratch.native,
-        tileSize: tileSize,
-        pointerFor: nativeScratch.pointerFor,
-      );
-      changedCoords.addAll(changedTileCoords(blended.changed, blended.coords));
+    if (dabBatch != null) {
+      dabBatch.add(plan);
       continue;
     }
 
@@ -119,6 +125,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
           changedCoords.add(TileCoord(x: tileX, y: tileY)),
     );
   }
+  dabBatch?.flush();
 
   return _finishMaterialization(
     surface: surface,

@@ -22,6 +22,7 @@ import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/bitmap_tile_operation_materialization.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
+import 'package:anicel/src/services/brush_dab_kernel.dart' show NativeDabBatcher;
 import 'package:anicel/src/services/brush_dab_sequence_blend.dart';
 
 import '../helpers/native_engine_path.dart';
@@ -162,6 +163,16 @@ final BrushTipMask _testTipMask = BrushTipMask(
   alpha: Uint8List.fromList([
     for (var index = 0; index < 64; index += 1)
       if (index % 7 == 0) 0 else ((index * 4 + 16) % 256),
+  ]),
+);
+
+/// An 8x8 mask inked in its top half only: a dab of it leaves its lower rows
+/// untouched.
+final BrushTipMask _upperHalfTipMask = BrushTipMask(
+  id: 'parity-test-upper-half',
+  size: 8,
+  alpha: Uint8List.fromList([
+    for (var index = 0; index < 64; index += 1) if (index < 32) 220 else 0,
   ]),
 );
 
@@ -666,6 +677,170 @@ void main() {
           dab(x: 47, y: 46, color: 0x8000FF00, opacity: 0.6, flow: 0.8),
         ]),
         reason: 'translucent over translucent',
+      );
+    });
+
+    // 🚨A DAB CUT INTO ROW BANDS BLENDS THE SAME BYTES (2026-09-24, board
+    // `preset-spacing-minimum`). The C kernel cuts a dab of at least two
+    // bands' worth of pixels into bands of whole rows when it covers fewer
+    // tiles than that — which no dab above does, on 64-pixel tiles. These
+    // reach it: 256-pixel tiles, dabs of 100 to 300 px, spans of every
+    // height where a dab straddles the tile corner at the origin.
+    test('a dab cut into row bands blends the same bytes', () {
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          dab(x: 100.3, y: 80.6, size: 100, hardness: 0.3, sequence: 0),
+          dab(x: 6.5, y: 4.5, size: 150, hardness: 0.8, sequence: 1),
+          dab(
+            x: 120.2,
+            y: 70.1,
+            size: 130,
+            hardness: 1,
+            roundness: 0.4,
+            angleDegrees: 30,
+            sequence: 2,
+          ),
+          dab(
+            x: 90.7,
+            y: 60.2,
+            size: 300,
+            opacity: 0.5,
+            flow: 0.4,
+            sequence: 3,
+          ),
+        ]),
+        reason: 'banded round and elliptical dabs',
+      );
+    });
+
+    test('a banded dab reads its lattices by row the same way', () {
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          dab(
+            x: 80.37,
+            y: 70.81,
+            size: 120,
+            roundness: 0.6,
+            angleDegrees: 20,
+            tipMask: _testTipMask,
+            sequence: 0,
+          ),
+          dab(
+            x: 110.2,
+            y: 64.9,
+            size: 140,
+            hardness: 0.5,
+            dualMask: _testTipMask,
+            dualMaskScale: 0.7,
+            dualOffsetU: 0.31,
+            dualOffsetV: 0.77,
+            dualDensity: 0.6,
+            textureMask: _testTipMask,
+            textureScale: 1.5,
+            textureDensity: 0.4,
+            sequence: 1,
+          ),
+        ]),
+        reason: 'banded sampled tip, dual and texture',
+      );
+    });
+
+    test('a tile whose last band changes nothing is still reported changed', () {
+      // The tip is inked in its top half only, so the dab's lower bands
+      // change nothing while its upper ones do — a fold that let the last
+      // band speak for its tile would drop the tile from the dirty set.
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          dab(
+            x: 100,
+            y: 80,
+            size: 120,
+            hardness: 1,
+            tipMask: _upperHalfTipMask,
+            sequence: 0,
+          ),
+        ]),
+        reason: 'the fold keeps a band that changed',
+      );
+    });
+
+    // A call carries at most `NativeDabBatcher.maxDabs` dabs, and one more
+    // starts the next batch: a pixel-step stroke longer than that crosses
+    // the cut with every row still under the dabs before it.
+    test('a stroke longer than one batch blends the same bytes', () {
+      expect(NativeDabBatcher.maxDabs, lessThan(150));
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          for (var i = 0; i < 150; i += 1)
+            dab(
+              x: 40.25 + i * 0.8,
+              y: 60.5 + i * 0.35,
+              size: 48,
+              opacity: 0.6,
+              flow: 0.3,
+              sequence: i,
+            ),
+        ]),
+        reason: 'a stroke across batches',
+      );
+    });
+
+    test('dabs of different tips share a batch and keep their order', () {
+      // A pen stroke's tip is resolved per quantized size, so its mask
+      // changes every few dabs — and they still ride one call.
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          for (var i = 0; i < 12; i += 1)
+            dab(
+              x: 70.4 + i * 3.1,
+              y: 66.2 + i * 1.7,
+              size: 90,
+              hardness: 0.6,
+              tipMask: switch (i % 3) {
+                0 => _testTipMask,
+                1 => _upperHalfTipMask,
+                _ => null,
+              },
+              sequence: i,
+            ),
+        ]),
+        reason: 'mixed tips in one batch',
+      );
+    });
+
+    test('a batch ends where its masks would outgrow the upload cache', () {
+      // Every dab a tip of its own: the batch cuts once the next one would
+      // upload past what the engine's mask cache holds at once, and the
+      // next call lands on what the first left.
+      final tips = [
+        for (var k = 0; k < 11; k += 1)
+          BrushTipMask(
+            id: 'parity-distinct-$k',
+            size: 8,
+            alpha: Uint8List.fromList([
+              for (var index = 0; index < 64; index += 1)
+                (index * (k + 3) + k * 29) % 256,
+            ]),
+          ),
+      ];
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          for (var i = 0; i < tips.length; i += 1)
+            dab(
+              x: 72.6 + i * 4.3,
+              y: 61.9 + i * 2.2,
+              size: 96,
+              tipMask: tips[i],
+              sequence: i,
+            ),
+        ]),
+        reason: 'a batch cut at the mask allowance',
       );
     });
   });

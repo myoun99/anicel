@@ -220,6 +220,21 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       <int, QaNativeTileBuffer>{};
   final QaNativeEngine? _native = QaNativeEngine.instance;
 
+  /// The C route's batch: every dab of one [blendFrom] call lands in one
+  /// pooled call (see [NativeDabBatcher]).
+  late final NativeDabBatcher? _dabBatch = _native == null
+      ? null
+      : NativeDabBatcher(
+          _native,
+          tileSize: tileSize,
+          pointerFor: (coord) {
+            // _tileBuffer also bumps the tile revision, which is what marks
+            // a resident pre-blend result stale.
+            _tileBuffer(coord.x, coord.y);
+            return _nativeBuffers[_tileKey(coord.x, coord.y)]!.pointer;
+          },
+        );
+
   /// Tile coordinate per linear key — the promotion pass walks the
   /// touched tiles and needs their coordinates back.
   final Map<int, TileCoord> _tileCoords = <int, TileCoord>{};
@@ -1027,11 +1042,17 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     final start = from ?? _blendedDabCount;
     DirtyRegion? touched;
 
-    for (var index = start; index < dabs.length; index += 1) {
-      final region = _blendDab(dabs[index]);
-      if (region != null) {
-        touched = touched == null ? region : touched.union(region);
+    try {
+      for (var index = start; index < dabs.length; index += 1) {
+        final region = _blendDab(dabs[index]);
+        if (region != null) {
+          touched = touched == null ? region : touched.union(region);
+        }
       }
+    } finally {
+      // The call's native dabs land here, together — and before anything
+      // reads the tiles they touched.
+      _dabBatch?.flush();
     }
     _blendedDabCount = math.max(_blendedDabCount, dabs.length);
     if (touched != null) {
@@ -1071,20 +1092,11 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
 
     // R21: the C kernel runs the live blend exactly like the commit —
     // same spec, same lattices, srcOver only. Byte-identical to the Dart
-    // loop below (parity-pinned).
-    final native = _native;
-    if (native != null) {
-      blendDabTilesNative(
-        plan,
-        native,
-        tileSize: tileSize,
-        pointerFor: (coord) {
-          // _tileBuffer also bumps the tile revision, which is what marks
-          // a resident pre-blend result stale.
-          _tileBuffer(coord.x, coord.y);
-          return _nativeBuffers[_tileKey(coord.x, coord.y)]!.pointer;
-        },
-      );
+    // loop below (parity-pinned). It lands with the rest of the call's
+    // dabs, when [blendFrom] flushes the batch.
+    final batch = _dabBatch;
+    if (batch != null) {
+      batch.add(plan);
       return DirtyRegion(
         left: plan.left,
         top: plan.top,

@@ -188,7 +188,16 @@ import 'dart:io';
 ///   was assembled whole in memory before anything decoded it (board
 ///   `carried-movie-compressed`, 유저 2026-09-24 「압축 유지 + 풀면서 디코더에
 ///   먹이는 리더를 플랫폼마다 만든다」).
-const int kQaEngineAbiVersion = 37;
+/// - v38: `qa_dab_blend_batch` replaces `qa_dab_blend_tiles` — a call carries
+///   every dab a route has (a frame of the live stroke, a run of the
+///   commit): their specs, a clip each, and the tiles they cover staged
+///   once. The kernel cuts those tiles into row bands and each band applies
+///   every dab that reaches it, in order, so the bytes are the ones the dabs
+///   made one at a time. At the 1% spacing the presets moved to (board
+///   `preset-spacing-minimum`), one pooled call per dab woke the workers
+///   once a dab — ~0.2 ms, as long as a 100 px dab takes alone — and the
+///   pool bought nothing below 200 px.
+const int kQaEngineAbiVersion = 38;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

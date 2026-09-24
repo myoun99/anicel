@@ -349,21 +349,152 @@ class BrushDabPlan {
   }
 }
 
-/// Hands the plan to the C kernel: one `prepareDab`, one staged span per
-/// covered tile ([stageTileSpans]), one pooled batch call.
+/// Collects the dabs a route blends and hands them to the C kernel a batch
+/// at a time — the one way both routes reach it.
 ///
-/// [pointerFor] returns the tile's native scratch pointer, CREATING the
-/// buffer if this dab is the first to touch the tile.
+/// 🚨A CALL IS A BATCH, NOT A DAB (ABI 38, 2026-09-24, board
+/// `preset-spacing-minimum`). At the 1% spacing the presets moved to, a
+/// stroke lays a dab about every pixel, and one pooled call per dab woke
+/// the workers once a dab — ~0.2 ms each on a 20-thread desktop, as long
+/// as a 100 px dab takes alone, so the pool bought nothing below 200 px
+/// (`qa_dab_blend_batch` has the numbers). A batch is woken for once.
+///
+/// A batch ends where its masks would outgrow what the native mask cache
+/// holds at once ([QaNativeEngine.batchMaskAllowance]) — every spec in the
+/// batch points at an upload, and the cache only promises its newest — and
+/// at [maxDabs], which bounds the lattice arena one call holds. ⛔NOT at
+/// every change of mask: a pen stroke's dabs carry a tip resolved per
+/// quantized size (`BrushTipStampCache`), so pressure changes the mask
+/// every few dabs, and a cut there would bring back the call a dab. Either
+/// cut leaves the bytes alone — the dabs still land in their order.
+class NativeDabBatcher {
+  NativeDabBatcher(
+    this.native, {
+    required this.tileSize,
+    required this.pointerFor,
+    this.onTileChanged,
+  });
+
+  final QaNativeEngine native;
+  final int tileSize;
+
+  /// The tile's native scratch pointer, CREATED if this batch is the first
+  /// to touch the tile.
+  final Pointer<Uint8> Function(TileCoord coord) pointerFor;
+
+  /// Each tile a batch changed — the commit adopts exactly those; the live
+  /// overlay passes null.
+  final void Function(TileCoord coord)? onTileChanged;
+
+  static const int maxDabs = 64;
+
+  final List<BrushDabPlan> _pending = [];
+
+  /// The distinct masks the pending batch uploads, and their bytes.
+  final Set<BrushTipMask> _masks = Set<BrushTipMask>.identity();
+  int _maskBytes = 0;
+
+  /// Queues [plan] behind the dabs before it, first flushing the batch it
+  /// cannot join.
+  void add(BrushDabPlan plan) {
+    var fresh = _freshMasks(plan);
+    if (_pending.isNotEmpty && !_fits(fresh)) {
+      flush();
+      fresh = _freshMasks(plan);
+    }
+    _pending.add(plan);
+    for (final mask in fresh) {
+      _masks.add(mask);
+      _maskBytes += _uploadBytes(mask);
+    }
+  }
+
+  bool _fits(Set<BrushTipMask> fresh) {
+    if (_pending.length == maxDabs) {
+      return false;
+    }
+    final allowance = native.batchMaskAllowance;
+    var bytes = _maskBytes;
+    for (final mask in fresh) {
+      bytes += _uploadBytes(mask);
+    }
+    return _masks.length + fresh.length <= allowance.count &&
+        bytes <= allowance.bytes;
+  }
+
+  Set<BrushTipMask> _freshMasks(BrushDabPlan plan) => {
+    for (final mask in [plan.tipMask, plan.dualMask, plan.textureMask])
+      if (mask != null && !_masks.contains(mask)) mask,
+  };
+
+  /// The bytes the engine uploads for [mask] — its normalized alpha, a
+  /// double a texel.
+  static int _uploadBytes(BrushTipMask mask) => mask.size * mask.size * 8;
+
+  /// Blends every queued dab — before anything reads the tiles, and before
+  /// a dab of another kind (a stamp) lands on them.
+  void flush() {
+    if (_pending.isEmpty) {
+      return;
+    }
+    final blended = blendDabBatchNative(
+      _pending,
+      native,
+      tileSize: tileSize,
+      pointerFor: pointerFor,
+    );
+    _pending.clear();
+    _masks.clear();
+    _maskBytes = 0;
+    final sink = onTileChanged;
+    if (sink == null) {
+      return;
+    }
+    for (final coord in changedTileCoords(blended.changed, blended.coords)) {
+      sink(coord);
+    }
+  }
+}
+
+/// Hands [plans] to the C kernel in ONE call: each dab staged at its index,
+/// one span per tile the batch covers ([stageTileSpansCovering]), one
+/// pooled call that applies them in order.
 ///
 /// Returns the per-tile changed flags the kernel wrote (valid until the
 /// next batch) beside the coordinates they index, in span order.
-({Uint8List changed, List<TileCoord> coords}) blendDabTilesNative(
-  BrushDabPlan plan,
+({Uint8List changed, List<TileCoord> coords}) blendDabBatchNative(
+  List<BrushDabPlan> plans,
   QaNativeEngine native, {
   required int tileSize,
   required Pointer<Uint8> Function(TileCoord coord) pointerFor,
 }) {
-  native.prepareDab(
+  native.beginDabBatch(plans.length);
+  for (var index = 0; index < plans.length; index += 1) {
+    _prepareDab(native, index, plans[index]);
+  }
+  final coords = stageTileSpansCovering(
+    native,
+    clips: [for (final plan in plans) plan.clip],
+    tileSize: tileSize,
+    pointerFor: pointerFor,
+  );
+  return (
+    changed: native.dabBlendBatch(
+      tileCount: coords.length,
+      dabCount: plans.length,
+      tileSize: tileSize,
+    ),
+    coords: coords,
+  );
+}
+
+void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
+  native.prepareDabAt(
+    index,
+    clipLeft: plan.left,
+    clipTop: plan.top,
+    clipRightExclusive: plan.rightExclusive,
+    clipBottomExclusive: plan.bottomExclusive,
     centerX: plan.centerX,
     centerY: plan.centerY,
     radius: plan.radius,
@@ -424,19 +555,6 @@ class BrushDabPlan {
     texVTexel1: plan.textureVLattice?.texel1,
     texVFraction: plan.textureVLattice?.fraction,
     texVOneMinus: plan.textureVLattice?.oneMinusFraction,
-  );
-
-  // The plan's clip is never empty (BrushDabPlan.of returns null for
-  // that), so there is always at least one span.
-  final coords = stageTileSpans(
-    native,
-    clip: plan.clip,
-    tileSize: tileSize,
-    pointerFor: pointerFor,
-  );
-  return (
-    changed: native.dabBlendTiles(count: coords.length, tileSize: tileSize),
-    coords: coords,
   );
 }
 

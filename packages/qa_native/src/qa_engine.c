@@ -1899,36 +1899,216 @@ static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
 #endif
 
 // --- Batched generic dab blend -------------------------------------------
+//
+// 🚨A CALL'S DABS GO IN ONE CALL, AND THEIR ROWS SHARE THE POOL (ABI 38,
+// 2026-09-24, board `preset-spacing-minimum`). The presets moved to the 1%
+// spacing (유저 09-24: 「프리셋 브러시들 간격이 너무 멀어서 … 최소치로
+// 두자」), so a stroke lays a dab about every pixel, and one call per dab
+// paid the pool twice over. Measured on a 20-thread desktop, one stroke of
+// 100 px dabs took 510 ms with the pool and 503 ms without it: a dab under
+// ~250 px covers one to four tiles, so one item per tile woke almost no one.
+// Cutting that one dab into row bands still bought only 11%, because a
+// sleeping worker takes ~0.2 ms to wake and the dab (~0.28 ms alone) was
+// nearly done before one arrived — 200 px dabs, long enough to outlast the
+// wake, went 4.4x.
+//
+// So the caller hands over every dab it has (a frame of the live stroke, a
+// run of the commit), the kernel cuts the tiles they cover into bands of
+// whole rows, and each band applies every dab that reaches it, in order.
+// The wake is paid once a call, and the rows a band holds stay in cache
+// from the first dab to the last.
+//
+// ⛔BYTE-IDENTICAL BY CONSTRUCTION: every pixel sees the same dabs in the
+// same order through the same float expression — a pixel lives in exactly
+// one band, a band applies the dabs in their order, and
+// `qa_dab_blend_tile` carries nothing from one row to the next (each row
+// derives `dy`, `v_index` and its offset from `y` alone). Which thread,
+// which band and what else rode in the call change nothing.
+
+// Pixel visits a band is cut to: ~50 µs of a round dab at ~25 ns a visit,
+// work worth waking a thread for.
+#define QA_DAB_BAND_WORK 2048
+// Bands one call may be cut into. A call with more work than this covers
+// enough tiles to fill the pool one tile an item.
+#define QA_DAB_MAX_BANDS 256
+
+typedef struct {
+  int32_t tile;
+  int32_t top;
+  int32_t bottom_exclusive;
+} qa_dab_band;
 
 typedef struct {
   qa_tile_span* tiles;
   int32_t tile_size;
-  const qa_dab_spec* spec;
+  const qa_dab_spec* specs;
+  const int32_t* clips;
+  int32_t dab_count;
   uint8_t* changed_out;
+  const qa_dab_band* bands;
+  uint8_t* band_changed;
 } qa_dab_batch_context;
+
+// Where dab `d`'s clip meets rows [top, bottom) of `span`: the rect it
+// blends there, or a zero area.
+static int64_t qa_dab_meet(
+    const qa_dab_batch_context* batch,
+    int32_t d,
+    const qa_tile_span* span,
+    int32_t top,
+    int32_t bottom_exclusive,
+    int32_t* out) {
+  const int32_t* clip = batch->clips + (ptrdiff_t)d * 4;
+  out[0] = clip[0] > span->span_left ? clip[0] : span->span_left;
+  out[1] = clip[1] > top ? clip[1] : top;
+  out[2] = clip[2] < span->span_right_exclusive ? clip[2]
+                                                  : span->span_right_exclusive;
+  out[3] = clip[3] < bottom_exclusive ? clip[3] : bottom_exclusive;
+  if (out[0] >= out[2] || out[1] >= out[3]) {
+    return 0;
+  }
+  return (int64_t)(out[2] - out[0]) * (out[3] - out[1]);
+}
+
+// Every dab of the call, in order, over rows [top, bottom) of one tile —
+// each where its own clip meets the tile, exactly the span it had when it
+// was a call of its own.
+static int32_t qa_dab_blend_rows(
+    const qa_dab_batch_context* batch,
+    const qa_tile_span* span,
+    int32_t top,
+    int32_t bottom_exclusive) {
+  int32_t changed = 0;
+  int32_t meet[4];
+  for (int32_t d = 0; d < batch->dab_count; d += 1) {
+    if (qa_dab_meet(batch, d, span, top, bottom_exclusive, meet) == 0) {
+      continue;
+    }
+    if (qa_dab_blend_tile(span->tile_pixels, batch->tile_size,
+                          span->tile_left, span->tile_top, meet[0], meet[2],
+                          meet[1], meet[3], &batch->specs[d])) {
+      changed = 1;
+    }
+  }
+  return changed;
+}
+
+// The pixel visits the call makes in one tile.
+static int64_t qa_dab_tile_work(
+    const qa_dab_batch_context* batch,
+    const qa_tile_span* span) {
+  int64_t work = 0;
+  int32_t meet[4];
+  for (int32_t d = 0; d < batch->dab_count; d += 1) {
+    work += qa_dab_meet(batch, d, span, span->span_top,
+                        span->span_bottom_exclusive, meet);
+  }
+  return work;
+}
 
 static void qa_dab_batch_item(int32_t item_index, void* context) {
   const qa_dab_batch_context* batch = (const qa_dab_batch_context*)context;
   const qa_tile_span* span = &batch->tiles[item_index];
-  batch->changed_out[item_index] = (uint8_t)qa_dab_blend_tile(
-      span->tile_pixels, batch->tile_size, span->tile_left, span->tile_top,
-      span->span_left, span->span_right_exclusive, span->span_top,
-      span->span_bottom_exclusive, batch->spec);
+  batch->changed_out[item_index] = (uint8_t)qa_dab_blend_rows(
+      batch, span, span->span_top, span->span_bottom_exclusive);
 }
 
-// Blends one dab into MANY tiles in one call, fanned across the pool.
-QA_EXPORT void qa_dab_blend_tiles(
+static void qa_dab_band_item(int32_t item_index, void* context) {
+  const qa_dab_batch_context* batch = (const qa_dab_batch_context*)context;
+  const qa_dab_band* band = &batch->bands[item_index];
+  batch->band_changed[item_index] = (uint8_t)qa_dab_blend_rows(
+      batch, &batch->tiles[band->tile], band->top, band->bottom_exclusive);
+}
+
+// Cuts every tile's span into its share of `band_count` bands by work (at
+// least one each), and returns how many it wrote — at most
+// `band_count + tile_count`.
+static int32_t qa_cut_dab_bands(
+    const qa_dab_batch_context* batch,
+    int32_t tile_count,
+    int64_t work,
+    int32_t band_count,
+    qa_dab_band* bands) {
+  int32_t written = 0;
+  for (int32_t t = 0; t < tile_count; t += 1) {
+    const qa_tile_span* span = &batch->tiles[t];
+    const int32_t height = span->span_bottom_exclusive - span->span_top;
+    if (height <= 0) {
+      // Nothing to blend, but the tile still reports unchanged.
+      bands[written].tile = t;
+      bands[written].top = span->span_top;
+      bands[written].bottom_exclusive = span->span_top;
+      written += 1;
+      continue;
+    }
+    int64_t share =
+        (int64_t)band_count * qa_dab_tile_work(batch, span) / work;
+    if (share < 1) share = 1;
+    if (share > height) share = height;
+    const int32_t rows = (int32_t)((height + share - 1) / share);
+    for (int32_t top = span->span_top; top < span->span_bottom_exclusive;
+         top += rows) {
+      bands[written].tile = t;
+      bands[written].top = top;
+      bands[written].bottom_exclusive =
+          top + rows < span->span_bottom_exclusive
+              ? top + rows
+              : span->span_bottom_exclusive;
+      written += 1;
+    }
+  }
+  return written;
+}
+
+// Blends `dab_count` dabs, in order, into the tiles they cover in ONE call,
+// fanned across the pool. `tiles` holds each covered tile once, its span
+// the rect every dab's clip makes there together; `clips` holds four ints a
+// dab — left, top, right and bottom, exclusive — its region after the
+// pasteboard clip.
+QA_EXPORT void qa_dab_blend_batch(
     qa_tile_span* tiles,
     int32_t tile_count,
     int32_t tile_size,
-    const qa_dab_spec* spec,
+    const qa_dab_spec* specs,
+    const int32_t* clips,
+    int32_t dab_count,
     uint8_t* changed_out) {
+  qa_dab_band bands[QA_DAB_MAX_BANDS * 2];
+  uint8_t band_changed[QA_DAB_MAX_BANDS * 2];
   qa_dab_batch_context context;
   context.tiles = tiles;
   context.tile_size = tile_size;
-  context.spec = spec;
+  context.specs = specs;
+  context.clips = clips;
+  context.dab_count = dab_count;
   context.changed_out = changed_out;
-  qa_pool_run(qa_dab_batch_item, &context, tile_count);
+  context.bands = bands;
+  context.band_changed = band_changed;
+
+  int64_t work = 0;
+  for (int32_t t = 0; t < tile_count; t += 1) {
+    work += qa_dab_tile_work(&context, &tiles[t]);
+  }
+  int64_t wanted = work / QA_DAB_BAND_WORK;
+  if (wanted > QA_DAB_MAX_BANDS) wanted = QA_DAB_MAX_BANDS;
+  if (wanted <= 1) {
+    // Less than two bands of work: all of it here, nobody woken.
+    for (int32_t t = 0; t < tile_count; t += 1) {
+      qa_dab_batch_item(t, &context);
+    }
+    return;
+  }
+  if (wanted <= tile_count) {
+    qa_pool_run(qa_dab_batch_item, &context, tile_count);
+    return;
+  }
+  const int32_t band_count =
+      qa_cut_dab_bands(&context, tile_count, work, (int32_t)wanted, bands);
+  qa_pool_run(qa_dab_band_item, &context, band_count);
+  memset(changed_out, 0, (size_t)tile_count);
+  for (int32_t b = 0; b < band_count; b += 1) {
+    changed_out[bands[b].tile] |= band_changed[b];
+  }
 }
 
 // --- Batched stamp blend ---------------------------------------------------
@@ -5085,4 +5265,8 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // supported` says whether this device can be fed a framed span;
 // `qa_audio_decode_span` replaces `_range`, and `qa_audio_decode_memory` is
 // gone with the in-memory origin it served.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 37; }
+// v38: qa_dab_blend_batch replaces qa_dab_blend_tiles - a call carries
+// every dab it has (specs, and a clip each), the tiles they cover once, and
+// the kernel cuts those tiles into row bands, each applying every dab that
+// reaches it in order. One wake of the pool a call instead of one a dab.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 38; }
