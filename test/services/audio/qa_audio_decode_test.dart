@@ -9,7 +9,7 @@ import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_engine_path.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// The vendored dr_libs, exercised end to end.
 ///
@@ -105,7 +105,7 @@ void main() {
       // Three blocks' worth, so the decoder's reads cross block boundaries.
       final wav = wav16(ramp(600000), channels: 1, rate: 48000);
       final directory = Directory.systemTemp.createTempSync('anicel-framed');
-      addTearDown(() => deleteTempQuietly(directory));
+      deleteAfterSessionEnds(directory);
       final written = writeMediaBlob(
         basePath: '${directory.path}/take.wav',
         length: wav.length,
