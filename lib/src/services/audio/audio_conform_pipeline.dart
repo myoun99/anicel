@@ -61,7 +61,7 @@ import 'dart:typed_data';
 import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../media/media_byte_source.dart';
 import '../persistence/anicel_incremental_writer.dart'
-    show anicelCrc32, anicelCrc32Finish, anicelCrc32Start, anicelCrc32Update;
+    show anicelCrc32Finish, anicelCrc32Start, anicelCrc32Update;
 import '../persistence/app_save_settings.dart' show AppSave;
 import '../persistence/media_blob_codec.dart';
 import 'audio_peaks_extractor.dart';
@@ -76,7 +76,7 @@ import 'conform_pcm_codec.dart';
 /// decoder was asked to look at it — and that, not the decoders, is why a
 /// movie's soundtrack could not be conformed: a three-gigabyte reference
 /// video is not a byte array. A source can name itself as a path plus a
-/// span ([MediaByteSource.range]), and the native decoder takes exactly
+/// span ([MediaByteSource.span]), and the native decoder takes exactly
 /// that.
 typedef AudioDecodeCallback =
     ({Float32List samples, int channels, int sampleRate})? Function(
@@ -353,18 +353,12 @@ class AudioConformPipeline {
   final int speedNumerator;
   final int speedDenominator;
 
-  /// The fingerprint [sourceBytes] carries — the IDENTITY, content-derived
-  /// so it survives being copied to another machine.
+  /// The fingerprint [source] carries — the IDENTITY, content-derived so it
+  /// survives being copied to another machine — without holding the source.
   ///
-  /// Takes BYTES rather than a path because the fingerprint is content, and
-  /// because a caller holding bytes has already paid for them.
-  static ConformSourceFingerprint fingerprintOf(Uint8List sourceBytes) =>
-      ConformSourceFingerprint(
-        sourceLength: sourceBytes.length,
-        sourceCrc32: anicelCrc32(sourceBytes),
-      );
-
-  /// The same identity, without holding the source.
+  /// 🪦A twin that took the bytes whole, `fingerprintOf(Uint8List)`, went
+  /// with its last caller (2026-09-24): 「a caller holding bytes has already
+  /// paid for them」, and no caller should be holding them.
   ///
   /// 🚨★★★**A FINGERPRINT MUST NOT COST AN ALLOCATION THE SIZE OF THE FILE.**
   /// This is the identity of a possibly-enormous container, and the whole
@@ -373,26 +367,21 @@ class AudioConformPipeline {
   /// — the archive writer folds a streamed entry the same way, for the same
   /// reason.
   ///
-  /// ⚠️Falls back to bytes for a FRAMED source, and that is not a shortcut:
-  /// its stored blocks are compressed, so the only way to see its content is
-  /// to have it assembled. Nothing enormous is stored framed — compression
-  /// is decided per file by measurement, and a movie does not shrink.
+  /// ⚠️It reads the source's OWN bytes a window at a time
+  /// ([MediaByteSource.openWindowReader]) — for a framed source, decoded, so
+  /// the identity is the medium's whichever way it is stored. 🪦A framed
+  /// source used to be read whole here, on the grounds that 「nothing
+  /// enormous is stored framed … a movie does not shrink」. Both halves were
+  /// guesses, and wrong: compression is decided per file and an MP4 shrinks
+  /// 6.7% (2026-09-24).
   static ConformSourceFingerprint fingerprintOfSource(MediaByteSource source) {
-    final span = source.range;
-    if (span == null) {
-      return fingerprintOf(source.readSync());
-    }
     var state = anicelCrc32Start;
     final buffer = Uint8List(_fingerprintChunkBytes);
     var read = 0;
-    final handle = File(span.path).openSync();
+    final reader = source.openWindowReader();
     try {
-      handle.setPositionSync(span.offset);
-      while (read < span.length) {
-        final want = span.length - read < buffer.length
-            ? span.length - read
-            : buffer.length;
-        final got = handle.readIntoSync(buffer, 0, want);
+      while (true) {
+        final got = reader.readIntoSync(buffer, read, buffer.length);
         if (got <= 0) {
           break;
         }
@@ -403,7 +392,7 @@ class AudioConformPipeline {
         read += got;
       }
     } finally {
-      handle.closeSync();
+      reader.close();
     }
     return ConformSourceFingerprint(
       sourceLength: read,

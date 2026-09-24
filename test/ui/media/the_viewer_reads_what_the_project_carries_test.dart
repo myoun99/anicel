@@ -148,15 +148,19 @@ void main() {
     });
   }
 
-  // ⏸INTERIM — board `carried-movie-compressed-Q1`. A movie kept COMPRESSED
-  // has no decoder that reads it where it lies, so the viewer reads the
-  // original while there is one, exactly as it did before 2026-09-24.
+  // A movie kept COMPRESSED is read where the project keeps it: the decoder
+  // is fed its blocks decoded (board `carried-movie-compressed-Q1`, 유저
+  // 「압축 유지 + 풀면서 디코더에 먹이는 리더를 플랫폼마다 만든다」). Only a
+  // device whose decoder cannot be fed one — Android below 9 — reads the
+  // original instead, and only while there is one: the cost 유저 accepted.
   group('a carried movie kept COMPRESSED', () {
     /// A session carrying a movie whose staged copy is FRAMED — the shape a
-    /// 6.7%-smaller MP4 takes — with its original beside it.
-    Future<({EditorSessionManager session, String path})> framed() async {
+    /// 6.7%-smaller MP4 takes — with its original beside it. Null when this
+    /// run has no engine to frame it with.
+    Future<({EditorSessionManager session, String path, String staged})?>
+    framed() async {
       final path = normalizedMediaPath(
-        await writeCarriedMovie(directory, length: 512),
+        await writeCompressibleMovie(directory),
       );
       final session = EditorSessionManager(
         initialProject: createDefaultProject().copyWith(
@@ -175,36 +179,77 @@ void main() {
         audioConformStore: soundConformStore(),
       );
       addTearDown(session.dispose);
-      final staged = File(
-        session.mediaStagingStore.pathFor(path, framed: true),
-      );
-      staged.parent.createSync(recursive: true);
-      staged.writeAsBytesSync(const [0, 1, 2, 3]);
-      return (session: session, path: path);
+      final staged = await session.mediaStagingStore.stage(path);
+      if (staged == null || !staged.framed) {
+        return null;
+      }
+      return (session: session, path: path, staged: staged.path);
     }
 
-    testWidgets('opens from its original while the original is there', (
-      tester,
-    ) async {
-      final (:session, :path) = (await tester.runAsync(framed))!;
+    for (final original in ['there', 'gone']) {
+      testWidgets('its original $original: opens from the project\'s own '
+          'copy, framed', (tester) async {
+        final carried = await tester.runAsync(framed);
+        if (carried == null) {
+          markTestSkipped('no engine on this run to frame the copy with');
+          return;
+        }
+        if (original == 'gone') {
+          File(carried.path).deleteSync();
+        }
 
-      await view(tester, session, path, MediaAssetKind.video);
+        await view(tester, carried.session, carried.path, MediaAssetKind.video);
 
-      expect(page(), findsOneWidget);
-      expect(movies.openedAt.single.path, path);
-    });
+        expect(page(), findsOneWidget);
+        final opened = movies.openedAt.single;
+        expect(opened.path, carried.staged);
+        expect(
+          opened.span?.framed,
+          isTrue,
+          reason: 'fed to the decoder as the framed stretch it is — and '
+              'READ, because the reader here refuses what is not a movie',
+        );
+      });
+    }
 
-    testWidgets('and without it says the movie is only read in place', (
-      tester,
-    ) async {
-      final (:session, :path) = (await tester.runAsync(framed))!;
-      File(path).deleteSync();
+    group('on a device whose decoder cannot be fed one', () {
+      setUp(() {
+        debugVideoDecodeBackend = movies = ReadingVideoBackend(
+          readsFramed: false,
+        );
+      });
 
-      await view(tester, session, path, MediaAssetKind.video);
+      testWidgets('opens from its original while the original is there', (
+        tester,
+      ) async {
+        final carried = await tester.runAsync(framed);
+        if (carried == null) {
+          markTestSkipped('no engine on this run to frame the copy with');
+          return;
+        }
 
-      expect(page(), findsNothing);
-      expect(find.textContaining('read in place'), findsOneWidget);
-      expect(movies.openedAt, isEmpty, reason: 'never handed to a decoder');
+        await view(tester, carried.session, carried.path, MediaAssetKind.video);
+
+        expect(page(), findsOneWidget);
+        expect(movies.openedAt.single.path, carried.path);
+      });
+
+      testWidgets('and without it says this device cannot read it', (
+        tester,
+      ) async {
+        final carried = await tester.runAsync(framed);
+        if (carried == null) {
+          markTestSkipped('no engine on this run to frame the copy with');
+          return;
+        }
+        File(carried.path).deleteSync();
+
+        await view(tester, carried.session, carried.path, MediaAssetKind.video);
+
+        expect(page(), findsNothing);
+        expect(find.textContaining('cannot read that movie'), findsOneWidget);
+        expect(movies.openedAt, isEmpty, reason: 'never handed to a decoder');
+      });
     });
   });
 }

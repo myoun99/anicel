@@ -53,23 +53,16 @@ final class VideoViewerDocument implements ViewerDocument {
   /// exactly what went wrong.
   ///
   /// [source] is where the movie's bytes are: a file of its own, opened by
-  /// its path — or a stretch of one, a carried video inside the `.anicel`,
-  /// opened on that range. ⛔Never a temp copy: 유저 2026-08-27 「사본 남으면
-  /// 진짜 용서안할게」.
+  /// its path — or a stretch of one, a carried video inside the `.anicel` or
+  /// a staged copy, opened on that span, framed or not. ⛔Never a temp copy:
+  /// 유저 2026-08-27 「사본 남으면 진짜 용서안할게」.
   ///
-  /// ⚠️A range that this platform cannot open is 「unreadable」, not 「no
-  /// reader」 — Windows and Apple refuse a range by name while decoding
-  /// paths perfectly well, and telling the user their build has no decoder
-  /// would be the exact lie this function was just fixed for. So is a movie
-  /// kept FRAMED (compressed in blocks): no decoder reads it in place.
+  /// ⚠️A span this device cannot be pointed at ([movieOpening]: a movie kept
+  /// FRAMED on Android below API 28, with no original left to read instead)
+  /// is 「unreadable」, not 「no reader」 — the decoder is right there, and
+  /// telling the user their build has none would be the exact lie this
+  /// function was just fixed for.
   static Future<VideoViewerDocument?> open(MediaByteSource source) async {
-    final at = movieOpening(source);
-    if (at == null) {
-      throw const ViewerDocumentException(
-        'that movie is kept compressed in the project, and a movie is only '
-        'read in place',
-      );
-    }
     // 🚨Through the decode BACKEND, never `QaVideoDecoder` directly: the
     // frames arrive off the UI isolate, so the viewer's own timer, chrome
     // and scrollbars are not stopped for a third of every frame while it
@@ -88,9 +81,15 @@ final class VideoViewerDocument implements ViewerDocument {
     // could be injected and then never consulted, because the gate in front
     // of it said no on any machine without the native library.
     final hasReader = backend.supported;
-    final opened = hasReader
-        ? await backend.open(at.path, range: at.range)
-        : null;
+    final at = hasReader ? movieOpening(source, backend) : null;
+    if (hasReader && at == null) {
+      throw const ViewerDocumentException(
+        'this device cannot read that movie where the project keeps it',
+      );
+    }
+    final opened = at == null
+        ? null
+        : await backend.open(at.path, span: at.span);
     switch (viewerOpenOutcome(hasReader: hasReader, opened: opened != null)) {
       case ViewerOpenOutcome.noReaderInThisBuild:
         return null;

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../native/qa_media_span.dart';
 import '../persistence/anicel_incremental_writer.dart' show AnicelZipEntry;
 import '../persistence/media_blob_codec.dart';
 
@@ -88,33 +89,44 @@ sealed class MediaByteSource {
   /// and names the entry accordingly, rather than deciding twice.
   bool get storedIsFramed => false;
 
-  /// Where these bytes live as a plain span of a file, or null when they
-  /// are not one.
+  /// Where the medium these bytes stand for is STORED — a span of a file,
+  /// and whether it sits there FRAMED (compressed in blocks) — or null when
+  /// there is no file to name.
   ///
-  /// 🚨★★★**THE ANSWER TO 「decode this without holding it」.** The native
-  /// decoders take a path plus an offset and a length, so anything that can
-  /// name itself this way never has to become a `Uint8List` first — which is
-  /// the difference between a movie's soundtrack being conformable and a
-  /// three-gigabyte allocation.
+  /// 🚨★★★**THE ANSWER TO 「decode this without holding it」.** Every native
+  /// reader takes exactly this — the movie decoders, the sound decoder, and
+  /// the span reader Dart's own framed reads go through ([QaMediaSpan]) —
+  /// so anything that can name itself this way never has to become a
+  /// `Uint8List` first, which is the difference between a movie's
+  /// soundtrack being conformable and a three-gigabyte allocation.
   ///
-  /// ⛔Null is an ANSWER, not a gap: a framed entry is stored in compressed
-  /// blocks, so the bytes at that span are not the container and reading
-  /// them as one would decode noise. Callers fall back to [readSync], which
-  /// is correct there and only there.
+  /// 🪦This was `range`, and it was null for a framed entry: 「those bytes
+  /// are compressed blocks, not the container」, so a framed sound was
+  /// assembled in memory and a framed movie could not be read at all. The
+  /// engine reads framed spans itself now (board `carried-movie-compressed`,
+  /// 2026-09-24), so being framed is a FIELD of the answer rather than a
+  /// reason to have none.
   ///
-  /// ⚠️It lives on the source for the same reason [storedIsFramed] does —
-  /// the source is the only thing that knows. Every caller that rebuilt this
-  /// triple by hand was one archive-layout change from being wrong.
-  ({String path, int offset, int length})? get range => null;
+  /// ⚠️It names the MEDIUM for the stored source and for [MediaFramedBytes]
+  /// over it alike, so a reader handed either one reads the same thing. It
+  /// lives on the source for the same reason [storedIsFramed] does — the
+  /// source is the only thing that knows, and every caller that rebuilt
+  /// this by hand was one archive-layout change from being wrong.
+  MediaSpan? get span => null;
 
   /// The file these bytes ARE, whole, for a reader that opens a file by its
   /// path — or null when they are a stretch of one, or framed.
   ///
   /// A reader handed a path reads through the platform's own file access
   /// and never holds the bytes in the Dart heap first; anything else has to
-  /// be read to it. Only the source knows which it is — see [range].
+  /// be read to it. Only the source knows which it is — see [span].
   String? get wholeFilePath => null;
 }
+
+/// Where a medium is stored: [length] bytes of the file at [path] from
+/// [offset] — the medium's own bytes, or a framed blob of them when [framed]
+/// ([MediaByteSource.span]).
+typedef MediaSpan = ({String path, int offset, int length, bool framed});
 
 /// Cheap facts about a source, from `stat` alone — the CHEAP half of "has
 /// this source changed".
@@ -148,9 +160,9 @@ class MediaSourceStamp {
   int get hashCode => Object.hash(lengthBytes, modifiedMicros);
 }
 
-/// The whole of [path] as a range, or null when there is no file there.
+/// The whole of [path] as a span, or null when there is no file there.
 ///
-/// 🚨★★★**[MediaByteSource.range] MUST NOT THROW.** It is asked as a
+/// 🚨★★★**[MediaByteSource.span] MUST NOT THROW.** It is asked as a
 /// QUESTION — 「can you be decoded in place?」 — and every caller treats null
 /// as 「no」. A missing original is the ordinary case at exactly the call
 /// sites that ask: the viewer asks precisely because the import original is
@@ -159,9 +171,14 @@ class MediaSourceStamp {
 ///
 /// ⚠️A try rather than an `existsSync` in front: that is one stat instead of
 /// two, and it is also the only version without a race between the two.
-({String path, int offset, int length})? _wholeFileRange(String path) {
+MediaSpan? _wholeFileSpan(String path, {required bool framed}) {
   try {
-    return (path: path, offset: 0, length: File(path).lengthSync());
+    return (
+      path: path,
+      offset: 0,
+      length: File(path).lengthSync(),
+      framed: framed,
+    );
   } on Object {
     return null;
   }
@@ -241,11 +258,11 @@ class MediaFileBytes extends MediaByteSource {
   @override
   int lengthSync() => File(path).lengthSync();
 
-  /// A whole file IS a range — offset 0, its own length. ⛔Saying null here
+  /// A whole file IS a span — offset 0, its own length. ⛔Saying null here
   /// because 「it is not inside anything」 would make every caller carry a
   /// second path for the ordinary case.
   @override
-  ({String path, int offset, int length})? get range => _wholeFileRange(path);
+  MediaSpan? get span => _wholeFileSpan(path, framed: false);
 
   @override
   String? get wholeFilePath => path;
@@ -378,12 +395,16 @@ class MediaArchiveBytes extends MediaByteSource {
   @override
   bool get storedIsFramed => framed;
 
-  /// ⛔Null when [framed] — those bytes are compressed blocks, not the
-  /// container. Otherwise this is the case the whole idea exists for: a
-  /// movie carried inside the project file, decodable in place.
+  /// The entry where it lies, framed or not as its name says — the case the
+  /// whole idea exists for: a movie carried inside the project file,
+  /// decodable in place.
   @override
-  ({String path, int offset, int length})? get range =>
-      framed ? null : (path: archivePath, offset: dataOffset, length: length);
+  MediaSpan get span => (
+    path: archivePath,
+    offset: dataOffset,
+    length: length,
+    framed: framed,
+  );
 
   /// Clamped to the entry, so a caller asking past the end of its media
   /// gets a short read rather than the bytes of whatever follows it in the
@@ -421,30 +442,20 @@ class MediaArchiveBytes extends MediaByteSource {
 /// range lands in, so a hundred-page conte and a three-gigabyte movie are
 /// still read a piece at a time. See [MediaBlobHeader].
 ///
+/// 🚨★★★**THE ENGINE'S READER DOES THE READING** ([QaMediaSpan]) — the one
+/// every decoder reads a framed span through. 🪦This class used to walk the
+/// blocks itself, keeping the index and the last block it decoded: a second
+/// reader of one format, beside which the decoders would have needed a
+/// third, so it went (board `carried-movie-compressed`, 2026-09-24).
+///
 /// ⚠️[knownCrc32] is deliberately null. ZIP's CRC describes the COMPRESSED
 /// bytes; this class hands back the uncompressed ones, so answering with
 /// it would hand the conform pipeline a checksum of something it never
 /// sees — and that pipeline treats a mismatch as a torn read and retries.
 class MediaFramedBytes extends MediaByteSource {
-  /// Over an entry that some other source hands out.
-  MediaFramedBytes(MediaByteSource stored)
-    : stored = stored,
-      readStored = stored.readIntoSync,
-      storedExists = stored.existsSync,
-      label = '$stored';
+  MediaFramedBytes(this.stored);
 
-  /// 🚨Takes a READ FUNCTION rather than a source, because that is all it
-  /// needs and [MediaByteSource] is sealed — a test cannot subclass one to
-  /// count what was asked for, and counting is the only way to tell this
-  /// class from one that quietly pulls the whole entry.
-  MediaFramedBytes.reading({
-    required this.readStored,
-    required this.storedExists,
-    this.label = 'framed',
-  }) : stored = null;
-
-  /// The source whose compressed bytes this decodes, when it was built over
-  /// one — null for [MediaFramedBytes.reading], which is handed a function.
+  /// The source whose stored bytes are the framed blob this decodes.
   ///
   /// 🚨★★★**A WRAPPER THAT CANNOT NAME WHAT IT WRAPS IS OPAQUE TO EVERY
   /// READER, AND ONE OF THEM WAS A TEST HELPER.** `conformFilePathOrNull`
@@ -455,131 +466,89 @@ class MediaFramedBytes extends MediaByteSource {
   /// so nobody saw it (2026-09-08).
   ///
   /// ⛔This is not「a question production does not need」that the type was
-  /// taught anyway: the class already derived [label] from this source and
-  /// then threw the source away, so it was answering the question badly
+  /// taught anyway: the class already derived its label from this source
+  /// and then threw the source away, so it was answering the question badly
   /// rather than not at all.
-  final MediaByteSource? stored;
+  final MediaByteSource stored;
 
-  /// Fills a buffer from the STORED bytes — header first, then blocks.
-  final int Function(Uint8List buffer, int position, int size) readStored;
-  final bool Function() storedExists;
-  final String label;
+  /// [stored]'s span, FRAMED whatever [stored] says of itself — being
+  /// handed to this class is what says its bytes are a framed blob.
+  @override
+  MediaSpan? get span {
+    final at = stored.span;
+    return at == null
+        ? null
+        : (path: at.path, offset: at.offset, length: at.length, framed: true);
+  }
 
-  MediaBlobHeader? _header;
-
-  /// Read once and kept: it is the index, and re-reading it per window
-  /// would put a seek in front of every read this class exists to make
-  /// cheap.
-  MediaBlobHeader get header {
-    final known = _header;
-    if (known != null) {
-      return known;
+  /// The engine's reader over [span], or a throw that says which of three
+  /// it was: the bytes are gone, this build has no engine to read them
+  /// with, or they do not hold together.
+  QaMediaSpan _openSpan() {
+    final at = span;
+    if (at == null) {
+      throw FileSystemException('the stored bytes are not there', '$stored');
     }
-    final prefix = Uint8List(MediaBlobHeader.prefixLength);
-    if (readStored(prefix, 0, prefix.length) < prefix.length) {
-      throw const FormatException('framed media entry is short');
+    final opened = QaMediaSpan.open(
+      at.path,
+      offset: at.offset,
+      length: at.length,
+      framed: true,
+    );
+    if (opened != null) {
+      return opened;
     }
-    final length = MediaBlobHeader.headerLengthOf(prefix);
-    final bytes = Uint8List(length);
-    if (readStored(bytes, 0, length) < length) {
-      throw const FormatException('framed media index is short');
-    }
-    return _header = MediaBlobHeader.parse(bytes);
+    // ⛔「No engine」 is something the user can act on, and must not reach
+    // the screen as 「corrupt」 — the same line the cel reader draws.
+    throw FormatException(
+      QaMediaSpan.available
+          ? 'this framed media entry does not hold together'
+          : 'This media was compressed with zstd and no engine is available '
+                'to read it.',
+    );
   }
 
   @override
-  int lengthSync() => header.totalLength;
+  int lengthSync() {
+    final opened = _openSpan();
+    try {
+      return opened.size;
+    } finally {
+      opened.close();
+    }
+  }
 
   @override
   Uint8List readSync() {
-    final out = Uint8List(header.totalLength);
-    final read = readIntoSync(out, 0, out.length);
-    return read == out.length ? out : Uint8List.sublistView(out, 0, read);
+    final opened = _openSpan();
+    try {
+      final out = Uint8List(opened.size);
+      opened.readInto(out, 0, out.length);
+      return out;
+    } finally {
+      opened.close();
+    }
   }
 
   @override
   int readIntoSync(Uint8List buffer, int position, int size) =>
-      _readDecoded(readStored, buffer, position, size);
+      _readOnce(openWindowReader(), buffer, position, size);
 
-  /// The stored bytes read through ONE handle for the reader's whole life
-  /// ([MediaWindowReader]) — and decoded through this source's block
-  /// ([_lastBlock]), so neither the file nor a block is opened again per
-  /// window.
+  /// The engine's reader, kept open — and its one decoded block with it, so
+  /// a document that reads in windows far smaller than a block (PDFium asks
+  /// for a few hundred bytes at a time) decodes each block once rather than
+  /// once a window (audit 2026-09-24).
   @override
-  MediaWindowReader openWindowReader() {
-    final stored = this.stored;
-    if (stored == null) {
-      return _FramedWindowReader(this, readStored, () {});
-    }
-    final reader = stored.openWindowReader();
-    return _FramedWindowReader(this, reader.readIntoSync, reader.close);
-  }
-
-  /// The block the last window decoded, kept for the next one.
-  ///
-  /// 🚨A document reads in WINDOWS far smaller than a block — PDFium asks
-  /// for a few hundred bytes at a time — and every window used to decode
-  /// its whole block again: 512KB of zstd per small read, on the thread
-  /// that paints, for a carried PDF (which is nearly always framed — PDFs
-  /// shrink by about 40%). One block is what a window lives in; keeping it
-  /// costs one block per open source (audit 2026-09-24).
-  ({int index, Uint8List bytes})? _lastBlock;
-
-  Uint8List _block(int i, int Function(Uint8List, int, int) readFrom) {
-    final last = _lastBlock;
-    if (last != null && last.index == i) {
-      return last.bytes;
-    }
-    final index = header;
-    final compressed = Uint8List(index.blockLengths[i]);
-    final got = readFrom(compressed, index.offsetOf(i), compressed.length);
-    if (got < compressed.length) {
-      throw const FormatException('framed media block is short');
-    }
-    final block = decompressMediaBlock(compressed);
-    _lastBlock = (index: i, bytes: block);
-    return block;
-  }
-
-  int _readDecoded(
-    int Function(Uint8List, int, int) readFrom,
-    Uint8List buffer,
-    int position,
-    int size,
-  ) {
-    final index = header;
-    final range = index.blocksFor(position, size);
-    if (range == null) {
-      return 0;
-    }
-    var wrote = 0;
-    for (var i = range.first; i <= range.last; i += 1) {
-      final block = _block(i, readFrom);
-      // Where this block sits in the FILE, intersected with what was
-      // asked for. The first block usually starts before `position` and
-      // the last usually runs past the end of the request.
-      final blockStart = i * index.blockBytes;
-      final from = position > blockStart ? position - blockStart : 0;
-      final wanted = size - wrote;
-      final available = block.length - from;
-      final take = wanted < available ? wanted : available;
-      if (take <= 0) {
-        break;
-      }
-      buffer.setRange(wrote, wrote + take, block, from);
-      wrote += take;
-    }
-    return wrote;
-  }
+  MediaWindowReader openWindowReader() => _SpanWindowReader(_openSpan());
 
   @override
-  bool existsSync() => storedExists();
+  bool existsSync() => stored.existsSync();
 
   @override
   MediaSourceStamp? statSync() => null;
 
   @override
-  String toString() => 'MediaFramedBytes($label)';
+  String toString() => 'MediaFramedBytes($stored)';
 }
 
 /// A file the app staged in its own container when the media was 품기'd.
@@ -616,12 +585,10 @@ class MediaAppFileBytes extends MediaByteSource {
   @override
   int lengthSync() => File(path).lengthSync();
 
-  /// ⛔Null when [framed]: the file then holds compressed blocks, and the
-  /// bytes at that span are not the container. Same rule as the archive
-  /// entry next door, for the same reason.
+  /// The whole file, framed or not as its name says — the same answer as
+  /// the archive entry next door, for the same reason.
   @override
-  ({String path, int offset, int length})? get range =>
-      framed ? null : _wholeFileRange(path);
+  MediaSpan? get span => _wholeFileSpan(path, framed: framed);
 
   @override
   String? get wholeFilePath => framed ? null : path;
@@ -735,19 +702,18 @@ Future<T?> openOnHeldBytes<T extends Object>(
   return keep(opened, held.release);
 }
 
-/// [MediaFramedBytes.openWindowReader]'s reader: the framed source's own
-/// decoding, fed from a reader of its stored bytes that stays open.
-final class _FramedWindowReader implements MediaWindowReader {
-  _FramedWindowReader(this._framed, this._readStored, this._close);
+/// A medium read through the engine's reader ([QaMediaSpan]) a window at a
+/// time, for as long as it is open — what [MediaFramedBytes.openWindowReader]
+/// hands out.
+final class _SpanWindowReader implements MediaWindowReader {
+  _SpanWindowReader(this._span);
 
-  final MediaFramedBytes _framed;
-  final int Function(Uint8List, int, int) _readStored;
-  final void Function() _close;
+  final QaMediaSpan _span;
 
   @override
   int readIntoSync(Uint8List buffer, int position, int size) =>
-      _framed._readDecoded(_readStored, buffer, position, size);
+      position < 0 || size <= 0 ? 0 : _span.readInto(buffer, position, size);
 
   @override
-  void close() => _close();
+  void close() => _span.close();
 }

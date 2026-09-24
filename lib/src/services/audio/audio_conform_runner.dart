@@ -11,6 +11,7 @@
 /// the pipeline inside the isolate instead of capturing one.
 library;
 
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
@@ -148,23 +149,30 @@ void _applyLibraryOverride(String? override) {
 /// [source]'s sound, decoded at its own rate — what a conform starts from,
 /// and what a trimmed sound's piece is cut from.
 ///
-/// 🚨★★★**THE RANGE DOOR FIRST, AND THE BYTES ONLY WHEN THERE IS NO
-/// RANGE.** Every source that is a plain span of a file — a loose file, a
-/// movie carried whole inside the project — decodes in place. Only a FRAMED
-/// entry, whose stored blocks are compressed, has to be assembled first,
-/// and nothing enormous is stored framed.
+/// 🚨★★★**DECODED WHERE IT LIES, ALWAYS.** Every source names its span — a
+/// loose file, a sound or a movie carried inside the project, a staged
+/// copy — framed or not, and the decoder reads that span itself.
+///
+/// 🪦A FRAMED entry used to be assembled in memory first, on the grounds
+/// that 「nothing enormous is stored framed」. That was never measured and
+/// was false — compression is decided per file and an MP4 shrinks 6.7% —
+/// so a carried movie's soundtrack arrived whole in memory before a decoder
+/// saw it (2026-09-24).
 ({Float32List samples, int channels, int sampleRate})? decodeAudioSource(
   MediaByteSource source,
 ) {
-  final decoder = QaAudioDecoder.instance;
-  final span = source.range;
-  final decoded = span == null
-      ? decoder?.decode(source.readSync())
-      : decoder?.decodeRange(
-          span.path,
-          offset: span.offset,
-          length: span.length,
-        );
+  final span = source.span;
+  if (span == null) {
+    // Only a file that is no longer there has no span; say so the way
+    // reading it would have, so the pipeline counts it as unreadable.
+    throw FileSystemException('the sound is not there to decode', '$source');
+  }
+  final decoded = QaAudioDecoder.instance?.decodeSpan(
+    span.path,
+    offset: span.offset,
+    length: span.length,
+    framed: span.framed,
+  );
   if (decoded == null) {
     return null;
   }

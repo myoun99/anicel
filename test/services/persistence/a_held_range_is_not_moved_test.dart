@@ -143,7 +143,7 @@ void main() {
       MediaArchiveBytes(archivePath: archive, dataOffset: 4096, length: 512),
     );
     expect(backend.openedAt, [
-      (path: archive, range: (offset: 4096, length: 512)),
+      (path: archive, span: (offset: 4096, length: 512, framed: false)),
     ], reason: 'the premise: opened on its stretch of the archive');
     final document = HeldViewerDocument(movie!, () => events.add('released'));
 
@@ -220,7 +220,7 @@ void main() {
       ))!;
 
       expect(
-        first.source.range?.path,
+        first.source.span?.path,
         path,
         reason: 'the premise: a stretch of it',
       );
@@ -266,7 +266,7 @@ void main() {
       final held = (await tester.runAsync(
         () => session.projectFile.holdMediaBytes(movie),
       ))!;
-      final range = held.source.range!;
+      final range = held.source.span!;
       final before = File(path).lengthSync();
 
       await tester.runAsync(
@@ -317,7 +317,7 @@ void main() {
       final held = (await tester.runAsync(
         () => session.projectFile.holdMediaBytes(movie),
       ))!;
-      final range = held.source.range!;
+      final range = held.source.span!;
 
       expect(session.mediaPool.removeMediaAsset(movie), isTrue);
       pastTheRatio(path);
@@ -370,7 +370,7 @@ void main() {
       ))!;
 
       expect(
-        held.source.range?.path,
+        held.source.span?.path,
         path,
         reason: 'the carried entry, not the original',
       );
@@ -403,7 +403,7 @@ void main() {
       ))!;
 
       expect(
-        held.source.range?.path,
+        held.source.span?.path,
         path,
         reason: 'the body still holds the bytes; the save already knew it',
       );
@@ -498,7 +498,7 @@ class _RefusingBackend extends FakeVideoBackend {
   @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
-    ({int offset, int length})? range,
+    ({int offset, int length, bool framed})? span,
   }) async => null;
 }
 

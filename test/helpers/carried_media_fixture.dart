@@ -38,27 +38,33 @@ Future<ViewerDocument> openPdfThatReads(MediaByteSource source) async {
 }
 
 /// A movie decoder that READS what it is pointed at — a file of its own, or
-/// a stretch of one — and cannot read anything that is not a movie.
+/// a stretch of one, framed or not — and cannot read anything that is not a
+/// movie.
+///
+/// ⚠️A framed stretch is read the way the real decoders read one: through
+/// the engine's span reader ([MediaFramedBytes]), decoded.
 class ReadingVideoBackend extends FakeVideoBackend {
-  ReadingVideoBackend() : super(frameCount: 3);
+  ReadingVideoBackend({super.readsFramed}) : super(frameCount: 3);
 
   @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
-    ({int offset, int length})? range,
+    ({int offset, int length, bool framed})? span,
   }) async {
+    final stored = span == null
+        ? MediaFileBytes(path)
+        : MediaArchiveBytes(
+            archivePath: path,
+            dataOffset: span.offset,
+            length: span.length,
+            framed: span.framed,
+          );
     final head = Uint8List(movieMagic.length);
-    final file = File(path).openSync();
-    try {
-      file.setPositionSync(range?.offset ?? 0);
-      file.readIntoSync(head);
-    } finally {
-      file.closeSync();
-    }
+    mediaSourceDecodingFrames(stored).readIntoSync(head, 0, head.length);
     if (String.fromCharCodes(head) != movieMagic) {
       return null;
     }
-    return super.open(path, range: range);
+    return super.open(path, span: span);
   }
 }
 
@@ -72,6 +78,13 @@ Future<String> writeCarriedPdf(Directory dir) =>
 /// decoder can be pointed at.
 Future<String> writeCarriedMovie(Directory dir, {int length = 4096}) =>
     written(dir, 'take.mp4', [...movieMagic.codeUnits, ...noise(length)]);
+
+/// A pattern behind the magic, so staging — where an engine can — keeps it
+/// FRAMED: the shape a movie that shrinks takes.
+Future<String> writeCompressibleMovie(Directory dir) => written(dir, 'take.mp4', [
+  ...movieMagic.codeUnits,
+  for (var i = 0; i < 64 * 1024; i += 1) (i ~/ 97) & 0xFF,
+]);
 
 Future<String> written(Directory dir, String name, List<int> bytes) async {
   final file = File('${dir.path}/$name');

@@ -104,7 +104,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../../native/qa_cel_compressor.dart';
-import 'zstd_payload.dart';
 import 'anicel_payload_codec.dart';
 
 /// Uncompressed bytes per block, for entries written from now on.
@@ -182,6 +181,13 @@ const double mediaCompressionWorthIt = 0.95;
 /// own length from a [prefixLength] prefix and then read exactly the rest.
 /// The point is that a reader never has to hold the entry to find its way
 /// around it — which is the whole reason this format exists.
+///
+/// ⛔**THIS SIDE ONLY WRITES IT.** The one reader is the engine's
+/// (`qa_media_span.c`, reached from Dart as `QaMediaSpan`), which every
+/// decoder and every Dart read of a framed medium goes through. 🪦A Dart
+/// parser, block map and whole-entry decoder lived here too, and went when
+/// the engine's became the only one (2026-09-24): a format with two readers
+/// is two chances for them to disagree about a boundary.
 class MediaBlobHeader {
   const MediaBlobHeader({
     required this.blockBytes,
@@ -203,16 +209,6 @@ class MediaBlobHeader {
   /// Byte length of the whole header, blocks excluded.
   int get length => prefixLength + 4 * blockCount;
 
-  /// Where block [index]'s compressed bytes start, from the entry's first
-  /// byte.
-  int offsetOf(int index) {
-    var at = length;
-    for (var i = 0; i < index; i += 1) {
-      at += blockLengths[i];
-    }
-    return at;
-  }
-
   /// The header's own bytes.
   Uint8List toBytes() {
     final bytes = Uint8List(length);
@@ -224,48 +220,6 @@ class MediaBlobHeader {
       view.setUint32(prefixLength + 4 * i, blockLengths[i], Endian.little);
     }
     return bytes;
-  }
-
-  /// How many bytes the header occupies, from a [prefixLength] prefix.
-  static int headerLengthOf(Uint8List prefix) {
-    if (prefix.length < prefixLength) {
-      throw const FormatException('framed media prefix is short');
-    }
-    final count = ByteData.sublistView(prefix).getUint32(12, Endian.little);
-    return prefixLength + 4 * count;
-  }
-
-  /// Parses a header from [bytes], which must hold at least [length] of
-  /// them.
-  static MediaBlobHeader parse(Uint8List bytes) {
-    if (bytes.length < prefixLength) {
-      throw const FormatException('framed media header is short');
-    }
-    final view = ByteData.sublistView(bytes);
-    final blockBytes = view.getUint32(0, Endian.little);
-    final totalLength = view.getUint64(4, Endian.little);
-    final count = view.getUint32(12, Endian.little);
-    if (blockBytes <= 0 || bytes.length < prefixLength + 4 * count) {
-      throw const FormatException('framed media header is malformed');
-    }
-    return MediaBlobHeader(
-      blockBytes: blockBytes,
-      totalLength: totalLength,
-      blockLengths: [
-        for (var i = 0; i < count; i += 1)
-          view.getUint32(prefixLength + 4 * i, Endian.little),
-      ],
-    );
-  }
-
-  /// The blocks a read of [size] bytes at [position] touches, as an
-  /// inclusive index range — or null when the range is empty.
-  ({int first, int last})? blocksFor(int position, int size) {
-    if (size <= 0 || position >= totalLength) {
-      return null;
-    }
-    final end = position + size > totalLength ? totalLength : position + size;
-    return (first: position ~/ blockBytes, last: (end - 1) ~/ blockBytes);
   }
 }
 
@@ -504,35 +458,3 @@ bool copyMediaBytesToFile({
     out.closeSync();
   }
 }
-
-/// The whole file back from a framed entry.
-///
-/// For a WINDOW, do not call this — read the header, ask
-/// [MediaBlobHeader.blocksFor] which blocks the range touches, and
-/// decompress only those. This is for the callers that genuinely want
-/// every byte.
-Uint8List decompressMediaBlob(Uint8List entry) {
-  final header = MediaBlobHeader.parse(entry);
-  final out = Uint8List(header.totalLength);
-  var wrote = 0;
-  var at = header.length;
-  for (var i = 0; i < header.blockCount; i += 1) {
-    final block = decompressMediaBlock(
-      Uint8List.sublistView(entry, at, at + header.blockLengths[i]),
-    );
-    out.setAll(wrote, block);
-    wrote += block.length;
-    at += header.blockLengths[i];
-  }
-  if (wrote != header.totalLength) {
-    throw const FormatException('framed media entry is short');
-  }
-  return out;
-}
-
-/// One block's bytes back.
-///
-/// Throws when this build cannot read zstd — the file is fine, this BUILD
-/// cannot open it, and saying so beats a length mismatch further down.
-Uint8List decompressMediaBlock(Uint8List block) =>
-    decompressZstdPayload(block, 'media');

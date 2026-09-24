@@ -5,9 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/framed_media_fixture.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
+import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
-import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -131,34 +131,20 @@ void main() {
       return;
     }
     final perBlock = samplesPerBlock(mediaBlockBytes);
-    final entry = framedEntryBytes(rampWav(perBlock * 3))!;
-    var bytesRead = 0;
-    // 🚨[MediaByteSource] is sealed, so counting has to go through the
-    // read FUNCTION — which is exactly why `MediaFramedBytes.reading`
-    // takes one. Without an instrument here every assertion above would
-    // also pass on a reader that pulls the whole entry each time.
-    final reader = ConformPcmStreamReader.over(
-      MediaFramedBytes.reading(
-        readStored: (buffer, position, size) {
-          if (position < 0 || position >= entry.length || size <= 0) {
-            return 0;
-          }
-          final available = entry.length - position;
-          final take = size < available ? size : available;
-          buffer.setRange(0, take, entry, position);
-          bytesRead += take;
-          return take;
-        },
-        storedExists: () => true,
-        label: 'conform',
-      ),
-    )!;
-    bytesRead = 0;
+    final path = '${directory.path}/take.1234abcd.wav$mediaFramedEntrySuffix';
+    File(path).writeAsBytesSync(framedEntryBytes(rampWav(perBlock * 3))!);
+    final reader = ConformPcmStreamReader.open(path)!;
+    // 🚨What the engine's reader SPENT, counted as each span closes. Without
+    // an instrument here every assertion above would also pass on a reader
+    // that pulls the whole entry each time.
+    final costs = <({int blocksDecoded, int storedBytesRead})>[];
+    QaMediaSpan.debugOnClose = costs.add;
+    addTearDown(() => QaMediaSpan.debugOnClose = null);
 
     reader.readWindow(perBlock + 10, 200);
     expect(
-      bytesRead,
-      lessThan(entry.length ~/ 2),
+      costs.map((cost) => cost.blocksDecoded),
+      [1],
       reason:
           '⛔a reader that pulled the whole conform would return the right '
           'samples and have thrown the window away, which is what keeps '

@@ -496,13 +496,6 @@ class StagedMedia {
   /// Bytes on disk — the framed length when [framed], the file's own
   /// otherwise.
   final int storedLength;
-
-  /// The bytes to write into the .anicel, verbatim.
-  ///
-  /// 🚨Framed or not, they go in AS THEY ARE: decoding a staged blob only
-  /// to re-encode it would burn the whole point of having compressed it at
-  /// import.
-  Uint8List readStoredSync() => File(path).readAsBytesSync();
 }
 
 /// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so the

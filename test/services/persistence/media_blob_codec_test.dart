@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/framed_media_fixture.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -15,9 +16,11 @@ import '../../helpers/temp_dir.dart';
 /// rather than landing in memory (유저 2026-08-27: 「3기가 영상파일도
 /// 볼거라서 결국 그게 그대로 메모리에 올라가면 문제되는데」).
 ///
-/// So these check two things a whole-frame format could not do: that the
-/// header can be found from a fixed-size prefix, and that a range maps to
-/// the blocks it actually touches and no others.
+/// So these check what a whole-frame format could not do: that the header
+/// can be found from a fixed-size prefix. That a range maps to the blocks it
+/// actually touches and no others is the READER's, and is pinned where the
+/// one reader is — `qa_media_span_test.c`, and against this writer's files
+/// in `framed_media_reads_only_the_blocks_it_needs_test.dart`.
 void main() {
   bool engineHere() {
     final compressor = QaCelCompressor.instance;
@@ -35,100 +38,59 @@ void main() {
     return out;
   }
 
-  group('the header finds its own way', () {
-    test('a prefix says how long the header is, before the blocks', () {
+  group('the header is laid out where the reader looks', () {
+    test('the block count sits at a FIXED offset, so sixteen bytes say how '
+        'long the header is', () {
       const header = MediaBlobHeader(
         blockBytes: mediaBlockBytes,
-        totalLength: 9 * 1024 * 1024,
+        totalLength: 9 * 1024 * 1024 + 5,
         blockLengths: [11, 22, 33],
       );
       final bytes = header.toBytes();
+      final view = ByteData.sublistView(bytes);
+
+      // ⛔The layout `qa_media_span.h` reads, field by field: a reader
+      // holding a 3GB movie's entry must never have to read it to find the
+      // index, and the engine's reader — the only one there is — trusts
+      // exactly these offsets.
+      expect(bytes.length, MediaBlobHeader.prefixLength + 4 * 3);
       expect(bytes.length, header.length);
-      // ⛔The prefix alone, not the whole entry: a reader holding a 3GB
-      // movie's entry must never have to read it to find the index.
-      expect(
-        MediaBlobHeader.headerLengthOf(
-          Uint8List.sublistView(bytes, 0, MediaBlobHeader.prefixLength),
-        ),
-        header.length,
-      );
-    });
-
-    test('round-trips through its own bytes', () {
-      const header = MediaBlobHeader(
-        blockBytes: 4096,
-        totalLength: 10000,
-        blockLengths: [100, 200, 300],
-      );
-      final back = MediaBlobHeader.parse(header.toBytes());
-      expect(back.blockBytes, 4096);
-      expect(back.totalLength, 10000);
-      expect(back.blockLengths, [100, 200, 300]);
-      expect(back.offsetOf(0), header.length);
-      expect(back.offsetOf(1), header.length + 100);
-      expect(back.offsetOf(2), header.length + 300);
-    });
-
-    test('a short or malformed header is a FormatException, not a guess', () {
-      expect(
-        () => MediaBlobHeader.parse(Uint8List(4)),
-        throwsA(isA<FormatException>()),
-      );
-      final header = const MediaBlobHeader(
-        blockBytes: 4096,
-        totalLength: 10,
-        blockLengths: [1, 2, 3],
-      ).toBytes();
-      expect(
-        () => MediaBlobHeader.parse(Uint8List.sublistView(header, 0, 18)),
-        throwsA(isA<FormatException>()),
-        reason: 'the index is cut short — say so rather than read garbage',
-      );
-    });
-  });
-
-  group('a range touches only the blocks it covers', () {
-    const header = MediaBlobHeader(
-      blockBytes: 100,
-      totalLength: 350,
-      blockLengths: [10, 10, 10, 10],
-    );
-
-    test('inside one block', () {
-      expect(header.blocksFor(10, 20), (first: 0, last: 0));
-      expect(header.blocksFor(150, 20), (first: 1, last: 1));
-    });
-
-    test('across a boundary takes both, and no more', () {
-      expect(header.blocksFor(90, 20), (first: 0, last: 1));
-      expect(header.blocksFor(0, 350), (
-        first: 0,
-        last: 3,
-      ), reason: 'the whole file is every block');
-    });
-
-    test('a read that runs past the end is clamped, not extended', () {
-      expect(
-        header.blocksFor(340, 1000),
-        (first: 3, last: 3),
-        reason: '350 bytes exist; asking for more must not name a 5th block',
-      );
-    });
-
-    test('an empty or past-the-end read touches nothing', () {
-      expect(header.blocksFor(0, 0), isNull);
-      expect(header.blocksFor(350, 10), isNull);
-    });
-
-    test('the last byte belongs to the last block, not the one after', () {
-      // 🚨The off-by-one this format is most likely to get wrong: an end
-      // that lands exactly on a boundary must not name the next block.
-      expect(header.blocksFor(0, 100), (first: 0, last: 0));
-      expect(header.blocksFor(0, 101), (first: 0, last: 1));
+      expect(view.getUint32(0, Endian.little), mediaBlockBytes);
+      expect(view.getUint64(4, Endian.little), 9 * 1024 * 1024 + 5);
+      expect(view.getUint32(12, Endian.little), 3);
+      expect([
+        for (var i = 0; i < 3; i += 1)
+          view.getUint32(16 + 4 * i, Endian.little),
+      ], [11, 22, 33]);
     });
   });
 
   group('compressing', () {
+    late Directory directory;
+
+    setUp(() {
+      directory = Directory.systemTemp.createTempSync('anicel-codec-');
+    });
+
+    tearDown(() => deleteTempQuietly(directory));
+
+    /// [source] through the writer that ships, and read back through the
+    /// reader that ships — the engine's, which is the only one there is.
+    ({bool framed, Uint8List entry, Uint8List back}) roundTrip(
+      Uint8List source,
+    ) {
+      final written = writeMediaBlob(
+        basePath: '${directory.path.replaceAll(r'\', '/')}/entry',
+        length: source.length,
+        readInto: mediaBytesReader(source),
+      );
+      return (
+        framed: written.framed,
+        entry: File(written.path).readAsBytesSync(),
+        back: mediaAppFileSource(written.path).readSync(),
+      );
+    }
+
     test('bytes that will not shrink are stored, not framed', () {
       if (!engineHere()) {
         markTestSkipped('no engine on this run');
@@ -157,14 +119,14 @@ void main() {
         return;
       }
       final source = compressible(300 * 1024);
-      final packed = framedEntryBytes(source);
-      expect(packed, isNotNull, reason: 'fixture: this data does compress');
+      final (:framed, :entry, :back) = roundTrip(source);
+      expect(framed, isTrue, reason: 'fixture: this data does compress');
       expect(
-        packed!.length,
+        entry.length,
         lessThan(source.length),
         reason: 'and the whole entry, index included, is smaller',
       );
-      expect(decompressMediaBlob(packed), source);
+      expect(back, source);
     });
 
     test('a file longer than one block gets one index entry per block', () {
@@ -174,12 +136,12 @@ void main() {
       }
       // Two blocks and a bit, at a block size a test can afford.
       final source = compressible(mediaBlockBytes * 2 + 1024);
-      final packed = framedEntryBytes(source);
-      expect(packed, isNotNull);
-      final header = MediaBlobHeader.parse(packed!);
-      expect(header.blockCount, 3);
-      expect(header.totalLength, source.length);
-      expect(decompressMediaBlob(packed), source);
+      final (:framed, :entry, :back) = roundTrip(source);
+      expect(framed, isTrue);
+      final view = ByteData.sublistView(entry);
+      expect(view.getUint32(12, Endian.little), 3, reason: 'the block count');
+      expect(view.getUint64(4, Endian.little), source.length);
+      expect(back, source);
     });
 
     test('an empty file is stored', () {

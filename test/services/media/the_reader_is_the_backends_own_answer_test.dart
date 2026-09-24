@@ -47,14 +47,34 @@ void main() {
     await document.dispose();
   });
 
-  test('a movie kept FRAMED is one this reader cannot read — never 「no '
-      'reader」, and never handed to it', () async {
+  const framed = MediaArchiveBytes(
+    archivePath: 'C:/work/project.anicel',
+    dataOffset: 4096,
+    length: 512,
+    framed: true,
+  );
+
+  test('a movie kept FRAMED is opened where it lies, and the backend is told '
+      'it is framed', () async {
     final backend = FakeVideoBackend();
     debugVideoDecodeBackend = backend;
-    final framed = MediaFramedBytes.reading(
-      readStored: (buffer, position, size) => 0,
-      storedExists: () => true,
-    );
+
+    final document = await VideoViewerDocument.open(framed);
+
+    expect(document, isNotNull);
+    expect(backend.openedAt, [
+      (
+        path: 'C:/work/project.anicel',
+        span: (offset: 4096, length: 512, framed: true),
+      ),
+    ]);
+    await document!.dispose();
+  });
+
+  test('where the backend cannot be fed one, it is one this reader cannot '
+      'read — never 「no reader」, and never handed to it', () async {
+    final backend = FakeVideoBackend(readsFramed: false);
+    debugVideoDecodeBackend = backend;
 
     await expectLater(
       VideoViewerDocument.open(framed),

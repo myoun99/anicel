@@ -7,7 +7,6 @@ import 'package:anicel/src/models/kept_span.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_clock.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
@@ -17,6 +16,7 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/decode_audio_file.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
@@ -243,8 +243,8 @@ void main() {
       expect(cut?.frames, 12);
       final piece = cut!.path;
       expect(mediaFileName(piece), 'line_7-18.wav');
-      final kept = QaAudioDecoder.instance!.decode(File(piece).readAsBytesSync())!;
-      final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
+      final kept = decodeAudioFile(piece)!;
+      final all = decodeAudioFile(source)!;
       final from = rate.frameToSample(6, 48000) * 2;
       final to = rate.frameToSample(18, 48000) * 2;
       expect(kept.sampleRate, 48000);
@@ -279,10 +279,8 @@ void main() {
         ),
       );
 
-      final kept = QaAudioDecoder.instance!.decode(
-        File(cut!.path).readAsBytesSync(),
-      )!;
-      final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
+      final kept = decodeAudioFile(cut!.path)!;
+      final all = decodeAudioFile(source)!;
       // 24 project frames are 1.001 seconds of source: 48048 samples.
       int sampleAt(int frame) =>
           frame * rate.denominator * 1001 * 48000 ~/ (rate.numerator * 1000);
@@ -315,10 +313,8 @@ void main() {
         ),
       );
 
-      final kept = QaAudioDecoder.instance!.decode(
-        File(cut!.path).readAsBytesSync(),
-      )!;
-      final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
+      final kept = decodeAudioFile(cut!.path)!;
+      final all = decodeAudioFile(source)!;
       expect(rate.frameToSample(1, 48000), 1602, reason: 'the premise');
       expect(
         kept.samples.first,
@@ -373,9 +369,7 @@ void main() {
       );
 
       expect(cut?.frames, counted - 20, reason: 'to the last frame it counts');
-      final kept = QaAudioDecoder.instance!.decode(
-        File(cut!.path).readAsBytesSync(),
-      )!;
+      final kept = decodeAudioFile(cut!.path)!;
       expect(
         kept.samples.length,
         (rate.frameToSample(counted, rateHz) -

@@ -1,11 +1,15 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
+import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
+import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The vendored dr_libs, exercised end to end.
 ///
@@ -50,9 +54,11 @@ void main() {
 
   group('WAV round trip through our own encoder', () {
     test('mono samples survive the loop', () {
-      final decoder = requireDecoder();
+      requireDecoder();
       final samples = ramp(480);
-      final decoded = decoder.decode(wav16(samples, channels: 1, rate: 48000));
+      final decoded = decodeAudioBytes(
+        wav16(samples, channels: 1, rate: 48000),
+      );
 
       expect(decoded, isNotNull);
       expect(decoded!.format, QaAudioFormat.wav);
@@ -72,14 +78,16 @@ void main() {
     });
 
     test('stereo interleaving is preserved, not swapped', () {
-      final decoder = requireDecoder();
+      requireDecoder();
       // L ramps up, R ramps down — a swap or a stride bug is unmissable.
       final samples = Float32List(200);
       for (var index = 0; index < 100; index += 1) {
         samples[index * 2] = index / 100.0;
         samples[index * 2 + 1] = -(index / 100.0);
       }
-      final decoded = decoder.decode(wav16(samples, channels: 2, rate: 44100))!;
+      final decoded = decodeAudioBytes(
+        wav16(samples, channels: 2, rate: 44100),
+      )!;
 
       expect(decoded.channels, 2);
       expect(decoded.sampleRate, 44100);
@@ -90,12 +98,39 @@ void main() {
       }
     });
 
+    test('🚨a FRAMED wav — the shape a carried sound is kept in — decodes to '
+        'the same samples as the plain one, fed to the decoder a block at a '
+        'time', () {
+      final decoder = requireDecoder();
+      // Three blocks' worth, so the decoder's reads cross block boundaries.
+      final wav = wav16(ramp(600000), channels: 1, rate: 48000);
+      final directory = Directory.systemTemp.createTempSync('anicel-framed');
+      addTearDown(() => deleteTempQuietly(directory));
+      final written = writeMediaBlob(
+        basePath: '${directory.path}/take.wav',
+        length: wav.length,
+        readInto: mediaBytesReader(wav),
+      );
+      expect(written.framed, isTrue, reason: 'fixture: PCM compresses');
+
+      final framed = decoder.decodeSpan(
+        written.path,
+        length: File(written.path).lengthSync(),
+        framed: true,
+      );
+      final plain = decodeAudioBytes(wav)!;
+
+      expect(framed, isNotNull);
+      expect(framed!.format, QaAudioFormat.wav);
+      expect(framed.samples, orderedEquals(plain.samples));
+    });
+
     test('sample rates pass through untouched — no hidden resampling', () {
       // Resampling to the project rate is a separate, visible step. If a
       // decode ever started doing it silently, this fails.
-      final decoder = requireDecoder();
+      requireDecoder();
       for (final rate in const [8000, 22050, 44100, 48000, 96000]) {
-        final decoded = decoder.decode(
+        final decoded = decodeAudioBytes(
           wav16(ramp(96), channels: 1, rate: rate),
         )!;
         expect(decoded.sampleRate, rate, reason: 'rate $rate');
@@ -106,26 +141,27 @@ void main() {
 
   group('refusing what it cannot read', () {
     test('random bytes decode to null rather than noise', () {
-      final decoder = requireDecoder();
+      requireDecoder();
       final junk = Uint8List(512);
       for (var index = 0; index < junk.length; index += 1) {
         junk[index] = (index * 37) & 0xFF;
       }
-      expect(decoder.decode(junk), isNull);
+      expect(decodeAudioBytes(junk), isNull);
     });
 
     test('empty input is null, not a crash', () {
-      expect(requireDecoder().decode(Uint8List(0)), isNull);
+      requireDecoder();
+      expect(decodeAudioBytes(Uint8List(0)), isNull);
     });
 
     test('a truncated WAV header does not take the process down', () {
-      final decoder = requireDecoder();
+      requireDecoder();
       final good = wav16(ramp(64), channels: 1, rate: 48000);
       // Every prefix: whatever dr_wav makes of it, it must return rather
       // than read past the buffer.
       for (final cut in const [4, 12, 20, 40, 44]) {
         expect(
-          () => decoder.decode(good.sublist(0, cut)),
+          () => decodeAudioBytes(good.sublist(0, cut)),
           returnsNormally,
           reason: 'prefix of $cut bytes',
         );
