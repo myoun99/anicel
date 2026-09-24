@@ -47,6 +47,11 @@ void main() {
     ]);
   }
 
+  // The collaborators by their OWN types (see the header).
+  CellVerbs cellsOf(EditorSessionManager s) => s.cells;
+  LayerVerbs layersOf(EditorSessionManager s) => s.layerVerbs;
+  CutVerbs cutsOf(EditorSessionManager s) => s.cutVerbs;
+
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
@@ -84,7 +89,7 @@ void main() {
     test('standing on a link: that block gets a copy of its own — the '
         'picture comes with it, the other showing keeps A, ONE undo', () {
       final s = session();
-      final CellVerbs cells = s.cells;
+      final cells = cellsOf(s);
       final a = drawnAndLinked(s, [5]);
       s.selectFrameIndex(5);
       expect(s.unlinkSubject, PillSubject.cells);
@@ -220,7 +225,7 @@ void main() {
     test('selected linked rows outrank the frame axis and fork out of their '
         'links as ONE step', () {
       final s = session();
-      final LayerVerbs layers = s.layerVerbs;
+      final layers = layersOf(s);
       drawnAndLinked(s, [5]);
       final original = row(s).id;
       layers.linkDuplicateActiveLayer();
@@ -247,7 +252,7 @@ void main() {
 
     test('two linked groups selected together fork as ONE step', () {
       final s = session();
-      final LayerVerbs layers = s.layerVerbs;
+      final layers = layersOf(s);
       final first = row(s).id;
       layers.linkDuplicateActiveLayer();
       s.layerStack.addLayerOfKind(LayerKind.animation);
@@ -271,7 +276,7 @@ void main() {
     test('the three row verbs share one step-and-stand: a duplicate stands '
         'on its last copy, a rename on the first row', () {
       final s = session();
-      final LayerVerbs layers = s.layerVerbs;
+      final layers = layersOf(s);
       final first = row(s).id;
       s.layerStack.addLayerOfKind(LayerKind.animation);
       final second = row(s).id;
@@ -313,7 +318,7 @@ void main() {
     test('standing on the track row: the linked cut under the cursor forks '
         'out of its links, as ONE step', () {
       final s = session();
-      final CutVerbs cuts = s.cutVerbs;
+      final cuts = cutsOf(s);
       cuts.createLinkedCutFromActiveCut();
       final linked = s.activeCutId!;
       expect(cuts.cutIsLinked(linked), isTrue, reason: '⛔전제');
