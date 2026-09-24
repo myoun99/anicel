@@ -83,26 +83,40 @@ void main() {
       expect(scale.modelAt(4).label, '');
     });
 
-    testWidgets('four digits that would run into each other thin out, even '
-        'at 100%', (tester) async {
-      expect(
-        timelineGlyphPainter(
-              '1000',
-              TextStyle(
-                fontSize: timelineFittedGlyphFontSize(
-                  11,
-                  24,
-                  crossExtent: TimelineGridMetrics.defaults.layerRowHeight,
-                ),
-              ),
-            ).width +
-            2,
-        greaterThan(24),
-        reason: 'fixture: a four-digit number does not fit its own 24px cell',
+    testWidgets('four digits NARROW into their cells at 100% — half-width '
+        'holds them — and thin out past it', (tester) async {
+      // 🗣️ruler-digits-in-the-app-face-Q1 (유저 2026-09-24, 「룰러번호
+      // 추천대로」): a number wider than its cell narrows into it, as far as
+      // half-width, before the strip thins. ↩️These four digits thinned at
+      // once (I-22, 2026-09-12).
+      final type = timelineFittedGlyphFontSize(
+        11,
+        24,
+        crossExtent: TimelineGridMetrics.defaults.layerRowHeight,
       );
-      final scale = await rulerOf(tester, cell: 24, frames: 1200);
-      expect(scale.modelAt(1).label, '');
-      expect(scale.modelAt(3).label, '4');
+      expect(
+        timelineGlyphPainter('1000', TextStyle(fontSize: type)).width + 2,
+        greaterThan(24),
+        reason: 'fixture: a four-digit number does not fit its own 24px cell '
+            'as it is set',
+      );
+      expect(
+        4 * type * timelineNumberNarrowestEm + 2,
+        lessThanOrEqualTo(24),
+        reason: 'fixture: at half-width it does',
+      );
+      final at100 = await rulerOf(tester, cell: 24, frames: 1200);
+      expect(at100.modelAt(1).label, '2', reason: 'every frame, narrowed');
+      expect(numberAt(at100, 999)!.width, lessThanOrEqualTo(24 - 2 + 1e-9));
+
+      expect(
+        4 * type * timelineNumberNarrowestEm + 2,
+        greaterThan(20),
+        reason: 'fixture: past half-width a 20px cell cannot hold one',
+      );
+      final at80 = await rulerOf(tester, cell: 20, frames: 1200);
+      expect(at80.modelAt(1).label, '');
+      expect(at80.modelAt(3).label, '4');
     });
 
     testWidgets('whatever the zoom and the length, neighbouring numbers never '

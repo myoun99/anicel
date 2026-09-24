@@ -1,4 +1,6 @@
 
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'axis_turn.dart' show extentAlong, offsetAlong;
@@ -10,6 +12,7 @@ import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 import '../repaint_props.dart';
+import '../text/word_condensation.dart';
 
 /// The ruler's top-line SECOND mark at [frameIndex], or '' off a boundary.
 ///
@@ -47,6 +50,19 @@ String timelineRulerSecondOf({
   final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
   return '${frameIndex ~/ safeFps}';
 }
+
+/// The least a digit of a frame number is narrowed to, in ems: HALF-WIDTH.
+///
+/// 🗣️ruler-digits-in-the-app-face-Q1 (유저 2026-09-24, 「룰러번호 추천대로」 —
+/// 「매 칸 쓸 때는 칸 안으로 가로만 좁힌다; 눌러도 안 되는 줌에서만 I-22 가
+/// 성기게」). The answer named no floor, and one is needed: narrowed without
+/// one, every frame would always fit and I-22 would never thin. Half an em
+/// is the width a digit takes in Japanese type (半角), where it still reads
+/// as a digit; the app's face sets its digits at three quarters of an em and
+/// offers no narrower figures (`tnum` · `hwid` · `pwid` · `palt`, measured
+/// 2026-09-24: no change). Past it the strip thins instead, which is its own
+/// answer to crowding.
+const double timelineNumberNarrowestEm = 0.5;
 
 /// The playhead's own ink on a ruler strip (I-16 「볼드체로」): bold, on the
 /// full-strength text colour — one answer for the ruler and the rail.
@@ -189,18 +205,23 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
         writing.number,
         scale.inkOf(style, current: current),
       );
-      // Bottom line: in-cell centered when every cell labels itself, the
-      // every-Nth overlay style (left-anchored) otherwise (UI-R10 #27). The
+      // Bottom line: in-cell centered — and narrowed into the cell — when
+      // every cell labels itself, the every-Nth overlay style (left-anchored,
+      // its stride's room held by the cadence) otherwise (UI-R10 #27). The
       // overlay stands [timelineMarkGap] in from its cell: the ground the
       // cadence keeps between one number and the next is this inset.
+      final fit = everyFrame
+          ? scale.numberFitIn(rect, painter)
+          : wordFitsAsItIs;
       glyphs.add((
         painter: painter,
         offset: Offset(
           everyFrame
-              ? rect.center.dx - painter.width / 2
+              ? rect.center.dx - painter.width * fit.x / 2
               : rect.left + timelineMarkGap,
           rect.bottom - painter.height - 1,
         ),
+        fit: fit,
       ));
     }
     // Top line: the second index on fps boundaries (UI-R10 #27).
@@ -413,6 +434,23 @@ final class TimelineRulerScale {
   TextStyle numberTypeAt({required bool everyFrame}) =>
       numberType(this, everyFrame: everyFrame);
 
+  /// How a number written in a cell of its own is narrowed: its WIDTH into
+  /// the cell, less the ground the cadence keeps between one number and the
+  /// next — the block words' law (`wordCondensation`); its height never.
+  ///
+  /// 🗣️ruler-digits-in-the-app-face-Q1 (유저 2026-09-24, 「룰러번호
+  /// 추천대로」): the app's face sets its digits wide — `000` at 11px is
+  /// 25.1px against a 24px cell — and the default zoom thinned three-digit
+  /// numbers to every third frame. [labelEveryFrames] counts on this, down
+  /// to [timelineNumberNarrowestEm] a digit.
+  WordFit numberFitIn(Rect cell, TextPainter number) => (
+    x: wordCondensation(
+      extent: number.width,
+      room: cell.width - timelineMarkGap,
+    ),
+    y: 1.0,
+  );
+
   /// Every how many frames a number is written, counted from frame 1: the
   /// densest rung of the paper-timesheet ladder ([timelineFrameStrideLadder])
   /// at which the widest number this strip writes, set in the type of that
@@ -429,6 +467,10 @@ final class TimelineRulerScale {
   /// The widest number is the widest digit, as many times over as the
   /// longest label has digits, so a face with proportional figures cannot
   /// slip a wider run past the measure.
+  ///
+  /// Every frame is measured NARROWED ([numberFitIn]) — as far as half-width
+  /// and no further (ruler-digits-in-the-app-face-Q1): only a number that
+  /// would still touch the next thins the strip.
   int get labelEveryFrames =>
       _labelEveryFramesOf[this] ??= _measuredLabelEveryFrames();
 
@@ -438,18 +480,26 @@ final class TimelineRulerScale {
         ? '$safeFps'
         : '${frameEndIndexExclusive > 1 ? frameEndIndexExclusive : 1}';
     final digits = longest.length;
-    double widestIn(TextStyle type) {
+    double widestIn(TextStyle type, {double widthAtMost = double.infinity}) {
       var widest = 0.0;
       for (var digit = 0; digit <= 9; digit += 1) {
         final glyph = timelineGlyphPainter('$digit' * digits, type);
-        final extent = extentAlong(axis, glyph.size);
+        final extent = extentAlong(
+          axis,
+          Size(math.min(glyph.width, widthAtMost), glyph.height),
+        );
         widest = extent > widest ? extent : widest;
       }
       return widest;
     }
 
     final cell = metrics.frameCellWidth;
-    if (widestIn(numberTypeAt(everyFrame: true)) + timelineMarkGap <= cell) {
+    final everyFrame = numberTypeAt(everyFrame: true);
+    final halfWidth =
+        digits * (everyFrame.fontSize ?? double.infinity) *
+        timelineNumberNarrowestEm;
+    if (widestIn(everyFrame, widthAtMost: halfWidth) + timelineMarkGap <=
+        cell) {
       return 1;
     }
     // Past every frame the numbers are the every-Nth overlay: the rung that

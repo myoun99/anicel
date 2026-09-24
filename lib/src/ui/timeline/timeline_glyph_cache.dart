@@ -87,16 +87,21 @@ void paintTimelineGlyphOnGround(
   );
 }
 
-/// A laid-out glyph and where it lands: a strip's writing as VALUES, so
-/// what one piece would overlap can be asked before anything is painted
-/// (I-16: the playhead's pair covers what it touches).
-typedef TimelineGlyphPlacement = ({TextPainter painter, Offset offset});
+/// A laid-out glyph, where it lands and how it is narrowed: a strip's
+/// writing as VALUES, so what one piece would overlap can be asked before
+/// anything is painted (I-16: the playhead's pair covers what it touches).
+typedef TimelineGlyphPlacement = ({
+  TextPainter painter,
+  Offset offset,
+  WordFit fit,
+});
 
 extension TimelineGlyphPlacementPaint on TimelineGlyphPlacement {
-  /// The box the glyph covers.
-  Rect get rect => offset & painter.size;
+  /// The box the glyph covers — as drawn, narrowed when it is.
+  Rect get rect =>
+      offset & Size(painter.width * fit.x, painter.height * fit.y);
 
-  void paint(Canvas canvas) => painter.paint(canvas, offset);
+  void paint(Canvas canvas) => paintFittedText(canvas, painter, offset, fit);
 }
 
 /// The seconds index on a boundary cell's LEADING CORNER (UI-R10 #27):
@@ -128,5 +133,6 @@ TimelineGlyphPlacement? secondsCornerGlyph(
       ),
     ),
     offset: Offset(rect.left + 2, rect.top + 1),
+    fit: wordFitsAsItIs,
   );
 }

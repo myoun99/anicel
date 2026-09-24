@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/text/word_condensation.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
@@ -218,6 +219,7 @@ void main() {
     TimelineGlyphPlacement at(String text, Offset offset) => (
       painter: timelineGlyphPainter(text, const TextStyle(fontSize: 10)),
       offset: offset,
+      fit: wordFitsAsItIs,
     );
 
     test('uncovers under a clip — paper first, then the standing writing '
@@ -435,11 +437,37 @@ void main() {
 class _Spy implements Canvas {
   final log = <(String, Object?)>[];
 
-  @override
-  void save() => log.add(('save', null));
+  // A narrowed number is drawn at the origin of a moved, scaled canvas, so
+  // where a paragraph lands is its offset through the canvas's transform.
+  final _saved = <(Offset, double, double)>[];
+  var _origin = Offset.zero;
+  var _scaleX = 1.0;
+  var _scaleY = 1.0;
 
   @override
-  void restore() => log.add(('restore', null));
+  void save() {
+    _saved.add((_origin, _scaleX, _scaleY));
+    log.add(('save', null));
+  }
+
+  @override
+  void restore() {
+    final (origin, scaleX, scaleY) = _saved.removeLast();
+    _origin = origin;
+    _scaleX = scaleX;
+    _scaleY = scaleY;
+    log.add(('restore', null));
+  }
+
+  @override
+  void translate(double dx, double dy) =>
+      _origin += Offset(dx * _scaleX, dy * _scaleY);
+
+  @override
+  void scale(double sx, [double? sy]) {
+    _scaleX *= sx;
+    _scaleY *= sy ?? sx;
+  }
 
   @override
   void clipRect(
@@ -455,8 +483,10 @@ class _Spy implements Canvas {
   void drawLine(Offset p1, Offset p2, Paint paint) => log.add(('line', p1));
 
   @override
-  void drawParagraph(ui.Paragraph paragraph, Offset offset) =>
-      log.add(('text', offset));
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) => log.add((
+    'text',
+    _origin + Offset(offset.dx * _scaleX, offset.dy * _scaleY),
+  ));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

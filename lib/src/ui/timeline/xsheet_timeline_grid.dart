@@ -1450,12 +1450,16 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
         writing.number,
         scale.inkOf(style, current: current),
       );
+      // Every row's number stands in a row of its own, so every one narrows
+      // into it the way the ruler's do ([TimelineRulerScale.numberFitIn]).
+      final fit = scale.numberFitIn(rect, painter);
       glyphs.add((
         painter: painter,
         offset: Offset(
-          rect.center.dx - painter.width / 2,
+          rect.center.dx - painter.width * fit.x / 2,
           rect.center.dy - painter.height / 2,
         ),
+        fit: fit,
       ));
     }
     return glyphs;
