@@ -51,9 +51,12 @@ void main() {
   /// onto [cell] of the first animation row and placed through the window.
   /// Returns once the picture is baked into the cel.
   Future<(EditorSessionManager, Layer)> placeByDrag(WidgetTester tester) async {
-    final png = (await tester.runAsync(
-      () => writeSolidPng(tempDir, 'a.png', rgba: 0xAAAAAAAA),
-    ))!;
+    // In the pool's spelling: the pool row is keyed by it.
+    final png = normalizedMediaPath(
+      (await tester.runAsync(
+        () => writeSolidPng(tempDir, 'a.png', rgba: 0xAAAAAAAA),
+      ))!,
+    );
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(

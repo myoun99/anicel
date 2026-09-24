@@ -960,7 +960,8 @@ void main() {
     final pdfPath = await tester.runAsync(() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
-      return file.path;
+      // In the pool's spelling — the one the opener is handed.
+      return normalizedMediaPath(file.path);
     });
     PdfRenderService.debugOpenerOverride = (source) async =>
         source.wholeFilePath == pdfPath ? fake : piece;

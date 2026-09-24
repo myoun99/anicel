@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/framed_media_fixture.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/project_scratch_folder.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
@@ -160,7 +160,7 @@ void main() {
     }
     final source = sourceOf(mediaBlockBytes * 2 + 77);
     final dir = Directory.systemTemp.createTempSync('anicel-framed-reader');
-    addTearDown(() => deleteTempQuietly(dir));
+    deleteAfterSessionEnds(dir);
     final stored = File('${dir.path}/entry.z')
       ..writeAsBytesSync(framedEntryBytes(source)!);
     final framed = MediaFramedBytes(MediaFileBytes(stored.path));
