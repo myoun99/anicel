@@ -83,11 +83,13 @@ import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
 
-/// One row of the output-cel list: the bundle's axis layer, its plate
-/// (none for an instruction row), where its sheets start in the nav's
-/// flat entry list, how many there are, whether its tick is off, and
-/// whether it has a tick at all (instruction rows always write).
+/// One row of the output-cel list: the cut it belongs to, the bundle's
+/// axis layer, its plate (none for an instruction row), where its sheets
+/// start in the nav's flat entry list, how many there are, whether its
+/// tick is off, and whether it has a tick at all (instruction rows always
+/// write).
 typedef _CelBundleRow = ({
+  Cut cut,
   Layer layer,
   LayerMark? mark,
   int first,
@@ -481,13 +483,19 @@ class ExportDialogState extends State<ExportDialog> {
   /// its tick, its label plate, its name and its sheet count. Choosing a
   /// row is what the preview shows (유저 2026-09-09: 「왼쪽에서 선택할때마다
   /// 미리보기 바뀌는느낌」); its tick is whether the file is written.
+  ///
+  /// ONE cut's rows at a time, the cut the preview stands in, with the
+  /// picker above them ([_celCutPicker]).
   Widget _celBundleList(ThemeData theme) {
     final plan = _celGroupPlan();
     final entries = _celEntries(plan);
     final currentIndex = entries.isEmpty
         ? -1
         : _celPosition.clamp(0, entries.length - 1);
-    final rows = _celBundleRows(plan);
+    final cut = currentIndex < 0
+        ? _activeCut
+        : _celEntryCut(entries[currentIndex]);
+    final rows = _celBundleRows(plan, cut);
     return DecoratedBox(
       decoration: ShapeDecoration(
         shape: AppShapes.container(
@@ -495,38 +503,113 @@ class ExportDialogState extends State<ExportDialog> {
           side: BorderSide(color: theme.dividerColor),
         ),
       ),
-      child: ListView(
-        padding: const EdgeInsets.all(4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
-            child: Text(
-              AppText.strings.exCelCount(plan.length),
-              key: const ValueKey<String>('export-cels-bundle-count'),
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontSize: 9,
-                letterSpacing: 1.1,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+            child: _celCutPicker(plan, cut),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(4),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+                  child: Text(
+                    AppText.strings.exCelCount(plan.length),
+                    key: const ValueKey<String>('export-cels-bundle-count'),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontSize: 9,
+                      letterSpacing: 1.1,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                for (final row in rows)
+                  _celBundleItem(
+                    theme,
+                    row,
+                    selected:
+                        currentIndex >= row.first &&
+                        currentIndex < row.first + row.count,
+                  ),
+              ],
             ),
           ),
-          for (final row in rows)
-            _celBundleItem(
-              theme,
-              row,
-              selected:
-                  currentIndex >= row.first &&
-                  currentIndex < row.first + row.count,
-            ),
         ],
       ),
     );
   }
 
-  /// The list's rows over the plan's flat entry order: one per bundle, then
-  /// one per instruction row (its events are adjacent in the plan, so a run
-  /// of the same layer is one row).
-  /// The list's rows, ordered the way the TIMELINE draws the stack.
+  /// The cut the list below shows, as a popover of the cuts the plan
+  /// writes cels for.
+  ///
+  /// 🗣️유저 2026-09-22 (F-177): 「범위를 프로젝트로 설정시 미리보기 셀 출력
+  /// 리스트가 모든 컷 합쳐서 레이어들 보여주는데, 그게아니라 컷 리스트가 있고,
+  /// 팝오버로 컷 선택하면 밑에 셀 리스트? 보여주게하도록」 — and the shape
+  /// chosen on the board (cel-export-project-list, 09-23): a button at the
+  /// top of the list, the list showing the picked cut alone.
+  ///
+  /// ★The pick has no state of its own: it moves the PREVIEW into that cut,
+  /// and the list shows the cut the preview stands in — so a row, the nav
+  /// and the picker can never disagree about which cut is up.
+  ///
+  /// Present under the cut scope too, shut: one cut has nothing to pick,
+  /// and a button that appeared with the scope would be UI that pops into
+  /// existence. Labelled the way the scope grid labels a cut (a 겸용 group
+  /// by its joined name — it exports once, as one cut).
+  Widget _celCutPicker(ExportCelGroupPlan plan, Cut shown) {
+    final project = _session.repository.requireProject();
+    final cuts = _celListCuts(plan);
+    return PanelFlyoutButton(
+      key: const ValueKey<String>('export-cels-cut-picker'),
+      label: celGroupCutName(project, shown),
+      expand: true,
+      enabled: cuts.length > 1 && !_isExporting,
+      entriesBuilder: () => [
+        for (final cut in cuts)
+          PanelFlyoutItem(
+            keyValue: 'export-cels-cut-${cut.id.value}',
+            label: celGroupCutName(project, cut),
+            selected: cut.id == shown.id,
+            onSelected: () => _showCelCut(cut),
+          ),
+      ],
+    );
+  }
+
+  /// The cuts [plan] writes cels for, in the order the export walks them.
+  List<Cut> _celListCuts(ExportCelGroupPlan plan) {
+    final planned = {
+      for (final entry in _celEntries(plan)) _celEntryCut(entry).id,
+    };
+    return [
+      for (final cut in resolveExportCuts(
+        project: _session.repository.requireProject(),
+        activeCutId: _activeCut.id,
+        range: ExportRange.allCuts,
+      ))
+        if (planned.contains(cut.id)) cut,
+    ];
+  }
+
+  /// Puts the preview on [cut]'s top row — which is what makes the list
+  /// show that cut.
+  void _showCelCut(Cut cut) {
+    final rows = _celBundleRows(_celGroupPlan(), cut);
+    if (rows.isEmpty) {
+      return;
+    }
+    setState(() => _celPosition = rows.first.first);
+    _refreshPreview();
+  }
+
+  /// [cut]'s rows of the list, ordered the way the TIMELINE draws the
+  /// stack. They are built over the plan's flat entry order — one per
+  /// bundle, then one per instruction row (its events are adjacent in the
+  /// plan, so a run of the same layer is one row) — and the other cuts'
+  /// rows are dropped (F-177, see [_celCutPicker]).
   ///
   /// 🗣️유저 2026-09-16 (F-144): 「셀 출력의 왼쪽 출력될 셀 리스트, 타임라인은
   /// 아래서부터 미술,A,B,C인데 셀 리스트는 C,B,A,미술임. 제대로 타임라인 방향
@@ -540,11 +623,12 @@ class ExportDialogState extends State<ExportDialog> {
   /// walk to fix a list would quietly rename exported files. Two questions,
   /// two answers: [_CelBundleRow.first] still points into the plan, so a row
   /// tapped here still jumps to that bundle's own entries.
-  List<_CelBundleRow> _celBundleRows(ExportCelGroupPlan plan) {
+  List<_CelBundleRow> _celBundleRows(ExportCelGroupPlan plan, Cut cut) {
     final rows = <_CelBundleRow>[];
     var index = 0;
     for (final bundle in plan.bundles) {
       rows.add((
+        cut: bundle.sheets.first.cut,
         layer: bundle.axis,
         mark: bundle.axis.mark,
         first: index,
@@ -562,6 +646,7 @@ class ExportDialogState extends State<ExportDialog> {
         end += 1;
       }
       rows.add((
+        cut: instructions[i].cut,
         layer: layer,
         mark: null,
         first: plan.cels.length + i,
@@ -571,16 +656,18 @@ class ExportDialogState extends State<ExportDialog> {
       ));
       i = end;
     }
-    final drawn = horizontalLayerDisplayOrder(_activeCut.layers);
+    final drawn = horizontalLayerDisplayOrder(cut.layers);
     final drawnAt = <String, int>{
       for (var at = 0; at < drawn.length; at += 1) drawn[at].id.value: at,
     };
     // ⚠️Sorted by (where the timeline draws it, where the plan met it): a
-    // row this cut does not draw — another cut's, under the project scope —
-    // keeps the plan's order after the drawn ones. `List.sort` is NOT
-    // stable in Dart, so the plan's index is IN the comparison rather than
-    // trusted to survive it.
-    final ordered = [for (var at = 0; at < rows.length; at += 1) (rows[at], at)];
+    // row the timeline does not draw keeps the plan's order after the drawn
+    // ones. `List.sort` is NOT stable in Dart, so the plan's index is IN the
+    // comparison rather than trusted to survive it.
+    final ordered = [
+      for (var at = 0; at < rows.length; at += 1)
+        if (rows[at].cut.id == cut.id) (rows[at], at),
+    ];
     final undrawn = drawn.length;
     ordered.sort((a, b) {
       final byRow = (drawnAt[a.$1.layer.id.value] ?? undrawn).compareTo(
@@ -623,7 +710,7 @@ class ExportDialogState extends State<ExportDialog> {
                 key: ValueKey<String>('export-cels-bundle-dot-$idValue'),
                 value: !row.skipped,
                 onTap: row.tickable && !_isExporting
-                    ? () => _toggleCelBundle(row.layer, !row.skipped)
+                    ? () => _toggleCelBundle(row.cut, row.layer, !row.skipped)
                     : null,
               ),
               SizedBox(
@@ -1239,6 +1326,13 @@ class ExportDialogState extends State<ExportDialog> {
     ExportCelGroupTask(:final fileName) => fileName,
     ExportInstructionTask(:final fileName) => fileName,
     _ => '',
+  };
+
+  /// The cut [entry] is a cel of.
+  Cut _celEntryCut(Object entry) => switch (entry) {
+    ExportCelGroupTask(:final cut) => cut,
+    ExportInstructionTask(:final cut) => cut,
+    _ => _activeCut,
   };
 
   /// The contiguous run of [entries] that shares [position]'s bundle —
@@ -3390,9 +3484,14 @@ class ExportDialogState extends State<ExportDialog> {
     _refreshPreview();
   }
 
-  /// The cel list's tick: whether the bundle on [axis] is written.
-  void _toggleCelBundle(Layer axis, bool skipped) {
-    final cutId = _activeCut.id;
+  /// The cel list's tick: whether the bundle on [axis] in [cut] is written.
+  ///
+  /// ⚠️The ROW's cut, not the anchor. Under the project scope the list
+  /// shows other cuts' rows, and a tick written into the anchor's delta
+  /// named a layer the anchor does not have — that cut's plan never read
+  /// it, so the dot never moved.
+  void _toggleCelBundle(Cut cut, Layer axis, bool skipped) {
+    final cutId = cut.id;
     _session.repository.updateExportOverrides(
       (overrides) => overrides.withCelsDelta(
         cutId,
