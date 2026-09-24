@@ -1,6 +1,8 @@
 import 'dart:collection' show Queue;
-import 'dart:ui' as ui show PointerDataPacket;
+import 'dart:io' show Platform;
+import 'dart:ui' as ui show PlatformDispatcher, PointerDataPacket;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -185,6 +187,50 @@ class AnicelBinding extends WidgetsFlutterBinding with UiScaleViewConfiguration 
       ..maximumSize = 50;
     // H30: a shortcut must not rebuild every button — see the method.
     applyFocusHighlightPolicy(focusManager);
+    // A debug build on Windows keeps the accessibility tree off — see the
+    // method.
+    closePlatformSemanticsGate(
+      platformDispatcher,
+      debugBuild: kDebugMode,
+      onWindows: Platform.isWindows,
+      environment: Platform.environment,
+    );
+  }
+
+  /// 🚨★★★**A DEBUG BUILD ON WINDOWS DOES NOT TAKE THE PLATFORM'S
+  /// ACCESSIBILITY REQUEST** (유저 2026-09-24,
+  /// `debug-frames-pay-a-semantics-walk-Q1`: 「디버그에서는 받지 않는다」).
+  ///
+  /// Windows turns the accessibility tree on for any Flutter window on this
+  /// machine, and a DEBUG build then walks the whole render tree and the
+  /// whole semantics tree every frame — `PipelineOwner.flushSemantics`'s
+  /// asserts check every node's parent data and every invisible node, changed
+  /// or not. Measured on the real app: SEMANTICS 116.6 ms over twelve pen
+  /// moves in debug against 3.5 ms in profile, two thirds of the UI thread
+  /// while drawing — and on Windows the UI thread is the window's thread,
+  /// where the pen arrives. Profile and release keep answering the platform
+  /// as they always did.
+  ///
+  /// The gate is the platform's callback itself: the framework hears no
+  /// request, so it never makes the semantics owner. It can only close
+  /// before the request comes — which it always does here, because the
+  /// runner shows the window after the first frame and nothing asks a
+  /// hidden window for its accessibility tree.
+  ///
+  /// ⚠️To read a debug build with a screen reader, start it with
+  /// `ANICEL_DEBUG_SEMANTICS=1`.
+  static void closePlatformSemanticsGate(
+    ui.PlatformDispatcher dispatcher, {
+    required bool debugBuild,
+    required bool onWindows,
+    required Map<String, String> environment,
+  }) {
+    if (!debugBuild ||
+        !onWindows ||
+        environment['ANICEL_DEBUG_SEMANTICS'] == '1') {
+      return;
+    }
+    dispatcher.onSemanticsEnabledChanged = null;
   }
 
   /// 🚨★★★**THE FOCUS HIGHLIGHT MODE STAYS PUT — THE INPUT DEVICE DOES NOT

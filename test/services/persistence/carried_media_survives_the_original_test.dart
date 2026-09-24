@@ -12,6 +12,7 @@ import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/media_pool.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**품기 END TO END: THE ORIGINAL GOES AWAY AND THE PROJECT STILL
@@ -71,7 +72,7 @@ void main() {
     await pool.addMediaAssets([path], carried: true);
 
     expect(
-      session.mediaStagingStore.find(path),
+      stagedCopyIn(session, path),
       isNotNull,
       reason:
           'the promise is kept the moment the button is pressed — waiting '
@@ -85,8 +86,8 @@ void main() {
     await pool.addMediaAssets([path]);
 
     expect(
-      session.mediaStagingStore.find(path),
-      isNull,
+      session.mediaStagingStore.holdsAnyCopyOf(path),
+      isFalse,
       reason:
           'the user said keep the link; copying anyway would be a second '
           'copy nobody asked for',
@@ -101,16 +102,16 @@ void main() {
     }
     final path = compressibleFile('take.wav');
     await pool.addMediaAssets([path], carried: true);
-    final staged = session.mediaStagingStore.find(path)!;
+    final staged = stagedCopyIn(session, path)!;
     expect(staged.framed, isTrue, reason: 'fixture: this content compresses');
 
     expect(
-      anicelMediaEntryName(path, framed: staged.framed),
+      anicelMediaEntryName(carryIn(session, path)!, framed: staged.framed),
       endsWith(mediaFramedEntrySuffix),
       reason: 'a reader must be able to tell without opening the entry',
     );
     expect(
-      anicelMediaEntryName(path, framed: false),
+      anicelMediaEntryName(carryIn(session, path)!, framed: false),
       isNot(endsWith(mediaFramedEntrySuffix)),
     );
   });
@@ -124,7 +125,7 @@ void main() {
     final path = compressibleFile('take.wav');
     final original = File(path).readAsBytesSync();
     await pool.addMediaAssets([path], carried: true);
-    expect(session.mediaStagingStore.find(path)!.framed, isTrue,
+    expect(stagedCopyIn(session, path)!.framed, isTrue,
         reason: 'fixture: this content compresses');
     final projectPath = '${root.path}/scene.anicel';
     await session.projectDoor.saveProjectToFile(
@@ -148,9 +149,9 @@ void main() {
     final sources = projectMediaSources(
       project: reopened.repository.requireProject(),
       projectFilePath: projectPath,
-      mediaEntryNames: reopened.projectFile.mediaEntryNames,
+      mediaInFile: reopened.projectFile.mediaInFile,
     );
-    expect(sources[path]!.storedIsFramed, isTrue);
+    expect(sources[carryIn(reopened, path)]!.storedIsFramed, isTrue);
   });
 
   test('🚨the original can be deleted right after the import and the bytes '
@@ -162,7 +163,7 @@ void main() {
     // The whole reason carrying exists.
     File(path).deleteSync();
 
-    final staged = session.mediaStagingStore.find(path)!;
+    final staged = stagedCopyIn(session, path)!;
     final source = MediaAppFileBytes(path: staged.path, framed: staged.framed);
     final bytes = staged.framed
         ? MediaFramedBytes(source).readSync()
@@ -178,7 +179,7 @@ void main() {
 
     File(path).writeAsBytesSync(Uint8List(64));
 
-    final staged = session.mediaStagingStore.find(path)!;
+    final staged = stagedCopyIn(session, path)!;
     final source = MediaAppFileBytes(path: staged.path, framed: staged.framed);
     expect(
       staged.framed ? MediaFramedBytes(source).readSync() : source.readSync(),
@@ -197,7 +198,7 @@ void main() {
     final path = compressibleFile('take.wav');
     final original = File(path).readAsBytesSync();
     await pool.addMediaAssets([path], carried: true);
-    final staged = session.mediaStagingStore.find(path)!;
+    final staged = stagedCopyIn(session, path)!;
 
     final framed = MediaFramedBytes(
       MediaAppFileBytes(path: staged.path, framed: true),
@@ -265,7 +266,7 @@ void main() {
 
         await pending;
         expect(pool.mediaAssets, hasLength(1));
-        expect(session.mediaStagingStore.find(path), isNotNull);
+        expect(stagedCopyIn(session, path), isNotNull);
       },
     );
 
@@ -292,8 +293,8 @@ void main() {
       final path = compressibleFile('linked.wav');
       await pool.addMediaAssets([path]);
       expect(
-        session.mediaStagingStore.find(path),
-        isNull,
+        session.mediaStagingStore.holdsAnyCopyOf(path),
+        isFalse,
         reason: 'fixture: a reference stages nothing',
       );
 
@@ -303,7 +304,7 @@ void main() {
       );
 
       expect(
-        session.mediaStagingStore.find(path),
+        stagedCopyIn(session, path),
         isNotNull,
         reason:
             '⛔this verb is the user saying「keep this inside」, which is the '
@@ -329,13 +330,13 @@ void main() {
     test('promoting something already carried changes nothing', () async {
       final path = compressibleFile('take.wav');
       await pool.addMediaAssets([path], carried: true);
-      final staged = session.mediaStagingStore.find(path)!;
+      final staged = stagedCopyIn(session, path)!;
 
       expect(
         await pool.promoteMediaAssetIntoProject(path),
         isFalse,
       );
-      expect(session.mediaStagingStore.find(path)!.path, staged.path);
+      expect(stagedCopyIn(session, path)!.path, staged.path);
     });
   });
 
@@ -343,21 +344,22 @@ void main() {
     final from = compressibleFile('take.wav');
     final original = File(from).readAsBytesSync();
     await pool.addMediaAssets([from], carried: true);
-    expect(session.mediaStagingStore.find(from), isNotNull);
+    expect(stagedCopyIn(session, from), isNotNull);
+    final before = carryIn(session, from)!;
 
     final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
     File(to).writeAsBytesSync(original);
     await pool.relinkMediaAsset(from, to);
 
     expect(
-      session.mediaStagingStore.find(to),
+      stagedCopyIn(session, to),
       isNotNull,
       reason:
           '⛔the staged name is DERIVED from the pool path, so a relink '
           'that left it behind would make a carried asset look unstaged '
           'while its bytes waited under a name nothing points at',
     );
-    expect(session.mediaStagingStore.find(from), isNull);
+    expect(session.mediaStagingStore.find(before), isNull);
 
     File(to).deleteSync();
     expect(session.projectFile.mediaByteSourceFor(to).readSync(), original);
@@ -377,7 +379,7 @@ void main() {
       [to],
     );
     expect(
-      session.mediaStagingStore.find(to),
+      stagedCopyIn(session, to),
       isNotNull,
       reason: 'the carried asset is staged under the key the pool holds',
     );
@@ -387,7 +389,8 @@ void main() {
     test('a BY-HAND relink re-stages from the file the user picked', () async {
       final from = compressibleFile('take.wav');
       await pool.addMediaAssets([from], carried: true);
-      expect(session.mediaStagingStore.find(from), isNotNull);
+      expect(stagedCopyIn(session, from), isNotNull);
+      final before = carryIn(session, from)!;
 
       // A DIFFERENT file — nothing checked that it matches.
       final to = '${root.path}/other.wav'.replaceAll(r'\', '/');
@@ -399,8 +402,8 @@ void main() {
 
       await pool.relinkMediaAsset(from, to);
 
-      expect(session.mediaStagingStore.find(from), isNull);
-      final staged = session.mediaStagingStore.find(to);
+      expect(session.mediaStagingStore.find(before), isNull);
+      final staged = stagedCopyIn(session, to);
       expect(staged, isNotNull, reason: 'the new file is held');
 
       expect(
@@ -424,12 +427,13 @@ void main() {
       Directory('${root.path}/moved').createSync();
       File(to).writeAsBytesSync(original);
 
+      final before = carryIn(session, from)!;
       pool.relinkMediaAssets({from: to});
 
-      final staged = session.mediaStagingStore.find(to);
+      final staged = stagedCopyIn(session, to);
       expect(staged, isNotNull);
       expect(mediaAppFileSource(staged!.path).readSync(), original);
-      expect(session.mediaStagingStore.find(from), isNull);
+      expect(session.mediaStagingStore.find(before), isNull);
     });
 
     test('a by-hand relink of a REFERENCED asset stages nothing', () async {
@@ -441,8 +445,8 @@ void main() {
       await pool.relinkMediaAsset(from, to);
 
       expect(
-        session.mediaStagingStore.find(to),
-        isNull,
+        session.mediaStagingStore.holdsAnyCopyOf(to),
+        isFalse,
         reason: 'the user kept the link; relinking is not a promotion',
       );
     });

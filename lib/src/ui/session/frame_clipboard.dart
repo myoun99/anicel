@@ -5,6 +5,7 @@ import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_link_registry.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_splice.dart';
@@ -108,22 +109,7 @@ class FrameClipboard {
     if (layer == null ||
         copiedFrame == null ||
         layer.id != copiedFrame.layerId ||
-        // F-115 (유저 2026-09-12): 「se 블록 복붙, 우선 복사하고나서는 독립
-        // 붙여넣기만 가능. 왜냐하면 링크붙여넣기의 차이점이 없기때문」. A link
-        // is 겸용 — the same PICTURE exposed again — and a row whose cels hold
-        // no artwork has none to reuse.
-        !layer.kind.isDrawingCel ||
-        // SYNCED attach rows own no timeline — linked reuse happens
-        // through the BASE's links (link the base cel instead). Free
-        // attach rows author normally (UI-R21 #3).
-        isSyncedAttachedLayer(layer) ||
-        // An IMAGE row holds ONE cel by definition, so a second exposure
-        // of it is a write the covering normalization rebuilds from the
-        // same write (D22) — nothing changes and the press costs a
-        // phantom undo entry. Its two neighbours on this pill already
-        // refuse (독립 붙여넣기 always did, 잘라내기 since this round);
-        // this was the third button still lit for a row nothing touches.
-        layer.kind.holdsSingleCel) {
+        !rowHoldsLinks(layer)) {
       return false;
     }
 
@@ -713,7 +699,174 @@ class FrameClipboard {
   /// an earlier cut it answered that block's start there (F-115).
   int _rangeStartOn(LayerId layerId, TimelineFrameRangeSelection selection) =>
       selection.startIndex + _project.rowAxisOffset(layerId);
+
+  // --- 링크 독립 (I-45): the frame-axis rung ------------------------------
+
+  /// Of [runs], the cels also shown somewhere ELSE — per row, the ids a
+  /// link-independent press gives copies of their own.
+  ///
+  /// Shown elsewhere is 「the same picture exposed again」, which is all a
+  /// link is (F-115): a block of this row outside its run (a link paste,
+  /// Ctrl+B), or a block of a row linked to this one (링크 복제 · 겸용컷 —
+  /// one cel bank, so one id per picture). ⛔Ghosts are not showings: a
+  /// hold's ghost is its own block going on, not a second exposure.
+  Map<LayerId, Set<FrameId>> sharedCelsIn(List<UnlinkRun> runs) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return const {};
+    }
+    final registry = _project.repository.requireProject().linkRegistry;
+    final shared = <LayerId, Set<FrameId>>{};
+    for (final run in runs) {
+      final end = run.index + run.count;
+      final inRun = <FrameId>{};
+      final elsewhere = <FrameId>{};
+      for (final MapEntry(key: start, value: exposure)
+          in run.layer.timeline.entries) {
+        final id = exposure.frameId;
+        if (id == null || exposure.ghost) {
+          continue;
+        }
+        (start >= run.index && start < end ? inRun : elsewhere).add(id);
+      }
+      final group = registry.groupOf(cutId: cut.id, layerId: run.layer.id);
+      for (final member in group?.members ?? const <LayerLinkMember>[]) {
+        if (member.cutId == cut.id && member.layerId == run.layer.id) {
+          continue;
+        }
+        final row = _project
+            .cutById(member.cutId)
+            ?.layers
+            .where((layer) => layer.id == member.layerId)
+            .firstOrNull;
+        for (final exposure
+            in row?.timeline.values ?? const <TimelineExposure>[]) {
+          if (exposure.frameId case final id? when !exposure.ghost) {
+            elsewhere.add(id);
+          }
+        }
+      }
+      final both = inRun.intersection(elsewhere);
+      if (both.isNotEmpty) {
+        shared[run.layer.id] = both;
+      }
+    }
+    return shared;
+  }
+
+  /// 🚨I-45 — 링크 독립 on the frame axis: every cel of [runs] that is also
+  /// shown somewhere else gets a copy of its own, and its run points at the
+  /// copy. ONE undo step for every row.
+  ///
+  /// ★It IS the independent paste of each run's own cells over themselves
+  /// — the same capture, the same mint ([mintIndependentClip]), the same
+  /// splice and the same carried pictures — except that only SHARED cels are
+  /// minted. A cel nobody else shows is independent already, and minting it
+  /// would only take its name away (a minted cel comes out unnamed: a name is
+  /// the cel's identity, [placedClipFor]).
+  ///
+  /// ⚠️ONE run per row: the splice plans every run against the row as it was
+  /// before the step, so two runs on one row would overwrite each other.
+  void unlinkRuns(List<UnlinkRun> runs) {
+    final shared = sharedCelsIn(runs);
+    if (shared.isEmpty) {
+      return;
+    }
+    final splices =
+        <
+          ({
+            LayerId layerId,
+            int index,
+            int liftCount,
+            TimelineClipRow? clip,
+            List<Frame> bornFrames,
+            List<AudioClip> bornSounds,
+          })
+        >[];
+    final mintedByLayer = <(LayerId, Map<FrameId, FrameId>)>[];
+    for (final run in runs) {
+      final ids = shared[run.layer.id];
+      if (ids == null) {
+        continue;
+      }
+      final clip = _controllers.timelineController.copyRunForLayer(
+        layerId: run.layer.id,
+        index: run.index,
+        count: run.count,
+      );
+      final copies = mintIndependentClip(
+        clip: TimelineClipRow(
+          exposures: {
+            for (final entry in clip.exposures.entries)
+              if (ids.contains(entry.value.frameId)) entry.key: entry.value,
+          },
+          length: clip.length,
+        ),
+        from: [(cels: run.layer.frames, sounds: run.layer.audioClips)],
+        namesAreIdentity: run.layer.kind.celNameIsIdentity,
+        mint: () => _frameIds.mintFrameId(run.layer.id),
+      );
+      splices.add((
+        layerId: run.layer.id,
+        index: run.index,
+        liftCount: run.count,
+        clip: TimelineClipRow(
+          exposures: {...clip.exposures, ...copies.clip.exposures},
+          length: clip.length,
+        ),
+        bornFrames: copies.born,
+        bornSounds: copies.bornSounds,
+      ));
+      mintedByLayer.add((run.layer.id, copies.minted));
+    }
+    _controllers.timelineController.spliceRunsForLayers(
+      runs: splices,
+      description: 'Unlink frames',
+    );
+    final cut = _project.activeCutOrNull;
+    if (cut != null) {
+      final store = _renderCaches.brushFrameStore;
+      for (final (layerId, minted) in mintedByLayer) {
+        carryBakedPictures(
+          internals: _internals,
+          store: store,
+          cut: cut,
+          to: layerId,
+          minted: minted,
+          pictureOf: (source) => store.bakedSurfaceOrNull(
+            _internals.brushFrameKeyForCut(cut, layerId, source),
+          ),
+        );
+      }
+    }
+    _changes.notifyChanged();
+  }
 }
+
+/// One row's run for [FrameClipboard.unlinkRuns] — in the row's own COMMIT
+/// keys, the ones [TimelineController.copyRunForLayer] reads.
+typedef UnlinkRun = ({Layer layer, int index, int count});
+
+/// Whether [layer] is a row a LINK can live on — the linked paste's gate and
+/// 링크 독립's, stated once.
+///
+/// • F-115 (유저 2026-09-12): 「se 블록 복붙, 우선 복사하고나서는 독립
+///   붙여넣기만 가능. 왜냐하면 링크붙여넣기의 차이점이 없기때문」. A link is
+///   겸용 — the same PICTURE exposed again — and a row whose cels hold no
+///   artwork has none to reuse.
+/// • SYNCED attach rows own no timeline — linked reuse happens through the
+///   BASE's links (link the base cel instead). Free attach rows author
+///   normally (UI-R21 #3).
+/// • An IMAGE row holds ONE cel by definition, so a second exposure of it is
+///   a write the covering normalization rebuilds from the same write (D22) —
+///   nothing changes and the press costs a phantom undo entry. Its two
+///   neighbours on the pill already refused (독립 붙여넣기 always did,
+///   잘라내기 since that round); the linked paste was the third button still
+///   lit for a row nothing touches.
+bool rowHoldsLinks(Layer layer) =>
+    layer.kind.isDrawingCel &&
+    !isSyncedAttachedLayer(layer) &&
+    !layer.kind.holdsSingleCel;
 
 /// 🚨결정 14 ②ⓐ (유저 확정 2026-08-22) — ONE ROW OF THE CLIPBOARD.
 ///

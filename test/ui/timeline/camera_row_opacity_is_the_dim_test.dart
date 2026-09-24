@@ -67,7 +67,7 @@ void main() {
 
     sliderFor(tester, camera).onChanged!(0.4);
     expect(dim.value, closeTo(0.4, 1e-9), reason: 'preview lands on the dim');
-    expect(session.opacityDragPreview.value, isNull);
+    expect(session.opacityVerbs.dragPreview.value, isNull);
     expect(opacityOf(session, camera), before);
 
     sliderFor(tester, camera).onChangeEnd!(0.25);
@@ -86,13 +86,13 @@ void main() {
 
     sliderFor(tester, drawing).onChanged!(0.4);
     expect(dim.value, 1, reason: 'a drawing row never touches the dim');
-    expect(session.opacityDragPreview.value?.opacity, closeTo(0.4, 1e-9));
-    expect(session.opacityDragPreview.value?.layerIds, {drawing});
+    expect(session.opacityVerbs.dragPreview.value?.opacity, closeTo(0.4, 1e-9));
+    expect(session.opacityVerbs.dragPreview.value?.layerIds, {drawing});
     expect(opacityOf(session, drawing), 1, reason: 'preview does not write');
 
     sliderFor(tester, drawing).onChangeEnd!(0.25);
     expect(dim.value, 1);
-    expect(session.opacityDragPreview.value, isNull);
+    expect(session.opacityVerbs.dragPreview.value, isNull);
     expect(opacityOf(session, drawing), closeTo(0.25, 1e-9));
   });
 }

@@ -150,6 +150,9 @@ ImageLayerImportPlan planStillImageLayer({
 /// ⛔ONE spelling of it. The still and the sequence planners each built this
 /// record by hand, and the expanded PSD — which registers now too — would
 /// have been the third.
+///
+/// A [carried] one is a NEW carry ([mintMediaCarry]): an import is the
+/// moment a carry is made, even of a path the project carried before.
 MediaAsset importedMediaAsset({
   required String path,
   required MediaAssetKind kind,
@@ -169,7 +172,7 @@ MediaAsset importedMediaAsset({
   sourcePath: sourcePath,
   sourceStamp: sourceStamp,
   identity: identity,
-  carried: carried,
+  carriedAs: carried ? mintMediaCarry() : null,
   sourceFps: sourceFps,
   frameCount: frameCount,
   pageCount: pageCount,

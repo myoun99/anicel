@@ -596,6 +596,7 @@ enum AppStrings {
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
+  String get blockFrameLinesLabel => _s('blockFrameLinesLabel');
 
   // --- Accent colours ---
   String get accentTitle => _s('accentTitle');
@@ -781,6 +782,10 @@ enum AppStrings {
   /// ellipsized labels on device. The '…' convention belongs to menu
   /// ENTRIES that open a dialog, not to the buttons themselves.
   String get tlSharedEdit => _s('tlSharedEdit');
+
+  /// The shared pill's link-independent button (I-45) — the user's own
+  /// word for it, 「링크 독립」.
+  String get tlSharedUnlink => _s('tlSharedUnlink');
   String get tlAdd => _s('tlAdd');
   String get tlBlankX => _s('tlBlankX');
   String get tlMark => _s('tlMark');
@@ -1382,7 +1387,9 @@ enum AppStrings {
   String get toolCutFlipHorizontal => _s('toolCutFlipHorizontal');
   String get toolCutFlipVertical => _s('toolCutFlipVertical');
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
-  String get toolEyedropperReference => _s('toolEyedropperReference');
+  String get toolReadSource => _s('toolReadSource');
+  String get toolReadReferences => _s('toolReadReferences');
+  String get toolReadsEveryVisibleLayer => _s('toolReadsEveryVisibleLayer');
   String get brushSettingsTitle => _s('brushSettingsTitle');
   String get toolShapeRect => _s('toolShapeRect');
   String get toolShapeEllipse => _s('toolShapeEllipse');
@@ -1992,6 +1999,7 @@ enum AppStrings {
         'it now if it is still in a trash: the drawings already saved live '
         'only inside that file.',
     'uiScaleLabel': 'Interface scale',
+    'blockFrameLinesLabel': 'Frame lines inside blocks',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
     'accent1Help': 'Selection, playhead, active toggles.',
@@ -2414,7 +2422,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': 'Flip horizontal',
     'toolCutFlipVertical': 'Flip vertical',
     'toolCutRegisterTip': 'Register as Tip…',
-    'toolEyedropperReference': 'Reference',
+    'toolReadSource': 'Reference',
+    'toolReadReferences': 'References',
+    'toolReadsEveryVisibleLayer': 'Every visible layer',
     'brushSettingsTitle': 'Brush Settings',
     'toolShapeRect': 'Rectangle',
     'toolShapeEllipse': 'Ellipse',
@@ -2668,6 +2678,7 @@ enum AppStrings {
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlSharedEdit': 'Edit',
+    'tlSharedUnlink': 'Make independent',
     'tlAdd': 'Add',
     'tlPush': 'Push (open frames)',
     'tlPull': 'Pull (close frames)',
@@ -3086,6 +3097,7 @@ enum AppStrings {
     'projectFileVanished':
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
+    'blockFrameLinesLabel': 'ブロック内のフレーム線',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
     'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
@@ -3627,7 +3639,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': '左右反転',
     'toolCutFlipVertical': '上下反転',
     'toolCutRegisterTip': '先端として登録…',
-    'toolEyedropperReference': '参照',
+    'toolReadSource': '参照',
+    'toolReadReferences': '塗り参照',
+    'toolReadsEveryVisibleLayer': '表示中のすべてのレイヤー',
     'brushSettingsTitle': 'ブラシ設定',
     'toolShapeRect': '矩形',
     'toolShapeEllipse': '楕円',
@@ -3983,6 +3997,7 @@ enum AppStrings {
     'tlAttachDropsFxTitle': '付属すると fx が失われます',
     'tlAttachDropsFxBody': '付属レイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlSharedEdit': '編集',
+    'tlSharedUnlink': 'リンクから独立',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -4399,6 +4414,7 @@ enum AppStrings {
     'projectFileVanished':
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
+    'blockFrameLinesLabel': '블록 안 프레임선',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
     'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',
@@ -4935,7 +4951,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': '좌우 반전',
     'toolCutFlipVertical': '상하 반전',
     'toolCutRegisterTip': '팁으로 등록…',
-    'toolEyedropperReference': '참조',
+    'toolReadSource': '참조',
+    'toolReadReferences': '채색 참조',
+    'toolReadsEveryVisibleLayer': '보이는 레이어 전부',
     'brushSettingsTitle': '브러시 설정',
     'toolShapeRect': '사각형',
     'toolShapeEllipse': '타원',
@@ -5292,6 +5310,7 @@ enum AppStrings {
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlSharedEdit': '편집',
+    'tlSharedUnlink': '링크 독립',
     'tlAdd': '추가',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
@@ -6336,7 +6355,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': 'Miroir horizontal',
     'toolCutFlipVertical': 'Miroir vertical',
     'toolCutRegisterTip': 'Enregistrer comme pointe…',
-    'toolEyedropperReference': 'Référence',
+    'toolReadSource': 'Référence',
+    'toolReadReferences': 'Références',
+    'toolReadsEveryVisibleLayer': 'Tous les calques visibles',
     'brushSettingsTitle': 'Réglages de brosse',
     'toolShapeRect': 'Rectangle',
     'toolShapeEllipse': 'Ellipse',
@@ -6678,6 +6699,7 @@ enum AppStrings {
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlSharedEdit': 'Modifier',
+    'tlSharedUnlink': 'Rendre indépendant',
     'tlAdd': 'Ajouter',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
@@ -7596,7 +7618,9 @@ enum AppStrings {
     'toolCutFlipHorizontal': '水平翻转',
     'toolCutFlipVertical': '垂直翻转',
     'toolCutRegisterTip': '注册为笔尖…',
-    'toolEyedropperReference': '参考',
+    'toolReadSource': '参考',
+    'toolReadReferences': '填充参考',
+    'toolReadsEveryVisibleLayer': '所有可见图层',
     'brushSettingsTitle': '笔刷设置',
     'toolShapeRect': '矩形',
     'toolShapeEllipse': '椭圆',
@@ -7915,6 +7939,7 @@ enum AppStrings {
     'tlAttachDropsFxTitle': '附属后将失去 fx',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlSharedEdit': '编辑',
+    'tlSharedUnlink': '取消链接',
     'tlAdd': '添加',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',

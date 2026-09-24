@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/media_asset.dart' show MediaCarry;
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -30,6 +31,10 @@ void main() {
   });
 
   tearDown(() => deleteTempQuietly(root));
+
+  /// A carry of [path] — the first one, unless [token] says which.
+  MediaCarry carry(String path, [String token = 'c1']) =>
+      (poolPath: path, token: token);
 
   /// A source file with compressible content.
   String sourceFile(String name, {int length = 200 * 1024}) {
@@ -65,7 +70,7 @@ void main() {
       final path = sourceFile('take.wav');
       final original = File(path).readAsBytesSync();
 
-      final staged = await store.stage(path);
+      final staged = await store.stage(carry(path));
       expect(staged, isNotNull);
 
       // 🚨THE WHOLE POINT: the original goes away and the project still has
@@ -81,7 +86,7 @@ void main() {
     () async {
       final path = sourceFile('take.wav');
       final original = File(path).readAsBytesSync();
-      final staged = (await store.stage(path))!;
+      final staged = (await store.stage(carry(path)))!;
 
       File(path).writeAsBytesSync(Uint8List(16));
 
@@ -94,10 +99,10 @@ void main() {
     () async {
       final path = sourceFile('take.wav');
       final original = File(path).readAsBytesSync();
-      await store.stage(path);
+      await store.stage(carry(path));
       File(path).writeAsBytesSync(Uint8List(32));
 
-      final again = (await store.stage(path))!;
+      final again = (await store.stage(carry(path)))!;
       expect(
         mediaAppFileSource(again.path).readSync(),
         original,
@@ -115,7 +120,7 @@ void main() {
         markTestSkipped('no engine on this run');
         return;
       }
-      final staged = (await store.stage(sourceFile('take.wav')))!;
+      final staged = (await store.stage(carry(sourceFile('take.wav'))))!;
       expect(staged.framed, isTrue);
       expect(mediaEntryIsFramed(staged.path), isTrue);
       expect(
@@ -138,7 +143,7 @@ void main() {
       // and MP4 (6.7%) all shrink and are framed. The bytes are noise
       // because that is what「will not shrink」actually looks like.
       final path = noiseFile('flat.png');
-      final staged = (await store.stage(path))!;
+      final staged = (await store.stage(carry(path)))!;
       expect(staged.framed, isFalse);
       expect(
         File(staged.path).readAsBytesSync(),
@@ -153,28 +158,28 @@ void main() {
   group('⛔the copy does not outlive its purpose', () {
     test('the save retires it', () async {
       final path = sourceFile('take.wav');
-      await store.stage(path);
-      expect(store.find(path), isNotNull);
+      await store.stage(carry(path));
+      expect(store.find(carry(path)), isNotNull);
 
-      store.retire(path);
+      store.retire(carry(path));
 
-      expect(store.find(path), isNull);
+      expect(store.find(carry(path)), isNull);
       expect(store.list(), isEmpty, reason: 'no file left behind');
     });
 
     test('retiring something never staged is not an error', () async {
-      store.retire('${root.path}/never-imported.wav');
+      store.retire(carry('${root.path}/never-imported.wav'));
       expect(store.list(), isEmpty);
     });
 
     test('🚨a copy a reader holds open outlives the save that absorbs it, '
         'and goes when the last reader lets go', () async {
       final path = sourceFile('conte.pdf');
-      await store.stage(path);
-      final first = store.hold(path);
-      final second = store.hold(path);
+      await store.stage(carry(path));
+      final first = store.hold(carry(path));
+      final second = store.hold(carry(path));
 
-      store.retire(path);
+      store.retire(carry(path));
       expect(
         store.list(),
         hasLength(1),
@@ -184,41 +189,54 @@ void main() {
       expect(store.list(), hasLength(1), reason: 'one reader is left');
       second();
 
-      expect(store.find(path), isNull);
+      expect(store.find(carry(path)), isNull);
       expect(store.list(), isEmpty, reason: 'no file left behind');
     });
 
     test('⛔a copy whose retirement waits on its reader is NOT the staged '
         'copy — a save absorbed it', () async {
       final path = sourceFile('conte.pdf');
-      await store.stage(path);
-      final letGo = store.hold(path);
+      await store.stage(carry(path));
+      final letGo = store.hold(carry(path));
 
-      store.retire(path);
+      store.retire(carry(path));
 
-      expect(store.find(path), isNull, reason: 'only its reader is finishing');
+      expect(
+        store.find(carry(path)),
+        isNull,
+        reason: 'only its reader is finishing',
+      );
       expect(store.list(), hasLength(1), reason: 'on disk, for that reader');
       letGo();
       expect(store.list(), isEmpty);
     });
 
-    test('🚨carried AGAIN while the old copy waits: the new copy is the one '
-        'kept when the old reader lets go', () async {
+    test('🚨carried AGAIN while the old copy waits: the new carry has a copy '
+        'of its own, untouched when the old reader lets go', () async {
       final path = sourceFile('conte.pdf');
-      await store.stage(path);
-      final letGo = store.hold(path);
-      store.retire(path);
+      final original = File(path).readAsBytesSync();
+      await store.stage(carry(path));
+      final letGo = store.hold(carry(path));
+      store.retire(carry(path));
       final edited = Uint8List.fromList(
         List<int>.generate(64 * 1024, (i) => (i * 7) & 0xFF),
       );
       File(path).writeAsBytesSync(edited);
 
-      await store.stage(path);
+      await store.stage(carry(path, 'c2'));
+      expect(
+        store.list(),
+        hasLength(2),
+        reason: 'the old copy is still its reader\'s; the new one is new',
+      );
       letGo();
 
-      final kept = store.find(path);
+      final kept = store.find(carry(path, 'c2'));
       expect(kept, isNotNull, reason: 'letting go takes its OWN copy only');
       expect(mediaAppFileSource(kept!.path).readSync(), edited);
+      expect(store.find(carry(path)), isNull);
+      expect(store.list(), hasLength(1));
+      expect(original, isNot(edited), reason: 'the premise: they differ');
     });
 
     test('🚨a take written again under the name whose old copy waits: the '
@@ -232,25 +250,107 @@ void main() {
       final second = Uint8List.fromList(
         List<int>.generate(64 * 1024, (i) => (i * 7 + 1) & 0xFF),
       );
-      await store.stageCarriedBytesInMemory(path, first);
-      final letGo = store.hold(path);
-      store.retire(path);
+      await store.stageCarriedBytesInMemory(carry(path), first);
+      final letGo = store.hold(carry(path));
+      store.retire(carry(path));
 
-      await store.stageCarriedBytesInMemory(path, second);
+      await store.stageCarriedBytesInMemory(carry(path, 'c2'), second);
       letGo();
 
-      final kept = store.find(path);
+      final kept = store.find(carry(path, 'c2'));
       expect(kept, isNotNull, reason: 'letting go takes its OWN copy only');
       expect(mediaAppFileSource(kept!.path).readSync(), second);
+    });
+
+    test('⛔a carry\'s bytes are taken ONCE: staging it again while its copy '
+        'waits on a reader writes nothing over that copy', () async {
+      final path = sourceFile('conte.pdf');
+      final original = File(path).readAsBytesSync();
+      final staged = (await store.stage(carry(path)))!;
+      final letGo = store.hold(carry(path));
+      store.retire(carry(path));
+      File(path).writeAsBytesSync(Uint8List(64));
+
+      expect(await store.stage(carry(path)), isNull);
+      expect(
+        await store.stageCarriedBytesInMemory(carry(path), Uint8List(8)),
+        isNull,
+      );
+
+      expect(
+        mediaAppFileSource(staged.path).readSync(),
+        original,
+        reason: 'the reader still reads what the carry was',
+      );
+      letGo();
+      expect(store.list(), isEmpty, reason: 'and it goes when let go');
+    });
+
+    test('two carries of one path are two copies, each found by its own '
+        'name', () async {
+      final path = sourceFile('take.wav');
+      final first = File(path).readAsBytesSync();
+      await store.stage(carry(path));
+      File(path).writeAsBytesSync(Uint8List.fromList(List.filled(4096, 7)));
+
+      await store.stage(carry(path, 'c2'));
+
+      expect(mediaAppFileSource(store.find(carry(path))!.path).readSync(), [
+        ...first,
+      ]);
+      expect(
+        mediaAppFileSource(store.find(carry(path, 'c2'))!.path).readSync(),
+        List.filled(4096, 7),
+      );
+      store.retire(carry(path, 'c2'));
+      expect(store.find(carry(path)), isNotNull, reason: 'retires its own');
+    });
+
+    test('any carry of a path is a copy of it, live or waiting on its '
+        'reader — and no other path\'s is', () async {
+      final path = sourceFile('take.wav');
+      expect(store.holdsAnyCopyOf(path), isFalse);
+      await store.stage(carry(path, 'c7'));
+      expect(store.holdsAnyCopyOf(path), isTrue);
+      expect(store.holdsAnyCopyOf(sourceFile('other.wav')), isFalse);
+      expect(store.holdsAnyCopyOf('${root.path}/ake.wav'), isFalse);
+      expect(
+        store.holdsAnyCopyOf('${root.path}/elsewhere/take.wav'),
+        isFalse,
+        reason: 'the same file name in another folder is another path',
+      );
+
+      final letGo = store.hold(carry(path, 'c7'));
+      store.retire(carry(path, 'c7'));
+      expect(store.holdsAnyCopyOf(path), isTrue, reason: 'still on disk');
+      letGo();
+      expect(store.holdsAnyCopyOf(path), isFalse);
+    });
+
+    test('the carry a project had before carries had names is staged under '
+        'the name the path alone gave', () {
+      final path = '${root.path}/take.wav'.replaceAll(r'\', '/');
+      expect(
+        MediaStagingStore.stagedNameFor(carry(path, '')),
+        isNot(contains('--')),
+      );
+      expect(
+        MediaStagingStore.stagedNameFor(carry(path, 'c1')),
+        endsWith('-c1-take.wav'),
+      );
+      expect(
+        MediaStagingStore.stagedNameFor(carry(path, '')),
+        endsWith('-take.wav'),
+      );
     });
 
     test('a copy held under the OS spelling of its path is the copy the save '
         'retires', () async {
       final path = sourceFile('take.wav');
-      await store.stage(path);
-      final letGo = store.hold(path.replaceAll('/', r'\'));
+      await store.stage(carry(path));
+      final letGo = store.hold(carry(path.replaceAll('/', r'\')));
 
-      store.retire(path);
+      store.retire(carry(path));
 
       expect(store.list(), hasLength(1), reason: 'held — one key, not two');
       letGo();
@@ -260,9 +360,9 @@ void main() {
     test('a copy the OS will not let go of stays for the run\'s room — and '
         'letting go does not throw into the reader\'s close', () async {
       final path = sourceFile('conte.pdf');
-      final staged = (await store.stage(path))!;
-      final letGo = store.hold(path);
-      store.retire(path);
+      final staged = (await store.stage(carry(path)))!;
+      final letGo = store.hold(carry(path));
+      store.retire(carry(path));
       if (!setUndeletable(staged.path, on: true)) {
         markTestSkipped('this user can delete anything (root)');
         return;
@@ -275,13 +375,21 @@ void main() {
 
     test('a hold let go of with no retirement pending takes nothing', () async {
       final path = sourceFile('conte.pdf');
-      await store.stage(path);
+      await store.stage(carry(path));
 
-      store.hold(path)();
+      store.hold(carry(path))();
 
-      expect(store.find(path), isNotNull, reason: 'the save has not come');
-      store.retire(path);
-      expect(store.find(path), isNull, reason: 'held by no one, it goes');
+      expect(
+        store.find(carry(path)),
+        isNotNull,
+        reason: 'the save has not come',
+      );
+      store.retire(carry(path));
+      expect(
+        store.find(carry(path)),
+        isNull,
+        reason: 'held by no one, it goes',
+      );
     });
 
     // 🪦**THE SWEEP TESTS MOVED WITH THE SWEEP, AND THEN TWO OF THEM WERE
@@ -298,7 +406,7 @@ void main() {
 
     test('a half-written file is never mistaken for a staged one', () async {
       final path = sourceFile('take.wav');
-      final staged = (await store.stage(path))!;
+      final staged = (await store.stage(carry(path)))!;
       // The writer lands on a neighbour and renames, so nothing with the
       // real name can be partial. A `.part` left by a crash is ignored.
       File('${staged.path}.part').writeAsBytesSync(Uint8List(4));
@@ -307,7 +415,7 @@ void main() {
   });
 
   test('a missing source stages nothing rather than an empty file', () async {
-    expect(await store.stage('${root.path}/not-here.wav'), isNull);
+    expect(await store.stage(carry('${root.path}/not-here.wav')), isNull);
     expect(store.list(), isEmpty);
   });
 
@@ -317,30 +425,33 @@ void main() {
     final first = sourceFile('a/take.wav');
     final second = sourceFile('b/take.wav', length: 100 * 1024);
 
-    await store.stage(first);
-    await store.stage(second);
+    await store.stage(carry(first));
+    await store.stage(carry(second));
 
     expect(store.list(), hasLength(2));
-    expect(store.find(first), isNotNull);
-    expect(store.find(second), isNotNull);
-    expect(store.find(first)!.path, isNot(store.find(second)!.path));
+    expect(store.find(carry(first)), isNotNull);
+    expect(store.find(carry(second)), isNotNull);
+    expect(
+      store.find(carry(first))!.path,
+      isNot(store.find(carry(second))!.path),
+    );
   });
 
   group('a relink takes the staged bytes with it', () {
     test('🚨the derived name follows the pool path', () async {
       final from = sourceFile('take.wav');
       final original = File(from).readAsBytesSync();
-      final staged = (await store.stage(from))!;
+      final staged = (await store.stage(carry(from)))!;
       final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
 
-      store.rename(from, to);
+      store.rename(carry(from), to);
 
       expect(
-        store.find(from),
+        store.find(carry(from)),
         isNull,
         reason: 'nothing is left under the old key',
       );
-      final moved = store.find(to);
+      final moved = store.find(carry(to));
       expect(
         moved,
         isNotNull,
@@ -355,7 +466,7 @@ void main() {
     });
 
     test('renaming something never staged does nothing', () async {
-      store.rename('${root.path}/never.wav', '${root.path}/other.wav');
+      store.rename(carry('${root.path}/never.wav'), '${root.path}/other.wav');
       expect(store.list(), isEmpty);
     });
 
@@ -364,15 +475,15 @@ void main() {
       // whatever was staged under it belongs to the asset being replaced.
       final from = sourceFile('take.wav');
       final to = sourceFile('other.wav', length: 120 * 1024);
-      await store.stage(from);
-      await store.stage(to);
+      await store.stage(carry(from));
+      await store.stage(carry(to));
       expect(store.list(), hasLength(2));
 
-      store.rename(from, to);
+      store.rename(carry(from), to);
 
       expect(store.list(), hasLength(1));
-      expect(store.find(to), isNotNull);
-      expect(store.find(from), isNull);
+      expect(store.find(carry(to)), isNotNull);
+      expect(store.find(carry(from)), isNull);
     });
   });
 
@@ -394,7 +505,7 @@ void main() {
       final path = sourceFile('take.wav');
       final original = File(path).readAsBytesSync();
 
-      final staged = (await store.stage(path))!;
+      final staged = (await store.stage(carry(path)))!;
 
       expect(File(staged.path).existsSync(), isTrue);
       // ⛔Through the un-framing source, not the file: the file holds the
@@ -414,7 +525,9 @@ void main() {
         sourceFile('c.wav'),
       ];
 
-      final staged = await store.stageCarriedBytes(paths);
+      final staged = await store.stageCarriedBytes([
+        for (final path in paths) carry(path),
+      ]);
 
       expect(staged, hasLength(3));
       expect(store.list(), hasLength(3));

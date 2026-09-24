@@ -207,7 +207,7 @@ int32_t qa_video_apple_open(const char* utf8_path,
     // BGRA for VideoToolbox to convert, and what the Apple reader turned
     // back had lost red in exact proportion — 0.9136 of it, BT.709 in and
     // BT.601 out: red 110 came back 101, and a piece cut from a take 168
-    // where the take showed 185 (2026-09-25, board
+    // where the take showed 185 (2026-09-24, board
     // `trimmed-piece-apple-parity`). Naming BT.601 in these properties
     // alone moved none of those numbers, so the pictures are converted
     // before the encoder sees them, and these properties now describe what
@@ -230,7 +230,7 @@ int32_t qa_video_apple_open(const char* utf8_path,
     // its default time scale lets the writer pick its own, and in 1/600 s a
     // 24000/1001 frame is 25.025 units: it rounds to 25, every frame lasts
     // exactly 1/24 s, and the file says 24.0 fps. A trimmed 23.976 take came
-    // back as 24 on the Apple engine only (2026-09-25, first run of
+    // back as 24 on the Apple engine only (2026-09-24, first run of
     // `a_trimmed_file_is_carried_as_its_piece_test` on a Mac). A multiple
     // of the rate's numerator holds every frame time exactly; it is lifted
     // to at least 600 so a 12 or 24 fps track keeps a conventional unit.
@@ -616,7 +616,7 @@ static const int64_t kQaServedChunkBytes = 1024 * 1024;
 /// loader used to answer `public.movie` — an abstract type — on the stated
 /// belief that 「the generic type lets it sniff the bytes」. It does not: on
 /// the Apple runner every movie served that way opened with no video track
-/// at all (2026-09-25, `a_movie_kept_compressed_plays_where_it_lies_test`,
+/// at all (2026-09-24, `a_movie_kept_compressed_plays_where_it_lies_test`,
 /// the first test ever to open a span on Apple). A plain span took the same
 /// road, so a movie carried inside a saved project had the same answer.
 static NSString* qa_apple_container_type(qa_media_span* span,

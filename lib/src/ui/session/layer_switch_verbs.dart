@@ -183,10 +183,9 @@ class LayerSwitchVerbs {
     _changes.notifyChanged();
   }
 
-  /// Flips the layer's FILL-reference flag (R20-C2, the CSP lighthouse):
-  /// while any visible layer of the cut carries it, fills read ONLY the
-  /// flagged layers as their source picture. One undo step; the display
-  /// composite never changes.
+  /// Flips the layer's FILL-reference flag (R20-C2, the CSP lighthouse) —
+  /// what a fill then reads is its reference source's answer (I-36). One
+  /// undo step; the display composite never changes.
   void toggleLayerFillReference(LayerId layerId) {
     final layer = _project.layers.firstWhere((layer) => layer.id == layerId);
     _project.cutCommandCoordinator.setLayerFillReference(

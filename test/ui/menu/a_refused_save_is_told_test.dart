@@ -293,7 +293,7 @@ void main() {
     final refusing = '${folder.path.replaceAll('\\', '/')}/held.anicel';
     Directory(refusing).createSync();
     session.projectFile
-      ..bindToOpenedFile(refusing, entryNames: const {}, unsaved: false)
+      ..bindToOpenedFile(refusing, mediaInFile: const {}, unsaved: false)
       ..markDirty();
     addTearDown(() => AppSave.settings.value = const AppSaveSettings());
     AppSave.settings.value = const AppSaveSettings(periodicSnapshotMinutes: 1);

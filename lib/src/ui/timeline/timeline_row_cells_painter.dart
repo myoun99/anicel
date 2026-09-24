@@ -20,7 +20,11 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_marker.dart';
 import 'timeline_instruction_row_visual.dart' show bandExposureState;
 import 'timeline_beat_lines.dart'
-    show TimelineGridLaw, timelineGridGroundOver, timelineRowPaperExtent;
+    show
+        TimelineGridLaw,
+        timelineBlockFrameLine,
+        timelineGridGroundOver,
+        timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_frame_geometry.dart';
@@ -59,6 +63,8 @@ class TimelineRowCellsPainter extends CustomPainter
     this.celContent,
     this.coverageIdentity,
     this.paperGround,
+    this.blockFrameLines = false,
+    this.framesPerSecond = 0,
   }) : super(
          repaint: Listenable.merge([
            geometry,
@@ -160,7 +166,7 @@ class TimelineRowCellsPainter extends CustomPainter
   final double viewportMainExtent;
 
   /// The substrate TILE store (UI-R18 O7 T2): with it set, span-sized
-  /// pre-rastered images replace the per-cell fill/border canvas work —
+  /// pre-rastered images replace the substrate's canvas work —
   /// its revision joins the repaint listenable so landed tiles paint on
   /// the next frame. Null (or no native engine) keeps the classic path.
   final TimelineGridTileStore? tileStore;
@@ -181,6 +187,17 @@ class TimelineRowCellsPainter extends CustomPainter
   /// UI-R21 #2 took the wash out of the cells to stop.
   @override
   final Color? paperGround;
+
+  /// Whether the frame lines cross this row's block paper — the host law's
+  /// answer ([TimelineGridLaw], Preferences ▸ Display, 유저 2026-09-24).
+  /// Off without a host: the lines are the host grid's, and a row with no
+  /// host has no grid to continue.
+  @override
+  final bool blockFrameLines;
+
+  /// The counting fps — which of those lines are SECOND lines.
+  @override
+  final int framesPerSecond;
 
   // ⛔The two per-cell alphas are GONE (유저 확정 2026-08-14): 「반투명 =
   // 오버레이 루트 하나, 70%」. `0x66` on a block's body and `0x9E` on its
@@ -331,9 +348,8 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   /// The cell's RESOLVED paint style (dim blends, band tint, block
-  /// radius) — what paint() draws and what tests assert against (the
-  /// successor of reading the widget cell's BoxDecoration).
-  @override
+  /// radius) — what [substrateIn] lays down and what tests assert against
+  /// (the successor of reading the widget cell's BoxDecoration).
   ({Color background, Color border, BorderRadius? radius}) resolvedCellStyleFor(
     int frameIndex,
   ) {
@@ -343,12 +359,10 @@ class TimelineRowCellsPainter extends CustomPainter
     // A camera summary cell is empty-styled for the same reason — its
     // coverage is a key marker, not paper.
     final paper = layerMarkColor(layer.mark);
-    final styleColors = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: model.ghost || _cameraSummaryRow
+    final cellPaper = timelineCellPaper(
+      model.ghost || _cameraSummaryRow
           ? TimelineCellExposureState.uncovered
           : model.exposureState,
-      selected: false,
       // ⑲: the row's blocks are its layer's colour label.
       paper: paper,
     );
@@ -366,7 +380,7 @@ class TimelineRowCellsPainter extends CustomPainter
             under: paperGround,
             painted: timelineEmptyCelPaperColor(paper),
           )!
-        : styleColors.background;
+        : cellPaper;
     // D32/D38 (2026-08-18): the per-cell BORDER is gone. It existed to be
     // the seams ("the paper blocks' seams all sit on the shared faint
     // alpha" — UI-R20 #7 already killed the strong start edge), and as a
@@ -394,16 +408,120 @@ class TimelineRowCellsPainter extends CustomPainter
   /// The cell's PAPER — its rect short of the row seam at the trailing
   /// cross edge ([timelineRowPaperExtent]), which the grid sheet draws under
   /// the row and the paper must leave showing.
-  ///
-  /// PUBLIC contract shared by paint() and the tile emitter (the
-  /// probe-the-painter rule): both fill exactly this box.
-  @override
   Rect paperRectFor(int frameIndex) {
     final cell = cellRectFor(frameIndex);
     final paper = timelineRowPaperExtent(crossAxisExtent);
     return axis == Axis.horizontal
         ? Rect.fromLTWH(cell.left, cell.top, cell.width, paper)
         : Rect.fromLTWH(cell.left, cell.top, paper, cell.height);
+  }
+
+  /// What frames [from, to) lay down under their ink — THE contract the
+  /// classic pass paints and the tile emitter bakes (the probe-the-painter
+  /// rule): the paper, one piece per run, and the frame lines across it.
+  @override
+  TimelineRowSubstrate substrateIn(int from, int to) {
+    // One resolution per cell for the whole answer — every cell is asked
+    // for its style, its segment and its line.
+    if (_passModels != null) {
+      return _substrateIn(from, to);
+    }
+    _passModels = {};
+    try {
+      return _substrateIn(from, to);
+    } finally {
+      _passModels = null;
+    }
+  }
+
+  TimelineRowSubstrate _substrateIn(int from, int to) {
+    final paper = <({Rect rect, Color color, BorderRadius? radius})>[];
+    var runStart = from;
+    Color? runColor;
+    void close(int runEnd) {
+      final color = runColor;
+      if (color == null) {
+        return;
+      }
+      final first = cellModelAt(runStart).segment;
+      final last = cellModelAt(runEnd - 1).segment;
+      paper.add((
+        rect: paperRectFor(
+          runStart,
+        ).expandToInclude(paperRectFor(runEnd - 1)),
+        color: color,
+        // The run's corners are its end cells' — the one corner law, asked
+        // about the run as the block it is.
+        radius: timelineCellBorderRadius(
+          TimelineExposureBlockVisualSegment(
+            kind: first.kind,
+            continuesFromPrevious: first.continuesFromPrevious,
+            continuesToNext: last.continuesToNext,
+          ),
+          axis,
+          cellExtent: frameCellExtent,
+          crossExtent: timelineRowPaperExtent(crossAxisExtent),
+        ),
+      ));
+      runColor = null;
+    }
+
+    for (var frame = from; frame < to; frame += 1) {
+      final color = resolvedCellStyleFor(frame).background;
+      // A cell joins the run before it when no corner stands between them
+      // and it is the same paper.
+      if (color == runColor &&
+          cellModelAt(frame).segment.continuesFromPrevious) {
+        continue;
+      }
+      close(frame);
+      // UI-R21 #2: an empty cell paints NOTHING — its ground, and every
+      // line on it, is the grid sheet's under the row (I-44).
+      if (color.a > 0) {
+        runStart = frame;
+        runColor = color;
+      }
+    }
+    close(to);
+
+    final lines = <({Rect rect, Color color})>[];
+    if (blockFrameLines) {
+      // Through [to] itself: a second line is 1.5 wide about a centre half
+      // a pixel past its boundary, so the line starting frame [to] leans a
+      // quarter pixel back into this stretch, and a tile ending here owns
+      // that sliver.
+      for (var frame = from; frame <= to; frame += 1) {
+        final line = _blockFrameLineAt(frame);
+        if (line != null) {
+          lines.add(line);
+        }
+      }
+    }
+    return (paper: paper, lines: lines);
+  }
+
+  /// The frame line at [frameIndex]'s leading boundary, where it crosses
+  /// the block's paper — an interior boundary only: a block's first
+  /// boundary is its edge, and the run starts there.
+  ({Rect rect, Color color})? _blockFrameLineAt(int frameIndex) {
+    final segment = cellModelAt(frameIndex).segment;
+    if (!segment.isBlock || !segment.continuesFromPrevious) {
+      return null;
+    }
+    final paper = paperRectFor(frameIndex);
+    final horizontal = axis == Axis.horizontal;
+    return timelineBlockFrameLine(
+      axis: axis,
+      frameIndex: frameIndex,
+      boundary: horizontal ? paper.left : paper.top,
+      across: horizontal
+          ? (from: paper.top, to: paper.bottom)
+          : (from: paper.left, to: paper.right),
+      frameCellExtent: frameCellExtent,
+      framesPerSecond: framesPerSecond,
+      colorScheme: colorScheme,
+      paper: resolvedCellStyleFor(frameIndex).background,
+    );
   }
 
   @override
@@ -425,13 +543,7 @@ class TimelineRowCellsPainter extends CustomPainter
     // the Dart glyph/dash pass skips them.
     final tiledSpans = <(int, int)>[];
     if (store == null || frameCellExtent <= 0) {
-      for (
-        var frameIndex = window.startIndex;
-        frameIndex < window.endIndexExclusive;
-        frameIndex += 1
-      ) {
-        _paintCellSubstrate(canvas, frameIndex);
-      }
+      _paintSubstrate(canvas, window.startIndex, window.endIndexExclusive);
     } else {
       tiledSpans.addAll(_paintTiledSubstrate(canvas, window, store));
     }
@@ -440,7 +552,9 @@ class TimelineRowCellsPainter extends CustomPainter
     // No line is drawn here: the 6f/24f beats went to ONE grid-wide
     // overlay (UI-R13 #7) so they span every row, and with I-44 every
     // other line and the row's ground followed them into that one grid
-    // sheet ([TimelineGridSheetPainter]).
+    // sheet ([TimelineGridSheetPainter]). The one exception rides in the
+    // substrate: that sheet's own lines on the block paper, where the
+    // user's switch shows them ([substrateIn]).
   }
 
   /// The substrate through the tile store: a fresh tile is one
@@ -488,18 +602,18 @@ class TimelineRowCellsPainter extends CustomPainter
         tiledSpans.add((spanStart, spanEnd));
         continue;
       }
-      final fallbackStart = math.max(spanStart, window.startIndex);
-      final fallbackEnd = math.min(spanEnd, window.endIndexExclusive);
-      for (var frame = fallbackStart; frame < fallbackEnd; frame += 1) {
-        // ⛔This call was lost once, silently: `a055c51a`(2026-09-04) — a
-        // commit about the accessibility sentence and the corner radius —
-        // swapped it for an empty `/*P4*/` marker, the shape of a mutant
-        // from that day's mutation campaign committed by accident. Every
-        // zoom step that crossed a span boundary then drew no block paper
-        // for a frame (F-94). `a_row_paints_its_substrate_and_its_glyphs_
-        // test` pins it now, with the engine on and the store cold.
-        _paintCellSubstrate(canvas, frame);
-      }
+      // ⛔This call was lost once, silently: `a055c51a`(2026-09-04) — a
+      // commit about the accessibility sentence and the corner radius —
+      // swapped it for an empty `/*P4*/` marker, the shape of a mutant
+      // from that day's mutation campaign committed by accident. Every
+      // zoom step that crossed a span boundary then drew no block paper
+      // for a frame (F-94). `a_row_paints_its_substrate_and_its_glyphs_
+      // test` pins it now, with the engine on and the store cold.
+      _paintSubstrate(
+        canvas,
+        math.max(spanStart, window.startIndex),
+        math.min(spanEnd, window.endIndexExclusive),
+      );
     }
     // PREFETCH one span beyond both window edges (scroll warm-up):
     // requesting is enough — the raster lands before the crossing
@@ -568,44 +682,22 @@ class TimelineRowCellsPainter extends CustomPainter
     canvas.restore();
   }
 
-  /// The cell's dense, mostly-static part: the paper-block fill and its
-  /// border — what the substrate TILES rasterize (the emitter probes the
-  /// same style and paper box, so the two paths cannot drift).
-  void _paintCellSubstrate(Canvas canvas, int frameIndex) {
-    final style = resolvedCellStyleFor(frameIndex);
-    final background = style.background;
-    final borderColor = style.border;
-    // UI-R21 #2: an empty cell paints NOTHING — its ground, and every line
-    // on it, is the grid sheet's under the row (I-44).
-    if (background.a <= 0 && borderColor.a <= 0) {
-      return;
-    }
-    final rect = paperRectFor(frameIndex);
-    // Border.all paints INSIDE the box: stroke centered half a pixel in.
-    final borderRect = rect.deflate(0.5);
-    final radius = style.radius;
-    final fillPaint = Paint()..color = background;
-    final borderPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = borderColor;
-    if (radius == null) {
-      canvas.drawRect(rect, fillPaint);
-      if (borderColor.a > 0) {
-        canvas.drawRect(borderRect, borderPaint);
+  /// The row's dense, mostly-static part over frames [from, to) — exactly
+  /// what the substrate TILES bake ([substrateIn]), so the two paths
+  /// cannot drift.
+  void _paintSubstrate(Canvas canvas, int from, int to) {
+    final substrate = substrateIn(from, to);
+    for (final piece in substrate.paper) {
+      final paint = Paint()..color = piece.color;
+      final radius = piece.radius;
+      if (radius == null) {
+        canvas.drawRect(piece.rect, paint);
+      } else {
+        canvas.drawRRect(radius.toRRect(piece.rect), paint);
       }
-      return;
     }
-    RRect rounded(Rect box) => RRect.fromRectAndCorners(
-      box,
-      topLeft: radius.topLeft,
-      topRight: radius.topRight,
-      bottomLeft: radius.bottomLeft,
-      bottomRight: radius.bottomRight,
-    );
-    canvas.drawRRect(rounded(rect), fillPaint);
-    if (borderColor.a > 0) {
-      canvas.drawRRect(rounded(borderRect), borderPaint);
+    for (final line in substrate.lines) {
+      canvas.drawRect(line.rect, Paint()..color = line.color);
     }
   }
 
@@ -819,6 +911,8 @@ class TimelineRowCellsPainter extends CustomPainter
     // I-44: what the unworked paper is pre-blended onto is a painted fact
     // like any other (a theme change moves it).
     paperGround,
+    blockFrameLines,
+    framesPerSecond,
     devicePixelRatio,
   );
 
@@ -838,7 +932,7 @@ class TimelineRowCellsPainter extends CustomPainter
 /// The painted cell strip + its row-level interaction, shared by the
 /// horizontal row and the X-sheet column (Axis policy):
 /// - raw pointer-down selects the cell under the pointer (instant, the
-///   arena never delays it — the TimelineFrameCell contract);
+///   arena never delays it);
 /// - a no-op onTap keeps a tap recognizer in the arena so scroll slop
 ///   over cells behaves exactly as the widget cells did;
 /// - double-tap opens the cell editor.
@@ -870,6 +964,7 @@ Widget timelineRowCellsPaintArea({
   Object? coverageIdentity,
   String substrateGeneration = '',
 }) {
+  final law = TimelineGridLaw.maybeOf(context);
   final painter = TimelineRowCellsPainter(
     layer: layer,
     geometry: geometry,
@@ -896,7 +991,10 @@ Widget timelineRowCellsPaintArea({
     devicePixelRatio: EffectiveDevicePixelRatio.of(context),
     // I-44: the HOST's ground, stated once by its law — what an unworked
     // block's paper is pre-blended onto (null over the artwork).
-    paperGround: TimelineGridLaw.maybeOf(context)?.ground,
+    paperGround: law?.ground,
+    // And whether its lines cross the paper, in its own cadence.
+    blockFrameLines: law?.blockFrameLines ?? false,
+    framesPerSecond: law?.framesPerSecond ?? 0,
   );
   // Read LIVE: the row that built this closure survives zoom steps now.
   bool inWindow(int frameIndex) => geometry.value.contains(frameIndex);

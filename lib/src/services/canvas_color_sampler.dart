@@ -13,7 +13,8 @@ import '../models/project_background.dart';
 import '../models/tile_coord.dart';
 import 'composite_effect_paint.dart'
     show resolveColorMatrixIgnoringSpatial;
-import 'layer_pose_paint.dart' show layerPoseMatrix;
+import 'layer_pose_matrix.dart' show canvasToArtwork;
+import 'canvas_read_source.dart';
 import 'cel_source_effect_pass.dart';
 import 'cut_frame_composite_plan.dart';
 
@@ -104,23 +105,10 @@ List<double>? _adjustmentColorMatrix({
   return lerpColorMatrixFromIdentity(matrix, mix);
 }
 
-/// Where the eyedropper reads its color from (R28 #6, the PS/CSP setting).
-enum CanvasColorSampleSource {
-  /// Every visible layer, blended bottom-up over the paper — "pick what
-  /// you SEE". The user's default.
-  display,
-
-  /// The ACTIVE layer's FINISHED pixels only — its own chain applied, no
-  /// other row's. Transparent artwork reads as the paper beneath it, which
-  /// is what Photoshop's "current layer" does once
-  /// there is nothing to pick.
-  layer,
-}
-
 /// The canvas point mapped into [entry]'s ARTWORK space — the inverse of
-/// the pose [applyLayerPoseTransform] paints with. Null when the pose is
-/// singular (a zero zoom collapses the layer to nothing, so there is no
-/// pixel under the pointer).
+/// the pose every composite route paints with ([canvasToArtwork], the one
+/// inverse). Null when the pose is singular (a zero zoom collapses the
+/// layer to nothing, so there is no pixel under the pointer).
 ///
 /// R28 #7: posed layers used to be SKIPPED here, which meant any layer
 /// carrying a transform — or merely sitting inside a folder that did —
@@ -136,28 +124,22 @@ CanvasPoint? _artworkPointFor(
   if (pose == null) {
     return point;
   }
-  final matrix = layerPoseMatrix(
-    pose,
+  return canvasToArtwork(
+    (pose: pose, anchorPoint: entry.anchorPoint),
     canvasSize,
-    anchorPoint: entry.anchorPoint,
-  );
-  if (matrix.invert() == 0) {
-    return null;
-  }
-  final mapped = matrix.storage;
-  return CanvasPoint(
-    x: mapped[0] * point.x + mapped[4] * point.y + mapped[12],
-    y: mapped[1] * point.x + mapped[5] * point.y + mapped[13],
-  );
+  )?.apply(point);
 }
 
 /// Samples the color at [point] (P5 eyedropper); returns opaque ARGB.
 ///
-/// [source] picks the reference (R28 #6): `display` blends the shared
-/// composite visit's entries bottom-up over the paper with each entry's
-/// effective opacity, `layer` reads [activeLayerId]'s pixels alone. Either
-/// way a POSED layer samples through the inverse of its pose, so the pick
-/// matches what the screen shows.
+/// [source] picks the reference (R28 #6) — the layers [layersReadBy]
+/// answers, the fill's answer too: `display` blends the shared composite
+/// visit's entries bottom-up over the paper with each entry's effective
+/// opacity, `layer` reads [activeLayerId]'s FINISHED pixels alone (its own
+/// chain applied; transparent artwork reads as the paper beneath, which is
+/// what Photoshop's "current layer" does once there is nothing to pick).
+/// Either way a POSED layer samples through the inverse of its pose, so the
+/// pick matches what the screen shows.
 ///
 /// Works in every section and on every layer kind by construction: a row
 /// with no artwork simply contributes nothing and the paper shows through
@@ -169,9 +151,10 @@ int sampleCompositeColor({
   required LayerFrameSurfaceResolver surfaceResolver,
   required CanvasPoint point,
   int paperColor = canvasPaperColor,
-  CanvasColorSampleSource source = CanvasColorSampleSource.display,
+  CanvasReadSource source = CanvasReadSource.display,
   LayerId? activeLayerId,
 }) {
+  final read = layersReadBy(source, cut, activeLayerId);
   // The LAYER STACK accumulates on its own, PREMULTIPLIED, with its own
   // coverage — the paper joins once at the end.
   //
@@ -207,8 +190,10 @@ int sampleCompositeColor({
   for (final layer in cut.layers) {
     if (layer.kind.filtersBelow) {
       // "Pick from the current layer" is the what-ink-is-this mode: it
-      // reads the row as DRAWN and no adjustment applies to it.
-      if (source == CanvasColorSampleSource.layer) {
+      // reads the row as DRAWN and no adjustment applies to it. Any read
+      // narrower than everything visible is that: an adjustment is another
+      // row, and only the whole picture has it.
+      if (read != null) {
         continue;
       }
       // Nothing accumulated = nothing to grade, which is exactly when the
@@ -243,8 +228,7 @@ int sampleCompositeColor({
     if (entry == null) {
       continue;
     }
-    if (source == CanvasColorSampleSource.layer &&
-        entry.layer.id != activeLayerId) {
+    if (read != null && !read.contains(entry.layer.id)) {
       continue;
     }
     final surface = surfaceResolver(entry.layer, entry.frame);

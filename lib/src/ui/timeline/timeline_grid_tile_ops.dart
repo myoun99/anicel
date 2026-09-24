@@ -27,12 +27,17 @@ abstract final class TimelineGridTileOp {
   static const int vline = 3;
   static const int glyph = 4;
 
-  /// Rounded-rect ops (T2, the cell BLOCK chrome): every geometry field
+  /// The rounded-rect fill (T2, the cell BLOCK chrome): every geometry field
   /// is 24.8 fixed point (pixels * 256 — [q8]) so fractional-zoom cell
   /// rects ride sub-pixel; corner mask bit0=TL, bit1=TR, bit2=BL,
   /// bit3=BR (unset corners square). AA from the rounded-box SDF.
   static const int rrectFill = 5;
-  static const int rrectStroke = 6;
+
+  // 🪦6 was the rounded-rect STROKE — the per-cell block border's. D32/D38
+  // (2026-08-18) made that border transparent for good, and the substrate
+  // rewrite of 2026-09-24 took the emitter branch that could still have
+  // asked for it; nothing wrote a 6 after that, so the op left the writer,
+  // the reference and the engine together.
 
   static const int cornerTopLeft = 1;
   static const int cornerTopRight = 2;
@@ -112,27 +117,172 @@ class TimelineGridTileOpWriter {
       ..add(rgba);
   }
 
-  /// A stroked rounded rect, [thickness] centered on the boundary.
-  void rrectStroke(
+  /// An axis-aligned box, antialiased EXACTLY as [rrectFill] with no radius
+  /// would draw it — byte for byte — but written as plain rect fills.
+  ///
+  /// ⚡[rrectFill] evaluates its distance field, square root and all, at
+  /// every pixel of the box and a margin round it. A box's field has a
+  /// shape to spend: every row whose centre lies half a pixel or more
+  /// inside the box sees the same coverage in each column, so the band of
+  /// those rows is one fill per run of equal columns, and only the rows at
+  /// the two edges are asked pixel by pixel. The coverage itself is the
+  /// field's own ([_rrectDistance]), so the bytes cannot drift from it.
+  void boxFill(double x, double y, double width, double height, int rgba) {
+    final colorA = (rgba >> 24) & 0xFF;
+    // Quantized exactly as [rrectFill] quantizes.
+    final left = timelineGridQ8(x) / 256.0;
+    final top = timelineGridQ8(y) / 256.0;
+    final w = timelineGridQ8(width) / 256.0;
+    final h = timelineGridQ8(height) / 256.0;
+    if (colorA == 0 || w <= 0.0 || h <= 0.0) {
+      return;
+    }
+    final halfW = w * 0.5;
+    final halfH = h * 0.5;
+    final centerX = left + halfW;
+    final centerY = top + halfH;
+    // The field's own pixel window.
+    final firstColumn = (left - 1.0).toInt();
+    final firstRow = (top - 1.0).toInt();
+    final pastColumn = (left + w + 2.0).toInt();
+    final pastRow = (top + h + 2.0).toInt();
+    int alphaAt(int column, int row) {
+      final d = _rrectDistance(
+        column + 0.5,
+        row + 0.5,
+        centerX,
+        centerY,
+        halfW,
+        halfH,
+        0,
+        0,
+        0,
+        0,
+      );
+      final coverage = 0.5 - d;
+      if (coverage <= 0.0) {
+        return 0;
+      }
+      return ((coverage > 1.0 ? 1.0 : coverage) * colorA + 0.5).toInt();
+    }
+
+    bool inBand(int row) {
+      final ry = row + 0.5 - centerY;
+      return (ry < 0.0 ? -ry : ry) - halfH <= -0.5;
+    }
+
+    // One fill per run of equal columns in [row] (a band of [rows] rows).
+    void runsOf(int row, int rows) {
+      var column = firstColumn;
+      while (column < pastColumn) {
+        final alpha = alphaAt(column, row);
+        var end = column + 1;
+        while (end < pastColumn && alphaAt(end, row) == alpha) {
+          end += 1;
+        }
+        if (alpha > 0) {
+          fillRect(
+            column,
+            row,
+            end - column,
+            rows,
+            (rgba & 0x00FFFFFF) | (alpha << 24),
+          );
+        }
+        column = end;
+      }
+    }
+
+    var row = firstRow;
+    while (row < pastRow) {
+      if (!inBand(row)) {
+        runsOf(row, 1);
+        row += 1;
+        continue;
+      }
+      var end = row + 1;
+      while (end < pastRow && inBand(end)) {
+        end += 1;
+      }
+      runsOf(row, end - row);
+      row = end;
+    }
+  }
+
+  /// A filled rounded rect whose corners sit at the two ENDS of a run — a
+  /// block's paper, its ends along x ([alongX]) or along y — drawn exactly
+  /// as [rrectFill] draws it, byte for byte, with the field paid for where
+  /// a corner can reach and nowhere else.
+  ///
+  /// ⚡Each end is an [rrectFill] cut at the first whole pixel two radii
+  /// in; the stretch between is a [boxFill]. Why that is the SAME picture:
+  /// the field picks a pixel's corner by the quadrant of the box it lies
+  /// in, and a corner's arc reaches one radius in from its end — so an end
+  /// piece two radii long holds the whole arc inside its own end half,
+  /// where it computes the arc exactly as the whole box does (every value
+  /// is a 24.8 word, so the arithmetic is exact). Everywhere else both see
+  /// a square box, and a whole-pixel cut leaves each column wholly inside
+  /// one piece. Too short to hold both ends and a pixel between, it is one
+  /// [rrectFill].
+  void runFill(
     double x,
     double y,
     double width,
     double height,
     double radius,
     int cornerMask,
-    double thickness,
-    int rgba,
-  ) {
-    _words
-      ..add(TimelineGridTileOp.rrectStroke)
-      ..add(timelineGridQ8(x))
-      ..add(timelineGridQ8(y))
-      ..add(timelineGridQ8(width))
-      ..add(timelineGridQ8(height))
-      ..add(timelineGridQ8(radius))
-      ..add(cornerMask)
-      ..add(timelineGridQ8(thickness))
-      ..add(rgba);
+    int rgba, {
+    required bool alongX,
+  }) {
+    if (timelineGridQ8(radius) <= 0 || cornerMask == 0) {
+      boxFill(x, y, width, height, rgba);
+      return;
+    }
+    final startCorners = alongX
+        ? TimelineGridTileOp.cornerTopLeft | TimelineGridTileOp.cornerBottomLeft
+        : TimelineGridTileOp.cornerTopLeft | TimelineGridTileOp.cornerTopRight;
+    final endCorners =
+        (TimelineGridTileOp.cornerTopLeft |
+            TimelineGridTileOp.cornerTopRight |
+            TimelineGridTileOp.cornerBottomLeft |
+            TimelineGridTileOp.cornerBottomRight) &
+        ~startCorners;
+    // In the stream's own 24.8 words, so the pieces' edges are the whole
+    // box's edges exactly and each cut is a whole pixel.
+    final start = timelineGridQ8(alongX ? x : y);
+    final end = start + timelineGridQ8(alongX ? width : height);
+    final reach = 2 * timelineGridQ8(radius);
+    final middleStart = (cornerMask & startCorners) == 0
+        ? start
+        : -((-(start + reach) >> 8) << 8);
+    final middleEnd = (cornerMask & endCorners) == 0
+        ? end
+        : ((end - reach) >> 8) << 8;
+    if (middleEnd - middleStart < 256) {
+      rrectFill(x, y, width, height, radius, cornerMask, rgba);
+      return;
+    }
+    void piece(int from, int to, int corners, {required bool box}) {
+      final along = from / 256.0;
+      final length = (to - from) / 256.0;
+      final px = alongX ? along : x;
+      final py = alongX ? y : along;
+      final pw = alongX ? length : width;
+      final ph = alongX ? height : length;
+      if (box) {
+        boxFill(px, py, pw, ph, rgba);
+      } else {
+        rrectFill(px, py, pw, ph, radius, corners, rgba);
+      }
+    }
+
+    if (middleStart > start) {
+      piece(start, middleStart, cornerMask & startCorners, box: false);
+    }
+    piece(middleStart, middleEnd, 0, box: true);
+    if (middleEnd < end) {
+      piece(middleEnd, end, cornerMask & endCorners, box: false);
+    }
   }
 
   /// Blits a [width]x[height] window of the A8 atlas at (atlasX, atlasY)
@@ -233,7 +383,6 @@ void _blendRRect(
   required double h,
   required double radius,
   required int cornerMask,
-  required double strokeThickness, // <= 0 = fill
   required int rgba,
 }) {
   final colorA = (rgba >> 24) & 0xFF;
@@ -252,12 +401,11 @@ void _blendRRect(
   final radiusBr = (cornerMask & 8) != 0 ? radius : 0.0;
   final centerX = x + halfW;
   final centerY = y + halfH;
-  final reach = strokeThickness > 0.0 ? strokeThickness * 0.5 : 0.0;
 
-  var left = (x - reach - 1.0).toInt();
-  var top = (y - reach - 1.0).toInt();
-  var right = (x + w + reach + 2.0).toInt();
-  var bottom = (y + h + reach + 2.0).toInt();
+  var left = (x - 1.0).toInt();
+  var top = (y - 1.0).toInt();
+  var right = (x + w + 2.0).toInt();
+  var bottom = (y + h + 2.0).toInt();
   if (left < 0) {
     left = 0;
   }
@@ -288,13 +436,7 @@ void _blendRRect(
         radiusBl,
         radiusBr,
       );
-      double coverage;
-      if (strokeThickness > 0.0) {
-        final ad = d < 0.0 ? -d : d;
-        coverage = 0.5 - (ad - reach);
-      } else {
-        coverage = 0.5 - d;
-      }
+      var coverage = 0.5 - d;
       if (coverage > 0.0) {
         if (coverage > 1.0) {
           coverage = 1.0;
@@ -425,28 +567,9 @@ int timelineGridRasterTileReference({
           h: ops[cursor + 4] / 256.0,
           radius: ops[cursor + 5] / 256.0,
           cornerMask: ops[cursor + 6],
-          strokeThickness: 0.0,
           rgba: ops[cursor + 7],
         );
         cursor += 8;
-      case TimelineGridTileOp.rrectStroke:
-        if (cursor + 9 > ops.length) {
-          return -2;
-        }
-        _blendRRect(
-          pixels,
-          tileWidth,
-          tileHeight,
-          x: ops[cursor + 1] / 256.0,
-          y: ops[cursor + 2] / 256.0,
-          w: ops[cursor + 3] / 256.0,
-          h: ops[cursor + 4] / 256.0,
-          radius: ops[cursor + 5] / 256.0,
-          cornerMask: ops[cursor + 6],
-          strokeThickness: ops[cursor + 7] / 256.0,
-          rgba: ops[cursor + 8],
-        );
-        cursor += 9;
       case TimelineGridTileOp.glyph:
         if (cursor + 8 > ops.length) {
           return -2;

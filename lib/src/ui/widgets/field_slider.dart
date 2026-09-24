@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
+import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
@@ -234,6 +235,20 @@ class FieldSlider extends StatefulWidget {
   /// The bar's extent ACROSS its axis — thickness, not length. The length
   /// always comes from the host.
   final double height;
+
+  /// What a bar drawn [height] at 1× adds where it is shown: its one line
+  /// of words (the value, set in the theme's `labelSmall`) grown under the
+  /// OS text size — 0 at 1×, so nothing drawn at 1× moves.
+  ///
+  /// 🚨text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
+  /// 따라 자란다」) grew the timeline's zoom bar with a copy of this; the
+  /// rail's opacity bars, the legend's master bar and the storyboard's
+  /// asked the same (text-scale-rail-rows, 유저 2026-09-24: 「행도 글자
+  /// 크기를 따라 자란다」 — 🔬at 1.5× the rail's digits wanted 24 in 18).
+  static double growthIn(BuildContext context) => TextMeasure(
+    context,
+    Theme.of(context).textTheme.labelSmall ?? const TextStyle(),
+  ).lineGrowthOf(TextMeasure.everyScript);
 
   /// Which way the track runs. Vertical fills upward from the bottom and
   /// is dragged up/down — the x-sheet's stood-up rail, where a 28px column

@@ -36,7 +36,7 @@ import '../../services/media/media_asset_uses.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/project_lookup.dart'
-    show projectArchivedMediaPaths, requireLayerAnywhere;
+    show projectMediaCarryOf, requireLayerAnywhere;
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
 import 'project_file.dart';
@@ -131,12 +131,15 @@ class MediaPool {
       for (final entry in entries)
         if (seen.add(entry.path)) entry,
     ];
-    final carried = [
-      for (final entry in fresh)
-        if (entry.carried) entry.path,
-    ];
-    if (carried.isNotEmpty) {
-      await _staging.stageCarriedBytes(carried);
+    final toHold = _carriesToHold(fresh);
+    // ⚠️Waited for ONLY when there is something to hold. Nothing carried,
+    // the entries are recorded in the same breath as the call — the order
+    // an unawaited caller counts on: `AudioClips` registers the sound and
+    // places its clip right after, and a wait here moved the registration
+    // behind the clip, onto the undo the clip should have had
+    // (`audio_import_test`).
+    if (toHold.isNotEmpty) {
+      await _staging.stageCarriedBytes(toHold);
     }
     // Read after the wait: what landed meanwhile is kept, not written over.
     final pool = mediaAssets;
@@ -153,6 +156,33 @@ class MediaPool {
       ...added,
     ], description: 'Import media');
     _changes.notifyChanged();
+  }
+
+  /// Holds the bytes of every CARRIED one among [arriving] that the pool
+  /// does not have yet — the ones a landing will record, since a landing
+  /// keeps the pool's own entry for a path it already has.
+  ///
+  /// 🚨★★★**EVERY DOOR THAT RECORDS AN ASSET ASKS THIS, BEFORE IT RECORDS**
+  /// (the order is [MediaStagingStore.stageCarriedBytes]'s law). The pool's
+  /// own verbs ([_admit]), the placement doors and the cut folder each
+  /// spelled the question; the doors asked whether the project already
+  /// held the PATH — which, after a removal, an earlier carry of that path
+  /// answered yes to, so the new carry's bytes were never taken (card
+  /// `recarry-after-remove-reads-the-old`). Each carry is its own now
+  /// ([MediaAsset.carriedAs]), and one that arrives is new by definition.
+  Future<void> holdCarriedBytes(Iterable<MediaAsset> arriving) =>
+      _staging.stageCarriedBytes(_carriesToHold(arriving));
+
+  /// The carries among [arriving] whose bytes a landing needs held — the
+  /// question [holdCarriedBytes] and [_admit] both ask.
+  List<MediaCarry> _carriesToHold(Iterable<MediaAsset> arriving) {
+    final known = {for (final asset in mediaAssets) asset.path};
+    return [
+      for (final asset in arriving)
+        // The first of a path only — the one a landing records.
+        if (known.add(asset.path))
+          ?asset.carry,
+    ];
   }
 
   /// Renames the [path] asset's display name; one undo step.
@@ -280,6 +310,10 @@ class MediaPool {
     // and the staging are all keyed by it ([normalizedMediaPath]).
     final oldPath = normalizedMediaPath(pickedOld);
     final newPath = normalizedMediaPath(picked);
+    final carriedBefore = projectMediaCarryOf(
+      _project.repository.requireProject(),
+      oldPath,
+    );
     _conforms.invalidate(newPath);
     _project.cutCommandCoordinator.relinkMediaAsset(
       oldPath: oldPath,
@@ -298,16 +332,21 @@ class MediaPool {
     // The batch relink below verified identity before proposing anything,
     // so there the bytes ARE the same and moving them costs one rename
     // instead of re-reading every matched file.
-    _staging.retire(oldPath);
-    // ⛔Through [projectArchivedMediaPaths] rather than a hand-rolled
-    // `any(... && asset.carried)`. That function is the ONE answer to
-    // 「which media does this project carry」, and a second spelling of it
-    // here is how the kind ceiling came to be enforced in two places and
-    // disagree with itself.
-    if (projectArchivedMediaPaths(
+    if (carriedBefore != null) {
+      _staging.retire(carriedBefore);
+    }
+    // ⛔Through [projectMediaCarryOf] rather than a hand-rolled
+    // `any(... && asset.carried)`. The asset's carry is the ONE answer to
+    // 「does this project carry it」, and a second spelling of it here is
+    // how the kind ceiling came to be enforced in two places and disagree
+    // with itself. The carry keeps its token across the move; its name
+    // changes with the path, so the new file's bytes are a new name.
+    final carriedAfter = projectMediaCarryOf(
       _project.repository.requireProject(),
-    ).contains(newPath)) {
-      await _staging.stageCarriedBytes([newPath]);
+      newPath,
+    );
+    if (carriedAfter != null) {
+      await _staging.stageCarriedBytes([carriedAfter]);
     }
     refreshMediaExistence();
     _changes.notifyChanged();
@@ -346,8 +385,11 @@ class MediaPool {
     // recorded for the missing asset, so the bytes are the same bytes and
     // re-reading every matched file would be work for nothing. The
     // by-hand relink above cannot say that, and re-stages.
+    final project = _project.repository.requireProject();
     for (final move in moves.entries) {
-      _staging.rename(move.key, move.value);
+      if (projectMediaCarryOf(project, move.value) case final moved?) {
+        _staging.rename((poolPath: move.key, token: moved.token), move.value);
+      }
     }
     refreshMediaExistence();
     _changes.notifyChanged();
@@ -485,10 +527,13 @@ class MediaPool {
     if (!promotes) {
       return false;
     }
-    await _staging.stageCarriedBytes([path]);
+    // A carry of its own, even for a path carried once before and removed:
+    // that one's bytes are an undo's to bring back ([MediaAsset.carriedAs]).
+    final carriedAs = mintMediaCarry();
+    await _staging.stageCarriedBytes([(poolPath: path, token: carriedAs)]);
     _project.cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)
-        if (asset.path == path) asset.copyWith(carried: true) else asset,
+        if (asset.path == path) asset.copyWith(carriedAs: carriedAs) else asset,
     ], description: 'Register media in project');
     _changes.notifyChanged();
     return true;

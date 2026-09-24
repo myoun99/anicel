@@ -25,7 +25,7 @@ import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
-import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
+import '../services/canvas_read_source.dart';
 import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
@@ -46,6 +46,7 @@ import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/confirm_verb.dart';
+import 'brush/history_verbs.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'brush/paint_tool_state_notifier.dart';
@@ -106,7 +107,8 @@ import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'timeline/collapsed_row_overlay.dart';
-import 'timeline/timeline_grid_metrics.dart' show TimelineGridMetrics;
+import 'timeline/timeline_grid_metrics.dart'
+    show TimelineGridMetrics, timelineLayerRowHeightIn;
 import 'timeline/timeline_cel_content_source.dart'
     show TimelineCelContentSource;
 import 'timeline/timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
@@ -192,6 +194,7 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasSelectionCommands,
     this.lastStroke,
     this.confirm,
+    this.history,
     this.layerNav,
     this.onInvokeAction,
     this.flipHud,
@@ -239,6 +242,10 @@ class EditorWorkspace extends StatefulWidget {
   /// are its other doors. Null keeps both on their old verbs' absence
   /// (focused widget tests).
   final ConfirmVerb? confirm;
+
+  /// Undo and redo (shell-owned, the keys' verbs): the rail's ↶ ↷ are their
+  /// other doors. Null leaves the two buttons shut (focused widget tests).
+  final HistoryVerbs? history;
 
   /// The shell-owned ↑/↓ layer-nav channel (UI-R20 #14): this state binds
   /// the handler because it owns the timeline view state (row filter,

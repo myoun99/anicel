@@ -17,6 +17,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_read_source.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -275,7 +276,7 @@ void main() {
           frameIndex: 0,
           surfaceResolver: resolve,
           point: CanvasPoint(x: 3, y: 3),
-          source: CanvasColorSampleSource.layer,
+          source: CanvasReadSource.layer,
           activeLayerId: const LayerId('bottom'),
         ),
         0xFFFF0000,
@@ -288,7 +289,7 @@ void main() {
           frameIndex: 0,
           surfaceResolver: resolve,
           point: CanvasPoint(x: 1, y: 1),
-          source: CanvasColorSampleSource.layer,
+          source: CanvasReadSource.layer,
           activeLayerId: const LayerId('bottom'),
         ),
         canvasPaperColor,
@@ -342,7 +343,7 @@ void main() {
         frameIndex: 0,
         surfaceResolver: (_, _) => surface,
         point: CanvasPoint(x: 0, y: 0),
-        source: CanvasColorSampleSource.layer,
+        source: CanvasReadSource.layer,
         activeLayerId: const LayerId('a'),
       );
       expect(
@@ -363,7 +364,7 @@ void main() {
         timeline: {0: const TimelineExposure.drawing(FrameId('a-frame'), length: 1)},
         effects: [deleteBlack()],
       );
-      for (final source in CanvasColorSampleSource.values) {
+      for (final source in CanvasReadSource.values) {
         expect(
           sampleCompositeColor(
             cut: cut([row]),

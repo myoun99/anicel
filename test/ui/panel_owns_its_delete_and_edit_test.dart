@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/delete_subject.dart';
-import 'package:anicel/src/models/edit_instance_subject.dart';
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
@@ -39,8 +38,8 @@ void main() {
       isNotNull,
       reason: 'fixture premise: a cut range is live',
     );
-    expect(session.deleteSubject, DeleteSubject.cuts);
-    expect(session.cellInstances.editInstanceSubject, EditInstanceSubject.cuts);
+    expect(session.deleteSubject, PillSubject.cuts);
+    expect(session.cellInstances.editInstanceSubject, PillSubject.cuts);
   });
 
   test('the TIMELINE panel does not reach for them', () {
@@ -49,7 +48,7 @@ void main() {
 
     expect(
       timeline.deleteSubject,
-      isNot(DeleteSubject.cuts),
+      isNot(PillSubject.cuts),
       reason: 'a cut is not the timeline panel\'s noun — 「타임라인에서는 '
           '타임라인의 것을」',
     );
@@ -63,14 +62,14 @@ void main() {
     // do the timeline's thing (T25: one answer behind both).
     expect(
       session.cellInstances.editInstanceSubjectFor(cutsAreThisPanels: false),
-      isNot(EditInstanceSubject.cuts),
+      isNot(PillSubject.cuts),
     );
     // Reading it through the panel too, because the panel is what the
     // toolbar actually asks.
     expect(
       timeline.canEditInstance,
       session.cellInstances.editInstanceSubjectFor(cutsAreThisPanels: false) !=
-          EditInstanceSubject.nothing,
+          PillSubject.nothing,
     );
   });
 }

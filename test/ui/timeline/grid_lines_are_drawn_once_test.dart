@@ -128,25 +128,37 @@ void main() {
       expect(seam.rect.right, size.width);
     }
 
-    // And the row itself rules nothing: its painter fills paper boxes only.
+    // And the row itself rules no SEAM: its boxes are its substrate — the
+    // paper, and the frame lines on it where the switch shows them (유저
+    // 2026-09-24) — and not one reaches the row's last pixel, which is the
+    // sheet's seam.
     final row = timelineRowCellsPainterFor(tester, drawingId.value);
     final rowSpy = _FillSpy();
     row.paint(rowSpy, const Size(600, 28));
     final window = row.visibleFrameWindow();
-    final papers = {
-      for (
-        var frame = window.startIndex;
-        frame < window.endIndexExclusive;
-        frame += 1
-      )
-        row.paperRectFor(frame),
-    };
-    expect(rowSpy.fills, isNotEmpty, reason: 'fixture premise: a block');
-    expect(
-      rowSpy.fills.every((fill) => papers.contains(fill.rect)),
-      isTrue,
-      reason: 'a seam or a frame line would be a box of its own',
+    final substrate = row.substrateIn(
+      window.startIndex,
+      window.endIndexExclusive,
     );
+    expect(rowSpy.fills, isNotEmpty, reason: 'fixture premise: a block');
+    // The row paints span by span, so its paper arrives cut at the span
+    // edges; its LINES — the boxes thinner than a cell — are exactly the
+    // substrate's.
+    expect(
+      {
+        for (final fill in rowSpy.fills)
+          if (fill.rect.width < row.frameCellExtent) fill.rect,
+      },
+      {for (final line in substrate.lines) line.rect},
+      reason: 'a line of the row\'s own would be a box of its own',
+    );
+    for (final fill in rowSpy.fills) {
+      expect(
+        fill.rect.bottom,
+        lessThanOrEqualTo(timelineRowPaperExtent(row.crossAxisExtent)),
+        reason: 'the row\'s last pixel is the sheet\'s seam',
+      );
+    }
   });
 }
 

@@ -15,7 +15,6 @@ import '../../services/import/cut_folder_listing.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/media_byte_source.dart';
-import '../../services/persistence/media_staging_store.dart';
 import 'import_landing.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
@@ -31,9 +30,9 @@ class CutFolderImportDoor {
     required RenderCaches renderCaches,
     required TimelineAccess timeline,
     required ImportLanding landing,
-    required MediaStagingStore staging,
     required HoldMediaBytes holdBytes,
-    required bool Function(String path) projectHolds,
+    required Future<void> Function(Iterable<MediaAsset> arriving)
+    holdCarriedBytes,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -41,9 +40,8 @@ class CutFolderImportDoor {
        _renderCaches = renderCaches,
        _timeline = timeline,
        _landing = landing,
-       _staging = staging,
        _holdBytes = holdBytes,
-       _projectHolds = projectHolds;
+       _holdCarriedBytes = holdCarriedBytes;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -52,15 +50,16 @@ class CutFolderImportDoor {
   final RenderCaches _renderCaches;
   final TimelineAccess _timeline;
   final ImportLanding _landing;
-  final MediaStagingStore _staging;
 
-  /// Where a file's bytes are — the project's own copy first — and whether
-  /// the project already holds them: the two questions every placement door
-  /// asks (`ProjectImportDoors`), asked here too. 🪦A folder imported again
-  /// baked its cels from the files on disk and staged a second copy of what
-  /// the project already carried (audit 2026-09-24).
+  /// Where a file's bytes are — the project's own copy first — and the
+  /// holding of what arrives carried ([MediaPool.holdCarriedBytes]): the
+  /// two questions every placement door asks (`ProjectImportDoors`), asked
+  /// here too. 🪦A folder imported again baked its cels from the files on
+  /// disk and staged a second copy of what the project already carried
+  /// (audit 2026-09-24).
   final HoldMediaBytes _holdBytes;
-  final bool Function(String path) _projectHolds;
+  final Future<void> Function(Iterable<MediaAsset> arriving)
+  _holdCarriedBytes;
 
   /// Imports a CUT FOLDER (the field's delivery structure) parsed by
   /// [parseCutFolder]: one fully-formed cut — symbol layers with named
@@ -126,19 +125,20 @@ class CutFolderImportDoor {
     // this, so a delivery's 참고영상 stays a reference either way」. That
     // ceiling died 2026-08-14 — the kind only picks the import window's
     // DEFAULT now, and a movie carries if the person says so.
+    //
+    // Each carried one is a carry of its own ([mintMediaCarry]).
     final registeredAssets = [
-      for (final asset in plan.assets) asset.copyWith(carried: copyIntoProject),
+      for (final asset in plan.assets)
+        if (copyIntoProject)
+          asset.copyWith(carriedAs: mintMediaCarry())
+        else
+          asset,
     ];
-    if (copyIntoProject) {
-      // ⛔Awaited BEFORE the command that registers them. The isolate that
-      // secures these bytes is the reason this is a `Future` at all, and
-      // letting the registration overtake it is the one thing carrying
-      // must not do.
-      await _staging.stageCarriedBytes([
-        for (final asset in plan.assets)
-          if (!_projectHolds(asset.path)) asset.path,
-      ]);
-    }
+    // ⛔Awaited BEFORE the command that registers them. The isolate that
+    // secures these bytes is the reason this is a `Future` at all, and
+    // letting the registration overtake it is the one thing carrying must
+    // not do.
+    await _holdCarriedBytes(registeredAssets);
 
     _project.historyManager.execute(
       ImportMediaCommand(

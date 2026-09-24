@@ -12,6 +12,7 @@ import '../models/cut.dart' show Cut;
 import '../models/layer_id.dart';
 import '../models/project_background.dart';
 import '../services/canvas_color_sampler.dart';
+import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/cut_piece_slot.dart';
@@ -148,7 +149,7 @@ class EditorCanvasArea extends StatefulWidget {
 
   /// R28 #6: the eyedropper's reference source (Tool Settings knob); null
   /// keeps "pick what you see".
-  final ValueListenable<CanvasColorSampleSource>? eyedropperSource;
+  final ValueListenable<CanvasReadSource>? eyedropperSource;
 
   /// The Select tool's lift-time mask knobs (R26); null keeps the
   /// classic byte-preserving hard mask.
@@ -397,7 +398,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         // Opacity drags preview through the editing stack per move (R4 #4)
         // — the canvas is the ONLY session-notify consumer that follows
         // live; everything else waits for the release commit.
-        session.opacityDragPreview,
+        session.opacityVerbs.dragPreview,
+        // …and the V row's, which the canvas READ (the editing fade, the
+        // track stack) and never heard: a track opacity drag reached the
+        // canvas only when something else happened to rebuild it.
+        session.opacityVerbs.trackDragPreview,
         // brushToolState is deliberately NOT here (R18 UI-2): nothing in
         // the area's derivations reads it — only the brush host consumes
         // it, through its own boundary builder below. Merging it here

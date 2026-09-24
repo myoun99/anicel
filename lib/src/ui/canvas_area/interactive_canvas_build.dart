@@ -413,7 +413,7 @@ class _InteractiveCanvasBuild {
         paperColor: session.projectSettings.projectBackground.paintedArgb,
         source:
             _state.widget.eyedropperSource?.value ??
-            CanvasColorSampleSource.display,
+            CanvasReadSource.display,
         activeLayerId: session.activeLayer?.id,
       ),
       // BOTH stage colors are PROJECT data now (R3b): they go out
@@ -478,6 +478,12 @@ class _InteractiveCanvasBuild {
         opacity: _state.widget.brushToolState.value.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
         paperColor: session.projectSettings.projectBackground.paintedArgb,
+        // The 「현재」 of the fill's reference source (I-36) — the same
+        // layer the eyedropper's reads, above.
+        activeLayerId: session.activeLayer?.id,
+        // The seed arrives through the draw-through wrap, in the posed
+        // layer's artwork — the raster is laid in the same space (I-36).
+        space: _interactivePose,
         // The same guide the brush obeys, handed down by the view
         // that read it — a symmetry that replicates strokes
         // replicates fills.

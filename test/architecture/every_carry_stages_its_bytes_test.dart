@@ -55,6 +55,26 @@ void main() {
       isFalse,
       reason: 'a drag\'s layers, in a file that builds no asset',
     );
+    expect(
+      _declaresCarried('asset.copyWith(carriedAs: mintMediaCarry())'),
+      isTrue,
+      reason: 'a carry MADE here — the mint is the moment of carrying',
+    );
+    expect(
+      _declaresCarried('final a = MediaAsset(\n  carriedAs: carry.token,\n);'),
+      isTrue,
+      reason: 'a carry handed to a new asset',
+    );
+    expect(
+      _declaresCarried('final a = MediaAsset(\n  carriedAs: null,\n);'),
+      isFalse,
+    );
+    expect(
+      _stagesBytes('// hands it to stageCarriedBytes\nrecord(asset);'),
+      isFalse,
+      reason: 'a comment naming the funnel holds nothing',
+    );
+    expect(_stagesBytes('await _pool.holdCarriedBytes(assets);'), isTrue);
   });
 
   test('every place an asset becomes carried also stages its bytes', () {
@@ -70,7 +90,7 @@ void main() {
       }
       // The law: a file that decides an asset carries must also be the
       // one that holds the bytes, or hand the job to something that does.
-      if (!source.contains('stageCarriedBytes')) {
+      if (!_stagesBytes(source)) {
         entrances.add(relative);
       }
     }
@@ -82,12 +102,28 @@ void main() {
           'these decide that an asset is CARRIED without staging its bytes '
           '— which leaves the promise to be kept at save time, so deleting '
           'or editing the original in between quietly changes or empties '
-          'what gets saved. Call `stageCarriedBytes` before the pool '
-          'records the asset, or add the file to _allowedFiles above with '
-          'the reason it does not need to.',
+          'what gets saved. Call `stageCarriedBytes` (or the pool\'s '
+          '`holdCarriedBytes`) before the pool records the asset, or add '
+          'the file to _allowedFiles above with the reason it does not '
+          'need to.',
     );
   });
 }
+
+/// Whether [source] holds bytes, or hands the job to what does — in CODE.
+///
+/// 🪦A comment naming the funnel used to count: a door that had stopped
+/// calling it kept its doc paragraph about it, and the scan passed it.
+bool _stagesBytes(String source) => _codeLines(source).any(
+  (line) =>
+      line.contains('stageCarriedBytes') || line.contains('holdCarriedBytes'),
+);
+
+/// [source]'s lines that are not comments.
+Iterable<String> _codeLines(String source) => source
+    .split('\n')
+    .map((line) => line.trimLeft())
+    .where((line) => !line.startsWith('//'));
 
 /// Whether [source] decides an asset carries, rather than merely passing a
 /// flag along: `carried: true` anywhere, `copyWith(carried:`, or — in a
@@ -104,16 +140,17 @@ void main() {
 /// ⚠️The value half needs the file to build an asset because `carried:`
 /// also names a drag's lifted layers and a paint pass's scroll flag, and a
 /// collection after it is the save's own set of carried paths.
+///
+/// 🆕A carry has a NAME now ([MediaAsset.carriedAs]), minted where it is
+/// made (`mintMediaCarry`) — so the mint, or a name handed to an asset, is
+/// the surest sign of all (card `recarry-after-remove-reads-the-old`).
 bool _declaresCarried(String source) {
   final buildsAssets = source.contains('MediaAsset(');
-  for (final line in source.split('\n')) {
-    final trimmed = line.trimLeft();
-    if (trimmed.startsWith('//') || trimmed.startsWith('///')) {
-      continue;
-    }
+  for (final trimmed in _codeLines(source)) {
     if (trimmed.contains('carried: true') ||
-        trimmed.contains('copyWith(carried:') ||
-        (buildsAssets && _decidesCarried.hasMatch(trimmed))) {
+        trimmed.contains('mintMediaCarry(') ||
+        (buildsAssets && _decidesCarried.hasMatch(trimmed)) ||
+        _namesACarry.hasMatch(trimmed)) {
       return true;
     }
   }
@@ -123,6 +160,9 @@ bool _declaresCarried(String source) {
 /// `carried:` followed by a value that decides it — a name or an
 /// expression, never `false`, never a collection.
 final _decidesCarried = RegExp(r'\bcarried:\s*(?!false\b)[A-Za-z_]');
+
+/// `carriedAs:` given a carry — anything but `null`.
+final _namesACarry = RegExp(r'\bcarriedAs:\s*(?!null\b)[A-Za-z_]');
 
 /// Files that name `carried` without being an entrance, with the reason.
 const Set<String> _allowedFiles = {

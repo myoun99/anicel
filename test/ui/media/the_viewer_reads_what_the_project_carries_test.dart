@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🗣️유저 2026-09-11: 「막힌부분 파일 뭐든 관계없이 법 하나로 통일해서
@@ -124,7 +125,7 @@ void main() {
         'staged copy, and a save while it shows leaves that copy until the '
         'viewer lets go', (tester) async {
       final (:session, :path) = await carrying(tester, directory, write);
-      final staged = session.mediaStagingStore.find(path)!.path;
+      final staged = stagedCopyIn(session, path)!.path;
       OriginalFate.replacedBySomethingElse.befall(path);
 
       final slot = await view(tester, session, path, kind);
@@ -169,7 +170,7 @@ void main() {
               path: path,
               name: 'take',
               kind: MediaAssetKind.video,
-              carried: true,
+              carriedAs: 'c1',
             ),
           ],
         ),
@@ -179,7 +180,9 @@ void main() {
         audioConformStore: soundConformStore(),
       );
       addTearDown(session.dispose);
-      final staged = await session.mediaStagingStore.stage(path);
+      final staged = await session.mediaStagingStore.stage(
+        carryIn(session, path)!,
+      );
       if (staged == null || !staged.framed) {
         return null;
       }

@@ -76,6 +76,32 @@ void main() {
     }
   });
 
+  test('a ring beside a label is the settings row', () {
+    final builders = {
+      for (final file in dartFilesUnder('lib'))
+        if (libPath(file) != 'lib/src/ui/widgets/boolean_dot.dart' &&
+            _hits(libPath(file), file.readAsStringSync(), _ringButton)
+                .isNotEmpty)
+          libPath(file),
+    };
+    expect(
+      builders,
+      _ringsOfTheirOwn.keys.toSet(),
+      reason:
+          'a labelled boolean is ONE row — the whole row presses and the '
+          'ring sits on the right: `SettingsSwitchRow`. A ring is a button '
+          'of its own only where the row around it already means something '
+          'else; add a line to _ringsOfTheirOwn saying what',
+    );
+    for (final entry in _ringsOfTheirOwn.entries) {
+      expect(
+        entry.value.length,
+        greaterThan(20),
+        reason: '${entry.key} needs a reason, not a slot',
+      );
+    }
+  });
+
   test('the scan sees a planted control, and not the app\'s own names or a '
       'comment', () {
     // ⛔A WALL THAT FINDS NOTHING PROVES NOTHING until it has found
@@ -87,6 +113,7 @@ Widget b() => RadioGroup<int>(groupValue: 1, onChanged: (_) {}, child: c);
 Widget d() => SettingsSwitchRow(label: 'x', value: true, onChanged: null);
 Widget e() => Icon(on ? Icons.check_box : Icons.check_box_outline_blank);
 Widget f() => Icon(Icons.indeterminate_check_box_outlined);
+Widget g() => BooleanDotButton(keyValue: 'k', value: on, onChanged: null);
 ''';
     List<String> lines(RegExp pattern) => [
       for (final hit in _hits('planted.dart', planted, pattern))
@@ -94,6 +121,7 @@ Widget f() => Icon(Icons.indeterminate_check_box_outlined);
     ];
     expect(lines(_materialBoolean), ['planted.dart:1', 'planted.dart:2']);
     expect(lines(_checkGlyph), ['planted.dart:5']);
+    expect(lines(_ringButton), ['planted.dart:7']);
   });
 }
 
@@ -113,6 +141,24 @@ final _materialBoolean = RegExp(
   'FilterChip|ChoiceChip|CheckboxMenuButton|RadioMenuButton|'
   r'CheckedPopupMenuItem)(\.adaptive)?(<[^>()]*>)?\(',
 );
+
+/// The ring as a button of its own.
+final _ringButton = RegExp(r'\bBooleanDotButton\(');
+
+/// 🚨THE RINGS THAT ARE BUTTONS OF THEIR OWN, and why the row around each
+/// cannot be the control.
+///
+/// 유저 2026-09-24 (board `one-boolean-row-shape-Q1`): 「설정 줄 하나로」 —
+/// the brush settings panel's switches and the export and import windows'
+/// switches were a ring beside a label that pressed only at the ring, and
+/// they became the settings row: the whole row presses, the ring on the
+/// right, 「라벨을 눌러도 켜지고 꺼진다」. Measured that day: one file keeps
+/// a ring of its own.
+const _ringsOfTheirOwn = <String, String>{
+  'lib/src/ui/brush/guide_panels.dart':
+      'a guide row: a press on the row SELECTS that guide, so the ring '
+      'beside its name (acting on / off) cannot be the whole row',
+};
 
 /// 🚨THE LEDGER. Measured 2026-09-23: one file wears a check, and it is a
 /// verb.

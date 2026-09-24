@@ -568,7 +568,8 @@ class StoryboardPanel extends StatefulWidget {
   /// deliberately NOT one source — this one IS the band, so it is written
   /// as the band. The rail widths may diverge (different columns); a strip
   /// and the strip beside it in the same row may not.
-  static const double _rulerHeight = _headerBandHeight;
+  static double _rulerHeightIn(BuildContext context) =>
+      _headerBandHeightIn(context);
 
   /// The V rows' height, and the range the adjustment moves it through.
   ///
@@ -603,7 +604,12 @@ class StoryboardPanel extends StatefulWidget {
   /// metrics.layerRowHeight)` and nothing in the row may exceed it. Since ㉓
   /// the other two take the same number rather than sitting short inside it,
   /// so the band is now one height rather than the tallest of three.
-  static const double _headerBandHeight = timelineLayerRowHeight;
+  ///
+  /// Where it is shown, that row grows with its words under the OS text
+  /// size exactly as the timeline's legend does ([timelineLayerRowHeightIn],
+  /// text-scale-rail-rows — 「범례 줄도 같이」).
+  static double _headerBandHeightIn(BuildContext context) =>
+      timelineLayerRowHeightIn(context);
 
   /// The shortest this panel is laid out at, ITS OWN chrome only — the host
   /// adds its command bar ([StoryboardTabHost.minPanelHeight]).
@@ -619,7 +625,9 @@ class StoryboardPanel extends StatefulWidget {
   /// with room to travel — and that the chrome above and below it survives.
   /// The bottom scrollbar row is what the user watched disappear.
   static const double minPanelHeight =
-      _headerBandHeight + 2 * minTrackLaneHeight + _bottomScrollbarRailHeight;
+      timelineLayerRowHeight +
+      2 * minTrackLaneHeight +
+      _bottomScrollbarRailHeight;
 
   static const double _timelineTrailingPadding = 12;
 
@@ -2023,6 +2031,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   Row _pinnedRulerRow(_StoryboardBodyFrame frame) {
+    final bandHeight = StoryboardPanel._rulerHeightIn(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2033,7 +2042,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             'storyboard-time-display-toggle-button',
           ),
           width: StoryboardPanel._scrollbarLaneWidth,
-          height: StoryboardPanel._rulerHeight,
+          height: bandHeight,
           showSeconds: widget.showSeconds,
           onChanged: widget.onShowSecondsChanged,
         ),
@@ -2090,14 +2099,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                   : frame.contentWidth;
               _frameAxis.rereadAfterLayout();
               return SizedBox(
-                height: StoryboardPanel._rulerHeight,
+                height: bandHeight,
                 child: ClipRect(
                   child: OverflowBox(
                     alignment: Alignment.topLeft,
                     minWidth: frame.contentWidth,
                     maxWidth: frame.contentWidth,
-                    minHeight: StoryboardPanel._rulerHeight,
-                    maxHeight: StoryboardPanel._rulerHeight,
+                    minHeight: bandHeight,
+                    maxHeight: bandHeight,
                     // UI-R15: scroll moves ONLY this translate — the
                     // ruler strip itself builds once (full bounds)
                     // and its painters window off the live offset.
@@ -2314,7 +2323,7 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
     final cellWidth = widget.timelineScale.pixelsPerFrame;
     final metrics = TimelineGridMetrics(
       frameCellWidth: cellWidth,
-      layerRowHeight: StoryboardPanel._rulerHeight,
+      layerRowHeight: StoryboardPanel._rulerHeightIn(context),
       layerControlsWidth: 0,
       verticalScrollbarWidth: 0,
     );
@@ -2350,7 +2359,7 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
         onHorizontalDragCancel: _resetScrubTracking,
         child: SizedBox(
           width: widget.width,
-          height: StoryboardPanel._rulerHeight,
+          height: StoryboardPanel._rulerHeightIn(context),
           child: Stack(
             children: [
               // STATIC header cells: cursor- and cache-independent — ticks
@@ -3090,6 +3099,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
             child: SePaperSpan(
               axis: Axis.horizontal,
               frameCellExtent: timelineScale.pixelsPerFrame,
+              startFrame: entry.key,
               // ⑲: the block is its layer's colour label.
               paper: layerMarkColor(layer.mark),
             ),
@@ -3743,6 +3753,7 @@ class _StoryboardSeRow extends StatelessWidget {
     child: SePaperSpan(
       axis: Axis.horizontal,
       frameCellExtent: timelineScale.pixelsPerFrame,
+      startFrame: block.startIndex,
       // ⑲: the block is its layer's colour label.
       paper: layerMarkColor(layer.mark),
     ),
@@ -4104,7 +4115,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                           'storyboard-track-opacity-${track.id.value}',
                         ),
                         value: trackOpacity.clamp(0.0, 1.0).toDouble(),
-                        height: 18,
+                        height: 18 + FieldSlider.growthIn(context),
                         onChanged: onTrackOpacityChanged,
                         onChangeEnd: onTrackOpacityChangeEnd,
                       ),

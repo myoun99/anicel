@@ -15,6 +15,10 @@ Project projectWithMediaPaths(List<String> paths) =>
       ],
     );
 
+/// A carry of [path] — the first one, unless [token] says which.
+MediaCarry carryOf(String path, [String token = 'c1']) =>
+    (poolPath: path, token: token);
+
 /// The archive holding media: what an asset's entry is called, which of
 /// the two manifests describes it, and when a file full of media is worth
 /// compacting.
@@ -28,23 +32,62 @@ void main() {
       // It has to: a compaction moves every byte in the file, and the name
       // is the only thing that survives that.
       expect(
-        anicelMediaEntryName('/work/C-045/대사.m4a'),
-        anicelMediaEntryName('/work/C-045/대사.m4a'),
+        anicelMediaEntryName(carryOf('/work/C-045/대사.m4a')),
+        anicelMediaEntryName(carryOf('/work/C-045/대사.m4a')),
       );
     });
 
     test('different assets never share one', () {
       // Sharing would make deleting either take the other's bytes.
       expect(
-        anicelMediaEntryName('/work/a/A1.png'),
-        isNot(anicelMediaEntryName('/work/b/A1.png')),
+        anicelMediaEntryName(carryOf('/work/a/A1.png')),
+        isNot(anicelMediaEntryName(carryOf('/work/b/A1.png'))),
       );
+    });
+
+    test('🚨two carries of one path are two names — an entry means one set '
+        'of bytes for good', () {
+      // Media is written once and never edited: a save finding the name in
+      // the file writes nothing. Carried again after a removal, the same
+      // path under one name kept the OLD bytes (card
+      // `recarry-after-remove-reads-the-old`).
+      expect(
+        anicelMediaEntryName(carryOf('/work/a.wav', 'c1')),
+        isNot(anicelMediaEntryName(carryOf('/work/a.wav', 'c2'))),
+      );
+      expect(
+        anicelMediaEntryNames(carryOf('/work/a.wav', 'c1')),
+        isNot(contains(anicelMediaEntryName(carryOf('/work/a.wav', 'c2')))),
+      );
+    });
+
+    test('the carry a project had before carries had names keeps the name '
+        'the path alone gave — the one its file holds', () {
+      const path = '/work/C-045/대사.m4a';
+      expect(
+        anicelMediaEntryName(carryOf(path, '')),
+        anicelMediaEntryName(carryOf(path, 'c1')).replaceFirst('-c1-', '-'),
+      );
+      expect(
+        RegExp(
+          r'^media/[0-9a-f]{8}-[A-Za-z0-9._-]+$',
+        ).hasMatch(anicelMediaEntryName(carryOf(path, ''))),
+        isTrue,
+      );
+    });
+
+    test('both spellings of one carry, framed first', () {
+      final carry = carryOf('/work/a.wav');
+      expect(anicelMediaEntryNames(carry), [
+        anicelMediaEntryName(carry, framed: true),
+        anicelMediaEntryName(carry),
+      ]);
     });
 
     test('a windows path is the same asset as its forward-slash spelling', () {
       expect(
-        anicelMediaEntryName(r'C:\work\a.wav'),
-        anicelMediaEntryName('C:/work/a.wav'),
+        anicelMediaEntryName(carryOf(r'C:\work\a.wav')),
+        anicelMediaEntryName(carryOf('C:/work/a.wav')),
       );
     });
 
@@ -52,7 +95,9 @@ void main() {
       // Someone opening a .anicel with an unzip tool should be able to tell
       // what they are looking at, without the name being able to escape the
       // media folder or upset a filesystem.
-      final name = anicelMediaEntryName('/work/내 작업/대사 01.m4a');
+      final name = anicelMediaEntryName(
+        carryOf('/work/내 작업/대사 01.m4a'),
+      );
       expect(name, startsWith(anicelMediaEntryPrefix));
       expect(name, contains('.m4a'));
       expect(
@@ -106,7 +151,7 @@ void main() {
       // reader line the two up without recording anything; the separate
       // prefix is what lets the save drop one and keep the other.
       const asset = '/work/내 작업/대사 01.m4a';
-      final media = anicelMediaEntryName(asset);
+      final media = anicelMediaEntryName(carryOf(asset));
       final conform = conformAt(asset);
       expect(conform, startsWith(anicelConformEntryPrefix));
       expect(
@@ -163,10 +208,12 @@ void main() {
       const bgm = '/work/scene.assets/Media/bgm.wav';
       final decoded = jsonFor(
         [bgm],
-        inArchive: {bgm: anicelMediaEntryName(bgm)},
+        inArchive: {bgm: anicelMediaEntryName(carryOf(bgm))},
         saveDirectory: '/work',
       );
-      expect(decoded['mediaEntries'], {bgm: anicelMediaEntryName(bgm)});
+      expect(decoded['mediaEntries'], {
+        bgm: anicelMediaEntryName(carryOf(bgm)),
+      });
       // And ONLY by entry: a path recorded as well would let a stale file
       // at the old location win over the copy the project carries.
       expect(decoded.containsKey('mediaPaths'), isFalse);
@@ -177,7 +224,7 @@ void main() {
       // 2026-08-31 → 09-24 the manifest wrote the unframed name here, and a
       // reopened project looked for media the file did not have.
       const bgm = '/work/bgm.wav';
-      final framed = anicelMediaEntryName(bgm, framed: true);
+      final framed = anicelMediaEntryName(carryOf(bgm), framed: true);
       expect(framed, endsWith(mediaFramedEntrySuffix), reason: 'fixture');
 
       final decoded = jsonFor(
@@ -204,7 +251,9 @@ void main() {
       // reference-only by kind, and a user may keep anything else linked.
       final decoded = jsonFor(
         ['/work/in.wav', '/work/out.mp4'],
-        inArchive: {'/work/in.wav': anicelMediaEntryName('/work/in.wav')},
+        inArchive: {
+          '/work/in.wav': anicelMediaEntryName(carryOf('/work/in.wav')),
+        },
         saveDirectory: '/work',
       );
       expect((decoded['mediaEntries'] as Map).keys, ['/work/in.wav']);

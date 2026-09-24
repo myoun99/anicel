@@ -175,7 +175,7 @@ void main() {
       );
 
       session.opacityVerbs.commitTrackOpacity(trackId, 0.5);
-      expect(session.trackOpacityDragPreview.value, isNull);
+      expect(session.opacityVerbs.trackDragPreview.value, isNull);
       expect(
         session.repository.requireProject().tracks.first.opacity,
         0.5,

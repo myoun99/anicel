@@ -99,29 +99,27 @@ TimelineDrawingBlock? previousDrawingBlockBefore(
 }
 
 /// Where the UNIT covering [frameIndex] starts — its drawing block's start,
-/// or, in an empty stretch, where that stretch starts (the end of the
-/// drawing before it, or 0).
+/// or, on an empty cell, that cell.
 ///
-/// 🚨★★A UNIT IS A DRAWING BLOCK OR AN EMPTY STRETCH, the stretch counted
-/// ONCE however long it is (F-175). The sheet already counts it that way:
-/// it prints an empty stretch's `x` in the stretch's FIRST cell only.
-int unitStartAt(SplayTreeMap<int, TimelineExposure> timeline, int frameIndex) {
-  final covering = coveringDrawingBlockAt(timeline, frameIndex);
-  if (covering != null) {
-    return covering.startIndex;
-  }
-  return lastDrawingBlockAtOrBefore(timeline, frameIndex)?.endIndexExclusive ??
-      0;
-}
+/// 🚨★★A UNIT IS A DRAWING BLOCK OR ONE EMPTY CELL (F-175). 유저
+/// 2026-09-21: 「빈 공간 한칸은 블럭으로서 한칸으로 쳐서」. The first reading
+/// counted a whole empty STRETCH as one step, the way the sheet prints its
+/// `x` once; the user answered with the case (2026-09-24): 「AxxB가 있으면,
+/// 첫번째 빈공간 x에 서면 A의 그림은 보이고 B는 안보여야하는데 B가 보임 …
+/// 앞뒤2개 보이게 설정한거라면 B가 보이는게 맞음」 — every empty cell is a
+/// step of its own.
+int unitStartAt(SplayTreeMap<int, TimelineExposure> timeline, int frameIndex) =>
+    coveringDrawingBlockAt(timeline, frameIndex)?.startIndex ?? frameIndex;
 
-/// Where the unit after the one covering [frameIndex] starts.
+/// Where the unit after the one covering [frameIndex] starts; null on an
+/// empty cell with nothing drawn anywhere after it.
 ///
 /// 🚨F-175 (유저 2026-09-21): 「어니언스킨 블록 단위일때, 사이에 빈 공간
 /// 있는데도 그 너머의 첫번째 블럭이 인식됨. 빈 공간 한칸은 블럭으로서
 /// 한칸으로 쳐서 빈공간이면 다음 1번의 어니언스킨 안보이게.」
 ///
-/// ⛔NOT [nextDrawingBlockAfter], which jumps OVER an empty stretch to the
-/// drawing beyond it — the editing code depends on that jump, so the two
+/// ⛔NOT [nextDrawingBlockAfter], which jumps OVER empty cells to the
+/// drawing beyond them — the editing code depends on that jump, so the two
 /// walks stay two: one answers "the next drawing", this one "the next
 /// step".
 int? nextUnitStartAfter(
@@ -131,11 +129,14 @@ int? nextUnitStartAfter(
   final covering = coveringDrawingBlockAt(timeline, frameIndex);
   if (covering != null) {
     // A drawing's next unit starts where it ends: a drawing starting right
-    // there, or the empty stretch that follows it.
+    // there, or the empty cell that follows it.
     return covering.endIndexExclusive;
   }
-  // Inside an empty stretch the next unit is the next drawing, or none.
-  return nextDrawingBlockAfter(timeline, frameIndex)?.startIndex;
+  // On an empty cell the next unit is the next cell — while anything is
+  // still drawn ahead to walk towards.
+  return nextDrawingBlockAfter(timeline, frameIndex) == null
+      ? null
+      : frameIndex + 1;
 }
 
 /// Where the unit before the one starting at [unitStart] starts; null at

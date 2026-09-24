@@ -4,6 +4,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
+import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/movie_cel.dart';
 import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
@@ -30,9 +31,20 @@ typedef _OpenMovie = ({
   Future<void> Function() close,
 });
 
-/// One picture of a movie, as a canvas shows it: the file, the movie frame,
-/// and the canvas it was fitted to.
-typedef _MoviePicture = (String path, int movieFrame, CanvasSize canvas);
+/// A movie by the bytes it shows: the row's pool path, and the carry the
+/// pool names there (`ProjectFile.mediaCarryFor`; null for a file the pool
+/// points at).
+///
+/// 🚨★★★**THE PATH ALONE DOES NOT SAY WHICH BYTES.** Removed and carried
+/// again, a path means another carry's bytes — and an undo can bring the
+/// first back. Kept by path, the first carry's document and pictures
+/// answered the new rows (card `recarry-after-remove-reads-the-old`), and a
+/// row placed as a link read the original even after the file was carried.
+typedef _Movie = ({String path, MediaCarry? carry});
+
+/// One picture of a movie, as a canvas shows it: the movie, the movie
+/// frame, and the canvas it was fitted to.
+typedef _MoviePicture = (_Movie movie, int movieFrame, CanvasSize canvas);
 
 /// Decodes the MOVIE cels a cut shows into the cel store (미디어 배치 라운드
 /// 6; 08-31 「굽지 않고 재생할 때 디코드」).
@@ -55,12 +67,14 @@ class MovieCelHydrator {
     required RenderCaches renderCaches,
     required ProjectFrameRate Function() frameRate,
     required HoldMediaBytes holdBytes,
+    required MediaCarry? Function(String path) carryFor,
   }) : _project = project,
        _internals = internals,
        _changes = changes,
        _renderCaches = renderCaches,
        _frameRate = frameRate,
-       _holdBytes = holdBytes;
+       _holdBytes = holdBytes,
+       _carryFor = carryFor;
 
   final ProjectAccess _project;
   final SessionInternals _internals;
@@ -76,12 +90,21 @@ class MovieCelHydrator {
   /// `carried-bytes-every-reader`).
   final HoldMediaBytes _holdBytes;
 
-  /// Each movie's open document, by path — opened once; a movie that would
-  /// not open is remembered as such instead of retried at every frame.
-  final Map<String, Future<_OpenMovie?>> _opened = {};
+  /// Which carry the pool names at a path right now
+  /// (`ProjectFile.mediaCarryFor`) — the other half of what a movie is
+  /// ([_Movie]).
+  final MediaCarry? Function(String path) _carryFor;
+
+  /// [path] as the movie it shows right now.
+  _Movie _movieAt(String path) => (path: path, carry: _carryFor(path));
+
+  /// Each movie's open document — opened once; a movie that would not open
+  /// is remembered as such instead of retried at every frame. Only one
+  /// carry of a path is open at a time ([_movieFor]).
+  final Map<_Movie, Future<_OpenMovie?>> _opened = {};
 
   /// What each movie TURNED OUT TO BE, once its open has answered.
-  final Map<String, QaVideoInfo> _facts = {};
+  final Map<_Movie, QaVideoInfo> _facts = {};
 
   /// Pictures being decoded right now: positions that show one frame of the
   /// file — and askers that come back before it lands — wait for ONE
@@ -106,7 +129,10 @@ class MovieCelHydrator {
   /// and left here to be read. ⛔NOT the pool's copy. `MediaAsset.sourceFps`
   /// is a `double` and its `frameCount` was written at registration, while
   /// this is what the decoder answered about the file that is there now.
-  QaVideoInfo? factsFor(String path) => _facts[path];
+  ///
+  /// ⚠️Of the carry the pool names at [path] NOW — another carry's facts
+  /// describe other bytes.
+  QaVideoInfo? factsFor(String path) => _facts[_movieAt(path)];
 
   /// Decodes every movie cel [cut] composes at [frameIndex] that the store
   /// has not got at the cut's canvas — the rows the composite plan itself
@@ -122,11 +148,11 @@ class MovieCelHydrator {
     // this frame. What the file turns out to be is what the rail's reference
     // button says about the row, and a row whose block the playhead has not
     // reached yet is exactly the row someone is looking at when they wonder.
-    // Costs one open per path for the life of the session ([_opened]).
+    // Costs one open per movie for the life of the session ([_opened]).
     final jobs = <Future<void>>[
       for (final layer in cut.layers)
         if (isMovieReference(layer))
-          _movieFor(layer.mediaReference!.assetPath),
+          _movieFor(_movieAt(layer.mediaReference!.assetPath)),
     ];
     for (final entry in resolveCutFrameCompositeEntries(
       cut: cut,
@@ -156,7 +182,8 @@ class MovieCelHydrator {
     String path,
     int elapsed,
   ) async {
-    final movie = await _movieFor(path);
+    final at = _movieAt(path);
+    final movie = await _movieFor(at);
     if (movie == null || _disposed) {
       return;
     }
@@ -166,7 +193,7 @@ class MovieCelHydrator {
       movie: movie.info,
     ).movieFrameAt(elapsed);
     final picture = await _pictureOf(movie, (
-      path,
+      at,
       movieFrame,
       cut.canvasSize,
     ));
@@ -193,7 +220,7 @@ class MovieCelHydrator {
   }
 
   Future<BitmapSurface?> _decode(_OpenMovie movie, _MoviePicture at) async {
-    final (path, movieFrame, canvas) = at;
+    final ((:path, carry: _), movieFrame, canvas) = at;
     final rgba = await movie.reader.frame(movie.token, movieFrame);
     if (rgba == null || _disposed) {
       return null;
@@ -216,20 +243,44 @@ class MovieCelHydrator {
     }
   }
 
-  /// [path]'s open movie — opened once, and the moment it answers its facts
-  /// become askable ([factsFor]).
+  /// [movie]'s open document — opened once, and the moment it answers its
+  /// facts become askable ([factsFor]).
   ///
   /// 🚨THE FACT ARRIVES LATE, SO WHOEVER DREW WITHOUT IT IS TOLD. A rail
   /// that read [factsFor] before the open landed drew the row as if the file
   /// were long enough; nothing else would ever call it back.
-  Future<_OpenMovie?> _movieFor(String path) async {
-    final movie = await (_opened[path] ??= _open(path));
-    if (movie == null || _disposed || _facts.containsKey(path)) {
-      return movie;
+  Future<_OpenMovie?> _movieFor(_Movie movie) async {
+    final opened = await (_opened[movie] ??= _openAnew(movie));
+    if (opened == null || _disposed || _facts.containsKey(movie)) {
+      return opened;
     }
-    _facts[path] = movie.info;
+    _facts[movie] = opened.info;
     _changes.notifyChanged();
-    return movie;
+    return opened;
+  }
+
+  /// Opens [movie] — after letting go of any other carry of its path, the
+  /// one the pool no longer names. ⛔One carry of a path open at a time:
+  /// the other would hold its bytes for the rest of the session — a staged
+  /// copy a save cannot retire, an entry a push-down has to step around.
+  Future<_OpenMovie?> _openAnew(_Movie movie) {
+    _letGoOf([
+      for (final other in _opened.keys)
+        if (other.path == movie.path && other != movie) other,
+    ]);
+    return _open(movie.path);
+  }
+
+  /// Closes [movies] and forgets what each turned out to be, and showed.
+  void _letGoOf(List<_Movie> movies) {
+    for (final movie in movies) {
+      final document = _opened.remove(movie);
+      _facts.remove(movie);
+      _decoded.removeWhere((at, _) => at.$1 == movie);
+      if (document != null) {
+        unawaited(_close(document));
+      }
+    }
   }
 
   Future<_OpenMovie?> _open(String path) async {
@@ -256,10 +307,11 @@ class MovieCelHydrator {
   /// to be — for a session whose whole project is about to be REPLACED
   /// (`PlaybackRig.letGoOfTheProject`).
   ///
-  /// 🚨Movies are kept by PATH, and a path answers the project's own copy
-  /// ([_holdBytes]): kept across a load, a row of the next project with the
-  /// same path decoded the LAST project's bytes and facts, and that
-  /// project's file stayed open until the app quit (audit 2026-09-24).
+  /// 🚨A movie is kept by its path and carry ([_Movie]) — and a file the
+  /// pool points at has no carry, in this project or the next: kept across
+  /// a load, a row of the next project with the same path decoded the LAST
+  /// project's bytes and facts, and that project's file stayed open until
+  /// the app quit (audit 2026-09-24).
   Future<void> reset() => _closeEveryMovie();
 
   Future<void> _closeEveryMovie() async {
@@ -268,16 +320,22 @@ class MovieCelHydrator {
     _facts.clear();
     _decoded.clear();
     for (final document in opened) {
-      // ⚠️Each on its own: one movie that failed to open, or will not
-      // close, must not keep the rest open — and the bytes they hold.
-      try {
-        final movie = await document;
-        if (movie != null) {
-          await movie.close();
-        }
-      } on Object {
-        // Nothing further to put back for that one.
+      await _close(document);
+    }
+  }
+
+  /// Closes one movie this opened, by the reader that opened it.
+  ///
+  /// ⚠️Each on its own: one movie that failed to open, or will not close,
+  /// must not keep the rest open — and the bytes they hold.
+  static Future<void> _close(Future<_OpenMovie?> document) async {
+    try {
+      final movie = await document;
+      if (movie != null) {
+        await movie.close();
       }
+    } on Object {
+      // Nothing further to put back for that one.
     }
   }
 }

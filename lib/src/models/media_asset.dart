@@ -1,6 +1,27 @@
+import 'dart:math' as math;
+
 import 'media_identity.dart';
 
 export 'media_identity.dart' show MediaIdentity, MediaIdentityMatch;
+
+/// One 품기 of a file: the pool path it was carried under, and WHICH time
+/// ([MediaAsset.carriedAs]).
+///
+/// Everything that keeps a carried file's bytes — the staged copy, the
+/// project file's entry — is named from this, never from the path alone.
+typedef MediaCarry = ({String poolPath, String token});
+
+/// A fresh [MediaAsset.carriedAs], one per 품기.
+///
+/// ⚠️Minted, not derived. Not from the path — two carries of one path are
+/// the whole reason this exists — and not from the content either: the
+/// staged copy is written UNDER this name, so it has to exist before the
+/// bytes are read, and hashing them first would read a multi-gigabyte
+/// movie once more just to learn what to call it.
+String mintMediaCarry() =>
+    _carryTokens.nextInt(1 << 32).toRadixString(16).padLeft(8, '0');
+
+final math.Random _carryTokens = math.Random.secure();
 
 /// What a media pool entry holds.
 enum MediaAssetKind {
@@ -90,7 +111,7 @@ class MediaAsset {
     this.fitMode = MediaFitMode.contain,
     this.sourcePath,
     this.sourceStamp,
-    this.carried = false,
+    this.carriedAs,
     this.identity,
     this.sourceFps,
     this.frameCount,
@@ -165,7 +186,38 @@ class MediaAsset {
   /// Assets from before this existed fall back to [sourcePath] being set,
   /// which is exactly the ones that WERE copied into the project: the old
   /// meaning of the same choice.
-  final bool carried;
+  bool get carried => carriedAs != null;
+
+  /// Which 품기 this asset's bytes are ([mintMediaCarry]), or null when the
+  /// project points at the file instead of carrying it ([carried]).
+  ///
+  /// 🚨★★★**ONE PATH CAN BE CARRIED TWICE, SO EACH CARRY HAS A NAME.**
+  /// Remove a carried file from the pool, edit the original, carry the
+  /// same path again before saving — and the project knows two sets of
+  /// bytes for one path: the new copy, and the old one an undo of the
+  /// removal has to bring back. Everything that found the bytes was keyed
+  /// by the path, so the project file's OLD entry answered first: readers
+  /// showed the old picture, and the save kept it and retired the new copy
+  /// (card `recarry-after-remove-reads-the-old`). The staged copy and the
+  /// entry are named from [carry] now, and this rides every undo with the
+  /// rest of the asset — undoing back to the first carry finds the first
+  /// carry's bytes.
+  ///
+  /// ⛔ONE field, not a second one beside a `carried` flag: a carried asset
+  /// without a name for its bytes is the state this replaces, and two
+  /// fields could say it.
+  ///
+  /// ⚠️`''` is the carry an asset had before carries had names — its bytes
+  /// are under the name the path alone derives, which is what a project
+  /// written then holds.
+  final String? carriedAs;
+
+  /// [carriedAs] with the path it was carried under — what the bytes are
+  /// named from.
+  MediaCarry? get carry {
+    final token = carriedAs;
+    return token == null ? null : (poolPath: path, token: token);
+  }
 
   /// What the file at [path] looked like when it was registered — the
   /// evidence relink compares a candidate against.
@@ -198,7 +250,7 @@ class MediaAsset {
     MediaFitMode? fitMode,
     String? sourcePath,
     String? sourceStamp,
-    bool? carried,
+    String? carriedAs,
     MediaIdentity? identity,
     double? sourceFps,
     int? frameCount,
@@ -214,7 +266,7 @@ class MediaAsset {
       fitMode: fitMode ?? this.fitMode,
       sourcePath: sourcePath ?? this.sourcePath,
       sourceStamp: sourceStamp ?? this.sourceStamp,
-      carried: carried ?? this.carried,
+      carriedAs: carriedAs ?? this.carriedAs,
       identity: identity ?? this.identity,
       sourceFps: sourceFps ?? this.sourceFps,
       frameCount: frameCount ?? this.frameCount,
@@ -232,7 +284,7 @@ class MediaAsset {
     if (fitMode != MediaFitMode.contain) 'fit': fitMode.toJson(),
     if (sourcePath != null) 'sourcePath': sourcePath,
     if (sourceStamp != null) 'sourceStamp': sourceStamp,
-    if (carried) 'carried': true,
+    if (carriedAs != null) 'carriedAs': carriedAs,
     if (identity != null) 'identity': identity!.toJson(),
     if (sourceFps != null) 'sourceFps': sourceFps,
     if (frameCount != null) 'frameCount': frameCount,
@@ -260,10 +312,15 @@ class MediaAsset {
       fitMode: MediaFitMode.fromJson(json['fit']),
       sourcePath: json['sourcePath'] as String?,
       sourceStamp: json['sourceStamp'] as String?,
-      // Absent in projects written before this existed, where the same
-      // choice was spelled "was it copied in?" — so those assets keep the
-      // answer they were given.
-      carried: json['carried'] as bool? ?? json['sourcePath'] != null,
+      // Absent in projects written before carries had names, which said
+      // `carried` — and before THAT the same choice was spelled "was it
+      // copied in?" — so those assets keep the answer they were given, as
+      // the carry whose bytes are named by the path alone.
+      carriedAs:
+          json['carriedAs'] as String? ??
+          ((json['carried'] as bool? ?? json['sourcePath'] != null)
+              ? ''
+              : null),
       identity: MediaIdentity.fromJson(json['identity']),
       sourceFps: (json['sourceFps'] as num?)?.toDouble(),
       frameCount: json['frameCount'] as int?,
@@ -284,7 +341,7 @@ class MediaAsset {
           other.fitMode == fitMode &&
           other.sourcePath == sourcePath &&
           other.sourceStamp == sourceStamp &&
-          other.carried == carried &&
+          other.carriedAs == carriedAs &&
           other.identity == identity &&
           other.sourceFps == sourceFps &&
           other.frameCount == frameCount &&
@@ -301,7 +358,7 @@ class MediaAsset {
     fitMode,
     sourcePath,
     sourceStamp,
-    carried,
+    carriedAs,
     identity,
     sourceFps,
     frameCount,

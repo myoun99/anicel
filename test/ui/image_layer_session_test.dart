@@ -1,8 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_placement.dart';
-import 'package:anicel/src/models/delete_subject.dart';
-import 'package:anicel/src/models/edit_instance_subject.dart';
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -253,7 +252,7 @@ void main() {
     final panel = StoryboardToolbarPanelContext(s);
     expect(
       panel.deleteSubject,
-      DeleteSubject.nothing,
+      PillSubject.nothing,
       reason: 'the band owns the press; it must not reach the cut rung',
     );
     panel.deleteSelectionSubject();
@@ -361,12 +360,12 @@ void main() {
 
     expect(
       s.deleteSubject,
-      DeleteSubject.nothing,
+      PillSubject.nothing,
       reason: 'the band claims the press and holds nothing deletable',
     );
     expect(
       s.cellInstances.editInstanceSubject,
-      EditInstanceSubject.nothing,
+      PillSubject.nothing,
       reason:
           'Edit Instance is DOCUMENTED as the same ladder as Delete — '
           'two shared-pill verbs answering 「지금 무엇이 선택됐나」 '
@@ -386,7 +385,7 @@ void main() {
     // mean "the cut".
     s.selectRow(TrackRowAddress(s.activeTrack.id));
     final panel = StoryboardToolbarPanelContext(s);
-    expect(panel.deleteSubject, DeleteSubject.nothing);
+    expect(panel.deleteSubject, PillSubject.nothing);
     expect(
       panel.canEditInstance,
       isFalse,

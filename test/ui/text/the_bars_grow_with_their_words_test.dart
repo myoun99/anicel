@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/color/color_status_bar.dart';
@@ -9,6 +8,7 @@ import 'package:anicel/src/ui/widgets/color_swatch_button.dart'
     show showColorPickerPopup;
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/words_cut_off.dart';
 
 /// 🚨text-scale-fixed-height-bars (유저 2026-09-18). Asked what a bar of a
 /// fixed height does when the OS text size goes up, the answer was
@@ -32,28 +32,6 @@ import '../../helpers/app_faces.dart';
 /// and the fold that hold it let it be, and those ask the same questions.
 void main() {
   setUpAll(loadTheAppFaces);
-
-  /// Every paragraph under [of] that is shorter than its own text at the
-  /// width it was given — a word its box cuts off.
-  List<String> wordsCutOff(Finder of) {
-    final cut = <String>[];
-    void visit(RenderObject object) {
-      if (object is RenderParagraph) {
-        final need = object.getMinIntrinsicHeight(object.size.width);
-        if (object.size.height + 0.5 < need) {
-          cut.add(
-            '「${object.text.toPlainText()}」 ${object.size.height} < $need',
-          );
-        }
-      }
-      object.visitChildren(visit);
-    }
-
-    for (final element in of.evaluate()) {
-      visit(element.renderObject!);
-    }
-    return cut;
-  }
 
   void atTextScale(WidgetTester tester, double scale) {
     tester.view.physicalSize = const Size(1920, 1080);

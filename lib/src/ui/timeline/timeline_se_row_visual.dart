@@ -624,21 +624,31 @@ class _SeNameBox extends StatelessWidget {
 /// storyboard's SE track): near-white fill, hairline outline, rounded ends —
 /// visually the drawing rows' block, painted as one span.
 ///
-/// 🚨I-44: no line crosses it. It drew the frame grid's own lines across
+/// 🚨I-44: no line crossed it. It drew the frame grid's own lines across
 /// itself (F-92 made them the timeline's law); 「블록에 존재하는 그리드선만
-/// 싹 삭제」 took them off every block, and the grid sheet under the row is
-/// the only thing that rules frames now. Its paper stops short of the row
-/// seam that sheet draws ([timelineRowPaperExtent]), as a drawing row's does.
+/// 싹 삭제」 took them off every block, and the grid sheet under the row
+/// ruled frames alone. Its paper stops short of the row seam that sheet
+/// draws ([timelineRowPaperExtent]), as a drawing row's does.
+///
+/// 🗣️유저 2026-09-24 made the lines a switch (on by default) — so they are
+/// back where the user shows them, asked of the same function every block
+/// asks ([timelineBlockFrameLine]).
 class SePaperSpan extends StatelessWidget {
   const SePaperSpan({
     super.key,
     required this.axis,
     required this.frameCellExtent,
+    required this.startFrame,
     this.paper = timelineDrawingHeldColor,
   });
 
   final Axis axis;
   final double frameCellExtent;
+
+  /// The frame the span starts on, on its host's frame axis. The grid thins
+  /// and weights a line by the FRAME its boundary starts, so a span that did
+  /// not know where it stands would draw a grid of its own.
+  final int startFrame;
 
   /// The block's own colour — its layer's mark (⑲). Defaulted, so a host
   /// with no layer in hand still gets the paper.
@@ -646,11 +656,17 @@ class SePaperSpan extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final law = TimelineGridLaw.maybeOf(context);
     return CustomPaint(
       painter: _SePaperPainter(
         axis: axis,
         frameCellExtent: frameCellExtent,
+        startFrame: startFrame,
         paper: paper,
+        ground: law?.ground,
+        framesPerSecond: law?.framesPerSecond ?? 0,
+        blockFrameLines: law?.blockFrameLines ?? false,
+        colorScheme: Theme.of(context).colorScheme,
       ),
       child: const SizedBox.expand(),
     );
@@ -661,12 +677,22 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
   _SePaperPainter({
     required this.axis,
     required this.frameCellExtent,
+    required this.startFrame,
     required this.paper,
+    required this.ground,
+    required this.framesPerSecond,
+    required this.blockFrameLines,
+    required this.colorScheme,
   });
 
   final Axis axis;
   final double frameCellExtent;
+  final int startFrame;
   final Color paper;
+  final Color? ground;
+  final int framesPerSecond;
+  final bool blockFrameLines;
+  final ColorScheme colorScheme;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -685,6 +711,25 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
       ),
     );
     canvas.drawRRect(rrect, Paint()..color = paper);
+    final seen = timelineGridGroundOver(under: ground, painted: paper);
+    if (blockFrameLines && seen != null && frameCellExtent > 0) {
+      final frames = (extentAlong(axis, size) / frameCellExtent).round();
+      for (var offset = 1; offset < frames; offset += 1) {
+        final line = timelineBlockFrameLine(
+          axis: axis,
+          frameIndex: startFrame + offset,
+          boundary: offset * frameCellExtent,
+          across: (from: 0, to: cross),
+          frameCellExtent: frameCellExtent,
+          framesPerSecond: framesPerSecond,
+          colorScheme: colorScheme,
+          paper: seen,
+        );
+        if (line != null) {
+          canvas.drawRect(line.rect, Paint()..color = line.color);
+        }
+      }
+    }
     canvas.drawRRect(
       rrect,
       Paint()
@@ -698,8 +743,13 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
   Object get props => (
     axis,
     frameCellExtent,
+    startFrame,
     // A mark change repaints the block (⑲) — without this the row would
     // keep the colour it was first painted with.
     paper,
+    ground,
+    framesPerSecond,
+    blockFrameLines,
+    colorScheme,
   );
 }

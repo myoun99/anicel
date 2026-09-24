@@ -260,7 +260,7 @@ void main() {
     // user opened before it.
     session.projectFile.bindToOpenedFile(
       '${temp.path}${Platform.pathSeparator}held.anicel',
-      entryNames: const {},
+      mediaInFile: const {},
       unsaved: false,
     );
     final seeksBefore = session.frameSeekCommitted.value;

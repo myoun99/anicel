@@ -71,7 +71,8 @@ void main() {
     final audioPath = '${directory.path.replaceAll('\\', '/')}/take.wav';
     final oldBytes = List<int>.filled(200, 1);
     File(audioPath).writeAsBytesSync(oldBytes, flush: true);
-    final entryName = anicelMediaEntryName(audioPath);
+    final carried = (poolPath: audioPath, token: 'c1');
+    final entryName = anicelMediaEntryName(carried);
 
     final project = createDefaultProject();
     final store = BrushFrameStore();
@@ -80,7 +81,7 @@ void main() {
       project: project,
       brushFrameStore: store,
       filePath: path,
-      mediaToStore: {audioPath: MediaFileBytes(audioPath)},
+      mediaToStore: {carried: MediaFileBytes(audioPath)},
     );
     expect(parseAnicelZipLayoutFile(path).entryNamed(entryName), isNotNull);
 
@@ -100,18 +101,22 @@ void main() {
           'reattach itself to a re-import',
     );
 
-    // Re-import, same path, DIFFERENT content (a re-recorded take).
+    // Re-import, same path, DIFFERENT content (a re-recorded take) — a
+    // carry of its own, as every import is.
     final newBytes = List<int>.filled(200, 9);
     File(audioPath).writeAsBytesSync(newBytes, flush: true);
+    final again = (poolPath: audioPath, token: 'c2');
     store.storeBakedSurface(key('f1'), inked(7));
     await service.save(
       project: project,
       brushFrameStore: store,
       filePath: path,
-      mediaToStore: {audioPath: MediaFileBytes(audioPath)},
+      mediaToStore: {again: MediaFileBytes(audioPath)},
     );
 
-    final entry = parseAnicelZipLayoutFile(path).entryNamed(entryName)!;
+    final layout = parseAnicelZipLayoutFile(path);
+    expect(layout.entryNamed(entryName), isNull);
+    final entry = layout.entryNamed(anicelMediaEntryName(again))!;
     final raf = File(path).openSync();
     try {
       raf.setPositionSync(entry.dataOffset);
@@ -140,7 +145,8 @@ void main() {
     final moviePath = '${directory.path.replaceAll('\\', '/')}/big.mp4';
     final movieBytes = List<int>.filled(64 * 1024, 7);
     File(moviePath).writeAsBytesSync(movieBytes, flush: true);
-    final entryName = anicelMediaEntryName(moviePath);
+    final carried = (poolPath: moviePath, token: 'c1');
+    final entryName = anicelMediaEntryName(carried);
 
     final project = createDefaultProject();
     final store = BrushFrameStore();
@@ -149,7 +155,7 @@ void main() {
       project: project,
       brushFrameStore: store,
       filePath: path,
-      mediaToStore: {moviePath: MediaFileBytes(moviePath)},
+      mediaToStore: {carried: MediaFileBytes(moviePath)},
     );
     expect(File(path).lengthSync(), greaterThan(movieBytes.length));
 

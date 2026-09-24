@@ -8,7 +8,7 @@ import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
@@ -55,7 +55,7 @@ void main() {
               fillOptions: const FloodFillOptions(),
               onFillOptionsChanged: (_) {},
               selectionMaskOptions: SelectionMaskOptions.none,
-              eyedropperSource: CanvasColorSampleSource.display,
+              eyedropperSource: CanvasReadSource.display,
               cutPieceSlot: slot,
               onCutPasteAtOrigin: onPasteAtOrigin,
               onRegisterCutPieceAsTip: onRegisterAsTip,

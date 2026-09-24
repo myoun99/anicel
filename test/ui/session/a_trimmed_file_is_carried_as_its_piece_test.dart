@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🗣️유저 2026-09-11: 「자를때 원본 전체만 안들어가고 자른것만 안으로
@@ -138,7 +139,7 @@ void main() {
       reason: 'the file the door read is gone — the staged copy is the only '
           'one (「사본 남으면 진짜 용서안할게」)',
     );
-    expect(s.mediaStagingStore.find(piece), isNotNull);
+    expect(stagedCopyIn(s, piece), isNotNull);
     await tester.pumpAndSettle();
   });
 
@@ -183,7 +184,7 @@ void main() {
     s.trimmedPieces.discard(piece);
 
     expect(File(piece).existsSync(), isFalse);
-    expect(s.mediaStagingStore.find(piece), isNull);
+    expect(s.mediaStagingStore.holdsAnyCopyOf(piece), isFalse);
     await tester.pumpAndSettle();
   });
 
@@ -195,7 +196,11 @@ void main() {
     final piece = (await tester.runAsync(
       () => s.trimmedPieces.cut(gif!, MediaAssetKind.image, outFrame: 0),
     ))!.path;
-    expect(s.mediaStagingStore.find(piece), isNull, reason: 'the premise');
+    expect(
+      s.mediaStagingStore.holdsAnyCopyOf(piece),
+      isFalse,
+      reason: 'the premise',
+    );
 
     s.trimmedPieces.secure(piece);
 
@@ -512,7 +517,7 @@ void main() {
           // between neighbouring reds: nearer than that is this frame and
           // no other. A neighbour would sit ~30 away.
           // 🪦The Apple engine landed a flat red 13 away here and it was
-          // read as that encoder's noise (2026-09-25, first run on a Mac).
+          // read as that encoder's noise (2026-09-24, first run on a Mac).
           // It was the writer's colour matrix — a loss that grows with the
           // red, 17 at red 200 — and it is pinned where it lives, by the
           // colour test below. The reds go into the reason so a failure
@@ -536,7 +541,7 @@ void main() {
     /// How far a flat red may move through ONE encode and one decode.
     ///
     /// ⚠️Measured, not chosen: Media Foundation brings every red of
-    /// [writeMovie] back within 3 (2026-09-25). A writer and reader that
+    /// [writeMovie] back within 3 (2026-09-24). A writer and reader that
     /// disagree about the YCbCr matrix lose a share of the red instead —
     /// BT.709 in and BT.601 out keeps 0.9136 of it, 17 short at red 200 —
     /// and this bound is what tells that loss from a codec's noise.

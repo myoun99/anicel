@@ -34,17 +34,19 @@ class OnionSkinFramePlan {
 /// Resolves which of the ACTIVE layer's cels ghost at [frameIndex].
 ///
 /// [OnionSkinStep.blocks] (the default) walks UNITS: a held block is one
-/// unit, an EMPTY STRETCH is one unit however long it is, linked-cel
-/// repeats of an already-collected (or the current) cel are skipped, and a
-/// silent peg still consumes its slot (peg 2 stays "two units back" while
-/// peg 1 is at 0).
+/// unit, every EMPTY CELL is one unit, linked-cel repeats of an
+/// already-collected (or the current) cel are skipped, and a silent peg
+/// still consumes its slot (peg 2 stays "two units back" while peg 1 is at
+/// 0).
 ///
-/// 🚨★★AN EMPTY STRETCH SPENDS ITS PEG AND SHOWS NOTHING (F-175, 유저
+/// 🚨★★AN EMPTY CELL SPENDS ITS PEG AND SHOWS NOTHING (F-175, 유저
 /// 2026-09-21): 「어니언스킨 블록 단위일때, 사이에 빈 공간 있는데도 그
 /// 너머의 첫번째 블럭이 인식됨. 빈 공간 한칸은 블럭으로서 한칸으로 쳐서
-/// 빈공간이면 다음 1번의 어니언스킨 안보이게.」 The walk used to jump
-/// over the stretch to the drawing beyond it, so peg 1 ghosted a drawing
-/// the sheet shows as two steps away. See [nextUnitStartAfter].
+/// 빈공간이면 다음 1번의 어니언스킨 안보이게.」 The walk used to jump over
+/// the empty cells to the drawing beyond them, so peg 1 ghosted a drawing
+/// the sheet shows further away — and then counted a whole empty stretch
+/// as one step, until the user's 「AxxB」 case (2026-09-24). See
+/// [unitStartAt].
 ///
 /// [OnionSkinStep.frames] walks the sheet instead: peg k is whatever is
 /// exposed k frames away. Inside a hold that is the drawing already on
@@ -103,8 +105,8 @@ List<OnionSkinFramePlan> planOnionSkin({
     for (final peg in pegs) {
       int? blockStart;
       FrameId? blockFrameId;
-      var emptyStretch = false;
-      // Advance to the next unit: an empty stretch, or a block showing a
+      var emptyCell = false;
+      // Advance to the next unit: an empty cell, or a block showing a
       // cel we have not ghosted yet.
       while (true) {
         blockStart = nextBlockStart(cursor);
@@ -114,7 +116,7 @@ List<OnionSkinFramePlan> planOnionSkin({
         cursor = blockStart;
         final exposure = timeline[blockStart];
         if (exposure == null) {
-          emptyStretch = true;
+          emptyCell = true;
           break;
         }
         blockFrameId = exposure.frameId;
@@ -126,8 +128,8 @@ List<OnionSkinFramePlan> planOnionSkin({
       if (blockStart == null) {
         break;
       }
-      if (emptyStretch) {
-        // F-175: the stretch IS this peg's step — spent, nothing to ghost.
+      if (emptyCell) {
+        // F-175: the empty cell IS this peg's step — spent, nothing to ghost.
         continue;
       }
       if (blockFrameId == null) {
@@ -149,7 +151,7 @@ List<OnionSkinFramePlan> planOnionSkin({
 
   // The BEFORE walk starts from the current UNIT's start (so a held
   // mid-block playhead still sees the previous unit, not its own block,
-  // and a playhead standing in an empty stretch counts that stretch as
+  // and a playhead standing on an empty cell counts that cell as
   // where it is); the AFTER walk from the current index.
   final frameSteps = settings.step == OnionSkinStep.frames;
   final before = frameSteps

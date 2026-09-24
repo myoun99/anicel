@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/media_asset.dart' show MediaCarry;
 import '../../services/audio/audio_conform_pipeline.dart';
 import '../../services/audio/audio_conform_runner.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -40,6 +41,7 @@ class AudioConformStore extends ChangeNotifier {
     required this.resolveConformPath,
     this.resolveByteSource,
     this.resolveCarriedConform,
+    this.resolveCarry,
     ConformRunner? runner,
     ResampleRunner? resampleRunner,
     int Function()? resolveProjectSampleRate,
@@ -82,6 +84,21 @@ class AudioConformStore extends ChangeNotifier {
   /// a range kept from before would read whatever landed on those offsets.
   final MediaByteSource? Function(String sourcePath)? resolveCarriedConform;
 
+  /// Which carry the pool names at [sourcePath] now — what a conform is OF
+  /// (`ProjectFile.mediaCarryFor`). Injected like the resolvers above; null
+  /// (tests, passive hosts) keys nothing by it.
+  ///
+  /// 🚨★★★**A CONFORM IS OF ONE CARRY'S BYTES, NOT OF A PATH.** Removed from
+  /// the pool and carried again with the original edited in between, a path
+  /// means other bytes — and an undo can bring the first ones back. Kept by
+  /// the path alone, the first carry's conform answered for the second: the
+  /// waveform and the playback were the old sound (card
+  /// `recarry-after-remove-reads-the-old`). The carry a conform was made OF
+  /// is kept beside it ([_conformedAs]), and one the pool no longer names is
+  /// stale at the next lookup — self-healing, like a rate or a speed that
+  /// moved, rather than hooked into the history stack.
+  final MediaCarry? Function(String sourcePath)? resolveCarry;
+
   final ConformRunner _runner;
   final ResampleRunner _resampleRunner;
 
@@ -109,6 +126,19 @@ class AudioConformStore extends ChangeNotifier {
   final Map<String, _ConformFailure> _failures = {};
   bool _disposed = false;
 
+  /// The carry each path's entry — or failure — was made OF ([resolveCarry]).
+  final Map<String, MediaCarry?> _conformedAs = {};
+
+  /// Lets go of what [sourcePath] holds when the pool names another carry
+  /// there than the one it was made of ([resolveCarry]) — asked first by
+  /// every reader of an entry, so none of them answers for other bytes.
+  void _dropIfTheCarryMoved(String sourcePath) {
+    if (_conformedAs.containsKey(sourcePath) &&
+        _conformedAs[sourcePath] != resolveCarry?.call(sourcePath)) {
+      invalidate(sourcePath);
+    }
+  }
+
   /// Length past which a conform's PCM stays ON DISK and playback streams
   /// windows of it (AUDIO-PRO R6). Two stereo minutes resident is 23 MB;
   /// a guide dialogue track is easily fifteen times that, which on a
@@ -122,6 +152,7 @@ class AudioConformStore extends ChangeNotifier {
   /// and the waveform all answer) but with no resident PCM — the
   /// transport streams windows of it instead of uploading the whole file.
   bool isStreaming(String sourcePath) {
+    _dropIfTheCarryMoved(sourcePath);
     final entry = _entries[sourcePath];
     return entry != null &&
         entry.isUsable &&
@@ -138,6 +169,7 @@ class AudioConformStore extends ChangeNotifier {
   /// `.anicel` after. The reader takes a [MediaByteSource] for exactly
   /// that reason, so nothing here has to know which.
   ConformPcmStreamReader? streamReaderFor(String sourcePath) {
+    _dropIfTheCarryMoved(sourcePath);
     final entry = _entries[sourcePath];
     if (entry == null || !entry.isUsable || entry.conformBytes == null) {
       return null;
@@ -207,6 +239,7 @@ class AudioConformStore extends ChangeNotifier {
   /// `undecodable`, or null while pending/failed (kicking ONE async
   /// conform as a side effect, like [AudioPeaksStore.peaksFor]).
   ConformResult? resultFor(String sourcePath) {
+    _dropIfTheCarryMoved(sourcePath);
     final cached = _entries[sourcePath];
     if (cached != null) {
       final speed = _resolveAudioSpeed();
@@ -303,7 +336,10 @@ class AudioConformStore extends ChangeNotifier {
           libraryPathOverride: libraryPathOverride,
         ),
       );
-      if (_disposed) {
+      // Onto the entry it was made FROM, or nowhere: one let go of while
+      // this ran — another carry, a rate that moved — would otherwise get
+      // the old sound back at the device rate.
+      if (_disposed || !identical(_entries[sourcePath], entry)) {
         return;
       }
       (_resampledByRate[sourcePath] ??= {})[sampleRate] = converted;
@@ -324,7 +360,10 @@ class AudioConformStore extends ChangeNotifier {
   }
 
   /// The last failure reason, or null while unknown/pending/usable.
-  String? failureFor(String sourcePath) => _failures[sourcePath]?.reason;
+  String? failureFor(String sourcePath) {
+    _dropIfTheCarryMoved(sourcePath);
+    return _failures[sourcePath]?.reason;
+  }
 
   /// Awaits [sourcePath]'s conform: the cached result, or the in-flight
   /// one when it lands. Null once the attempt budget is spent — the export
@@ -374,6 +413,8 @@ class AudioConformStore extends ChangeNotifier {
   }
 
   Future<void> _ensure(String sourcePath) async {
+    // The carry the bytes below are resolved as — read in the same breath.
+    final carry = resolveCarry?.call(sourcePath);
     ConformResult result;
     try {
       final speed = _resolveAudioSpeed();
@@ -400,6 +441,9 @@ class AudioConformStore extends ChangeNotifier {
       return;
     }
     _pending.remove(sourcePath);
+    // Whatever lands below — an entry or a failure — is of THIS carry. One
+    // the pool has moved off since is dropped at the next lookup.
+    _conformedAs[sourcePath] = carry;
     if (result.isUsable || result.outcome == ConformOutcome.undecodable) {
       // Undecodable is an ANSWER (route this format to the fallback), not
       // a retry candidate — the same bytes will not decode differently
@@ -467,6 +511,7 @@ class AudioConformStore extends ChangeNotifier {
   void invalidate(String sourcePath) {
     _entries.remove(sourcePath);
     _failures.remove(sourcePath);
+    _conformedAs.remove(sourcePath);
     _resampledByRate.remove(sourcePath);
     _closeStreamReader(sourcePath);
   }

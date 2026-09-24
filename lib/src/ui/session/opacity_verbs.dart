@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import '../../models/attached_layer_resolve.dart';
 import '../../models/transform_track.dart';
 import '../../models/cut_id.dart';
@@ -24,12 +26,10 @@ class OpacityVerbs {
     required ProjectAccess project,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required Transitions transitions,
   }) : _project = project,
        _changes = changes,
        _controllers = controllers,
-       _internals = internals,
        _transitions = transitions;
 
   final Transitions _transitions;
@@ -37,7 +37,35 @@ class OpacityVerbs {
   final ProjectAccess _project;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+
+  /// Live opacity-drag preview: per-move values ride this notifier into
+  /// the editing canvas only (the dragged FieldSlider echoes locally)
+  /// WITHOUT a session notify — the old per-move repo write rebuilt every
+  /// panel per pointer move and made the slider feel heavy. Release
+  /// commits ONE write + notify. The legend's master bar previews a SET of
+  /// rows through the same channel.
+  ///
+  /// ARCH-session-state: declared by the verbs that write it, as the onion
+  /// skin and the frame scrub declare theirs — the session held it and
+  /// handed it back through `SessionInternals`.
+  final ValueNotifier<({Set<LayerId> layerIds, double opacity})?> dragPreview =
+      ValueNotifier(null);
+
+  /// The live V-row opacity drag (per the drag-verb rule): per-move
+  /// preview, ONE write on release.
+  final ValueNotifier<({TrackId trackId, double opacity})?> trackDragPreview =
+      ValueNotifier(null);
+
+  /// The master bar's LAST committed value — the bar rests on this, not a
+  /// live average (UI-R6 #2).
+  double lastMasterOpacity = 1.0;
+
+  /// ⚠️Both previews: the track's was declared beside the layer's and
+  /// never released with it — the session's list named only one.
+  void dispose() {
+    dragPreview.dispose();
+    trackDragPreview.dispose();
+  }
 
   /// The display opacity the editing stack (and the interactive view's
   /// dimming) uses for [layer]: the shared composite semantics — an attach
@@ -115,7 +143,7 @@ class OpacityVerbs {
   /// drag value while one is in flight, the stored value otherwise. The
   /// composite surfaces call the [forCut] form.
   double trackStaticOpacity(TrackId trackId) {
-    final dragging = _internals.trackOpacityDragPreview.value;
+    final dragging = trackDragPreview.value;
     if (dragging != null && dragging.trackId == trackId) {
       return dragging.opacity;
     }
@@ -128,14 +156,14 @@ class OpacityVerbs {
   }
 
   void previewTrackOpacity(TrackId trackId, double opacity) {
-    _internals.trackOpacityDragPreview.value = (
+    trackDragPreview.value = (
       trackId: trackId,
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
     );
   }
 
   void commitTrackOpacity(TrackId trackId, double opacity) {
-    _internals.trackOpacityDragPreview.value = null;
+    trackDragPreview.value = null;
     _project.cutCommandCoordinator.updateTrackDisplay(
       trackId: trackId,
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
@@ -154,14 +182,14 @@ class OpacityVerbs {
   }
 
   void previewLayerOpacity(LayerId layerId, double opacity) {
-    _internals.opacityDragPreview.value = (
+    dragPreview.value = (
       layerIds: {layerId},
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
     );
   }
 
   void commitLayerOpacity(LayerId layerId, double opacity) {
-    _internals.opacityDragPreview.value = null;
+    dragPreview.value = null;
     setLayerOpacity(layerId: layerId, opacity: opacity);
   }
 
@@ -169,16 +197,16 @@ class OpacityVerbs {
   /// currently DISPLAYS (filter-passing), computed by the grid. Camera
   /// stays untouched (its slider is the camera-view dim).
   void previewLayersOpacity(Set<LayerId> layerIds, double opacity) {
-    _internals.opacityDragPreview.value = (
+    dragPreview.value = (
       layerIds: layerIds,
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
     );
   }
 
   void commitLayersOpacity(Set<LayerId> layerIds, double opacity) {
-    _internals.opacityDragPreview.value = null;
+    dragPreview.value = null;
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
-    _internals.lastMasterOpacity = clamped;
+    lastMasterOpacity = clamped;
     // ⛔ONE undo step for one bar drag. The drag itself never reaches here
     // — `previewLayersOpacity` holds it in a notifier and only the release
     // commits — so this is one entry per gesture, not per frame.

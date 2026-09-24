@@ -1,7 +1,7 @@
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
-import '../../models/delete_subject.dart';
-import '../../models/edit_instance_subject.dart';
+import '../../models/cut_id.dart';
+import '../../models/pill_subject.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
@@ -99,8 +99,13 @@ abstract class ToolbarPanelContext {
   bool get canPasteLinkedFrame;
   void pasteLinkedFrame();
 
-  DeleteSubject get deleteSubject;
+  PillSubject get deleteSubject;
   void deleteSelectionSubject();
+
+  /// 🚨I-45 — the link-independent button: whether this panel's press would
+  /// unlink anything, and the press. One answer for both (T25's law).
+  bool get canUnlink;
+  void unlink();
 }
 
 /// What each SHARED pill button does when it is pressed — null while it has
@@ -120,14 +125,16 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
   void Function()? get pasteLinkedPress =>
       canPasteLinkedFrame ? pasteLinkedFrame : null;
 
+  void Function()? get unlinkPress => canUnlink ? unlink : null;
+
   /// F: the ROWS rung asks first. It inherited that from the loose layer
   /// button this pill folded in — a delete that used to confirm must not
   /// stop confirming because its button moved, or because a key pressed it.
   /// The cell rung goes straight through, as it always has.
   void Function()? deletePress({void Function()? onDeleteRowSelection}) =>
       switch (deleteSubject) {
-        DeleteSubject.nothing => null,
-        DeleteSubject.layers when onDeleteRowSelection != null =>
+        PillSubject.nothing => null,
+        PillSubject.layers when onDeleteRowSelection != null =>
           onDeleteRowSelection,
         _ => deleteSelectionSubject,
       };
@@ -196,7 +203,7 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   /// reach for them — 「타임라인에서는 타임라인의 것을」.
   bool get canEditInstance =>
       session.cellInstances.editInstanceSubjectFor(cutsAreThisPanels: false) !=
-      EditInstanceSubject.nothing;
+      PillSubject.nothing;
 
   @override
   bool get canCutRun => session.clipboard.canCutRunAtCurrentFrame;
@@ -224,12 +231,18 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   void pasteLinkedFrame() => session.pasteLinkedFrameAtCurrentFrame();
 
   @override
-  DeleteSubject get deleteSubject =>
+  PillSubject get deleteSubject =>
       session.deleteSubjectFor(cutsAreThisPanels: false);
 
   @override
   void deleteSelectionSubject() =>
       session.deleteSelectionSubject(cutsAreThisPanels: false);
+
+  @override
+  bool get canUnlink => session.unlinkSubject != PillSubject.nothing;
+
+  @override
+  void unlink() => session.unlinkSelectionSubject();
 }
 
 /// What the storyboard's Edit Instance press opens — resolved ONCE
@@ -508,23 +521,23 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   /// blocks — this panel's lanes and strips write those), then THE BLOCK
   /// UNDER THE CURSOR, whatever its kind.
   @override
-  DeleteSubject get deleteSubject {
+  PillSubject get deleteSubject {
     if (session.trackFrameRangeSelection.value != null) {
-      return DeleteSubject.cuts;
+      return PillSubject.cuts;
     }
     if (session.cells.canDeleteCellForSelection) {
-      return DeleteSubject.cells;
+      return PillSubject.cells;
     }
     // A live CELL band claims the press even when it holds nothing this
     // panel may delete — the same guard the strip's comma verb already
     // states. Without it a band the collector refuses fell through to the
     // cursor rung, where a TRACK-ROW cursor means "delete the cut".
     if (session.cells.cellSelectionClaimsSubject) {
-      return DeleteSubject.nothing;
+      return PillSubject.nothing;
     }
     return session.storyboardCursor.canDeleteBlockAtStoryboardCursor
-        ? DeleteSubject.cells
-        : DeleteSubject.nothing;
+        ? PillSubject.cells
+        : PillSubject.nothing;
   }
 
   @override
@@ -542,4 +555,28 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     }
     session.storyboardCursor.deleteBlockAtStoryboardCursor();
   }
+
+  /// The cuts this panel's 링크 독립 means: its EDIT TARGET's cuts rung —
+  /// the selected cut range, else the cut under the cursor on a track row.
+  ///
+  /// ★The storyboard's ladder is [editTarget], so the three verbs this
+  /// panel resolves for itself cannot disagree about which cut is meant.
+  /// 「컷이나」 (I-45) is this panel's only noun for it: a track row's blocks
+  /// are cuts, and an S row holds no pictures to link (F-115).
+  List<CutId> get _unlinkCutIds {
+    if (editTarget is! StoryboardEditCut) {
+      return const [];
+    }
+    if (session.trackFrameRangeSelection.value != null) {
+      return session.storyboardRows.storyboardSelectedCutIds;
+    }
+    final cut = session.activeCutOrNull;
+    return cut == null ? const [] : [cut.id];
+  }
+
+  @override
+  bool get canUnlink => _unlinkCutIds.any(session.cutVerbs.cutIsLinked);
+
+  @override
+  void unlink() => session.cutVerbs.unlinkCuts(_unlinkCutIds);
 }

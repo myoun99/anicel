@@ -13,6 +13,7 @@ import '../models/app_language.dart';
 // signature even though nothing here reads them.
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_frame_grid_settings_store.dart';
 import '../services/persistence/app_onion_skin_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
@@ -58,7 +59,7 @@ import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/timeline_empty_gaps.dart';
-import '../models/delete_subject.dart';
+import '../models/pill_subject.dart';
 import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
@@ -195,6 +196,7 @@ class EditorSessionManager extends ChangeNotifier
     AppWorkspaceColorsStore? workspaceColorsStore,
     AppUiScaleStore? uiScaleStore,
     AppOnionSkinSettingsStore? onionSkinSettingsStore,
+    AppFrameGridSettingsStore? frameGridSettingsStore,
     ImageCache? frameworkImageCache,
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
@@ -210,6 +212,7 @@ class EditorSessionManager extends ChangeNotifier
          audioSyncSettingsStore: audioSyncSettingsStore,
          uiScaleStore: uiScaleStore,
          onionSkinSettingsStore: onionSkinSettingsStore,
+         frameGridSettingsStore: frameGridSettingsStore,
        ),
        repository = ProjectRepository(initialProject: initialProject) {
     appSettings.attachOnionSkin(onionSkin.settings);
@@ -455,6 +458,7 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches: renderCaches,
     frameRate: () => projectSettings.projectFrameRate,
     holdBytes: projectFile.holdMediaBytes,
+    carryFor: projectFile.mediaCarryFor,
   );
 
   late final PlaybackRig playbackRig = PlaybackRig(
@@ -1264,7 +1268,7 @@ class EditorSessionManager extends ChangeNotifier
     selectionInteractionActive.dispose,
     dragPreview.dispose,
     transitionEdgeDragPreview.dispose,
-    opacityDragPreview.dispose,
+    opacityVerbs.dispose,
     onionSkin.dispose,
     cutVerbs.dispose,
     trackFrameRangeSelection.dispose,
@@ -1305,6 +1309,7 @@ class EditorSessionManager extends ChangeNotifier
               resolveConformPath: projectFile.conformPathFor,
               resolveByteSource: projectFile.mediaByteSourceFor,
               resolveCarriedConform: projectFile.carriedConformFor,
+              resolveCarry: projectFile.mediaCarryFor,
               resolveProjectSampleRate: () =>
                   repository.requireProject().audioSampleRate,
               resolveAudioSpeed: () => repository.requireProject().audioSpeed,
@@ -1493,7 +1498,6 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     controllers: activeCutControllers,
     transitions: transitions,
-    internals: this,
   );
 
   // The frame verbs (Round 6): the playhead's frame and what stands there.
@@ -1730,12 +1734,6 @@ class EditorSessionManager extends ChangeNotifier
   // composited cut under the playhead (user 2026-08-08). It is TRACK data on
   // the GLOBAL axis, exactly like the pose and the fade beside it, so these
   // verbs take a TrackId and no cut is ever in the loop.
-
-  /// The live V-row opacity drag (session-owned, per the drag-verb rule):
-  /// per-move preview, ONE write on release.
-  @override
-  final ValueNotifier<({TrackId trackId, double opacity})?>
-  trackOpacityDragPreview = ValueNotifier(null);
 
   /// Cuts whose PICTURE is hidden in the playback display — the storyboard
   /// V-row eye (R9). The paper stays, the composite doesn't draw. A working
@@ -2093,23 +2091,6 @@ class EditorSessionManager extends ChangeNotifier
   final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
       ValueNotifier<Set<LayerId>>(const {});
 
-  // --- Opacity drag preview (R4 #4/#6) ------------------------------------
-
-  /// Live opacity-drag preview: per-move values ride this notifier into
-  /// the editing canvas only (the dragged FieldSlider echoes locally)
-  /// WITHOUT a session notify — the old per-move repo write rebuilt every
-  /// panel per pointer move and made the slider feel heavy. Release
-  /// commits ONE write + notify. The legend's master bar previews a SET of
-  /// rows through the same channel.
-  @override
-  final ValueNotifier<({Set<LayerId> layerIds, double opacity})?>
-  opacityDragPreview = ValueNotifier(null);
-
-  /// The master bar's LAST committed value — the bar rests on this, not a
-  /// live average (UI-R6 #2).
-  @override
-  double lastMasterOpacity = 1.0;
-
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.
   TimesheetInfo get timesheetInfo => repository.requireProject().timesheetInfo;
@@ -2212,11 +2193,9 @@ class EditorSessionManager extends ChangeNotifier
     landing: importLanding,
     fingerprints: mediaFingerprints,
     pool: mediaPool,
-    staging: mediaStagingStore,
     conforms: audioConformStore,
     frameRate: () => projectSettings.projectFrameRate,
     holdBytes: projectFile.holdMediaBytes,
-    projectHolds: projectFile.projectHoldsMediaBytes,
   );
 
   late final CutFolderImportDoor cutFolderDoor = CutFolderImportDoor(
@@ -2227,9 +2206,8 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches: renderCaches,
     timeline: this,
     landing: importLanding,
-    staging: mediaStagingStore,
     holdBytes: projectFile.holdMediaBytes,
-    projectHolds: projectFile.projectHoldsMediaBytes,
+    holdCarriedBytes: mediaPool.holdCarriedBytes,
   );
 
   // The TVPaint door (session/tvpp_import_door.dart). A .tvpp opens AS A
@@ -2941,36 +2919,58 @@ class EditorSessionManager extends ChangeNotifier
   /// each hard-wired to one noun, which is why the same word did different
   /// things depending on where you reached for it.
   @override
-  DeleteSubject get deleteSubject => deleteSubjectFor(cutsAreThisPanels: true);
+  PillSubject get deleteSubject => deleteSubjectFor(cutsAreThisPanels: true);
 
   /// [deleteSubject], asked of a PANEL — see [editInstanceSubjectFor] for
   /// why the cuts rung is a question and not a given (R5q1).
-  DeleteSubject deleteSubjectFor({required bool cutsAreThisPanels}) {
-    if (cutsAreThisPanels && trackFrameRangeSelection.value != null) {
-      return DeleteSubject.cuts;
-    }
-    // ⑨: rows outrank cells. A row selection is the more specific statement
-    // — you named the rows out loud — while the cell rung answers from where
-    // the playhead happens to stand.
-    if (layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
-      return DeleteSubject.layers;
-    }
-    return cells.canDeleteCellAtCurrentFrame
-        ? DeleteSubject.cells
-        : DeleteSubject.nothing;
-  }
+  PillSubject deleteSubjectFor({required bool cutsAreThisPanels}) =>
+      pillSubjectOn(
+        cuts: cutsAreThisPanels && trackFrameRangeSelection.value != null,
+        layers: () => layerVerbs.deletableSelectedLayerIds().isNotEmpty,
+        cells: () => cells.canDeleteCellAtCurrentFrame,
+      );
 
   /// Runs whatever [deleteSubject] names. One undo step either way — the cell
   /// path already composes its own.
   void deleteSelectionSubject({bool cutsAreThisPanels = true}) {
     switch (deleteSubjectFor(cutsAreThisPanels: cutsAreThisPanels)) {
-      case DeleteSubject.cuts:
+      case PillSubject.cuts:
         cutVerbs.deleteActiveCut();
-      case DeleteSubject.layers:
+      case PillSubject.layers:
         layerVerbs.deleteSelectedLayers();
-      case DeleteSubject.cells:
+      case PillSubject.cells:
         cells.deleteCellAtCurrentFrame();
-      case DeleteSubject.nothing:
+      case PillSubject.nothing:
+        break;
+    }
+  }
+
+  /// 🚨I-45 — WHAT the link-independent button would unlink right now, on
+  /// the TIMELINE: the selected linked rows, else the frame axis.
+  ///
+  /// 유저 2026-09-20: 「링크 독립버튼. 위치는 타임라인의 공용 알약부분? 프레임
+  /// 독립시키거나 레이어나 컷이나」, answered 2026-09-23 (link-independent-
+  /// button): 「정확히는 다른 편집버튼등의 로직 그대로 따라감 … 선택안하면
+  /// 현재프레임, 선택하면 해당 선택한 소재가 기준임」 — so it is the shared
+  /// pill's one ladder ([pillSubjectOn]) with the linked predicates.
+  ///
+  /// ⚠️No cuts rung here: cuts are the storyboard's noun (R5q1), and its
+  /// context resolves them through its own edit target.
+  PillSubject get unlinkSubject => pillSubjectOn(
+    cuts: false,
+    layers: () => layerVerbs.linkedSelectedLayerIds().isNotEmpty,
+    cells: () => cells.canUnlinkCells,
+  );
+
+  /// Runs whatever [unlinkSubject] names — one undo step either way.
+  void unlinkSelectionSubject() {
+    switch (unlinkSubject) {
+      case PillSubject.layers:
+        layerVerbs.unlinkSelectedLayers();
+      case PillSubject.cells:
+        cells.unlinkCells();
+      case PillSubject.cuts:
+      case PillSubject.nothing:
         break;
     }
   }

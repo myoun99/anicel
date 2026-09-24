@@ -14,7 +14,8 @@ import 'layer_pose_matrix.dart';
 import 'viewport_transform_matrix.dart';
 
 export 'camera_projection_matrix.dart' show cameraProjectionMatrix;
-export 'layer_pose_matrix.dart' show LayerPoseSample, layerPoseMatrix;
+export 'layer_pose_matrix.dart'
+    show LayerPoseSample, artworkToCanvas, canvasToArtwork, layerPoseMatrix;
 
 /// Applies a layer's transform pose to [canvas] before its image draws at
 /// the origin — see [layerPoseMatrix] for the mapping.
@@ -122,33 +123,17 @@ Matrix4 layerPoseViewportWrapMatrix(
 /// layer's own coordinates. Guides live in canvas space, so they have to
 /// make the same trip or the axis will sit where the pen is not.
 ///
-/// Built from [layerPoseMatrix] rather than from the pose's numbers so
-/// there is one piece of pose math in the app, not two that can drift.
-/// Returns [guides] unchanged for a null or singular pose — a zero zoom
-/// collapses the layer to nothing, and there is no artwork space to speak
-/// of then.
+/// Built from [canvasToArtwork] — the one pose inverse — rather than from
+/// the pose's numbers, so there is one piece of pose math in the app, not
+/// two that can drift. Returns [guides] unchanged for a null or singular
+/// pose — a zero zoom collapses the layer to nothing, and there is no
+/// artwork space to speak of then.
 CutGuides guidesInArtworkSpace(
   CutGuides guides,
   LayerPoseSample? sample,
   CanvasSize canvasSize,
 ) {
   if (sample == null || guides.isEmpty) return guides;
-  final matrix = layerPoseMatrix(
-    sample.pose,
-    canvasSize,
-    anchorPoint: sample.anchorPoint,
-  );
-  if (matrix.invert() == 0) return guides;
-  final inverse = matrix.storage;
-  return mapGuides(
-    guides,
-    GuideTransform(
-      inverse[0],
-      inverse[1],
-      inverse[4],
-      inverse[5],
-      inverse[12],
-      inverse[13],
-    ),
-  );
+  final toArtwork = canvasToArtwork(sample, canvasSize);
+  return toArtwork == null ? guides : mapGuides(guides, toArtwork);
 }

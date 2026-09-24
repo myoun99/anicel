@@ -256,7 +256,7 @@ int main(void) {
   // makes of a colour, the reader turns back into that colour. The Apple
   // writer let VideoToolbox pick its matrix instead and lost red in
   // proportion — 110 came back 101 — which is exactly what a round trip
-  // catches (2026-09-25, board `trimmed-piece-apple-parity`). Both layouts,
+  // catches (2026-09-24, board `trimmed-piece-apple-parity`). Both layouts,
   // and the padding an odd picture gets is WHITE, as exports always drew.
   {
     // A 3x1 picture in a 4x4 frame: the top-left 2x2 block takes its

@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/staged_carry.dart';
 import '../helpers/temp_dir.dart';
 
 /// What the media pool's conform column reads, and the two laws under it:
@@ -69,7 +70,7 @@ void main() {
   test('a carried asset reports what its STAGED copy takes, which is the '
       'size the disk actually lost', () async {
     await session.mediaPool.addMediaAssets([sourcePath], carried: true);
-    final staged = session.mediaStagingStore.find(sourcePath)!;
+    final staged = stagedCopyIn(session, sourcePath)!;
     expect(
       session.projectFile.mediaStoredBytesFor(sourcePath),
       staged.storedLength,

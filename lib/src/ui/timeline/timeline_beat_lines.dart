@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
+import '../../models/app_frame_grid_settings.dart';
 import '../theme/app_theme.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
@@ -28,6 +29,12 @@ import '../repaint_props.dart';
 /// each block drawing seams on its paper, and each fx band its own grid
 /// instance (F-7). The rows' grounds are THIS sheet's now, so the rows
 /// paint paper and nothing else, and every line is drawn here, once.
+///
+/// 🗣️유저 2026-09-24: 「블록 세로선 역시 있는것도 좋아서 환경설정에 옵션으로
+/// 두고싶어. 기본값은 있음으로」 — so a block's paper MAY carry this sheet's
+/// lines again (Preferences ▸ Display, on by default). Still one line per
+/// boundary: the paper hides the sheet's, and [timelineBlockFrameLine] draws
+/// the same line — this file's cadence, weight and snap — onto the paper.
 ///
 /// The painter lives in the scroll CONTENT's coordinate space (its size
 /// is the full built content), so lines land on absolute frame
@@ -291,12 +298,16 @@ Color? timelineGridGroundOver({
 ///
 /// ⛔Do not read the ground off `colorScheme` at the point of use. That
 /// guess is right three times in four, which is the worst kind of wrong.
-class TimelineGridLaw extends InheritedWidget {
+///
+/// It carries the user's grid preference too ([AppFrameGridSettings]) —
+/// read HERE, so every row under a host sees the same answer and no host
+/// has to remember to hand it down.
+class TimelineGridLaw extends StatelessWidget {
   const TimelineGridLaw({
     super.key,
     required this.ground,
     required this.framesPerSecond,
-    required super.child,
+    required this.child,
   });
 
   /// The host's own Material colour under the overlay; null where the grid
@@ -306,13 +317,91 @@ class TimelineGridLaw extends InheritedWidget {
   /// The counting fps — which boundaries are SECOND boundaries.
   final int framesPerSecond;
 
-  static TimelineGridLaw? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<TimelineGridLaw>();
+  final Widget child;
+
+  /// The law in force at [context]; null where no host states one.
+  static TimelineGridLawData? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_TimelineGridLawScope>()?.law;
 
   @override
-  bool updateShouldNotify(TimelineGridLaw oldWidget) =>
-      oldWidget.ground != ground ||
-      oldWidget.framesPerSecond != framesPerSecond;
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<AppFrameGridSettings>(
+        valueListenable: AppFrameGridSettings.settings,
+        builder: (context, settings, child) => _TimelineGridLawScope(
+          law: (
+            ground: ground,
+            framesPerSecond: framesPerSecond,
+            blockFrameLines: settings.blockFrameLines,
+          ),
+          child: child!,
+        ),
+        child: child,
+      );
+}
+
+/// What a host's grid law says: the ground, the counting fps, and whether
+/// the frame lines cross a block's paper.
+typedef TimelineGridLawData = ({
+  Color? ground,
+  int framesPerSecond,
+  bool blockFrameLines,
+});
+
+class _TimelineGridLawScope extends InheritedWidget {
+  const _TimelineGridLawScope({required this.law, required super.child});
+
+  final TimelineGridLawData law;
+
+  @override
+  bool updateShouldNotify(_TimelineGridLawScope oldWidget) =>
+      oldWidget.law != law;
+}
+
+/// THE frame line across a block's paper — the sheet's own line at the
+/// boundary starting [frameIndex] (the same cadence, weight and snap),
+/// inked onto the [paper] it crosses; null where it is not drawn.
+///
+/// [boundary] is where that boundary lies along the frame axis in the
+/// drawer's own coordinates, [across] the paper's extent across it.
+///
+/// ⛔Null over see-through paper as well as where the cadence thins the
+/// boundary out: the sheet's own line already shows through such paper (a
+/// folded row's unworked block, over the artwork), and a second line on it
+/// is F-7's doubled line (「선이 이중적용되고있는건가?」).
+///
+/// Every block that shows the lines asks here — the rows, both raster paths
+/// of them, and the paper spans — so a line on a block cannot come out of a
+/// different law than the line beside it on the ground.
+({Rect rect, Color color})? timelineBlockFrameLine({
+  required Axis axis,
+  required int frameIndex,
+  required double boundary,
+  required ({double from, double to}) across,
+  required double frameCellExtent,
+  required int framesPerSecond,
+  required ColorScheme colorScheme,
+  required Color paper,
+}) {
+  if (paper.a < 1) {
+    return null;
+  }
+  final ink = timelineFrameBoundaryLineInk(
+    frameIndex: frameIndex,
+    frameCellExtent: frameCellExtent,
+    framesPerSecond: framesPerSecond,
+    colorScheme: colorScheme,
+  );
+  if (ink == null) {
+    return null;
+  }
+  final from = boundary + timelineGridLineSnap - ink.strokeWidth / 2;
+  final to = from + ink.strokeWidth;
+  return (
+    rect: axis == Axis.horizontal
+        ? Rect.fromLTRB(from, across.from, to, across.to)
+        : Rect.fromLTRB(across.from, from, across.to, to),
+    color: timelineGridLineInkOnGround(ink, paper),
+  );
 }
 
 /// The ground a LANE row stands on while nobody stands on it — the lane

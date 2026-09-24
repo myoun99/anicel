@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/fill_reference_button.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
@@ -16,6 +17,7 @@ import 'layer_label_controls.dart';
 import 'layer_opacity_field.dart';
 import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
+import 'rail_eyes.dart';
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
 import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
@@ -56,6 +58,14 @@ const double timelineLayerRowLeadingBorder = 1;
 /// `transformTrack` (the LANE rows read it, and those are unmemoized),
 /// `audioGain`/`audioPan` (the mixer reads them from the session while it
 /// is open), `attachedMode` and `folderId`.
+///
+/// 🚨And `isVisible`, which the row DOES show — through [RailEyes], not
+/// through this token. an-eye-rebuilds-its-whole-row (measured 2026-09-23):
+/// a solo flips most rows' eyes in one frame, and with the eye in here every
+/// one of those rows rebuilt all twelve slots — 3,051 elements, 55 ms of UI
+/// thread on the user's machine (I-19, 「솔로 버벅임」). The eye and the plate
+/// that dims with it read [RailEyes] themselves, so a flip rebuilds those
+/// two and nothing else.
 final class ControlsRowFace {
   const ControlsRowFace(this.layer);
 
@@ -73,7 +83,6 @@ final class ControlsRowFace {
             a.name == b.name &&
             a.kind == b.kind &&
             a.opacity == b.opacity &&
-            a.isVisible == b.isVisible &&
             a.muted == b.muted &&
             a.mark == b.mark &&
             a.onTimesheet == b.onTimesheet &&
@@ -90,7 +99,6 @@ final class ControlsRowFace {
     layer.name,
     layer.kind,
     layer.opacity,
-    layer.isVisible,
     layer.muted,
     layer.mark,
     layer.onTimesheet,
@@ -564,11 +572,18 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// The stood-up header's slot is 14px TALL, so the plate wears no upright
   /// text there (A6) — the chip reads the axis.
-  Widget _markChip() => LayerMarkChip.forLayer(
-    layer,
-    keyPrefix: keyPrefix,
-    onMarkSelected: onLayerMarkSelected,
-    axis: axis,
+  ///
+  /// Its plate dims with the eye (F-56), so it reads the eye the way the eye
+  /// does — [_visibilityToggle].
+  Widget _markChip() => RailEyeBuilder(
+    layer: layer,
+    builder: (context, eyeOn) => LayerMarkChip.forLayer(
+      layer,
+      keyPrefix: keyPrefix,
+      onMarkSelected: onLayerMarkSelected,
+      axis: axis,
+      isVisible: eyeOn,
+    ),
   );
 
   /// The TYPE BUTTON (UI-R24 #7): the kind icon in its OWN fixed slot, a
@@ -726,7 +741,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   List<Widget> _trailingCells(ColorScheme colorScheme) =>
       layerRailTrailingCells(
         axis: axis,
-        fillReference: _fillReferenceToggle(colorScheme),
+        fillReference: _fillReferenceToggle(),
         fx: _fxSwitch(),
         hasOnionColumn: onToggleLayerOnionSkin != null,
         onion: _onionToggle(colorScheme),
@@ -740,24 +755,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// Fill-reference toggle (R20-C2): drawing rows only — every OTHER kind
   /// reserves the slot so the legend header's column icons line up over one
   /// Excel-style grid (R-toolbar round).
-  Widget? _fillReferenceToggle(ColorScheme colorScheme) {
+  Widget? _fillReferenceToggle() {
     final onToggle = onToggleLayerFillReference;
-    if (onToggle == null || layer.kind != LayerKind.animation) return null;
+    if (onToggle == null || !layer.kind.carriesFillReference) return null;
     return acrossBox(
       axis,
       26,
-      child: AppIconButton(
+      child: FillReferenceButton(
         keyValue: '$keyPrefix-layer-fill-reference-${layer.id}',
-        tooltip: layer.isFillReference
-            ? AppText.strings.railFillReferenceOn
-            : AppText.strings.railFillReference,
+        isOn: layer.isFillReference,
         size: _box(slot: layerFillReferenceSlotWidth, across: 26, iconSize: 16),
-        icon: Icon(
-          Icons.format_color_fill,
-          color: layer.isFillReference
-              ? colorScheme.primary
-              : colorScheme.outline.withValues(alpha: 0.45),
-        ),
         onPressed: () => onToggle(layer.id),
       ),
     );
@@ -818,11 +825,17 @@ class TimelineLayerControlsRow extends StatelessWidget {
     );
   }
 
+  /// Built from [RailEyes], not from [layer]: a memoized row keeps the
+  /// [Layer] it was built with, and the eye is the one thing a flip changes
+  /// — so it is the one thing a flip rebuilds (an-eye-rebuilds-its-whole-row).
   Widget _visibilityToggle() => RailSwipeColumnPointer(
-    child: LayerVisibilityToggleButton(
-      keyValue: '$keyPrefix-layer-visibility-${layer.id}',
-      isVisible: layer.isVisible,
-      onToggle: () => onToggleLayerVisibility(layer.id),
+    child: RailEyeBuilder(
+      layer: layer,
+      builder: (context, eyeOn) => LayerVisibilityToggleButton(
+        keyValue: '$keyPrefix-layer-visibility-${layer.id}',
+        isVisible: eyeOn,
+        onToggle: () => onToggleLayerVisibility(layer.id),
+      ),
     ),
   );
 

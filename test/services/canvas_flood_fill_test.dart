@@ -23,6 +23,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 
 void main() {
@@ -228,8 +229,9 @@ void main() {
       );
     });
 
-    test('REFERENCE layers gate the fill source (R20-C2): a flagged line '
-        'layer wins over paint layers; no flag = fill what you see', () {
+    test('the fill reads what its REFERENCE SOURCE says (I-36, 유저 '
+        '2026-09-24: 「모드 세개. 참조(보이는거 전부), 참조(참조 설정한 '
+        '레이어만, 없으면 현재), 현재레이어」)', () {
       // A paint layer whose opaque blob covers the whole canvas — without
       // the reference filter it becomes the seed color and the barrier
       // box on the ink layer is invisible to the fill.
@@ -264,29 +266,77 @@ void main() {
       BitmapSurface? resolve(Layer layer, Frame _) =>
           layer.id == const LayerId('ink') ? inkSurface : blobSurface;
 
-      // No reference flag: the blob hides the box → the fill floods the
-      // whole canvas (fill what you see).
-      final unflagged = buildFillDab(
-        cut: cutWith([inkLayer(), paintLayer]),
-        frameIndex: 0,
-        surfaceResolver: resolve,
-        point: CanvasPoint(x: 3, y: 3),
-        color: 0xFF3366CC,
-        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
-      expect(unflagged.stamp!.width, 8, reason: 'blob = one flat region');
+      // What the fill encloses, read by the stamp's size: the blob is ONE
+      // flat region (8 wide), the ink's box holds the seed in 2×2.
+      (int, int) filled(
+        CanvasReadSource source, {
+        required bool inkFlagged,
+        required LayerId active,
+      }) {
+        final dab = buildFillDab(
+          cut: cutWith([
+            inkLayer().copyWith(isFillReference: inkFlagged),
+            paintLayer,
+          ]),
+          frameIndex: 0,
+          surfaceResolver: resolve,
+          point: CanvasPoint(x: 3, y: 3),
+          color: 0xFF3366CC,
+          options: FloodFillOptions(
+            expandPx: 0,
+            antiAlias: false,
+            source: source,
+          ),
+          activeLayerId: active,
+        )!;
+        return (dab.stamp!.width, dab.stamp!.height);
+      }
 
-      // Ink flagged as fill reference: the fill reads ONLY the ink layer
-      // — the box contains it exactly like the single-layer case.
-      final flagged = buildFillDab(
-        cut: cutWith([inkLayer().copyWith(isFillReference: true), paintLayer]),
-        frameIndex: 0,
-        surfaceResolver: resolve,
-        point: CanvasPoint(x: 3, y: 3),
-        color: 0xFF3366CC,
-        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
-      expect((flagged.stamp!.width, flagged.stamp!.height), (2, 2));
+      const ink = LayerId('ink');
+      const paint = LayerId('paint');
+      const blob = (8, 8);
+      const box = (2, 2);
+
+      // 「보이는거 전부」: the blob hides the box, flag or no flag.
+      for (final inkFlagged in [false, true]) {
+        expect(
+          filled(
+            CanvasReadSource.display,
+            inkFlagged: inkFlagged,
+            active: ink,
+          ),
+          blob,
+          reason: 'what you see is the blob',
+        );
+      }
+      // 「참조 설정한 레이어만」: the flagged ink alone, whoever is active —
+      // paint on a colour layer never blocks a fill traced on the line art.
+      for (final active in [ink, paint]) {
+        expect(
+          filled(CanvasReadSource.references, inkFlagged: true, active: active),
+          box,
+          reason: 'the reference is the ink, active $active',
+        );
+      }
+      // 「없으면 현재」: nothing flagged, the ACTIVE layer is read.
+      expect(
+        filled(CanvasReadSource.references, inkFlagged: false, active: ink),
+        box,
+      );
+      expect(
+        filled(CanvasReadSource.references, inkFlagged: false, active: paint),
+        blob,
+        reason: 'the paint layer is current: its blob is all there is',
+      );
+      // 「현재레이어」: the active layer alone, flags or not.
+      expect(
+        filled(CanvasReadSource.layer, inkFlagged: true, active: paint),
+        blob,
+      );
+      expect(
+        filled(CanvasReadSource.layer, inkFlagged: false, active: ink),
+        box,
+      );
 
       // The flag itself persists through the layer's JSON.
       final reopened = Layer.fromJson(

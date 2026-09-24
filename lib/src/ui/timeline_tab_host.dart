@@ -904,8 +904,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
             // Master-bar drags (UI-R6 #2): rows' sliders follow the preview
             // channel live; at rest the bar shows the last committed value.
-            opacityDragPreview: _session.opacityDragPreview,
-            masterOpacityValue: _session.lastMasterOpacity,
+            opacityDragPreview: _session.opacityVerbs.dragPreview,
+            masterOpacityValue: _session.opacityVerbs.lastMasterOpacity,
             // R27 #6: the blend mode reads and commits from the LABEL now.
             onLayerBlendModeSelected: _session.layerSwitches.setLayerBlendMode,
             // R27 #9: the camera row's opacity IS the camera-view dim

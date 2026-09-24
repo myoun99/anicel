@@ -5,6 +5,7 @@ import 'dart:isolate';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
 import '../media/media_byte_source.dart';
@@ -362,7 +363,7 @@ class AnicelFileService {
     required BrushFrameStore brushFrameStore,
     List<BrushFrameStore> auxCelStores = const [],
     required String filePath,
-    Map<String, MediaByteSource> mediaToStore = const {},
+    Map<MediaCarry, MediaByteSource> mediaToStore = const {},
 
     /// Pool path → the conform to carry alongside it, taken AS IT SITS
     /// (framed stays framed). Whatever is absent here has its conform
@@ -816,7 +817,7 @@ class AnicelFileService {
     required String filePath,
     required String saveDirectory,
     required AnicelSessionFields sessionFields,
-    Map<String, MediaByteSource> mediaToStore = const {},
+    Map<MediaCarry, MediaByteSource> mediaToStore = const {},
 
     /// Pool path → the conform to carry alongside it, taken AS IT SITS
     /// (framed stays framed). Whatever is absent here has its conform
@@ -1013,9 +1014,14 @@ class AnicelFileService {
   /// is a survivor of the append like any untouched cel — re-streaming it
   /// every save would rewrite the project's whole media area to change
   /// one drawing.
+  ///
+  /// 🚨That holds because the name is the CARRY's ([anicelMediaEntryName]).
+  /// Named by the path, a file carried again after a removal found its old
+  /// entry here and was never written — the save kept the old bytes (card
+  /// `recarry-after-remove-reads-the-old`).
   static List<AnicelStreamedEntry> _mediaToAppend(
     AnicelZipLayout layout,
-    Map<String, MediaByteSource> mediaToStore,
+    Map<MediaCarry, MediaByteSource> mediaToStore,
   ) => [
     for (final entry in mediaToStore.entries)
       if (layout.entryNamed(
@@ -1066,7 +1072,9 @@ class AnicelFileService {
   /// compaction, so a deleted 500MB track could sit in the file for ever
   /// — and worse, a live name silently reattached a RE-imported same-path
   /// asset to the OLD bytes (the presence check in [_mediaToAppend] skips
-  /// streaming when the name already exists).
+  /// streaming when the name already exists). That half is the carry's
+  /// name's job now ([anicelMediaEntryName]): this sweep only ran at a
+  /// save, and a file carried again BEFORE one still found the old name.
   ///
   /// 🚨★★★**AND THIS IS THE SETTINGS-CHANGE SWEEP** (유저 2026-08-30:
   /// 「레이트 변경 등 죽은파일만 깔끔하게 잘 걷어낼것」).
@@ -1082,7 +1090,7 @@ class AnicelFileService {
   /// outside it, and that is the whole test.
   static Set<String> _namesToDrop(
     AnicelZipLayout layout, {
-    required Map<String, MediaByteSource> mediaToStore,
+    required Map<MediaCarry, MediaByteSource> mediaToStore,
     required ProjectConforms conforms,
   }) {
     final wantedMediaNames = {
@@ -1135,7 +1143,7 @@ class AnicelFileService {
     required String filePath,
     required String saveDirectory,
     required AnicelSessionFields sessionFields,
-    Map<String, MediaByteSource> mediaToStore = const {},
+    Map<MediaCarry, MediaByteSource> mediaToStore = const {},
 
     /// Pool path → the conform to carry alongside it, taken AS IT SITS
     /// (framed stays framed). Whatever is absent here has its conform
@@ -1312,7 +1320,7 @@ class AnicelFileService {
     required Project project,
     required String saveDirectory,
     required List<_CelWork> works,
-    required Map<String, MediaByteSource> mediaToStore,
+    required Map<MediaCarry, MediaByteSource> mediaToStore,
     required ProjectConforms conforms,
     // Plain maps inside, so the closure carries values the port can copy —
     // the picker's grant type could not cross this boundary at all.

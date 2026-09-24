@@ -93,7 +93,30 @@ void main() {
   /// three view facts, the row the filter spares and the fx answer the
   /// filter asks — plus the folder index and attach base the builder
   /// computes once for the indent too, passed in rather than asked twice.
-  const wideSignatures = 388;
+  ///
+  /// ⚠️388 → 391 on 2026-09-24, three named as the rule above asks — the
+  /// block frame lines round (유저: a switch, and 「좀 더 성능적으로
+  /// 개선해주면 좋아」). `TimelineGridTileOpWriter.boxFill` (five) and
+  /// `.runFill` (eight) are the writer's cheap spellings of `rrectFill` — the
+  /// same bytes, pinned by `qa_grid_split_fills_test` — so they take its
+  /// operands in its order: the box's four numbers and the colour, and for a
+  /// run its radius and corner mask and which way the run runs. Every fill
+  /// the writer writes takes that positional shape, and a pair of helpers
+  /// taking a `Rect` of their own would be the one odd pair in it.
+  /// `timelineBlockFrameLine` (eight) is the ONE line every block asks for:
+  /// the four inputs of the sheet's own ink law (the frame, the cell
+  /// extent, the fps, the scheme — `timelineFrameBoundaryLineInk`'s), where
+  /// the line lies (the axis, the boundary, the paper's cross span) and the
+  /// paper it is inked onto. Asking the ink apart from placing it would put
+  /// that composition back at each block that draws the line — the copy the
+  /// function exists to end.
+  ///
+  /// ⚠️391 → 389 on 2026-09-25, lowered as the rule asks: master stood at
+  /// 390, and the carry round (`recarry-after-remove-reads-the-old`) took
+  /// one off — `storedMediaBytesFor` asks by the carry now, and a carry
+  /// knows its path, so the path left its parameters. 🔬`clean_code_diff`
+  /// between master and the lane names that one and nothing added.
+  const wideSignatures = 389;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
@@ -161,7 +184,30 @@ void main() {
   /// exact reason and the storyboard has no such thing — every one of its
   /// parameters is spelled at the call site. Bundling them is a change to
   /// every caller, not to this round.
-  const longClasses = 58;
+  ///
+  /// ⚠️58 → 59 on 2026-09-24, ONE name: `FlipHudPainter` sat at 596 and the
+  /// block-frame-lines switch (유저 2026-09-24) took it to 610 — the field and
+  /// its decision, and the strip's grid drawn under the bodies or over them
+  /// by it. 🔬`clean_code_diff.dart` between HEAD and the lane names it and
+  /// no other class this round touches. ⛔Splitting the flip window's
+  /// painter to get back under is a round of its own, not this one's.
+  ///
+  /// ⚠️59 → 60 on 2026-09-25, ONE name: `MediaPool` crossed (560 → 605)
+  /// in the carry round (`recarry-after-remove-reads-the-old`). It took in
+  /// the question the placement doors and the cut folder had each spelled
+  /// — which arriving carried files need their bytes held
+  /// (`holdCarriedBytes`), so `ProjectImportDoors` shrank as it grew — and
+  /// the decisions on why `_admit` waits only when something is to be held
+  /// and why a relink keeps the carry's token. 🔬`clean_code_diff` between
+  /// master and the lane names this one and no other. ⛔Not split to fit:
+  /// the pool's verbs are one conversation (its header says why), and the
+  /// question joined it.
+  /// ⚠️The diff tool reads one class fewer than this test, on both trees:
+  /// handed an absolute root it drops `lib/dev/` as the scan says, while
+  /// this test's `'lib'` gives paths with no leading slash, which the
+  /// `'/lib/dev/'` check never matches — so the dev tool's own long class
+  /// counts here. Read the count off this test, not off the tool.
+  const longClasses = 60;
 
   late CleanCodeScan scan;
   setUpAll(() {

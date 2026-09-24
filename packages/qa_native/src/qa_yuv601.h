@@ -9,7 +9,7 @@
 // of itself each way round, which is BT.709 in and BT.601 out. Measured on
 // the Apple runner: red 110 written came back 101, and a piece cut from a
 // take came back 168 where the take showed 185 and 200 was written
-// (2026-09-25, board `trimmed-piece-apple-parity`). Naming BT.601 in the
+// (2026-09-24, board `trimmed-piece-apple-parity`). Naming BT.601 in the
 // writer's colour properties moved none of those numbers, so the matrix is
 // not the writer's to choose that way — it is chosen by handing the encoder
 // YCbCr made HERE. The Android writer always converted by hand; this is now

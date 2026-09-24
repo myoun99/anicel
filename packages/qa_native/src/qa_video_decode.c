@@ -351,7 +351,7 @@ static void qa_rotate_rgba(const uint8_t* stored,
 // because one backend called it and anywhere else it would have been an
 // unused `static`. It is `qa_yuv420_to_rgba` in `qa_yuv601.h` now, beside
 // the conversion every writer makes the other way, so the matrix the writers
-// write and the one this reads are one file (2026-09-25).
+// write and the one this reads are one file (2026-09-24).
 
 // 🚨**QA_DECODE_LAW_ONLY: the law without a platform under it.**
 //

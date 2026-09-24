@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../models/app_frame_grid_settings.dart';
 import '../../models/frame.dart' show celNumberOrMark;
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
 import '../timeline/timeline_cell_style.dart';
@@ -258,18 +259,23 @@ class FlipHudOverlay extends StatelessWidget {
         FlipHudMetrics.slideFor(controller.lastStepInterval),
       ),
       curve: Curves.easeOutCubic,
-      builder: (context, scrollCentre, _) => CustomPaint(
-        painter: FlipHudPainter(
-          snapshot: snapshot,
-          axis: axis,
-          frameStep: frameStep,
-          scrollCentre: scrollCentre,
-          colorScheme: Theme.of(context).colorScheme,
-          standing: standing,
-          // The app's face for every word it writes (「앱은 한 글꼴」).
-          baseTextStyle: DefaultTextStyle.of(context).style,
-        ),
-      ),
+      builder: (context, scrollCentre, _) =>
+          ValueListenableBuilder<AppFrameGridSettings>(
+            valueListenable: AppFrameGridSettings.settings,
+            builder: (context, grid, _) => CustomPaint(
+              painter: FlipHudPainter(
+                snapshot: snapshot,
+                axis: axis,
+                frameStep: frameStep,
+                scrollCentre: scrollCentre,
+                colorScheme: Theme.of(context).colorScheme,
+                standing: standing,
+                // The app's face for every word it writes (「앱은 한 글꼴」).
+                baseTextStyle: DefaultTextStyle.of(context).style,
+                blockFrameLines: grid.blockFrameLines,
+              ),
+            ),
+          ),
     );
   }
 }
@@ -283,7 +289,14 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     required this.baseTextStyle,
     this.scrollCentre,
     this.standing = false,
+    this.blockFrameLines = true,
   });
+
+  /// Whether the frame lines cross a block's body — the user's switch
+  /// (Preferences ▸ Display, 유저 2026-09-24), which the timeline's blocks
+  /// answer too. Off, the strip's grid goes UNDER the bodies, as the
+  /// timeline's sheet lies under its paper.
+  final bool blockFrameLines;
 
   final FlipHudSnapshot snapshot;
   final FlipHudAxis axis;
@@ -411,6 +424,14 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
         slots.length - 1,
         ((stripRect.right - originX) / slotWidth).ceil(),
       );
+      void grid() => _paintGrid(canvas, stripRect, (
+        axis: Axis.horizontal,
+        origin: originX,
+        step: slotWidth,
+      ));
+      if (!blockFrameLines) {
+        grid();
+      }
       for (var index = first; index <= last; index += 1) {
         final slot = slots[index];
         final run = slot.run;
@@ -434,11 +455,9 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
           isRunHead: isHead,
         );
       }
-      _paintGrid(canvas, stripRect, (
-        axis: Axis.horizontal,
-        origin: originX,
-        step: slotWidth,
-      ));
+      if (blockFrameLines) {
+        grid();
+      }
       _paintSelection(
         canvas,
         Rect.fromLTWH(
@@ -868,5 +887,6 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     colorScheme,
     baseTextStyle,
     standing,
+    blockFrameLines,
   );
 }

@@ -10,17 +10,24 @@ import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/drawing_guide.dart';
+import '../models/layer_id.dart';
 import '../models/tiles_covering.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
 import '../core/rgb_tolerance.dart';
 import 'canvas_color_sampler.dart';
+import 'canvas_read_source.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 import 'cut_frame_composite_plan.dart';
+import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'guide_geometry.dart';
+import 'layer_pose_matrix.dart';
+import 'resample/resample_kernel.dart';
+import 'resample/selection_resample.dart';
 import 'mask_morphology.dart';
 import 'mask_soft_edge.dart';
 
@@ -32,7 +39,14 @@ class FloodFillOptions {
     this.antiAlias = true,
     this.gapClosePx = 0,
     this.extendBeyondCanvas = false,
+    this.source = CanvasReadSource.display,
   });
+
+  /// Which layers the flood reads (I-36) — the eyedropper's question, with
+  /// the fill's three answers. The default is the user's first mode, 「참조
+  /// (보이는거 전부)」, which is also what a fill with no reference flag has
+  /// always read.
+  final CanvasReadSource source;
 
   /// Max per-channel distance from the seed color that still fills.
   final int tolerance;
@@ -65,6 +79,7 @@ class FloodFillOptions {
     bool? antiAlias,
     int? gapClosePx,
     bool? extendBeyondCanvas,
+    CanvasReadSource? source,
   }) {
     return FloodFillOptions(
       tolerance: tolerance ?? this.tolerance,
@@ -72,6 +87,7 @@ class FloodFillOptions {
       antiAlias: antiAlias ?? this.antiAlias,
       gapClosePx: gapClosePx ?? this.gapClosePx,
       extendBeyondCanvas: extendBeyondCanvas ?? this.extendBeyondCanvas,
+      source: source ?? this.source,
     );
   }
 
@@ -82,11 +98,18 @@ class FloodFillOptions {
       other.expandPx == expandPx &&
       other.antiAlias == antiAlias &&
       other.gapClosePx == gapClosePx &&
-      other.extendBeyondCanvas == extendBeyondCanvas;
+      other.extendBeyondCanvas == extendBeyondCanvas &&
+      other.source == source;
 
   @override
-  int get hashCode =>
-      Object.hash(tolerance, expandPx, antiAlias, gapClosePx, extendBeyondCanvas);
+  int get hashCode => Object.hash(
+    tolerance,
+    expandPx,
+    antiAlias,
+    gapClosePx,
+    extendBeyondCanvas,
+    source,
+  );
 }
 
 /// The extended fill's apron width per side: one canvas size, capped so
@@ -123,8 +146,8 @@ class FloodFillRegion {
 /// as a straight-RGB raster, composited LAZILY tile by tile as the flood
 /// visits pixels — a fill only pays for the region it actually floods,
 /// never the whole canvas (R11-③: the eager full-canvas compose froze the
-/// tap for seconds on big canvases). Posed layers are skipped (v1, same
-/// rule as the eyedropper).
+/// tap for seconds on big canvases). It lies in the space the SEED is in,
+/// and a posed layer is read through its pose — see the constructor.
 class LazyCanvasRasterRgb {
   /// With the native engine loaded the raster lives in native memory
   /// (R18 A-2b): the compose loops write through typed-data views
@@ -136,6 +159,9 @@ class LazyCanvasRasterRgb {
     required LayerFrameSurfaceResolver surfaceResolver,
     int paperColor = canvasPaperColor,
     bool extendBeyondCanvas = false,
+    CanvasReadSource source = CanvasReadSource.display,
+    LayerId? activeLayerId,
+    LayerPoseSample? space,
   }) {
     // Extended (pasteboard) fills widen the raster by a finite apron and
     // shift its origin into negative world space; the default raster IS
@@ -157,6 +183,8 @@ class LazyCanvasRasterRgb {
       cut: cut,
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
+      read: layersReadBy(source, cut, activeLayerId),
+      space: space,
       paperColor: paperColor,
       handles: handles,
       originX: -marginX,
@@ -170,6 +198,8 @@ class LazyCanvasRasterRgb {
     required Cut cut,
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
+    required Set<LayerId>? read,
+    required LayerPoseSample? space,
     required int paperColor,
     required QaFloodNativeHandles? handles,
     required this.originX,
@@ -191,25 +221,30 @@ class LazyCanvasRasterRgb {
                  ((rasterHeight + _tileSize - 1) ~/ _tileSize),
            ) {
     // Surfaces resolve ONCE (a cold resolve may replay paint commands).
-    final entries = [
-      for (final entry in resolveCutFrameCompositeEntries(
-        cut: cut,
-        frameIndex: frameIndex,
-      ))
-        if (entry.pose == null) entry,
-    ];
-    // R20-C2 reference layers (the CSP lighthouse): when any visible
-    // layer carries the fill-reference flag, the fill reads ONLY the
-    // flagged layers — paint layers stop blocking or leaking fills
-    // traced against the line art. No flag = today's fill-what-you-see.
-    final hasReference = entries.any((entry) => entry.layer.isFillReference);
-    for (final entry in entries) {
-      if (hasReference && !entry.layer.isFillReference) {
+    //
+    // WHICH layers is [read] — the reference source's answer, the one the
+    // eyedropper reads by too. R20-C2's flag (the CSP lighthouse: paint on a
+    // colour layer never blocks or leaks a fill traced against the line
+    // art) is one of its three answers since I-36. HOW each is read is
+    // [_carryInto]'s: in the seed's [space], through the layer's pose.
+    final toCanvas = space == null
+        ? null
+        : artworkToCanvas(space, cut.canvasSize);
+    for (final entry in resolveCutFrameCompositeEntries(
+      cut: cut,
+      frameIndex: frameIndex,
+    )) {
+      if (read != null && !read.contains(entry.layer.id)) {
         continue;
       }
+      final carry = _carryInto(entry, space, toCanvas, cut.canvasSize);
       final surface = surfaceResolver(entry.layer, entry.frame);
-      if (surface != null) {
-        _layers.add((surface: surface, opacity: entry.opacity));
+      if (carry.shows && surface != null) {
+        _layers.add((
+          surface: surface,
+          opacity: entry.opacity,
+          toArtwork: carry.toArtwork,
+        ));
       }
     }
   }
@@ -239,7 +274,7 @@ class LazyCanvasRasterRgb {
   final int _paperB;
   final int _tilesX;
   final Uint8List _composed;
-  final List<({BitmapSurface surface, double opacity})> _layers = [];
+  final List<_ReadLayer> _layers = [];
 
   /// Guarantees the tile containing pixel [index] (row-major) is composed.
   /// The tile a pixel [index] sits in, and where that tile starts.
@@ -496,6 +531,10 @@ class LazyCanvasRasterRgb {
       // seed MATCHING (tolerance compares), so byte-rounded source-over
       // is exact enough by construction.
       final opacityInt = (layer.opacity * 255).round();
+      if (layer.toArtwork != null) {
+        yield _carriedTileUnder(layer, region);
+        continue;
+      }
       for (final covered in tilesCovering(layer.surface, region)) {
         yield (
           tile: covered.tile,
@@ -510,6 +549,138 @@ class LazyCanvasRasterRgb {
       }
     }
   }
+
+  /// [layer] carried onto one compose rect ([world], the rect in raster
+  /// WORLD space) through its `toArtwork`: a compose-sized tile resampled by
+  /// the resampler that carries a transformed picture everywhere else, so
+  /// the three composes blend it like any stored tile.
+  ///
+  /// Blend, not pick: the screen draws a posed layer filtered, and the fill
+  /// reads what the screen shows.
+  _LayerTileUnder _carriedTileUnder(_ReadLayer layer, DirtyRegion world) {
+    final toArtwork = layer.toArtwork!;
+    final source = _preimageOf(toArtwork, world);
+    final pixels = Uint8List(BitmapTile.bytesFor(_tileSize));
+    resampleSelectionInto(
+      src: bitmapSurfaceRegionPixels(layer.surface, source),
+      srcWidth: source.width,
+      srcHeight: source.height,
+      dst: pixels,
+      dstWidth: _tileSize,
+      dstHeight: _tileSize,
+      transform: _resampleFold(toArtwork, world, source),
+      mode: ResampleMode.blend,
+    );
+    return (
+      tile: BitmapTile(size: _tileSize, pixels: pixels),
+      opacityInt: (layer.opacity * 255).round(),
+      baseX: world.left - originX,
+      baseY: world.top - originY,
+      clipLeft: world.left - originX,
+      clipTop: world.top - originY,
+      clipRightExclusive: world.rightExclusive - originX,
+      clipBottomExclusive: world.bottomExclusive - originY,
+    );
+  }
+
+  /// What a compose tile at [world]'s origin can read of a layer carried by
+  /// [toArtwork]: its corners' preimage, one tent wider.
+  static DirtyRegion _preimageOf(GuideTransform toArtwork, DirtyRegion world) {
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = double.negativeInfinity;
+    var maxY = double.negativeInfinity;
+    for (final (x, y) in [
+      (world.left, world.top),
+      (world.left + _tileSize, world.top),
+      (world.left, world.top + _tileSize),
+      (world.left + _tileSize, world.top + _tileSize),
+    ]) {
+      final corner = toArtwork.apply(
+        CanvasPoint(x: x.toDouble(), y: y.toDouble()),
+      );
+      minX = math.min(minX, corner.x);
+      minY = math.min(minY, corner.y);
+      maxX = math.max(maxX, corner.x);
+      maxY = math.max(maxY, corner.y);
+    }
+    return DirtyRegion(
+      left: minX.floor() - 2,
+      top: minY.floor() - 2,
+      rightExclusive: maxX.ceil() + 2,
+      bottomExclusive: maxY.ceil() + 2,
+    );
+  }
+
+  /// [toArtwork] folded into the kernel's destination-INDEX → source-index
+  /// form, for a tile at [world]'s origin reading [source] — the kernel
+  /// supplies both half pixels (see `selectionAffineResampleTransform`).
+  static ResampleTransform _resampleFold(
+    GuideTransform toArtwork,
+    DirtyRegion world,
+    DirtyRegion source,
+  ) => ResampleTransform(
+    a: toArtwork.a,
+    b: toArtwork.c,
+    c: toArtwork.a * world.left +
+        toArtwork.c * world.top +
+        toArtwork.tx -
+        source.left,
+    d: toArtwork.b,
+    e: toArtwork.d,
+    f: toArtwork.b * world.left +
+        toArtwork.d * world.top +
+        toArtwork.ty -
+        source.top,
+  );
+}
+
+/// A layer the raster reads: its surface, its opacity, and — for a layer
+/// NOT placed as the seed's space — how raster WORLD maps into its artwork
+/// (null = read 1:1). See [_carryInto].
+typedef _ReadLayer = ({
+  BitmapSurface surface,
+  double opacity,
+  GuideTransform? toArtwork,
+});
+
+/// How [entry] is read by a raster laid in [space]: null `toArtwork` for a
+/// layer placed exactly as that space (read 1:1, byte for byte as before —
+/// every layer, when nothing is posed); otherwise the map from raster WORLD
+/// into the layer's artwork, out through the space's pose ([toCanvas]) and
+/// in through the inverse of the layer's own. `shows` is false when the
+/// layer's pose collapses it: it shows nothing, so it walls nothing.
+///
+/// 🚨I-36 — THE POSE LAW, the eyedropper's since R28 #7: a posed layer is
+/// read THROUGH its pose, never skipped. P5+P6 skipped posed layers in both
+/// tools as a 「v1」; the eyedropper outgrew it, the fill kept it, so line
+/// art with a transform key — or inside a folder with one — never walled a
+/// fill (유저 2026-09-24: 「이 과정에서 법 다른거 통일」). The raster lies in
+/// the SEED's space because that is where the pen is and where the dab
+/// lands: the draw-through wrap hands the seed over in the posed layer's
+/// artwork.
+({bool shows, GuideTransform? toArtwork}) _carryInto(
+  CutFrameCompositeEntry entry,
+  LayerPoseSample? space,
+  GuideTransform? toCanvas,
+  CanvasSize canvasSize,
+) {
+  if (entry.pose == space?.pose &&
+      (space == null || entry.anchorPoint == space.anchorPoint)) {
+    return (shows: true, toArtwork: null);
+  }
+  final pose = entry.pose;
+  final fromCanvas = pose == null
+      ? const GuideTransform.identity()
+      : canvasToArtwork(
+          (pose: pose, anchorPoint: entry.anchorPoint),
+          canvasSize,
+        );
+  if (fromCanvas == null) {
+    return (shows: false, toArtwork: null);
+  }
+  final carried = toCanvas == null ? fromCanvas : fromCanvas.compose(toCanvas);
+  return (shows: true, toArtwork: carried.isIdentity ? null : carried);
 }
 
 /// One layer tile under a compose rect — see
@@ -1075,6 +1246,11 @@ BrushDab? buildShapeFillDab({
 /// [symmetry] makes the tap fill every copy of the seed, unioned into the
 /// same single dab — see the loop below for why the stroke path's dab
 /// replication is the wrong tool here.
+///
+/// [activeLayerId] is the 「현재」 of [FloodFillOptions.source] — the layer
+/// the dab lands on. [space] is where [point] and the dab are: that layer's
+/// ARTWORK when it is posed (the draw-through wrap hands the seed over in
+/// it), null for the canvas.
 BrushDab? buildFillDab({
   required Cut cut,
   required int frameIndex,
@@ -1084,6 +1260,8 @@ BrushDab? buildFillDab({
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
+  LayerId? activeLayerId,
+  LayerPoseSample? space,
   SymmetryShape? symmetry,
   void Function()? onOpenRegion,
 }) {
@@ -1095,6 +1273,9 @@ BrushDab? buildFillDab({
       surfaceResolver: surfaceResolver,
       paperColor: paperColor,
       extendBeyondCanvas: options.extendBeyondCanvas,
+      source: options.source,
+      activeLayerId: activeLayerId,
+      space: space,
     ),
   );
   // A symmetry guide fills every copy of the SEED, not every copy of the

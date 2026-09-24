@@ -74,13 +74,8 @@ class TimelineViewCluster extends StatelessWidget {
   /// bar by 11px — the one place this family did not clip silently.
   static double growthIn(BuildContext context) => math.max(
     2 * TextMeasure(context, _counterMetrics).lineGrowthOf('0'),
-    _zoomBarGrowthIn(context),
+    FieldSlider.growthIn(context),
   );
-
-  static double _zoomBarGrowthIn(BuildContext context) => TextMeasure(
-    context,
-    Theme.of(context).textTheme.labelSmall ?? const TextStyle(),
-  ).lineGrowthOf(TextMeasure.everyScript);
 
   String _frameLabel(int oneBasedFrame) => showSeconds
       ? secondsPlusFramesLabel(oneBasedFrame, projectFrameRate.countingBase)
@@ -201,7 +196,7 @@ class TimelineViewCluster extends StatelessWidget {
             // Zoom reads as percent of the default frame width.
             unit: '%',
             displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
-            height: _zoomBarHeight + _zoomBarGrowthIn(context),
+            height: _zoomBarHeight + FieldSlider.growthIn(context),
             // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of
             // its length on 24→96px and left the whole narrow half — the
             // half the user zooms out into — inside its first few pixels.

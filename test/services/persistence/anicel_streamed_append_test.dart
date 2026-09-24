@@ -47,7 +47,7 @@ void main() {
     final archive = seedArchive();
     final source = writeSource('bgm.wav', 700 * 1024);
     final expected = File(source).readAsBytesSync();
-    final entryName = anicelMediaEntryName(source);
+    final entryName = anicelMediaEntryName((poolPath: source, token: 'c1'));
 
     appendAnicelEntries(
       path: archive,
@@ -72,7 +72,7 @@ void main() {
     final archive = seedArchive();
     final source = writeSource('voice.wav', 300 * 1024);
     final expected = File(source).readAsBytesSync();
-    final entryName = anicelMediaEntryName(source);
+    final entryName = anicelMediaEntryName((poolPath: source, token: 'c1'));
 
     final layout = appendAnicelEntries(
       path: archive,

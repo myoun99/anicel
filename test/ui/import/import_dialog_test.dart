@@ -20,6 +20,7 @@ import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The import/placement window: the interpretation table shows the parse
@@ -1054,7 +1055,7 @@ void main() {
       await tester.pump();
     }
     expect(
-      s.mediaStagingStore.find(piecePath),
+      stagedCopyIn(s, piecePath),
       isNotNull,
       reason: 'carried from the moment it landed (「품은 순간 데이터를 가지고」)',
     );
@@ -1136,7 +1137,7 @@ void main() {
     final piecePath = pool().single.path;
     expect(pool().single.carried, isTrue);
     expect(
-      s.mediaStagingStore.find(piecePath),
+      stagedCopyIn(s, piecePath),
       isNotNull,
       reason: 'held the moment it was registered',
     );

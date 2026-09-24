@@ -20,15 +20,19 @@ Widget layerOpacityField({
   required void Function(LayerId layerId, double opacity) onChanged,
   void Function(LayerId layerId, double opacity)? onChangeEnd,
 }) {
-  Widget slider(double value) => FieldSlider.opacity(
-    key: ValueKey<String>('$keyPrefix-layer-opacity-${layer.id}'),
-    axis: axis,
-    value: value,
-    height: 18,
-    onChanged: (opacity) => onChanged(layer.id, opacity),
-    onChangeEnd: onChangeEnd == null
-        ? null
-        : (opacity) => onChangeEnd(layer.id, opacity),
+  // 18 at 1×, and its digits' growth where it is shown ([FieldSlider
+  // .growthIn], text-scale-rail-rows).
+  Widget slider(double value) => Builder(
+    builder: (context) => FieldSlider.opacity(
+      key: ValueKey<String>('$keyPrefix-layer-opacity-${layer.id}'),
+      axis: axis,
+      value: value,
+      height: 18 + FieldSlider.growthIn(context),
+      onChanged: (opacity) => onChanged(layer.id, opacity),
+      onChangeEnd: onChangeEnd == null
+          ? null
+          : (opacity) => onChangeEnd(layer.id, opacity),
+    ),
   );
 
   // R27 #9: a row whose opacity IS a view notifier (the camera row)

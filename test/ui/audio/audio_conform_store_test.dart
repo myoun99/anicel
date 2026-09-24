@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/media_asset.dart' show MediaCarry;
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
@@ -187,6 +189,96 @@ void main() {
     await pumpEventQueue();
     expect(store.resultFor('a.wav')?.sampleRate, 44100);
     expect(requested, [48000, 44100]);
+    store.dispose();
+  });
+
+  test('🚨a path the pool names ANOTHER carry at is stale on its own — the '
+      'sound of the first carry does not answer for the second', () async {
+    MediaCarry? carry = (poolPath: 'a.wav', token: 'c1');
+    final conformedAs = <String?>[];
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      resolveCarry: (_) => carry,
+      runner: (request) async {
+        conformedAs.add(carry?.token);
+        return ConformResult(
+          outcome: ConformOutcome.built,
+          samples: Float32List(4),
+          channels: 1,
+          sampleRate: request.projectSampleRate,
+          frames: conformedAs.length,
+        );
+      },
+      log: (_) {},
+    );
+
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    expect(store.resultFor('a.wav')?.frames, 1);
+
+    carry = (poolPath: 'a.wav', token: 'c2'); // removed, carried again
+    expect(store.resultFor('a.wav'), isNull, reason: 're-kicked');
+    expect(store.isStreaming('a.wav'), isFalse);
+    await pumpEventQueue();
+    expect(store.resultFor('a.wav')?.frames, 2);
+
+    carry = (poolPath: 'a.wav', token: 'c1'); // and undone back
+    expect(store.samplesFor('a.wav'), isNull);
+    await pumpEventQueue();
+    expect(store.resultFor('a.wav')?.frames, 3);
+
+    carry = null; // left for a link to the file itself
+    expect(store.durationSecondsFor('a.wav'), isNull);
+    await pumpEventQueue();
+    expect(conformedAs, ['c1', 'c2', 'c1', null]);
+    store.dispose();
+  });
+
+  test('with no carry to ask, a path keeps its conform as it always did',
+      () async {
+    var runs = 0;
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async {
+        runs += 1;
+        return _usableResult();
+      },
+      log: (_) {},
+    );
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    expect(runs, 1);
+    store.dispose();
+  });
+
+  test('a rate conversion lands only on the entry it was made from',
+      () async {
+    MediaCarry? carry = (poolPath: 'a.wav', token: 'c1');
+    final resampled = Completer<Float32List>();
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      resolveCarry: (_) => carry,
+      runner: (request) async => _usableResult(),
+      resampleRunner: (request) => resampled.future,
+      log: (_) {},
+    );
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    expect(store.samplesAtRate('a.wav', 44100), isNull, reason: 'kicked');
+
+    carry = (poolPath: 'a.wav', token: 'c2');
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    resampled.complete(Float32List.fromList([9, 9, 9, 9]));
+    await pumpEventQueue();
+
+    expect(
+      store.samplesAtRate('a.wav', 44100),
+      isNot(Float32List.fromList([9, 9, 9, 9])),
+      reason: 'the first carry\'s conversion must not play for the second',
+    );
     store.dispose();
   });
 

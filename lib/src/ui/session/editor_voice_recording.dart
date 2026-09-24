@@ -1075,10 +1075,11 @@ class EditorVoiceRecording {
       channels: channels,
       sampleRate: recording.sampleRate,
     );
-    final path = await _stageRecordingWav(wav, laneName: lane.name);
-    if (path == null) {
+    final carry = await _stageRecordingWav(wav, laneName: lane.name);
+    if (carry == null) {
       return false;
     }
+    final path = carry.poolPath;
 
     final plan = planSeTakePlacement(
       layer: lane,
@@ -1092,10 +1093,9 @@ class EditorVoiceRecording {
     if (plan == null) {
       return false;
     }
-    // Conform first (same order as an import), then the ONE undo step:
-    // pool entry + the lane's whole swap.
+    // The ONE undo step — pool entry + the lane's whole swap — and then the
+    // conform (below).
     audioConformStore.invalidate(path);
-    audioConformStore.warmPaths([path]);
     // 🪦A second `stageCarriedBytes(...)` stood here, and its comment said
     // 「⛔BEFORE the pool records it, like every other way an asset becomes
     // carried」. The law is unchanged and the call is gone because
@@ -1125,7 +1125,7 @@ class EditorVoiceRecording {
                   // clearing the Recordings folder before saving used to
                   // take the performance with it. Carrying now means held,
                   // not just flagged.
-                  carried: true,
+                  carriedAs: carry.token,
                   identity: readMediaIdentity(path),
                 ),
               ],
@@ -1139,12 +1139,18 @@ class EditorVoiceRecording {
         ],
       ),
     );
+    // ⚠️AFTER the pool records the take, not before: a take has no file of
+    // its own, and its bytes are found through the carry the pool names
+    // (`ProjectFile.mediaByteSourceFor`) — asked before the record, there
+    // was none, and the conform read a path where nothing is.
+    audioConformStore.warmPaths([path]);
     notifyListeners();
     return true;
   }
 
-  /// Stages a take's bytes and answers the pool path it is known by, or
-  /// null when the write failed.
+  /// Stages a take's bytes and answers the carry they are held as — the
+  /// pool path it is known by, and its own token — or null when the write
+  /// failed.
   ///
   /// Named `<lane>_T<n>.wav` (REC1-B): the recording-session convention —
   /// the pool line alone says whose take it is and which pass.
@@ -1170,7 +1176,7 @@ class EditorVoiceRecording {
   /// a walk over disk alone would restart at `T01` every launch and put two
   /// `S1_T01.wav` rows in one project — which is exactly the thing the
   /// naming convention exists to prevent.
-  Future<String?> _stageRecordingWav(
+  Future<MediaCarry?> _stageRecordingWav(
     Uint8List bytes, {
     required String laneName,
   }) async {
@@ -1185,14 +1191,15 @@ class EditorVoiceRecording {
         final poolPath = normalizedMediaPath(
           '${_staging.directoryPath}/$name',
         );
-        if (taken.contains(name) || _staging.find(poolPath) != null) {
+        if (taken.contains(name) || _staging.holdsAnyCopyOf(poolPath)) {
           continue;
         }
-        await _staging.stageCarriedBytesInMemory(poolPath, bytes);
+        final carry = (poolPath: poolPath, token: mintMediaCarry());
+        await _staging.stageCarriedBytesInMemory(carry, bytes);
         // We just wrote these, so we know what they hash to without
         // reading anything back.
         rememberMediaFingerprint(poolPath, bytes);
-        return poolPath;
+        return carry;
       }
       return null;
     } on Object {

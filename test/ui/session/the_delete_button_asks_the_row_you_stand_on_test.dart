@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/delete_subject.dart';
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -69,7 +69,7 @@ void main() {
 
     expect(
       session.deleteSubjectFor(cutsAreThisPanels: false),
-      DeleteSubject.nothing,
+      PillSubject.nothing,
     );
     session.deleteSelectionSubject(cutsAreThisPanels: false);
 
@@ -81,7 +81,7 @@ void main() {
 
     expect(
       session.deleteSubjectFor(cutsAreThisPanels: false),
-      DeleteSubject.nothing,
+      PillSubject.nothing,
     );
     session.deleteSelectionSubject(cutsAreThisPanels: false);
 
@@ -119,7 +119,7 @@ void main() {
 
         expect(
           session.deleteSubjectFor(cutsAreThisPanels: false),
-          DeleteSubject.nothing,
+          PillSubject.nothing,
           reason: laneId,
         );
         session.deleteSelectionSubject(cutsAreThisPanels: false);

@@ -559,40 +559,22 @@ void main() {
     expect(selected, isNotEmpty);
   });
 
-  test('cell style keeps drawing cells neutral; blank cells paint NOTHING '
-      '(the column underlay owns the paper, UI-R21 #2)', () {
-    const colorScheme = ColorScheme.light();
-
-    final drawingStart = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.drawingStart,
-      selected: false,
+  test('cell paper keeps drawing cells neutral; blank cells paint NOTHING '
+      '(the sheet under the column owns the ground, UI-R21 #2)', () {
+    expect(
+      timelineCellPaper(TimelineCellExposureState.held),
+      timelineDrawingHeldColor,
     );
-    final heldDrawing = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.held,
-      selected: false,
+    // UI-R20 #7: the block head's dark silhouette is GONE — a run is one
+    // sheet of paper, start and hold alike.
+    expect(
+      timelineCellPaper(TimelineCellExposureState.drawingStart),
+      timelineCellPaper(TimelineCellExposureState.held),
     );
-    final uncovered = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.uncovered,
-      selected: false,
+    expect(
+      timelineCellPaper(TimelineCellExposureState.uncovered),
+      Colors.transparent,
     );
-    final selectedDrawing = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.held,
-      selected: true,
-    );
-
-    expect(heldDrawing.background, timelineDrawingHeldColor);
-    expect(drawingStart.background, timelineDrawingStartColor);
-    expect(drawingStart.background, heldDrawing.background);
-    // UI-R20 #7: the block head's dark silhouette is GONE — the start
-    // seam sits on the same faint grid ink as the held seams.
-    expect(drawingStart.border, heldDrawing.border);
-    expect(uncovered.background, Colors.transparent);
-    expect(selectedDrawing.border, timelineSelectedFrameBorderColor);
-    expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
 }
 

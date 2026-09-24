@@ -31,7 +31,7 @@ import 'package:archive/archive.dart';
 import '../../core/path_names.dart';
 import '../../models/audio_clip.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/media_asset.dart' show normalizedMediaPath;
+import '../../models/media_asset.dart' show MediaCarry, normalizedMediaPath;
 import '../../models/project.dart';
 import '../media/media_fingerprints.dart';
 import 'anicel_payload_codec.dart';
@@ -242,8 +242,30 @@ bool anicelNeedsCompaction({
 /// 🚨[framed] appends [mediaFramedEntrySuffix]. The name is what tells a
 /// reader whether the entry holds a framed blob or the file itself — see
 /// [MediaBlobHeader] for why it is the name and not a byte at the front.
-String anicelMediaEntryName(String poolPath, {bool framed = false}) =>
-    _anicelPoolEntryName(anicelMediaEntryPrefix, poolPath, framed: framed);
+///
+/// 🚨★★★**NAMED FROM THE CARRY, NOT THE PATH** ([MediaAsset.carriedAs]).
+/// Media is written once and never edited — an entry already in the file
+/// is not written again — so a name has to mean ONE set of bytes for good.
+/// The path alone did not: carried again after a removal, the same path
+/// found the old entry and kept its bytes (card
+/// `recarry-after-remove-reads-the-old`). The carry's token rides between
+/// the hash and the file name; the carry a project had before carries had
+/// names (`''`) gets the name the path alone gave, which is what that
+/// project's file holds.
+String anicelMediaEntryName(MediaCarry carry, {bool framed = false}) =>
+    _anicelPoolEntryName(
+      anicelMediaEntryPrefix,
+      carry.poolPath,
+      framed: framed,
+      infix: carry.token,
+    );
+
+/// Both names [carry]'s entry may wear — whether it compressed is a
+/// property of the bytes ([anicelConformEntryNames]'s rule).
+List<String> anicelMediaEntryNames(MediaCarry carry) => [
+  for (final framed in const [true, false])
+    anicelMediaEntryName(carry, framed: framed),
+];
 
 /// The archive entry a piece of media's CONFORM is stored under.
 ///

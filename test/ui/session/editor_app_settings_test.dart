@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_frame_grid_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
@@ -47,6 +49,7 @@ void main() {
     AppInput.settings.value = const AppInputSettings();
     AppSave.settings.value = const AppSaveSettings();
     AppMemory.settings.value = const AppMemorySettings();
+    AppFrameGridSettings.settings.value = const AppFrameGridSettings();
   }
 
   setUp(resetAppWideDefaults);
@@ -66,6 +69,7 @@ void main() {
       'av',
       'uiscale',
       'onion',
+      'grid',
     ];
     String path(String name) => '${directory.path}/$name.json';
 
@@ -82,6 +86,7 @@ void main() {
       onionSkinSettingsStore: AppOnionSkinSettingsStore(
         filePath: path('onion'),
       ),
+      frameGridSettingsStore: AppFrameGridSettingsStore(filePath: path('grid')),
     );
 
     final first = openSession();
@@ -137,6 +142,11 @@ void main() {
       ),
     );
     first.setUiScale(1.25);
+    // The block frame lines (유저 2026-09-24) — a user setting, app-wide like
+    // the accents; OFF here because ON is the default a lost store returns.
+    appSettingsOf(first).setFrameGridSettings(
+      const AppFrameGridSettings(blockFrameLines: false),
+    );
     // The saves are fire-and-forget. Waiting on the files rather than on a
     // fixed delay keeps this honest on a machine that is busy building.
     await _settleUntil(
@@ -167,6 +177,7 @@ void main() {
           AppInput.settings.value.pressureCurveGamma == 1.5 &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
+          !AppFrameGridSettings.settings.value.blockFrameLines &&
           appSettingsOf(second).audioSyncSettings.value.offset == 42,
     );
 
@@ -178,6 +189,7 @@ void main() {
     expect(AppInput.settings.value.pressureCurveGamma, 1.5);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
+    expect(AppFrameGridSettings.settings.value.blockFrameLines, isFalse);
     expect(appSettingsOf(second).audioSyncSettings.value.offset, 42);
     expect(appSettingsOf(second).audioSyncSettings.value.micGainDb, 3);
     // The onion's live value is the SESSION's, so it is read off the second

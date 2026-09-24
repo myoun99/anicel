@@ -427,8 +427,14 @@ class TimelinePanel extends StatefulWidget {
   /// The two floors above where the panel is shown: the command bar grows
   /// with the OS text size ([TimelineCommandBar.heightIn]), and a floor
   /// that did not grow with it would let the dock cut the grid under it.
+  ///
+  /// …and the timeline's floor holds THREE rows of the grid — the ruler is
+  /// one row thick and the body keeps two — which grow with their words too
+  /// ([timelineLayerRowHeightIn], text-scale-rail-rows).
   static double minPanelHeightIn(BuildContext context) =>
-      minPanelHeight + TimelineCommandBar.growthIn(context);
+      minPanelHeight +
+      TimelineCommandBar.growthIn(context) +
+      3 * (timelineLayerRowHeightIn(context) - timelineLayerRowHeight);
 
   static double minSheetPanelHeightIn(BuildContext context) =>
       minSheetPanelHeight + TimelineCommandBar.growthIn(context);
@@ -547,6 +553,11 @@ class _TimelinePanelState extends State<TimelinePanel> {
         : TimelineOrientation.horizontal;
     final showToolbar = widget.timelineActionToolbar != null;
 
+    // text-scale-rail-rows: the row is as tall as its words need where it
+    // is shown — and a sheet column is a row stood up, so it widens by the
+    // same, as does the sheet's frame-number rail (the ruler's thickness).
+    final rowHeight = timelineLayerRowHeightIn(context);
+
     // The slider value is the frame-axis extent for BOTH orientations.
     //
     // R10 R6: this used to scale the sheet by 36/24, because the sheet's
@@ -555,9 +566,12 @@ class _TimelinePanelState extends State<TimelinePanel> {
     // thing on both surfaces — one slider position, one frame extent.
     final horizontalMetrics = TimelineGridMetrics.defaults.copyWith(
       frameCellWidth: widget.pixelsPerFrame,
+      layerRowHeight: rowHeight,
     );
     final xsheetMetrics = XSheetTimelineGrid.defaultMetrics.copyWith(
       frameCellWidth: widget.pixelsPerFrame,
+      layerRowHeight: rowHeight,
+      layerControlsWidth: rowHeight,
     );
     final collapsed = PanelCollapsedScope.of(context);
 

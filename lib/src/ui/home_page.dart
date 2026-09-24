@@ -16,6 +16,7 @@ import '../services/last_stroke_slot.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_frame_grid_settings_store.dart';
 import '../services/persistence/app_onion_skin_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
@@ -33,6 +34,7 @@ import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/confirm_verb.dart';
+import 'brush/history_verbs.dart';
 import 'brush/temporary_tool.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import 'brush/tool_press.dart';
@@ -215,6 +217,14 @@ class _HomePageState extends State<HomePage> {
     transformOptions: _transformOptions,
   );
 
+  /// Undo and redo — the keys, the finger taps and a mapped button here,
+  /// the rail's ↶ ↷ in the workspace. The census is [_pointersDown].
+  late final HistoryVerbs _history = HistoryVerbs(
+    selection: _canvasSelectionCommands,
+    session: _session,
+    contactIsDown: () => _pointersDown.isNotEmpty,
+  );
+
   /// The ↑/↓ layer-nav channel (UI-R20 #14): the arrows that cross the
   /// frame axis walk the timeline's DISPLAYED layer rows, selection or no
   /// selection (F-86); the workspace binds the handler (it owns the row
@@ -317,6 +327,7 @@ class _HomePageState extends State<HomePage> {
       // window out at 100% and then jump.
       uiScaleStore: _unlessTesting(AppUiScaleStore.new),
       onionSkinSettingsStore: _unlessTesting(AppOnionSkinSettingsStore.new),
+      frameGridSettingsStore: _unlessTesting(AppFrameGridSettingsStore.new),
     );
     // The census cannot reach this State; the session can be reached — the
     // same push the workspace makes for the cut piece.
@@ -688,9 +699,9 @@ class _HomePageState extends State<HomePage> {
       case EditorActionIds.voiceRecordToggle:
         unawaited(toggleVoiceRecordingWithFeedback(context, _session));
       case EditorActionIds.undo:
-        _undoInnerStepOrDocument();
+        _history.undo();
       case EditorActionIds.redo:
-        _redoVertexOrDocument();
+        _history.redo();
       case EditorActionIds.onionSkinToggle:
         _session.onionSkin.toggleOnionSkin();
       // The film verbs. Each one guards itself the way the toolbar button
@@ -793,69 +804,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// 🚨★★★**A VERB IN FLIGHT OWNS THE KEYBOARD TOO.**
-  ///
-  /// 🗣️유저 2026-09-21 (F-173): 「**선 그리는 도중 언두가 작동함.** 선
-  /// 말고도 **도구를 사용중이면 언두/리두 작동불가**하도록」.
-  ///
-  /// ⛔**A CONTACT DOWN IS THE WHOLE TEST, and the fact was already here**:
-  /// [_pointersDown] is fed by the global pointer route and the autosave
-  /// clock has read it as 「a stroke is in flight」 since F-1. A second way
-  /// to ask 「is the user in the middle of something」 is how the two come
-  /// to disagree ([[no-copy-to-share]]).
-  ///
-  /// ⚠️It stands BEFORE the three channels rather than beside them. They
-  /// answer 「is this key about the thing I am in the middle of?」 and each
-  /// falls through when it is not; this one says the key is not a key at
-  /// all yet, which is a different sentence and has to come first.
-  bool get _aVerbIsInFlight => _pointersDown.isNotEmpty;
-
-  /// Undo means the thing the user is in the MIDDLE of, if there is one.
-  ///
-  /// While a polygon outline is open, it takes that trace's last vertex
-  /// back (유저 확정). They are NOT document history: a trace of twenty
-  /// taps would otherwise bury the twenty real edits under it, and the
-  /// undo cap is 200. An open transform box answers the same way for its
-  /// own operations (유저 2026-09-20).
-  ///
-  /// ⛔Each channel answers false once its own thing is back where it
-  /// started, so undo falls straight through to the document — undo never
-  /// becomes a dead key just because something was open a moment ago.
-  void _undoInnerStepOrDocument() {
-    if (_aVerbIsInFlight) {
-      return;
-    }
-    if (_canvasSelectionCommands.undoPolygonPoint()) {
-      return;
-    }
-    // 🚨★★★**AN OPEN TRANSFORM BOX TAKES UNDO THE SAME WAY** — 유저
-    // 2026-09-20: 「**변형도구 사용시 변형에 대한 조작마다 언두로 기록**
-    // 된단거야 … **확정하면 변형 하나로서의 언두만 작동**」.
-    //
-    // ⛔It answers false once the box stands as it opened, so undo falls
-    // through to the document exactly as it does after the last vertex —
-    // 「is this key about the thing I am in the middle of?」 is one
-    // question with one shape, asked twice.
-    if (_canvasSelectionCommands.undoTransformStep()) {
-      return;
-    }
-    if (_session.canUndo) {
-      _session.undo();
-    }
-  }
-
-  void _redoVertexOrDocument() {
-    if (_aVerbIsInFlight) {
-      return;
-    }
-    if (_canvasSelectionCommands.redoPolygonPoint()) {
-      return;
-    }
-    if (_session.canRedo) {
-      _session.redo();
-    }
-  }
-
   void _abandonPolygonOrCancelTransform() {
     if (_canvasSelectionCommands.hasOpenPolygon) {
       _canvasSelectionCommands.abandonPolygon();
@@ -936,6 +884,9 @@ class _HomePageState extends State<HomePage> {
                       // action funnel as key bindings; the layer only observes raw
                       // touches, so drawing and pinch navigation are untouched.
                       child: TouchShortcutLayer(
+                        // T28-c at the gesture's first contact — see the
+                        // field; the funnel's own check comes too late here.
+                        playing: _session.playbackRig.transports,
                         onGesture: (gesture) {
                           final actionId = _shortcuts.actionIdForTouchGesture(
                             gesture,
@@ -1037,6 +988,7 @@ class _HomePageState extends State<HomePage> {
                                         _canvasSelectionCommands,
                                     lastStroke: _lastStroke,
                                     confirm: _confirm,
+                                    history: _history,
                                     layerNav: _timelineLayerNav,
                                     flipHud: _flipHud,
                                     onInvokeAction: _invokeAction,

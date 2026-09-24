@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// Audit 2026-09-24 (card `carried-bytes-audit-0924`): the cut-folder door
@@ -67,22 +68,22 @@ void main() {
     final sheet = await scanned(tester, '069_ts.png');
     await importTheFolder(tester, carry: true);
     expect(
-      session.mediaStagingStore.find(sheet),
+      stagedCopyIn(session, sheet),
       isNotNull,
       reason: 'the premise: carried, it was staged at the import',
     );
     await saveProject(tester, session, directory);
     expect(
-      session.mediaStagingStore.find(sheet),
-      isNull,
+      session.mediaStagingStore.holdsAnyCopyOf(sheet),
+      isFalse,
       reason: 'the premise: the save absorbed the staged copy',
     );
 
     await importTheFolder(tester, carry: true);
 
     expect(
-      session.mediaStagingStore.find(sheet),
-      isNull,
+      session.mediaStagingStore.holdsAnyCopyOf(sheet),
+      isFalse,
       reason: 'the project already holds it — nothing is copied again',
     );
     await tester.pumpAndSettle();
