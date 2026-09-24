@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
 import 'package:anicel/src/services/audio/wav16_header.dart'
     show wav16HeaderBytes;
 import 'package:anicel/src/services/media/project_media_sources.dart';
@@ -363,9 +362,9 @@ void main() {
   });
 
   group('a movie on the canvas', () {
-    late _ClosingBackend movies;
+    late ClosingVideoBackend movies;
 
-    setUp(() => debugVideoDecodeBackend = movies = _ClosingBackend());
+    setUp(() => debugVideoDecodeBackend = movies = ClosingVideoBackend());
     tearDown(() => debugVideoDecodeBackend = null);
 
     Future<void> placeMovie(
@@ -463,31 +462,4 @@ void main() {
       isNull,
     );
   });
-}
-
-/// A reader that READS what it is handed ([ReadingVideoBackend]), and says
-/// which files the movies it was asked to close were read from.
-class _ClosingBackend extends ReadingVideoBackend {
-  final List<String> closed = [];
-  final Map<int, String> _openAt = {};
-  var _tokens = 0;
-
-  @override
-  Future<({int token, QaVideoInfo info})?> open(
-    String path, {
-    ({int offset, int length, bool framed})? span,
-  }) async {
-    final opened = await super.open(path, span: span);
-    if (opened == null) {
-      return null;
-    }
-    final token = _tokens += 1;
-    _openAt[token] = path;
-    return (token: token, info: opened.info);
-  }
-
-  @override
-  Future<void> close(int token) async {
-    closed.add(_openAt[token]!);
-  }
 }

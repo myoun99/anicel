@@ -653,9 +653,23 @@ MediaByteSource mediaAppFileSource(String path) => mediaSourceDecodingFrames(
   MediaAppFileBytes(path: path, framed: mediaEntryIsFramed(path)),
 );
 
-/// A medium's bytes a reader holds (`ProjectFile.holdMediaBytes`), and how
-/// it gives them back.
-typedef HeldMediaBytes = ({MediaByteSource source, void Function() release});
+/// A medium's bytes a reader holds (`ProjectFile.holdMediaBytes`), how it
+/// gives them back, and when they have [moved].
+///
+/// 🚨★★★**[moved] completes when the answer to 「where are these bytes」 is
+/// somewhere else now** — a save absorbed the staged copy the reader holds
+/// into the project file, or wrote that file anew elsewhere (a save-as). A
+/// reader that keeps reading (a document the viewer
+/// shows, a movie a canvas row decodes) opens again on the new answer, THEN
+/// gives these back: held, they would stay where they are for as long as it
+/// lives — a staged copy on disk beside the entry that replaced it (card
+/// `canvas-holds-staged-for-session`; 유저 08-27: 「사본 남으면 진짜
+/// 용서안할게」). A reader that is done in a moment never looks.
+typedef HeldMediaBytes = ({
+  MediaByteSource source,
+  void Function() release,
+  Future<void> moved,
+});
 
 /// Where every reader asks for a medium's bytes —
 /// `ProjectFile.holdMediaBytes`: the project's own copy first, then the file
@@ -674,18 +688,19 @@ Future<Uint8List> readHeldMediaBytes(HoldMediaBytes hold, String path) async {
 }
 
 /// [open] on the bytes [hold] answers for [path], HELD for as long as what it
-/// opened lives — [keep] ties the release to it, to run once that has closed
-/// — and given back at once when nothing opens.
+/// opened lives — [keep] ties the hold to it: the release to run once it has
+/// closed, and the move to follow ([HeldMediaBytes.moved]) — and given back
+/// at once when nothing opens.
 ///
 /// 🚨The one shape of 「a reader that keeps reading」: a document the viewer
 /// shows, a PDF a placement renders page by page, a movie a canvas row or a
 /// bake decodes frame by frame. Each is a different thing to CLOSE, and the
 /// same thing to hold (유저 2026-09-11: 「파일 뭐든 관계없이 법 하나로」).
-Future<T?> openOnHeldBytes<T extends Object>(
+Future<K?> openOnHeldBytes<T extends Object, K extends Object>(
   HoldMediaBytes hold,
   String path,
   Future<T?> Function(MediaByteSource source) open,
-  T Function(T opened, void Function() release) keep,
+  K Function(T opened, HeldMediaBytes held) keep,
 ) async {
   final held = await hold(path);
   final T? opened;
@@ -699,7 +714,7 @@ Future<T?> openOnHeldBytes<T extends Object>(
     held.release();
     return null;
   }
-  return keep(opened, held.release);
+  return keep(opened, held);
 }
 
 /// A medium read through the engine's reader ([QaMediaSpan]) a window at a

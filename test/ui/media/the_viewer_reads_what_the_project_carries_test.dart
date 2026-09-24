@@ -9,6 +9,7 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
@@ -122,8 +123,8 @@ void main() {
     }
 
     testWidgets('${kind.name}, carried and not yet saved: the viewer shows the '
-        'staged copy, and a save while it shows leaves that copy until the '
-        'viewer lets go', (tester) async {
+        'staged copy, and a save while it shows moves it onto the project '
+        'file — the copy goes, the page stays', (tester) async {
       final (:session, :path) = await carrying(tester, directory, write);
       final staged = stagedCopyIn(session, path)!.path;
       OriginalFate.replacedBySomethingElse.befall(path);
@@ -132,22 +133,87 @@ void main() {
       expect(page(), findsOneWidget, reason: 'the staged copy opened');
 
       await saveProject(tester, session, directory);
-      expect(
-        File(staged).existsSync(),
-        isTrue,
-        reason: 'absorbed by the save, but the viewer still reads it',
-      );
-
-      slot.request.value = null;
       await settleAsync(tester, () => !File(staged).existsSync());
       expect(
         File(staged).existsSync(),
         isFalse,
-        reason: 'let go of, the absorbed copy goes — 「사본 남으면 진짜 '
-            '용서안할게」',
+        reason: 'absorbed by the save, and the viewer followed it — held '
+            'while it showed, the copy used to stay beside the entry that '
+            'replaced it (「사본 남으면 진짜 용서안할게」)',
       );
+      expect(page(), findsOneWidget, reason: 'nothing on screen blinked');
+      expect(
+        session.projectFile.heldArchiveEntries,
+        hasLength(1),
+        reason: 'it reads the entry now',
+      );
+
+      slot.request.value = null;
+      await settleAsync(
+        tester,
+        () => session.projectFile.heldArchiveEntries.isEmpty,
+      );
+      expect(session.projectFile.heldArchiveEntries, isEmpty);
     });
   }
+
+  testWidgets('a movie on the page follows the project saved as another '
+      'file', (tester) async {
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedMovie,
+    );
+    await view(tester, session, path, MediaAssetKind.video);
+    await saveProject(tester, session, directory);
+    final first = session.projectFile.path!;
+    await settleAsync(tester, () => movies.openedAt.last.path == first);
+    expect(movies.openedAt.last.path, first, reason: 'the premise');
+
+    final elsewhere = normalizedMediaPath('${directory.path}/as.anicel');
+    await tester.runAsync(
+      () => session.projectDoor.saveProjectToFile(
+        elsewhere,
+        asked: SaveAsked.byAPerson,
+      ),
+    );
+    await settleAsync(tester, () => movies.openedAt.last.path == elsewhere);
+
+    expect(movies.openedAt.last.path, elsewhere);
+    expect(page(), findsOneWidget);
+  });
+
+  testWidgets('a movie the save moves where it will not open stays on the '
+      'page, read where it was', (tester) async {
+    var refused = 0;
+    debugVideoDecodeBackend = movies = ReadingVideoBackend(
+      refuses: (path) {
+        final isTheFile = path.endsWith('project.anicel');
+        refused += isTheFile ? 1 : 0;
+        return isTheFile;
+      },
+    );
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedMovie,
+    );
+    final staged = stagedCopyIn(session, path)!.path;
+    await view(tester, session, path, MediaAssetKind.video);
+    expect(page(), findsOneWidget, reason: 'the premise');
+
+    await saveProject(tester, session, directory);
+    await settleAsync(tester, () => refused > 0);
+    await tester.pump();
+
+    expect(refused, greaterThan(0), reason: 'the premise: it tried');
+    expect(page(), findsOneWidget, reason: 'nothing is gained by losing it');
+    expect(
+      File(staged).existsSync(),
+      isTrue,
+      reason: 'still read, so still held',
+    );
+  });
 
   // A movie kept COMPRESSED is read where the project keeps it: the decoder
   // is fed its blocks decoded (board `carried-movie-compressed-Q1`, 유저

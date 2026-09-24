@@ -694,9 +694,58 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         _loadedToken = generation;
       }
     });
+    if (document is HeldViewerDocument) {
+      unawaited(_follow(document, request));
+    }
     // The page request goes out on the build this setState causes; the
     // record lands after it, so the NEXT open of this document sees it.
     _rememberFramed();
+  }
+
+  /// The bytes [was] reads have an answer somewhere else now
+  /// ([HeldViewerDocument.moved]) — a save absorbed the staged copy it
+  /// reads, or wrote the file it reads anew elsewhere. The same [request]
+  /// is opened again on the new answer, swapped
+  /// in once it is open, and [was] let go; the pages already drawn stay,
+  /// being the same bytes, so nothing on screen blinks.
+  ///
+  /// 🚨★★★**HELD WHILE IT SHOWS, THE COPY STAYED WHILE IT SHOWED** — the
+  /// save retires a staged copy only when its reader lets go, so a viewer
+  /// left open kept one on disk beside the entry that replaced it (card
+  /// `canvas-holds-staged-for-session`). ⛔Not through [_load]: that empties
+  /// the panel first, for a new document.
+  Future<void> _follow(
+    HeldViewerDocument was,
+    MediaViewerRequest request,
+  ) async {
+    await was.moved;
+    if (!mounted || !identical(_document, was)) {
+      return;
+    }
+    final ViewerDocument? fresh;
+    try {
+      fresh = await _openDocument(request);
+    } on Object {
+      return; // The old answer still reads; nothing is gained by losing it.
+    }
+    // A cut being read off [was] reads it to the end and lands: the swap
+    // below turns away whatever [was] answers after it, and a cut is not
+    // asked again the way a page is.
+    await _cuts;
+    if (!mounted || !identical(_document, was) || fresh == null) {
+      await fresh?.dispose();
+      return;
+    }
+    setState(() {
+      // A render still out on [was] lands nowhere, and is asked of [fresh].
+      _generation += 1;
+      _renders.clear();
+      _document = fresh;
+    });
+    unawaited(was.dispose());
+    if (fresh is HeldViewerDocument) {
+      unawaited(_follow(fresh, request));
+    }
   }
 
   /// Opens whatever [request] names, or null when this medium has nothing
@@ -725,7 +774,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
     Future<ViewerDocument?> held(
       Future<ViewerDocument?> Function(MediaByteSource source) open,
-    ) => openOnHeldBytes<ViewerDocument>(
+    ) => openOnHeldBytes<ViewerDocument, ViewerDocument>(
       widget.session.projectFile.holdMediaBytes,
       request.path,
       open,

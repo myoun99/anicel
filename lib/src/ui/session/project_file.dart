@@ -25,7 +25,7 @@ import '../../services/media/project_media_sources.dart'
         readableAnicelLayout,
         storedMediaBytesFor;
 import '../../services/persistence/anicel_incremental_writer.dart'
-    show parseAnicelZipLayoutFile;
+    show AnicelZipLayout, parseAnicelZipLayoutFile;
 import '../../services/persistence/anicel_project_archive.dart'
     show
         anicelConformEntryNames,
@@ -321,23 +321,25 @@ class ProjectFile {
   /// `recarry-after-remove-reads-the-old`). An asset the pool points at
   /// rather than carries reads its file, whatever an earlier carry of the
   /// same path left in the file or the store.
-  ({MediaByteSource source, void Function() Function()? hold})
+  ({
+    MediaByteSource source,
+    void Function() Function()? hold,
+    MediaCarry? carry,
+    MediaByteSource stored,
+  })
   _whereTheBytesAre(String poolPath) {
     final carry = mediaCarryFor(poolPath);
     if (carry == null) {
-      return (source: MediaFileBytes(poolPath), hold: null);
+      final file = MediaFileBytes(poolPath);
+      return (source: file, hold: null, carry: null, stored: file);
     }
-    final (:stored, :at) = storedMediaBytesFor(
+    final (:stored, :at) = _storedFor(
       carry,
-      // Parsed only when the file holds this carry — the pool asks per row,
-      // and a carry not saved yet has nothing in there to find.
-      layout: mediaEntryHeld(_mediaInFile, carry)
-          ? readableAnicelLayout(_projectFilePath)
-          : null,
-      archivePath: _projectFilePath,
-      staging: _staging,
+      () => readableAnicelLayout(_projectFilePath),
     );
     return (
+      carry: carry,
+      stored: stored,
       // 🚨A framed entry is decoded HERE and nowhere downstream. Every
       // consumer asked for「the bytes of this asset」and must keep getting
       // them — the block index is this layer's business, and the reader
@@ -351,6 +353,58 @@ class ProjectFile {
         MediaBytesAt.original => null,
       },
     );
+  }
+
+  /// [carry]'s stored bytes and where they were found
+  /// ([storedMediaBytesFor]) — asked for a reader, and again after a save
+  /// for the readers already holding ([_tellTheHoldersWhatMoved]). [layout]
+  /// is the project file's, read only when the file holds this carry — the
+  /// pool asks per row, and a carry not saved yet has nothing in there to
+  /// find.
+  ({MediaByteSource stored, MediaBytesAt at}) _storedFor(
+    MediaCarry carry,
+    AnicelZipLayout? Function() layout,
+  ) => storedMediaBytesFor(
+    carry,
+    layout: mediaEntryHeld(_mediaInFile, carry) ? layout() : null,
+    archivePath: _projectFilePath,
+    staging: _staging,
+  );
+
+  /// Every hold handed out and not given back yet that has a carry, and the
+  /// answer it was given — what a save asks about, to tell each whose bytes
+  /// it moved ([HeldMediaBytes.moved]).
+  final List<
+    ({MediaCarry carry, MediaByteSource stored, Completer<void> moved})
+  >
+  _liveHolds = [];
+
+  /// Completes [HeldMediaBytes.moved] for every live hold whose carry the
+  /// file just saved answers from somewhere else — the save absorbed the
+  /// staged copy it reads, or wrote the file it reads somewhere new.
+  ///
+  /// 🚨★★★**THE READER MOVES, NOT THE BYTES.** The staged copy is retired by
+  /// the save whether or not anyone holds it; held, it only waits for its
+  /// reader to let go ([MediaStagingStore.hold]) — and a reader that holds
+  /// for the session (a canvas's movie row) never did, so the copy stayed on
+  /// disk beside the entry that replaced it until the app quit (card
+  /// `canvas-holds-staged-for-session`). Told, the reader opens again on the
+  /// entry and lets the copy go.
+  ///
+  /// ⚠️「Somewhere else」 is the ANSWER, not the kind of place: a stored
+  /// source is equal to another only where it is the same stretch of the
+  /// same file, so an entry of the file a save-as left behind has moved as
+  /// surely as a staged copy has.
+  void _tellTheHoldersWhatMoved() {
+    // Read once for every holder — a central directory per movie row per
+    // save is the cost this would otherwise add to every save.
+    late final layout = readableAnicelLayout(_projectFilePath);
+    for (final live in _liveHolds) {
+      if (!live.moved.isCompleted &&
+          _storedFor(live.carry, () => layout).stored != live.stored) {
+        live.moved.complete();
+      }
+    }
   }
 
   /// Entries a reader holds by OFFSET right now ([holdMediaBytes]), and
@@ -390,8 +444,16 @@ class ProjectFile {
     while (_saveInFlight) {
       await _saveEnded.future;
     }
-    final (:source, :hold) = _whereTheBytesAre(poolPath);
+    final (:source, :hold, :carry, :stored) = _whereTheBytesAre(poolPath);
     final letGo = hold?.call();
+    // A file the pool points at is not the project's to move: nothing
+    // follows it.
+    final live = carry == null
+        ? null
+        : (carry: carry, stored: stored, moved: Completer<void>());
+    if (live != null) {
+      _liveHolds.add(live);
+    }
     var released = false;
     return (
       source: source,
@@ -400,8 +462,10 @@ class ProjectFile {
           return;
         }
         released = true;
+        _liveHolds.remove(live);
         letGo?.call();
       },
+      moved: live?.moved.future ?? Completer<void>().future,
     );
   }
 
@@ -688,6 +752,10 @@ class ProjectFile {
     // keyed by; takes stay put now, and the cache is keyed by source
     // rather than by anything the project owns, so a save moves nothing a
     // conform depends on.
+    //
+    // The readers are another matter: the file answers for what the save
+    // absorbed now, and a reader still on a staged copy follows it.
+    _tellTheHoldersWhatMoved();
   }
 
   /// The session is bound to [filePath], which was just OPENED: it holds

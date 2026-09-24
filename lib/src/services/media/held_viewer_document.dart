@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'media_byte_source.dart' show HeldMediaBytes;
 import 'viewer_document.dart';
 
 /// A document, and the bytes it reads given back once it has closed.
@@ -12,10 +13,17 @@ import 'viewer_document.dart';
 /// window at a time would have been the second to be taught it, and an
 /// image the third.
 final class HeldViewerDocument implements ViewerDocument {
-  HeldViewerDocument(this._document, this._release);
+  HeldViewerDocument(this._document, HeldMediaBytes held)
+    : _release = held.release,
+      moved = held.moved;
 
   final ViewerDocument _document;
   final void Function() _release;
+
+  /// When the bytes this document reads have an answer somewhere else now
+  /// ([HeldMediaBytes.moved]) — the viewer opens the same request again and
+  /// lets this one go.
+  final Future<void> moved;
 
   @override
   int get pageCount => _document.pageCount;

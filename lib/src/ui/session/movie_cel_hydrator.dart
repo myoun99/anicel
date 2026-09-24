@@ -23,12 +23,14 @@ import 'session_roles.dart';
 /// One movie open for reading. The token is the READER's — it minted it and
 /// only it can read or close by it (「a handle says which movie is whose」),
 /// so the reader is kept beside it rather than asked for again; `close` puts
-/// the movie back and only then the bytes it was reading ([openHeldMovie]).
+/// the movie back and only then the bytes it was reading ([openHeldMovie]);
+/// `moved` says when those bytes have an answer somewhere else now.
 typedef _OpenMovie = ({
   VideoDecodeBackend reader,
   int token,
   QaVideoInfo info,
   Future<void> Function() close,
+  Future<void> moved,
 });
 
 /// A movie by the bytes it shows: the row's pool path, and the carry the
@@ -268,7 +270,55 @@ class MovieCelHydrator {
       for (final other in _opened.keys)
         if (other.path == movie.path && other != movie) other,
     ]);
-    return _open(movie.path);
+    return _following(movie, _open(movie.path));
+  }
+
+  /// [opening], followed when the bytes it reads move ([HeldMovie.moved]).
+  Future<_OpenMovie?> _following(_Movie movie, Future<_OpenMovie?> opening) {
+    unawaited(
+      opening
+          .then((opened) async {
+            if (opened != null) {
+              await opened.moved;
+              await _follow(movie, opening);
+            }
+          })
+          // An open that failed has nothing to follow; its asker hears why.
+          .catchError((Object _) {}),
+    );
+    return opening;
+  }
+
+  /// [movie]'s bytes have an answer somewhere else — a save absorbed the
+  /// staged copy [was] reads into the project file, or wrote that file anew
+  /// elsewhere. Opened again on the new
+  /// answer FIRST, and only once that is open does it take [was]'s place and
+  /// [was] close: a frame asked meanwhile is read where it was, and one
+  /// already asked of [was] is answered before it closes — the decoder
+  /// answers in the order it is asked ([IsolateVideoDecodeBackend]). The
+  /// pictures and the facts stay: the same carry is the same bytes. An
+  /// answer that will not open leaves [was] reading.
+  ///
+  /// 🚨★★★**HELD FOR THE SESSION, THE COPY WOULD HAVE STAYED FOR THE
+  /// SESSION.** A row opens its movie once; the save retires the staged
+  /// copy it reads only when the reader lets go, and this reader never did —
+  /// so the copy sat on disk beside the entry that replaced it until the app
+  /// quit (card `canvas-holds-staged-for-session`; 유저 08-27: 「사본 남으면
+  /// 진짜 용서안할게」).
+  Future<void> _follow(_Movie movie, Future<_OpenMovie?> was) async {
+    if (_disposed || !identical(_opened[movie], was)) {
+      return;
+    }
+    final opening = _open(movie.path);
+    final fresh = await opening;
+    if (fresh == null || _disposed || !identical(_opened[movie], was)) {
+      // Nothing to move to — or [was] was let go meanwhile, by whoever
+      // closed it.
+      await _close(opening);
+      return;
+    }
+    _opened[movie] = _following(movie, opening);
+    await _close(was);
   }
 
   /// Closes [movies] and forgets what each turned out to be, and showed.
@@ -293,6 +343,7 @@ class MovieCelHydrator {
             token: movie.token,
             info: movie.info,
             close: movie.close,
+            moved: movie.moved,
           );
   }
 

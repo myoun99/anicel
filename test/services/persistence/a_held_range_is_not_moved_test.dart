@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -13,7 +14,6 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:flutter/material.dart';
@@ -146,7 +146,11 @@ void main() {
     expect(backend.openedAt, [
       (path: archive, span: (offset: 4096, length: 512, framed: false)),
     ], reason: 'the premise: opened on its stretch of the archive');
-    final document = HeldViewerDocument(movie!, () => events.add('released'));
+    final document = HeldViewerDocument(movie!, (
+      source: MediaFileBytes(archive),
+      release: () => events.add('released'),
+      moved: Completer<void>().future,
+    ));
 
     await document.dispose();
 
@@ -177,13 +181,11 @@ void main() {
         for (var i = 0; i < length; i += 1) random.nextInt(256),
       ]);
       await tester.runAsync(() async {
-        expect(
-          await s.importDoors.importVideoFile(
-            path: movie,
-            settings: const ImportFileSettings(sound: false),
-          ),
-          isTrue,
-        );
+        // Carried into the POOL, not placed: a row on the canvas holds its
+        // movie for as long as it can play, and follows it onto the entry
+        // the save writes (`a_reader_follows_what_the_save_absorbed_test`)
+        // — a reader of its own, and not the one these measure.
+        await s.mediaPool.importMediaFiles([movie], copyIntoProject: true);
         await s.projectDoor.saveProjectToFile(
           path,
           asked: SaveAsked.byAPerson,

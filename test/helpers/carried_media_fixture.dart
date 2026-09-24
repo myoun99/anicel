@@ -44,13 +44,21 @@ Future<ViewerDocument> openPdfThatReads(MediaByteSource source) async {
 /// ⚠️A framed stretch is read the way the real decoders read one: through
 /// the engine's span reader ([MediaFramedBytes]), decoded.
 class ReadingVideoBackend extends FakeVideoBackend {
-  ReadingVideoBackend({super.readsFramed}) : super(frameCount: 3);
+  ReadingVideoBackend({super.readsFramed, this.refuses})
+    : super(frameCount: 3);
+
+  /// Files this decoder will not open, whatever they hold — the answer a
+  /// reader cannot move to.
+  final bool Function(String path)? refuses;
 
   @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
     ({int offset, int length, bool framed})? span,
   }) async {
+    if (refuses?.call(path) ?? false) {
+      return null;
+    }
     final stored = span == null
         ? MediaFileBytes(path)
         : MediaArchiveBytes(
@@ -65,6 +73,35 @@ class ReadingVideoBackend extends FakeVideoBackend {
       return null;
     }
     return super.open(path, span: span);
+  }
+}
+
+/// A [ReadingVideoBackend] that says which files the movies it was asked to
+/// close were read from — what 「the old document was let go」 is measured by.
+class ClosingVideoBackend extends ReadingVideoBackend {
+  ClosingVideoBackend({super.refuses});
+
+  final List<String> closed = [];
+  final Map<int, String> _openAt = {};
+  var _tokens = 0;
+
+  @override
+  Future<({int token, QaVideoInfo info})?> open(
+    String path, {
+    ({int offset, int length, bool framed})? span,
+  }) async {
+    final opened = await super.open(path, span: span);
+    if (opened == null) {
+      return null;
+    }
+    final token = _tokens += 1;
+    _openAt[token] = path;
+    return (token: token, info: opened.info);
+  }
+
+  @override
+  Future<void> close(int token) async {
+    closed.add(_openAt[token]!);
   }
 }
 

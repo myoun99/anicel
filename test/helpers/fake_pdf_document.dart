@@ -9,7 +9,16 @@ import 'package:anicel/src/services/media/viewer_document.dart';
 /// rects via [ui.Picture.toImageSync], so no FFI, no file IO, and no
 /// fake-async deadlock (the image exists synchronously).
 class FakePdfDocument implements ViewerDocument {
-  FakePdfDocument({required this.pageSizes, this.framesPerSecond});
+  FakePdfDocument({
+    required this.pageSizes,
+    this.framesPerSecond,
+    this.cancelsWhenDisposed = false,
+  });
+
+  /// A render the document is disposed under fails, as pdfrx's does
+  /// (「PDF page render was cancelled.」) — for a test of what the viewer does
+  /// with a page it asked of a document it has since let go.
+  final bool cancelsWhenDisposed;
 
   /// One entry per page, in PDF points.
   final List<ui.Size> pageSizes;
@@ -66,6 +75,9 @@ class FakePdfDocument implements ViewerDocument {
     final gate = renderGates[pageIndex];
     if (gate != null) {
       await gate.future;
+    }
+    if (disposed && cancelsWhenDisposed) {
+      throw StateError('PDF page render was cancelled.');
     }
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);

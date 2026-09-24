@@ -431,7 +431,7 @@ class ProjectImportDoors {
     if (gate == null) {
       return false;
     }
-    final document = await openOnHeldBytes<ViewerDocument>(
+    final document = await openOnHeldBytes<ViewerDocument, ViewerDocument>(
       _holdBytes,
       path,
       PdfRenderService.open,

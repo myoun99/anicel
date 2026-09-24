@@ -312,7 +312,7 @@ class _ImportPreviewState extends State<ImportPreview> {
       return;
     }
     if (path.toLowerCase().endsWith('.pdf')) {
-      final pdf = await openOnHeldBytes<ViewerDocument>(
+      final pdf = await openOnHeldBytes<ViewerDocument, ViewerDocument>(
         widget.holdBytes,
         path,
         PdfRenderService.open,
