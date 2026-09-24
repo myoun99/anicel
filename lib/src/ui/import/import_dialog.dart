@@ -24,6 +24,7 @@ import 'import_preview.dart';
 import '../text/byte_size_label.dart';
 import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
+import '../widgets/settings_rows.dart';
 import '../text/cloud_wait_line.dart';
 import '../text/model_vocabulary.dart';
 
@@ -1558,8 +1559,8 @@ class _ImportDialogState extends State<ImportDialog> {
             onSelect: (fit) => setState(() => _fit = fit),
           ),
           const SizedBox(height: 10),
-          ExportToggleRow(
-            keyValue: 'import-subfolders-toggle',
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>('import-subfolders-toggle'),
             label: AppText.strings.imArchivedProcesses,
             value: _parseConfig.includeProcessSubfolders,
             onChanged: (value) => setState(() {
@@ -1569,8 +1570,8 @@ class _ImportDialogState extends State<ImportDialog> {
               _reparseFolder(rescan: false);
             }),
           ),
-          ExportToggleRow(
-            keyValue: 'import-multicut-toggle',
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>('import-multicut-toggle'),
             label: AppText.strings.imMultiCutFolders,
             value: _parseConfig.multiCutFolders,
             onChanged: (value) => setState(() {

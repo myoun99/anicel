@@ -8,7 +8,7 @@ import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
-import '../widgets/boolean_dot.dart';
+import '../widgets/settings_rows.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
@@ -143,10 +143,12 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           a.keyValue == b.keyValue &&
           (a.onChanged == null) == (b.onChanged == null) &&
           _sameTrailing(a.trailing, b.trailing),
-    (final _PanelSwitch a, final _PanelSwitch b) =>
+    (final SettingsSwitchRow a, final SettingsSwitchRow b) =>
       a.label == b.label &&
           a.value == b.value &&
-          a.keyValue == b.keyValue &&
+          a.tileKey == b.tileKey &&
+          a.help == b.help &&
+          a.inPickOneGroup == b.inPickOneGroup &&
           (a.onChanged == null) == (b.onChanged == null),
     (final _AntiAliasRow a, final _AntiAliasRow b) => a.value == b.value,
     // The library's callbacks ARE compared: the rows carry the panel's own
@@ -344,10 +346,10 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
                 onChanged(state.copyWith(spacingJitter: value)),
           ),
           const _GroupHeader('Mixing'),
-          _PanelSwitch(
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>('brush-tool-mixing-toggle'),
             label: AppText.strings.brMixing,
             value: state.mixesGroundColor,
-            keyValue: 'brush-tool-mixing-toggle',
             onChanged: (value) =>
                 onChanged(state.copyWith(mixesGroundColor: value)),
           ),
@@ -423,10 +425,12 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             onChanged: (value) =>
                 onChanged(state.copyWith(scatterCount: value.round())),
           ),
-          _PanelSwitch(
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>(
+              'brush-tool-scatter-both-axes-toggle',
+            ),
             label: AppText.strings.brScatterBothAxes,
             value: state.scatterBothAxes,
-            keyValue: 'brush-tool-scatter-both-axes-toggle',
             onChanged: (value) =>
                 onChanged(state.copyWith(scatterBothAxes: value)),
           ),
@@ -515,10 +519,10 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           // reach: the importers baked them into the mask, which left no
           // original to re-bake from. Clip Studio calls them 濃度反転 /
           // 明るさ / コントラスト and Photoshop InvT / Brightness / Contrast.
-          _PanelSwitch(
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>('brush-tool-texture-invert-toggle'),
             label: AppText.strings.brTextureInvert,
             value: state.textureInvert,
-            keyValue: 'brush-tool-texture-invert-toggle',
             onChanged: state.textureMaskSource == null
                 ? null
                 : (value) => onChanged(state.copyWith(textureInvert: value)),
@@ -658,46 +662,6 @@ class _RotationModeRow extends StatelessWidget {
               onPicked: (mode) =>
                   onChanged(state.copyWith(rotationMode: mode)),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A labelled on/off row, matching the slider rows' label-left layout.
-class _PanelSwitch extends StatelessWidget {
-  const _PanelSwitch({
-    required this.label,
-    required this.value,
-    required this.keyValue,
-    required this.onChanged,
-  });
-
-  final String label;
-  final bool value;
-  final String keyValue;
-  /// Null makes the row DEAD, not absent — the same contract [_PanelSlider]
-  /// states, for the same reason.
-  final ValueChanged<bool>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: theme.textTheme.labelSmall)),
-          // The app's one boolean (guide-sym ⑥⑧) — and the reason this
-          // panel can bake: Material's switch always wrapped itself in an
-          // `Opacity`, a repaint boundary the panel's bake could not cross
-          // (board `a-panel-with-a-switch-can-never-bake`).
-          BooleanDotButton(
-            keyValue: keyValue,
-            tooltip: label,
-            value: value,
-            onChanged: onChanged,
           ),
         ],
       ),

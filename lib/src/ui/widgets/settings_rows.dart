@@ -17,6 +17,14 @@ import 'boolean_dot.dart';
 /// window. Sixteen tiles used to spell the tile out by hand, and every one of
 /// them had somewhere to put a caption.
 ///
+/// 🚨★★★AND IT IS EVERY LABELLED RING IN THE APP, wherever it stands —
+/// 유저 2026-09-24 (board `one-boolean-row-shape-Q1`): 「설정 줄 하나로」.
+/// The brush settings panel's switches pressed only at the ring, and the
+/// export and import windows' put the ring on the LEFT and pressed only
+/// there; they are this row now — the whole row presses, the ring sits on
+/// the right, 「라벨을 눌러도 켜지고 꺼진다」. `one_boolean_control_test`
+/// holds the line.
+///
 /// [tileKey] goes on the TILE, not on the wrapper: a key that lands on the
 /// `Tooltip` would still FIND the row and no longer reach it, so a tap on it
 /// would hit the tooltip.

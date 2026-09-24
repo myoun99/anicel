@@ -101,7 +101,6 @@ class BooleanDotButton extends StatelessWidget {
     required this.onChanged,
     required this.tooltip,
     this.inPickOneGroup = false,
-    this.size = AppIconButtonSize.bar,
   });
 
   final String keyValue;
@@ -115,17 +114,16 @@ class BooleanDotButton extends StatelessWidget {
   /// See [BooleanDot.inPickOneGroup].
   final bool inPickOneGroup;
 
-  /// 「크기는 알아서」 — the default suits a settings row; a lane value cell
-  /// passes its own.
-  final AppIconButtonMetrics size;
-
   @override
   Widget build(BuildContext context) {
     final changed = onChanged;
     return AppIconButton(
       keyValue: keyValue,
       tooltip: tooltip,
-      size: size,
+      // 「크기는 알아서」 — the bar's size. The dense one left with the export
+      // window's ring-only rows, which are settings rows now (유저 09-24,
+      // 「설정 줄 하나로」).
+      size: AppIconButtonSize.bar,
       icon: BooleanDot(
         value: value,
         inPickOneGroup: inPickOneGroup,

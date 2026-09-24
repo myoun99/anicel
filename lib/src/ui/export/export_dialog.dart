@@ -56,6 +56,7 @@ import '../timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import '../timeline/timeline_cell_style.dart' show timelineTextOnColor;
 import '../widgets/panel_flyout.dart';
+import '../widgets/settings_rows.dart';
 import 'export_cut_grid.dart';
 import 'export_format_availability.dart';
 import 'export_frame_renderer.dart';
@@ -4096,8 +4097,8 @@ class ExportDialogState extends State<ExportDialog> {
     title: AppText.strings.exOptions,
     summary: applyLayerFx ? AppText.strings.exFxOn : AppText.strings.exFxOff,
     expansion: _expansion('options'),
-    child: ExportToggleRow(
-      keyValue: keyValue,
+    child: SettingsSwitchRow(
+      tileKey: ValueKey<String>(keyValue),
       label: label,
       value: applyLayerFx,
       onChanged: _isExporting
@@ -4114,13 +4115,13 @@ class ExportDialogState extends State<ExportDialog> {
   /// out; a run in flight owns the spec, so one place says it — the same
   /// law [_chip] states for the chips. [_fxAccordion]'s row is not this: its
   /// preview clear is part of the switch.
-  ExportToggleRow _specToggle({
+  SettingsSwitchRow _specToggle({
     required String keyValue,
     required String label,
     required bool value,
     required ExportTabSpec Function(bool value) write,
-  }) => ExportToggleRow(
-    keyValue: keyValue,
+  }) => SettingsSwitchRow(
+    tileKey: ValueKey<String>(keyValue),
     label: label,
     value: value,
     onChanged: _isExporting ? null : (value) => _updateSpec(write(value)),
