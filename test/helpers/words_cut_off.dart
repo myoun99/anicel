@@ -28,3 +28,25 @@ List<String> wordsCutOff(Finder of) {
   }
   return cut;
 }
+
+/// Every one-line paragraph under [of] narrower than its own text — a word
+/// its column cuts off at the side. [wordsCutOff] turned onto the other axis
+/// (text-scale-rail-columns, 유저 2026-09-25: 「칸도 글자 따라 넓어진다」).
+List<String> wordsCutAcross(Finder of) {
+  final cut = <String>[];
+  void visit(RenderObject object) {
+    if (object is RenderParagraph &&
+        (object.maxLines == 1 || !object.softWrap)) {
+      final need = object.getMaxIntrinsicWidth(double.infinity);
+      if (object.size.width + 0.5 < need) {
+        cut.add('「${object.text.toPlainText()}」 ${object.size.width} < $need');
+      }
+    }
+    object.visitChildren(visit);
+  }
+
+  for (final element in of.evaluate()) {
+    visit(element.renderObject!);
+  }
+  return cut;
+}

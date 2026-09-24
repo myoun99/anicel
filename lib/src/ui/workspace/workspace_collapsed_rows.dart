@@ -141,7 +141,7 @@ class _WorkspaceCollapsedRows {
       rail: _state._railExtents[LayerRailId.storyboard],
       // F-143: the storyboard's own axis, beside its own rail window.
       frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
-      naturalRailWidth: StoryboardTrackLabelRow.railWidth,
+      naturalRailWidth: StoryboardTrackLabelRow.railWidthIn(_state.context),
       pixelsPerFrame: pixelsPerFrame,
       framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
       // No track (an empty film) falls back to the overlay's own strip,

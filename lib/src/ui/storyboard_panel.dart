@@ -559,6 +559,14 @@ class StoryboardPanel extends StatefulWidget {
   // do not "clean it up" into a shared constant.
   static const double _trackLabelWidth = 434;
 
+  /// [_trackLabelWidth] where [context] lays its text out: this rail pays for
+  /// ITS word-holding column's growth — the opacity bar's; it has no blend
+  /// column — as the timeline's pays for its two (text-scale-rail-columns,
+  /// 유저 2026-09-25: 「칸도 글자 따라 넓어진다」). 0 at 1×.
+  static double railWidthIn(BuildContext context) =>
+      _trackLabelWidth +
+      (layerRailColumnWidthsIn(context).opacity - layerOpacitySlotWidth);
+
   /// The frame ruler's height — and, since the seconds corner is the strip
   /// beside it, that button's too.
   ///
@@ -1120,9 +1128,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   /// The rail's NATURAL width — what its rows cost laid out in full. The
   /// window never changes it, so every row in this file keeps stating
-  /// [StoryboardPanel._trackLabelWidth] and none of them has to learn
-  /// about the splitter.
-  static const double _naturalRailWidth = StoryboardPanel._trackLabelWidth;
+  /// [StoryboardPanel.railWidthIn] and none of them has to learn about the
+  /// splitter.
+  double get _naturalRailWidth => StoryboardPanel.railWidthIn(context);
 
   // ── the horizontal scroll: its own object, in its own file ──────────
   //
@@ -1734,7 +1742,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                             key: const ValueKey<String>(
                               'storyboard-track-label-rail',
                             ),
-                            width: StoryboardPanel._trackLabelWidth,
+                            width: _naturalRailWidth,
                             // 🚨The rail's Krita-style column
                             // swipe, the SAME one the timeline
                             // rail wears (유저 2026-08-29: 「타임
@@ -2081,17 +2089,24 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           naturalExtent: _naturalRailWidth,
           availableExtent: frame.availableRailWidth,
           child: SizedBox(
-            width: StoryboardPanel._trackLabelWidth,
+            width: _naturalRailWidth,
             child: TimelineLayerControlsHeader(
               // The storyboard rail states its OWN width, which
               // today is the same number as the timeline's and is
               // deliberately not the same constant (see
-              // [StoryboardPanel._trackLabelWidth]). Widening it
+              // [StoryboardPanel.railWidthIn]). Widening it
               // adds no column here — `hasBlendColumn` is a host
               // answer, not something derived from the width — so
               // the extra width lands in the NAME, which is where
               // a track wants it.
-              metrics: TimelineGridMetrics.defaults,
+              //
+              // The legend's columns are this rail's rows' columns, and
+              // its extent the rail's, as the rows lay them out
+              // (text-scale-rail-columns).
+              metrics: TimelineGridMetrics.defaults.copyWith(
+                layerControlsWidth: _naturalRailWidth,
+                railColumns: layerRailColumnWidthsIn(context),
+              ),
               legend: widget.legend,
               rowFilter: widget.rowFilter,
               showRowSolos: true,
@@ -2516,7 +2531,7 @@ class _StoryboardLabelShell extends StatelessWidget {
       onTap: onTap,
       child: Container(
         key: rowKey,
-        width: StoryboardPanel._trackLabelWidth,
+        width: StoryboardPanel.railWidthIn(context),
         height: height,
         padding: const EdgeInsets.only(right: 8),
         decoration: chromeless
@@ -2727,6 +2742,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                 ),
               ),
               ...layerRailTrailingCells(
+                columns: layerRailColumnWidthsIn(context),
                 // NO waveform-hide eye (UI-R7 #8): the timeline rows carry
                 // none either — the twirled-down Audio lane is the "big
                 // waveform" view. The fill-reference slot stays reserved so
@@ -2878,6 +2894,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                 ),
               ),
               ...layerRailTrailingCells(
+                columns: layerRailColumnWidthsIn(context),
                 // The eye: include/exclude this row's composite
                 // contribution (B5③ — 「비지블 = 해당 합성 반영/미반영」).
                 // fx and opacity stay kind-gated off, exactly like the
@@ -3930,7 +3947,8 @@ class StoryboardTrackLabelRow extends StatelessWidget {
   });
 
   /// The rail's own width — what a host windows this row against.
-  static const double railWidth = StoryboardPanel._trackLabelWidth;
+  static double railWidthIn(BuildContext context) =>
+      StoryboardPanel.railWidthIn(context);
 
   /// GROUND OFF: no fill, no active wash, no seams (the folded row's whole
   /// design is the negative space — see [CollapsedRowOverlay]). It is the
@@ -4086,6 +4104,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
               // Where no cut exists (a gap on this track) a press is a no-op;
               // the button is track furniture, only its subject is absent.
               ...layerRailTrailingCells(
+                columns: layerRailColumnWidthsIn(context),
                 // R9 #21: the switch in this row's fx column is the
                 // TRACK's — a row's columns describe the row's own
                 // subject, and this row is the track's.

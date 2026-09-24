@@ -100,13 +100,14 @@ class _StoryboardRowsAndLabels {
     final metrics = TimelineGridMetrics(
       frameCellWidth: _state.widget.pixelsPerFrame,
       layerRowHeight: _laneHeight - 2,
+      railColumns: layerRailColumnWidthsIn(_state.context),
     );
     final onToggleGroup = _state.widget.onToggleTransformGroup;
     Widget row(PropertyLaneRow lane, int frameIndex) => TimelineLaneControlsRow(
       layer: carrier,
       lane: lane,
       metrics: metrics,
-      width: StoryboardPanel._trackLabelWidth,
+      width: _state._naturalRailWidth,
       height: _laneHeight,
       currentFrameIndex: frameIndex,
       onSelectFrame: active

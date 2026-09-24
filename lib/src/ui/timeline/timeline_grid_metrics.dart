@@ -26,7 +26,13 @@ import 'package:flutter/widgets.dart';
 
 import '../text/text_measure.dart';
 import '../widgets/app_scrollbar_lane.dart';
-import 'layer_label_controls.dart' show layerRowNameStyle;
+import 'layer_label_controls.dart'
+    show
+        LayerRailColumnWidths,
+        layerBlendSlotWidth,
+        layerOpacitySlotWidth,
+        layerRailColumnWidthsAtOne,
+        layerRowNameStyle;
 
 /// Width of one frame cell on the frame axis.
 /// 48 → 24 (R-toolbar slim round, CSP/TVPaint density).
@@ -60,6 +66,14 @@ double timelineLayerRowHeightIn(BuildContext context) =>
 /// into the label's rightmost slot — the rail pays its width, as the
 /// user directed ("레이어라벨 더 키워야겟지").
 const double timelineLayerControlsWidth = 434;
+
+/// [timelineLayerControlsWidth] with [columns] in place of the 1× ones —
+/// the rail pays for its word-holding columns' growth
+/// (text-scale-rail-columns), as it paid for the blend column (R27 #6).
+double timelineLayerControlsWidthFor(LayerRailColumnWidths columns) =>
+    timelineLayerControlsWidth +
+    (columns.opacity - layerOpacitySlotWidth) +
+    (columns.blend - layerBlendSlotWidth);
 
 /// How thick the frame RULER is across the layer axis — exactly one row
 /// (`headerHeight = _metrics.layerRowHeight` in the grid), which is why the
@@ -122,6 +136,7 @@ class TimelineGridMetrics {
     this.layerRowHeight = timelineLayerRowHeight,
     this.verticalScrollbarWidth = timelineVerticalScrollbarWidth,
     this.sectionLabelGutterWidth = timelineSectionLabelGutterWidth,
+    this.railColumns = layerRailColumnWidthsAtOne,
   }) : assert(minimumVisibleFrameCells >= 0),
        assert(layerControlsWidth >= 0),
        assert(frameCellWidth > 0),
@@ -149,6 +164,7 @@ class TimelineGridMetrics {
     double? frameCellWidth,
     double? layerControlsWidth,
     double? layerRowHeight,
+    LayerRailColumnWidths? railColumns,
   }) {
     return TimelineGridMetrics(
       minimumVisibleFrameCells: minimumVisibleFrameCells,
@@ -157,6 +173,7 @@ class TimelineGridMetrics {
       layerRowHeight: layerRowHeight ?? this.layerRowHeight,
       verticalScrollbarWidth: verticalScrollbarWidth,
       sectionLabelGutterWidth: sectionLabelGutterWidth,
+      railColumns: railColumns ?? this.railColumns,
     );
   }
 
@@ -181,6 +198,12 @@ class TimelineGridMetrics {
   /// [layerControlsWidth].
   final double sectionLabelGutterWidth;
 
+  /// The rail's word-holding columns where the grid is shown
+  /// ([layerRailColumnWidthsIn], text-scale-rail-columns). Every rail
+  /// row, the legend and the sheet's stood-up headers lay their
+  /// trailing run out from this one answer.
+  final LayerRailColumnWidths railColumns;
+
   @override
   bool operator ==(Object other) {
     return other is TimelineGridMetrics &&
@@ -189,7 +212,8 @@ class TimelineGridMetrics {
         other.frameCellWidth == frameCellWidth &&
         other.layerRowHeight == layerRowHeight &&
         other.verticalScrollbarWidth == verticalScrollbarWidth &&
-        other.sectionLabelGutterWidth == sectionLabelGutterWidth;
+        other.sectionLabelGutterWidth == sectionLabelGutterWidth &&
+        other.railColumns == railColumns;
   }
 
   @override
@@ -200,6 +224,7 @@ class TimelineGridMetrics {
     layerRowHeight,
     verticalScrollbarWidth,
     sectionLabelGutterWidth,
+    railColumns,
   );
 
   @override
@@ -209,6 +234,7 @@ class TimelineGridMetrics {
         'layerControlsWidth: $layerControlsWidth, '
         'frameCellWidth: $frameCellWidth, '
         'layerRowHeight: $layerRowHeight, '
-        'verticalScrollbarWidth: $verticalScrollbarWidth)';
+        'verticalScrollbarWidth: $verticalScrollbarWidth, '
+        'railColumns: $railColumns)';
   }
 }

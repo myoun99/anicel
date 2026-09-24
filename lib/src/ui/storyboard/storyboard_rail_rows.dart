@@ -382,7 +382,8 @@ class _StoryboardRailRows {
     // over it.
 
     return railSwipeColumns<StoryboardRailRow>(
-      crossExtent: StoryboardPanel._trackLabelWidth,
+      crossExtent: _state._naturalRailWidth,
+      columns: layerRailColumnWidthsIn(_state.context),
       leadingOrigin: 0,
       visibility: (valueOf: _rowEyeOn, toggle: _toggleRowEye),
       // The transition row draws no fx switch, and a kind that shows none

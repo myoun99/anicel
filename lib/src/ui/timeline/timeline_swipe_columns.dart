@@ -34,9 +34,11 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   required TimelineGridHooks hooks,
   required double crossExtent,
   required double leadingOrigin,
+  required LayerRailColumnWidths columns,
 }) => railSwipeColumns<TimelineDisplayRow>(
   crossExtent: crossExtent,
   leadingOrigin: leadingOrigin,
+  columns: columns,
   hasOnionColumn: hooks.onToggleLayerOnionSkin != null,
   hasBlendColumn: hooks.onLayerBlendModeSelected != null,
   visibility: _visibility(hooks),

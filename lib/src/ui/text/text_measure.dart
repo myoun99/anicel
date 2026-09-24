@@ -19,6 +19,16 @@ class TextMeasure {
     : _scaler = MediaQuery.textScalerOf(context),
       _direction = Directionality.of(context);
 
+  TextMeasure._(this.style, this._scaler, this._direction);
+
+  /// The same words measured the way they lay out at 1× — the ground every
+  /// growth below is stated against.
+  late final TextMeasure _atOne = TextMeasure._(
+    style,
+    TextScaler.noScaling,
+    _direction,
+  );
+
   /// A line in every script the app's labels write — Latin, Hangul, kana,
   /// kanji, a digit. The two faces set different line metrics, so a box
   /// sized for ONE of them is sized for whichever the language picks.
@@ -54,15 +64,15 @@ class TextMeasure {
   /// 크기를 키웠을 때」: 「막대가 글자 크기를 따라 자란다」). A bar's height is
   /// the height it was drawn at PLUS this, which is 0 at 1× — so nothing
   /// drawn at 1× moves.
-  double lineGrowthOf(String text) {
-    final atOne = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: _direction,
-      textScaler: TextScaler.noScaling,
-      maxLines: 1,
-    )..layout();
-    final growth = size(text).height - atOne.height;
-    atOne.dispose();
-    return math.max(0, growth);
-  }
+  double lineGrowthOf(String text) =>
+      math.max(0, size(text).height - _atOne.size(text).height);
+
+  /// How much wider the widest of [texts] runs here than at 1× — what a
+  /// column sized around those words at 1× has to add for them to still
+  /// fit. [lineGrowthOf] turned onto the other axis.
+  ///
+  /// 🚨text-scale-rail-columns (유저 2026-09-25, 「칸도 글자 따라
+  /// 넓어진다」): 0 at 1×, so nothing drawn at 1× moves.
+  double widthGrowthOf(Iterable<String> texts) =>
+      math.max(0, widest(texts) - _atOne.widest(texts));
 }

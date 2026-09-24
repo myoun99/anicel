@@ -741,6 +741,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   List<Widget> _trailingCells(ColorScheme colorScheme) =>
       layerRailTrailingCells(
         axis: axis,
+        columns: metrics.railColumns,
         fillReference: _fillReferenceToggle(),
         fx: _fxSwitch(),
         hasOnionColumn: onToggleLayerOnionSkin != null,
@@ -886,6 +887,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       optionKeyPrefix: '$keyPrefix-layer-blend-option-',
       blendMode: layer.blendMode,
       isGroup: isGroup,
+      slotExtent: metrics.railColumns.blend,
       onBlendModeSelected: (mode) => onSelected(layer.id, mode),
     );
   }

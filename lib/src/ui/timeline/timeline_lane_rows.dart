@@ -847,6 +847,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   List<Widget> _headerTrailing(BuildContext context, ColorScheme colorScheme) =>
       layerRailTrailingCells(
         axis: widget.axis,
+        columns: widget.metrics.railColumns,
         fillReference: _groupReset(colorScheme),
         fx: _groupFx(context),
         hasOnionColumn: widget.hasOnionColumn,

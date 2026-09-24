@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/field_slider.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
@@ -268,6 +269,52 @@ const double layerOpacitySlotWidth = 42;
 /// slot, immediately right of the opacity bar, per the user's placement.
 const double layerBlendSlotWidth = 58;
 
+/// The rail's two columns that hold WORDS — the opacity bar's digits (and
+/// the legend's resting OPAC) and the blend chip's mode — as wide as they
+/// are where the rail is shown. Every other column holds an icon, and icons
+/// do not follow the OS text size.
+///
+/// 🚨text-scale-rail-columns (유저 2026-09-25, 「칸도 글자 따라 넓어진다」):
+/// a column's 1× slot plus as much as its widest word grew — 0 at 1×, so
+/// nothing drawn at 1× moves — and the rail pays for it, as it paid for the
+/// blend column (R27 #6). 🔬At 1.5× 「100」 wanted 35.5 in the bar's 26.
+typedef LayerRailColumnWidths = ({double opacity, double blend});
+
+/// The columns at 1× — what a surface that never asks draws.
+const LayerRailColumnWidths layerRailColumnWidthsAtOne = (
+  opacity: layerOpacitySlotWidth,
+  blend: layerBlendSlotWidth,
+);
+
+/// [LayerRailColumnWidths] where [context] lays its text out.
+///
+/// Remembered against every input it reads — the text scaler, the language
+/// and the two styles — so the storyboard's rows, which each ask, lay the
+/// words out once between them and not once per row. A change to any input
+/// is a different key, so the answer cannot go stale.
+LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
+  final key = (
+    scaler: MediaQuery.textScalerOf(context),
+    language: AppText.language,
+    value: FieldSlider.valueStyleIn(context),
+    blend: _blendWordStyle(context),
+  );
+  final remembered = _railColumnsMemo;
+  if (remembered != null && remembered.key == key) {
+    return remembered.columns;
+  }
+  final columns = (
+    opacity:
+        layerOpacitySlotWidth +
+        FieldSlider.widthGrowthIn(context, const ['100', 'OPAC']),
+    blend: layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
+  );
+  _railColumnsMemo = (key: key, columns: columns);
+  return columns;
+}
+
+({Object key, LayerRailColumnWidths columns})? _railColumnsMemo;
+
 /// A property lane's VALUE readout — a real column, like every other slot
 /// on this rail (R5 #20).
 ///
@@ -324,6 +371,20 @@ enum RailSubject {
 /// its box grows by.
 const double _blendFontSize = 9.5;
 
+TextStyle _blendWordStyle(BuildContext context) =>
+    DefaultTextStyle.of(context).style.copyWith(fontSize: _blendFontSize);
+
+/// How much wider the blend column's widest word — any mode, in the heavier
+/// weight a non-normal mode wears — runs here than at 1× (the column's share
+/// of text-scale-rail-columns, 유저 2026-09-25: 「칸도 글자 따라 넓어진다」).
+/// 🔬「Normal」 wanted 56.6 in its 52 at 1.5× and 75.0 at 2×.
+double layerBlendColumnGrowthIn(BuildContext context) => TextMeasure(
+  context,
+  _blendWordStyle(context).copyWith(fontWeight: FontWeight.w700),
+).widthGrowthOf([
+  for (final mode in LayerBlendMode.values) mode.labelFor(AppText.language),
+]);
+
 class LayerBlendModeChip extends StatelessWidget {
   const LayerBlendModeChip({
     super.key,
@@ -333,7 +394,13 @@ class LayerBlendModeChip extends StatelessWidget {
     required this.onBlendModeSelected,
     this.isGroup = false,
     this.axis = Axis.horizontal,
+    this.slotExtent = layerBlendSlotWidth,
   });
+
+  /// The blend column's extent where the chip is shown — [layerBlendSlotWidth]
+  /// plus its words' growth ([layerBlendColumnGrowthIn]), asked once by the
+  /// rail that lays the column out rather than by every chip in it.
+  final double slotExtent;
 
   /// The RAIL's direction. Vertical is the x-sheet's stood-up column: the
   /// slot spends its 58 as HEIGHT and the mode name reads down the button.
@@ -376,11 +443,11 @@ class LayerBlendModeChip extends StatelessWidget {
     // 「Normal」 wanted 20 in its 16 at 1.5×.
     final growth = TextMeasure(
       context,
-      DefaultTextStyle.of(context).style.copyWith(fontSize: _blendFontSize),
+      _blendWordStyle(context),
     ).lineGrowthOf(TextMeasure.everyScript);
     return SizedBox(
-      width: vertical ? 20 : layerBlendSlotWidth,
-      height: vertical ? layerBlendSlotWidth : 20 + growth,
+      width: vertical ? 20 + growth : slotExtent,
+      height: vertical ? slotExtent : 20 + growth,
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(

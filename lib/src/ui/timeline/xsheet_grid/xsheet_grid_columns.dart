@@ -51,6 +51,7 @@ class _XSheetGridColumns {
         hooks: _state.widget.hooks,
         crossExtent: _state._headers.naturalHeaderExtent,
         leadingOrigin: 0,
+        columns: _state.widget.metrics.railColumns,
       );
 
   Widget _gatedColumn(

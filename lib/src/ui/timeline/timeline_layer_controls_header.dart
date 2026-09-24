@@ -717,9 +717,9 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     final railExtent =
         this.railExtent ??
         (isVertical
-            ? timelineLayerControlsWidth -
+            ? timelineLayerControlsWidthFor(metrics.railColumns) -
                   (hasOnion ? 0 : layerOnionSlotWidth) -
-                  (hasBlend ? 0 : layerBlendSlotWidth)
+                  (hasBlend ? 0 : metrics.railColumns.blend)
             : metrics.layerControlsWidth);
     final crossExtent = isVertical
         ? metrics.layerControlsWidth
@@ -808,6 +808,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   ),
                   ...layerRailTrailingCells(
                     axis: axis,
+                    columns: metrics.railColumns,
                     fillReference: _buildFillReference(legend, restColor),
                     fx: _buildFx(context, legend),
                     // Onion legend (UI-R17 #5): bulk apply/clear over the
