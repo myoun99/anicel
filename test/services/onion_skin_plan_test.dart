@@ -106,62 +106,64 @@ void main() {
     expect(plans[1].opacity, 0.4);
   });
 
-  group('F-175: an empty stretch is ONE step', () {
+  group('F-175: every empty CELL is one step', () {
     // 🗣️유저 2026-09-21: 「어니언스킨 블록 단위일때, 사이에 빈 공간 있는데도
     // 그 너머의 첫번째 블럭이 인식됨. 빈 공간 한칸은 블럭으로서 한칸으로
-    // 쳐서 빈공간이면 다음 1번의 어니언스킨 안보이게.」
+    // 쳐서 빈공간이면 다음 1번의 어니언스킨 안보이게.」 — and, when the first
+    // reading counted a whole empty stretch as ONE step, the case itself
+    // (2026-09-24): 「AxxB가 있으면, 첫번째 빈공간 x에 서면 A의 그림은
+    // 보이고 B는 안보여야하는데 B가 보임 … 앞뒤2개 보이게 설정한거라면 B가
+    // 보이는게 맞음」.
 
-    /// D: [0,2) · EMPTY [2,5) — three cells, one step · E: [5,6) · F: [6,7)
-    /// touching E with no gap.
-    final gapped = Layer(
-      id: const LayerId('gapped'),
-      name: 'G',
-      frames: [frame('d'), frame('e'), frame('f')],
+    /// A: [0,1) · x · x · B: [3,4) · C: [4,5), C touching B with no gap.
+    final axxb = Layer(
+      id: const LayerId('axxb'),
+      name: 'AxxB',
+      frames: [frame('a'), frame('b'), frame('c')],
       timeline: {
-        0: const TimelineExposure.drawing(FrameId('d'), length: 2),
-        5: const TimelineExposure.drawing(FrameId('e'), length: 1),
-        6: const TimelineExposure.drawing(FrameId('f'), length: 1),
+        0: const TimelineExposure.drawing(FrameId('a'), length: 1),
+        3: const TimelineExposure.drawing(FrameId('b'), length: 1),
+        4: const TimelineExposure.drawing(FrameId('c'), length: 1),
       },
     );
-    const twoEachWay = OnionSkinSettings(
-      beforePegs: [OnionPeg(opacity: 0.4), OnionPeg(opacity: 0.2)],
-      afterPegs: [OnionPeg(opacity: 0.3), OnionPeg(opacity: 0.1)],
-    );
 
-    List<(String, double)> ghosts(int frameIndex) => [
-      for (final plan in planOnionSkin(
-        layer: gapped,
-        frameIndex: frameIndex,
-        settings: twoEachWay,
-      ))
-        (plan.frameId.value, plan.opacity),
-    ];
+    List<String> ghosts(int frameIndex, {required int each}) {
+      final pegs = [
+        for (var i = 0; i < each; i += 1) const OnionPeg(opacity: 0.5),
+      ];
+      return [
+        for (final plan in planOnionSkin(
+          layer: axxb,
+          frameIndex: frameIndex,
+          settings: OnionSkinSettings(beforePegs: pegs, afterPegs: pegs),
+        ))
+          plan.frameId.value,
+      ];
+    }
 
-    test('🚨after: peg 1 lands on the stretch and shows NOTHING; peg 2 '
-        'reaches the drawing beyond it', () {
-      // At D (frame 0): after peg 1 = the empty [2,5) → nothing; after
-      // peg 2 = E. The old walk jumped the stretch and made E peg 1.
-      expect(ghosts(0), [('e', 0.1)]);
+    test('🚨the user\'s case: on the FIRST x, one each way is A alone', () {
+      expect(ghosts(1, each: 1), ['a']);
     });
 
-    test('🚨before: the same stretch is the same one step, however long', () {
-      // At E (frame 5): before peg 1 = the empty [2,5) → nothing; before
-      // peg 2 = D. Three empty cells are ONE step, as the sheet's single
-      // `x` says.
-      expect(ghosts(5).where((g) => g.$1 == 'd'), [('d', 0.2)]);
-      expect(
-        ghosts(5).map((g) => g.$1),
-        isNot(contains('e')),
-        reason: '⛔전제: the current cel never ghosts itself',
-      );
+    test('🚨two each way reach B from the first x — the second x is the '
+        'step between', () {
+      expect(ghosts(1, each: 2), ['a', 'b']);
     });
 
-    test('⛔the CONTROL: blocks that touch step straight onto each other',
-        () {
-      // At E (frame 5): after peg 1 = F, glued to E — no stretch between,
-      // so nothing is spent. Without this a walk that treated every step
-      // as empty would pass the two above.
-      expect(ghosts(5).where((g) => g.$1 == 'f'), [('f', 0.3)]);
+    test('on the SECOND x, one each way is B alone — the first x is the '
+        'step behind', () {
+      expect(ghosts(2, each: 1), ['b']);
+    });
+
+    test('from A, B is three steps on: x, x, then B', () {
+      expect(ghosts(0, each: 2), isEmpty);
+      expect(ghosts(0, each: 3), ['b']);
+    });
+
+    test('⛔the CONTROL: blocks that touch step straight onto each other', () {
+      // At B (frame 3): one step on is C, glued to B. Without this a walk
+      // that spent every step on emptiness would pass the ones above.
+      expect(ghosts(3, each: 1), ['c']);
     });
   });
 
