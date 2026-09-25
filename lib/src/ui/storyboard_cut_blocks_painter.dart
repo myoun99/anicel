@@ -1175,6 +1175,9 @@ class StoryboardPlateGrounds implements TimelineChromeGrounds {
     ];
   }
 
+  /// The first block not wholly left of [x]. In a gap that is the next
+  /// block, which is harmless: [under] keeps only the grounds its box
+  /// touches.
   StoryboardCutBlockVisual? _blockAt(double x) {
     var low = 0;
     var high = _blocks.length;
@@ -1186,9 +1189,6 @@ class StoryboardPlateGrounds implements TimelineChromeGrounds {
         high = middle;
       }
     }
-    if (low == _blocks.length || _blocks[low].rect.left > x) {
-      return null;
-    }
-    return _blocks[low];
+    return low == _blocks.length ? null : _blocks[low];
   }
 }
