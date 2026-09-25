@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 /// 🎯A STROKE STEP DRAWS ITS PICTURE (2026-09-25). A patch over the real
@@ -578,6 +579,52 @@ void main() {
         debugDefaultTargetPlatformOverride = null;
       }
     });
+  });
+
+  testWidgets('the buffer counters line says how many patches drew their '
+      'picture', (tester) async {
+    useView(tester);
+    InputInspector.reset();
+    CanvasPaintGeometryProbe.reset();
+    InputInspector.visible.value = true;
+    addTearDown(() {
+      InputInspector.reset();
+      CanvasPaintGeometryProbe.reset();
+    });
+    final images = await imagesFor(tester, const [activeRow]);
+    final buffers = DisplayBufferCache();
+    addTearDown(buffers.dispose);
+    var drawn = -1;
+    await tester.runAsync(() async {
+      for (var step = 0; step <= steps; step += 1) {
+        await paint(
+          tester,
+          buffers: buffers,
+          images: images,
+          nodes: const [activeRow],
+          surface: onPaper[step],
+          viewport: CanvasViewport(),
+          background: paper,
+          paintPaper: true,
+        );
+        await Future<void>.delayed(Duration.zero);
+      }
+      drawn = buffers.drawnCount;
+      // The line prints on its cadence; forgotten, the next paint prints
+      // what the buffer counts as it begins.
+      CanvasPaintGeometryProbe.lastCounters = null;
+      for (final painted in tester.renderObjectList<RenderCustomPaint>(
+        find.descendant(
+          of: find.byType(CanvasLayerStackView),
+          matching: find.byType(CustomPaint),
+        ),
+      )) {
+        painted.markNeedsPaint();
+      }
+      await tester.pump();
+    });
+    expect(drawn, steps);
+    expect(InputInspector.notes['buf'], contains('drawn=$steps'));
   });
 
   testWidgets('a step before the first snapshot lands derives from the head, '
