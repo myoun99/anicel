@@ -323,7 +323,9 @@ void main() {
       expect(grip, findsOneWidget, reason: 'the tail is this cut\'s to drag');
       final cell = tester
           .widget<TimelineBlockEdgeGrip>(grip)
-          .resolveFrameCellExtent();
+          .geometry
+          .value
+          .frameCellExtent;
       final gesture = await tester.startGesture(tester.getCenter(grip));
       for (var step = 1; step <= 4; step += 1) {
         await gesture.moveBy(xsheet ? Offset(0, cell / 2) : Offset(cell / 2, 0));
