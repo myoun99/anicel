@@ -122,7 +122,13 @@ void main() {
   /// (The 390 was the block frame lines round's: it retired the unused
   /// `rrectStroke` op, whose writer took eight, and left the ceiling where
   /// it was — the in-between mark round noticed it too, and adds none.)
-  const wideSignatures = 389;
+  ///
+  /// ⚠️389 → 387 on 2026-09-25, following two down: the panel writing moved
+  /// into the cut block's bands and the bands stopped folding, so the
+  /// folded block's `_paintAnchoredLabel` and the plates' `_paintPlatedGlyph`
+  /// went with what used them. 🔬`clean_code_diff` named those two, nothing
+  /// added.
+  const wideSignatures = 387;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -143,7 +149,11 @@ void main() {
   /// own layer classes. 🔬`clean_code_diff` between master and the lane
   /// named it and `_capture`, which had three jobs (take the image, build
   /// the picture that shows it, report a refusal) and was given one each.
-  const longBodies = 434;
+  ///
+  /// ⚠️434 → 433 on 2026-09-25, following one down: the storyboard's
+  /// `_paintPanelPictures` fell under the line when the panel writing left
+  /// it for the bands (and the fold gates with it).
+  const longBodies = 433;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
