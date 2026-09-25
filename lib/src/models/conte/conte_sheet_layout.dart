@@ -67,8 +67,11 @@ class ConteSheetMetrics {
   /// What the time column's numbers keep off its two rules.
   double get timeInset => 2;
 
-  /// The black of the silhouette around each picture window.
-  double get silhouetteBorder => 3.2;
+  /// The black of the silhouette around each picture window — heavier than
+  /// a rule by far, toward the reference sheet's (유저 2026-09-25: 「지브리
+  /// 콘티는 검정실루엣 더 두껍거든? 그정도까진 아니라도 지금 좀 더
+  /// 두껍게」). ↩️It was 3.2.
+  double get silhouetteBorder => 5;
   double get ruleWidth => 0.8;
 
   /// The project's camera ratio. Every picture WINDOW is exactly this shape
