@@ -32,7 +32,7 @@ void main() {
   Future<Map<String, String>> tooltips(
     WidgetTester tester, {
     required AppLanguage language,
-    required bool inkEnabled,
+    required bool brushAllowed,
     required bool dataSheet,
     required bool continuous,
   }) async {
@@ -62,8 +62,8 @@ void main() {
             onViewportChanged: (_) {},
             inkController: ink,
             brushToolState: brushTool,
-            inkEnabled: inkEnabled,
-            onInkEnabledChanged: (_) {},
+            brushAllowed: brushAllowed,
+            onBrushAllowedChanged: (_) {},
           ),
         ),
       ),
@@ -88,7 +88,7 @@ void main() {
     }
 
     return <String, String>{
-      'ink': of('timesheet-ink-toggle-button'),
+      'brush': of('timesheet-brush-toggle-button'),
       'mode': of('timesheet-data-mode-toggle-button'),
       'view': of('timesheet-page-mode-toggle-button'),
     };
@@ -96,7 +96,7 @@ void main() {
 
   /// The words that were nailed to the widget, by the arm they stood on.
   const wasEnglish = <String, List<String>>{
-    'ink': ['Block Sheet Ink', 'Allow Sheet Ink'],
+    'brush': ['Block Sheet Ink', 'Allow Sheet Ink'],
     'mode': ['Notation Sheet (repeat/hold words)', 'Data Sheet (as exported)'],
     'view': ['Page View', 'Continuous View'],
   };
@@ -113,14 +113,14 @@ void main() {
     final ja = await tooltips(
       tester,
       language: AppLanguage.ja,
-      inkEnabled: true,
+      brushAllowed: true,
       dataSheet: false,
       continuous: false,
     );
     final ko = await tooltips(
       tester,
       language: AppLanguage.ko,
-      inkEnabled: true,
+      brushAllowed: true,
       dataSheet: false,
       continuous: false,
     );
@@ -153,14 +153,14 @@ void main() {
     final ja = await tooltips(
       tester,
       language: AppLanguage.ja,
-      inkEnabled: false,
+      brushAllowed: false,
       dataSheet: true,
       continuous: true,
     );
     final ko = await tooltips(
       tester,
       language: AppLanguage.ko,
-      inkEnabled: false,
+      brushAllowed: false,
       dataSheet: true,
       continuous: true,
     );

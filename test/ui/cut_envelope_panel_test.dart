@@ -212,7 +212,7 @@ void main() {
 
     Future<(EditorSessionManager, CutEnvelopeInkController)> pumpEnvelope(
       WidgetTester tester, {
-      bool inkEnabled = false,
+      bool brushAllowed = false,
       ValueNotifier<BrushToolState>? brush,
     }) async {
       final session = EditorSessionManager(initialProject: project());
@@ -231,8 +231,8 @@ void main() {
               session: session,
               inkController: ink,
               brushToolState: tool,
-              inkEnabled: inkEnabled,
-              onInkEnabledChanged: (_) {},
+              brushAllowed: brushAllowed,
+              onBrushAllowedChanged: (_) {},
             ),
           ),
         ),
@@ -242,7 +242,7 @@ void main() {
     }
 
     testWidgets('the panel draws the sheet inside the canvas shell, with '
-        'ink BLOCKED until it is asked for', (tester) async {
+        'the brush OFF until it is asked for', (tester) async {
       await pumpEnvelope(tester);
 
       expect(
@@ -250,15 +250,15 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('envelope-ink-toggle-button')),
+        find.byKey(const ValueKey<String>('envelope-brush-toggle-button')),
         findsOneWidget,
       );
       expect(find.byType(CutEnvelopeInkOverlay), findsNothing);
     });
 
-    testWidgets('with ink allowed the overlay mounts only the boxes big '
+    testWidgets('with the brush on the overlay mounts only the boxes big '
         'enough to write in — never all 86', (tester) async {
-      await pumpEnvelope(tester, inkEnabled: true);
+      await pumpEnvelope(tester, brushAllowed: true);
 
       final overlay = tester.widget<CutEnvelopeInkOverlay>(
         find.byType(CutEnvelopeInkOverlay),
@@ -277,7 +277,7 @@ void main() {
     testWidgets('a brush change rebuilds no ink window, and the windows read '
         'the brush in hand', (tester) async {
       final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
-      await pumpEnvelope(tester, inkEnabled: true, brush: brush);
+      await pumpEnvelope(tester, brushAllowed: true, brush: brush);
       expect(find.byType(CutEnvelopeInkOverlay), findsOneWidget);
 
       final next = brush.value.copyWith(size: 40, color: 0xFF336699);
@@ -338,7 +338,7 @@ void main() {
 
     testWidgets('a stroke lands on the box it started in and one undo '
         'clears it', (tester) async {
-      final (session, ink) = await pumpEnvelope(tester, inkEnabled: true);
+      final (session, ink) = await pumpEnvelope(tester, brushAllowed: true);
 
       final overlay = tester.widget<CutEnvelopeInkOverlay>(
         find.byType(CutEnvelopeInkOverlay),
@@ -366,6 +366,37 @@ void main() {
       );
       session.historyManager.undo();
       expect(ink.hasInkFor(null, window.key), isFalse);
+    });
+
+    // ↩️The envelope kept a bare stroke flag the timesheet and the conte
+    // each wired to the session; this sheet never was, so a cut switch could
+    // land under the pen mid-stroke. One hold for the three now.
+    testWidgets('a stroke holds the brush input the way a canvas stroke '
+        'does — seeks and cut switches wait for the pen (R15-⑤)', (
+      tester,
+    ) async {
+      final (session, _) = await pumpEnvelope(tester, brushAllowed: true);
+      final overlay = tester.widget<CutEnvelopeInkOverlay>(
+        find.byType(CutEnvelopeInkOverlay),
+      );
+      final window = overlay.windows.first;
+      final origin = tester.getTopLeft(find.byType(CutEnvelopeInkOverlay));
+      final rect = window.screenRect(overlay.viewport);
+
+      expect(session.brushInputActive.value, isFalse);
+      final gesture = await tester.startGesture(
+        origin + rect.center,
+        pointer: 7,
+      );
+      await tester.pump();
+      await gesture.moveTo(origin + rect.center + const Offset(6, 4));
+      await tester.pump();
+      expect(session.brushInputActive.value, isTrue);
+      expect(session.editingInteractionBusy, isTrue);
+
+      await gesture.up();
+      await tester.pump();
+      expect(session.brushInputActive.value, isFalse);
     });
   });
 }

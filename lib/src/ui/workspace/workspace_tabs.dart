@@ -963,7 +963,7 @@ class _WorkspaceTabs {
               _state.widget.session,
               _state._storyboardThumbnails,
               _state._views._conteViewport,
-              _state._views._conteInkEnabled,
+              _state._views._conteBrushAllowed,
               _state._views._conteInk,
               // The locale reprints the sheet chrome (labels/tooltips).
               _state.widget.session.languageSettings,
@@ -981,9 +981,9 @@ class _WorkspaceTabs {
               viewportController: _state._views._conteViewport,
               inkController: _state._views._conteInk,
               brushToolState: _state._brushTool,
-              inkEnabled: _state._views._conteInkEnabled.value,
-              onInkEnabledChanged: (enabled) {
-                _state._views._conteInkEnabled.value = enabled;
+              brushAllowed: _state._views._conteBrushAllowed.value,
+              onBrushAllowedChanged: (enabled) {
+                _state._views._conteBrushAllowed.value = enabled;
               },
             ),
           ),
@@ -1004,7 +1004,7 @@ class _WorkspaceTabs {
             listenable: Listenable.merge([
               _state.widget.session,
               _state._views._envelopeViewport,
-              _state._views._envelopeInkEnabled,
+              _state._views._envelopeBrushAllowed,
               _state._views._envelopeFormId,
               _state._views._envelopeInk,
               // F-90: the envelope of the cut under the playhead, turning
@@ -1021,9 +1021,9 @@ class _WorkspaceTabs {
               viewportController: _state._views._envelopeViewport,
               inkController: _state._views._envelopeInk,
               brushToolState: _state._brushTool,
-              inkEnabled: _state._views._envelopeInkEnabled.value,
-              onInkEnabledChanged: (enabled) {
-                _state._views._envelopeInkEnabled.value = enabled;
+              brushAllowed: _state._views._envelopeBrushAllowed.value,
+              onBrushAllowedChanged: (enabled) {
+                _state._views._envelopeBrushAllowed.value = enabled;
               },
               // 🚨WIRED NOW. The comment that stood here said this waited on
               // the 작품 정보 round because nothing set a logo or a 도장 path
@@ -1058,7 +1058,7 @@ class _WorkspaceTabs {
               _state._views._timesheetContinuous,
               _state._views._timesheetPage,
               _state._views._timesheetViewport,
-              _state._views._timesheetInkEnabled,
+              _state._views._timesheetBrushAllowed,
               // F-90: a crossing, played or dragged over, turns the sheet
               // over to the cut under the playhead.
               _state.widget.session.cutUnderPlayhead.listenable,
@@ -1078,9 +1078,9 @@ class _WorkspaceTabs {
               viewportController: _state._views._timesheetViewport,
               inkController: _state._views._timesheetInk,
               brushToolState: _state._brushTool,
-              inkEnabled: _state._views._timesheetInkEnabled.value,
-              onInkEnabledChanged: (enabled) {
-                _state._views._timesheetInkEnabled.value = enabled;
+              brushAllowed: _state._views._timesheetBrushAllowed.value,
+              onBrushAllowedChanged: (enabled) {
+                _state._views._timesheetBrushAllowed.value = enabled;
               },
             ),
           ),

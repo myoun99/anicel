@@ -87,9 +87,10 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
       paper: Size(layout.paperWidth, layout.paperHeight),
     ));
     if (_draws(SheetPaintLayer.paper)) {
-      canvas.drawRect(
+      paintSheetPaper(
+        canvas,
         Rect.fromLTWH(0, 0, layout.paperWidth, layout.paperHeight),
-        Paint()..color = Color(layout.form.paperArgb),
+        Color(layout.form.paperArgb),
       );
     }
 

@@ -136,9 +136,10 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
 
   void _paintPage(Canvas canvas) {
     if (showPaper && _draws(SheetPaintLayer.paper)) {
-      canvas.drawRect(
+      paintSheetPaper(
+        canvas,
         Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
-        Paint()..color = const Color(0xFFFFFFFF),
+        const Color(0xFFFFFFFF),
       );
     }
     if (_draws(SheetPaintLayer.form)) {

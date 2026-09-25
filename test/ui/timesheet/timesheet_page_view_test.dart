@@ -165,7 +165,10 @@ void main() {
                 onViewportChanged: (_) {},
                 inkController: inkController,
                 brushToolState: brushTool,
-                onInkEnabledChanged: (_) {},
+                // Drawing ON: the sheet's ink windows are what turn with the
+                // page (the brush switch starts off since 2026-09-25).
+                brushAllowed: true,
+                onBrushAllowedChanged: (_) {},
               ),
             ),
           ),
@@ -225,14 +228,14 @@ void main() {
       // The status strip is gone entirely (R2 #13) and its commands came
       // with the page cluster into the one pill.
       expect(
-        find.byKey(const ValueKey<String>('timesheet-ink-toggle-button')),
+        find.byKey(const ValueKey<String>('timesheet-brush-toggle-button')),
         findsOneWidget,
       );
       expect(
         tester
             .getCenter(
               find.byKey(
-                const ValueKey<String>('timesheet-ink-toggle-button'),
+                const ValueKey<String>('timesheet-brush-toggle-button'),
               ),
             )
             .dx,

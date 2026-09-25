@@ -47,8 +47,8 @@ class TimesheetTabHost extends StatefulWidget {
     this.onViewportChanged,
     this.inkController,
     this.brushToolState,
-    this.inkEnabled = true,
-    this.onInkEnabledChanged,
+    this.brushAllowed = false,
+    this.onBrushAllowedChanged,
   });
 
   final EditorSessionManager session;
@@ -84,11 +84,12 @@ class TimesheetTabHost extends StatefulWidget {
   /// (keep-alive) document.
   final ValueListenable<BrushToolState>? brushToolState;
 
-  /// The sheet-ink allow toggle (owned above the tab group): blocked ink
+  /// The sheet's brush switch (브러시 허용, owned above the tab group): off
   /// protects the sheet from stray pen marks AND turns taps into
   /// header/memo text editing (the edit layer sits under the ink windows).
-  final bool inkEnabled;
-  final ValueChanged<bool>? onInkEnabledChanged;
+  /// Off by default, like every sheet's.
+  final bool brushAllowed;
+  final ValueChanged<bool>? onBrushAllowedChanged;
 
   @override
   State<TimesheetTabHost> createState() => _TimesheetTabHostState();
@@ -228,40 +229,41 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     }
   }
 
-  /// Raised while an ink stroke is in progress so the panel gesture layer
-  /// holds navigation.
-  final ValueNotifier<bool> _inkStrokeActive = ValueNotifier<bool>(false);
-
-  /// Ink strokes hold the prerender warmer exactly like canvas strokes
-  /// (R13-3) — the sheet's drawing plane commits through the same funnel.
-  void _syncInkWarmHold() {
-    widget.session.setBrushInputActive(_inkStrokeActive.value);
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _inkStrokeActive.addListener(_syncInkWarmHold);
-  }
-
-  @override
-  void didUpdateWidget(covariant TimesheetTabHost oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Blocking ink unmounts the windows mid-stroke; clear the hold so the
-    // gesture layer never stays pinned on a stroke that can't finish.
-    if (!widget.inkEnabled && oldWidget.inkEnabled) {
-      _inkStrokeActive.value = false;
-    }
-  }
+  late final SheetStrokeHold _strokeHold = SheetStrokeHold(
+    brushInput: (live) => widget.session.setBrushInputActive(live),
+  );
 
   @override
   void dispose() {
-    // Never leak an open warm hold through a mid-stroke teardown.
-    if (_inkStrokeActive.value) {
-      widget.session.setBrushInputActive(false);
-    }
-    _inkStrokeActive.dispose();
+    _strokeHold.dispose();
     super.dispose();
+  }
+
+  /// What the ink windows are mounted with — or null while the sheet's
+  /// drawing is off. ONE gate for the ink layer and the panel's
+  /// [SheetCanvasPanel.drawingOn].
+  ({TimesheetInkController controller, ValueListenable<BrushToolState> tool})?
+  _inkMount() {
+    final controller = widget.inkController;
+    final tool = widget.brushToolState;
+    if (controller == null || tool == null || !widget.brushAllowed) {
+      return null;
+    }
+    return (controller: controller, tool: tool);
+  }
+
+  /// The brush switch both of this sheet's panels carry — the gap panel
+  /// too, so the switch keeps its place when a cut is selected.
+  ({bool allowed, ValueChanged<bool> onChanged, String keyPrefix})?
+  _brushSwitch() {
+    final onChanged = widget.onBrushAllowedChanged;
+    return onChanged == null
+        ? null
+        : (
+            allowed: widget.brushAllowed,
+            onChanged: onChanged,
+            keyPrefix: 'timesheet',
+          );
   }
 
   void _commitHeaderField(TimesheetHeaderField field, String text) {
@@ -285,33 +287,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     );
   }
 
-  /// The sheet commands living IN the panel's status strip (UI-R10 #18 —
-  /// the old toolbar row above the sheet retired): ink toggle and sheet
-  /// info, right-aligned, always visible (the strip's title text
-  /// ellipsizes first when the panel narrows).
-  ///
-  /// The sheet-MODE commands (notation/data, page/continuous) moved out to
-  /// the bottom bar with the page navigation (R26 #41), and what stayed
-  /// wears the app's standard icon button (R26 #42) instead of the
-  /// hand-rolled InkWell this strip used to grow its own.
-  /// The sheet's own commands, at the head of the panel's pill.
+  /// The sheet's own commands, at the head of the panel's pill — after the
+  /// brush switch, which the sheet shell puts first on every sheet.
   ///
   /// They lived in a status strip across the top of the panel until R2 #13
   /// took the strip (and the frame, and the bottom bar) away. A panel has
-  /// one pill now and everything it offers is in it.
+  /// one pill now and everything it offers is in it, each on the app's
+  /// standard icon button (R26 #42) rather than a hand-rolled InkWell.
   List<Widget> _panelActions() {
     return [
-      if (widget.onInkEnabledChanged != null)
-        AppIconButton(
-          keyValue: 'timesheet-ink-toggle-button',
-          tooltip: widget.inkEnabled
-              ? AppText.strings.sheetInkBlock
-              : AppText.strings.sheetInkAllow,
-          icon: Icon(widget.inkEnabled ? Icons.draw : Icons.edit_off),
-          isSelected: widget.inkEnabled,
-          size: AppIconButtonSize.strip,
-          onPressed: () => widget.onInkEnabledChanged!(!widget.inkEnabled),
-        ),
       AppIconButton(
         keyValue: 'timesheet-info-button',
         tooltip: AppText.strings.sheetInfoTitle,
@@ -386,9 +370,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
-    final colorScheme = Theme.of(context).colorScheme;
     final inkController = widget.inkController;
-    final brushToolState = widget.brushToolState;
+    final ink = _inkMount();
 
     // Session changes (incl. undo/redo of sheet strokes) rebuild the sheet
     // data and hand the windows fresh ink session surfaces; ink commits
@@ -421,18 +404,13 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             viewport: widget.viewport,
             viewportController: widget.viewportController,
             onViewportChanged: widget.onViewportChanged,
+            brushSwitch: _brushSwitch(),
             bottomBarLeading: [..._panelActions(), ..._bottomBarLeading(null)],
             pageStrip: _pageStrip(null),
-            bottomBarHostToken: (
-              widget.continuous,
-              _dataSheet,
-              widget.inkEnabled,
-              0,
-              0,
-            ),
-            content: (context, viewport) => ColoredBox(
+            bottomBarHostToken: (widget.continuous, _dataSheet, 0, 0),
+            // F-179: the backdrop shows through — no fill of the sheet's own.
+            content: (context, viewport) => SizedBox.expand(
               key: const ValueKey<String>('timesheet-empty-no-cut'),
-              color: colorScheme.surfaceContainerHighest,
               child: EmptyStateText(
                 strings.noCutSelected,
                 place: EmptyStatePlace.stage,
@@ -504,6 +482,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     viewport: widget.viewport,
                     viewportController: widget.viewportController,
                     onViewportChanged: widget.onViewportChanged,
+                    brushSwitch: _brushSwitch(),
                     bottomBarLeading: [
                       ..._panelActions(),
                       ..._bottomBarLeading(layout),
@@ -512,18 +491,14 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     bottomBarHostToken: (
                       widget.continuous,
                       _dataSheet,
-                      widget.inkEnabled,
                       visiblePage,
                       document.pages.length,
                     ),
                     // Fit frames the page on screen.
                     fitFocusRect: layout.pageRect(visiblePage),
                     autoFrame: autoFrame,
-                    drawingOn: inkController != null && widget.inkEnabled,
-                    contentStrokeActive:
-                        inkController == null || !widget.inkEnabled
-                        ? null
-                        : _inkStrokeActive,
+                    drawingOn: ink != null,
+                    strokeHold: _strokeHold,
                     content: (context, viewport) {
                       return Stack(
                         children: [
@@ -663,8 +638,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               ),
                             ),
                           ),
-                          // Under the ink windows: reachable exactly when ink is
-                          // blocked (the toggle doubles as the edit-mode switch).
+                          // Under the ink windows: reachable exactly when the
+                          // brush is off (the switch doubles as the edit-mode
+                          // switch).
                           Positioned.fill(
                             child: TimesheetHeaderEditLayer(
                               key: const ValueKey<String>(
@@ -677,9 +653,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                   session.cutVerbs.updateActiveCutNote,
                             ),
                           ),
-                          if (inkController != null &&
-                              brushToolState != null &&
-                              widget.inkEnabled)
+                          if (ink != null)
                             Positioned.fill(
                               // The tool-state boundary (R18 UI-3): the brush
                               // reaches only this small overlay — the sheet
@@ -691,14 +665,14 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 key: const ValueKey<String>(
                                   'timesheet-ink-layer',
                                 ),
-                                controller: inkController,
+                                controller: ink.controller,
                                 layout: layout,
                                 pagedLayout: pagedLayout,
                                 cutId: _documentCut!.id,
-                                brushToolState: brushToolState,
+                                brushToolState: ink.tool,
                                 historyManager: session.historyManager,
                                 viewport: viewport,
-                                strokeActive: _inkStrokeActive,
+                                strokeActive: _strokeHold,
                                 cacheInvalidationSink: _cacheInvalidationSink,
                               ),
                             ),

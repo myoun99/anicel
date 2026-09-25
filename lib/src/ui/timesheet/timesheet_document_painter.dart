@@ -25,6 +25,7 @@ import '../timeline/timeline_cut_end_handle.dart'
 import '../timeline/timeline_drag_preview.dart';
 import 'timesheet_notation.dart';
 import '../repaint_props.dart';
+import '../sheet_painting.dart' show paintSheetPaper;
 import '../timeline/memo_token.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;

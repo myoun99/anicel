@@ -26,7 +26,6 @@ import '../storyboard_cut_thumbnail_store.dart'
 import '../text/app_strings.dart';
 import '../timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview, TimelineDragPreview;
-import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_strip.dart';
 import '../widgets/static_raster.dart';
 import 'conte_fonts.dart';
@@ -42,7 +41,7 @@ import 'conte_sheet_builder.dart';
 /// what is on screen is the page. Navigation is the drawing canvas's:
 /// wheel zoom, middle-drag/two-finger pan, panbars, Fit. With an
 /// [inkController] and [brushToolState] the sheet takes freehand ink with
-/// the current brush/eraser; ink blocked, clicking a cell selects that
+/// the current brush/eraser; brush off, clicking a cell selects that
 /// cut, its storyboard row and the cell's frame, which is how the other
 /// panels follow along.
 class ConteTabHost extends StatefulWidget {
@@ -56,8 +55,8 @@ class ConteTabHost extends StatefulWidget {
     this.onViewportChanged,
     this.inkController,
     this.brushToolState,
-    this.inkEnabled = false,
-    this.onInkEnabledChanged,
+    this.brushAllowed = false,
+    this.onBrushAllowedChanged,
   });
 
   final EditorSessionManager session;
@@ -87,12 +86,12 @@ class ConteTabHost extends StatefulWidget {
   /// ink overlay subscribes — tool switches never rebuild the document.
   final ValueListenable<BrushToolState>? brushToolState;
 
-  /// The sheet-ink allow toggle: blocked ink protects the page from stray
-  /// pen marks AND turns taps back into cell selection (the tap layer
+  /// The sheet's brush switch (브러시 허용): off protects the page from
+  /// stray pen marks AND turns taps back into cell selection (the tap layer
   /// sits under the ink window). Off by default — the conte's first verb
   /// is reading and selecting, not annotating.
-  final bool inkEnabled;
-  final ValueChanged<bool>? onInkEnabledChanged;
+  final bool brushAllowed;
+  final ValueChanged<bool>? onBrushAllowedChanged;
 
   /// The shortest this tab is laid out at.
   ///
@@ -127,9 +126,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// The cell under edit, as `(cutId, cellIndex)`.
   (String, int)? _selected;
 
-  /// Raised while an ink stroke is in progress so the panel gesture layer
-  /// holds navigation.
-  final ValueNotifier<bool> _inkStrokeActive = ValueNotifier<bool>(false);
+  late final SheetStrokeHold _strokeHold = SheetStrokeHold(
+    brushInput: (live) => _session.setBrushInputActive(live),
+  );
 
   // Memoized sheet source + pages: the source reads the WHOLE project, so
   // it is rebuilt only when the project object (or the camera aspect that
@@ -137,15 +136,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
   // identity the staleness check, the timesheet host's pattern.
   final _sheet = IdentityMemo<(ConteSheetSource, List<ContePageLayout>)>();
 
-  /// Ink strokes hold the prerender warmer exactly like canvas strokes.
-  void _syncInkWarmHold() {
-    _session.setBrushInputActive(_inkStrokeActive.value);
-  }
-
   @override
   void initState() {
     super.initState();
-    _inkStrokeActive.addListener(_syncInkWarmHold);
     // The sheet sets its type in the embedded faces (conte_fonts). The
     // workspace warms them at startup, so this await is normally a no-op;
     // on a cold open the one rebuild below reflows the text out of the
@@ -160,21 +153,8 @@ class _ConteTabHostState extends State<ConteTabHost> {
   }
 
   @override
-  void didUpdateWidget(covariant ConteTabHost oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Blocking ink unmounts the window mid-stroke; clear the hold so the
-    // gesture layer never stays pinned on a stroke that can't finish.
-    if (!widget.inkEnabled && oldWidget.inkEnabled) {
-      _inkStrokeActive.value = false;
-    }
-  }
-
-  @override
   void dispose() {
-    if (_inkStrokeActive.value) {
-      _session.setBrushInputActive(false);
-    }
-    _inkStrokeActive.dispose();
+    _strokeHold.dispose();
     _action.dispose();
     super.dispose();
   }
@@ -273,20 +253,25 @@ class _ConteTabHostState extends State<ConteTabHost> {
     }
   }
 
-  /// The conte's own commands, at the head of the panel's pill (R2 #13 —
-  /// the status strip they lived in is gone with the rest of the frame).
-  List<Widget> _panelActions() {
-    return [
-      if (widget.onInkEnabledChanged != null && widget.inkController != null)
-        AppIconButton(
-          keyValue: 'conte-ink-toggle-button',
-          tooltip: widget.inkEnabled ? 'Block Sheet Ink' : 'Allow Sheet Ink',
-          icon: Icon(widget.inkEnabled ? Icons.draw : Icons.edit_off),
-          isSelected: widget.inkEnabled,
-          size: AppIconButtonSize.strip,
-          onPressed: () => widget.onInkEnabledChanged!(!widget.inkEnabled),
-        ),
-    ];
+  /// What the ink windows are mounted with — or null while the sheet's
+  /// drawing is off. ONE gate: the ink layer, the panel's [drawingOn] and
+  /// the painter's live keys all ask this, so none can say 「drawing」
+  /// while another says not.
+  ({
+    ConteInkController controller,
+    ValueListenable<BrushToolState> tool,
+    ContePageLayout page,
+  })?
+  _inkMount(ContePageLayout? page) {
+    final controller = widget.inkController;
+    final tool = widget.brushToolState;
+    if (page == null ||
+        controller == null ||
+        tool == null ||
+        !widget.brushAllowed) {
+      return null;
+    }
+    return (controller: controller, tool: tool, page: page);
   }
 
   @override
@@ -299,20 +284,14 @@ class _ConteTabHostState extends State<ConteTabHost> {
     final pageIndex = pageCount == 0 ? 0 : _page.clamp(0, pageCount - 1);
     final page = pageCount == 0 ? null : pages[pageIndex];
     final inkController = widget.inkController;
-    final brushToolState = widget.brushToolState;
+    final onBrushAllowedChanged = widget.onBrushAllowedChanged;
     final metrics = page?.metrics;
     if (inkController != null && metrics != null) {
       inkController.syncGeometry(metrics);
     }
-    // The ink view unmounts with the last page — nothing is left to
-    // finish a stroke, so the nav/warm hold must not stay pinned.
-    if (page == null && _inkStrokeActive.value) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _inkStrokeActive.value) {
-          _inkStrokeActive.value = false;
-        }
-      });
-    }
+    // The ink windows go with the last page too — the panel lets go of a
+    // stroke left on them, as it does when the brush goes off.
+    final ink = _inkMount(page);
 
     final panel = SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -327,7 +306,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
-      bottomBarLeading: _panelActions(),
+      brushSwitch: onBrushAllowedChanged == null
+          ? null
+          : (
+              allowed: widget.brushAllowed,
+              onChanged: onBrushAllowedChanged,
+              keyPrefix: 'conte',
+            ),
       // The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13).
       pageStrip: pageTurnStrip(
         keyPrefix: 'conte',
@@ -338,33 +323,25 @@ class _ConteTabHostState extends State<ConteTabHost> {
         ),
         onTurnTo: (page) => _turnToPage(page, pageCount),
       ),
-      bottomBarHostToken: (pageIndex, pageCount, widget.inkEnabled),
+      bottomBarHostToken: (pageIndex, pageCount),
       fitFocusRect: metrics == null
           ? null
           : Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
-      drawingOn: inkController != null && widget.inkEnabled,
-      contentStrokeActive: inkController == null || !widget.inkEnabled
-          ? null
-          : _inkStrokeActive,
+      drawingOn: ink != null,
+      strokeHold: _strokeHold,
       content: (context, viewport) {
+        // F-179: off the paper is the canvas panel's backdrop — no fill of
+        // the sheet's own here.
         return Stack(
           children: [
-            Positioned.fill(
-              child: ColoredBox(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-            ),
             if (page != null)
               _pageLayer(page, source, viewport, context, inkController),
-            // Under the ink window: reachable exactly when ink is blocked
-            // (the toggle doubles as the edit-mode switch, the timesheet's
+            // Under the ink window: reachable exactly when the brush is off
+            // (the switch doubles as the edit-mode switch, the timesheet's
             // header-edit rule).
             if (page != null) _cellTapLayer(viewport, page),
-            if (page != null &&
-                inkController != null &&
-                brushToolState != null &&
-                widget.inkEnabled)
-              _inkLayer(brushToolState, inkController, page, viewport),
+            if (ink != null)
+              _inkLayer(ink.tool, ink.controller, ink.page, viewport),
           ],
         );
       },
@@ -400,7 +377,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         brushToolState: brushToolState,
         historyManager: _session.historyManager,
         viewport: viewport,
-        strokeActive: _inkStrokeActive,
+        strokeActive: _strokeHold,
         cacheInvalidationSink: _cacheInvalidationSink,
       ),
     );
@@ -476,7 +453,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // full paint PLUS a full-page copy, and a stroke dirties the
       // page on every sample.
       child: ValueListenableBuilder<bool>(
-        valueListenable: _inkStrokeActive,
+        valueListenable: _strokeHold,
         builder: (context, stroking, child) =>
             ValueListenableBuilder<TimelineDragPreview?>(
               valueListenable: _session.dragPreview,
@@ -510,7 +487,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
                         : ConteInkPlane.page,
                     key,
                   ),
-            liveInkKeys: !widget.inkEnabled || inkController == null
+            liveInkKeys: _inkMount(page) == null
                 ? const {}
                 : {for (final window in conteInkWindows(page)) window.key},
             // F-88: the numbers this page prints follow a cut-length drag,

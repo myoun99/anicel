@@ -94,7 +94,7 @@ Future<EditorSessionManager> _pumpConte(
   WidgetTester tester, {
   ConteInkController? inkController,
   ValueListenable<BrushToolState>? brushToolState,
-  bool inkEnabled = false,
+  bool brushAllowed = false,
 }) async {
   final session = EditorSessionManager(initialProject: _project());
   addTearDown(session.dispose);
@@ -113,7 +113,7 @@ Future<EditorSessionManager> _pumpConte(
           viewport: seedFromRender(tester, CanvasViewport()),
           inkController: inkController,
           brushToolState: brushToolState,
-          inkEnabled: inkEnabled,
+          brushAllowed: brushAllowed,
         ),
       ),
     ),
@@ -216,7 +216,7 @@ void main() {
       tester,
       inkController: ink,
       brushToolState: brush,
-      inkEnabled: true,
+      brushAllowed: true,
     );
     expect(find.byType(ConteInkLayer), findsOneWidget);
 

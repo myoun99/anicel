@@ -39,33 +39,36 @@ class _WorkspaceDocumentViews {
 
   /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
   /// on screen in page view (R26 #41), the sheet viewport (zoom/pan) and
-  /// the sheet-ink allow toggle — owned here so they survive tab switches.
+  /// the brush switch — owned here so they survive tab switches.
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
 
   final ValueNotifier<int> _timesheetPage = ValueNotifier(0);
 
   final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
 
-  final ValueNotifier<bool> _timesheetInkEnabled = ValueNotifier(true);
+  /// Every sheet's brush switch starts OFF (유저 2026-09-25: 「브러시
+  /// 허용으로 바꾸고, 버튼 법 통일하고, 기본값 off로」). ↩️The timesheet's
+  /// alone used to start on.
+  final ValueNotifier<bool> _timesheetBrushAllowed = ValueNotifier(false);
 
   /// Sheet ink stores (S2 annotations) — owned here so freehand memos
   /// survive tab switches; separate from the session's cel stroke store.
   final TimesheetInkController _timesheetInk = TimesheetInkController();
 
   /// Conte tab view state (#16 — the conte rides the same canvas shell):
-  /// the sheet viewport and its ink toggle, owned here like the
-  /// timesheet's. Ink starts BLOCKED: the conte's first verb is reading
+  /// the sheet viewport and its brush switch, owned here like the
+  /// timesheet's. The brush starts OFF: the conte's first verb is reading
   /// and selecting cells.
   final ValueNotifier<CanvasViewport?> _conteViewport = ValueNotifier(null);
 
-  final ValueNotifier<bool> _conteInkEnabled = ValueNotifier(false);
+  final ValueNotifier<bool> _conteBrushAllowed = ValueNotifier(false);
 
   /// Cut-envelope tab view state — the conte's pair, said of the 봉투.
-  /// Ink starts BLOCKED here too: the envelope is read (and printed)
+  /// The brush starts OFF here too: the envelope is read (and printed)
   /// before anybody writes on it.
   final ValueNotifier<CanvasViewport?> _envelopeViewport = ValueNotifier(null);
 
-  final ValueNotifier<bool> _envelopeInkEnabled = ValueNotifier(false);
+  final ValueNotifier<bool> _envelopeBrushAllowed = ValueNotifier(false);
 
   /// The logo and 도장 the envelope prints, decoded once each.
   ///
@@ -110,13 +113,13 @@ class _WorkspaceDocumentViews {
     _timesheetContinuous.dispose();
     _timesheetPage.dispose();
     _timesheetViewport.dispose();
-    _timesheetInkEnabled.dispose();
+    _timesheetBrushAllowed.dispose();
     _timesheetInk.dispose();
     _conteViewport.dispose();
-    _conteInkEnabled.dispose();
+    _conteBrushAllowed.dispose();
     _conteInk.dispose();
     _envelopeViewport.dispose();
-    _envelopeInkEnabled.dispose();
+    _envelopeBrushAllowed.dispose();
     _envelopeImages.dispose();
     _envelopeFormId.dispose();
     _envelopeInk.dispose();

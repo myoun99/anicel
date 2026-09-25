@@ -11,20 +11,13 @@ class _TimesheetBandsPass {
 
   final TimesheetDocumentPainter _painter;
 
-  /// The sheet of paper, and the printed edge around it — two strata that
-  /// used to be one call: the fill is PAPER, the border is FORM.
+  /// The sheet of paper — no printed edge around it ([paintSheetPaper]).
   void paintPaper(Canvas canvas, int pageIndex) {
-    final rect = _painter.layout.pageRect(pageIndex);
     if (_painter._drawPaper) {
-      canvas.drawRect(rect, Paint()..color = TimesheetDocumentPainter._paper);
-    }
-    if (_painter._drawForm) {
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4
-          ..color = TimesheetDocumentPainter._gridBold,
+      paintSheetPaper(
+        canvas,
+        _painter.layout.pageRect(pageIndex),
+        TimesheetDocumentPainter._paper,
       );
     }
   }

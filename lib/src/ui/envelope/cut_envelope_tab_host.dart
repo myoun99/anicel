@@ -42,8 +42,8 @@ class CutEnvelopeTabHost extends StatefulWidget {
     this.onViewportChanged,
     this.inkController,
     this.brushToolState,
-    this.inkEnabled = false,
-    this.onInkEnabledChanged,
+    this.brushAllowed = false,
+    this.onBrushAllowedChanged,
     this.imageFor,
   });
 
@@ -71,10 +71,11 @@ class CutEnvelopeTabHost extends StatefulWidget {
   /// so tool switches never rebuild the sheet.
   final ValueListenable<BrushToolState>? brushToolState;
 
-  /// The ink allow toggle. Off by default — an envelope is read before it
-  /// is written on, and blocked ink protects it from stray pen marks.
-  final bool inkEnabled;
-  final ValueChanged<bool>? onInkEnabledChanged;
+  /// The sheet's brush switch (브러시 허용). Off by default — an envelope is
+  /// read before it is written on, and the brush off protects it from stray
+  /// pen marks.
+  final bool brushAllowed;
+  final ValueChanged<bool>? onBrushAllowedChanged;
 
   /// Resolves a media asset path (logo, 도장) to a decoded image.
   final ui.Image? Function(String assetPath)? imageFor;
@@ -90,7 +91,9 @@ class CutEnvelopeTabHost extends StatefulWidget {
 }
 
 class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
-  final ValueNotifier<bool> _strokeActive = ValueNotifier<bool>(false);
+  late final SheetStrokeHold _strokeHold = SheetStrokeHold(
+    brushInput: (live) => widget.session.setBrushInputActive(live),
+  );
 
   /// Commit sink required by the panel API; envelope ink invalidations stay
   /// local (its synthetic keys never reach the playback caches).
@@ -99,7 +102,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
 
   @override
   void dispose() {
-    _strokeActive.dispose();
+    _strokeHold.dispose();
     super.dispose();
   }
 
@@ -142,7 +145,8 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
         : envelopeInkWindows(layout, owner);
     final brushToolState = widget.brushToolState;
     final inking =
-        inkController != null && brushToolState != null && widget.inkEnabled;
+        inkController != null && brushToolState != null && widget.brushAllowed;
+    final onBrushAllowedChanged = widget.onBrushAllowedChanged;
 
     return SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -150,6 +154,13 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
+      brushSwitch: onBrushAllowedChanged == null
+          ? null
+          : (
+              allowed: widget.brushAllowed,
+              onChanged: onBrushAllowedChanged,
+              keyPrefix: 'envelope',
+            ),
       bottomBarLeading: _panelActions(),
       fitFocusRect: Rect.fromLTWH(
         0,
@@ -158,7 +169,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
         paper.height.toDouble(),
       ),
       drawingOn: inking,
-      contentStrokeActive: inking ? _strokeActive : null,
+      strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(
         builder: (context, constraints) {
           // ONE gate, read by both the input layer and the painter: a box
@@ -181,7 +192,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                 // app happens to produce. It stands down while the pen is
                 // down, when the page changes on every sample.
                 child: ValueListenableBuilder<bool>(
-                  valueListenable: _strokeActive,
+                  valueListenable: _strokeHold,
                   builder: (context, stroking, child) => StaticRaster(
                     debugLabel: 'envelope-page',
                     enabled: !stroking,
@@ -222,7 +233,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                     brushToolState: brushToolState,
                     historyManager: session.historyManager,
                     viewport: viewport,
-                    strokeActive: _strokeActive,
+                    strokeActive: _strokeHold,
                     cacheInvalidationSink: _cacheInvalidationSink,
                   ),
                 ),
@@ -236,7 +247,6 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
   /// The envelope's own commands, at the head of the panel's pill (R2 #13
   /// — the status strip they lived in is gone with the rest of the frame).
   List<Widget> _panelActions() {
-    final onChanged = widget.onInkEnabledChanged;
     final onFormChanged = widget.onFormIdChanged;
     return [
       // Which 봉투 this is. Two bundled forms today, so the toggle is the
@@ -256,15 +266,6 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
             size: AppIconButtonSize.strip,
             onPressed: () => onFormChanged(form.id),
           ),
-      if (onChanged != null && widget.inkController != null)
-        AppIconButton(
-          keyValue: 'envelope-ink-toggle-button',
-          tooltip: widget.inkEnabled ? 'Block Sheet Ink' : 'Allow Sheet Ink',
-          icon: Icon(widget.inkEnabled ? Icons.draw : Icons.edit_off),
-          isSelected: widget.inkEnabled,
-          size: AppIconButtonSize.strip,
-          onPressed: () => onChanged(!widget.inkEnabled),
-        ),
     ];
   }
 }

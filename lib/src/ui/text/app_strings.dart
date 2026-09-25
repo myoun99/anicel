@@ -620,8 +620,7 @@ enum AppStrings {
   String get sheetExposureBarHelp => _s('sheetExposureBarHelp');
   String get sheetExposureBarN => _s('sheetExposureBarN');
   String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
-  String get sheetInkBlock => _s('sheetInkBlock');
-  String get sheetInkAllow => _s('sheetInkAllow');
+  String get sheetBrushAllow => _s('sheetBrushAllow');
   String get sheetModeNotation => _s('sheetModeNotation');
   String get sheetModeData => _s('sheetModeData');
   String get sheetViewPage => _s('sheetViewPage');
@@ -2019,8 +2018,7 @@ enum AppStrings {
         'Draw the hold bar from the (N+1)th comma of N+ holds',
     'sheetExposureBarN': 'N (industry standard 3)',
     'sheetSeEmptyFill': 'Gray out empty SE stretches',
-    'sheetInkBlock': 'Block Sheet Ink',
-    'sheetInkAllow': 'Allow Sheet Ink',
+    'sheetBrushAllow': 'Allow Brush',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
     'sheetModeData': 'Data Sheet (as exported)',
     'sheetViewPage': 'Page View',
@@ -3115,8 +3113,7 @@ enum AppStrings {
     'sheetExposureBarHelp': 'N コマ以上の止めで (N+1) コマ目から線を引く',
     'sheetExposureBarN': 'N（業界標準は3）',
     'sheetSeEmptyFill': 'セリフのない区間をグレーで塗る',
-    'sheetInkBlock': '用紙の手書きを禁止',
-    'sheetInkAllow': '用紙の手書きを許可',
+    'sheetBrushAllow': 'ブラシを許可',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
     'sheetModeData': 'データシート（書き出しのまま）',
     'sheetViewPage': 'ページ表示',
@@ -4431,8 +4428,7 @@ enum AppStrings {
     'sheetExposureBarHelp': 'N코마 이상 止め에서 (N+1)번째 코마부터 선을 긋기',
     'sheetExposureBarN': 'N (업계 표준 3)',
     'sheetSeEmptyFill': '대사 없는 구간을 회색으로 채우기',
-    'sheetInkBlock': '용지 손글씨 잠금',
-    'sheetInkAllow': '용지 손글씨 허용',
+    'sheetBrushAllow': '브러시 허용',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
     'sheetModeData': '데이터 시트(내보내는 그대로)',
     'sheetViewPage': '페이지 보기',
@@ -5780,8 +5776,7 @@ enum AppStrings {
         'Tracer le trait à partir du (N+1)e comma des maintiens de N+',
     'sheetExposureBarN': 'N (standard du métier : 3)',
     'sheetSeEmptyFill': 'Griser les plages sans dialogue',
-    'sheetInkBlock': "Bloquer l'écriture sur feuille",
-    'sheetInkAllow': "Autoriser l'écriture sur feuille",
+    'sheetBrushAllow': 'Autoriser le pinceau',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
     'sheetModeData': "Feuille de données (telle qu'exportée)",
     'sheetViewPage': 'Vue page',
@@ -7103,8 +7098,7 @@ enum AppStrings {
     'sheetExposureBarHelp': '在 N 格以上的保持中，从第 (N+1) 格开始画线',
     'sheetExposureBarN': 'N（行业标准为 3）',
     'sheetSeEmptyFill': '将无台词区间置灰',
-    'sheetInkBlock': '禁止纸面手写',
-    'sheetInkAllow': '允许纸面手写',
+    'sheetBrushAllow': '允许画笔',
     'sheetModeNotation': '标注表（重复·保持文字）',
     'sheetModeData': '数据表（与导出一致）',
     'sheetViewPage': '分页视图',

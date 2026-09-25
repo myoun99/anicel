@@ -31,6 +31,28 @@ void paintSheetInkWindow(
   canvas.restore();
 }
 
+/// Lays down a sheet's PAPER — the one way the timesheet, the conte and the
+/// cut envelope fill it.
+///
+/// 🚨NOT anti-aliased (F-179, 유저 2026-09-25: 「용지 외곽에 반투명 라인
+/// 있는데 이런거 필요없어」). A sheet's view never rotates, and its paper
+/// edge lands wherever zoom × page size puts it — a fractional device
+/// position more often than not. An anti-aliased fill covers that pixel
+/// partly: a one-pixel line of paper blended over the backdrop, around
+/// every page. Cut on the pixel centres, the edge is the same hard boundary
+/// F-67 gives the drawing canvas's paper.
+///
+/// ↩️The timesheet also stroked a 1.4px border ON its page edge, half of
+/// it over the backdrop — the other line. It is gone, not moved here.
+void paintSheetPaper(Canvas canvas, Rect rect, Color color) {
+  canvas.drawRect(
+    rect,
+    Paint()
+      ..color = color
+      ..isAntiAlias = false,
+  );
+}
+
 /// Puts [canvas] into a sheet's PAPER units, either through the panel's
 /// live viewport or by fitting the paper into [size].
 ///

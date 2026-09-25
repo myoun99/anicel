@@ -187,6 +187,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.pasteboardNone,
     this.onPasteboardColorChanged,
     this.onPasteboardNone,
+    this.hasPasteboard = true,
     this.backdropArgb,
     this.backdropNone,
     this.onBackdropColorChanged,
@@ -637,6 +638,17 @@ class BrushCanvasPanel extends StatefulWidget {
   /// scope, like [pasteboardColor].
   final bool? pasteboardNone;
   final VoidCallback? onPasteboardNone;
+
+  /// Whether this stage HAS a pasteboard plane at all. A paper panel — a
+  /// sheet — has none: its paper is a printed page, not a canvas with a
+  /// drawing bound around it, so the stage is the backdrop alone (유저
+  /// 2026-09-25, F-179: 「타임시트패널등 캔버스 베이스 패널엔 페이스트보드가
+  /// 없다는 뜻임」 · 「배경색은 캔버스 패널의 배경색 따라가도록」).
+  ///
+  /// ⛔Not [pasteboardNone]: that one is the plane being ABSENT, which shows
+  /// the checkerboard where it would be. A sheet has no such plane to be
+  /// absent.
+  final bool hasPasteboard;
 
   /// The BACKDROP behind the pasteboard (R3b): the stage's floor — thinnable
   /// since F-114 — or the alpha checkerboard while the preview toggle is on.
@@ -3102,6 +3114,7 @@ class _StagePlanes extends StatelessWidget {
     required this.pasteboardArgb,
     required this.backdropNone,
     required this.pasteboardNone,
+    required this.hasPasteboard,
     required this.paperNone,
     required this.canvasSize,
     required this.viewport,
@@ -3115,6 +3128,9 @@ class _StagePlanes extends StatelessWidget {
   /// would be.
   final bool backdropNone;
   final bool pasteboardNone;
+
+  /// [BrushCanvasPanel.hasPasteboard].
+  final bool hasPasteboard;
   final bool paperNone;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
@@ -3128,6 +3144,7 @@ class _StagePlanes extends StatelessWidget {
         pasteboard: Color(pasteboardArgb),
         backdropNone: backdropNone,
         pasteboardNone: pasteboardNone,
+        hasPasteboard: hasPasteboard,
         paperNone: paperNone,
         canvasSize: canvasSize,
         viewport: viewport,
@@ -3153,6 +3170,7 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     required this.pasteboard,
     required this.backdropNone,
     required this.pasteboardNone,
+    required this.hasPasteboard,
     required this.paperNone,
     required this.canvasSize,
     required this.viewport,
@@ -3162,6 +3180,9 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   final Color pasteboard;
   final bool backdropNone;
   final bool pasteboardNone;
+
+  /// [BrushCanvasPanel.hasPasteboard]: false leaves the backdrop alone.
+  final bool hasPasteboard;
   final bool paperNone;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
@@ -3205,12 +3226,14 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     canvas.save();
     canvas.clipRect(box);
     _paintPlane(canvas, box, null, (color: backdrop, none: backdropNone));
-    _paintPlane(
-      canvas,
-      box,
-      _quad(canvasSize.pasteboardRect),
-      (color: pasteboard, none: pasteboardNone),
-    );
+    if (hasPasteboard) {
+      _paintPlane(
+        canvas,
+        box,
+        _quad(canvasSize.pasteboardRect),
+        (color: pasteboard, none: pasteboardNone),
+      );
+    }
     if (paperNone) {
       _paintPlane(
         canvas,
@@ -3278,6 +3301,7 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     pasteboard,
     backdropNone,
     pasteboardNone,
+    hasPasteboard,
     paperNone,
     canvasSize,
     viewport,

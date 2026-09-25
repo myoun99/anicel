@@ -403,6 +403,7 @@ class _PanelBuild {
                   // it would be.
                   backdropNone: _state._stageBackdropNone,
                   pasteboardNone: _state._stagePasteboardNone,
+                  hasPasteboard: _state.widget.hasPasteboard,
                   paperNone: _state.widget.paperNone,
                   canvasSize: _state.widget.canvasSize,
                   viewport: _state._viewportState._viewport,

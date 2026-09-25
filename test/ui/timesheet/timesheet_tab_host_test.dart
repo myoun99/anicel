@@ -12,7 +12,7 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import '../../helpers/frame_census.dart';
 
 const _inkLayerKey = ValueKey<String>('timesheet-ink-layer');
-const _inkToggleKey = ValueKey<String>('timesheet-ink-toggle-button');
+const _inkToggleKey = ValueKey<String>('timesheet-brush-toggle-button');
 const _editorKey = ValueKey<String>('timesheet-header-edit-field');
 const _titleZoneKey = ValueKey<String>('timesheet-header-edit-title-p0');
 const _memoZoneKey = ValueKey<String>('timesheet-memo-edit-p0');
@@ -22,7 +22,7 @@ void main() {
   late TimesheetInkController inkController;
   late ValueNotifier<BrushToolState> brushTool;
 
-  Future<void> pumpHost(WidgetTester tester, {bool inkEnabled = true}) async {
+  Future<void> pumpHost(WidgetTester tester, {bool brushAllowed = true}) async {
     session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
     inkController = TimesheetInkController();
@@ -33,7 +33,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    var enabled = inkEnabled;
+    var enabled = brushAllowed;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -46,8 +46,8 @@ void main() {
               onViewportChanged: (_) {},
               inkController: inkController,
               brushToolState: brushTool,
-              inkEnabled: enabled,
-              onInkEnabledChanged: (next) => setState(() => enabled = next),
+              brushAllowed: enabled,
+              onBrushAllowedChanged: (next) => setState(() => enabled = next),
             ),
           ),
         ),
@@ -56,9 +56,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  group('TimesheetTabHost sheet-ink toggle', () {
-    testWidgets('blocking ink unmounts the ink windows; allowing restores '
-        'them', (tester) async {
+  group('TimesheetTabHost brush switch', () {
+    testWidgets('switching the brush off unmounts the ink windows; on '
+        'restores them', (tester) async {
       await pumpHost(tester);
 
       expect(find.byKey(_inkLayerKey), findsOneWidget);
@@ -94,7 +94,7 @@ void main() {
       }
     });
 
-    testWidgets('with ink allowed, a tap on a header box draws instead of '
+    testWidgets('with the brush on, a tap on a header box draws instead of '
         'opening the editor (pen-on-paper rule)', (tester) async {
       await pumpHost(tester);
 
@@ -105,10 +105,10 @@ void main() {
     });
   });
 
-  group('TimesheetTabHost header editing (ink blocked)', () {
+  group('TimesheetTabHost header editing (brush off)', () {
     testWidgets('editing the TITLE box commits to the project timesheet '
         'info', (tester) async {
-      await pumpHost(tester, inkEnabled: false);
+      await pumpHost(tester, brushAllowed: false);
 
       await tester.tap(find.byKey(_titleZoneKey));
       await tester.pumpAndSettle();
@@ -120,7 +120,7 @@ void main() {
     });
 
     testWidgets('editing the memo band commits the cut note', (tester) async {
-      await pumpHost(tester, inkEnabled: false);
+      await pumpHost(tester, brushAllowed: false);
 
       await tester.tap(find.byKey(_memoZoneKey));
       await tester.pumpAndSettle();

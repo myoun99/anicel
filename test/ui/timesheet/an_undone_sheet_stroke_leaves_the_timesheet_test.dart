@@ -47,7 +47,9 @@ void main() {
             onViewportChanged: (_) {},
             inkController: ink,
             brushToolState: brushTool,
-            onInkEnabledChanged: (_) {},
+            // F-80 ② is a drawing-ON report: 「드로잉on인상태에서 그릴때」.
+            brushAllowed: true,
+            onBrushAllowedChanged: (_) {},
           ),
         ),
       ),

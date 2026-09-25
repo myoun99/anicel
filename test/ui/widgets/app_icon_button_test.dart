@@ -630,7 +630,7 @@ void main() {
               onContinuousChanged: (_) {},
               viewport: CanvasViewport(),
               onViewportChanged: (_) {},
-              onInkEnabledChanged: (_) {},
+              onBrushAllowedChanged: (_) {},
             ),
           ),
         ),
@@ -660,7 +660,7 @@ void main() {
       expect(
         find.ancestor(
           of: find.byKey(
-            const ValueKey<String>('timesheet-ink-toggle-button'),
+            const ValueKey<String>('timesheet-brush-toggle-button'),
           ),
           matching: find.byType(AppIconButton),
         ),
