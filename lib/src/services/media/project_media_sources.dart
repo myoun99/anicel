@@ -81,6 +81,38 @@ enum MediaBytesAt {
   return (stored: MediaFileBytes(carry.poolPath), at: MediaBytesAt.original);
 }
 
+/// The media entries of the project file at [projectFilePath] that a write
+/// storing [mediaToStore] does not carry forward — those its record
+/// ([mediaInFile]) holds under a carry the write does not store — and
+/// where each lies in that file now.
+///
+/// What a save hands to the room before it writes
+/// ([MediaStagingStore.keepLeftBehind]): the file its session reads carries
+/// from will not hold them afterwards, and an undo can bring their carries
+/// back (board `undo-after-save-reads-the-original`).
+List<MediaLeftBehind> mediaLeftBehind({
+  required String? projectFilePath,
+  required Set<String> mediaInFile,
+  required Map<MediaCarry, MediaByteSource> mediaToStore,
+}) {
+  final left = mediaInFile.difference({
+    for (final carry in mediaToStore.keys) ...anicelMediaEntryNames(carry),
+  });
+  final layout = left.isEmpty ? null : readableAnicelLayout(projectFilePath);
+  if (layout == null) {
+    return const [];
+  }
+  return [
+    for (final name in left)
+      if (layout.entryNamed(name) case final entry?)
+        (
+          name: name.substring(anicelMediaEntryPrefix.length),
+          offset: entry.dataOffset,
+          length: entry.length,
+        ),
+  ];
+}
+
 /// Which of [carry]'s names [entryNames] — the media entries a project file
 /// is known to hold — includes, under either spelling; null when neither.
 String? mediaEntryNameIn(Set<String> entryNames, MediaCarry carry) {

@@ -8,6 +8,7 @@ import '../../core/path_names.dart';
 import '../../models/media_asset.dart'
     show MediaCarry, mediaCarryName, mediaNameParts;
 import 'media_blob_codec.dart';
+import 'scratch_file.dart';
 import 'session_scratch.dart';
 
 /// 🚨★★★**WHAT「품기」MEANS BETWEEN THE IMPORT AND THE FIRST SAVE.**
@@ -332,6 +333,71 @@ class MediaStagingStore {
     );
   }
 
+  /// 🚨★★★**WHAT A SAVE LEAVES BEHIND, THE ROOM KEEPS** (유저 2026-09-25,
+  /// board `undo-after-save-reads-the-original`: 「이번 실행의 앱 룸으로
+  /// 옮겨 둔다」).
+  ///
+  /// A save takes out of the file every carry the pool no longer names —
+  /// 09-13's 「삭제하고 저장해도 파일 크기 안 줄어든다」 — and an undo can
+  /// bring that carry back. Its bytes were then nowhere but its original:
+  /// edited since, or gone. So before the save writes, each entry of [left]
+  /// is copied out of the file at [archivePath] into this run's room under
+  /// the name it wears there, which is the name and framing its staged copy
+  /// would have ([find]) — and the file still shrinks. It lives as long as
+  /// the room: until this run ends, as a failed copy does.
+  ///
+  /// ⛔Not copied again: a copy that is here already. One a save absorbed
+  /// while a reader held it is still here, retiring ([hold]) — it IS these
+  /// bytes, so it stays instead.
+  ///
+  /// ⚠️An entry that will not copy is skipped ([ScratchFile.writeStreamed]
+  /// answers null), as [stageCarriedBytes] skips a file that will not open:
+  /// the save goes on, and that carry's undo reads its original, as before
+  /// this. Streamed through the IO threads a block at a time — a carried
+  /// movie is gigabytes, and this runs while the save window is up;
+  /// [onProgress] hears each block as a fraction of everything to copy.
+  Future<void> keepLeftBehind(
+    String archivePath,
+    List<MediaLeftBehind> left, {
+    void Function(double)? onProgress,
+  }) async {
+    final todo = [
+      for (final entry in left)
+        if (!_keepIfHere(_keyOf(entry.name))) entry,
+    ];
+    final total = todo.fold(0, (sum, entry) => sum + entry.length);
+    var copied = 0;
+    for (final entry in todo) {
+      await ScratchFile.writeStreamed(
+        '$directoryPath/${entry.name}',
+        File(archivePath)
+            .openRead(entry.offset, entry.offset + entry.length)
+            .map((block) {
+              copied += block.length;
+              onProgress?.call(copied / total);
+              return block;
+            }),
+        length: entry.length,
+      );
+    }
+  }
+
+  /// Keeps the copy named [key] if it is in the room already — cancelling
+  /// its retirement when it was only waiting on a reader, since the bytes a
+  /// save is about to leave behind are the ones it holds — and answers
+  /// whether it was.
+  bool _keepIfHere(String key) =>
+      _retireWhenLetGo.remove(key) ||
+      mediaFramedOrPlainPaths(
+        '$directoryPath/$key',
+      ).any((path) => File(path).existsSync());
+
+  /// The carry name a room file called [name] is kept under — its name less
+  /// the framed suffix.
+  String _keyOf(String name) => mediaEntryIsFramed(name)
+      ? name.substring(0, name.length - mediaFramedEntrySuffix.length)
+      : name;
+
   // 🪦**A RELINK USED TO RENAME THE STAGED COPY HERE** (`rename`), because
   // the name was derived from the path and had to follow it — and an undo
   // of the relink then looked for the old name and found nothing: the only
@@ -475,6 +541,12 @@ class StagedMedia {
   /// otherwise.
   final int storedLength;
 }
+
+/// A media entry a save is about to leave behind, where it lies in the
+/// project file — [length] bytes from [offset] — and [name], the name it
+/// wears there without the folder: its carry's name, framed suffix and all
+/// ([MediaStagingStore.keepLeftBehind]).
+typedef MediaLeftBehind = ({String name, int offset, int length});
 
 /// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so
 /// the isolate closure captures the carries — records of two strings — and

@@ -449,6 +449,141 @@ void main() {
     );
   });
 
+  /// 🚨★★★**WHAT A SAVE LEAVES BEHIND, THE ROOM KEEPS** (유저 2026-09-25 「이번
+  /// 실행의 앱 룸으로 옮겨 둔다」): the entry is copied out of the project
+  /// file under the name it wears there — and found as its carry's copy.
+  group('what a save leaves behind, the room keeps', () {
+    /// A stand-in project file: [entry] between bytes that are not it.
+    ({String path, int offset}) fileHolding(Uint8List entry) {
+      final path = '${root.path}/scene.anicel'.replaceAll(r'\', '/');
+      File(path).writeAsBytesSync([
+        ...List<int>.filled(333, 7),
+        ...entry,
+        ...List<int>.filled(99, 9),
+      ]);
+      return (path: path, offset: 333);
+    }
+
+    /// Everything in the room's folder, `.part` neighbours included.
+    List<String> inTheRoom() => [
+      for (final entity in Directory('${root.path}/Staged').listSync())
+        fileNameOfPath(entity.path),
+    ];
+
+    test('🚨the entry lands under its carry\'s name, and is that carry\'s '
+        'copy', () async {
+      final source = sourceFile('take.wav');
+      final bytes = File(source).readAsBytesSync();
+      final minted = mintMediaCarry(source);
+      final (:path, :offset) = fileHolding(bytes);
+
+      await store.keepLeftBehind(path, [
+        (name: minted, offset: offset, length: bytes.length),
+      ]);
+
+      final kept = store.find(carry(source, minted));
+      expect(kept, isNotNull, reason: 'the undo asks the room by the carry');
+      expect(
+        File(kept!.path).readAsBytesSync(),
+        bytes,
+        reason: 'the entry\'s bytes, not the file around them',
+      );
+      expect(kept.framed, isFalse);
+    });
+
+    test('a framed entry stays framed — the room keeps what the file '
+        'stored', () async {
+      final source = sourceFile('take.wav');
+      final bytes = File(source).readAsBytesSync();
+      final minted = mintMediaCarry(source);
+      final (:path, :offset) = fileHolding(bytes);
+
+      await store.keepLeftBehind(path, [
+        (
+          name: '$minted$mediaFramedEntrySuffix',
+          offset: offset,
+          length: bytes.length,
+        ),
+      ]);
+
+      expect(store.find(carry(source, minted))?.framed, isTrue);
+    });
+
+    test('⛔a copy that ended short is not kept — a short file never wears '
+        'the name', () async {
+      final source = sourceFile('take.wav');
+      final bytes = File(source).readAsBytesSync();
+      final minted = mintMediaCarry(source);
+      final (:path, :offset) = fileHolding(bytes);
+
+      await store.keepLeftBehind(path, [
+        (name: minted, offset: offset, length: bytes.length + 4096),
+      ]);
+
+      expect(store.find(carry(source, minted)), isNull);
+      expect(inTheRoom(), isEmpty, reason: 'and no neighbour is left either');
+    });
+
+    test('🚨a copy waiting on its reader to retire is kept — the reader '
+        'letting go does not take it', () async {
+      final source = sourceFile('conte.pdf');
+      final minted = mintMediaCarry(source);
+      final c = carry(source, minted);
+      final staged = (await store.stage(c))!;
+      final stored = File(staged.path).readAsBytesSync();
+      final letGo = store.hold(c);
+      store.retire(c);
+      expect(store.find(c), isNull, reason: 'the premise: it is retiring');
+      final (:path, :offset) = fileHolding(stored);
+
+      await store.keepLeftBehind(path, [
+        (
+          name: fileNameOfPath(staged.path),
+          offset: offset,
+          length: stored.length,
+        ),
+      ]);
+      letGo();
+
+      expect(
+        store.find(c)?.path,
+        staged.path,
+        reason: 'those are the bytes the save leaves behind',
+      );
+      expect(inTheRoom(), hasLength(1), reason: 'kept, not copied again');
+    });
+
+    test('its bar runs from nothing to all of it, and never back', () async {
+      final first = sourceFile('a.wav');
+      final second = sourceFile('b.wav', length: 3 * 1024 * 1024);
+      final one = File(first).readAsBytesSync();
+      final two = File(second).readAsBytesSync();
+      final (:path, :offset) = fileHolding(
+        Uint8List.fromList([...one, ...two]),
+      );
+      final heard = <double>[];
+
+      await store.keepLeftBehind(
+        path,
+        [
+          (name: mintMediaCarry(first), offset: offset, length: one.length),
+          (
+            name: mintMediaCarry(second),
+            offset: offset + one.length,
+            length: two.length,
+          ),
+        ],
+        onProgress: heard.add,
+      );
+
+      expect(heard.length, greaterThan(2), reason: 'a block at a time');
+      for (var i = 1; i < heard.length; i += 1) {
+        expect(heard[i], greaterThanOrEqualTo(heard[i - 1]));
+      }
+      expect(heard.last, 1);
+    });
+  });
+
   group('a relink moves the asset, not its bytes', () {
     test('🚨a carry minted at one path is found at the next — one copy, '
         'answering both', () async {
