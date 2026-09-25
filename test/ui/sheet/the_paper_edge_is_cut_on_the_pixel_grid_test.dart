@@ -9,7 +9,6 @@ import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_layout.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_source.dart';
-import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_page_painter.dart';
