@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
 import 'dart:ui' as ui show Image;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -2354,6 +2355,59 @@ void main() {
       env.commands.transformValues!.tx,
       0,
       reason: '⛔밖은 이동이 아니다 — 둘이 섞이면 그게 두 법이다',
+    );
+  });
+
+  /// 🚨★★★**앵커를 옮기고 상자 밖을 돌리면, 손이 앵커를 돈 만큼 돈다.**
+  ///
+  /// 🗣️유저 2026-09-25: 「십자 앵커 위치 바꾸고 사각형 바깥 조작해서
+  /// 회전시킬때 아직도 전위치랑 현위치랑 순간이동 존재하는거같으니까
+  /// 확인해주고」. The box turns about the ANCHOR since 09-20, but the drag
+  /// read the pointer's angle about the BOX CENTRE — a point the turn itself
+  /// carries round the anchor. Every move then measured the hand against a
+  /// centre the last move had moved, and the box turned by an angle the
+  /// hand never made.
+  ///
+  /// The hand goes round the cross in ten-degree steps, outside the box
+  /// the whole way, and each step must turn the box by ten degrees.
+  testWidgets('⑦앵커를 옮긴 뒤 상자 밖 회전은 손이 앵커를 돈 각도만큼', (
+    tester,
+  ) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformAnchor(x: 30, y: 0);
+    await tester.pump();
+    expect(env.commands.transformValues!.anchorX, 30, reason: 'the premise');
+
+    // The implicit box frames the fixture's picture (28..62), so its centre
+    // is (45, 45) and the cross stands 30 to its right.
+    const anchor = Offset(75, 45);
+    Offset around(double degrees) =>
+        anchor + Offset.fromDirection(degrees * math.pi / 180, 50);
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final gesture = await tester.startGesture(origin + around(90));
+    await tester.pump();
+    final turned = <double>[];
+    for (var step = 1; step <= 6; step += 1) {
+      await gesture.moveTo(origin + around(90 + step * 10.0));
+      await tester.pump();
+      turned.add(env.commands.transformValues!.rotationDegrees);
+    }
+    // A pen reports moves while the hand holds still. The same point again
+    // must turn nothing — measured about a centre the turn carries round,
+    // it turned the box again, and back: the flip between two positions.
+    await gesture.moveTo(origin + around(150));
+    await tester.pump();
+    final stillHand = env.commands.transformValues!.rotationDegrees;
+    await gesture.up();
+    await tester.pump();
+
+    expect(stillHand, closeTo(turned.last, 1e-9), reason: 'a still hand');
+    expect(
+      turned,
+      [for (var step = 1; step <= 6; step += 1) closeTo(step * 10.0, 0.5)],
+      reason: 'the box turns as far as the hand went round the cross',
     );
   });
 
