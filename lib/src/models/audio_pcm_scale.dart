@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// One float sample at unit scale, as the int16 this app's chain stores.
 ///
 /// 🚨**32768, NOT 32767** — the industry convention, and what dr_wav uses
@@ -11,11 +13,11 @@
 /// has to decide what to do about it. Dart's `double.round()` rounds half
 /// away from zero, exactly like C's `llround`.
 ///
-/// ⛔THREE WRITERS SHARE THIS SCALE — the mixer's device output, the
-/// conform encoder, and the video export's audio track. Written out per
-/// writer, the same audio would sit at two different levels depending on
-/// which door it left by, and the conform's own decoder note says exactly
-/// that about the read side.
+/// ⛔EVERY WRITER SHARES THIS SCALE — the mixer's device output, the
+/// conform encoder, the video export's audio track, and a recorded take's
+/// WAV ([int16PcmOf]). Written out per writer, the same audio would sit at
+/// two different levels depending on which door it left by, and the
+/// conform's own decoder note says exactly that about the read side.
 int int16FromUnitSample(double value) {
   var clamped = value;
   if (clamped > 1.0) {
@@ -25,4 +27,20 @@ int int16FromUnitSample(double value) {
   }
   final scaled = (clamped * 32768.0).round();
   return scaled > 32767 ? 32767 : scaled;
+}
+
+/// [samples] — interleaved, at unit scale — as 16-bit PCM, each through
+/// [int16FromUnitSample]; written into [into] when the caller keeps a
+/// buffer to reuse.
+///
+/// ⛔ONE loop for every float buffer that becomes what a file holds: the
+/// export mix's bus, the video export's track, and a recorded take
+/// (09-25). The first two each carried their own, and the take would have
+/// been the third (card `F-178` ⑥).
+Int16List int16PcmOf(List<double> samples, {Int16List? into}) {
+  final out = into ?? Int16List(samples.length);
+  for (var index = 0; index < samples.length; index += 1) {
+    out[index] = int16FromUnitSample(samples[index]);
+  }
+  return out;
 }

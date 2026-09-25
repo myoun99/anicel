@@ -592,11 +592,8 @@ class _OsEncoderFeed {
         return _padSilenceTo(target, reader.channels);
       }
       final frameCount = window.samples.length ~/ reader.channels;
-      final pcm = Int16List(window.samples.length);
-      for (var i = 0; i < window.samples.length; i += 1) {
-        // The exact inverse of the WAV decode — see int16FromUnitSample.
-        pcm[i] = int16FromUnitSample(window.samples[i]);
-      }
+      // The exact inverse of the WAV decode — see int16FromUnitSample.
+      final pcm = int16PcmOf(window.samples);
       if (!encoder.writeAudio(pcm, frameCount)) {
         return false;
       }

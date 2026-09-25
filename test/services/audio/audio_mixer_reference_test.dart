@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_pcm_scale.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 
@@ -266,7 +267,7 @@ void main() {
       final bus = Float64List.fromList([0, 1.0, -1.0, 2.5, -2.5, 0.5]);
       // -1.0 reaches -32768: the full negative range is representable, and
       // only +1.0 needs clamping because 32768 does not fit an int16.
-      expect(audioBusToInt16(bus).toList(), [
+      expect(int16PcmOf(bus).toList(), [
         0,
         32767,
         -32768,
@@ -285,7 +286,7 @@ void main() {
       final bus = Float64List.fromList([
         for (final value in raw) value / 32768.0,
       ]);
-      expect(audioBusToInt16(bus).toList(), raw);
+      expect(int16PcmOf(bus).toList(), raw);
     });
 
     test('float conversion narrows without clipping', () {
@@ -298,7 +299,7 @@ void main() {
       // both go away from zero, which is the arithmetic contract the
       // whole native core rests on.
       final bus = Float64List.fromList([0.5 / 32768.0, -0.5 / 32768.0]);
-      expect(audioBusToInt16(bus).toList(), [1, -1]);
+      expect(int16PcmOf(bus).toList(), [1, -1]);
     });
   });
 

@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_pcm_scale.dart';
 import 'package:anicel/src/native/qa_audio_native.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
@@ -251,7 +252,7 @@ void main() {
       bus[4] = 0.0;
 
       expect(native.busToFloat(bus).toList(), audioBusToFloat(bus).toList());
-      expect(native.busToInt16(bus).toList(), audioBusToInt16(bus).toList());
+      expect(native.busToInt16(bus).toList(), int16PcmOf(bus).toList());
     }, skip: available ? false : nativeEngineMissingSkipReason);
 
     test('degenerate input agrees instead of crashing', () {
