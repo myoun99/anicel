@@ -411,11 +411,11 @@ class EditorSessionManager extends ChangeNotifier
   /// lossless by construction — cels encode to cold, dirty ones stay.
   void respondToMemoryPressure() {
     renderCaches.brushFrameStore.respondToMemoryPressure();
-    // ⚠️And the three sheet-ink stores — cel stores like the drawings',
-    // and until 2026-09-11 they never heard the warning.
-    renderCaches.conteInkRowStore.respondToMemoryPressure();
-    renderCaches.conteInkPageStore.respondToMemoryPressure();
-    renderCaches.envelopeInkStore.respondToMemoryPressure();
+    // ⚠️And the sheet-ink stores — cel stores like the drawings', and
+    // until 2026-09-11 they never heard the warning.
+    for (final store in renderCaches.sheetInkStores) {
+      store.respondToMemoryPressure();
+    }
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     historyManager.respondToMemoryPressure();

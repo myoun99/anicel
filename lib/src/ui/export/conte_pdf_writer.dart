@@ -6,7 +6,6 @@ import 'package:pdf/pdf.dart';
 
 import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
@@ -223,10 +222,10 @@ class _ContePdfPageWriter {
         if (image != null) {
           _contained(image, slot);
         }
-      case SheetInk(:final key, :final rect):
+      case SheetInk(:final key, :final placement):
         final image = inkPictures[key];
         if (image != null) {
-          _clippedTo(image, rect);
+          _clippedTo(image, placement);
         }
     }
   }
@@ -278,17 +277,13 @@ class _ContePdfPageWriter {
     _g.drawImage(image, drawn.left, _y(drawn.bottom), drawn.width, drawn.height);
   }
 
-  /// An ink raster where every printer lays it ([sheetInkRasterRect]),
-  /// clipped to its window — the screen's `paintSheetInkWindow`, in PDF.
-  void _clippedTo(PdfImage image, ui.Rect rect) {
-    final laid = sheetInkRasterRect(
-      rect,
-      width: image.width,
-      height: image.height,
-      scale: conteInkScale.toDouble(),
-    );
+  /// An ink raster where its [placement] lays it, clipped to its window —
+  /// the screen's `paintSheetInkWindow`, in PDF.
+  void _clippedTo(PdfImage image, SheetInkPlacement placement) {
+    final window = placement.window;
+    final laid = placement.rasterRect(image.width, image.height);
     _g.saveContext();
-    _g.drawRect(rect.left, _y(rect.bottom), rect.width, rect.height);
+    _g.drawRect(window.left, _y(window.bottom), window.width, window.height);
     _g.clipPath();
     _g.drawImage(image, laid.left, _y(laid.bottom), laid.width, laid.height);
     _g.restoreContext();

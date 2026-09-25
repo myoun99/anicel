@@ -1,12 +1,15 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart' show InbetweenMark;
+import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
@@ -25,7 +28,7 @@ import '../timeline/timeline_cut_end_handle.dart'
 import '../timeline/timeline_drag_preview.dart';
 import 'timesheet_notation.dart';
 import '../repaint_props.dart';
-import '../sheet_painting.dart' show paintSheetPaper;
+import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
 import '../timeline/memo_token.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
@@ -435,8 +438,23 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     this.dragPreview,
     this.cutId,
     this.effectiveRatio = 1.0,
+    this.ink = const [],
+    this.inkImageFor,
+    this.liveInkKeys = const {},
+    Listenable? inkRepaint,
   }) : accent = AppColors.accent,
-       super(repaint: dragPreview);
+       super(repaint: Listenable.merge([dragPreview, inkRepaint]));
+
+  /// The windows the sheet's ink shows through — the walk the brush writes
+  /// through too (`timesheetInkWindows`), handed in by whoever built it.
+  final List<SheetInk> ink;
+
+  /// A window's baked ink raster, or null to print none there.
+  final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// Keys a LIVE brush window is already showing: skipped here, so
+  /// translucent ink never composites twice.
+  final Set<BrushFrameKey> liveInkKeys;
 
   /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
   /// viewport transform lands the paper on the device grid with it.
@@ -660,8 +678,35 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
       _bands.paintCutEndLine(canvas);
       _se.paintSeCrossingMarks(canvas);
     }
+    if (_draws(SheetPaintLayer.ink)) {
+      _paintInk(canvas);
+    }
 
     canvas.restore();
+  }
+
+  /// The handwriting, pen over paper: each window's surface where its
+  /// placement lays it, but for the windows a live brush view is showing.
+  ///
+  /// ⛔The sheet printed no ink of its own: the writing showed only through
+  /// the brush's windows, which mount with the brush switch on — so with
+  /// the switch off (every sheet's default since 09-25) the timesheet's
+  /// writing vanished while the conte's and the envelope's stayed (유저
+  /// 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」).
+  void _paintInk(Canvas canvas) {
+    final imageFor = inkImageFor;
+    if (imageFor == null) {
+      return;
+    }
+    for (final window in ink) {
+      if (liveInkKeys.contains(window.key)) {
+        continue;
+      }
+      final image = imageFor(window.key);
+      if (image != null) {
+        paintSheetInkWindow(canvas, image, window.placement);
+      }
+    }
   }
 
   // ── the bands: their own object, in their own file ──────────────────
@@ -777,6 +822,11 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     // something else happened to repaint.
     effectiveRatio,
     ByIdentity(dragPreview),
+    // The ink's windows by value — the walk is rebuilt every build — and
+    // which of them a live brush view shows: mounting a window HIDES that
+    // key's baked ink here, unmounting shows it again.
+    ByList([for (final window in ink) (window.key, window.placement)]),
+    BySet(liveInkKeys),
   );
 }
 

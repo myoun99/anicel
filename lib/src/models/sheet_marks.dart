@@ -14,7 +14,7 @@
 /// here knows a canvas, a PDF or a widget.
 library;
 
-import 'dart:ui' show Rect;
+import 'dart:ui' show Offset, Rect;
 
 import 'brush_frame_key.dart';
 import 'sheet_paint_layer.dart';
@@ -182,26 +182,62 @@ final class SheetImage extends SheetMark {
   final Rect slot;
 }
 
-/// Saved handwriting over [rect], from the ink's own raster.
+/// Saved handwriting, from the ink's own raster, where its window shows it
+/// ([placement]).
 final class SheetInk extends SheetMark {
-  const SheetInk(super.layer, {required this.key, required this.rect});
+  const SheetInk(super.layer, {required this.key, required this.placement});
 
   final BrushFrameKey key;
-  final Rect rect;
+  final SheetInkPlacement placement;
 }
 
-/// Where an ink raster [width]×[height] lands over its [window]: at the
-/// ink's own [scale] from the window's corner, the window clipping it — the
-/// one placement every sheet printer lays handwriting by.
+/// Where a window shows its ink surface: the [window] on the paper, the
+/// surface's pixels per paper unit ([scale]), and the surface pixel at the
+/// window's corner ([origin]) — the ONE mapping between ink pixels and the
+/// paper, read by the brush that writes through the window and by every
+/// printer that lays the ink back.
 ///
-/// ⛔Not stretched to the window: a window may show only part of its
-/// surface — a conte cell's surface is the whole body's (a cell that grows
-/// over more rows reveals more of the same ink), and its band shows the top
-/// of it. Stretched whole into a one-row band, the PDF printed the
-/// handwriting five times squeezed.
-Rect sheetInkRasterRect(
-  Rect window, {
-  required int width,
-  required int height,
-  required double scale,
-}) => Rect.fromLTWH(window.left, window.top, width / scale, height / scale);
+/// [origin] is zero where a window has a surface of its own (the conte's,
+/// the envelope's); the timesheet's two half windows share one band's
+/// surface and slice it.
+///
+/// ⛔One mapping. The input window worked it out for the brush and each
+/// printer for itself, and the PDF stretched a cell's whole surface into
+/// its band — the handwriting printed five times squeezed while the screen
+/// showed it right.
+class SheetInkPlacement {
+  const SheetInkPlacement({
+    required this.window,
+    required this.scale,
+    this.origin = Offset.zero,
+  });
+
+  final Rect window;
+  final double scale;
+  final Offset origin;
+
+  /// Where surface pixel [pixel] lands on the paper.
+  Offset paperOf(Offset pixel) => window.topLeft + (pixel - origin) / scale;
+
+  /// Where a raster [width]×[height] of the surface lands on the paper —
+  /// at the ink's own scale, the window clipping it; never stretched to
+  /// the window, which may show only part of its surface (a conte cell's
+  /// band shows the top of a surface the size of the whole body).
+  Rect rasterRect(int width, int height) => Rect.fromPoints(
+    paperOf(Offset.zero),
+    paperOf(Offset(width.toDouble(), height.toDouble())),
+  );
+
+  /// The window's slice of its surface, in surface pixels.
+  Rect get surfaceRect => origin & window.size * scale;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SheetInkPlacement &&
+      other.window == window &&
+      other.scale == scale &&
+      other.origin == origin;
+
+  @override
+  int get hashCode => Object.hash(window, scale, origin);
+}

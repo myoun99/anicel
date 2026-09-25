@@ -50,18 +50,18 @@ void main() {
 
   test('the PAGE ink comes first and covers the whole page — it lies under '
       'the rows', () {
-    final windows = conteInkWindows(page(const []), metrics).toList();
+    final windows = conteInkMarks(page(const []), metrics).toList();
 
     expect(windows, hasLength(1));
     expect(windows.single.key, conteInkPageKey(0));
     expect(
-      windows.single.rect,
+      windows.single.placement.window,
       Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
     );
   });
 
   test('each cell adds its ROW BAND, after the page and in cell order', () {
-    final windows = conteInkWindows(
+    final windows = conteInkMarks(
       page([
         cell(cutId: 'c1', rowOnPage: 0, frameId: 'f1'),
         cell(cutId: 'c2', rowOnPage: 1, frameId: 'f2'),
@@ -78,7 +78,7 @@ void main() {
 
   test('⛔a cell with NO frame is skipped — both walkers did this, and the '
       'one that stopped would print a band the screen never showed', () {
-    final windows = conteInkWindows(
+    final windows = conteInkMarks(
       page([
         cell(cutId: 'c1', rowOnPage: 0),
         cell(cutId: 'c2', rowOnPage: 1, frameId: 'f2'),
@@ -93,12 +93,12 @@ void main() {
   });
 
   test('the band is the cell\'s ROWS, so a two-row cell gets a taller one', () {
-    final windows = conteInkWindows(
+    final windows = conteInkMarks(
       page([cell(cutId: 'c1', rowOnPage: 0, frameId: 'f1', rowSpan: 2)]),
       metrics,
     ).toList();
 
-    final band = windows.last.rect;
+    final band = windows.last.placement.window;
     expect(band.top, metrics.rowTop(0));
     expect(band.bottom, metrics.rowTop(2));
     expect(band.left, metrics.cutColumnLeft);
@@ -107,7 +107,7 @@ void main() {
 
   test('the page key follows the PAGE INDEX — page two must not ink over '
       'page one', () {
-    final windows = conteInkWindows(
+    final windows = conteInkMarks(
       page(const [], pageIndex: 2),
       metrics,
     ).toList();

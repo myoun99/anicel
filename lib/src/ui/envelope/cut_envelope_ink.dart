@@ -7,6 +7,7 @@ import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/frame_id.dart';
+import '../../models/sheet_marks.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/history_manager.dart';
 import '../sheet/sheet_ink_layer.dart';
@@ -130,13 +131,15 @@ List<SheetInkWindow> envelopeInkWindows(
         SheetInkWindow(
           id: placed.box.id,
           key: envelopeInkBoxKey(ownerCutId, placed.box.id),
-          documentRect: Rect.fromLTWH(
-            placed.x,
-            placed.y,
-            placed.width,
-            placed.height,
+          placement: SheetInkPlacement(
+            window: Rect.fromLTWH(
+              placed.x,
+              placed.y,
+              placed.width,
+              placed.height,
+            ),
+            scale: surfaceScale,
           ),
-          surfaceScale: surfaceScale,
         ),
   ];
 }

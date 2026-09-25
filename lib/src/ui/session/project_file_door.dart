@@ -16,7 +16,6 @@ import 'package:flutter/foundation.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
-import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame_id.dart';
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
@@ -173,14 +172,9 @@ class ProjectFileDoor {
 
   static const AnicelFileService _anicelFileService = AnicelFileService();
 
-  /// The four cel stores an archive holds, in the order every writer
-  /// lists them: the drawings, then the two conte ink namespaces, then
-  /// the cut envelope's.
-  List<BrushFrameStore> get _auxCelStores => [
-    _renderCaches.conteInkRowStore,
-    _renderCaches.conteInkPageStore,
-    _renderCaches.envelopeInkStore,
-  ];
+  /// The cel stores an archive holds beside the drawings': every sheet's
+  /// ink ([RenderCaches.sheetInkStores]).
+  List<BrushFrameStore> get _auxCelStores => _renderCaches.sheetInkStores;
 
   /// Cels the last save could not write because the file their only copy
   /// lived in had been deleted.
@@ -929,21 +923,19 @@ class ProjectFileDoor {
     );
     // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
     // until a cel is first shown (near-zero RAM for 1500-cut projects).
-    // The conte ink namespace routes to its own stores (R5); a ROW entry
-    // whose storyboard block no longer exists in the loaded project is
-    // pruned HERE — the load boundary is where "ink dies with the
-    // drawing" becomes permanent (saving never prunes, so an undone
-    // delete keeps its ink within the session).
-    final cels = _sortLoadedCels(result);
+    // Every sheet's ink routes to its own store (R5), and an entry whose
+    // owner no longer exists in the loaded project is pruned HERE
+    // ([_sortLoadedCels]).
+    final cels = _sortLoadedCels(result, _renderCaches);
     _renderCaches.brushFrameStore.restoreFromFile(cels.main);
     final healed = _healStaleCelSizes(
       cels.main,
       project: result.project,
       store: _renderCaches.brushFrameStore,
     );
-    _renderCaches.conteInkRowStore.restoreFromFile(cels.inkRow);
-    _renderCaches.conteInkPageStore.restoreFromFile(cels.inkPage);
-    _renderCaches.envelopeInkStore.restoreFromFile(cels.envelope);
+    for (final store in _renderCaches.sheetInkStores) {
+      store.restoreFromFile(cels.ink[store] ?? const {});
+    }
     // Held from now on, not from the first cel read — see
     // [OpenProjectFile.hold] for the gap that left.
     OpenProjectFile.instance.hold(filePath);
@@ -1001,8 +993,8 @@ class ProjectFileDoor {
   }
 }
 
-/// Every cut the project holds — what a loaded envelope's owner is
-/// checked against.
+/// Every cut the project holds — what a loaded envelope's or timesheet's
+/// ink is checked against.
 Set<CutId> _everyCutId(Project project) => {
   for (final track in project.tracks)
     for (final cut in track.cuts) cut.id,
@@ -1017,50 +1009,55 @@ Set<FrameId> _everyFrameId(Project project) => {
         for (final frame in layer.frames) frame.id,
 };
 
-/// The loaded cels, split by which store owns them — and PRUNED of the
-/// ones whose drawing no longer exists in the project being opened.
+/// The loaded cels, split by the store that owns them — the drawings', or
+/// a sheet's ink store ([RenderCaches.sheetInkStoreFor]) — and PRUNED of
+/// the ink whose owner no longer exists in the project being opened.
 ///
-/// The conte ink namespace routes to its own stores (R5); a ROW entry
-/// whose storyboard block no longer exists in the loaded project is
-/// pruned HERE — the load boundary is where "ink dies with the drawing"
-/// becomes permanent (saving never prunes, so an undone delete keeps
-/// its ink within the session).
+/// The load boundary is where "ink dies with its owner" becomes permanent
+/// (saving never prunes, so an undone delete keeps its ink within the
+/// session). The owner is what the key carries ([_InkOwners]).
 ({
   Map<BrushFrameKey, AnicelCelFileRef> main,
-  Map<BrushFrameKey, AnicelCelFileRef> inkRow,
-  Map<BrushFrameKey, AnicelCelFileRef> inkPage,
-  Map<BrushFrameKey, AnicelCelFileRef> envelope,
+  Map<BrushFrameStore, Map<BrushFrameKey, AnicelCelFileRef>> ink,
 })
-_sortLoadedCels(AnicelOpenResult result) {
+_sortLoadedCels(AnicelOpenResult result, RenderCaches caches) {
   final main = <BrushFrameKey, AnicelCelFileRef>{};
-  final inkRow = <BrushFrameKey, AnicelCelFileRef>{};
-  final inkPage = <BrushFrameKey, AnicelCelFileRef>{};
-  final envelope = <BrushFrameKey, AnicelCelFileRef>{};
-  Set<FrameId>? liveFrameIds;
-  Set<CutId>? liveCutIds;
+  final ink = <BrushFrameStore, Map<BrushFrameKey, AnicelCelFileRef>>{};
+  final owners = _InkOwners(result.project);
   for (final entry in result.cels.entries) {
     final key = entry.key;
-    if (isEnvelopeInkKey(key)) {
-      // An envelope's ink is keyed by its OWNER cut: the sheet dies with
-      // the cut it describes. Which BOX a stroke sits in is never pruned
-      // — swapping the form preset back has to bring the writing back
-      // with it.
-      liveCutIds ??= _everyCutId(result.project);
-      if (liveCutIds.contains(key.cutId)) {
-        envelope[key] = entry.value;
-      }
-    } else if (!isConteInkKey(key)) {
+    final store = caches.sheetInkStoreFor(key);
+    if (store == null) {
       main[key] = entry.value;
-    } else if (key.layerId == conteInkRowLayerId) {
-      liveFrameIds ??= _everyFrameId(result.project);
-      if (liveFrameIds.contains(key.frameId)) {
-        inkRow[key] = entry.value;
-      }
-    } else {
-      inkPage[key] = entry.value;
+    } else if (owners.stillHold(key)) {
+      (ink[store] ??= {})[key] = entry.value;
     }
   }
-  return (main: main, inkRow: inkRow, inkPage: inkPage, envelope: envelope);
+  return (main: main, ink: ink);
+}
+
+/// Whether a loaded sheet-ink key's owner is still in the project — each
+/// set gathered once, on the first key that asks.
+///
+/// A conte ROW entry belongs to its storyboard block ("ink dies with the
+/// drawing"); a conte PAGE entry to nothing, the paper stays. An envelope's
+/// and a timesheet's belong to the cut the sheet describes — which box or
+/// band a stroke sits in is never pruned: swapping the envelope's form back
+/// has to bring the writing back with it.
+class _InkOwners {
+  _InkOwners(this._project);
+
+  final Project _project;
+  late final Set<CutId> _cuts = _everyCutId(_project);
+  late final Set<FrameId> _frames = _everyFrameId(_project);
+
+  bool stillHold(BrushFrameKey key) {
+    if (isConteInkKey(key)) {
+      return key.layerId != conteInkRowLayerId ||
+          _frames.contains(key.frameId);
+    }
+    return _cuts.contains(key.cutId);
+  }
 }
 
 /// R7q2 (유저 08-18: 「치유가 가볍게 가능하다면 해도 됨」): heal cels whose

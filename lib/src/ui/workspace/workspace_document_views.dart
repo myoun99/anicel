@@ -51,9 +51,13 @@ class _WorkspaceDocumentViews {
   /// alone used to start on.
   final ValueNotifier<bool> _timesheetBrushAllowed = ValueNotifier(false);
 
-  /// Sheet ink stores (S2 annotations) — owned here so freehand memos
-  /// survive tab switches; separate from the session's cel stroke store.
-  final TimesheetInkController _timesheetInk = TimesheetInkController();
+  /// The timesheet's ink (S2 annotations): the coordinators owned here so
+  /// freehand memos survive tab switches, the cel stores the SESSION's so
+  /// the archive saves them — the conte's arrangement (R5), below.
+  late final TimesheetInkController _timesheetInk = TimesheetInkController(
+    stripStore: _state.widget.session.renderCaches.timesheetInkStripStore,
+    pageStore: _state.widget.session.renderCaches.timesheetInkPageStore,
+  );
 
   /// Conte tab view state (#16 — the conte rides the same canvas shell):
   /// the sheet viewport and its brush switch, owned here like the

@@ -5,6 +5,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart';
+import '../../models/conte/conte_ink_windows.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
@@ -27,7 +28,12 @@ enum ConteInkPlane {
 
   /// Paper-anchored ink over the whole page (header, margins, the hole's
   /// X) — one surface per page (`conte-page-p<n>`), the original plane.
-  page,
+  page;
+
+  /// The plane [key]'s ink lives on — its layer says; the ink walk and the
+  /// page's printing both ask here.
+  static ConteInkPlane of(BrushFrameKey key) =>
+      key.layerId == conteInkRowLayerId ? row : page;
 }
 
 /// Owns the conte's sheet ink (#16 — the conte panel is the timesheet's
@@ -67,13 +73,6 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
     frameId: FrameId('conte-ink-init'),
   );
 
-  /// The key contract lives in models/conte/conte_ink_keys.dart (R5): the
-  /// session's archive routing and the exporters read the same namespace.
-  static BrushFrameKey pageKey(int page) => conteInkPageKey(page);
-
-  static BrushFrameKey rowKey(CutId cutId, FrameId frameId) =>
-      conteInkRowKey(cutId, frameId);
-
   final InkPlaneSlot _row;
   final InkPlaneSlot _page;
 
@@ -112,30 +111,21 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
 /// A cell with no drawing block carries no band window — ink belongs to
 /// drawings ("그림 삭제 시 잉크 동반 삭제"), so a block-less cell offers
 /// only the paper behind it.
-List<SheetInkWindow> conteInkWindows(ContePageLayout page) {
-  final metrics = page.metrics;
-  return [
-    SheetInkWindow(
-      id: 'page-${page.pageIndex}',
-      surfaceScale: conteInkScale.toDouble(),
-      plane: ConteInkPlane.page,
-      key: ConteInkController.pageKey(page.pageIndex),
-      documentRect: Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
+///
+/// ⛔Made from the walk the page's printers read ([conteInkMarks]) — the
+/// brush writes through exactly the windows the paper shows.
+List<SheetInkWindow> conteInkWindows(ContePageLayout page) => [
+  for (final ink in conteInkMarks(page, page.metrics))
+    SheetInkWindow.of(
+      ink,
+      id: switch (ConteInkPlane.of(ink.key)) {
+        ConteInkPlane.row =>
+          'row-${ink.key.cutId.value}-${ink.key.frameId.value}',
+        ConteInkPlane.page => 'page-${page.pageIndex}',
+      },
+      plane: ConteInkPlane.of(ink.key),
     ),
-    for (final cell in page.cells)
-      if (cell.source.frameId != null)
-        SheetInkWindow(
-          id: 'row-${cell.cutId}-${cell.source.frameId!.value}',
-          surfaceScale: conteInkScale.toDouble(),
-          plane: ConteInkPlane.row,
-          key: ConteInkController.rowKey(
-            CutId(cell.cutId),
-            cell.source.frameId!,
-          ),
-          documentRect: cell.rowBandRect(metrics),
-        ),
-  ];
-}
+];
 
 /// The conte's ink input/display stack: every window hosts the SAME
 /// interactive brush view the drawing canvas uses, windowed onto its ink

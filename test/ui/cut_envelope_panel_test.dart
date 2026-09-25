@@ -114,7 +114,7 @@ void main() {
           face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
-          inkKeyFor: (boxId) => envelopeInkBoxKey(owner, boxId),
+          inkOwner: owner,
           inkImageFor: (key) => key == leftKey ? ink : null,
         ),
         200,
@@ -147,7 +147,7 @@ void main() {
           face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
-          inkKeyFor: (boxId) => envelopeInkBoxKey(owner, boxId),
+          inkOwner: owner,
           inkImageFor: (key) => key == leftKey ? ink : null,
           liveInkKeys: {leftKey},
         ),
@@ -173,7 +173,7 @@ void main() {
           face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
-          inkKeyFor: (boxId) => envelopeInkBoxKey(owner, boxId),
+          inkOwner: owner,
           liveInkKeys: live,
         );
 

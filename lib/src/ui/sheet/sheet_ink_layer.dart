@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/sheet_marks.dart';
+import '../../models/sheet_paint_layer.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../brush/brush_tool_state.dart';
@@ -29,11 +31,14 @@ class SheetInkWindow {
   const SheetInkWindow({
     required this.id,
     required this.key,
-    required this.documentRect,
-    required this.surfaceScale,
+    required this.placement,
     this.plane,
-    this.inkOffset = Offset.zero,
   });
+
+  /// The window of an ink mark a sheet's walk yields — the walk the sheet's
+  /// printers read too, so the brush writes where the paper shows.
+  SheetInkWindow.of(SheetInk ink, {required String id, Object? plane})
+    : this(id: id, key: ink.key, placement: ink.placement, plane: plane);
 
   /// WHICH of the panel's ink planes this window belongs to — the
   /// timesheet's page/strip, the conte's paper/cell. ⛔This layer never
@@ -52,48 +57,37 @@ class SheetInkWindow {
 
   final BrushFrameKey key;
 
+  /// Where this window shows its surface — the one mapping between ink
+  /// pixels and the paper the printers lay the ink back by.
+  final SheetInkPlacement placement;
+
   /// The window's rect in the sheet's document space.
-  final Rect documentRect;
+  Rect get documentRect => placement.window;
 
   /// Ink-surface pixels per document unit.
-  final double surfaceScale;
+  double get surfaceScale => placement.scale;
 
-  /// Ink-surface pixel that maps to [documentRect]'s top-left. The origin
-  /// for every sheet that gives each window its own surface; the
-  /// timesheet's strip bands share one surface and slice it with this.
-  final Offset inkOffset;
+  /// Ink-surface pixel that maps to [documentRect]'s top-left.
+  Offset get inkOffset => placement.origin;
 
   /// The viewport the interactive brush view needs so ink pixel (x, y)
   /// lands exactly where the sheet paints this window: the panel transform
-  /// composed with the window placement and the surface scale.
+  /// composed with where surface pixel (0, 0) lies on the paper.
   CanvasViewport inkViewport(CanvasViewport panelViewport) {
-    final inkZoom = panelViewport.zoom / surfaceScale;
+    final origin = placement.paperOf(Offset.zero);
     return CanvasViewport(
-      zoom: inkZoom,
-      panX:
-          panelViewport.panX +
-          panelViewport.zoom * documentRect.left -
-          inkZoom * inkOffset.dx,
-      panY:
-          panelViewport.panY +
-          panelViewport.zoom * documentRect.top -
-          inkZoom * inkOffset.dy,
+      zoom: panelViewport.zoom / placement.scale,
+      panX: panelViewport.panX + panelViewport.zoom * origin.dx,
+      panY: panelViewport.panY + panelViewport.zoom * origin.dy,
     );
   }
 
   /// The window's slice of its ink surface, in SURFACE pixels.
-  ///
-  /// The envelope carried this on its own window class and started at the
-  /// origin, which is right for a sheet that gives each window its own
-  /// surface. Starting at [inkOffset] instead is the same expression for
-  /// those sheets and the correct one for a shared surface — the
-  /// timesheet's strip bands.
-  Rect get surfaceRect => Rect.fromLTWH(
-    inkOffset.dx,
-    inkOffset.dy,
-    documentRect.width * surfaceScale,
-    documentRect.height * surfaceScale,
-  );
+  Rect get surfaceRect => placement.surfaceRect;
+
+  /// This window as the mark a printer lays its ink by.
+  SheetInk get mark =>
+      SheetInk(SheetPaintLayer.ink, key: key, placement: placement);
 
   /// The window's on-screen rect under the panel transform — the input hit
   /// region and the display clip.

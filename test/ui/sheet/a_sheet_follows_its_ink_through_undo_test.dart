@@ -10,6 +10,8 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
+import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/history_manager.dart';
@@ -87,14 +89,14 @@ void main() {
           commit: (controller, history) =>
               (controller as TimesheetInkController).commitStroke(
                 plane: TimesheetInkPlane.strip,
-                key: TimesheetInkController.stripBandKey(cutId, 0),
+                key: timesheetInkStripKey(cutId, 0),
                 strokeData: oneDab(),
                 historyManager: history,
               ),
           hasInk: (controller) => (controller as TimesheetInkController)
               .hasInkFor(
                 TimesheetInkPlane.strip,
-                TimesheetInkController.stripBandKey(cutId, 0),
+                timesheetInkStripKey(cutId, 0),
               ),
         ),
         'conte': (
@@ -105,13 +107,13 @@ void main() {
           commit: (controller, history) =>
               (controller as ConteInkController).commitStroke(
                 plane: ConteInkPlane.page,
-                key: ConteInkController.pageKey(0),
+                key: conteInkPageKey(0),
                 strokeData: oneDab(),
                 historyManager: history,
               ),
           hasInk: (controller) => (controller as ConteInkController).hasInkFor(
             ConteInkPlane.page,
-            ConteInkController.pageKey(0),
+            conteInkPageKey(0),
           ),
         ),
         'envelope': (

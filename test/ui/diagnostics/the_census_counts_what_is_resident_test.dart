@@ -74,7 +74,9 @@ void main() {
       rows['sheetInk'],
       caches.conteInkRowStore.hotBakedBytes +
           caches.conteInkPageStore.hotBakedBytes +
-          caches.envelopeInkStore.hotBakedBytes,
+          caches.envelopeInkStore.hotBakedBytes +
+          caches.timesheetInkStripStore.hotBakedBytes +
+          caches.timesheetInkPageStore.hotBakedBytes,
       reason: 'the same for the sheet-ink stores',
     );
   });

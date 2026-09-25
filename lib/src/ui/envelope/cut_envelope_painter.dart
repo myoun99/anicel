@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_form.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_source.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../canvas/viewport_canvas_transform.dart';
+import 'cut_envelope_ink.dart';
 import '../sheet_painting.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
@@ -27,7 +29,7 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
     this.effectiveRatio = 1.0,
     this.imageFor,
     this.inkImageFor,
-    this.inkKeyFor,
+    this.inkOwner,
     this.liveInkKeys = const {},
     // The ink store: a landed stroke (or an async-composed display image)
     // must repaint the sheet even though none of the compared fields
@@ -65,8 +67,9 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
   /// The ink surface for a box.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
 
-  /// The ink key a box's strokes live under.
-  final BrushFrameKey Function(String boxId)? inkKeyFor;
+  /// The cut this envelope is of — its boxes' ink is keyed to it
+  /// ([envelopeInkWindows]) — or null where no ink prints.
+  final CutId? inkOwner;
 
   /// Keys a LIVE input window is already showing: the painter skips them so
   /// translucent ink never composites twice. Everything else is drawn here
@@ -184,35 +187,24 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
   /// The handwriting, above everything the form prints (it was written on
   /// the finished sheet — pen over paper).
   ///
-  /// A box shows the TOP-LEFT slice of the shared ink surface, sized by
-  /// [CutEnvelopeLayout.inkSurfaceScale] rather than by the image, and
-  /// clipped to itself so a stroke can never bleed into the next cell.
+  /// ⛔The boxes are the ones the brush writes through
+  /// ([envelopeInkWindows]) — each shows its surface where the window's
+  /// placement lays it, clipped to itself so a stroke can never bleed into
+  /// the next cell. The painter walked the boxes once more for itself.
   void _paintInk(Canvas canvas) {
-    final keyFor = inkKeyFor;
+    final owner = inkOwner;
     final imageFor = inkImageFor;
-    if (keyFor == null || imageFor == null) {
+    if (owner == null || imageFor == null) {
       return;
     }
-    final surfaceScale = layout.inkSurfaceScale;
-    for (final placed in layout.placedBoxes) {
-      if (!placed.box.takesInk) {
+    for (final window in envelopeInkWindows(layout, owner)) {
+      if (liveInkKeys.contains(window.key)) {
         continue;
       }
-      final key = keyFor(placed.box.id);
-      if (liveInkKeys.contains(key)) {
-        continue;
+      final image = imageFor(window.key);
+      if (image != null) {
+        paintSheetInkWindow(canvas, image, window.placement);
       }
-      final image = imageFor(key);
-      if (image == null) {
-        continue;
-      }
-      final boxRect = Rect.fromLTWH(
-        placed.x,
-        placed.y,
-        placed.width,
-        placed.height,
-      );
-      paintSheetInkWindow(canvas, image, boxRect, surfaceScale);
     }
   }
 
@@ -268,5 +260,6 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
     // it again. Miss this and a stroke stays doubled (or missing) until
     // something else happens to repaint.
     BySet(liveInkKeys),
+    inkOwner,
   );
 }

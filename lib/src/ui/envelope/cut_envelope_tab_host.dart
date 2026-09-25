@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/envelope/cut_envelope_source.dart';
@@ -211,9 +210,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                       viewport: viewport,
                       effectiveRatio: EffectiveDevicePixelRatio.of(context),
                       imageFor: widget.imageFor,
-                      inkKeyFor: owner == null
-                          ? null
-                          : (boxId) => envelopeInkBoxKey(owner, boxId),
+                      inkOwner: owner,
                       inkImageFor: inkController == null
                           ? null
                           : (key) => inkController.displayImageFor(null, key),

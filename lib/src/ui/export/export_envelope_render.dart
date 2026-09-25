@@ -4,6 +4,7 @@ import 'package:flutter/painting.dart' show TextStyle;
 
 import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_source.dart';
 import '../envelope/cut_envelope_painter.dart';
@@ -39,7 +40,7 @@ Future<ui.Image> renderCutEnvelopeImage({
   required TextStyle face,
   Set<SheetPaintLayer>? layers,
   ui.Image? Function(String assetPath)? imageFor,
-  BrushFrameKey Function(String boxId)? inkKeyFor,
+  CutId? inkOwner,
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
   ({int width, int height})? outputSize,
 }) {
@@ -60,7 +61,7 @@ Future<ui.Image> renderCutEnvelopeImage({
       face: face,
       layers: layers,
       imageFor: imageFor,
-      inkKeyFor: inkKeyFor,
+      inkOwner: inkOwner,
       inkImageFor: inkImageFor,
     ).paint(canvas, ui.Size(width.toDouble(), height.toDouble())),
   );

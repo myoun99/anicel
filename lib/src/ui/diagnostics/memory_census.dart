@@ -157,9 +157,10 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
       id: 'sheetInk',
       bytes:
           // Resident only, like the drawings row above.
-          session.renderCaches.conteInkRowStore.hotBakedBytes +
-          session.renderCaches.conteInkPageStore.hotBakedBytes +
-          session.renderCaches.envelopeInkStore.hotBakedBytes,
+          session.renderCaches.sheetInkStores.fold(
+            0,
+            (sum, store) => sum + store.hotBakedBytes,
+          ),
     ),
     MemoryCensusItem(
       id: 'undo',

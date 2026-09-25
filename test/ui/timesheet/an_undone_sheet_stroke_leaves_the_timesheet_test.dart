@@ -6,6 +6,7 @@ import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -56,7 +57,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final band = TimesheetInkController.stripBandKey(
+    final band = timesheetInkStripKey(
       session.requireActiveCut.id,
       0,
     );

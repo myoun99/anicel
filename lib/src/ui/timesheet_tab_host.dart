@@ -654,27 +654,22 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                   session.cutVerbs.updateActiveCutNote,
                             ),
                           ),
-                          if (ink != null)
+                          if (inkController != null)
                             Positioned.fill(
-                              // The tool-state boundary (R18 UI-3): the brush
-                              // reaches only this small overlay — the sheet
-                              // document above never rebuilds for it — and
-                              // since H40 ② (2026-09-24) not even the overlay
-                              // does: its windows read the brush when a
-                              // stroke starts.
-                              child: TimesheetInkLayer(
-                                key: const ValueKey<String>(
-                                  'timesheet-ink-layer',
-                                ),
-                                controller: ink.controller,
+                              child: TimesheetInk(
+                                controller: inkController,
                                 layout: layout,
                                 pagedLayout: pagedLayout,
                                 cutId: _documentCut!.id,
-                                brushToolState: ink.tool,
-                                historyManager: session.historyManager,
                                 viewport: viewport,
-                                strokeActive: _strokeHold,
-                                cacheInvalidationSink: _cacheInvalidationSink,
+                                brush: ink == null
+                                    ? null
+                                    : (
+                                        tool: ink.tool,
+                                        history: session.historyManager,
+                                        strokeActive: _strokeHold,
+                                        sink: _cacheInvalidationSink,
+                                      ),
                               ),
                             ),
                         ],

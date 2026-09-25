@@ -269,9 +269,9 @@ class TvppImportDoor {
   /// only exist for saved files (cel restore, healing).
   void _resetSessionForImportedProject(CutId firstCutId) {
     _renderCaches.brushFrameStore.restoreFromFile(const {});
-    _renderCaches.conteInkRowStore.restoreFromFile(const {});
-    _renderCaches.conteInkPageStore.restoreFromFile(const {});
-    _renderCaches.envelopeInkStore.restoreFromFile(const {});
+    for (final store in _renderCaches.sheetInkStores) {
+      store.restoreFromFile(const {});
+    }
     _project.historyManager.clear();
     _clipboard.clear();
     _layerClipboard.clear();

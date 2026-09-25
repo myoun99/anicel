@@ -23,6 +23,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
+import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -400,11 +401,11 @@ void main() {
     );
 
     final firstCell = page.cells.first;
-    final rowKey = ConteInkController.rowKey(
+    final rowKey = conteInkRowKey(
       CutId(firstCell.cutId),
       firstCell.source.frameId!,
     );
-    final page0 = ConteInkController.pageKey(0);
+    final page0 = conteInkPageKey(0);
     expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isFalse);
     expect(controller.hasInkFor(ConteInkPlane.page, page0), isFalse);
 

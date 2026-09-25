@@ -6,6 +6,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -19,6 +21,8 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
@@ -718,6 +722,41 @@ void main() {
       expect(statusText(tester), 'Exported 1 sheet page.');
     });
 
+    // 유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」 — the sheet
+    // exported no ink at all, where the conte's and the envelope's rode.
+    testWidgets('what was written on the sheet rides its PNG, where it was '
+        'written', (tester) async {
+      final session = exportSession();
+      addTearDown(session.dispose);
+      session.renderCaches.timesheetInkPageStore.storeBakedSurface(
+        timesheetInkPageKey(const CutId('cut'), 0),
+        _redSurface(),
+      );
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}/CUTCut.png').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      final data = (await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+      ))!;
+      // The page ink's surface pixel (0, 0) sits on the page's corner: the
+      // 16px stroke is 4 sheet units, 8 pixels at the export's 2×.
+      expect(data.getUint8(0), greaterThan(200), reason: 'red, from the store');
+      expect(data.getUint8(1), lessThan(80));
+    });
+
     testWidgets('writes one xdts per cut under the project scope',
         (tester) async {
       final state = await pumpDialog(
@@ -1247,4 +1286,22 @@ void main() {
       });
     }
   });
+}
+
+/// A 16px surface inked solid red — what a landed stroke leaves in a store.
+BitmapSurface _redSurface() {
+  final pixels = Uint8List(8 * 8 * 4);
+  for (var i = 0; i < pixels.length; i += 4) {
+    pixels[i] = 0xFF;
+    pixels[i + 3] = 0xFF;
+  }
+  return BitmapSurface(
+    canvasSize: const CanvasSize(width: 16, height: 16),
+    tileSize: 8,
+    tiles: {
+      for (var y = 0; y < 2; y += 1)
+        for (var x = 0; x < 2; x += 1)
+          TileCoord(x: x, y: y): BitmapTile(size: 8, pixels: pixels),
+    },
+  );
 }

@@ -23,6 +23,10 @@ import 'dart:async';
 import 'dart:io';
 
 import '../../models/brush_frame_cache_invalidation.dart';
+import '../../models/brush_frame_key.dart';
+import '../../models/conte/conte_ink_keys.dart';
+import '../../models/envelope/cut_envelope_ink_keys.dart';
+import '../../models/timesheet_ink_keys.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/playback/editor_cache_invalidation_hub.dart';
 import '../playback/cut_frame_composite_cache.dart';
@@ -67,6 +71,18 @@ class RenderCaches {
           key,
     );
 
+  /// Sets the cel stores' hot budgets from [budgets]: the drawings' own,
+  /// and the sheet-ink stores' ONE share, split evenly
+  /// ([CacheBudgets.sheetInk]). The session calls it; a store no session
+  /// set keeps the desktop-class default, as an unknown device does.
+  void applyCacheBudgets(CacheBudgets budgets) {
+    brushFrameStore.hotCelByteBudget = budgets.drawings;
+    final stores = sheetInkStores;
+    for (final store in stores) {
+      store.hotCelByteBudget = budgets.sheetInk ~/ stores.length;
+    }
+  }
+
   /// Page-raster bytes each mounted media viewer is holding, by viewer id.
   ///
   /// 🚨**PUSHED, where every other census number is PULLED.** The census
@@ -80,21 +96,6 @@ class RenderCaches {
   /// ⛔Without this the panel that answers「어떤항목이 얼만큼」 was silent
   /// about a cache that can hold a quarter of a gigabyte per viewer — the
   /// gap would land in `untrackedBytes` and read as engine overhead.
-  /// Sets the cel stores' hot budgets from [budgets]: the drawings' own,
-  /// and the three sheet-ink stores' ONE share, split evenly
-  /// ([CacheBudgets.sheetInk]). The session calls it; a store no session
-  /// set keeps the desktop-class default, as an unknown device does.
-  void applyCacheBudgets(CacheBudgets budgets) {
-    brushFrameStore.hotCelByteBudget = budgets.drawings;
-    for (final store in [
-      conteInkRowStore,
-      conteInkPageStore,
-      envelopeInkStore,
-    ]) {
-      store.hotCelByteBudget = budgets.sheetInk ~/ 3;
-    }
-  }
-
   final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
 
   /// What the editing canvas's display buffer holds — one canvas-resolution
@@ -151,6 +152,43 @@ class RenderCaches {
   /// Its keys carry the OWNER cut's id, so an entry whose cut is gone is
   /// pruned at LOAD exactly like a conte row's.
   final BrushFrameStore envelopeInkStore = BrushFrameStore();
+
+  /// The timesheet's ink stores — SESSION-owned like the conte's and the
+  /// envelope's (유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」):
+  /// the ink was the one sheet's that no save carried. The keys carry the
+  /// cut's id, so an entry whose cut is gone is pruned at LOAD, the
+  /// envelope's unit.
+  final BrushFrameStore timesheetInkStripStore = BrushFrameStore();
+  final BrushFrameStore timesheetInkPageStore = BrushFrameStore();
+
+  /// Every sheet's ink stores — the ONE list a whole-session walk reads:
+  /// the budgets, memory pressure, the census, a save, an open, a reset.
+  ///
+  /// ⛔Six walks each wrote the stores out by hand; a sheet whose ink came
+  /// later would have been saved by some of them and budgeted by others.
+  List<BrushFrameStore> get sheetInkStores => [
+    conteInkRowStore,
+    conteInkPageStore,
+    envelopeInkStore,
+    timesheetInkStripStore,
+    timesheetInkPageStore,
+  ];
+
+  /// The store a sheet-ink [key] lives in — by its namespace and its plane
+  /// — or null for a drawing's key.
+  BrushFrameStore? sheetInkStoreFor(BrushFrameKey key) {
+    if (isConteInkKey(key)) {
+      return key.layerId == conteInkRowLayerId
+          ? conteInkRowStore
+          : conteInkPageStore;
+    }
+    if (isTimesheetInkKey(key)) {
+      return key.layerId == timesheetInkStripLayerId
+          ? timesheetInkStripStore
+          : timesheetInkPageStore;
+    }
+    return isEnvelopeInkKey(key) ? envelopeInkStore : null;
+  }
 
   /// Production sink for brush edit invalidations; playback caches and the
   /// prerender scheduler listen here.

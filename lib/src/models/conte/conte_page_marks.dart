@@ -64,8 +64,7 @@ List<SheetMark> contePageMarks(
         ..._content(page, source, liveFramesOf),
       ],
     },
-    for (final window in conteInkWindows(page, metrics))
-      SheetInk(SheetPaintLayer.ink, key: window.key, rect: window.rect),
+    ...conteInkMarks(page, metrics),
   ];
 }
 

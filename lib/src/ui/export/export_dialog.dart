@@ -28,16 +28,15 @@ import '../../models/layer.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/conte/conte_ink_keys.dart';
+import '../../models/conte/conte_ink_windows.dart';
 import '../../models/conte/conte_words.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
-import '../../models/envelope/cut_envelope_ink_keys.dart';
+import '../envelope/cut_envelope_ink.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/project.dart';
-import '../../services/brush_frame_store.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../widgets/checkered_picture.dart';
 import '../canvas/tiled_surface_compose.dart';
@@ -78,6 +77,7 @@ import '../../models/cut_id.dart';
 import '../../models/timesheet_document.dart';
 import '../timesheet/timesheet_document_painter.dart'
     show TimesheetDocumentLayout;
+import '../timesheet/timesheet_ink_layer.dart' show timesheetInkWindows;
 import '../timesheet/timesheet_notation.dart';
 import '../widgets/app_window.dart';
 import '../dialogs/app_confirm_dialog.dart';
@@ -1043,23 +1043,22 @@ class ExportDialogState extends State<ExportDialog> {
     ];
   }
 
-  /// The envelope ink rasters for one sheet, composed from the session's
-  /// envelope store. Caller disposes the images.
-  Future<Map<BrushFrameKey, ui.Image>> _renderEnvelopeInk(
-    ExportEnvelopeTask task,
+  /// Every sheet's saved ink for [keys], each composed from the session
+  /// store its namespace names ([RenderCaches.sheetInkStoreFor]). Caller
+  /// disposes the images.
+  ///
+  /// ⛔ONE for the three sheets: the conte and the envelope each composed
+  /// their own, and the timesheet's would have been the third.
+  Future<Map<BrushFrameKey, ui.Image>> _renderSheetInk(
+    Iterable<BrushFrameKey> keys,
   ) async {
+    final caches = _session.renderCaches;
     final images = <BrushFrameKey, ui.Image>{};
-    for (final placed in task.layout.placedBoxes) {
-      if (!placed.box.takesInk) {
-        continue;
-      }
-      final key = envelopeInkBoxKey(task.owner.id, placed.box.id);
+    for (final key in keys) {
       if (images.containsKey(key)) {
         continue;
       }
-      final surface = _session.renderCaches.envelopeInkStore.bakedSurfaceOrNull(
-        key,
-      );
+      final surface = caches.sheetInkStoreFor(key)?.bakedSurfaceOrNull(key);
       if (surface == null) {
         continue;
       }
@@ -1087,7 +1086,13 @@ class ExportDialogState extends State<ExportDialog> {
   }) async {
     final wantsInk = layers.contains(SheetPaintLayer.ink);
     final ink = wantsInk
-        ? await _renderEnvelopeInk(task)
+        ? await _renderSheetInk([
+            for (final window in envelopeInkWindows(
+              task.layout,
+              task.owner.id,
+            ))
+              window.key,
+          ])
         : const <BrushFrameKey, ui.Image>{};
     try {
       return await renderCutEnvelopeImage(
@@ -1095,7 +1100,7 @@ class ExportDialogState extends State<ExportDialog> {
         source: task.source,
         face: face,
         layers: layers,
-        inkKeyFor: (boxId) => envelopeInkBoxKey(task.owner.id, boxId),
+        inkOwner: task.owner.id,
         inkImageFor: (key) => ink[key],
         outputSize: outputSize,
       );
@@ -1106,48 +1111,58 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  /// The sheet ink rasters for [pages] (R5), composed from the session's
-  /// ink stores: the page plane plus each cell's row band. Caller
-  /// disposes the images.
+  /// One timesheet page with its saved ink composed and freed around it —
+  /// the preview's and the page-image export's one routine; they differ
+  /// only in [outputSize] against [scale].
+  ///
+  /// The ink is the page's windows of the panel's own walk
+  /// ([timesheetInkWindows]) — until 2026-09-26 the timesheet exported no
+  /// ink at all (유저: 「다 통일해줘. 기능은 어차피 생길수있어」).
+  Future<ui.Image> _renderSheetPage(
+    ExportTimesheetPageTask task, {
+    required TextStyle face,
+    double scale = 2,
+    CanvasSize? outputSize,
+  }) async {
+    final (_, document, layout) = _sheetDocFor(task.cut);
+    final page = layout.pageRect(task.pageIndex);
+    final windows = [
+      for (final window in timesheetInkWindows(
+        layout: layout,
+        pagedLayout: layout,
+        cutId: task.cut.id,
+      ))
+        if (window.documentRect.overlaps(page)) window.mark,
+    ];
+    final ink = await _renderSheetInk([for (final w in windows) w.key]);
+    try {
+      return await renderTimesheetPageImage(
+        document: document,
+        layout: layout,
+        pageIndex: task.pageIndex,
+        notation: _sheetNotation,
+        face: face,
+        scale: scale,
+        outputSize: outputSize,
+        ink: (windows: windows, imageFor: (key) => ink[key]),
+      );
+    } finally {
+      for (final image in ink.values) {
+        image.dispose();
+      }
+    }
+  }
+
+  /// The conte ink rasters for [pages] (R5): the page plane plus each
+  /// cell's row band — the windows the page prints them through
+  /// ([conteInkMarks]), which this used to walk once more for itself.
+  /// Caller disposes the images.
   Future<Map<BrushFrameKey, ui.Image>> _renderConteInk(
     List<ContePageLayout> pages,
-  ) async {
-    final images = <BrushFrameKey, ui.Image>{};
-    Future<void> compose(BrushFrameStore store, BrushFrameKey key) async {
-      if (images.containsKey(key)) {
-        return;
-      }
-      final surface = store.bakedSurfaceOrNull(key);
-      if (surface == null) {
-        return;
-      }
-      final image = await composeTiledSurfaceImage(
-        surface,
-        reuse: BitmapTileImageCache.instance,
-      );
-      if (image != null) {
-        images[key] = image;
-      }
-    }
-
-    for (final page in pages) {
-      await compose(
-        _session.renderCaches.conteInkPageStore,
-        conteInkPageKey(page.pageIndex),
-      );
-      for (final cell in page.cells) {
-        final frameId = cell.source.frameId;
-        if (frameId == null) {
-          continue;
-        }
-        await compose(
-          _session.renderCaches.conteInkRowStore,
-          conteInkRowKey(CutId(cell.cutId), frameId),
-        );
-      }
-    }
-    return images;
-  }
+  ) => _renderSheetInk([
+    for (final page in pages)
+      for (final ink in conteInkMarks(page, page.metrics)) ink.key,
+  ]);
 
   Cut? _conteCutById(String cutId) {
     for (final track in _session.repository.requireProject().tracks) {
@@ -1567,21 +1582,14 @@ class ExportDialogState extends State<ExportDialog> {
     if (task == null) {
       return;
     }
-    final (_, document, layout) = _sheetDocFor(task.cut);
+    final (_, _, layout) = _sheetDocFor(task.cut);
     final page = layout.pageRect(task.pageIndex);
     final outputSize = _previewFit(page.width, page.height);
     final face = _documentFace;
     _preview.request(
       key: 'sheet:${task.cut.id.value}:${task.pageIndex}:${face.fontFamily}',
       caption: 'p${task.pageIndex + 1}',
-      render: () => renderTimesheetPageImage(
-        document: document,
-        layout: layout,
-        pageIndex: task.pageIndex,
-        notation: _sheetNotation,
-        face: face,
-        outputSize: outputSize,
-      ),
+      render: () => _renderSheetPage(task, face: face, outputSize: outputSize),
     );
   }
 
@@ -2376,22 +2384,11 @@ class ExportDialogState extends State<ExportDialog> {
   Future<String> _exportSheetImages() {
     final plan = _timesheetPagePlan();
     final scale = _specs.timesheet.sheetScale.toDouble();
-    final notation = _sheetNotation;
     final face = _documentFace;
     return _runImageExport(
       count: plan.length,
-      renderImage: (index) {
-        final task = plan[index];
-        final (_, document, layout) = _sheetDocFor(task.cut);
-        return renderTimesheetPageImage(
-          document: document,
-          layout: layout,
-          pageIndex: task.pageIndex,
-          notation: notation,
-          face: face,
-          scale: scale,
-        );
-      },
+      renderImage: (index) =>
+          _renderSheetPage(plan[index], face: face, scale: scale),
       fileNameFor: (index) => plan[index].fileName,
       says: _Tally.sheetPages,
     );

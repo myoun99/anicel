@@ -9,10 +9,9 @@ import '../models/sheet_marks.dart';
 import '../models/sheet_paint_layer.dart';
 import 'canvas/viewport_canvas_transform.dart';
 
-/// Draws one baked ink window into [rect]: the raster laid at the ink's
-/// [scale] from the window's corner ([sheetInkRasterRect]), clipped to the
-/// window so a stroke that ran past the box does not bleed into its
-/// neighbour.
+/// Draws one baked ink window: the raster where its [placement] lays it,
+/// clipped to the window so a stroke that ran past the box does not bleed
+/// into its neighbour.
 ///
 /// ⛔EVERY SHEET DRAWS INK THIS WAY. The conte page and the cut envelope
 /// each wrote out the save / clip / drawImageRect / restore with the same
@@ -23,20 +22,14 @@ import 'canvas/viewport_canvas_transform.dart';
 void paintSheetInkWindow(
   Canvas canvas,
   ui.Image image,
-  Rect rect,
-  double scale,
+  SheetInkPlacement placement,
 ) {
   canvas.save();
-  canvas.clipRect(rect);
+  canvas.clipRect(placement.window);
   canvas.drawImageRect(
     image,
     Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-    sheetInkRasterRect(
-      rect,
-      width: image.width,
-      height: image.height,
-      scale: scale,
-    ),
+    placement.rasterRect(image.width, image.height),
     Paint()..filterQuality = FilterQuality.medium,
   );
   canvas.restore();
@@ -245,7 +238,6 @@ class SheetMarkImages {
     this.imageFor,
     this.inkImageFor,
     this.liveInkKeys = const {},
-    this.inkScale = 1,
   });
 
   final ui.Image? Function(String cutId, int pictureFrame)? pictureFor;
@@ -255,9 +247,6 @@ class SheetMarkImages {
   /// Keys a LIVE input window is already showing: skipped, so translucent
   /// ink never composites twice.
   final Set<BrushFrameKey> liveInkKeys;
-
-  /// Ink raster pixels per paper unit.
-  final double inkScale;
 }
 
 /// The face a sheet sets its words in.
@@ -365,13 +354,13 @@ class _SheetCanvas {
             ),
           );
         }
-      case SheetInk(:final key, :final rect):
+      case SheetInk(:final key, :final placement):
         final image = images.liveInkKeys.contains(key)
             ? null
             : images.inkImageFor?.call(key);
         if (image != null) {
           _inPaperSpace(
-            () => paintSheetInkWindow(canvas, image, rect, images.inkScale),
+            () => paintSheetInkWindow(canvas, image, placement),
           );
         }
     }

@@ -70,15 +70,24 @@ void main() {
     );
   });
 
-  test('🚨the three sheet-ink stores share ONE cel store worth — each ran '
-      'on a desktop 1.5GB of its own, on every device', () {
+  test('🚨the sheet-ink stores share ONE cel store worth — each ran on a '
+      'desktop 1.5GB of its own, on every device', () {
     final session = newSession();
-    final share = automaticBudgetsOf(session).sheetInk ~/ 3;
-    for (final store in [
-      session.renderCaches.conteInkRowStore,
-      session.renderCaches.conteInkPageStore,
-      session.renderCaches.envelopeInkStore,
-    ]) {
+    final caches = session.renderCaches;
+    final stores = {
+      caches.conteInkRowStore,
+      caches.conteInkPageStore,
+      caches.envelopeInkStore,
+      caches.timesheetInkStripStore,
+      caches.timesheetInkPageStore,
+    };
+    expect(
+      caches.sheetInkStores.toSet(),
+      stores,
+      reason: 'every sheet\'s ink is in the one list the walks read',
+    );
+    final share = automaticBudgetsOf(session).sheetInk ~/ stores.length;
+    for (final store in stores) {
       expect(store.hotCelByteBudget, share);
     }
   });
@@ -89,6 +98,8 @@ void main() {
       session.renderCaches.conteInkRowStore,
       session.renderCaches.conteInkPageStore,
       session.renderCaches.envelopeInkStore,
+      session.renderCaches.timesheetInkStripStore,
+      session.renderCaches.timesheetInkPageStore,
     ];
     // A budget well above the halving's floor, so a warning that reaches
     // a store shows as exactly half of it.

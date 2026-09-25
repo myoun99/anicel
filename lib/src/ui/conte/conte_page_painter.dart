@@ -113,7 +113,6 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
         imageFor: imageFor,
         inkImageFor: inkImageFor,
         liveInkKeys: liveInkKeys,
-        inkScale: conteInkScale.toDouble(),
       ),
     ).paint(
       canvas,

@@ -8,7 +8,6 @@ import '../../core/identity_memo.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_page_marks.dart'
     show conteCellTextSize, conteInkArgb;
 import '../../models/conte/conte_sheet_layout.dart';
@@ -525,9 +524,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
             inkImageFor: inkController == null
                 ? null
                 : (key) => inkController.displayImageFor(
-                    key.layerId == conteInkRowLayerId
-                        ? ConteInkPlane.row
-                        : ConteInkPlane.page,
+                    ConteInkPlane.of(key),
                     key,
                   ),
             liveInkKeys: _inkMount(page) == null
