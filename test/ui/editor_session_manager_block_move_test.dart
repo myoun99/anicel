@@ -234,7 +234,7 @@ void main() {
       isFalse,
     );
     expect(
-      s.isBlockMoveDragActive,
+      blockMoveVerbsOf(s).isDragActive,
       isTrue,
       reason: 'the refusal is not a cancel',
     );
@@ -242,7 +242,7 @@ void main() {
 
     // And the original drag can still be closed the normal way.
     blockMoveVerbsOf(s).cancelDrawingBlockMoveDrag();
-    expect(s.isBlockMoveDragActive, isFalse);
+    expect(blockMoveVerbsOf(s).isDragActive, isFalse);
     expect(s.dragPreview.value, isNull);
   });
 

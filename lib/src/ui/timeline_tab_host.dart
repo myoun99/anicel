@@ -653,8 +653,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // object (F-101).
             audioLane: sessionAudioLaneCallbacks(_session),
             onAddLayer: _session.layerStack.addLayer,
-            isLayerSoloed: (layerId) =>
-                _session.soloedSeLayerIds.value.contains(layerId),
+            isLayerSoloed: (layerId) => _session
+                .visibilitySolo
+                .soloedSeLayerIds
+                .value
+                .contains(layerId),
             onOpenLayerMixer: (anchorContext, layerId) => unawaited(
               showSeLayerMixer(
                 anchorContext,

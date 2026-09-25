@@ -76,8 +76,14 @@ const _mayNameTheSession = <String, String>{
 /// the third family): the two opacity drag previews and the master bar's
 /// resting value moved into `OpacityVerbs`, which writes all three — and
 /// `OpacityVerbs`, whose only reads of the role were these, no longer takes
-/// it at all.
-const _sessionInternalsMembers = 43;
+/// it at all. 43 → 39 (2026-09-25, the fourth and fifth families): the
+/// block drag in flight moved into `DrawingBlockMoveDragVerbs`, which starts
+/// and closes it; the selection-interaction flag became what it always stood
+/// for — `RangeSelections`' own count of holds, which nothing had listened
+/// to; and the SE solo set moved into `VisibilitySolo`, whose toggle is its
+/// one writer — `VisibilitySolo`, whose only read of the role this was, no
+/// longer takes it, and the playback rig takes the set by constructor.
+const _sessionInternalsMembers = 39;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

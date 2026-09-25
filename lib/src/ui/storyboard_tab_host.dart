@@ -938,8 +938,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         layerId: layerId,
                       ),
                     ),
-                    isLayerSoloed: (layerId) =>
-                        _session.soloedSeLayerIds.value.contains(layerId),
+                    isLayerSoloed: (layerId) => _session
+                        .visibilitySolo
+                        .soloedSeLayerIds
+                        .value
+                        .contains(layerId),
                     onLayerOpacityChanged: _session.opacityVerbs.previewLayerOpacity,
                     onLayerOpacityChangeEnd: _session.opacityVerbs.commitLayerOpacity,
                     onLayerMarkSelected: _session.layerMarks.setLayerMark,

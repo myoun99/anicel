@@ -51,15 +51,16 @@ void main() {
       'memoryPressureTicks': () => session.memoryPressureTicks.addListener(
         () {},
       ),
-      'soloedSeLayerIds': () => session.soloedSeLayerIds.addListener(() {}),
+      'visibilitySolo.soloedSeLayerIds': () => session
+          .visibilitySolo
+          .soloedSeLayerIds
+          .addListener(() {}),
       'editingFrameCursor': () => session.editingFrameCursor.addListener(() {}),
       'frameSeekCommitted': () => session.frameSeekCommitted.addListener(() {}),
       'frameRangeSelection': () => session.frameRangeSelection.addListener(
         () {},
       ),
       'brushInputActive': () => session.brushInputActive.addListener(() {}),
-      'selectionInteractionActive': () => session.selectionInteractionActive
-          .addListener(() {}),
       'dragPreview': () => session.dragPreview.addListener(() {}),
       'transitionEdgeDragPreview': () => session.transitionEdgeDragPreview
           .addListener(() {}),

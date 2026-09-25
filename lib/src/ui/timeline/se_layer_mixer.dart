@@ -76,7 +76,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
     return AnimatedBuilder(
       animation: Listenable.merge([
         widget.session,
-        widget.session.soloedSeLayerIds,
+        widget.session.visibilitySolo.soloedSeLayerIds,
       ]),
       builder: (context, _) {
         final layer = _layer;
@@ -90,7 +90,8 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
 
   Widget _body(BuildContext context, Layer layer) {
     final strings = widget.session.uiStrings;
-    final soloed = widget.session.soloedSeLayerIds.value.contains(layer.id);
+    final soloed = widget.session.visibilitySolo.soloedSeLayerIds.value
+        .contains(layer.id);
     final gain = _gainDrag ?? layer.audioGain.clamp(0.0, 2.0);
     final pan = _panDrag ?? layer.audioPan.clamp(-1.0, 1.0);
 

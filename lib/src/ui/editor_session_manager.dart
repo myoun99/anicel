@@ -25,7 +25,6 @@ import '../services/persistence/app_memory_settings.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import 'brush/brush_tool_state.dart' show CanvasTool;
 import '../models/app_input_settings.dart';
-import 'session/drags/drawing_block_move_drag.dart';
 import 'session/drags/media_placement_drag.dart';
 import 'session/attach_fx_confirm.dart';
 import 'session/editor_app_settings.dart';
@@ -469,6 +468,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     internals: this,
+    soloedSeLayerIds: visibilitySolo.soloedSeLayerIds,
     renderCaches: renderCaches,
     settings: projectSettings,
     audioConformStore: audioConformStore,
@@ -1290,14 +1290,13 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches.dispose,
     audioConformStore.dispose,
     appSettings.dispose,
-    soloedSeLayerIds.dispose,
+    visibilitySolo.dispose,
     editingFrameCursor.dispose,
     frameScrub.dispose,
     frameSeekCommitted.dispose,
     _gapGlobalFrameNotifier.dispose,
     frameRangeSelection.dispose,
     brushInputActive.dispose,
-    selectionInteractionActive.dispose,
     dragPreview.dispose,
     transitionEdgeDragPreview.dispose,
     opacityVerbs.dispose,
@@ -1765,7 +1764,6 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     timeline: this,
-    internals: this,
   );
 
   // --- Cut display gates ---------------------------------------------------
@@ -2128,12 +2126,7 @@ class EditorSessionManager extends ChangeNotifier
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
 
   // --- SE mix controls (AUDIO-PRO R1) ---------------------------------------
-
-  /// The solo set — pure MONITORING state (never persisted, never
-  /// exported): non-empty narrows playback/scrub to these SE rows.
-  @override
-  final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
-      ValueNotifier<Set<LayerId>>(const {});
+  // The solo set is [VisibilitySolo.soloedSeLayerIds], held by its toggle.
 
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.
@@ -2504,15 +2497,8 @@ class EditorSessionManager extends ChangeNotifier
   // axis (slide) and across drawing layers (the cel travels, its brush
   // drawings re-keyed to the new layer). Landing requires empty space —
   // a block move never retimes other blocks. Same channel discipline as
-  // the edge drags: repo untouched until release, one undo per drag.
-
-  /// The drag in flight, or null. ⛔The only thing this class keeps about a
-  /// block move now: its mid-drag state lives on the object and dies with
-  /// the gesture (see [DrawingBlockMoveDrag]).
-  @override
-  DrawingBlockMoveDrag? blockMoveDrag;
-
-  bool get isBlockMoveDragActive => blockMoveDrag != null;
+  // the edge drags: repo untouched until release, one undo per drag. The
+  // drag in flight is held by [drawingBlockMove], which starts and closes it.
 
   /// Whether [layerId] can take part in a block move (source or target):
   /// a plain drawing-section layer. Track-SE rows live on the global axis
@@ -3117,19 +3103,12 @@ class EditorSessionManager extends ChangeNotifier
     }
   }
 
-  /// Selection-tool interactions (marquee/move/transform drags) — counted
-  /// so overlapping holds nest (R15-⑤).
-  @override
-  final ValueNotifier<bool> selectionInteractionActive = ValueNotifier<bool>(
-    false,
-  );
-
   /// R15-⑤: any live editing interaction (brush stroke, selection drag)
   /// blocks frame seeks, scrubs and cut switches entirely — the playhead
   /// moves when the pen lifts, never under it.
   @override
   bool get editingInteractionBusy =>
-      brushInputActive.value || selectionInteractionActive.value;
+      brushInputActive.value || rangeSelections.selectionInteractionActive;
 
   // --- Track-global frame axis (R15-①) -----------------------------------
 

@@ -953,11 +953,17 @@ class RangeSelections {
     return (layerId: rowLayerId, first: start, lastExclusive: lastExclusive);
   }
 
+  /// Selection-tool interactions (marquee/move/transform drags) — counted
+  /// so overlapping holds nest (R15-⑤).
   int _selectionInteractionHolds = 0;
+
+  /// Whether a selection-tool interaction holds the playhead — the count
+  /// itself, so the flag cannot disagree with the holds it stands for.
+  /// Nothing listened to it; the session asks it when a seek comes.
+  bool get selectionInteractionActive => _selectionInteractionHolds > 0;
 
   void beginSelectionInteraction() {
     _selectionInteractionHolds += 1;
-    _internals.selectionInteractionActive.value = true;
     _playbackRig.prerenderScheduler.beginInputHold();
   }
 
@@ -966,7 +972,5 @@ class RangeSelections {
       _selectionInteractionHolds -= 1;
       _playbackRig.prerenderScheduler.endInputHold();
     }
-    _internals.selectionInteractionActive.value =
-        _selectionInteractionHolds > 0;
   }
 }

@@ -39,6 +39,13 @@ class DrawingBlockMoveDragVerbs {
   final FoldersAndAttachments _folders;
   final RenderCaches _renderCaches;
 
+  /// The drag in flight, or null — held by the verbs that start, steer and
+  /// close it. Its mid-drag state lives on the object and dies with the
+  /// gesture (see [DrawingBlockMoveDrag]).
+  DrawingBlockMoveDrag? _drag;
+
+  bool get isDragActive => _drag != null;
+
   /// Starts a whole-block move on the block starting at [blockStartIndex];
   /// returns false when there is no such block or the row stands down.
   bool beginDrawingBlockMoveDrag({
@@ -62,7 +69,7 @@ class DrawingBlockMoveDragVerbs {
     if (drag == null) {
       return false;
     }
-    _internals.blockMoveDrag = drag;
+    _drag = drag;
     return true;
   }
 
@@ -96,7 +103,7 @@ class DrawingBlockMoveDragVerbs {
   void updateDrawingBlockMoveDrag({
     required int frameDelta,
     LayerId? targetLayerId,
-  }) => _internals.blockMoveDrag?.update(
+  }) => _drag?.update(
     frameDelta: frameDelta,
     targetLayerId: targetLayerId,
   );
@@ -107,15 +114,15 @@ class DrawingBlockMoveDragVerbs {
   void endDrawingBlockMoveDrag() {
     // ⚠️Forgotten BEFORE the commit runs, so neither closer can be reached
     // twice and the landing cannot see a drag that is already over.
-    final drag = _internals.blockMoveDrag;
-    _internals.blockMoveDrag = null;
+    final drag = _drag;
+    _drag = null;
     drag?.commit();
   }
 
   /// Drops an in-flight move preview without touching history.
   void cancelDrawingBlockMoveDrag() {
-    final drag = _internals.blockMoveDrag;
-    _internals.blockMoveDrag = null;
+    final drag = _drag;
+    _drag = null;
     drag?.cancel();
   }
 

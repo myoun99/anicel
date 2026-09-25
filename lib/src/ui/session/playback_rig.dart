@@ -14,6 +14,9 @@
 import 'dart:async' show unawaited;
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
+
+import '../../models/layer_id.dart';
 import '../../models/playback_quality.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../native/qa_audio_device.dart' show audioOutputUnlessTesting;
@@ -43,6 +46,7 @@ class PlaybackRig implements PlaybackRun {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required ValueListenable<Set<LayerId>> soloedSeLayerIds,
     required RenderCaches renderCaches,
     required ProjectSettings settings,
     required EditorVoiceRecording voiceRecording,
@@ -61,6 +65,7 @@ class PlaybackRig implements PlaybackRun {
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
+       _soloedSeLayerIds = soloedSeLayerIds,
        _renderCaches = renderCaches,
        _settings = settings,
        _voiceRecording = voiceRecording,
@@ -75,6 +80,10 @@ class PlaybackRig implements PlaybackRun {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+
+  /// The SE rows soloed for monitoring (`VisibilitySolo` holds it) — every
+  /// audio path narrows to them while any are.
+  final ValueListenable<Set<LayerId>> _soloedSeLayerIds;
   final RenderCaches _renderCaches;
   final ProjectSettings _settings;
   final EditorVoiceRecording _voiceRecording;
@@ -194,7 +203,7 @@ class PlaybackRig implements PlaybackRun {
           frameRateNumerator: _settings.projectFrameRate.numerator,
           frameRateDenominator: _settings.projectFrameRate.denominator,
         ),
-    resolveSoloedLayerIds: () => _internals.soloedSeLayerIds.value,
+    resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveCueClips: () => _voiceRecording.voiceRecordCueClips,
     resolveOutputDeviceName: () =>
@@ -219,7 +228,7 @@ class PlaybackRig implements PlaybackRun {
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
     resolveDevice: audioOutputUnlessTesting,
-    resolveSoloedLayerIds: () => _internals.soloedSeLayerIds.value,
+    resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveOutputDeviceName: () =>
         _internals.appSettings.audioSyncSettings.value.outputDeviceName,
@@ -237,7 +246,7 @@ class PlaybackRig implements PlaybackRun {
     // Track-owned SE rows schedule from the tracks' global axes.
     resolveProject: () => _project.repository.currentProject,
     deviceCarriesPlayback: () => audioDeviceTransport.carryingPlayback,
-    resolveSoloedLayerIds: () => _internals.soloedSeLayerIds.value,
+    resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveCueClips: () => _voiceRecording.voiceRecordCueClips,
   );

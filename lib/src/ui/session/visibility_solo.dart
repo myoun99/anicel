@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../core/set_toggle.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
@@ -15,13 +17,20 @@ import 'session_roles.dart';
 /// 2026-09-02). Measured before cutting: three fields of its own and eight
 /// session members touched. It names the roles it needs in its constructor.
 class VisibilitySolo {
-  VisibilitySolo({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required TimelineAccess timeline, required SessionInternals internals}) : _project = project, _selection = selection, _changes = changes, _timeline = timeline, _internals = internals;
+  VisibilitySolo({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required TimelineAccess timeline}) : _project = project, _selection = selection, _changes = changes, _timeline = timeline;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-  final SessionInternals _internals;
+
+  /// The SE solo set — pure MONITORING state (never persisted, never
+  /// exported): non-empty narrows playback/scrub to these SE rows. Held by
+  /// [toggleLayerSolo], its one writer; playback and the rows read it.
+  final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
+      ValueNotifier<Set<LayerId>>(const {});
+
+  void dispose() => soloedSeLayerIds.dispose();
 
   /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
   /// engaging it snapshots every row's eye (cut layers + track SE), turns
@@ -208,8 +217,8 @@ class VisibilitySolo {
 
   /// Toggles an SE row's solo (pro semantics: multiple solos stack).
   void toggleLayerSolo(LayerId layerId) {
-    _internals.soloedSeLayerIds.value = toggledSet(
-      _internals.soloedSeLayerIds.value,
+    soloedSeLayerIds.value = toggledSet(
+      soloedSeLayerIds.value,
       layerId,
     );
     _changes.refreshLiveAudioSchedule();

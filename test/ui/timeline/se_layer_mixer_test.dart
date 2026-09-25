@@ -52,6 +52,6 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('se-mixer-solo')));
     await tester.pumpAndSettle();
-    expect(session.soloedSeLayerIds.value, contains(se.id));
+    expect(session.visibilitySolo.soloedSeLayerIds.value, contains(se.id));
   });
 }
