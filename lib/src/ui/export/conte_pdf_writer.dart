@@ -6,10 +6,10 @@ import 'package:pdf/pdf.dart';
 
 import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/conte/conte_notation.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../conte/conte_fonts.dart';
 import '../conte/conte_page_painter.dart' show conteWrappedLines;
@@ -111,7 +111,7 @@ Future<Uint8List> writeContePdf({
   Map<(String, int), ContePdfPicture> pictures = const {},
   Map<String, ContePdfPicture> images = const {},
   Map<BrushFrameKey, ContePdfPicture> inkPictures = const {},
-  ConteNotation notation = ConteNotation.ja,
+  required ConteWords words,
 }) async {
   final document = PdfDocument();
   PdfImage embed(ContePdfPicture picture) => PdfImage(
@@ -138,7 +138,7 @@ Future<Uint8List> writeContePdf({
   );
   for (final page in pages) {
     writer.writePage(
-      contePageMarks(page, source, notation: notation),
+      contePageMarks(page, source, words: words),
       ui.Size(page.metrics.pageWidth, page.metrics.pageHeight),
     );
   }
@@ -248,19 +248,15 @@ class _ContePdfPageWriter {
       );
     final points = <ui.Offset>[];
     for (final metric in shape.computeMetrics()) {
+      double? heading;
       for (var along = 0.0; along < metric.length; along += 0.5) {
-        final point = metric.getTangentForOffset(along)!.position;
-        // Drop the middle of three points on one straight line.
-        if (points.length >= 2) {
-          final (a, b) = (points[points.length - 2], points.last);
-          final cross =
-              (b.dx - a.dx) * (point.dy - a.dy) -
-              (b.dy - a.dy) * (point.dx - a.dx);
-          if (cross.abs() < 1e-6) {
-            points.removeLast();
-          }
+        final tangent = metric.getTangentForOffset(along)!;
+        // A flat side keeps one heading: where it starts traces it.
+        if (heading != null && (tangent.angle - heading).abs() < 1e-6) {
+          continue;
         }
-        points.add(point);
+        heading = tangent.angle;
+        points.add(tangent.position);
       }
     }
     _g.moveTo(points.first.dx, _y(points.first.dy));
@@ -340,10 +336,10 @@ class _ContePdfPageWriter {
   /// space: the SHARED lines ([conteWrappedLines], the panel's own layout
   /// read back), clipped to the slot, set where the mark says.
   void _words(SheetWords words) {
-    final slot = words.slot;
-    if (words.text.isEmpty || slot.width <= 0 || slot.height <= 0) {
+    if (words.printsNothing) {
       return;
     }
+    final slot = words.slot;
     // The size and the breaks are the ENGINE's — the panel's measurement,
     // printed, never a second one from the embedded glyph runs.
     final size = sheetWordsSize(words, conteTextStyle);
@@ -356,11 +352,7 @@ class _ContePdfPageWriter {
         : [words.text];
     final lineHeight = size * _lineHeight;
     final totalHeight = lines.length * lineHeight;
-    final top = switch (words.v) {
-      SheetAlign.start => slot.top,
-      SheetAlign.center => slot.top + (slot.height - totalHeight) / 2,
-      SheetAlign.end => slot.bottom - totalHeight,
-    };
+    final top = words.v.place(slot.top, slot.height, totalHeight);
     final ascent = (words.bold ? bold : regular).ascent * size;
 
     _g.saveContext();
@@ -370,11 +362,7 @@ class _ContePdfPageWriter {
     for (var index = 0; index < lines.length; index += 1) {
       final runs = _runsFor(lines[index], isBold: words.bold);
       final width = _runsWidth(runs, size);
-      var x = switch (words.h) {
-        SheetAlign.start => slot.left,
-        SheetAlign.center => slot.left + (slot.width - width) / 2,
-        SheetAlign.end => slot.right - width,
-      };
+      var x = words.h.place(slot.left, slot.width, width);
       final baseline = _y(top + index * lineHeight + ascent);
       for (final run in runs) {
         _g.drawString(run.font, size, run.text, x, baseline);

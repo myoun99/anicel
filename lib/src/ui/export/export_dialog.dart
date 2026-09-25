@@ -26,9 +26,10 @@ import '../editor_session_manager.dart';
 import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import '../../models/app_language.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
-import '../../models/conte/conte_notation.dart';
+import '../../models/conte/conte_words.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
@@ -41,6 +42,7 @@ import '../canvas/bitmap_tile_image_cache.dart';
 import '../widgets/checkered_picture.dart';
 import '../canvas/tiled_surface_compose.dart';
 import '../conte/conte_sheet_builder.dart';
+import '../conte/conte_words_in.dart';
 import '../envelope/cut_envelope_builder.dart';
 import 'export_envelope_render.dart';
 import 'conte_pdf_writer.dart';
@@ -853,11 +855,13 @@ class ExportDialogState extends State<ExportDialog> {
     ];
   }
 
-  TimesheetNotation get _sheetNotation =>
-      TimesheetNotation.of(_session.languageSettings.value.notationLanguage);
+  AppLanguage get _notationLanguage =>
+      _session.languageSettings.value.notationLanguage;
 
-  ConteNotation get _conteNotation =>
-      ConteNotation.of(_session.languageSettings.value.notationLanguage);
+  TimesheetNotation get _sheetNotation =>
+      TimesheetNotation.of(_notationLanguage);
+
+  ConteWords get _conteWords => conteWordsIn(_notationLanguage);
 
   /// The app's face the documents export in — this window's, which is the
   /// panels' (documents-in-which-face-Q1). Read before a render is queued:
@@ -1207,11 +1211,11 @@ class ExportDialogState extends State<ExportDialog> {
     required int pictureWidth,
     double scale = 1,
     CanvasSize? outputSize,
-    required ConteNotation notation,
+    required ConteWords words,
   }) async {
     final pictures = await _renderContePictures([page], width: pictureWidth);
     final ink = await _renderConteInk([page]);
-    final images = await readContePageImages([page], source);
+    final images = await readContePageImages([page], source, words);
     try {
       return await renderContePageImage(
         page: page,
@@ -1221,7 +1225,7 @@ class ExportDialogState extends State<ExportDialog> {
         inkImageFor: (key) => ink[key],
         scale: scale,
         outputSize: outputSize,
-        notation: notation,
+        words: words,
       );
     } finally {
       for (final image in [
@@ -1597,9 +1601,10 @@ class ExportDialogState extends State<ExportDialog> {
     );
     // The printed words are in the key: switching the notation language
     // must not show the other language's cached page.
-    final notation = _conteNotation;
+    final language = _notationLanguage;
+    final words = conteWordsIn(language);
     _preview.request(
-      key: 'conte:${page.pageIndex}:${notation.name}',
+      key: 'conte:${page.pageIndex}:${language.name}',
       caption: 'p${page.pageIndex + 1}',
       // Preview pictures at panel resolution — fast, and the run
       // re-renders sharper ones anyway.
@@ -1608,7 +1613,7 @@ class ExportDialogState extends State<ExportDialog> {
         source,
         pictureWidth: 128,
         outputSize: outputSize,
-        notation: notation,
+        words: words,
       ),
     );
   }
@@ -2418,7 +2423,7 @@ class ExportDialogState extends State<ExportDialog> {
   Future<String> _exportConte() async {
     final (source, pages) = _conteSheet();
     final spec = _specs.conte;
-    final notation = _conteNotation;
+    final words = _conteWords;
     if (spec.format == ExportConteFormat.pageImage) {
       // Streamed like every image export: ONE page's cell pictures live
       // at a time (a cut spanning two pages re-renders once per page —
@@ -2431,7 +2436,7 @@ class ExportDialogState extends State<ExportDialog> {
           source,
           pictureWidth: cellWidth,
           scale: spec.sheetScale.toDouble(),
-          notation: notation,
+          words: words,
         ),
         fileNameFor: (index) => _contePageFileName(index, pages.length),
         says: _Tally.contePages,
@@ -2481,7 +2486,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     // The media images the pages print (the logo, the cover's picture) —
     // one raw copy each for the file, the same lifecycle again.
-    final sheetImages = await readContePageImages(pages, source);
+    final sheetImages = await readContePageImages(pages, source, words);
     final pdfImages = <String, ContePdfPicture>{};
     try {
       for (final entry in sheetImages.entries) {
@@ -2504,7 +2509,7 @@ class ExportDialogState extends State<ExportDialog> {
       pictures: pdfPictures,
       images: pdfImages,
       inkPictures: inkPictures,
-      notation: notation,
+      words: words,
     );
     final file = File(_joinLocation('conte.pdf'));
     await file.parent.create(recursive: true);

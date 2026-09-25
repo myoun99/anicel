@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
@@ -11,6 +12,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_page_painter.dart';
+import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/sheet_painting.dart';
 
 /// 🚨THE HEAD'S LINES AND THE BODY'S EDGES LAND ON ONE DEVICE PIXEL.
@@ -37,7 +39,11 @@ void main() {
   );
   final page = layoutConteSheet(source).single;
   final m = page.metrics;
-  final marks = contePageMarks(page, source);
+  final marks = contePageMarks(
+    page,
+    source,
+    words: conteWordsIn(AppLanguage.ja),
+  );
   final silhouette = marks
       .whereType<SheetFill>()
       .firstWhere((fill) => fill.argb == 0xFF101010)
@@ -161,6 +167,7 @@ void main() {
       ContePagePainter(
         page: page,
         source: source,
+        words: conteWordsIn(AppLanguage.ja),
         viewport: view,
       ).paint(Canvas(recorder, Offset.zero & size), size);
       final picture = recorder.endRecording();

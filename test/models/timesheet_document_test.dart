@@ -118,6 +118,35 @@ void main() {
       expect(overridden.episode, 'MV');
       expect(overridden.artist, 'MYOUN');
     });
+
+    test('a TYPED header box — the ones a tap edits — answers with its own '
+        'info field; a box the sheet works out answers none', () {
+      // The printer and the in-place editor both read this one answer.
+      final document = _document(
+        _cut(),
+        info: const TimesheetInfo(
+          title: 'YOASOBI',
+          episode: 'MV',
+          scene: 'S1',
+          artist: 'MYOUN',
+        ),
+      );
+      expect(
+        {
+          for (final field in TimesheetHeaderField.values)
+            field: document.typedHeaderValue(field),
+        },
+        {
+          TimesheetHeaderField.episode: 'MV',
+          TimesheetHeaderField.title: 'YOASOBI',
+          TimesheetHeaderField.scene: 'S1',
+          TimesheetHeaderField.cut: null,
+          TimesheetHeaderField.time: null,
+          TimesheetHeaderField.name: 'MYOUN',
+          TimesheetHeaderField.sheet: null,
+        },
+      );
+    });
   });
 
   group('TimesheetDocument columns', () {

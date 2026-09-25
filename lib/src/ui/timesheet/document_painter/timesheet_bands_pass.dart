@@ -87,22 +87,25 @@ class _TimesheetBandsPass {
   /// cut-length drag instead of waiting for the release (F-88); the rest
   /// is the document's own.
   String headerFieldValue(TimesheetHeaderField field, int pageIndex) {
-    return switch (field) {
-      TimesheetHeaderField.episode => _painter.document.episode,
-      TimesheetHeaderField.title => _painter.document.title,
-      TimesheetHeaderField.scene => _painter.document.scene,
-      TimesheetHeaderField.cut => _painter.document.cutName,
-      // The sheet's 秒+コマ notation prints spaced ('2 + 6') like the
-      // reference forms; the model label stays compact for row labels.
-      TimesheetHeaderField.time => _painter.document
-          .frameLabel(_painter.livePlaybackFrameCount)
-          .replaceAll('+', ' + '),
-      TimesheetHeaderField.name => _painter.document.artist,
-      TimesheetHeaderField.sheet => _painter.layout.pageLabel(
-        pageIndex,
-        pageCount: _painter.livePageCount,
-      ),
-    };
+    final document = _painter.document;
+    return document.typedHeaderValue(field) ??
+        switch (field) {
+          TimesheetHeaderField.cut => document.cutName,
+          // The sheet's 秒+コマ notation prints spaced ('2 + 6') like the
+          // reference forms; the model label stays compact for row labels.
+          TimesheetHeaderField.time => document
+              .frameLabel(_painter.livePlaybackFrameCount)
+              .replaceAll('+', ' + '),
+          TimesheetHeaderField.sheet => _painter.layout.pageLabel(
+            pageIndex,
+            pageCount: _painter.livePageCount,
+          ),
+          // The typed boxes, answered above.
+          TimesheetHeaderField.episode ||
+          TimesheetHeaderField.title ||
+          TimesheetHeaderField.scene ||
+          TimesheetHeaderField.name => '',
+        };
   }
 
   /// The Direction memo band under the header: COMPLETELY open handwriting

@@ -265,178 +265,190 @@ double sheetWordsSize(SheetWords words, SheetTextStyle style) {
   return (words.size * words.slot.width / width * 10).floorToDouble() / 10;
 }
 
-/// Prints [marks] onto [canvas], in their order — the screen's and the PNG's
-/// printer (the PDF replays the same list).
+/// The Canvas printer of [SheetMark]s — the screen's and the PNG's (the PDF
+/// replays the same list).
 ///
 /// Fills and rules are cut on the device grid ([SheetDeviceGrid]) and drawn
 /// without anti-aliasing; words, pictures and ink are drawn in paper space.
-void paintSheetMarks(
-  Canvas canvas,
-  Size size,
-  ({CanvasViewport? viewport, double devicePixelRatio, Size paper}) sheet,
-  Iterable<SheetMark> marks, {
-  required SheetTextStyle style,
-  Set<SheetPaintLayer>? layers,
-  SheetMarkImages images = const SheetMarkImages(),
-}) {
-  final grid = SheetDeviceGrid.of(size, sheet);
-  canvas.save();
-  if (sheet.viewport != null) {
-    canvas.clipRect(Offset.zero & size);
-  }
-  for (final mark in marks) {
-    if (layers != null && !layers.contains(mark.layer)) {
-      continue;
+class SheetCanvasPrinter {
+  const SheetCanvasPrinter({
+    required this.style,
+    this.layers,
+    this.images = const SheetMarkImages(),
+  });
+
+  /// The face the words print in.
+  final SheetTextStyle style;
+
+  /// The strata printed, or null for every one.
+  final Set<SheetPaintLayer>? layers;
+
+  final SheetMarkImages images;
+
+  /// Prints [marks] onto [canvas], in their order.
+  void paint(
+    Canvas canvas,
+    Size size,
+    ({CanvasViewport? viewport, double devicePixelRatio, Size paper}) sheet,
+    Iterable<SheetMark> marks,
+  ) {
+    final page = _SheetCanvas(canvas, SheetDeviceGrid.of(size, sheet), this);
+    canvas.save();
+    if (sheet.viewport != null) {
+      canvas.clipRect(Offset.zero & size);
     }
-    _printMark(canvas, grid, mark, style, images);
-  }
-  canvas.restore();
-}
-
-void _printMark(
-  Canvas canvas,
-  SheetDeviceGrid grid,
-  SheetMark mark,
-  SheetTextStyle style,
-  SheetMarkImages images,
-) {
-  switch (mark) {
-    case SheetFill(:final rect, :final argb, :final cornerRadius)
-        when cornerRadius > 0:
-      // The app's corner. A corner is a curve, so it is anti-aliased; the
-      // flat sides are still cut on the grid, so they stay one colour to
-      // the pixel.
-      canvas.drawRSuperellipse(
-        ui.RSuperellipse.fromRectAndRadius(
-          grid.snap(rect),
-          Radius.circular(cornerRadius * grid.scale),
-        ),
-        Paint()..color = Color(argb),
-      );
-    case SheetFill(:final rect, :final argb):
-      canvas.drawRect(
-        grid.snap(rect),
-        Paint()
-          ..color = Color(argb)
-          ..isAntiAlias = false,
-      );
-    case SheetRule(:final argb):
-      canvas.drawRect(
-        grid.snapRule(mark),
-        Paint()
-          ..color = Color(argb)
-          ..isAntiAlias = false,
-      );
-    case SheetWords():
-      _inPaperSpace(canvas, grid, () => _paintWords(canvas, mark, style));
-    case SheetPicture(
-      :final cutId,
-      :final pictureFrame,
-      :final slot,
-      :final cornerRadius,
-    ):
-      final image = images.pictureFor?.call(cutId, pictureFrame);
-      if (image != null) {
-        _inPaperSpace(canvas, grid, () {
-          canvas.save();
-          if (cornerRadius > 0) {
-            canvas.clipRSuperellipse(
-              ui.RSuperellipse.fromRectAndRadius(
-                slot,
-                Radius.circular(cornerRadius),
-              ),
-            );
-          }
-          _paintContained(canvas, image, slot, FilterQuality.medium);
-          canvas.restore();
-        });
+    for (final mark in marks) {
+      if (layers?.contains(mark.layer) ?? true) {
+        page.printMark(mark);
       }
-    case SheetImage(:final assetPath, :final slot):
-      final image = images.imageFor?.call(assetPath);
-      if (image != null) {
-        _inPaperSpace(
-          canvas,
-          grid,
-          () => _paintContained(canvas, image, slot, FilterQuality.high),
-        );
-      }
-    case SheetInk(:final key, :final rect):
-      final image = images.liveInkKeys.contains(key)
-          ? null
-          : images.inkImageFor?.call(key);
-      if (image != null) {
-        _inPaperSpace(
-          canvas,
-          grid,
-          () => paintSheetInkWindow(canvas, image, rect, images.inkScale),
-        );
-      }
+    }
+    canvas.restore();
   }
 }
 
-void _inPaperSpace(Canvas canvas, SheetDeviceGrid grid, VoidCallback draw) {
-  canvas.save();
-  grid.enterPaperSpace(canvas);
-  draw();
-  canvas.restore();
-}
+/// One [SheetCanvasPrinter.paint]: the canvas, where its paper lands on the
+/// device, and the printer's face and images.
+class _SheetCanvas {
+  _SheetCanvas(this.canvas, this.grid, this.printer);
 
-void _paintContained(
-  Canvas canvas,
-  ui.Image image,
-  Rect slot,
-  FilterQuality quality,
-) {
-  if (slot.width <= 0 || slot.height <= 0) {
-    return;
-  }
-  final source = Size(image.width.toDouble(), image.height.toDouble());
-  canvas.drawImageRect(
-    image,
-    Offset.zero & source,
-    containRect(source, slot),
-    Paint()..filterQuality = quality,
-  );
-}
+  final Canvas canvas;
+  final SheetDeviceGrid grid;
+  final SheetCanvasPrinter printer;
 
-/// Words wrapped to their slot's width, clipped to it, set where they are
-/// told. The layout is [TextPainter]'s — the conte's PDF prints the lines
-/// this very layout breaks (`conteWrappedLines`), and aligns EACH line the
-/// way [TextAlign] does here, so a wrapped title centres line by line on
-/// both.
-void _paintWords(Canvas canvas, SheetWords words, SheetTextStyle style) {
-  final slot = words.slot;
-  if (words.text.isEmpty || slot.width <= 0 || slot.height <= 0) {
-    return;
+  void printMark(SheetMark mark) {
+    final images = printer.images;
+    switch (mark) {
+      case SheetFill():
+        _fill(mark);
+      case SheetRule(:final argb):
+        _flat(grid.snapRule(mark), argb);
+      case SheetWords():
+        _inPaperSpace(() => _words(mark));
+      case SheetPicture():
+        _picture(mark);
+      case SheetImage(:final assetPath, :final slot):
+        final image = images.imageFor?.call(assetPath);
+        if (image != null) {
+          _inPaperSpace(() => _contained(image, slot, FilterQuality.high));
+        }
+      case SheetInk(:final key, :final rect):
+        final image = images.liveInkKeys.contains(key)
+            ? null
+            : images.inkImageFor?.call(key);
+        if (image != null) {
+          _inPaperSpace(
+            () => paintSheetInkWindow(canvas, image, rect, images.inkScale),
+          );
+        }
+    }
   }
-  final size = sheetWordsSize(words, style);
-  final painter = TextPainter(
-    text: TextSpan(
-      text: words.text,
-      style: style(size, bold: words.bold, color: Color(words.argb)),
-    ),
-    textAlign: switch (words.h) {
-      SheetAlign.start => TextAlign.left,
-      SheetAlign.center => TextAlign.center,
-      SheetAlign.end => TextAlign.right,
-    },
-    textDirection: TextDirection.ltr,
-  )..layout(
-      maxWidth: words.fit == SheetWordsFit.wrap ? slot.width : double.infinity,
+
+  /// A fill cut on the grid. The app's corner is a curve, so a rounded fill
+  /// is anti-aliased; its flat sides are still cut on the grid, so they stay
+  /// one colour to the pixel.
+  void _fill(SheetFill fill) {
+    if (fill.cornerRadius <= 0) {
+      _flat(grid.snap(fill.rect), fill.argb);
+      return;
+    }
+    canvas.drawRSuperellipse(
+      ui.RSuperellipse.fromRectAndRadius(
+        grid.snap(fill.rect),
+        Radius.circular(fill.cornerRadius * grid.scale),
+      ),
+      Paint()..color = Color(fill.argb),
     );
-  final x = switch (words.h) {
-    SheetAlign.start => slot.left,
-    SheetAlign.center => slot.left + (slot.width - painter.width) / 2,
-    SheetAlign.end => slot.right - painter.width,
-  };
-  final y = switch (words.v) {
-    SheetAlign.start => slot.top,
-    SheetAlign.center => slot.top + (slot.height - painter.height) / 2,
-    SheetAlign.end => slot.bottom - painter.height,
-  };
-  canvas.save();
-  canvas.clipRect(slot);
-  painter.paint(canvas, Offset(x, y));
-  canvas.restore();
-  painter.dispose();
+  }
+
+  void _flat(Rect rect, int argb) {
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..color = Color(argb)
+        ..isAntiAlias = false,
+    );
+  }
+
+  void _picture(SheetPicture picture) {
+    final image = printer.images.pictureFor?.call(
+      picture.cutId,
+      picture.pictureFrame,
+    );
+    if (image == null) {
+      return;
+    }
+    _inPaperSpace(() {
+      canvas.save();
+      if (picture.cornerRadius > 0) {
+        canvas.clipRSuperellipse(
+          ui.RSuperellipse.fromRectAndRadius(
+            picture.slot,
+            Radius.circular(picture.cornerRadius),
+          ),
+        );
+      }
+      _contained(image, picture.slot, FilterQuality.medium);
+      canvas.restore();
+    });
+  }
+
+  void _inPaperSpace(VoidCallback draw) {
+    canvas.save();
+    grid.enterPaperSpace(canvas);
+    draw();
+    canvas.restore();
+  }
+
+  void _contained(ui.Image image, Rect slot, FilterQuality quality) {
+    if (slot.width <= 0 || slot.height <= 0) {
+      return;
+    }
+    final source = Size(image.width.toDouble(), image.height.toDouble());
+    canvas.drawImageRect(
+      image,
+      Offset.zero & source,
+      containRect(source, slot),
+      Paint()..filterQuality = quality,
+    );
+  }
+
+  /// Words wrapped to their slot's width, clipped to it, set where they are
+  /// told. The layout is [TextPainter]'s — the conte's PDF prints the lines
+  /// this very layout breaks (`conteWrappedLines`), and aligns EACH line the
+  /// way [TextAlign] does here, so a wrapped title centres line by line on
+  /// both.
+  void _words(SheetWords words) {
+    if (words.printsNothing) {
+      return;
+    }
+    final slot = words.slot;
+    final size = sheetWordsSize(words, printer.style);
+    final painter = TextPainter(
+      text: TextSpan(
+        text: words.text,
+        style: printer.style(size, bold: words.bold, color: Color(words.argb)),
+      ),
+      textAlign: switch (words.h) {
+        SheetAlign.start => TextAlign.left,
+        SheetAlign.center => TextAlign.center,
+        SheetAlign.end => TextAlign.right,
+      },
+      textDirection: TextDirection.ltr,
+    )..layout(
+        maxWidth: words.fit == SheetWordsFit.wrap
+            ? slot.width
+            : double.infinity,
+      );
+    canvas.save();
+    canvas.clipRect(slot);
+    painter.paint(
+      canvas,
+      Offset(
+        words.h.place(slot.left, slot.width, painter.width),
+        words.v.place(slot.top, slot.height, painter.height),
+      ),
+    );
+    canvas.restore();
+    painter.dispose();
+  }
 }

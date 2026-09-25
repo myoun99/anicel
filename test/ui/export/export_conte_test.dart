@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
@@ -25,6 +26,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
+import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/conte_pdf_writer.dart';
 import 'package:anicel/src/ui/export/export_conte_render.dart';
@@ -133,7 +135,12 @@ void main() {
       );
       expect(pages, isNotEmpty);
       final fonts = await ContePdfFonts.load();
-      return writeContePdf(source: source, pages: pages, fonts: fonts);
+      return writeContePdf(
+        source: source,
+        pages: pages,
+        fonts: fonts,
+        words: conteWordsIn(AppLanguage.ja),
+      );
     });
 
     expect(bytes, isNotNull);
@@ -197,6 +204,7 @@ void main() {
         final rendered = await renderContePageImage(
           page: page,
           source: source,
+          words: conteWordsIn(AppLanguage.ja),
           inkImageFor: (key) => key == rowKey ? ink : null,
         );
         try {
@@ -245,11 +253,13 @@ void main() {
         final fonts = await ContePdfFonts.load();
         final plain = await writeContePdf(
           source: source,
+          words: conteWordsIn(AppLanguage.ja),
           pages: pages,
           fonts: fonts,
         );
         final inked = await writeContePdf(
           source: source,
+          words: conteWordsIn(AppLanguage.ja),
           pages: pages,
           fonts: fonts,
           inkPictures: {rowKey: (await ContePdfPicture.fromImage(ink))!},
@@ -442,7 +452,11 @@ void main() {
       ),
     );
     Rect imageOn(int page) =>
-        contePageMarks(book[page], source).whereType<SheetImage>().single.slot;
+        contePageMarks(
+          book[page],
+          source,
+          words: conteWordsIn(AppLanguage.ja),
+        ).whereType<SheetImage>().single.slot;
     final onCover = await pageAt(
       'conte_p1.png',
       imageOn(0).center.dx,

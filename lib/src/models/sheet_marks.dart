@@ -93,7 +93,19 @@ final class SheetRule extends SheetMark {
 }
 
 /// Where words sit in their slot, on one axis.
-enum SheetAlign { start, center, end }
+enum SheetAlign {
+  start,
+  center,
+  end;
+
+  /// Where a run [extent] long starts in the span [span] long from [from] —
+  /// the one placement every printer sets words by, on either axis.
+  double place(double from, double span, double extent) => switch (this) {
+    start => from,
+    center => from + (span - extent) / 2,
+    end => from + span - extent,
+  };
+}
 
 /// How words meet a slot narrower than they are.
 enum SheetWordsFit {
@@ -135,6 +147,10 @@ final class SheetWords extends SheetMark {
   final SheetAlign h;
   final SheetAlign v;
   final SheetWordsFit fit;
+
+  /// Nothing to set, or nowhere to set it: every printer skips these words.
+  bool get printsNothing =>
+      text.isEmpty || slot.width <= 0 || slot.height <= 0;
 }
 
 /// A cell's picture, contained in [slot]. The printer finds the image by

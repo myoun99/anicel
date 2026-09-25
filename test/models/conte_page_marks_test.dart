@@ -3,13 +3,13 @@ import 'dart:ui' show Rect;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/app_corner_radii.dart';
 import 'package:anicel/src/models/app_language.dart';
-import 'package:anicel/src/models/conte/conte_notation.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
+import 'package:anicel/src/ui/conte/conte_words_in.dart';
 
 /// The conte body page, as the marks every printer replays.
 ///
@@ -30,6 +30,8 @@ ConteCutSource _cut(String id, List<ConteCellSource> cells) => ConteCutSource(
   cells: cells,
 );
 
+final _ja = conteWordsIn(AppLanguage.ja);
+
 void main() {
   final source = ConteSheetSource(
     framesPerSecond: 24,
@@ -43,7 +45,7 @@ void main() {
   );
   final page = layoutConteSheet(source).single;
   final m = page.metrics;
-  final marks = contePageMarks(page, source);
+  final marks = contePageMarks(page, source, words: _ja);
   final rules = marks.whereType<SheetRule>().toList();
   final words = marks.whereType<SheetWords>().toList();
 
@@ -152,7 +154,11 @@ void main() {
           ),
         ],
       );
-      final framed = contePageMarks(layoutConteSheet(panned).single, panned);
+      final framed = contePageMarks(
+        layoutConteSheet(panned).single,
+        panned,
+        words: _ja,
+      );
       final pictures = framed.where(
         (mark) => mark.layer == SheetPaintLayer.picture,
       );
@@ -161,6 +167,14 @@ void main() {
         pictures.whereType<SheetWords>().map((words) => words.text),
         ['PAN→', 'T.U'],
         reason: 'the camera work is written ON the picture',
+      );
+      expect(
+        pictures.whereType<SheetWords>().map((words) => (words.h, words.v)),
+        [
+          (SheetAlign.start, SheetAlign.start),
+          (SheetAlign.end, SheetAlign.end),
+        ],
+        reason: 'the first label at the picture\'s start, the last at its end',
       );
       final values = framed.where(
         (mark) => mark.layer == SheetPaintLayer.content,
@@ -233,7 +247,13 @@ void main() {
             },
       ].join('\n');
       expect(
-        form(contePageMarks(empty, const ConteSheetSource(cuts: []))),
+        form(
+          contePageMarks(
+            empty,
+            const ConteSheetSource(cuts: []),
+            words: _ja,
+          ),
+        ),
         form(marks),
       );
     });
@@ -301,6 +321,7 @@ void main() {
         page,
         source,
         liveFramesOf: (cutId) => cutId == 'A' ? 96 : null,
+        words: _ja,
       ).whereType<SheetWords>();
       final times = [
         for (final word in dragged.where(inTheColumn)) word.text,
@@ -319,6 +340,7 @@ void main() {
       contePageMarks(
         page,
         ConteSheetSource(cuts: source.cuts),
+        words: _ja,
       ).whereType<SheetImage>(),
       isEmpty,
       reason: 'no logo registered prints no logo',
@@ -339,7 +361,7 @@ void main() {
 
     test('the cover: the work, the episode, its picture, the book\'s cuts '
         'and running time, the conte artist — and no page number', () {
-      final cover = contePageMarks(book.first, bookSource);
+      final cover = contePageMarks(book.first, bookSource, words: _ja);
       final texts = cover.whereType<SheetWords>().map((word) => word.text);
       expect(texts, [
         'チェンソーマン',
@@ -364,7 +386,7 @@ void main() {
       // 작게하는방향 … 화수는 좀 더 타이틀이랑 붙여서」 · 「표지 컷이랑
       // 콘티랑 같은 폰트로. 크기나 이런거 전부」 · 「컷이랑 콘티는 중앙아래
       // 느낌 … 로고랑 밑 공간의 중앙쯤? 로고도 좀 더 내리자. 중앙느낌」.
-      final cover = contePageMarks(book.first, bookSource);
+      final cover = contePageMarks(book.first, bookSource, words: _ja);
       final words = cover.whereType<SheetWords>().toList();
       final (title, episode, cuts, staff) = (
         words[0],
@@ -399,7 +421,7 @@ void main() {
     });
 
     test('the blank page prints nothing but its paper', () {
-      final blank = contePageMarks(book[1], bookSource);
+      final blank = contePageMarks(book[1], bookSource, words: _ja);
       expect(
         blank.where((mark) => mark is! SheetInk).map((mark) => mark.layer),
         [SheetPaintLayer.paper],
@@ -408,7 +430,7 @@ void main() {
 
     test('the body\'s first page is 「1 / N」 though it is the third sheet '
         'of paper', () {
-      final body = contePageMarks(book[2], bookSource);
+      final body = contePageMarks(book[2], bookSource, words: _ja);
       final number = body.whereType<SheetWords>().firstWhere(
         (word) => word.slot == book[2].metrics.pageNumberSlot,
       );
@@ -427,26 +449,23 @@ void main() {
     // 유저 2026-09-25: 「액션/다이얼로그 이런거 고정이아니라 출력용
     // 언어설정있잖아. 그거따르게하고 일본어는 内容, セリフ로 가자. 한국어는
     // 내용 대사, 영어는 액션 다이얼로그」.
-    List<String> headIn(ConteNotation notation) => [
+    List<String> headIn(AppLanguage language) => [
       for (final word in contePageMarks(
         page,
         source,
-        notation: notation,
+        words: conteWordsIn(language),
       ).whereType<SheetWords>())
         if (word.layer == SheetPaintLayer.form) word.text,
     ];
-    expect(headIn(ConteNotation.ja), ['カット', '画面', '内容', 'セリフ', '秒']);
-    expect(headIn(ConteNotation.ko), ['컷', '화면', '내용', '대사', '초']);
-    expect(headIn(ConteNotation.en), [
+    expect(headIn(AppLanguage.ja), ['カット', '画面', '内容', 'セリフ', '秒']);
+    expect(headIn(AppLanguage.ko), ['컷', '화면', '내용', '대사', '초']);
+    expect(headIn(AppLanguage.en), [
       'CUT',
       'PICTURE',
       'ACTION',
       'DIALOGUE',
       'TIME',
     ]);
-    for (final language in AppLanguage.values) {
-      expect(ConteNotation.of(language).name, language.name);
-    }
   });
 
   test('the words the head prints', () {

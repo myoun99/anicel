@@ -202,6 +202,13 @@ import '../../tool/refactor/clone_scan.dart';
 /// is that only the pointer route differs from Flutter's tooltip.
 /// ⛔Not merged: a shared helper would make the fork a rewrite, and there
 /// are two of them — the third is what earns a merge.
+///
+/// 90 → 91 again (2026-09-25, the conte cover), under the ceiling the
+/// tooltip set — a pair had left since without the ceiling following it
+/// down. The new pair is `_cover` and `_content` in
+/// `models/conte/conte_page_marks.dart`: each prints a media image where
+/// the source names one — the cover's picture, the body's company logo.
+/// ⛔Not merged: two of them, and the third is what earns a merge.
 void main() {
   const ceiling = 91;
 

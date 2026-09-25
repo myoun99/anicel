@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -17,6 +18,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
+import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -186,6 +188,7 @@ void main() {
       final painter = ContePagePainter(
         page: page,
         source: source,
+        words: conteWordsIn(AppLanguage.ja),
         dragPreview: channel,
       );
       expect(
@@ -213,7 +216,11 @@ void main() {
     test('a page with no drag channel prints the cuts\' own lengths', () {
       final source = buildConteSheetSource(project());
       final page = layoutConteSheet(source).first;
-      final painter = ContePagePainter(page: page, source: source);
+      final painter = ContePagePainter(
+        page: page,
+        source: source,
+        words: conteWordsIn(AppLanguage.ja),
+      );
 
       expect(printed(painter).times, ['0+6', '0+6']);
       expect(printed(painter).total, '0+12');

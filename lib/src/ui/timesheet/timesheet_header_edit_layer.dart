@@ -37,26 +37,6 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
   /// The sheet's ink (`TimesheetDocumentPainter`'s).
   static const Color _ink = Color(0xFF33322F);
 
-  /// The header boxes whose text lives on [TimesheetInfo] — the ones a tap
-  /// edits.
-  static const Set<TimesheetHeaderField> editableFields = {
-    TimesheetHeaderField.title,
-    TimesheetHeaderField.episode,
-    TimesheetHeaderField.scene,
-    TimesheetHeaderField.name,
-  };
-
-  String _valueOf(TimesheetHeaderField field) {
-    final document = layout.document;
-    return switch (field) {
-      TimesheetHeaderField.title => document.title,
-      TimesheetHeaderField.episode => document.episode,
-      TimesheetHeaderField.scene => document.scene,
-      TimesheetHeaderField.name => document.artist,
-      _ => '',
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     // The header repeats on every paper page; the continuous strip has
@@ -68,7 +48,9 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
       targets: [
         for (final page in layout.visiblePageIndexes) ...[
           for (final box in layout.headerFieldBoxes(page))
-            if (editableFields.contains(box.field))
+            // A typed box is the one a tap edits: its text lives on
+            // [TimesheetInfo].
+            if (layout.document.typedHeaderValue(box.field) case final text?)
               SheetTextTarget(
                 keyValue: 'timesheet-header-edit-${box.field.name}-p$page',
                 box: box.rect,
@@ -80,7 +62,7 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
                   box.rect.right - 6,
                   box.rect.bottom - 4,
                 ),
-                text: _valueOf(box.field),
+                text: text,
                 style: const TextStyle(
                   color: _ink,
                   fontSize: 14,

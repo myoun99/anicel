@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
@@ -19,8 +20,9 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
+import 'package:anicel/src/ui/conte/conte_words_in.dart';
 
-/// The conte's four strata, and the rule that gives the split its point:
+/// The conte's strata, and the rule that gives the split its point:
 /// **the form layer never reads project data.**
 ///
 /// Three things used to break it, all of them the same shape — a mark that
@@ -91,6 +93,7 @@ void main() {
     ContePagePainter(
       page: page,
       source: source,
+      words: conteWordsIn(AppLanguage.ja),
       layers: layers,
     ).paint(Canvas(recorder), Size(width.toDouble(), height.toDouble()));
     final picture = recorder.endRecording();

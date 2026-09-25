@@ -8,9 +8,9 @@ import '../project_frame_rate.dart' show secondsPlusFramesLabel;
 import '../sheet_marks.dart';
 import '../sheet_paint_layer.dart';
 import 'conte_ink_windows.dart';
-import 'conte_notation.dart';
 import 'conte_sheet_layout.dart';
 import 'conte_sheet_source.dart';
+import 'conte_words.dart';
 
 /// The conte's ink — what its words print in, and what the ACTION field
 /// types in on the page.
@@ -46,7 +46,7 @@ List<SheetMark> contePageMarks(
   ContePageLayout page,
   ConteSheetSource source, {
   ConteLiveLength? liveFramesOf,
-  ConteNotation notation = ConteNotation.ja,
+  required ConteWords words,
 }) {
   final metrics = page.metrics;
   return [
@@ -56,10 +56,10 @@ List<SheetMark> contePageMarks(
       argb: _paper,
     ),
     ...switch (page.kind) {
-      ContePageKind.cover => _cover(metrics, source, notation),
+      ContePageKind.cover => _cover(metrics, source, words),
       ContePageKind.blank => const <SheetMark>[],
       ContePageKind.body => [
-        ..._form(metrics, notation),
+        ..._form(metrics, words),
         ..._content(page, source, liveFramesOf),
       ],
     },
@@ -86,19 +86,10 @@ List<SheetMark> contePageMarks(
 Iterable<SheetMark> _cover(
   ConteSheetMetrics m,
   ConteSheetSource source,
-  ConteNotation notation,
+  ConteWords words,
 ) sync* {
-  const titleSize = 60.0;
-  const episodeSize = 40.0;
-  const closingSize = 13.0;
-  // The conte's 1.25 line: a slot one line tall.
-  double line(double size) => size * 1.25;
-  const pictureGap = 28.0;
-  const closingGap = 4.0;
-
-  Rect across(double top, double height) =>
-      Rect.fromLTWH(m.marginX, top, m.bodyWidth, height);
-  SheetWords words(
+  final slots = _CoverSlots(m);
+  SheetWords centred(
     String text,
     Rect slot,
     double size, {
@@ -116,57 +107,88 @@ Iterable<SheetMark> _cover(
     fit: fit,
   );
 
-  final picture = Rect.fromCenter(
-    center: Offset(m.pageWidth / 2, m.pageHeight / 2),
-    width: m.pageWidth * 0.44,
-    height: m.pageHeight * 0.26,
-  );
-  final episode = across(
-    picture.top - pictureGap - line(episodeSize),
-    line(episodeSize),
-  );
-  final title = across(episode.top - line(titleSize), line(titleSize));
-  final closing = line(closingSize) * 2 + closingGap;
-  final cuts = across(
-    (picture.bottom + m.pageHeight) / 2 - closing / 2,
-    line(closingSize),
-  );
-  final staff = across(cuts.bottom + closingGap, line(closingSize));
-
-  yield words(
+  yield centred(
     source.title,
-    title,
-    titleSize,
+    slots.title,
+    _CoverSlots.titleSize,
     bold: true,
     fit: SheetWordsFit.shrink,
   );
-  yield words(
+  yield centred(
     source.episode,
-    episode,
-    episodeSize,
+    slots.episode,
+    _CoverSlots.episodeSize,
     fit: SheetWordsFit.shrink,
   );
   final image = source.coverImagePath;
   if (image != null) {
-    yield SheetImage(SheetPaintLayer.picture, assetPath: image, slot: picture);
+    yield SheetImage(
+      SheetPaintLayer.picture,
+      assetPath: image,
+      slot: slots.picture,
+    );
   }
   final frames = source.cuts.fold<int>(
     0,
     (sum, cut) => sum + cut.durationFrames,
   );
-  yield words(
-    '${source.cuts.length}${notation.cutsSuffix}      '
+  yield centred(
+    '${source.cuts.length}${words.cutsSuffix}      '
     '${conteRunningTimeLabel(frames, source.framesPerSecond)}',
-    cuts,
-    closingSize,
+    slots.cuts,
+    _CoverSlots.closingSize,
   );
   if (source.conteStaffName.isNotEmpty) {
-    yield words(
-      '${notation.artist}      ${source.conteStaffName}',
-      staff,
+    yield centred(
+      '${words.artist}      ${source.conteStaffName}',
+      slots.staff,
+      _CoverSlots.closingSize,
+    );
+  }
+}
+
+/// Where the cover's things stand — laid about the picture.
+class _CoverSlots {
+  _CoverSlots(ConteSheetMetrics m)
+    : picture = Rect.fromCenter(
+        center: Offset(m.pageWidth / 2, m.pageHeight / 2),
+        width: m.pageWidth * 0.44,
+        height: m.pageHeight * 0.26,
+      ),
+      _m = m;
+
+  static const titleSize = 60.0;
+  static const episodeSize = 40.0;
+  static const closingSize = 13.0;
+  static const _pictureGap = 28.0;
+  static const _closingGap = 4.0;
+
+  final ConteSheetMetrics _m;
+
+  /// The page's middle.
+  final Rect picture;
+
+  /// Right under the title, standing on the picture.
+  Rect get episode =>
+      _across(picture.top - _pictureGap - _line(episodeSize), episodeSize);
+  Rect get title => _across(episode.top - _line(titleSize), titleSize);
+
+  /// The two closing lines, in the middle of the room below the picture.
+  Rect get cuts {
+    final closing = _line(closingSize) * 2 + _closingGap;
+    return _across(
+      (picture.bottom + _m.pageHeight) / 2 - closing / 2,
       closingSize,
     );
   }
+
+  Rect get staff => _across(cuts.bottom + _closingGap, closingSize);
+
+  // The conte's 1.25 line: a slot one line tall.
+  static double _line(double size) => size * 1.25;
+
+  Rect _across(double top, double size) =>
+      Rect.fromLTWH(_m.marginX, top, _m.bodyWidth, _line(size));
 }
 
 /// A book's running time the way a conte's cover prints it — minutes,
@@ -180,6 +202,13 @@ String conteRunningTimeLabel(int frames, int framesPerSecond) {
 
 /// The printed form: the cut box, the table and the silhouette — the
 /// page's SHAPE, never the film's.
+Iterable<SheetMark> _form(ConteSheetMetrics m, ConteWords words) sync* {
+  yield* _rules(m);
+  yield* _silhouette(m);
+  yield* _head(m, words);
+}
+
+/// The rules of the cut box and the table.
 ///
 /// 🚨EVERY COLUMN BOUNDARY IS ONE MARK, from the header's top to the body's
 /// foot (유저 2026-09-25: 「헤더의 사각형 실루엣 선이랑 아래쪽 본문이랑
@@ -189,7 +218,7 @@ String conteRunningTimeLabel(int frames, int framesPerSecond) {
 /// column's two sides, the head's underside, the foot — the rule's outer
 /// edge is the silhouette's own number and it lies INSIDE that edge, holding
 /// it when the screen widens it to a pixel ([SheetRuleHold]).
-Iterable<SheetMark> _form(ConteSheetMetrics m, ConteNotation notation) sync* {
+Iterable<SheetMark> _rules(ConteSheetMetrics m) sync* {
   final w = m.ruleWidth;
   SheetRule rule(
     double left,
@@ -230,14 +259,16 @@ Iterable<SheetMark> _form(ConteSheetMetrics m, ConteNotation notation) sync* {
   yield rule(right - w, m.tableTop, right, m.bodyBottom, far);
   // The foot, under the text columns; the silhouette closes the rest.
   yield rule(m.actionLeft, m.bodyBottom - w, right, m.bodyBottom, far);
+}
 
-  // The silhouette: ONE black shape down the picture column with a window
-  // of the camera's own shape cut per row (유저 2026-09-25: 「검정색 사각형
-  // 실루엣은 남기되 그거랑 겹친 이상한 반투명한 라인같은거 없앤단거야」),
-  // each window's corners rounded the app's way (「지브리콘티처럼 모서리
-  // 둥글게하자. 우리 앱 통일 모서리 따라서」 · 「카메라는 사각형이라
-  // 둥글게하면 둥근만큼 잘리잖아. 그거는 전혀 문제없고 의도한 대가야.
-  // 기존 상태에서 둥글게만」).
+/// The silhouette: ONE black shape down the picture column with a window of
+/// the camera's own shape cut per row (유저 2026-09-25: 「검정색 사각형
+/// 실루엣은 남기되 그거랑 겹친 이상한 반투명한 라인같은거 없앤단거야」),
+/// each window's corners rounded the app's way (「지브리콘티처럼 모서리
+/// 둥글게하자. 우리 앱 통일 모서리 따라서」 · 「카메라는 사각형이라
+/// 둥글게하면 둥근만큼 잘리잖아. 그거는 전혀 문제없고 의도한 대가야. 기존
+/// 상태에서 둥글게만」).
+Iterable<SheetMark> _silhouette(ConteSheetMetrics m) sync* {
   yield SheetFill(
     SheetPaintLayer.form,
     rect: Rect.fromLTRB(m.pictureLeft, m.bodyTop, m.actionLeft, m.bodyBottom),
@@ -251,15 +282,17 @@ Iterable<SheetMark> _form(ConteSheetMetrics m, ConteNotation notation) sync* {
       cornerRadius: m.windowRadius,
     );
   }
+}
 
-  // The head's words, in the notation language — a word longer than its
-  // column (「TIME」 over the slim time column) is set smaller, never broken.
+/// The head's words, in the notation language — a word longer than its
+/// column (「TIME」 over the slim time column) is set smaller, never broken.
+Iterable<SheetMark> _head(ConteSheetMetrics m, ConteWords words) sync* {
   for (final (text, from, to) in [
-    (notation.cut, m.cutColumnLeft, m.cutColumnRight),
-    (notation.picture, m.pictureLeft, m.actionLeft),
-    (notation.action, m.actionLeft, m.dialogueLeft),
-    (notation.dialogue, m.dialogueLeft, m.timeLeft),
-    (notation.seconds, m.timeLeft, m.bodyRight),
+    (words.cut, m.cutColumnLeft, m.cutColumnRight),
+    (words.picture, m.pictureLeft, m.actionLeft),
+    (words.action, m.actionLeft, m.dialogueLeft),
+    (words.dialogue, m.dialogueLeft, m.timeLeft),
+    (words.seconds, m.timeLeft, m.bodyRight),
   ]) {
     yield SheetWords(
       SheetPaintLayer.form,
@@ -339,31 +372,8 @@ Iterable<SheetMark> _cell(
   ConteSheetSource source,
   ContePlacedCell cell,
 ) sync* {
-  final picture = cell.pictureRect;
-  final window = picture.deflate(m.silhouetteBorder);
-  if (cell.source.rowSpan > 1 || picture.right > m.actionLeft) {
-    // Camera work makes the cell ONE window over its rows and into the
-    // text it claims: the black it reaches beyond the column is its own,
-    // and so is the well that covers the bars between its rows.
-    if (picture.right > m.actionLeft) {
-      yield SheetFill(
-        SheetPaintLayer.picture,
-        rect: Rect.fromLTRB(
-          m.actionLeft,
-          picture.top,
-          picture.right,
-          picture.bottom,
-        ),
-        argb: _ink,
-      );
-    }
-    yield SheetFill(
-      SheetPaintLayer.picture,
-      rect: window,
-      argb: _well,
-      cornerRadius: m.windowRadius,
-    );
-  }
+  final window = cell.pictureRect.deflate(m.silhouetteBorder);
+  yield* _cameraWork(m, cell, window);
   yield SheetPicture(
     SheetPaintLayer.picture,
     cutId: cell.cutId,
@@ -371,30 +381,7 @@ Iterable<SheetMark> _cell(
     slot: window,
     cornerRadius: m.windowRadius,
   );
-  final labels = cell.source.cameraLabels;
-  if (labels.isNotEmpty) {
-    final slot = window.deflate(2);
-    yield SheetWords(
-      SheetPaintLayer.picture,
-      text: labels.first,
-      slot: slot,
-      size: 8,
-      argb: _ink,
-      bold: true,
-    );
-    if (labels.length > 1) {
-      yield SheetWords(
-        SheetPaintLayer.picture,
-        text: labels.last,
-        slot: slot,
-        size: 8,
-        argb: _ink,
-        bold: true,
-        h: SheetAlign.end,
-        v: SheetAlign.end,
-      );
-    }
-  }
+  yield* _cameraLabels(cell.source.cameraLabels, window.deflate(2));
   yield SheetWords(
     SheetPaintLayer.content,
     text: cell.source.action,
@@ -409,6 +396,55 @@ Iterable<SheetMark> _cell(
     size: conteCellTextSize,
     argb: _ink,
   );
+}
+
+/// Camera work makes the cell ONE window over its rows and into the text it
+/// claims: the black it reaches beyond the column is its own, and so is the
+/// well that covers the bars between its rows.
+Iterable<SheetMark> _cameraWork(
+  ConteSheetMetrics m,
+  ContePlacedCell cell,
+  Rect window,
+) sync* {
+  final picture = cell.pictureRect;
+  final encroaches = picture.right > m.actionLeft;
+  if (cell.source.rowSpan == 1 && !encroaches) return;
+  if (encroaches) {
+    yield SheetFill(
+      SheetPaintLayer.picture,
+      rect: Rect.fromLTRB(
+        m.actionLeft,
+        picture.top,
+        picture.right,
+        picture.bottom,
+      ),
+      argb: _ink,
+    );
+  }
+  yield SheetFill(
+    SheetPaintLayer.picture,
+    rect: window,
+    argb: _well,
+    cornerRadius: m.windowRadius,
+  );
+}
+
+/// The camera's labels, written on the picture: the first at its start, the
+/// last at its end.
+Iterable<SheetMark> _cameraLabels(List<String> labels, Rect slot) sync* {
+  if (labels.isEmpty) return;
+  SheetWords label(String text, SheetAlign at) => SheetWords(
+    SheetPaintLayer.picture,
+    text: text,
+    slot: slot,
+    size: 8,
+    argb: _ink,
+    bold: true,
+    h: at,
+    v: at,
+  );
+  yield label(labels.first, SheetAlign.start);
+  if (labels.length > 1) yield label(labels.last, SheetAlign.end);
 }
 
 /// The time column: each block's own length where a cut has more than one,

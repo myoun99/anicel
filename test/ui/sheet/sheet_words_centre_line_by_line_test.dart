@@ -6,6 +6,12 @@ import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/ui/sheet_painting.dart';
 
+TextStyle _plainFace(
+  double size, {
+  required bool bold,
+  required Color color,
+}) => TextStyle(fontSize: size, color: color);
+
 /// Words set centred centre EACH LINE — the way the PDF sets them, line by
 /// line, from the same breaks. A block laid out left-aligned and then
 /// centred as a whole leaves a wrapped title's short line hanging left on
@@ -25,13 +31,11 @@ void main() {
       h: SheetAlign.center,
     );
     final recorder = ui.PictureRecorder();
-    paintSheetMarks(
+    const SheetCanvasPrinter(style: _plainFace).paint(
       ui.Canvas(recorder),
       const Size(50, 40),
       (viewport: null, devicePixelRatio: 1, paper: const Size(50, 40)),
       const [words],
-      style: (size, {required bold, required color}) =>
-          TextStyle(fontSize: size, color: color),
     );
     final picture = recorder.endRecording();
     final pixels = (await tester.runAsync(() async {
@@ -63,13 +67,11 @@ void main() {
       fit: SheetWordsFit.oneLine,
     );
     final recorder = ui.PictureRecorder();
-    paintSheetMarks(
+    const SheetCanvasPrinter(style: _plainFace).paint(
       ui.Canvas(recorder),
       const Size(50, 40),
       (viewport: null, devicePixelRatio: 1, paper: const Size(50, 40)),
       const [words],
-      style: (size, {required bold, required color}) =>
-          TextStyle(fontSize: size, color: color),
     );
     final picture = recorder.endRecording();
     final pixels = (await tester.runAsync(() async {
@@ -86,6 +88,49 @@ void main() {
     expect(inked(5, 5), isFalse, reason: 'the slot clips what outruns it');
   });
 
+  testWidgets('a short number sits where its mark says: centred, at the '
+      'end, at the foot', (tester) async {
+    // 'aa' at 10 is 20 wide and 10 tall, in 60×40 slots side by side:
+    // centred it spans 20..40, set at the end 40..60, at the foot 30..40.
+    SheetWords number(double left, SheetAlign h, SheetAlign v) => SheetWords(
+      SheetPaintLayer.content,
+      text: 'aa',
+      slot: Rect.fromLTWH(left, 0, 60, 40),
+      size: 10,
+      argb: 0xFF000000,
+      h: h,
+      v: v,
+      fit: SheetWordsFit.oneLine,
+    );
+    final recorder = ui.PictureRecorder();
+    const SheetCanvasPrinter(style: _plainFace).paint(
+      ui.Canvas(recorder),
+      const Size(180, 40),
+      (viewport: null, devicePixelRatio: 1, paper: const Size(180, 40)),
+      [
+        number(0, SheetAlign.center, SheetAlign.start),
+        number(60, SheetAlign.end, SheetAlign.start),
+        number(120, SheetAlign.start, SheetAlign.end),
+      ],
+    );
+    final picture = recorder.endRecording();
+    final pixels = (await tester.runAsync(() async {
+      final image = await picture.toImage(180, 40);
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return data!;
+    }))!;
+    picture.dispose();
+    bool inked(int x, int y) => pixels.getUint8((y * 180 + x) * 4 + 3) > 128;
+
+    expect(inked(30, 5), isTrue, reason: 'centred: the middle is inked');
+    expect(inked(10, 5), isFalse, reason: 'centred: the start is bare');
+    expect(inked(60 + 50, 5), isTrue, reason: 'at the end: the end is inked');
+    expect(inked(60 + 30, 5), isFalse, reason: 'at the end: the middle bare');
+    expect(inked(120 + 5, 35), isTrue, reason: 'at the foot: its foot inked');
+    expect(inked(120 + 5, 5), isFalse, reason: 'at the foot: its head bare');
+  });
+
   testWidgets('a rounded fill and a picture cut to a rounded slot leave their '
       'corners bare; a square fill does not', (tester) async {
     // The app's corner on a printed window (유저 2026-09-25: 「모서리
@@ -100,7 +145,10 @@ void main() {
     }))!;
     addTearDown(picture.dispose);
     final recorder = ui.PictureRecorder();
-    paintSheetMarks(
+    SheetCanvasPrinter(
+      style: _plainFace,
+      images: SheetMarkImages(pictureFor: (cutId, frame) => picture),
+    ).paint(
       ui.Canvas(recorder),
       const Size(100, 40),
       (viewport: null, devicePixelRatio: 1, paper: const Size(100, 40)),
@@ -124,9 +172,6 @@ void main() {
           cornerRadius: 6,
         ),
       ],
-      style: (size, {required bold, required color}) =>
-          TextStyle(fontSize: size, color: color),
-      images: SheetMarkImages(pictureFor: (cutId, frame) => picture),
     );
     final drawn = recorder.endRecording();
     final pixels = (await tester.runAsync(() async {

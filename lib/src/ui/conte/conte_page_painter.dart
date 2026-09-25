@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/conte/conte_notation.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../repaint_props.dart';
@@ -24,7 +24,7 @@ export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 /// The conte page on a Canvas — the panel's and the PNG export's printer.
 ///
 /// It decides nothing: the page is [contePageMarks], the one walk the PDF
-/// replays too, and this prints those marks ([paintSheetMarks]). What it
+/// replays too, and this prints those marks ([SheetCanvasPrinter]). What it
 /// adds is what only a live panel has — the images it finds by name and the
 /// drag a cut's length is following.
 ///
@@ -42,7 +42,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     this.inkImageFor,
     this.liveInkKeys = const {},
     this.dragPreview,
-    this.notation = ConteNotation.ja,
+    required this.words,
     // The thumbnail store (async pictures): a landed render must repaint
     // this painter even though none of the compared fields changed —
     // without it the cells stayed blank until the next pan/zoom.
@@ -52,9 +52,8 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   final ContePageLayout page;
   final ConteSheetSource source;
 
-  /// The words the page prints, in the notation language — Japanese unless
-  /// the caller reads the setting (the panel and the exports do).
-  final ConteNotation notation;
+  /// The words the page prints, in the notation language.
+  final ConteWords words;
 
   /// The session's drag channel, or null where nothing can be in flight
   /// (the exports and focused tests, which print the built lengths).
@@ -79,7 +78,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   /// A media image by its asset path — the company logo.
   final ui.Image? Function(String assetPath)? imageFor;
 
-  /// Which strata to draw; null draws all four. [SheetPaintLayer] is the
+  /// Which strata to draw; null draws every one. [SheetPaintLayer] is the
   /// three sheets' shared vocabulary.
   final Set<SheetPaintLayer>? layers;
 
@@ -103,20 +102,12 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
         page,
         source,
         liveFramesOf: _liveFramesOf,
-        notation: notation,
+        words: words,
       );
 
   @override
   void paint(Canvas canvas, Size size) {
-    paintSheetMarks(
-      canvas,
-      size,
-      (
-        viewport: viewport,
-        devicePixelRatio: effectiveRatio,
-        paper: Size(metrics.pageWidth, metrics.pageHeight),
-      ),
-      marks(),
+    SheetCanvasPrinter(
       style: conteTextStyle,
       layers: layers,
       images: SheetMarkImages(
@@ -126,6 +117,15 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
         liveInkKeys: liveInkKeys,
         inkScale: conteInkScale.toDouble(),
       ),
+    ).paint(
+      canvas,
+      size,
+      (
+        viewport: viewport,
+        devicePixelRatio: effectiveRatio,
+        paper: Size(metrics.pageWidth, metrics.pageHeight),
+      ),
+      marks(),
     );
   }
 
@@ -157,7 +157,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   Object get props => (
     page,
     source,
-    notation,
+    words,
     viewport,
     effectiveRatio,
     BySet(liveInkKeys),

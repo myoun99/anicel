@@ -14,23 +14,24 @@ import 'drag_value_label.dart';
 /// conte, the media viewer — 「최대한 통일」): the same chevrons, the same
 /// 30px/9pt readout at ⅛ page per pixel, the same '3/7 → 3' parse, the
 /// same disable-at-the-ends. What differs are values: the key prefix, the
-/// [page] the strip is looking at and how that page is SPELLED, whether
-/// turning is possible at all ([onTurnTo] null — Flutter's disabled idiom
-/// — keeps the cluster MOUNTED and inert), and an optional [leading] run
-/// that rides at the head of the cluster.
+/// [page] the strip is looking at, how that page is SPELLED and which page
+/// it calls 1, whether turning is possible at all ([onTurnTo] null —
+/// Flutter's disabled idiom — keeps the cluster MOUNTED and inert), and an
+/// optional [leading] run that rides at the head of the cluster.
 ///
 /// The spelling travels with the position because the hosts do not agree
 /// on it: the timesheet says '1/2', the spelling shared with the printed
-/// ページ header (R26 #41), while the conte and the viewer say '1 / 2'.
+/// ページ header (R26 #41), while the conte and the viewer say '1 / 2' — and
+/// the conte numbers its BODY, so its 1 is the page after the cover's
+/// blank back, and a typed 3 counts from there.
 ///
 /// ⚠️Up/down rather than left/right: the strip reads vertically, so a
 /// chevron pointing sideways would point at nothing.
 List<Widget> pageTurnStrip({
   required String keyPrefix,
-  required ({int index, int count, String readout}) page,
+  required ({int index, int count, String readout, int firstNumbered}) page,
   required ValueChanged<int>? onTurnTo,
   List<Widget> leading = const <Widget>[],
-  int? Function(String typed)? indexOfTyped,
 }) {
   if (page.count <= 1) {
     // ⛔The PAGE cluster goes; [leading] does not. 유저 확정 ⑥ is about a
@@ -74,13 +75,10 @@ List<Widget> pageTurnStrip({
           return;
         }
         // '3' and '3/7' both mean page three (the readout's own
-        // spelling round-trips) — unless the host numbers its pages its
-        // own way, and then it says what the typed number means.
-        final target = indexOfTyped == null
-            ? _pageIndexOf(text)
-            : indexOfTyped(text);
-        if (target != null) {
-          onTurnTo(target);
+        // spelling round-trips), counted from the page the host calls 1.
+        final parsed = int.tryParse(text.split('/').first.trim());
+        if (parsed != null) {
+          onTurnTo(page.firstNumbered + parsed - 1);
         }
       },
     ),
@@ -97,10 +95,3 @@ List<Widget> pageTurnStrip({
 }
 
 void _noDrag(double units) {}
-
-/// Page `n` of a readout spelled `n` or `n/N`, as an index; null for
-/// anything else.
-int? _pageIndexOf(String typed) {
-  final number = int.tryParse(typed.split('/').first.trim());
-  return number == null ? null : number - 1;
-}

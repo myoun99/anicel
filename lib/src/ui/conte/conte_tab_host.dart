@@ -9,7 +9,6 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart';
-import '../../models/conte/conte_notation.dart';
 import '../../models/conte/conte_page_marks.dart'
     show conteCellTextSize, conteInkArgb;
 import '../../models/conte/conte_sheet_layout.dart';
@@ -36,6 +35,7 @@ import 'conte_fonts.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
 import 'conte_sheet_builder.dart';
+import 'conte_words_in.dart';
 
 /// The conte PANEL: the sheet as paper inside the canvas panel shell —
 /// the timesheet's architecture with conte content (#16, "콘티 패널 =
@@ -350,14 +350,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
           index: pageIndex,
           count: pageCount,
           readout: _readoutOf(page),
+          // The readout prints the BODY's number, so a typed 3 is the
+          // body's third page — two sheets of paper after the cover's.
+          firstNumbered: math.max(firstBody, 0),
         ),
         onTurnTo: (page) => _turnToPage(page, pageCount),
-        // The readout prints the BODY's number, so a typed 3 is the body's
-        // third page — two sheets of paper after the cover's.
-        indexOfTyped: (typed) {
-          final number = int.tryParse(typed.split('/').first.trim());
-          return number == null ? null : math.max(firstBody, 0) + number - 1;
-        },
       ),
       bottomBarHostToken: (pageIndex, pageCount),
       fitFocusRect: metrics == null
@@ -512,7 +509,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
             source: source,
             // The printed words follow the notation language, as the
             // timesheet's do.
-            notation: ConteNotation.of(
+            words: conteWordsIn(
               _session.languageSettings.value.notationLanguage,
             ),
             // No outline marks the cell being worked on (유저 2026-09-25:

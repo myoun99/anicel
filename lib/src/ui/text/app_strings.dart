@@ -809,6 +809,16 @@ enum AppStrings {
   String get cnPageCover => _s('cnPageCover');
   String get cnPageBlank => _s('cnPageBlank');
 
+  /// What the conte PRINTS — read from the NOTATION language's table, not
+  /// the program's (`conteWordsIn`).
+  String get cnHeadCut => _s('cnHeadCut');
+  String get cnHeadPicture => _s('cnHeadPicture');
+  String get cnHeadAction => _s('cnHeadAction');
+  String get cnHeadDialogue => _s('cnHeadDialogue');
+  String get cnHeadSeconds => _s('cnHeadSeconds');
+  String get cnCoverCuts => _s('cnCoverCuts');
+  String get cnCoverArtist => _s('cnCoverArtist');
+
   /// '{n}' is the comma count.
   String get tlSetCommaTemplate => _s('tlSetCommaTemplate');
   String get tlProjectAudioRate => _s('tlProjectAudioRate');
@@ -2684,6 +2694,13 @@ enum AppStrings {
         'This cut already has a storyboard row. A cut can hold only one.',
     'cnPageCover': 'Cover',
     'cnPageBlank': 'Blank',
+    'cnHeadCut': 'CUT',
+    'cnHeadPicture': 'PICTURE',
+    'cnHeadAction': 'ACTION',
+    'cnHeadDialogue': 'DIALOGUE',
+    'cnHeadSeconds': 'TIME',
+    'cnCoverCuts': ' cuts',
+    'cnCoverArtist': 'Storyboard',
     'tlBlankX': 'Blank / X',
     'tlMark': 'Mark $inbetweenMark',
     'tlSetCommasN': 'Set N commas',
@@ -4001,6 +4018,13 @@ enum AppStrings {
     'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
     'cnPageCover': '表紙',
     'cnPageBlank': '白紙',
+    'cnHeadCut': 'カット',
+    'cnHeadPicture': '画面',
+    'cnHeadAction': '内容',
+    'cnHeadDialogue': 'セリフ',
+    'cnHeadSeconds': '秒',
+    'cnCoverCuts': 'cut',
+    'cnCoverArtist': 'コンテ',
     'tlBlankX': '中割なし / ×',
     'tlMark': 'マーク $inbetweenMark',
     'tlSetCommasN': 'Nコマに設定',
@@ -5313,6 +5337,13 @@ enum AppStrings {
     'sbOneStoryboardRowPerCut': '이 컷에는 이미 스토리보드 레이어가 있습니다. 컷당 하나만 가능합니다.',
     'cnPageCover': '표지',
     'cnPageBlank': '빈 장',
+    'cnHeadCut': '컷',
+    'cnHeadPicture': '화면',
+    'cnHeadAction': '내용',
+    'cnHeadDialogue': '대사',
+    'cnHeadSeconds': '초',
+    'cnCoverCuts': '컷',
+    'cnCoverArtist': '콘티',
     'tlBlankX': '중간 없음 / ×',
     'tlMark': '마크 $inbetweenMark',
     'tlSetCommasN': 'N코마로 설정',
@@ -6704,6 +6735,13 @@ enum AppStrings {
     'cnNextPage': 'Page suivante',
     'cnPageCover': 'Couv.',
     'cnPageBlank': 'Vierge',
+    'cnHeadCut': 'PLAN',
+    'cnHeadPicture': 'IMAGE',
+    'cnHeadAction': 'ACTION',
+    'cnHeadDialogue': 'DIALOGUE',
+    'cnHeadSeconds': 'DURÉE',
+    'cnCoverCuts': ' plans',
+    'cnCoverArtist': 'Storyboard',
     'tlBlankX': 'Vide / X',
     'tlMark': 'Repère $inbetweenMark',
     'tlSetCommasN': 'Régler sur N commas',
@@ -7942,6 +7980,13 @@ enum AppStrings {
     'cnNextPage': '下一页',
     'cnPageCover': '封面',
     'cnPageBlank': '空白页',
+    'cnHeadCut': '镜头',
+    'cnHeadPicture': '画面',
+    'cnHeadAction': '内容',
+    'cnHeadDialogue': '台词',
+    'cnHeadSeconds': '秒',
+    'cnCoverCuts': '个镜头',
+    'cnCoverArtist': '分镜',
     'tlBlankX': '空 / ×',
     'tlMark': '标记 $inbetweenMark',
     'tlSetCommasN': '设为 N 格',

@@ -30,6 +30,7 @@ void main() {
               index: pageIndex,
               count: pageCount,
               readout: '${pageIndex + 1} / $pageCount',
+              firstNumbered: 0,
             ),
             onTurnTo: onTurnTo,
             leading: leading,

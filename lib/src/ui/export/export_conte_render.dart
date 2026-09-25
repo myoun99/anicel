@@ -2,10 +2,10 @@ import 'dart:ui' as ui;
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
-import '../../models/conte/conte_notation.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../../services/import/raster_cel_import.dart' show readImageFileOrNull;
 import '../conte/conte_page_painter.dart';
@@ -21,11 +21,12 @@ import 'offscreen_raster.dart';
 Future<Map<String, ui.Image>> readContePageImages(
   Iterable<ContePageLayout> pages,
   ConteSheetSource source,
+  ConteWords words,
 ) async {
   final images = <String, ui.Image>{};
   final asked = <String>{};
   for (final page in pages) {
-    for (final mark in contePageMarks(page, source)) {
+    for (final mark in contePageMarks(page, source, words: words)) {
       if (mark is SheetImage && asked.add(mark.assetPath)) {
         final image = await readImageFileOrNull(mark.assetPath);
         if (image != null) {
@@ -52,7 +53,7 @@ Future<ui.Image> renderContePageImage({
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
   double scale = 1,
   CanvasSize? outputSize,
-  ConteNotation notation = ConteNotation.ja,
+  required ConteWords words,
 }) {
   final metrics = page.metrics;
   final (:width, :height) = offscreenRasterSize(
@@ -70,7 +71,7 @@ Future<ui.Image> renderContePageImage({
       pictureFor: pictureFor,
       imageFor: imageFor,
       inkImageFor: inkImageFor,
-      notation: notation,
+      words: words,
     ).paint(canvas, ui.Size(width.toDouble(), height.toDouble())),
   );
 }

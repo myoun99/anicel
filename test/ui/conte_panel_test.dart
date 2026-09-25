@@ -5,7 +5,6 @@ import '../helpers/device_viewport.dart';
 import '../helpers/frame_census.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/conte/conte_notation.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -31,6 +30,7 @@ import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
+import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -189,8 +189,8 @@ void main() {
                 .painter!
             as ContePagePainter;
     expect(
-      painter().notation,
-      ConteNotation.of(session.languageSettings.value.notationLanguage),
+      painter().words,
+      conteWordsIn(session.languageSettings.value.notationLanguage),
     );
 
     session.languageSettings.value = session.languageSettings.value.copyWith(
@@ -200,7 +200,7 @@ void main() {
     tester.element(find.byType(ConteTabHost)).markNeedsBuild();
     await tester.pump();
 
-    expect(painter().notation, ConteNotation.ko);
+    expect(painter().words, conteWordsIn(AppLanguage.ko));
     expect(
       painter().marks().whereType<SheetWords>().map((word) => word.text),
       containsAll(['내용', '대사']),

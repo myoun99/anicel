@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_layout.dart';
@@ -13,6 +14,7 @@ import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
+import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
@@ -172,6 +174,7 @@ void main() {
         ContePagePainter(
           page: pages.first,
           source: source,
+          words: conteWordsIn(AppLanguage.ja),
           viewport: view,
           layers: layers,
         ),

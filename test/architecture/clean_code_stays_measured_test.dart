@@ -128,7 +128,15 @@ void main() {
   /// folded block's `_paintAnchoredLabel` and the plates' `_paintPlatedGlyph`
   /// went with what used them. 🔬`clean_code_diff` named those two, nothing
   /// added.
-  const wideSignatures = 387;
+  ///
+  /// ⚠️387 → 385 on 2026-09-26, lowered as the rule asks: the conte sheet
+  /// engine round made the page ONE list of marks that every printer
+  /// replays, and the text helper each printer kept for itself went —
+  /// `ContePagePainter.text` and `_ContePdfPageWriter._text`. The Canvas
+  /// printer it added takes its face, strata and images once
+  /// (`SheetCanvasPrinter`) rather than on every call. 🔬`clean_code_diff`
+  /// between master and the lane names those two and nothing added.
+  const wideSignatures = 385;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
