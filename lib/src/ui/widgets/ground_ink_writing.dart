@@ -64,47 +64,58 @@ class GroundInkWriting extends StatelessWidget {
   /// colour the styles carried, so they need not clear their own.
   final Widget Function(BuildContext context, TextStyle ink) builder;
 
+  /// 🚨ONE SHAPE, WHATEVER THE GROUND (2026-09-26). The writing used to be a
+  /// plain child while one ink covered it and a layout builder over a moved
+  /// canvas once the ground changed under it — two element trees, so a bar
+  /// whose fill crossed into or out of its words threw its writing away and
+  /// built the other. The replaced child is a relayout that climbs past the
+  /// bar's fixed-height box to the row's first relayout boundary: on a brush
+  /// pick, three bars in the tool settings flipped and laid the whole
+  /// settings column out again, each object laid out a semantics update too.
+  /// Now the tree is the same every time and only the ink changes; one ink
+  /// paints the ordinary way, exactly as it did.
   @override
   Widget build(BuildContext context) {
-    if (runs.isEmpty) {
-      return builder(context, const TextStyle());
-    }
-    final first = runs.first.ink;
-    if (runs.every((run) => run.ink == first)) {
-      return builder(context, TextStyle(color: first));
-    }
     return LayoutBuilder(
       builder: (context, constraints) {
-        // A writing with no width to measure has nowhere to put a boundary;
-        // it takes the first ground's ink rather than a shader stretched to
-        // infinity.
-        if (!constraints.hasBoundedWidth) {
-          return builder(context, TextStyle(color: first));
-        }
-        final colors = <Color>[];
-        final stops = <double>[];
-        var start = 0.0;
-        for (final run in runs) {
-          colors
-            ..add(run.ink)
-            ..add(run.ink);
-          stops
-            ..add(start)
-            ..add(run.end);
-          start = run.end;
-        }
-        final shader = LinearGradient(
-          colors: colors,
-          stops: stops,
-        ).createShader(Offset.zero & constraints.biggest);
+        final ink = _inkFor(constraints);
         return _InkAtOrigin(
-          child: builder(
-            context,
-            TextStyle(foreground: Paint()..shader = shader),
-          ),
+          moveCanvas: ink.foreground != null,
+          child: builder(context, ink),
         );
       },
     );
+  }
+
+  TextStyle _inkFor(BoxConstraints constraints) {
+    if (runs.isEmpty) {
+      return const TextStyle();
+    }
+    final first = runs.first.ink;
+    // A writing with no width to measure has nowhere to put a boundary; it
+    // takes the first ground's ink rather than a shader stretched to
+    // infinity.
+    if (runs.every((run) => run.ink == first) ||
+        !constraints.hasBoundedWidth) {
+      return TextStyle(color: first);
+    }
+    final colors = <Color>[];
+    final stops = <double>[];
+    var start = 0.0;
+    for (final run in runs) {
+      colors
+        ..add(run.ink)
+        ..add(run.ink);
+      stops
+        ..add(start)
+        ..add(run.end);
+      start = run.end;
+    }
+    final shader = LinearGradient(
+      colors: colors,
+      stops: stops,
+    ).createShader(Offset.zero & constraints.biggest);
+    return TextStyle(foreground: Paint()..shader = shader);
   }
 }
 
@@ -116,22 +127,47 @@ class GroundInkWriting extends StatelessWidget {
 /// without this the gradient would start where the LAYER starts. A child
 /// that brings layers of its own cannot be moved this way; it is painted the
 /// ordinary way (in the right place, its ink off true) rather than wrongly.
+///
+/// [moveCanvas] false paints the ordinary way: one ink needs no shader to
+/// land, and the writing keeps the paint it always had.
 class _InkAtOrigin extends SingleChildRenderObjectWidget {
-  const _InkAtOrigin({required super.child});
+  const _InkAtOrigin({required this.moveCanvas, required super.child});
+
+  final bool moveCanvas;
 
   @override
-  RenderObject createRenderObject(BuildContext context) =>
-      _RenderInkAtOrigin();
+  _RenderInkAtOrigin createRenderObject(BuildContext context) =>
+      _RenderInkAtOrigin(moveCanvas: moveCanvas);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderInkAtOrigin renderObject,
+  ) {
+    renderObject.moveCanvas = moveCanvas;
+  }
 }
 
 class _RenderInkAtOrigin extends RenderProxyBox {
+  _RenderInkAtOrigin({required bool moveCanvas}) : _moveCanvas = moveCanvas;
+
+  bool get moveCanvas => _moveCanvas;
+  bool _moveCanvas;
+  set moveCanvas(bool value) {
+    if (_moveCanvas == value) {
+      return;
+    }
+    _moveCanvas = value;
+    markNeedsPaint();
+  }
+
   @override
   void paint(PaintingContext context, Offset offset) {
     final child = this.child;
     if (child == null) {
       return;
     }
-    if (child.needsCompositing || child.isRepaintBoundary) {
+    if (!_moveCanvas || child.needsCompositing || child.isRepaintBoundary) {
       context.paintChild(child, offset);
       return;
     }

@@ -115,4 +115,108 @@ void main() {
       reason: 'one Text for one string — never the writing laid twice',
     );
   });
+
+  group('one shape, whatever the ground (2026-09-26)', () {
+    // A bar whose fill crossed into or out of its words used to throw its
+    // writing away and build the other shape — a replaced child, laid out
+    // again all the way up to the row's first relayout boundary (on a brush
+    // pick: the whole tool settings column, and its semantics).
+    Widget writing(List<GroundInkRun> runs, {ValueChanged<Offset>? painted}) =>
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 50),
+              child: SizedBox(
+                width: 200,
+                height: 20,
+                child: GroundInkWriting(
+                  runs: runs,
+                  builder: (context, ink) => _OffsetProbe(
+                    painted: painted ?? (_) {},
+                    child: Text('word', style: ink),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    testWidgets('the writing keeps its render objects when the ground under '
+        'it starts or stops changing', (tester) async {
+      await tester.pumpWidget(writing(const [(end: 1.0, ink: white)]));
+      final paragraph = tester.renderObject(find.text('word'));
+
+      await tester.pumpWidget(
+        writing(const [(end: 0.5, ink: white), (end: 1.0, ink: black)]),
+      );
+      expect(
+        tester.widget<Text>(find.text('word')).style?.foreground?.shader,
+        isNotNull,
+        reason: 'fixture: the ground now changes under the writing',
+      );
+      expect(tester.renderObject(find.text('word')), same(paragraph));
+
+      await tester.pumpWidget(writing(const [(end: 1.0, ink: black)]));
+      expect(tester.widget<Text>(find.text('word')).style?.color, black);
+      expect(tester.renderObject(find.text('word')), same(paragraph));
+    });
+
+    testWidgets('one ink paints the ordinary way — the canvas is moved only '
+        'for a shader', (tester) async {
+      final offsets = <Offset>[];
+      await tester.pumpWidget(
+        writing(const [(end: 1.0, ink: white)], painted: offsets.add),
+      );
+      expect(
+        offsets.last.dx,
+        50,
+        reason: 'one ink: painted at its offset, as it always was',
+      );
+
+      await tester.pumpWidget(
+        writing(
+          const [(end: 0.5, ink: white), (end: 1.0, ink: black)],
+          painted: offsets.add,
+        ),
+      );
+      expect(
+        offsets.last,
+        Offset.zero,
+        reason: 'a shader: the canvas moved to the writing\'s own origin',
+      );
+    });
+  });
+}
+
+/// Records the offset its paint is handed, then paints its child there.
+class _OffsetProbe extends SingleChildRenderObjectWidget {
+  const _OffsetProbe({required this.painted, required super.child});
+
+  final ValueChanged<Offset> painted;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderOffsetProbe(painted);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderOffsetProbe renderObject,
+  ) {
+    renderObject.painted = painted;
+  }
+}
+
+class _RenderOffsetProbe extends RenderProxyBox {
+  _RenderOffsetProbe(this.painted);
+
+  ValueChanged<Offset> painted;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    painted(offset);
+    super.paint(context, offset);
+  }
 }
