@@ -106,26 +106,33 @@ void main() {
 
   group('a range MOVE in the cut', () {
     test('moves the GLOBAL span a fade\'s mark shows, the mark following the '
-        'hand on both rails — one undo puts it back', () {
+        'hand on both rails — one undo puts it back — and nothing past the '
+        'range', () {
       late final int cutTwo;
       final session = inCutTwoWith((start) {
         cutTwo = start;
-        return {start + 2: const InstructionEvent(instructionId: 'fo', length: 3)};
+        return {
+          start + 2: const InstructionEvent(instructionId: 'fo', length: 3),
+          start + 10: const InstructionEvent(instructionId: 'fo', length: 3),
+        };
       });
       final row = transitionRowOf(session);
-      expect(marks(session), [2], reason: 'premise: drawn where it is');
+      expect(marks(session), [2, 10], reason: 'premise: drawn where they are');
       selectOnTheRow(session, 2, 4);
 
       expect(session.rangeMove.beginFrameRangeMoveDrag(row), isTrue);
       session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 3);
       final preview = session.dragPreview.value! as BlockMoveDragPreview;
-      expect(preview.previewLayers[row]!.instructions.keys, [5]);
-      expect(preview.previewGlobalLayers[row]!.instructions.keys, [cutTwo + 5]);
+      expect(preview.previewLayers[row]!.instructions.keys, [5, 10]);
+      expect(preview.previewGlobalLayers[row]!.instructions.keys, [
+        cutTwo + 5,
+        cutTwo + 10,
+      ]);
       session.rangeMove.endFrameRangeMoveDrag();
 
-      expect(spanStarts(session), [cutTwo + 5]);
+      expect(spanStarts(session), [cutTwo + 5, cutTwo + 10]);
       session.undo();
-      expect(spanStarts(session), [cutTwo + 2]);
+      expect(spanStarts(session), [cutTwo + 2, cutTwo + 10]);
     });
 
     test('an O.L\'s mark stays put — the storyboard\'s to move — while the '
@@ -207,24 +214,26 @@ void main() {
 
   group('a range DELETE', () {
     test('in the cut: the spans the marks show — the one that began in cut 1 '
-        'included, as a press on its mark takes it', () {
+        'included, as a press on its mark takes it — and none past the '
+        'range', () {
       late final int cutTwo;
       final session = inCutTwoWith((start) {
         cutTwo = start;
         return {
           start - 2: const InstructionEvent(instructionId: 'fi', length: 5),
           start + 8: const InstructionEvent(instructionId: 'fo', length: 3),
+          start + 13: const InstructionEvent(instructionId: 'fo', length: 2),
         };
       });
-      expect(marks(session), [0, 8], reason: 'premise');
+      expect(marks(session), [0, 8, 13], reason: 'premise');
       selectOnTheRow(session, 0, 10);
       expect(session.cells.canDeleteCellForSelection, isTrue);
 
       session.cells.deleteCellAtCurrentFrame();
 
-      expect(spanStarts(session), isEmpty);
+      expect(spanStarts(session), [cutTwo + 13]);
       session.undo();
-      expect(spanStarts(session), [cutTwo - 2, cutTwo + 8]);
+      expect(spanStarts(session), [cutTwo - 2, cutTwo + 8, cutTwo + 13]);
     });
 
     test('in the cut: never an O.L\'s', () {
