@@ -204,7 +204,7 @@ void main() {
     // The real base arrives through `Picture.toImage`, whose completion is
     // a real engine callback; the fake async zone a plain `pump` runs in
     // never delivers it, so the snapshots would all still be "in flight",
-    // `wantsPromotion` would stay false, and every paint would derive
+    // `promotionSlotFree` would stay false, and every paint would derive
     // from the head under budget — the old shape, measured as the new one.
     // The `promotedCount` assertion is what says this actually ran.
     await tester.runAsync(() async {

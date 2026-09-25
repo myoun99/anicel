@@ -1329,7 +1329,10 @@ class _LayerStackPaintPass {
         recorder,
         (rect.width / _levelStep).round(),
         (rect.height / _levelStep).round(),
-        snapshot: cache != null && key != null && cache.wantsPromotion,
+        snapshot:
+            cache != null &&
+            key != null &&
+            cache.wantsPromotionFor(patchedOverRealBase: patched && !derived),
       ),
     );
     final image = made.deferred;

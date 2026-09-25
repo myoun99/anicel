@@ -126,10 +126,59 @@ class DisplayBufferCache {
   /// on a GPU that answers within a frame that is every other paint, on a
   /// slower one fewer, and the base is correspondingly older. Better a
   /// larger dirty rect than a raster thread paying twice per paint.
+  ///
+  /// ⚠️"Every other paint" was the expectation. Measured 2026-09-25 on the
+  /// real Windows app (a quiet machine, a 100 px stroke) the snapshot
+  /// landed before the next paint nearly every time — 128 promotions for
+  /// 130 heads — so the raster thread did pay twice per paint.
+  /// [wantsPromotionFor] is the rest of this decision.
   bool _promotionInFlight = false;
 
-  /// Whether the next compose should also snapshot its picture.
-  bool get wantsPromotion => !_promotionInFlight && !_disposed;
+  /// Whether the slot for a snapshot is free — none in flight, and the
+  /// cache is not disposed.
+  bool get promotionSlotFree => !_promotionInFlight && !_disposed;
+
+  /// Whether THIS compose should also snapshot its picture — a different
+  /// question from [promotionSlotFree], which only says it could.
+  ///
+  /// 🚨★★A SNAPSHOT IS A FIXED PRICE, WHATEVER ITS SIZE: measured
+  /// 2026-09-25 on the real Windows app, 32×32 and 2448×1313 alike cost
+  /// 1.6–2.0 ms of raster a piece, sync or async. A head patched over the
+  /// REAL base forms no chain however old the base is — it recomposes a
+  /// larger dirty rect, measured from the base's own tokens, and the same
+  /// pixels come out. So such a compose promotes every [promoteEvery]th
+  /// time, or at once when what it recomposed since the base has grown to
+  /// [promoteAtDirtyShare] of the buffer: past that a fast, long stroke
+  /// would spend more recomposing than the snapshot costs.
+  ///
+  /// Every other compose promotes as soon as the slot is free, as before —
+  /// a full compose, a carry, a head drawn from the head: those are where a
+  /// chain can start, and the real base is what stops it.
+  bool wantsPromotionFor({required bool patchedOverRealBase}) {
+    if (!promotionSlotFree) {
+      return false;
+    }
+    if (!patchedOverRealBase || _patchesSinceAsked >= promoteEvery - 1) {
+      return true;
+    }
+    final dirty = lastDirtyRect;
+    final rect = _rect;
+    return dirty != null &&
+        rect != null &&
+        dirty.width * dirty.height >=
+            rect.width * rect.height * promoteAtDirtyShare;
+  }
+
+  /// See [wantsPromotionFor].
+  static const int promoteEvery = 4;
+
+  /// See [wantsPromotionFor].
+  static const double promoteAtDirtyShare = 1 / 16;
+
+  /// Patches stored over the real base since a snapshot was last asked
+  /// for. Counted in [store], zeroed in [promote] — an [invalidate] leaves
+  /// no real base, so the compose after it asks at once anyway.
+  int _patchesSinceAsked = 0;
 
   /// How many snapshots landed and became the base. The counters' own
   /// law: a promotion that never lands looks exactly like one that works
@@ -146,6 +195,7 @@ class DisplayBufferCache {
     final rect = _rect;
     final tokens = keptTokens;
     _promotionInFlight = true;
+    _patchesSinceAsked = 0;
     // Deliberately not awaited: the paint that started it is long over by
     // the time it lands, and the landing has nobody to report to but this
     // cache. Both arms below clear the slot, so a snapshot that fails frees
@@ -403,6 +453,9 @@ class DisplayBufferCache {
       patchedCount += 1;
     } else {
       fullCount += 1;
+    }
+    if (patched && !derived) {
+      _patchesSinceAsked += 1;
     }
     _derivedDepth = derived ? _derivedDepth + 1 : 0;
     // The same event in the other unit. A compose that started from
