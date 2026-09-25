@@ -266,24 +266,38 @@ Future<void> showPanelFlyout(
   // One notifier says which row is pointed at and one entry draws beside it,
   // so pointing somewhere else REPLACES the child and pointing at a plain
   // row clears it — which is the behaviour a submenu has everywhere.
-  final open = ValueNotifier<_OpenSubmenu?>(null);
+  //
+  // ★THE OPEN LEVELS ARE A LIST, one per depth — a child's row may open a
+  // child of its own (the cut button's 색 라벨: the cut menu, then the
+  // stages, then a stage's corrections — 유저 2026-09-26, the label list 「그대로
+  // 사용」). Pointing at a row keeps the levels above it and replaces
+  // everything below, which is the one-level rule above said for any depth.
+  final open = ValueNotifier<List<_OpenSubmenu>>(const []);
   final overlayState = Navigator.of(anchorContext).overlay!;
   PanelFlyoutItem? pickedInSubmenu;
   final submenuEntry = OverlayEntry(
-    builder: (context) => ValueListenableBuilder<_OpenSubmenu?>(
+    builder: (context) => ValueListenableBuilder<List<_OpenSubmenu>>(
       valueListenable: open,
-      builder: (context, request, _) => request == null
+      builder: (context, levels, _) => levels.isEmpty
           ? const SizedBox.shrink()
-          : _SubmenuLayer(
-              request: request,
-              bindings: bindings,
-              onPicked: (item) {
-                pickedInSubmenu = item;
-                open.value = null;
-                // The parent list goes with it: the level you answered is
-                // not a level you want to be left staring at.
-                unawaited(Navigator.of(anchorContext).maybePop());
-              },
+          : Stack(
+              children: [
+                for (var index = 0; index < levels.length; index += 1)
+                  _SubmenuLayer(
+                    request: levels[index],
+                    depth: index + 1,
+                    open: open,
+                    bindings: bindings,
+                    onPicked: (item) {
+                      pickedInSubmenu = item;
+                      open.value = const [];
+                      // The parent list goes with it: the level you
+                      // answered is not a level you want to be left
+                      // staring at.
+                      unawaited(Navigator.of(anchorContext).maybePop());
+                    },
+                  ),
+              ],
             ),
     ),
   );
@@ -374,6 +388,7 @@ Future<void> showPanelFlyout(
             child: _HoverReporter(
               entry: entry,
               open: open,
+              depth: 0,
               child: flyoutRowSurface(
                 _itemBody(
                   entry,
@@ -474,17 +489,22 @@ class _HoverReporter extends StatelessWidget {
   const _HoverReporter({
     required this.entry,
     required this.open,
+    required this.depth,
     required this.child,
   });
 
   final PanelFlyoutItem entry;
-  final ValueNotifier<_OpenSubmenu?> open;
+  final ValueNotifier<List<_OpenSubmenu>> open;
+
+  /// How deep the row's OWN list is: 0 for the top list, 1 for the first
+  /// child, and so on. Pointing at it keeps the [depth] levels above it.
+  final int depth;
   final Widget child;
 
   void _report(BuildContext context) {
     final builder = entry.submenuBuilder;
     if (builder == null) {
-      open.value = null;
+      open.value = _levelsAbove;
       return;
     }
     final box = context.findRenderObject() as RenderBox?;
@@ -525,12 +545,19 @@ class _HoverReporter extends StatelessWidget {
     final left = menu == null
         ? rowTop.dx
         : menu.localToGlobal(Offset.zero, ancestor: overlay).dx;
-    open.value = _OpenSubmenu(
-      owner: entry.keyValue,
-      anchor: Rect.fromLTRB(left, rowTop.dy, right, rowBottom.dy),
-      entries: builder(),
-    );
+    open.value = [
+      ..._levelsAbove,
+      _OpenSubmenu(
+        owner: entry.keyValue,
+        anchor: Rect.fromLTRB(left, rowTop.dy, right, rowBottom.dy),
+        entries: builder(),
+      ),
+    ];
   }
+
+  /// The levels this row's own list hangs under — they stay open while it is
+  /// pointed at; everything deeper is this row's to replace or clear.
+  List<_OpenSubmenu> get _levelsAbove => open.value.take(depth).toList();
 
 
   @override
@@ -564,10 +591,12 @@ class _HoverReporter extends StatelessWidget {
         // by the time the submenu is open the pointer has moved off the
         // parent, so Material's highlight has already faded (유저
         // 2026-08-29: 「부모 버튼도 흰색인채로 유지하도록」).
-        child: ValueListenableBuilder<_OpenSubmenu?>(
+        child: ValueListenableBuilder<List<_OpenSubmenu>>(
           valueListenable: open,
-          builder: (context, request, row) => ColoredBox(
-            color: request?.owner == entry.keyValue
+          builder: (context, levels, row) => ColoredBox(
+            // Lit while its child is up at ANY depth: a stage stays lit
+            // while one of its corrections is pointed at.
+            color: levels.any((level) => level.owner == entry.keyValue)
                 // The same wash Material's own hover lays down, so the two
                 // states are one appearance rather than two that resemble
                 // each other.
@@ -586,11 +615,19 @@ class _HoverReporter extends StatelessWidget {
 class _SubmenuLayer extends StatelessWidget {
   const _SubmenuLayer({
     required this.request,
+    required this.depth,
+    required this.open,
     required this.bindings,
     required this.onPicked,
   });
 
   final _OpenSubmenu request;
+
+  /// Which open level this is: 1 beside the top list, 2 beside that, …
+  final int depth;
+
+  /// Every open level — this one's rows write theirs into it.
+  final ValueNotifier<List<_OpenSubmenu>> open;
   final EditorShortcutBindings? bindings;
   final ValueChanged<PanelFlyoutItem> onPicked;
 
@@ -684,20 +721,42 @@ class _SubmenuLayer extends StatelessWidget {
                   ),
                   PanelFlyoutDivider() => const Divider(height: 6),
                   PanelFlyoutRow() => const SizedBox.shrink(),
-                  final PanelFlyoutItem item => ControlPressClaim(
-                    onPressed: item.enabled ? () => onPicked(item) : null,
-                    child: InkWell(
-                      key: ValueKey<String>(item.keyValue),
-                      onTap: silentPress(
-                        item.enabled ? () => onPicked(item) : null,
-                      ),
-                      // ⛔The SAME row surface and the SAME body the parent
-                      // list draws — a submenu that laid itself out would
-                      // drift from the list it belongs to.
-                      child: flyoutRowSurface(
-                        _itemBody(item, bindings: bindings),
-                      ),
-                    ),
+                  // ★THE PARENT LIST'S REPORTER, one level down: a row here
+                  // with a child of its own opens it beside this level, and
+                  // a plain row closes whatever this level had open.
+                  final PanelFlyoutItem item => _HoverReporter(
+                    entry: item,
+                    open: open,
+                    depth: depth,
+                    child: item.submenuBuilder != null
+                        ? KeyedSubtree(
+                            key: ValueKey<String>(item.keyValue),
+                            child: flyoutRowSurface(
+                              _itemBody(
+                                item,
+                                bindings: bindings,
+                                hasSubmenu: true,
+                              ),
+                            ),
+                          )
+                        : ControlPressClaim(
+                            onPressed: item.enabled
+                                ? () => onPicked(item)
+                                : null,
+                            child: InkWell(
+                              key: ValueKey<String>(item.keyValue),
+                              onTap: silentPress(
+                                item.enabled ? () => onPicked(item) : null,
+                              ),
+                              // ⛔The SAME row surface and the SAME body the
+                              // parent list draws — a submenu that laid
+                              // itself out would drift from the list it
+                              // belongs to.
+                              child: flyoutRowSurface(
+                                _itemBody(item, bindings: bindings),
+                              ),
+                            ),
+                          ),
                   ),
                 },
             ],

@@ -66,6 +66,7 @@ import 'relink_media_asset_command.dart';
 import 'rasterize_layer_reference_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
+import 'update_cut_mark_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
 import 'update_track_effects_command.dart';
@@ -157,6 +158,8 @@ class CutCommandCoordinator {
   );
   void updateCutNote({required CutId cutId, required String note}) =>
       _cuts.updateCutNote(cutId: cutId, note: note);
+  void setCutMark({required List<CutId> cutIds, required LayerMark mark}) =>
+      _cuts.setCutMark(cutIds: cutIds, mark: mark);
   void updateCutThumbnailFrame({
     required CutId cutId,
     required int? frameIndex,

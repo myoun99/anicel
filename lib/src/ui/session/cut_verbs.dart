@@ -6,6 +6,7 @@ import '../../models/cut.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_mark.dart';
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
@@ -169,6 +170,39 @@ class CutVerbs {
     (cutId) =>
         _project.cutCommandCoordinator.updateCutNote(cutId: cutId, note: note),
   );
+
+  /// The cuts a pick in the cut button is about: the ones the storyboard's
+  /// range covers, or — with no range up — the active cut. ONE list either
+  /// way, so the pick runs the same code with or without a selection (유저
+  /// 2026-09-26: 「선택범위 한상태로 조작가능한거 물론이고」).
+  List<CutId> get addressedCutIds {
+    final selected = _storyboardRows.storyboardSelectedCutIds;
+    if (selected.isNotEmpty) {
+      return selected;
+    }
+    final active = _timeline.editingSession.activeCutId;
+    return active == null ? const [] : [active];
+  }
+
+  /// The 색 라벨 the cut button shows: the first addressed cut's.
+  LayerMark get addressedCutMark {
+    final cutIds = addressedCutIds;
+    return cutIds.isEmpty
+        ? LayerMark.none
+        : _project.cutById(cutIds.first)?.metadata.mark ?? LayerMark.none;
+  }
+
+  /// Sets the 색 라벨 of every addressed cut — and of each one's 겸용
+  /// siblings — as ONE undo step. A label changes no cut's shape, so the
+  /// repaint is the whole of the reaction.
+  void setAddressedCutMark(LayerMark mark) {
+    final cutIds = addressedCutIds;
+    if (cutIds.isEmpty) {
+      return;
+    }
+    _project.cutCommandCoordinator.setCutMark(cutIds: cutIds, mark: mark);
+    _changes.notifyChanged();
+  }
 
   /// Whether the active cut's storyboard thumbnail is pinned to the
   /// playhead frame (drives the toolbar toggle's state).

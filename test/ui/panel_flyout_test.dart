@@ -351,6 +351,80 @@ void main() {
     );
   });
 
+  /// 🗣️유저 2026-09-26: the cut button's 색 라벨 is the label list 「그대로」 —
+  /// the cut menu, then the stages, then a stage's corrections. A child's
+  /// row opens a child of its own by the same rules, one level down.
+  testWidgets('a child\'s row opens a child of its own — a plain row of that '
+      'level closes it and keeps its own level up, and a pick at the '
+      'deepest level closes them all', (tester) async {
+    String? picked;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              key: const ValueKey<String>('flyout-anchor'),
+              onPressed: () => showPanelFlyout(
+                context,
+                entries: [
+                  PanelFlyoutItem(
+                    keyValue: 'labels',
+                    label: '색 라벨',
+                    submenuBuilder: () => [
+                      PanelFlyoutItem(
+                        keyValue: 'none',
+                        label: '라벨 없음',
+                        onSelected: () => picked = 'none',
+                      ),
+                      PanelFlyoutItem(
+                        keyValue: 'stage',
+                        label: '원화',
+                        submenuBuilder: () => [
+                          PanelFlyoutItem(
+                            keyValue: 'fix',
+                            label: '작감',
+                            onSelected: () => picked = 'fix',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('flyout-anchor')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('색 라벨'));
+    await tester.pumpAndSettle();
+    expect(find.text('원화'), findsOneWidget, reason: '전제: 첫 겹이 열렸다');
+
+    await tester.tap(find.text('원화'));
+    await tester.pumpAndSettle();
+    expect(find.text('작감'), findsOneWidget, reason: '둘째 겹이 안 열린다');
+    expect(find.text('원화'), findsOneWidget, reason: '첫 겹이 닫혔다');
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(find.text('원화')));
+    await mouse.moveTo(tester.getCenter(find.text('라벨 없음')));
+    await tester.pumpAndSettle();
+    expect(find.text('작감'), findsNothing, reason: '둘째 겹이 남았다');
+    expect(find.text('원화'), findsOneWidget, reason: '첫 겹까지 닫혔다');
+
+    await tester.tap(find.text('원화'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('작감'));
+    await tester.pumpAndSettle();
+    expect(picked, 'fix');
+    expect(find.text('색 라벨'), findsNothing, reason: '고른 뒤에도 목록이 남았다');
+    expect(find.text('원화'), findsNothing);
+  });
+
   // 🚨A CONTROL ROW IS DRAWN AT FULL STRENGTH (유저 2026-09-10: 「한번 그냥
   // 흐리지않게 해보자」). A row is a DISABLED PopupMenuItem so a knob never
   // doubles as a command — and a disabled item also dims what it holds:
