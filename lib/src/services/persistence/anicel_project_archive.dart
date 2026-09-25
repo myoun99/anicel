@@ -67,6 +67,19 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v4 (audit 09-25, card `audit-0925-carry-follow`): `carriedAs` holds a
+/// carry's WHOLE name, minted when it is carried ([mintMediaCarry] —
+/// `<path hash>-<random>-<file name>`). A v3 build reads it as a bare token
+/// and derives a name no entry of this file wears: it opens the project
+/// reading the originals in place of the carried bytes, or nothing, and
+/// its next save carries none of them forward. The bump turns that into a
+/// refusal ([decodeAnicelProjectDocument]). 🗣️유저 2026-09-25: 「형식버전
+/// 그냥 올리면 되는거아닌가?」 — it had stayed 3 since 07-29 through every
+/// format change, the 09-24 carry token among them, because no file anyone
+/// keeps was at stake (08-25); a build that loses carried bytes quietly is
+/// reason enough on its own. v3 files still open here: [mediaCarryName]
+/// keeps both older readings.
+///
 /// v3 (R20-A1 cold-cel tiering): cels persist as PRE-COMPRESSED blobs
 /// (`cels/<n>.celz`, STORE'd — the payload is already compressed). The
 /// blob layout is identical to the in-RAM cold-cel form, so untouched
@@ -75,7 +88,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 3;
+const int anicelFormatVersion = 4;
 
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// [remapProjectMediaPaths]), its baked cels in COLD form (headers parsed,

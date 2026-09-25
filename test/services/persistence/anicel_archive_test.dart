@@ -176,8 +176,52 @@ void main() {
     expect(parseAnicelArchiveBytes(bytes).project, isNotNull);
 
     expect(
+      () => decodeAnicelProjectDocument(
+        utf8.encode(
+          jsonEncode({
+            'formatVersion': anicelFormatVersion + 1,
+            'project': createDefaultProject().toJson(),
+          }),
+        ),
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('newer Anicel'),
+        ),
+      ),
+      reason:
+          'what a build does not understand it must not open and save '
+          'back shortened',
+    );
+    expect(
       () => parseAnicelArchiveBytes(Uint8List.fromList([1, 2, 3])),
       throwsA(anything),
+    );
+  });
+
+  test('🚨a build that reads version 3 refuses what this one writes — a '
+      'carry\'s name is the whole name now', () {
+    final archive = ZipDecoder().decodeBytes(
+      buildAnicelArchiveBytes(project: createDefaultProject(), cels: const []),
+    );
+    final entry = archive.find(anicelProjectEntryNameCompressed)!;
+    final written =
+        jsonDecode(
+              utf8.decode(
+                decodeAnicelProjectEntryBytes(entry.name, entry.readBytes()!),
+              ),
+            )
+            as Map<String, dynamic>;
+
+    expect(
+      written['formatVersion'],
+      greaterThan(3),
+      reason:
+          'a v3 build reads `carriedAs` as a bare token and finds none of '
+          'the carried bytes — it must refuse the file, not open it without '
+          'them and save it back that way (audit 09-25)',
     );
   });
 }
