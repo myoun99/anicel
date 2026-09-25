@@ -966,14 +966,17 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     if (text.isEmpty || band.width <= 0) {
       return null;
     }
+    // The inset gives way to a stretch narrower than two of it, so a word
+    // narrowed there stays in its own stretch — a panel's, not the next.
+    final inset = math.min(_padding, band.width / 2);
     final glyph = timelineGlyphPainter(text, style);
     final fit = wordFit(
       glyph.size,
-      Size(math.max(0.0, band.width - _padding * 2), band.height),
+      Size(band.width - inset * 2, band.height),
     );
     final width = glyph.width * fit.x;
     final height = glyph.height * fit.y;
-    final dx = alignRight ? band.right - _padding - width : band.left + _padding;
+    final dx = alignRight ? band.right - inset - width : band.left + inset;
     final origin = Offset(dx, band.top + (band.height - height) / 2);
     paintTimelineGlyphOnGround(
       canvas,

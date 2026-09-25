@@ -558,9 +558,9 @@ void main() {
     expect(
       painter,
       contains('storyboardPanelPictureGroundColor'),
-      reason: 'a folded block\'s labels and the create + genuinely sit on '
-          'paper-white composite thumbnails — the dark plate resolved WHITE '
-          'ink on white pictures there',
+      reason: 'the create + genuinely sits on paper-white composite '
+          'thumbnails — the dark plate resolved WHITE ink on white pictures '
+          'there',
     );
     expect(
       RegExp(r'ground: _stripWritingGround\(block\)')
@@ -571,16 +571,19 @@ void main() {
           'coverage cell\'s paper-white composite right under the glyph',
     );
     expect(
-      RegExp(r'_paintPlatedGlyph\(').allMatches(painter).length,
-      greaterThanOrEqualTo(3),
-      reason: 'the panel NAME and its COMMA are carried now (D29-2), plus '
-          'the helper\'s own definition — they receive the band\'s fill, '
-          'which is what the cut title receives, so one block cannot wear '
-          'two inks again',
+      RegExp(
+        r'_paintPanel(Heads|Commas)\(\s*canvas,\s*block,\s*(after|before): '
+        r'[^,]+,\s*ground: bandGround,?\s*\)',
+      ).allMatches(painter).length,
+      2,
+      reason: 'the panel NAME and its COMMA stand in the bands now (유저 '
+          '2026-09-25: 「이름은 윗 띠, 코마는 아랫 띠」) and are handed the '
+          'band\'s fill — what the cut title receives, so one block cannot '
+          'wear two inks again (D29-2)',
     );
     expect(
-      RegExp(r'ground: _bandGround\(block\)').allMatches(painter).length,
-      greaterThanOrEqualTo(2),
+      painter,
+      contains('final bandGround = _bandGround(block);'),
       reason: 'and what they are handed is the CARRIED ground by name',
     );
     expect(

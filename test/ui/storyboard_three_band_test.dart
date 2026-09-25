@@ -14,6 +14,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
@@ -163,6 +164,15 @@ class _ParagraphOffsetSpy implements Canvas {
     color: paint.color,
   ));
 
+  /// The plain rectangles laid down, with their fill — the bands' tint.
+  final List<({Rect rect, Color color})> fills = [];
+
+  @override
+  void drawRect(Rect rect, Paint paint) => fills.add((
+    rect: MatrixUtils.transformRect(_transform, rect),
+    color: paint.color,
+  ));
+
   @override
   int getSaveCount() => _saved.length + 1;
 
@@ -270,6 +280,58 @@ void main() {
     expect(block.cellCommaLabels, ['4', '5', '3']);
   });
 
+  testWidgets('a range selection tints the BANDS and never the strip — the '
+      'selection colours what is not the picture', (tester) async {
+    await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
+    final painter = cutBlocksPainter(tester);
+    final range = ValueNotifier<TrackFrameRangeSelection?>(
+      TrackFrameRangeSelection(
+        trackId: _trackId,
+        anchorRow: painter.rowAddress,
+        startFrame: 0,
+        endFrameExclusive: 12,
+      ),
+    );
+    addTearDown(range.dispose);
+    final selected = StoryboardCutBlocksPainter(
+      entries: painter.entries,
+      storyboardLayerNames: painter.storyboardLayerNames,
+      storyboardCellsByCut: painter.storyboardCellsByCut,
+      geometry: painter.geometry,
+      crossAxisExtent: painter.crossAxisExtent,
+      minBlockWidth: painter.minBlockWidth,
+      activeCutId: painter.activeCutId,
+      selectedRange: range,
+      rowAddress: painter.rowAddress,
+      hoveredCutId: painter.hoveredCutId,
+      colorScheme: painter.colorScheme,
+      brightness: painter.brightness,
+      baseTextStyle: painter.baseTextStyle,
+      showSeconds: painter.showSeconds,
+      countingBase: painter.countingBase,
+    );
+    final block = selected.blocks().single;
+    expect(block.isRangeSelected, isTrue, reason: '⛔전제');
+
+    final spy = _ParagraphOffsetSpy();
+    selected.paint(spy, Size(block.rect.right, block.rect.bottom));
+    final tint = storyboardCarriedWritingGround(
+      block,
+      painter.colorScheme,
+    ).toARGB32();
+    expect(
+      spy.fills
+          .where((fill) => fill.color.toARGB32() == tint)
+          .map((fill) => fill.rect),
+      [block.topBand, block.bottomBand],
+    );
+    expect(
+      spy.plates.first.color.toARGB32(),
+      isNot(tint),
+      reason: 'the block keeps its resting fill under the strip',
+    );
+  });
+
   testWidgets('#15: each panel carries its frame NAME (or the in-between '
       'mark when unnamed — F-149) and its own comma count — the timeline '
       'row conventions carried over', (tester) async {
@@ -351,11 +413,12 @@ void main() {
     Future<(StoryboardCutBlockVisual, _ParagraphOffsetSpy)> painted(
       WidgetTester tester, {
       required bool named,
+      double pixelsPerFrame = cell,
     }) async {
       await _pump(
         tester,
         storyboardLayer: _dividedStoryboardLayer('cut-1', named: named),
-        pixelsPerFrame: cell,
+        pixelsPerFrame: pixelsPerFrame,
         thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
             null,
       );
@@ -397,6 +460,42 @@ void main() {
         isEmpty,
         reason: '🗣️nothing rides the picture',
       );
+      // The panels still outline themselves (#15) — at every row height now.
+      final silhouettes = spy.plates
+          .where(
+            (plate) => (plate.rect.top - (block.strip.top + 0.5)).abs() < 0.01,
+          )
+          .map((plate) => plate.rect.left)
+          .toList();
+      expect(silhouettes, [
+        closeTo(block.rect.left + 0.5, 0.01),
+        closeTo(block.rect.left + 4 * cell + 0.5, 0.01),
+        closeTo(block.rect.left + 9 * cell + 0.5, 0.01),
+      ]);
+    });
+
+    testWidgets('a name the title leaves only a sliver of its panel for is '
+        'narrowed to that sliver — never gone (R26 #38: 「절대 안 사라지도록」)',
+        (tester) async {
+      const narrow = 16.0;
+      final (block, spy) = await painted(
+        tester,
+        named: true,
+        pixelsPerFrame: narrow,
+      );
+      final [title, a, ...] = wordsIn(block.topBand, spy);
+      final panelAEnd = block.rect.left + 4 * narrow;
+      expect(
+        title.right,
+        lessThan(panelAEnd - 1),
+        reason: '⛔전제: the title stops inside panel a, a little short of its '
+            'end',
+      );
+      expect(
+        a.left,
+        lessThan(panelAEnd),
+        reason: 'panel a\'s own name, narrowed into what the title left it',
+      );
     });
 
     testWidgets('a panel\'s comma count stands in the BOTTOM band under the '
@@ -408,9 +507,11 @@ void main() {
       expect(bottom, hasLength(4), reason: '4, 5 and 3, then the length');
       final [a, b, c, length] = bottom;
       expect(length.right, closeTo(block.rect.right - 4, 0.01));
-      // F-96: centred on the panel's last cell while it fits.
+      // F-96: centred on the panel's last cell while it fits — and on the
+      // band's middle across it, as the length beside it is.
       expect(a.center.dx, closeTo(block.rect.left + 3.5 * cell, 0.01));
       expect(b.center.dx, closeTo(block.rect.left + 8.5 * cell, 0.01));
+      expect(a.center.dy, closeTo(block.bottomBand.center.dy, 0.01));
       expect(
         c.right,
         lessThanOrEqualTo(length.left - 4 + 0.01),
