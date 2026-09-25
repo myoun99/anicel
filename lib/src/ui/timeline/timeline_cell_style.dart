@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../text/word_condensation.dart';
 import '../theme/app_theme.dart';
+import '../theme/conte_ink.dart';
 import '../theme/text_on_ground.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -429,41 +430,46 @@ bool timelineCellUsesDrawingInk(TimelineCellExposureState exposureState) {
 Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
     colorScheme.secondaryContainer.withValues(alpha: 0.35);
 
-/// A cut block's fill (the storyboard's V row).
+/// A cut block's PLATE (the storyboard's V row) — what shows where neither a
+/// band nor a picture does: the strip around its pictures, and the conte
+/// blocks' bands of a cut with no storyboard layer.
 ///
-/// These two live beside the cell colours rather than in a block widget of
+/// These live beside the cell colours rather than in a block widget of
 /// their own: the row paints its blocks now, and a painter reaching into a
 /// widget's private styling would have been a copy of it. Same vocabulary,
-/// one place — the active accent, the hover lift (R27 #11: a faint surface
-/// lift rather than a thicker border, so nothing reflows) and the
-/// colour-only range tint.
+/// one place — the active accent and the hover lift (R27 #11: a faint
+/// surface lift rather than a thicker border, so nothing reflows).
+///
+/// 🗣️유저 2026-09-26: 「바탕색을 콘티프리뷰패널의 픽쳐의 실루엣이랑 똑같이
+/// 검정색으로 한다던가?」 — the resting plate is the conte sheet's ink
+/// ([conteSheetInk]), and its bands wear the labels
+/// ([storyboardCutBandColor]). ↩️It was the rows body's lifted shade
+/// ([AppColors.washUp]), close enough to the body that it needed a white
+/// outline to read — and the outline went (「심플이즈베스트」).
 Color storyboardCutBlockBackgroundColor(
   ColorScheme colorScheme, {
   required bool active,
   required bool hovered,
-  required bool rangeSelected,
 }) {
-  // A cut block is a PLATE on the rows body, not a chrome surface: with one
-  // chrome fill it would have collapsed into the body it sits on and read
-  // only by its edge.
-  final resting = active ? colorScheme.primaryContainer : AppColors.washUp;
-  final base = hovered && !active
-      ? Color.alphaBlend(
-          colorScheme.onSurface.withValues(alpha: 0.10),
-          resting,
-        )
+  final resting = active ? colorScheme.primaryContainer : conteSheetInk;
+  return hovered && !active
+      ? Color.alphaBlend(colorScheme.onSurface.withValues(alpha: 0.10), resting)
       : resting;
-  if (!rangeSelected) {
-    return base;
-  }
-  // 0.12 = the timeline's selected-CELL tint: the shared range-selection
-  // band ([timelineRangeSelectionBandDecorationAt], 0.18) rides above this,
-  // and the pair must sum to the timeline's look, not overshoot it.
-  return Color.alphaBlend(
-    timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-    base,
-  );
 }
+
+/// A cut block's BAND in its label's colour [label] — under the colour-only
+/// range tint when the block is range-selected: a cut selection colours
+/// what is not the picture (design), and the bands are that.
+Color storyboardCutBandColor(Color label, {required bool rangeSelected}) =>
+    rangeSelected
+    // 0.12 = the timeline's selected-CELL tint: the shared range-selection
+    // band ([timelineRangeSelectionBandDecorationAt], 0.18) rides above
+    // this, and the pair must sum to the timeline's look, not overshoot it.
+    ? Color.alphaBlend(
+        timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+        label,
+      )
+    : label;
 
 /// The effective ground of the strip's PANEL PICTURES (B1 2026-08-17) —
 /// what writing laid over the pictures reads against.
@@ -478,25 +484,14 @@ Color storyboardCutBlockBackgroundColor(
 /// stand in the plate's corners since 2026-09-25.
 const Color storyboardPanelPictureGroundColor = Color(0xFFFFFFFF);
 
-/// A cut block's border ink. R26 #8: the resting edge follows the lane's
-/// BRIGHTNESS — a dark lane gets a light edge and a light lane a dark one;
-/// the old single grey vanished against the near-black track background.
-Color storyboardCutBlockEdgeColor(
-  ColorScheme colorScheme,
-  Brightness brightness, {
-  required bool active,
-  required bool hovered,
-}) {
-  if (active) {
-    return colorScheme.primary;
-  }
-  if (hovered) {
-    return colorScheme.onSurface.withValues(alpha: 0.95);
-  }
-  return colorScheme.onSurface.withValues(
-    alpha: brightness == Brightness.dark ? 0.60 : 0.45,
-  );
-}
+// 🪦`storyboardCutBlockEdgeColor` stood here — the cut block's border ink,
+// light on a dark lane (R26 #8: 「the old single grey vanished against the
+// near-black track background」), worn by the plate's outline, each panel's
+// silhouette (#15) and the create box. 유저 2026-09-26 took all three off:
+// 「패딩/실루엣선 이런거 싹 없도록 심플하게만」 — and with the edges' white
+// on the white outline, 「엣지 … 아직도 안보이거든? 애초 블럭이 실루엣이
+// 흰색이라」. The block now reads by its bands' labels, and a panel by where
+// its picture starts.
 
 /// The paper a cell lays down in [exposureState] — [paper] on a covered cell,
 /// nothing on an empty one.

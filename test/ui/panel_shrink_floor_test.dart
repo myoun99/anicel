@@ -145,7 +145,7 @@ void main() {
       expect(
         body.top - panel.top,
         StoryboardPanel.minPanelHeight -
-            2 * StoryboardPanel.minTrackLaneHeight -
+            2 * timelineLayerRowHeight -
             rectOf(tester, 'storyboard-horizontal-scrollbar').height,
         reason: 'the header band the floor reserves is the one drawn',
       );
@@ -263,7 +263,7 @@ void main() {
       final body = rectOf(tester, 'storyboard-vertical-scrollbar');
       final bottomRail = rectOf(tester, 'storyboard-horizontal-scrollbar');
 
-      expect(body.height, 2 * StoryboardPanel.minTrackLaneHeight);
+      expect(body.height, 2 * timelineLayerRowHeight);
       expect(body.height, greaterThan(32));
       expect(bottomRail.bottom, host.bottom);
       expect(body.bottom, bottomRail.top);
@@ -438,8 +438,8 @@ void main() {
         );
         expect(
           rectOf(tester, 'storyboard-vertical-scrollbar').height,
-          greaterThanOrEqualTo(2 * StoryboardPanel.minTrackLaneHeight),
-          reason: 'two lanes or more at $height',
+          greaterThanOrEqualTo(2 * timelineLayerRowHeight),
+          reason: 'the two-row budget or more at $height',
         );
       }
     });

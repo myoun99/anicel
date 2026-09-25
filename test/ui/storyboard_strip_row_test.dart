@@ -26,9 +26,9 @@ import 'storyboard_cut_block_probe.dart';
 /// in. That is the "clip to the anchor cut" rule arriving as arithmetic
 /// instead of as a guard.
 ///
-/// The bands above and below it are the CUT's, and the split between them
-/// is hit-testing: a press on a band misses the strip's gesture and lands
-/// on the cut's.
+/// The outer bands are the CUT's, and the split between them and the conte
+/// blocks — their own bands and the strip — is hit-testing: a press on a
+/// cut band misses the strip's gesture and lands on the cut's.
 const _trackId = TrackId('strip-track');
 
 Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
@@ -138,6 +138,17 @@ Offset _bandPoint(WidgetTester tester, int globalFrame) {
   );
 }
 
+/// A point on the CONTE BLOCKS' top band over [globalFrame] — a conte
+/// block's name band, or the create button of a cut with no storyboard
+/// layer (유저 2026-09-26: 「콘티블록 상단띠 전면을 생성버튼으로」).
+Offset _conteBandPoint(WidgetTester tester, int globalFrame) {
+  final rect = _cutRowRect(tester);
+  return Offset(
+    rect.left + (globalFrame + 0.5) * _pixelsPerFrame(tester),
+    rect.top + StoryboardCutBlocksPainter.bandHeight * 1.5,
+  );
+}
+
 Future<void> _drag(WidgetTester tester, Offset from, Offset to) async {
   final gesture = await tester.startGesture(
     from,
@@ -203,6 +214,25 @@ void main() {
     // The CUT selection took it; the strip's stayed empty.
     expect(panel.cutSelect!.selectedRange.value, isNotNull);
     expect(panel.stripSelect!.selection.value, isNull);
+  });
+
+  testWidgets('🗣️a drag on a CONTE BLOCK\'s band is its panels\', not the '
+      'cut\'s — the conte block is its bands and its picture (유저 2026-09-26: '
+      '「내부에 콘티블록 있으면 콘티블록의 띠도 생겨서」)', (tester) async {
+    await _openStoryboard(tester);
+
+    await _drag(tester, _conteBandPoint(tester, 1), _conteBandPoint(tester, 6));
+
+    final panel = tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
+    expect(
+      panel.stripSelect!.selection.value?.layerId,
+      const LayerId('cut-1-sb'),
+    );
+    expect(
+      panel.cutSelect!.selectedRange.value,
+      isNull,
+      reason: '↩️the band was the cut\'s while every band was',
+    );
   });
 
   testWidgets('a drag that starts INSIDE the selection slides the panels — '
@@ -280,6 +310,19 @@ void main() {
     final bandRect = tester.getRect(band);
     expect(bandRect.left, moreOrLessEquals(rowRect.left, epsilon: 1));
     expect(bandRect.width, moreOrLessEquals(10 * ppf, epsilon: 1));
+    // Across, it wraps the conte blocks — their bands and the picture —
+    // inside the cut's own bands (↩️the strip alone).
+    const cutBand = StoryboardCutBlocksPainter.bandHeight;
+    expect(bandRect.top, moreOrLessEquals(rowRect.top + cutBand));
+    expect(bandRect.bottom, moreOrLessEquals(rowRect.bottom - cutBand));
+    // And square, as the conte blocks it selects are (F-26: the band takes
+    // the shape of what it selects; ↩️round while each panel was).
+    final decoration = tester
+        .widget<DecoratedBox>(
+          find.descendant(of: band, matching: find.byType(DecoratedBox)),
+        )
+        .decoration;
+    expect((decoration as BoxDecoration).borderRadius, BorderRadius.zero);
   });
 
   /// 🚨H13 (유저 2026-08-22) — 「스토리보드레이어 추가버튼, **액티브컷에만
@@ -300,8 +343,8 @@ void main() {
       reason: 'the premise: cut-3 is layerless AND not the active cut',
     );
 
-    // One press at cut-3's centre — where its + is now drawn.
-    await tester.tapAt(_stripPoint(tester, 25));
+    // One press on cut-3's conte top band — its + is drawn there.
+    await tester.tapAt(_conteBandPoint(tester, 25));
     await tester.pumpAndSettle();
     expect(
       requireCutBlock(tester, 'cut-3').hasStoryboardLayer,
@@ -321,14 +364,15 @@ void main() {
   ) async {
     await _openStoryboard(tester);
 
-    // Frame 21 is inside cut-3 but left of the centred 22px affordance, so
-    // it selects the cut and nothing more — twice over, to show the miss is
-    // not a "first press earns it" rung (H13 retired that).
-    await tester.tapAt(_stripPoint(tester, 21));
+    // The strip's centre is where the + stood until 2026-09-26; the button
+    // is the conte top band now, so a press on the strip selects the cut and
+    // nothing more — twice over, to show the miss is not a "first press
+    // earns it" rung (H13 retired that).
+    await tester.tapAt(_stripPoint(tester, 25));
     await tester.pumpAndSettle();
     expect(requireCutBlock(tester, 'cut-3').isActive, isTrue);
 
-    await tester.tapAt(_stripPoint(tester, 21));
+    await tester.tapAt(_stripPoint(tester, 25));
     await tester.pumpAndSettle();
 
     expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
@@ -340,7 +384,7 @@ void main() {
     // No priming press: cut-3 wears its + from the first frame (H13), so
     // the secondary button is the only thing this test varies.
     final gesture = await tester.startGesture(
-      _stripPoint(tester, 25),
+      _conteBandPoint(tester, 25),
       kind: PointerDeviceKind.mouse,
       buttons: kSecondaryButton,
     );
@@ -371,55 +415,64 @@ void main() {
       isNotNull,
     );
 
-    await tester.tapAt(_stripPoint(tester, 25));
+    await tester.tapAt(_conteBandPoint(tester, 25));
     await tester.pumpAndSettle();
 
     expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
   });
 
-  test('D30: a strip too narrow or too flat for the whole + holds NO '
-      'affordance — a clamped block would light a + its frames cannot '
-      'honour, and an unclamped box would paint over the neighbour', () {
+  test('D30: the + is a layerless block\'s WHOLE conte top band — narrow or '
+      'flat, it is there as long as the band is, and never past its block', () {
     StoryboardCutBlockVisual visual({
-      required double stripWidth,
-      double stripHeight = 38,
+      required double width,
+      double stripHeight = 44,
+      bool hasStoryboardLayer = false,
     }) => StoryboardCutBlockVisual(
       cutId: const CutId('cut-x'),
-      rect: Rect.fromLTWH(0, 0, stripWidth, 64),
+      rect: Rect.fromLTWH(0, 0, width, 52 + stripHeight),
       isActive: true,
       isRangeSelected: false,
       isHovered: false,
       title: '1',
       layerLabel: '',
-      hasStoryboardLayer: false,
+      hasStoryboardLayer: hasStoryboardLayer,
       total: null,
       thumbnails: const [],
       cells: const [],
-      topBand: Rect.fromLTWH(0, 0, stripWidth, 13),
-      strip: Rect.fromLTWH(0, 13, stripWidth, stripHeight),
-      bottomBand: Rect.fromLTWH(0, 13 + stripHeight, stripWidth, 13),
+      topBand: Rect.fromLTWH(0, 0, width, 13),
+      innerTopBand: Rect.fromLTWH(0, 13, width, 13),
+      strip: Rect.fromLTWH(0, 26, width, stripHeight),
+      innerBottomBand: Rect.fromLTWH(0, 26 + stripHeight, width, 13),
+      bottomBand: Rect.fromLTWH(0, 39 + stripHeight, width, 13),
+      cutLabel: Colors.white,
+      conteLabel: null,
     );
 
+    // ↩️A 22px square centred in the strip until 2026-09-26, gone from a
+    // strip narrower or flatter than it; the band holds its + however
+    // narrow (the word narrows, B) and at the V row's floor, where the
+    // strip is gone.
+    for (final block in [
+      visual(width: 16),
+      visual(width: 80, stripHeight: 0),
+      visual(width: 80),
+    ]) {
+      expect(
+        StoryboardCutBlocksPainter.createAffordanceRectOf(block),
+        block.innerTopBand,
+      );
+    }
+    expect(
+      StoryboardCutBlocksPainter.createAffordanceRectOf(visual(width: 0)),
+      isNull,
+      reason: 'no band, no button',
+    );
     expect(
       StoryboardCutBlocksPainter.createAffordanceRectOf(
-        visual(stripWidth: 16),
+        visual(width: 80, hasStoryboardLayer: true),
       ),
       isNull,
-    );
-    expect(
-      StoryboardCutBlocksPainter.createAffordanceRectOf(
-        visual(stripWidth: 80, stripHeight: 8),
-      ),
-      isNull,
-    );
-    final affordance = StoryboardCutBlocksPainter.createAffordanceRectOf(
-      visual(stripWidth: 80),
-    );
-    expect(affordance, isNotNull);
-    expect(
-      visual(stripWidth: 80).strip.expandToInclude(affordance!),
-      visual(stripWidth: 80).strip,
-      reason: 'the affordance never leaves its own strip',
+      reason: 'a cut with a storyboard layer has its conte blocks there',
     );
   });
 

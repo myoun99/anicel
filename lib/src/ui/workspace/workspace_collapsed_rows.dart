@@ -173,7 +173,6 @@ class _WorkspaceCollapsedRows {
                 activeCutId: session.activeCutOrNull?.id,
                 rowAddress: TrackRowAddress(track.id),
                 colorScheme: Theme.of(context).colorScheme,
-                brightness: Theme.of(context).brightness,
                 baseTextStyle:
                     Theme.of(context).textTheme.labelSmall ??
                     DefaultTextStyle.of(context).style,

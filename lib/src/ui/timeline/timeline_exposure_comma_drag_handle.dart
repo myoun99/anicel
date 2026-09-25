@@ -282,7 +282,8 @@ Color blockEdgeGripColor(
   final base = timelineTextOnColor(ground);
   final lightInk = base == timelineTextOnDarkGroundColor;
   // A light mark needs more alpha than a dark one to read as the same
-  // weight — the same asymmetry [storyboardCutBlockEdgeColor] carries.
+  // weight — the asymmetry the cut block's outline carried (R26 #8) until
+  // the outline went (2026-09-26).
   return base.withValues(
     alpha: ink == BlockEdgeGripInk.hovered
         ? (lightInk ? 0.98 : 0.95)

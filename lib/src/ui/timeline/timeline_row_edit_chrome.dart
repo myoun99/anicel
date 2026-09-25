@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ClipOp;
 import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -192,6 +193,19 @@ typedef TimelineGripPaper = ({
   Set<int> cornerEnds,
   double cornerRadius,
 });
+
+/// A stretch of a row whose ground is not the row's `gripGround` — one of
+/// the storyboard cut row's label bands, or a panel's picture on its plate.
+typedef TimelineChromeGround = ({Rect rect, Color color});
+
+/// What a row's grips stand on where that is more than one colour: on the
+/// storyboard's cut row a triangle crosses a label band into a picture or
+/// the plate.
+abstract interface class TimelineChromeGrounds {
+  /// The grounds under [box] (chrome-local) other than the row's
+  /// `gripGround` — disjoint, so a pixel has one.
+  List<TimelineChromeGround> under(Rect box);
+}
 
 /// [layer]'s drawing blocks as grip material. Ghost repeat instances are
 /// DERIVED, so they carry no timing grips (UI-R8); a spill-in display
@@ -450,6 +464,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     required this.draggingGripId,
     required this.devicePixelRatio,
     this.gripGround = timelineDrawingHeldColor,
+    this.gripGrounds,
   }) : super(repaint: geometry);
 
   final TimelineRowChromeResolver resolver;
@@ -484,6 +499,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   /// cut plate on the storyboard's cut row
   /// ([TimelineRowEditChromeLayer.gripGround]).
   final Color gripGround;
+
+  /// Where the grips stand on more than [gripGround], read once a paint
+  /// against the live geometry ([TimelineRowEditChromeLayer.gripGrounds]).
+  final TimelineChromeGrounds Function()? gripGrounds;
 
   /// Every target this row would draw, in hit order — THE probe surface,
   /// the successor of `find.byKey` on the widgets these replaced.
@@ -524,27 +543,11 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       );
     }
     final glyphSize = timelineRunClusterGlyphSize(frameCellExtent);
+    final grounds = gripGrounds?.call();
     for (final target in model.targets) {
       switch (target) {
         case TimelineRowGripTarget():
-          paintBlockEdgeGrip(
-            canvas,
-            blockEdgeGripPath(
-              target.rect,
-              edge: target.edge,
-              axis: resolver.axis,
-              round: (
-                paperCorner: target.paperCorner,
-                bleed: 1 / devicePixelRatio,
-              ),
-            ),
-            target.id == draggingGripId
-                ? BlockEdgeGripInk.dragging
-                : target.id == hoveredId
-                ? BlockEdgeGripInk.hovered
-                : BlockEdgeGripInk.rest,
-            ground: gripGround,
-          );
+          _paintGrip(canvas, target, grounds);
         case TimelineRowRunAddTarget():
           paintTimelineRunGlyph(
             canvas,
@@ -577,6 +580,48 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     }
   }
 
+  /// One grip, in the ink the ground law picks for each ground it stands on
+  /// ([blockEdgeGripColor]): [gripGround] wherever [grounds] has nothing
+  /// under it, and each region's own colour inside that region.
+  ///
+  /// 🗣️유저 2026-09-26: 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게
+  /// 가능하지?」 — on the storyboard's black plate a triangle crosses a label
+  /// band into a picture or the plate, and one ink vanishes on one of them.
+  void _paintGrip(
+    Canvas canvas,
+    TimelineRowGripTarget target,
+    TimelineChromeGrounds? grounds,
+  ) {
+    final triangle = blockEdgeGripPath(
+      target.rect,
+      edge: target.edge,
+      axis: resolver.axis,
+      round: (paperCorner: target.paperCorner, bleed: 1 / devicePixelRatio),
+    );
+    final ink = target.id == draggingGripId
+        ? BlockEdgeGripInk.dragging
+        : target.id == hoveredId
+        ? BlockEdgeGripInk.hovered
+        : BlockEdgeGripInk.rest;
+    final under = grounds?.under(target.rect) ?? const [];
+    if (under.isEmpty) {
+      paintBlockEdgeGrip(canvas, triangle, ink, ground: gripGround);
+      return;
+    }
+    canvas.save();
+    for (final region in under) {
+      canvas.clipRect(region.rect, clipOp: ClipOp.difference);
+    }
+    paintBlockEdgeGrip(canvas, triangle, ink, ground: gripGround);
+    canvas.restore();
+    for (final region in under) {
+      canvas.save();
+      canvas.clipRect(region.rect);
+      paintBlockEdgeGrip(canvas, triangle, ink, ground: region.color);
+      canvas.restore();
+    }
+  }
+
   @override
   // Geometry is absent on purpose — it arrives through `repaint`.
   // Value-compared, never `identical`: a fresh-but-equal instance is
@@ -594,6 +639,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       operatingId,
       draggingGripId,
       gripGround,
+      // By identity: a fresh reader is a fresh picture of the grounds (a
+      // label set, a thumbnail arrived), and the rebuild that made it is
+      // the only one that knows.
+      gripGrounds,
       devicePixelRatio,
     );
   }
@@ -671,6 +720,7 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     required this.grips,
     required this.runEdit,
     this.gripGround = timelineDrawingHeldColor,
+    this.gripGrounds,
   });
 
   /// Key placed on the [CustomPaint] itself: tests read the painter (and
@@ -701,10 +751,15 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
   /// The color under the grips (feedback #11, re-picked by the ground law
   /// 2026-08-17). The default is the timeline's plain paper; a row whose
   /// blocks wear a color label passes that paper, and the storyboard's cut
-  /// row passes what its grips' corners stand on — the cut plate, or the
-  /// panel-picture ground (B1) when the bands fold and the pictures fill
-  /// the block.
+  /// row passes its cut plate — the ground wherever [gripGrounds] names
+  /// nothing. ↩️It passed the panel-picture ground (B1) while the bands
+  /// folded and the pictures filled the block.
   final Color gripGround;
+
+  /// Where the grips stand on more than [gripGround] — null on a row of
+  /// one colour. The storyboard's cut row hands its label bands and its
+  /// pictures here, over the plate its [gripGround] is.
+  final TimelineChromeGrounds Function()? gripGrounds;
 
   @override
   State<TimelineRowEditChromeLayer> createState() =>
@@ -1189,6 +1244,7 @@ class _TimelineRowEditChromeLayerState
         draggingGripId: _gripDragging ? _gripTarget?.id : _pressedId,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         gripGround: widget.gripGround,
+        gripGrounds: widget.gripGrounds,
       ),
       child: _ChromeHitGate(
         // Off-target pixels belong to the cells: the gate keeps the

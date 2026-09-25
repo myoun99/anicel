@@ -10,8 +10,9 @@
 // An unnamed drawing's head printed ● as TEXT — in its cel number's type,
 // twice the sheet's dot, at a size and a baseline of the face's own — while
 // the dot inside a block was a mark. These pins look at what each surface
-// lays down: the same circle for both, one size per surface. (The
-// storyboard's panels are pinned in `storyboard_three_band_test`.)
+// lays down: the same circle for both, one size per surface. (A storyboard
+// panel draws no mark at all since 2026-09-26 — 「콘티레이어는 이름 없으면
+// 진짜 이름 없도록」 — pinned in `storyboard_cut_block_bands_test`.)
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';

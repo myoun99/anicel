@@ -12,17 +12,23 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/theme/conte_ink.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
+    show TimelineRowGripTarget;
 
 import 'timeline_row_chrome_probe.dart';
 
@@ -30,7 +36,9 @@ import 'timeline_row_chrome_probe.dart';
 /// (feedback #11 gave it two inks by surface; 2026-08-17 unified the pick
 /// with the block text's ground law): a paper block — the purple paper
 /// included — takes the black bar, the dark cut-block plate takes the
-/// white one, and no bar wears an outline anywhere.
+/// white one, and no bar wears an outline anywhere. A triangle over more
+/// than one of them — the storyboard's label bands on its black plate —
+/// takes each one's ink where it stands on it (2026-09-26).
 const _trackId = TrackId('ink-track');
 
 Project _project() => Project(
@@ -127,11 +135,25 @@ void main() {
     });
   });
 
-  testWidgets('🗣️with THUMBNAILS shown the cut row\'s grips still stand on '
-      'the plate — its corners are the plate\'s bands — so the ink is the '
-      'light one, while the timeline row hands its grips its layer\'s paper '
-      '(유저 2026-09-25: 「배경이 어두워서 엣지가 잘 안보여 … 기본을 '
-      '하얀색으로」)', (tester) async {
+  Future<void> openStoryboard(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(brightness: Brightness.dark),
+        home: HomePage(initialProject: _project()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('🗣️the cut row\'s edges stand on the PLATE — the conte '
+      'sheet\'s black, so its ink is the light one — while the timeline row '
+      'hands its grips its layer\'s paper', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -153,18 +175,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The workspace serves thumbnails — and the grips' corners stand on the
-    // plate's bands all the same. ↩️B1 (08-17) read the picture's white
-    // while the grips stood on the strip; a picture is left-aligned, so an
-    // end grip mostly stood on the plate past it, dark on dark.
     final ground = timelineRowChromePainter(
       tester,
       _trackId.value,
       prefix: 'storyboard',
     )!.gripGround;
-    expect(ground, AppColors.washUp);
-    // And the ground law turns it into the LIGHT ink — the pixel the user
-    // actually looks at.
+    expect(ground, conteSheetInk);
     expect(
       blockEdgeGripColor(
         BlockEdgeGripInk.rest,
@@ -174,8 +190,54 @@ void main() {
     );
   });
 
-  testWidgets('with thumbnails OFF the strip is the plate again, and the '
-      'plate stays the grips\' ground', (tester) async {
+  testWidgets('🗣️and a triangle that crosses a label band reads THAT band '
+      'there — two grounds, two inks (유저 2026-09-26: 「2여도 흰종이부분에 '
+      '엣지는 1처럼 제대로 보이게 가능하지?」)', (tester) async {
+    await openStoryboard(tester);
+    final painter = timelineRowChromePainter(
+      tester,
+      _trackId.value,
+      prefix: 'storyboard',
+    )!;
+    final end = painter.targets.whereType<TimelineRowGripTarget>().firstWhere(
+      (target) => target.edge == TimelineBlockEdge.end,
+    );
+
+    // The end triangle hangs from its conte block's top: the conte blocks'
+    // top band, in the storyboard layer's label — the paper, unlabelled.
+    final band = painter.gripGrounds!()
+        .under(end.rect)
+        .singleWhere((ground) => ground.rect.top == end.rect.top);
+    expect(band.color, layerMarkColor(LayerMark.none));
+    expect(band.rect.height, StoryboardCutBlocksPainter.bandHeight);
+
+    // Painted: the band's part in the dark ink, the rest in the plate's
+    // light one.
+    final spy = _InkSpy();
+    painter.paint(
+      spy,
+      tester.getSize(
+        timelineRowChromeFinder(_trackId.value, prefix: 'storyboard'),
+      ),
+    );
+    // As ARGB: a Paint keeps its colour in 32 bits.
+    expect(
+      spy.inks.map((ink) => ink.toARGB32()),
+      containsAll([
+        blockEdgeGripColor(
+          BlockEdgeGripInk.rest,
+          ground: band.color,
+        ).toARGB32(),
+        blockEdgeGripColor(
+          BlockEdgeGripInk.rest,
+          ground: conteSheetInk,
+        ).toARGB32(),
+      ]),
+    );
+  });
+
+  testWidgets('with thumbnails OFF there is no picture under an edge — the '
+      'bands over the plate are all it stands on', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final manager = EditorSessionManager(initialProject: _project());
@@ -200,13 +262,30 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      timelineRowChromePainter(
-        tester,
-        _trackId.value,
-        prefix: 'storyboard',
-      )!.gripGround,
-      AppColors.washUp,
-    );
+    final painter = timelineRowChromePainter(
+      tester,
+      _trackId.value,
+      prefix: 'storyboard',
+    )!;
+    expect(painter.gripGround, conteSheetInk);
+    final grounds = painter.gripGrounds!();
+    for (final grip in painter.targets.whereType<TimelineRowGripTarget>()) {
+      expect(
+        grounds.under(grip.rect).map((ground) => ground.color).toSet(),
+        {layerMarkColor(LayerMark.none)},
+        reason: '${grip.id}: its conte block\'s band, and the plate',
+      );
+    }
   });
+}
+
+/// The ink of every mark laid down.
+class _InkSpy implements Canvas {
+  final inks = <Color>[];
+
+  @override
+  void drawPath(Path path, Paint paint) => inks.add(paint.color);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
