@@ -81,12 +81,12 @@ List<RailSwipeRow<TRow>> uniformRailRowsIn<TRow>({
 /// 조작하고 언두하면 바꼈던 레이어들 다 한번에 언두되야하는데 안됨」 — the
 /// 「일괄조작」 of I-1 is this swipe). A sweep marks the history before its
 /// first write and folds everything after it into one step when it lets
-/// go ([HistoryManager.foldSince]). Measured before: three rows swept, three
+/// go ([HistoryGestures.foldSince]). Measured before: three rows swept, three
 /// steps, and one Ctrl+Z took back one row.
 ///
 /// It also takes back what a sweep painted when the cursor draws back over
 /// it (F-182) — exactly, by retracting the row's own step
-/// ([HistoryManager.retractSince]).
+/// ([HistoryGestures.retractSince]).
 ///
 /// Absent — a rail mounted on its own — a sweep writes row by row, and a
 /// row it draws back from is pressed again.
@@ -98,7 +98,7 @@ class RailSweepHistory extends InheritedWidget {
     required super.child,
   });
 
-  final HistoryManager history;
+  final HistoryGestures history;
 
   /// Tells the host a take-back moved the document. The forward writes
   /// notify through their own verbs; a take-back has no verb of its own.

@@ -446,7 +446,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   @override
   Widget build(BuildContext context) => RailSweepHistory(
-    history: _session.historyManager,
+    history: _session.historyManager.gestures,
     changed: _session.notifyChanged,
     child: _panel(context),
   );

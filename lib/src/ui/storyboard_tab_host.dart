@@ -463,7 +463,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
 
   @override
   Widget build(BuildContext context) => RailSweepHistory(
-    history: _session.historyManager,
+    history: _session.historyManager.gestures,
     changed: _session.notifyChanged,
     child: _panel(context),
   );

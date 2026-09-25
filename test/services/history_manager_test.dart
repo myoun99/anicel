@@ -172,17 +172,17 @@ void _pressureTests() {
 void _foldTests() {
   // swipe-is-one-undo: a gesture that writes across many events — the
   // rail's column swipe — folds what it wrote at the release.
-  group('foldSince', () {
+  group('gestures.foldSince', () {
     test('folds everything pushed since the mark into ONE step, and only '
         'that', () {
       final history = HistoryManager();
       final earlier = _FakeCommand();
       history.execute(earlier);
-      final mark = history.mark;
+      final mark = history.gestures.mark;
       final run = [_FakeCommand(), _FakeCommand(), _FakeCommand()];
       run.forEach(history.execute);
 
-      history.foldSince(mark, 'Sweep');
+      history.gestures.foldSince(mark, 'Sweep');
 
       expect(history.undoCount, 2);
       expect(
@@ -197,13 +197,13 @@ void _foldTests() {
 
     test('a run an undo broke into is left as it was', () {
       final history = HistoryManager();
-      final mark = history.mark;
+      final mark = history.gestures.mark;
       for (var i = 0; i < 3; i += 1) {
         history.execute(_FakeCommand());
       }
       history.undo();
 
-      history.foldSince(mark, 'Sweep');
+      history.gestures.foldSince(mark, 'Sweep');
 
       expect(history.undoCount, 2, reason: 'nothing folded');
     });
@@ -213,12 +213,12 @@ void _foldTests() {
       final history = HistoryManager(maxEntries: 4);
       history.execute(_FakeCommand());
       history.execute(_FakeCommand());
-      final mark = history.mark;
+      final mark = history.gestures.mark;
       final run = [_FakeCommand(), _FakeCommand(), _FakeCommand()];
       run.forEach(history.execute);
       expect(history.undoCount, 4, reason: 'the premise: the stack trimmed');
 
-      history.foldSince(mark, 'Sweep');
+      history.gestures.foldSince(mark, 'Sweep');
       history.undo();
 
       expect(
