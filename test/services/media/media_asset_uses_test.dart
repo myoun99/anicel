@@ -127,8 +127,11 @@ void main() {
       'holds them, then the rows placed from it', () {
     expect(usesOf(movie), [
       'frame video/null/s1/step = Video · S1 · walk.mp4',
-      // A frame named nothing is found by the mark the timeline prints.
-      'frame video/null/s1/blank = Video · S1 · ${unnamedDrawingMark.glyph}',
+      // A frame named nothing is found by what the timeline prints — on an
+      // SE row, nothing at all (유저 2026-09-26: 「애니메이션 이외 레이어는
+      // 이름없으면 진짜 이름없도록」), so the list names the row alone
+      // (`celPlaceLine`). ↩️It printed the in-between mark until then.
+      'frame video/null/s1/blank = Video · S1 · ',
       'row c1/walk-1 = C1 · walk',
       'row c2/walk-2 = C2 · walk again',
     ]);

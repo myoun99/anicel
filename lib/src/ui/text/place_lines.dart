@@ -26,8 +26,10 @@ String rowPlaceLine({required String ownerName, required String layerName}) =>
 String celPlaceLine(CelPlace place) {
   final strings = AppText.strings;
   return switch (place) {
-    // An image row's unnamed cel writes no name: the layer's name is the
-    // picture's ([LayerKind.unnamedCelIsTheLayer]).
+    // An unnamed drawing writes no name on every kind but animation's
+    // ([LayerKind.unnamedDrawingIsInbetween], 유저 2026-09-26: 「애니메이션
+    // 이외 레이어는 이름없으면 진짜 이름없도록」), so its row names it alone.
+    // ↩️The image row's alone until then — the layer's name is the picture's.
     DrawingCelPlace(:final ownerName, :final layerName, :final celName) => [
       rowPlaceLine(ownerName: ownerName, layerName: layerName),
       if (celName.isNotEmpty) celName,

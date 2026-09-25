@@ -4374,6 +4374,17 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
   }
 }
 
+/// The paper one chrome layer of the V row's edges stands on: its slot in
+/// the row (row-local), whose edges it carries — the conte blocks', or the
+/// placeholders of the cuts that have none — and the corners it rounds them
+/// by.
+typedef _EdgePaper = ({
+  String name,
+  ({double top, double height}) slot,
+  bool conteBlocks,
+  TimelineGripPaper corners,
+});
+
 /// One panel of the strip as the edit chrome sees it: a global frame span,
 /// and what its two edges mean.
 typedef _StoryboardStripGrip = ({
@@ -4572,29 +4583,25 @@ class _StoryboardTrackRow extends StatelessWidget {
     cornerRadius: StoryboardCutBlocksPainter.plateCornerRadius,
   );
 
-  /// One chrome layer of the row's EDGES, over [slot] (row-local): the
-  /// grips of the panels that are conte blocks, or of the cuts that have
-  /// none ([onConteBlocks]), on [paper]'s corners.
+  /// One chrome layer of the row's EDGES, on one [paper]: over its slot
+  /// (row-local), the grips of the panels that are conte blocks or of the
+  /// cuts that have none, rounded by its corners.
   ///
   /// The ordinals stay the row's — indices into [grips] — so an edge's id
   /// and the hooks' lookup are the same on either paper.
   Widget _edgeChrome(
-    BuildContext context, {
-    required String name,
-    required ({double top, double height}) slot,
-    required List<_StoryboardStripGrip> grips,
-    required bool onConteBlocks,
-    required TimelineGripPaper paper,
-    required StoryboardCutBlocksPainter blocksPainter,
-    required StoryboardStripEdgeCallbacks stripEdges,
-  }) => Positioned(
-    key: ValueKey<String>('storyboard-$name-slot-${track.id.value}'),
+    BuildContext context,
+    _EdgePaper paper,
+    List<_StoryboardStripGrip> grips,
+    StoryboardCutBlocksPainter blocksPainter,
+  ) => Positioned(
+    key: ValueKey<String>('storyboard-${paper.name}-slot-${track.id.value}'),
     left: 0,
     right: 0,
-    top: slot.top,
-    height: slot.height,
+    top: paper.slot.top,
+    height: paper.slot.height,
     child: TimelineRowEditChromeLayer(
-      paintKey: ValueKey<String>('storyboard-$name-${track.id.value}'),
+      paintKey: ValueKey<String>('storyboard-${paper.name}-${track.id.value}'),
       // What the triangles stand on: the plate, and over it the block's
       // label bands and pictures, each in its own ink (유저 2026-09-26:
       // 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게 가능하지?」). ↩️One
@@ -4606,14 +4613,14 @@ class _StoryboardTrackRow extends StatelessWidget {
         hovered: false,
       ),
       gripGrounds: () =>
-          StoryboardPlateGrounds(blocksPainter, crossOffset: slot.top),
+          StoryboardPlateGrounds(blocksPainter, crossOffset: paper.slot.top),
       // No layer: these blocks are panels of many cuts, and the row has no
       // run edges for a LayerId to name.
       layerId: null,
       resolver: TimelineRowChromeResolver(
         gripBlocks: [
           for (var index = 0; index < grips.length; index += 1)
-            if (grips[index].isConteBlock == onConteBlocks)
+            if (grips[index].isConteBlock == paper.conteBlocks)
               (
                 ordinal: index,
                 startIndex: grips[index].startFrame,
@@ -4632,10 +4639,10 @@ class _StoryboardTrackRow extends StatelessWidget {
         gripIdScope: track.id.value,
         layer: null,
         baseLayer: null,
-        crossAxisExtent: slot.height,
+        crossAxisExtent: paper.slot.height,
         axis: Axis.horizontal,
         includeRunEdges: false,
-        gripPaper: paper,
+        gripPaper: paper.corners,
       ),
       geometry: frameGeometry,
       axis: Axis.horizontal,
@@ -4652,7 +4659,7 @@ class _StoryboardTrackRow extends StatelessWidget {
           // really the previous back edge" trick belonged all along.
           final grip = grips[ordinal];
           if (edge == TimelineBlockEdge.start) {
-            return stripEdges.onCutEdgeBegin(
+            return stripEdges!.onCutEdgeBegin(
               grip.cutId,
               TimelineBlockEdge.start,
               grip.panelIndex,
@@ -4660,16 +4667,16 @@ class _StoryboardTrackRow extends StatelessWidget {
           }
           final commaKey = grip.commaBlockKey;
           return commaKey == null
-              ? stripEdges.onCutEdgeBegin(
+              ? stripEdges!.onCutEdgeBegin(
                   grip.cutId,
                   TimelineBlockEdge.end,
                   grip.panelIndex,
                 )
-              : stripEdges.onCommaBegin(grip.cutId, commaKey);
+              : stripEdges!.onCommaBegin(grip.cutId, commaKey);
         },
-        onUpdate: stripEdges.onUpdate,
-        onEnd: stripEdges.onEnd,
-        onCancel: stripEdges.onCancel,
+        onUpdate: stripEdges!.onUpdate,
+        onEnd: stripEdges!.onEnd,
+        onCancel: stripEdges!.onCancel,
       ),
       runEdit: null,
     ),
@@ -5032,32 +5039,26 @@ class _StoryboardTrackRow extends StatelessWidget {
             // THE timeline's chrome layer, not a cut-shaped copy of it: one
             // painter and one gesture layer per paper, where this used to be
             // two widgets a cut.
-            if (stripEdges case final stripEdges?) ...[
-              _edgeChrome(
-                context,
-                name: 'edit-chrome',
-                slot: conteSlot,
-                grips: grips,
-                onConteBlocks: true,
-                paper: const (
-                  cornerStarts: <int>{},
-                  cornerEnds: <int>{},
-                  cornerRadius: 0,
+            if (stripEdges != null)
+              for (final paper in <_EdgePaper>[
+                (
+                  name: 'edit-chrome',
+                  slot: conteSlot,
+                  conteBlocks: true,
+                  corners: const (
+                    cornerStarts: <int>{},
+                    cornerEnds: <int>{},
+                    cornerRadius: 0.0,
+                  ),
                 ),
-                blocksPainter: blocksPainter,
-                stripEdges: stripEdges,
-              ),
-              _edgeChrome(
-                context,
-                name: 'plate-edit-chrome',
-                slot: (top: 0, height: laneHeight),
-                grips: grips,
-                onConteBlocks: false,
-                paper: _gripPaper(grips),
-                blocksPainter: blocksPainter,
-                stripEdges: stripEdges,
-              ),
-            ],
+                (
+                  name: 'plate-edit-chrome',
+                  slot: (top: 0.0, height: laneHeight),
+                  conteBlocks: false,
+                  corners: _gripPaper(grips),
+                ),
+              ])
+                _edgeChrome(context, paper, grips, blocksPainter),
             // A pool file let go on the row's frames. The row stands on that
             // frame through its own press first — landing is standing (T4) —
             // then hands the drop up, where the session names the NEW cut
