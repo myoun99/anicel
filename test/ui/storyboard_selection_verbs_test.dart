@@ -540,6 +540,31 @@ void main() {
       expect(landed.endFrameExclusive, 7);
     });
 
+    test('a transition-row DELETE on an UNSELECTED track takes that track\'s '
+        'spans — the write goes to the row\'s own track', () {
+      final session = EditorSessionManager(initialProject: twoTrackProject());
+      addTearDown(session.dispose);
+      final transitionId = transitionLayerIdForTrack(track2Id);
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: transitionId,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 4,
+      );
+      expect(session.trackFrameRangeSelection.value!.trackId, track2Id);
+
+      session.cells.deleteCellAtCurrentFrame();
+
+      final tracks = session.repository.requireProject().tracks;
+      expect(tracks.last.transitionLayer.instructions, isEmpty);
+      session.undo();
+      expect(
+        session.repository.requireProject().tracks.last.transitionLayer
+            .instructions
+            .keys,
+        [2],
+      );
+    });
+
     test('cancelling restores the selection to its own track too', () {
       final session = EditorSessionManager(initialProject: twoTrackProject());
       addTearDown(session.dispose);

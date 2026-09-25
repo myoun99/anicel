@@ -1,13 +1,10 @@
 import 'dart:collection' show SplayTreeMap;
 import '../../models/camera_instruction.dart';
-import '../../models/key_range_shift.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart';
-import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
 import '../text/app_strings.dart';
@@ -413,107 +410,8 @@ class Transitions {
   /// ⚠️Not the question [transitionShownInCutAt] answers. A ＋ and a double
   /// tap ask whether a mark stands there at all — an O.L's does, so nothing
   /// is made under it — and those two keep asking that.
-  int? transitionSpanStartEditableInCutAt(int localFrame) =>
-      _editableInCut(transitionSpanStartShownInCutAt(localFrame));
-
-  /// The GLOBAL starts of the spans whose marks START in the cut's frames
-  /// `[start, endExclusive)` — a frame range's hold on the row, mapped back
-  /// mark by mark as [transitionSpanStartEditableInCutAt] maps one frame,
-  /// an O.L's left out — what a range selection holds of the row
-  /// (transition-row-range-in-the-cut).
-  Set<int> transitionSpanStartsEditableInCutWithin(
-    int start,
-    int endExclusive,
-  ) => {
-    for (final shown in trackTransitionDisplayLayer.instructions.keys)
-      if (shown >= start && shown < endExclusive)
-        ?_editableInCut(_transitionDisplayClone?.origins[shown]),
-  };
-
-  /// The transition spans a CUT-local range [selection] holds, by row id:
-  /// the GLOBAL starts its marks map back to
-  /// ([transitionSpanStartsEditableInCutWithin]). A cut draws one
-  /// transition row, its track's.
-  Map<LayerId, Set<int>> transitionStartsHeldInCut(
-    TimelineFrameRangeSelection selection,
-  ) => {
-    for (final id in selection.spanLayerIds)
-      if (isTrackTransitionLayerId(id))
-        if (transitionSpanStartsEditableInCutWithin(
-              selection.startIndex,
-              selection.endIndexExclusive,
-            )
-            case final starts when starts.isNotEmpty)
-          id: starts,
-  };
-
-  /// The same on the storyboard's TRACK axis, where the range is stated on
-  /// the rows' own axis: every span STARTING in it ([keysStartingIn]) on
-  /// each transition row it spans — an O.L's too, this being the rail that
-  /// edits them.
-  Map<LayerId, Set<int>> transitionStartsHeldOnTrack(
-    TrackFrameRangeSelection selection,
-  ) => {
-    for (final row in selection.spanRows)
-      if (row.owningLayerId case final id?)
-        if (trackTransitionOwner(id) case final owner?)
-          if (keysStartingIn(
-                owner.transitionLayer.instructions.keys,
-                selection.startFrame,
-                selection.endFrameExclusive,
-              )
-              case final starts when starts.isNotEmpty)
-            id: starts,
-  };
-
-  /// THE live selection's hold on the transition rows, whichever axis it is
-  /// stated on — the spans' half of what
-  /// `RangeSelections.selectionBlockStartsByLayer` answers for blocks. Null
-  /// when it holds none.
-  Map<LayerId, Set<int>>? selectionTransitionStartsByRow() {
-    final inCut = _selection.frameRangeSelection.value;
-    final onTrack = _selection.trackFrameRangeSelection.value;
-    final held = <LayerId, Set<int>>{
-      if (inCut != null) ...transitionStartsHeldInCut(inCut),
-      if (onTrack != null) ...transitionStartsHeldOnTrack(onTrack),
-    };
-    return held.isEmpty ? null : held;
-  }
-
-  /// Removes, from each transition row named in [startsByRow], the spans
-  /// starting at its starts, in one undo step — the range delete's half for
-  /// the spans (which runs it beside the block delete, in ITS one step).
-  void removeTransitionSpans(Map<LayerId, Set<int>> startsByRow) {
-    _project.historyManager.runAsOneStep('Delete transition', () {
-      for (final MapEntry(key: id, value: starts) in startsByRow.entries) {
-        final track = trackTransitionOwner(id);
-        if (track == null) {
-          continue;
-        }
-        final before = track.transitionLayer;
-        _project.historyManager.execute(
-          UpdateTrackTransitionLayerCommand(
-            repository: _project.repository,
-            trackId: track.id,
-            before: before,
-            after: before.copyWith(
-              instructions: SplayTreeMap<int, InstructionEvent>.from({
-                for (final entry in before.instructions.entries)
-                  if (!starts.contains(entry.key)) entry.key: entry.value,
-              }),
-            ),
-            debugLabel: 'Delete transition',
-          ),
-        );
-      }
-    });
-    _transitionDisplayClone = null;
-    _changes.notifyChanged();
-  }
-
-  /// [start] when the span starting there on the global row is one the cut
-  /// edits ([transitionEditableInCut]), else null.
-  int? _editableInCut(int? start) {
+  int? transitionSpanStartEditableInCutAt(int localFrame) {
+    final start = transitionSpanStartShownInCutAt(localFrame);
     final event = start == null
         ? null
         : _selection.activeTrack.transitionLayer.instructions[start];
@@ -588,8 +486,18 @@ class Transitions {
   void updateTransitionInstructions(
     Map<int, InstructionEvent> instructions, {
     String description = 'Edit transition',
+  }) => writeTransitionRow(
+    _selection.activeTrack,
+    instructions,
+    description: description,
+  );
+
+  /// [updateTransitionInstructions] for whichever track owns the row.
+  void writeTransitionRow(
+    Track track,
+    Map<int, InstructionEvent> instructions, {
+    required String description,
   }) {
-    final track = _selection.activeTrack;
     final before = track.transitionLayer;
     _project.historyManager.execute(
       UpdateTrackTransitionLayerCommand(

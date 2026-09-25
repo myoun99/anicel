@@ -3,6 +3,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/frame.dart' show inbetweenMark;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/pixel_verb_subject.dart';
 import '../../services/cel_pixel_overwrite.dart';
@@ -19,6 +20,7 @@ import '../../services/canvas_selection_region.dart';
 import 'lane_verbs.dart';
 import 'range_selections.dart';
 import 'frame_clipboard.dart';
+import 'transition_range_hold.dart';
 import 'transitions.dart';
 
 /// The CELL VERBS — deleting the cell under the cursor or the selection,
@@ -284,7 +286,14 @@ class CellVerbs {
       // #2) — its blocks, and the transition spans it holds
       // (transition-row-range-in-the-cut).
       _rangeSelections.selectionBlockStartsByLayer() != null ||
-      _transitions.selectionTransitionStartsByRow() != null;
+      _selectionTransitionStarts != null;
+
+  /// The transition spans THE live selection holds, either axis.
+  Map<LayerId, Set<int>>? get _selectionTransitionStarts =>
+      _transitions.transitionStartsHeldBy(
+        inCut: _selection.frameRangeSelection.value,
+        onTrack: _selection.trackFrameRangeSelection.value,
+      );
 
   /// Whether a live CELL band owns the next cell-verb press.
   ///
@@ -365,7 +374,7 @@ class CellVerbs {
     // holds, in one composite undo; the leftover selection covers empty
     // cells so it clears with the delete.
     final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
-    final transitionTargets = _transitions.selectionTransitionStartsByRow();
+    final transitionTargets = _selectionTransitionStarts;
     if (selectionTargets != null || transitionTargets != null) {
       _project.historyManager.runAsOneStep('Delete selected cells', () {
         if (selectionTargets != null) {

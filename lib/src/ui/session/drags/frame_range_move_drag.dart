@@ -32,6 +32,7 @@ import '../render_caches.dart';
 import '../row_spans.dart';
 import '../session_roles.dart';
 import '../track_se_display.dart';
+import '../transition_range_hold.dart';
 import '../transitions.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
@@ -106,9 +107,9 @@ const FrameAxisRiders noRiders = (
 
 /// A TRANSITION row riding a frame-range move: the GLOBAL row as it stood
 /// at begin, and the starts of the spans that move — the ones the
-/// selection holds ([Transitions.transitionStartsHeldInCut] /
-/// [Transitions.transitionStartsHeldOnTrack]), which on a cut's rail are
-/// not the frames the selection covers.
+/// selection holds ([TransitionRangeHold.transitionStartsHeldInCut] /
+/// [TransitionRangeHold.transitionStartsHeldOnTrack]), which on a cut's
+/// rail are not the frames the selection covers.
 typedef TransitionRider = ({Layer row, Set<int> starts});
 
 /// The KEY sources a frame-range move carries (P3b-2): the camera keys
@@ -222,7 +223,7 @@ _castTrackSources(
 
 /// The transition rows riding a move, from the spans the selection holds
 /// on each — the same hold the range delete takes
-/// ([Transitions.selectionTransitionStartsByRow]).
+/// ([TransitionRangeHold.transitionStartsHeldBy]).
 List<TransitionRider> _transitionRidersOf(
   Map<LayerId, Set<int>> held,
   Transitions transitions,
