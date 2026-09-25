@@ -488,37 +488,15 @@ class _StillLayer extends OffsetLayer {
         return;
       }
       final image = toImageSync(bounds, pixelRatio: fit.scale);
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      fit.blit(canvas, image, Offset.zero);
       _owner._captureCount += 1;
-      if (MeasurementMode.showRepaints.value) {
-        canvas.drawRect(
-          Offset.zero & size,
-          Paint()..color = MeasurementMode.repaintTint(_owner._captureCount),
-        );
-      }
       _image = image;
-      _picture = recorder.endRecording();
+      _picture = _pictureOf(image, fit, size);
       _imageFit = fit;
       _imageSignature = signature;
       _capturedAt = _frame;
       StillRaster._capturesEver += 1;
     } on Object catch (error, stack) {
-      // Painting is always available and always correct, so a refused
-      // capture costs the saving and nothing else — but it is reported.
-      _owner._standDown = StillStandDown.captureFailed;
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stack,
-          library: 'anicel',
-          context: ErrorDescription(
-            'taking the image of StillRaster(${_owner.debugLabel}) — '
-            'painting instead',
-          ),
-        ),
-      );
+      _refused(error, stack);
       return;
     } finally {
       _capturing = false;
@@ -527,6 +505,38 @@ class _StillLayer extends OffsetLayer {
     // frame draws the image instead.
     markNeedsAddToScene();
     SchedulerBinding.instance.scheduleFrame();
+  }
+
+  /// The one picture the scene gets instead of the region: [image] put
+  /// back where it was taken, under the Show Repaints tint when that is on.
+  ui.Picture _pictureOf(ui.Image image, RasterGridFit fit, Size size) {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    fit.blit(canvas, image, Offset.zero);
+    if (MeasurementMode.showRepaints.value) {
+      canvas.drawRect(
+        Offset.zero & size,
+        Paint()..color = MeasurementMode.repaintTint(_owner._captureCount),
+      );
+    }
+    return recorder.endRecording();
+  }
+
+  /// Painting is always available and always correct, so a refused capture
+  /// costs the saving and nothing else — but it is reported.
+  void _refused(Object error, StackTrace stack) {
+    _owner._standDown = StillStandDown.captureFailed;
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'anicel',
+        context: ErrorDescription(
+          'taking the image of StillRaster(${_owner.debugLabel}) — '
+          'painting instead',
+        ),
+      ),
+    );
   }
 
   /// What the region's layer tree IS, as values to compare — every layer

@@ -230,6 +230,7 @@ class _RenderKeptPictureLayer extends RenderBox {
   _RenderKeptPictureLayer(this._color);
 
   Color _color;
+  Color get color => _color;
   set color(Color value) {
     if (value == _color) {
       return;
