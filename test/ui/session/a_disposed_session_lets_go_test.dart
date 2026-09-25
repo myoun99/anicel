@@ -62,8 +62,6 @@ void main() {
       ),
       'brushInputActive': () => session.brushInputActive.addListener(() {}),
       'dragPreview': () => session.dragPreview.addListener(() {}),
-      'transitionEdgeDragPreview': () => session.transitionEdgeDragPreview
-          .addListener(() {}),
       'opacityVerbs.dragPreview': () => session.opacityVerbs.dragPreview
           .addListener(() {}),
       // The V row's preview sat beside the layer's for weeks and the list

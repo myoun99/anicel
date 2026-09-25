@@ -1046,7 +1046,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
+  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions, internals: this, renderCaches: renderCaches);
 
   TimelineRowAddress get selectedRow => standing.selectedRow;
 
@@ -1297,7 +1297,6 @@ class EditorSessionManager extends ChangeNotifier
     frameRangeSelection.dispose,
     brushInputActive.dispose,
     dragPreview.dispose,
-    transitionEdgeDragPreview.dispose,
     opacityVerbs.dispose,
     onionSkin.dispose,
     cutVerbs.dispose,
@@ -2162,12 +2161,6 @@ class EditorSessionManager extends ChangeNotifier
     exposureVerbs: exposureVerbs,
     internals: this,
   );
-
-  /// The transition row as the in-flight edge drag would leave it — the
-  /// strip renders THIS while a grip is held, so the mark follows the hand
-  /// instead of jumping on release. Null when no drag is in flight.
-  @override
-  final ValueNotifier<Layer?> transitionEdgeDragPreview = ValueNotifier(null);
 
   // --- Media import (R3b): stills, GIF sequences, cut folders -------------
 

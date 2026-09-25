@@ -352,6 +352,15 @@ class CellInstances {
       // the ＋'s ([createActiveInstance]), never this button's.
       LayerKind.instruction || LayerKind.se =>
         _cells.hasActiveNonNegativeCell && activeCellHoldsAnInstance,
+      // The transition row edits what its mark SHOWS — its cell is the
+      // projection's (transition-row-open-in-the-cut) — and an O.L's mark
+      // is not the cut's to edit (유저 2026-09-26).
+      LayerKind.transition =>
+        _cells.hasActiveNonNegativeCell &&
+            _transitions.transitionSpanStartEditableInCutAt(
+                  _controllers.timelineController.currentFrameIndex,
+                ) !=
+                null,
       _ => _frameVerbs.canRenameFrameAtCurrentFrame,
     };
   }

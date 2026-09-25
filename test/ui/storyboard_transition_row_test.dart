@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
@@ -15,6 +16,8 @@ import 'package:anicel/src/ui/session/transitions.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show timelineDragPreviewGlobalLayerFor;
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart'
     show TimelineActionToolbar;
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
@@ -415,7 +418,7 @@ void main() {
       // The in-flight form is on the preview channel, so the strip can follow
       // the hand while the repository still holds the committed span.
       expect(
-        session.transitionEdgeDragPreview.value!.instructions[3]!.length,
+        _inFlight(session)!.instructions[3]!.length,
         12,
       );
       expect(
@@ -425,7 +428,7 @@ void main() {
       );
 
       session.edgeDrag.endTransitionEdgeDrag();
-      expect(session.transitionEdgeDragPreview.value, isNull);
+      expect(session.dragPreview.value, isNull);
       expect(session.activeTrack.transitionLayer.instructions[3]!.length, 12);
 
       session.undo();
@@ -482,7 +485,7 @@ void main() {
       session.edgeDrag.updateTransitionEdgeDrag(20);
       session.edgeDrag.cancelTransitionEdgeDrag();
 
-      expect(session.transitionEdgeDragPreview.value, isNull);
+      expect(session.dragPreview.value, isNull);
       expect(session.activeTrack.transitionLayer.instructions[1]!.length, 1);
     });
 
@@ -527,14 +530,14 @@ void main() {
         isFalse,
       );
       expect(
-        session.transitionEdgeDragPreview.value!.instructions[3]!.length,
+        _inFlight(session)!.instructions[3]!.length,
         6,
         reason: 'the refusal must not clear the live preview',
       );
 
       session.edgeDrag.updateTransitionEdgeDrag(7);
       session.edgeDrag.endTransitionEdgeDrag();
-      expect(session.transitionEdgeDragPreview.value, isNull);
+      expect(session.dragPreview.value, isNull);
       expect(session.activeTrack.transitionLayer.instructions[3]!.length, 8);
     });
   });
@@ -714,3 +717,12 @@ void main() {
     });
   });
 }
+
+/// The transition row as the drag in flight would leave it, on the global
+/// axis — the form the storyboard's strip draws off the one drag-preview
+/// channel.
+Layer? _inFlight(EditorSessionManager session) =>
+    timelineDragPreviewGlobalLayerFor(
+      session.dragPreview.value,
+      session.activeTrack.transitionLayer.id,
+    );

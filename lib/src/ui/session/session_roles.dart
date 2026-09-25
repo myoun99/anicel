@@ -196,7 +196,6 @@ abstract interface class SessionInternals {
     int? globalFrameIndex,
   });
   TrackSeWindow get trackSeWindow;
-  ValueNotifier<Layer?> get transitionEdgeDragPreview;
   void updateActiveCutCameraTrack(
     TransformTrack track, {
     String description = 'Edit camera keyframes',

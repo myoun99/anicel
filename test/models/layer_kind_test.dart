@@ -206,7 +206,7 @@ void _theCapabilityTable() {
     LayerKind.image,
     LayerKind.instruction,
   });
-  column('isReadOnlyInCut', (kind) => kind.isReadOnlyInCut, {
+  column('isTrackFixture', (kind) => kind.isTrackFixture, {
     LayerKind.transition,
   });
   column('reordersInCut', (kind) => kind.reordersInCut, {

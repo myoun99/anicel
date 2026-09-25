@@ -1065,7 +1065,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // のりしろ read.
                     transitionCrossingTooltip:
                         _session.transitions.transitionCrossingWarningAtGlobalKey,
-                    transitionPreview: _session.transitionEdgeDragPreview,
                     transitionCommaDrag: TimelineCommaDragCallbacks(
                       onBegin: (layerId, blockStartIndex, edge) =>
                           _session.edgeDrag.beginTransitionEdgeDrag(

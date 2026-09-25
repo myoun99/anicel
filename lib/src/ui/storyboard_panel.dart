@@ -523,7 +523,6 @@ class StoryboardPanel extends StatefulWidget {
     this.transitionDefById,
     this.rowsChannel,
     this.transitionCrossingTooltip,
-    this.transitionPreview,
     this.transitionCommaDrag,
     this.onEditTransitionSpan,
     this.onEditSeEntry,
@@ -1062,12 +1061,6 @@ class StoryboardPanel extends StatefulWidget {
   /// D26: crossing-fade warning resolver for the AUTHORING row — global
   /// start keys (this axis is where spans really live).
   final String? Function(int spanStartKey)? transitionCrossingTooltip;
-
-  /// The session's live edge-drag form of the row: while a grip is held the
-  /// strip renders THIS, so the mark follows the hand instead of jumping on
-  /// release ([[drag-verb-lifetime]] — the verb and its in-flight value live
-  /// in the session, never in this widget's State).
-  final ValueListenable<Layer?>? transitionPreview;
 
   /// The row's edge grips — the timeline's own comma-drag hooks, pointed at
   /// the session's transition writer. Block starts are GLOBAL frames.
@@ -3293,10 +3286,10 @@ class _StoryboardTransitionRow extends StatelessWidget {
     // grips go in LAST below.
     //
     // 🚨C1 (2026-08-17): the MOVE half too — the SE row's, verbatim. It used
-    // to refuse (`onMoveBegin: false`) on [LayerKind.isReadOnlyInCut]'s
-    // reasoning, but that law is about the CUT timeline's projection; THIS
-    // rail is the global axis the spans really live on — their one authoring
-    // surface, where the edge grips already edit. The row list handed to the
+    // to refuse (`onMoveBegin: false`) on the cut's read-only law, but that
+    // law was about the CUT timeline's projection; THIS rail is the global
+    // axis the spans really live on, where the edge grips already edit.
+    // (That law went on 2026-09-25 — the cut's marks edit too.) The row list handed to the
     // move resolver holds only this row, which is the whole kind guard: a
     // transition span has no sibling row to land on, so the drag slides
     // frames and never changes rows (the SE rows' own clamp construction).

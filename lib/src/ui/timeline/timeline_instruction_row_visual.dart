@@ -197,6 +197,10 @@ List<Widget> timelineRowInstructionOverlays({
 ///
 /// [crossAxisExtent] is the ROW's: the grips stand on the row's paper, which
 /// stops a seam short of it (I-44, [timelineRowPaperExtent]).
+///
+/// [spanTakesGrips] leaves out the spans a surface draws but does not edit
+/// (a cut's O.L marks); [suppressStartGripAtZero] is the exposure grips'
+/// spill-in rule.
 List<Widget> timelineRowInstructionEdgeGrips({
   required Layer layer,
   required int frameStartIndex,
@@ -205,6 +209,8 @@ List<Widget> timelineRowInstructionEdgeGrips({
   required TimelineCommaDragCallbacks commaDrag,
   required Axis axis,
   required double crossAxisExtent,
+  bool suppressStartGripAtZero = false,
+  bool Function(InstructionEvent event)? spanTakesGrips,
 }) {
   final grips = <Widget>[];
   var ordinal = 0;
@@ -213,8 +219,16 @@ List<Widget> timelineRowInstructionEdgeGrips({
     final endExclusive = start + entry.value.length;
     final visible =
         endExclusive > frameStartIndex && start < frameEndIndexExclusive;
-    if (visible) {
+    if (visible && (spanTakesGrips?.call(entry.value) ?? true)) {
       for (final edge in TimelineBlockEdge.values) {
+        // The exposure grips' rule ([timelineLayerGripBlocks]): the span at
+        // frame 0 of a row whose first block began in an earlier cut keeps
+        // its start there.
+        if (edge == TimelineBlockEdge.start &&
+            start == 0 &&
+            suppressStartGripAtZero) {
+          continue;
+        }
         grips.add(
           TimelineFrameSpan(
             placement: timelineBlockEdgeGripPlacement(

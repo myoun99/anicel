@@ -32,7 +32,7 @@ void main() {
 
   Widget harness({
     required Layer layer,
-    int? seSpillInLeadFrames,
+    int? spillInLeadFrames,
     TimelineCommaDragCallbacks? commaDrag,
   }) {
     return MaterialApp(
@@ -51,7 +51,7 @@ void main() {
             onSelectLayer: (_) {},
             onSelectFrame: (_) {},
             commaDrag: commaDrag,
-            seSpillInLeadFrames: seSpillInLeadFrames,
+            spillInLeadFrames: spillInLeadFrames,
           ),
         ),
       ),
@@ -111,7 +111,7 @@ void main() {
         layer: seLayer({
           0: const TimelineExposure.drawing(FrameId('f0'), length: 3),
         }),
-        seSpillInLeadFrames: 2,
+        spillInLeadFrames: 2,
         commaDrag: commaDrag,
       ),
     );

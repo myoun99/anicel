@@ -3,6 +3,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/frame.dart' show inbetweenMark;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
+import '../../models/layer_kind.dart';
 import '../../models/pixel_verb_subject.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
@@ -18,6 +19,7 @@ import '../../services/canvas_selection_region.dart';
 import 'lane_verbs.dart';
 import 'range_selections.dart';
 import 'frame_clipboard.dart';
+import 'transitions.dart';
 
 /// The CELL VERBS — deleting the cell under the cursor or the selection,
 /// the status text a cell shows, and the pixel verbs (the keys they act
@@ -37,6 +39,7 @@ class CellVerbs {
     required LaneVerbs laneVerbs,
     required RangeSelections rangeSelections,
     required FrameClipboard clipboard,
+    required Transitions transitions,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -46,9 +49,11 @@ class CellVerbs {
        _renderCaches = renderCaches,
        _laneVerbs = laneVerbs,
        _rangeSelections = rangeSelections,
-       _clipboard = clipboard;
+       _clipboard = clipboard,
+       _transitions = transitions;
 
   final FrameClipboard _clipboard;
+  final Transitions _transitions;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -311,6 +316,16 @@ class CellVerbs {
       return false;
     }
     final layer = _selection.activeLayer;
+    // The transition row deletes the span its mark SHOWS, on the global row
+    // (transition-row-open-in-the-cut) — its cells are a projection, which
+    // no cut-local cel verb may read as its own. An O.L's mark is not the
+    // cut's to delete (유저 2026-09-26).
+    if (layer?.kind == LayerKind.transition) {
+      return _transitions.transitionSpanStartEditableInCutAt(
+            _controllers.timelineController.currentFrameIndex,
+          ) !=
+          null;
+    }
     // SYNCED attach rows: cel removal is out of v1 scope (delete the row
     // or undo the creation) — cells are display material there. Free
     // attach rows delete cells like normal (UI-R21 #3).
@@ -362,6 +377,15 @@ class CellVerbs {
     }
     final layer = _selection.activeLayer;
     if (layer == null || !canDeleteCellAtCurrentFrame) {
+      return;
+    }
+    if (layer.kind == LayerKind.transition) {
+      final start = _transitions.transitionSpanStartEditableInCutAt(
+        _controllers.timelineController.currentFrameIndex,
+      );
+      if (start != null) {
+        _transitions.removeTransitionSpanAt(start);
+      }
       return;
     }
 

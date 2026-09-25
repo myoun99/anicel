@@ -52,7 +52,7 @@ class LayerController {
   /// and edit the track's GLOBAL layers instead (never these clones).
   final List<Layer> Function()? _trackSeDisplayLayers;
 
-  /// The track's ONE transition row, likewise a read-only display clone.
+  /// The track's ONE transition row, likewise a display clone.
   /// It is a PROJECTION rather than a window: a span crossing this cut's
   /// boundary shows at full length on the side it belongs to, so the clone
   /// deliberately disagrees with the global row about where the span sits.

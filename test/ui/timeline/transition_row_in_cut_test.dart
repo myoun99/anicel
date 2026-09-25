@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
 import 'package:anicel/src/models/transition_geometry.dart'
     show TransitionSides, transitionSidesOf;
 import 'package:anicel/src/ui/editor_canvas_area.dart';
@@ -16,18 +19,33 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart'
     show editActiveInstance;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
+    show TimelineBlockEdgeGrip;
+import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart'
+    show TimelineFrameCellsRow;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
     show TimelineLayerControlsRow;
 import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
     show TimelineSelectedExposureOutline;
 import 'package:anicel/src/ui/session/transitions.dart';
+import 'package:anicel/src/ui/timeline_tab_host.dart' show TimelineTabHost;
 
-/// The TRANSITION row inside a CUT's timeline — visible, and read-only.
+/// The TRANSITION row inside a CUT's timeline — a projection you can edit.
 ///
 /// 📐 The shape was settled long before this (the design's "글로벌 ↔ 로컬" law):
-/// the global row is edited, a cut's row is READ, and the two deliberately draw
-/// the same O.L differently — a cut sees the mark at its FULL length on its own
-/// side, because half a bowtie tells an animator nothing.
+/// the two rows deliberately draw the same O.L differently — a cut sees the
+/// mark at its FULL length on its own side, because half a bowtie tells an
+/// animator nothing.
+///
+/// ↩️The cut's row was READ-ONLY by the same law until 유저 2026-09-25
+/// (transition-row-open-in-the-cut): 「편집은 동일하게 타임라인에서 다
+/// 할수있고, 원본 데이터는 글로벌에서 가지고있음. 일방적인 투영만 하되 편집은
+/// 가능하게」. The projection stays; every edit made on a mark is written to
+/// the GLOBAL span it shows — except an O.L's, which the cut draws whole and
+/// the storyboard edits (유저 2026-09-26: 「일단 ol블록만 편집불가능이
+/// 맞을거같은데」). The editing cases use a fade that began in the cut before:
+/// its mark is drawn from local 0, so its frames are not the span's own — the
+/// one place a verb that skipped the mapping would reach the wrong frames.
 ///
 /// 🚨What was missing was not the shape but the PATH. Eight sites in the
 /// timeline asked `kind == LayerKind.instruction` where the question they meant
@@ -41,11 +59,13 @@ Transitions transitionsOf(EditorSessionManager session) =>
     session.transitions;
 
 void main() {
-  /// A session with two cuts and an O.L span straddling their boundary, reached
-  /// through the live tree so the host is notified — a raw repository write
-  /// leaves the rows on the old number and the test reads green-looking.
-  Future<EditorSessionManager> pumpTwoCutsWithOverlap(
+  /// A session with two cuts and one transition span on the track, set by
+  /// [spanAt] from cut 1's duration — reached through the live tree so the
+  /// host is notified; a raw repository write leaves the rows on the old
+  /// number and the test reads green-looking.
+  Future<EditorSessionManager> pumpTwoCutsWith(
     WidgetTester tester,
+    MapEntry<int, InstructionEvent> Function(int firstDuration) spanAt,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -60,27 +80,109 @@ void main() {
     session.cutVerbs.createCut();
     await tester.pumpAndSettle();
     final first = session.repository.requireProject().tracks.first.cuts.first;
-    // Straddling the boundary between cut 1 and cut 2: 8 frames, half on each
-    // side. This is the O.L both cuts take a のりしろ for.
-    final transitions = transitionsOf(session);
-    transitions.updateTransitionInstructions(
-      SplayTreeMap<int, InstructionEvent>.from({
-        first.duration - 4: const InstructionEvent(
-          instructionId: 'ol',
-          length: 8,
-        ),
-      }),
+    transitionsOf(session).updateTransitionInstructions(
+      SplayTreeMap<int, InstructionEvent>.fromEntries([
+        spanAt(first.duration),
+      ]),
     );
     session.selectCut(first.id);
     await tester.pumpAndSettle();
     return session;
   }
 
+  /// An O.L straddling the boundary between cut 1 and cut 2: 8 frames, half
+  /// on each side — the span both cuts take a のりしろ for.
+  Future<EditorSessionManager> pumpTwoCutsWithOverlap(WidgetTester tester) =>
+      pumpTwoCutsWith(
+        tester,
+        (firstDuration) => MapEntry(
+          firstDuration - 4,
+          const InstructionEvent(instructionId: 'ol', length: 8),
+        ),
+      );
+
+  /// An F.I that begins two frames before cut 2 and ends three frames into
+  /// it: it belongs to cut 2 (a fade in lands where it ends) and crosses
+  /// cut 2's start, so cut 2 draws it from its frame 0 — at 0–5, while the
+  /// span itself covers −2…3 there.
+  Future<EditorSessionManager> pumpTwoCutsWithFadeIn(WidgetTester tester) =>
+      pumpTwoCutsWith(
+        tester,
+        (firstDuration) => MapEntry(
+          firstDuration - 2,
+          const InstructionEvent(instructionId: 'fi', length: 5),
+        ),
+      );
+
   Finder transitionRow() => find.byWidgetPredicate(
     (widget) =>
         widget is TimelineLayerControlsRow &&
         widget.layer.kind == LayerKind.transition,
   );
+
+  /// The second cut — the side whose row draws a span that crosses in from
+  /// cut 1 from its own frame 0.
+  Future<void> openTheSecondCut(
+    WidgetTester tester,
+    EditorSessionManager session,
+  ) async {
+    session.selectCut(
+      session.repository.requireProject().tracks.first.cuts[1].id,
+    );
+    await tester.pumpAndSettle();
+  }
+
+  /// Stands on the transition row at [frame] of the open cut.
+  Future<void> standOnTheRowAt(
+    WidgetTester tester,
+    EditorSessionManager session,
+    int frame,
+  ) async {
+    await tester.tap(transitionRow());
+    await tester.pumpAndSettle();
+    expect(session.activeLayerId, session.activeTrack.transitionLayer.id);
+    session.selectFrameIndex(frame);
+    await tester.pumpAndSettle();
+  }
+
+  /// Stands on the F.I's mark in cut 2 at frame 4: inside the drawn mark
+  /// (0–5), past the span's own end (it covers −2…3 here), so only a verb
+  /// that maps the mark back to its span reaches it.
+  Future<void> standOnTheMarkBeyondTheSpan(
+    WidgetTester tester,
+    EditorSessionManager session,
+  ) async {
+    await standOnTheRowAt(tester, session, 4);
+    expect(
+      session.transitions.transitionSpanAt(session.editingGlobalFrame),
+      isNull,
+      reason: 'the premise: the span itself does not cover this frame',
+    );
+  }
+
+  /// The transition row's grips on the cut's grids — none of the
+  /// storyboard's.
+  Finder cutGrips(EditorSessionManager session, TimelineBlockEdge edge) =>
+      find.descendant(
+        of: find.byType(TimelineTabHost),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is TimelineBlockEdgeGrip &&
+              widget.layerId == session.activeTrack.transitionLayer.id &&
+              widget.edge == edge,
+        ),
+      );
+
+  /// The transition row as the cut's grid draws it right now.
+  Layer shownTransitionRow(WidgetTester tester) => tester
+      .widgetList<TimelineFrameCellsRow>(
+        find.descendant(
+          of: find.byType(TimelineTabHost),
+          matching: find.byType(TimelineFrameCellsRow),
+        ),
+      )
+      .map((row) => row.layer)
+      .singleWhere((layer) => layer.kind == LayerKind.transition);
 
   /// Every instruction-span overlay currently mounted, by its widget key.
   List<String> spanOverlayKeys(WidgetTester tester) => [
@@ -185,29 +287,117 @@ void main() {
     );
   });
 
-  testWidgets('⑦ and it is READ-ONLY: no edge grips, unlike the direction row '
-      'right below it', (tester) async {
-    final session = await pumpTwoCutsWithOverlap(tester);
-    final transitionLayerId = session.activeTrack.transitionLayer.id.value;
+  for (final xsheet in [false, true]) {
+    testWidgets('⑦ a grip on a fade\'s mark drags the GLOBAL span it shows — '
+        'the mark following the hand, one undo on release; its head, in the '
+        'cut before, takes no grip here'
+        '${xsheet ? ' (X-sheet)' : ''}', (tester) async {
+      final session = await pumpTwoCutsWithFadeIn(tester);
+      final spanStart = session.activeTrack.transitionLayer.instructions.keys
+          .single;
+      await openTheSecondCut(tester, session);
+      if (xsheet) {
+        await tester.tap(
+          find.byKey(
+            const ValueKey<String>('timeline-orientation-toggle-button'),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(
+        session.transitions.trackTransitionDisplayLayer.instructions.keys,
+        [0],
+        reason: 'the premise: the cut draws the mark from its frame 0',
+      );
+      expect(
+        cutGrips(session, TimelineBlockEdge.start),
+        findsNothing,
+        reason: 'UI-R7 #6, the SE rows\' law: the head is in the cut before',
+      );
+      final depth = session.historyManager.undoCount;
 
-    final gripKeys = [
-      for (final element in find
-          .byWidgetPredicate(
-            (widget) =>
-                widget.key is ValueKey<String> &&
-                (widget.key! as ValueKey<String>).value.contains('edge-grip'),
-          )
-          .evaluate())
-        (element.widget.key! as ValueKey<String>).value,
-    ];
-    expect(
-      gripKeys.where((key) => key.contains(transitionLayerId)),
-      isEmpty,
-      reason:
-          'a grip here would drag a PROJECTION — authoring lives on the global '
-          'axis (LayerKind.isReadOnlyInCut)',
-    );
-  });
+      final grip = cutGrips(session, TimelineBlockEdge.end);
+      expect(grip, findsOneWidget, reason: 'the tail is this cut\'s to drag');
+      final cell = tester
+          .widget<TimelineBlockEdgeGrip>(grip)
+          .resolveFrameCellExtent();
+      final gesture = await tester.startGesture(tester.getCenter(grip));
+      for (var step = 1; step <= 4; step += 1) {
+        await gesture.moveBy(xsheet ? Offset(0, cell / 2) : Offset(cell / 2, 0));
+        await tester.pump();
+      }
+
+      expect(
+        shownTransitionRow(tester).instructions[0]!.length,
+        7,
+        reason: 'two frames longer on screen while the hand is still down',
+      );
+      expect(
+        session.activeTrack.transitionLayer.instructions[spanStart]!.length,
+        5,
+        reason: 'and nothing is written until the release',
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        session.activeTrack.transitionLayer.instructions.keys,
+        [spanStart],
+        reason: 'the span on the global row, at its own start, took the drag',
+      );
+      expect(
+        session.activeTrack.transitionLayer.instructions[spanStart]!.length,
+        7,
+      );
+      expect(session.historyManager.undoCount, depth + 1);
+      session.undo();
+      await tester.pumpAndSettle();
+      expect(
+        session.activeTrack.transitionLayer.instructions[spanStart]!.length,
+        5,
+      );
+    });
+  }
+
+  for (final second in [false, true]) {
+    testWidgets('an O.L\'s mark is the storyboard\'s to edit — no grip, no '
+        'term window, no delete in the cut, and nothing made under it '
+        '(${second ? 'the incoming cut' : 'the outgoing cut'})', (
+      tester,
+    ) async {
+      final session = await pumpTwoCutsWithOverlap(tester);
+      final before = session.activeTrack.transitionLayer.instructions;
+      if (second) {
+        await openTheSecondCut(tester, session);
+      }
+      final mark = session.transitions.trackTransitionDisplayLayer.instructions
+          .keys
+          .single;
+      expect(
+        [
+          cutGrips(session, TimelineBlockEdge.start),
+          cutGrips(session, TimelineBlockEdge.end),
+        ],
+        everyElement(findsNothing),
+        reason: '유저 2026-09-26: 「일단 ol블록만 편집불가능이 맞을거같은데」',
+      );
+
+      await standOnTheRowAt(tester, session, mark + 1);
+      expect(session.cells.canDeleteCellAtCurrentFrame, isFalse);
+      expect(session.cellInstances.canEditCellInstanceAtCurrentFrame, isFalse);
+      expect(
+        session.cellInstances.activeCellHoldsAnInstance,
+        isTrue,
+        reason: 'the mark still stands there — a double tap makes nothing',
+      );
+      await editActiveInstance(tester.element(transitionRow()), session);
+      await tester.pumpAndSettle();
+      expect(find.byType(InstructionEventDialog), findsNothing);
+      session.cells.deleteCellAtCurrentFrame();
+      await tester.pumpAndSettle();
+      expect(session.activeTrack.transitionLayer.instructions, before);
+    });
+  }
 
   testWidgets('⑧ standing on the row and pressing a span frame selects it — '
       'the range verb reads the same exposure the marks do', (tester) async {
@@ -237,8 +427,8 @@ void main() {
       session.cells.canDeleteCellAtCurrentFrame,
       isFalse,
       reason:
-          'read-only: the row is selectable and measurable, and still refuses '
-          'every verb that would change it',
+          'selectable and measurable, but an O.L\'s mark is the storyboard\'s '
+          'to delete (유저 2026-09-26)',
     );
 
     // 🚨The oracle has to be the CURSOR LAYER's own outline, not the reader
@@ -378,35 +568,48 @@ void main() {
   /// ③ Create / edit / delete are ONE verb — the instance editor.
   ///
   /// The user's ask was that the transition row stop having its own creation
-  /// button and answer to Edit Instance like every other row, with only the
-  /// wiring done because the button itself arrives later. So the test is about
-  /// the ROUTE, and the route's fork is which surface asked: the storyboard
-  /// authors, the cut view reads.
-  testWidgets('③ the cut view still refuses to open the editor, while the '
-      'enablement gate says a span is there to edit', (tester) async {
-    final session = await pumpTwoCutsWithOverlap(tester);
-    final before = session.activeTrack.transitionLayer.instructions;
-    expect(before, isNotEmpty);
+  /// button and answer to Edit Instance like every other row. The cut view
+  /// opens it too now, on the span the mark shows.
+  testWidgets('③ the cut view opens the editor on the span a fade\'s mark '
+      'shows — from a frame the span itself does not cover', (tester) async {
+    final session = await pumpTwoCutsWithFadeIn(tester);
+    await openTheSecondCut(tester, session);
+    await standOnTheMarkBeyondTheSpan(tester, session);
+    expect(
+      session.cellInstances.canEditCellInstanceAtCurrentFrame,
+      isTrue,
+      reason: 'the Edit button lights for the mark under the cursor',
+    );
 
-    await tester.tap(transitionRow());
-    await tester.pumpAndSettle();
-    expect(session.activeLayerId, session.activeTrack.transitionLayer.id);
-
-    // The default is the READ-ONLY answer, so a caller that forgets the flag
-    // cannot break the law by omission.
     await editActiveInstance(tester.element(transitionRow()), session);
     await tester.pumpAndSettle();
 
+    final dialog = find.byType(InstructionEventDialog);
+    expect(dialog, findsOneWidget, reason: 'the term window of that span');
+    expect(tester.widget<InstructionEventDialog>(dialog).editing, isTrue);
     expect(
-      find.byType(InstructionEventDialog),
-      findsNothing,
-      reason: 'no editor in a cut — its placement here is a projection',
+      tester.widget<InstructionEventDialog>(dialog).initialInstructionId,
+      'fi',
     );
-    expect(
-      session.activeTrack.transitionLayer.instructions,
-      before,
-      reason: 'and nothing was created either',
-    );
+    Navigator.of(tester.element(dialog)).pop();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a delete on the mark removes the GLOBAL span it shows — one '
+      'undo puts it back', (tester) async {
+    final session = await pumpTwoCutsWithFadeIn(tester);
+    final before = session.activeTrack.transitionLayer.instructions;
+    await openTheSecondCut(tester, session);
+    await standOnTheMarkBeyondTheSpan(tester, session);
+
+    expect(session.cells.canDeleteCellAtCurrentFrame, isTrue);
+    session.cells.deleteCellAtCurrentFrame();
+    await tester.pumpAndSettle();
+    expect(session.activeTrack.transitionLayer.instructions, isEmpty);
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(session.activeTrack.transitionLayer.instructions, before);
   });
 
   test('③ an EMPTY frame creates rather than opening a dialog — the same '
@@ -444,8 +647,9 @@ void main() {
         reason: '$kind holds cels or nothing, never instruction spans',
       );
     }
-    // The two answers differ on EDITING, which is why the grips ask both.
-    expect(LayerKind.transition.isReadOnlyInCut, isTrue);
-    expect(LayerKind.instruction.isReadOnlyInCut, isFalse);
+    // The two differ on the ROW's own verbs: the transition row is its
+    // track's fixture, which no surface renames or deletes.
+    expect(LayerKind.transition.isTrackFixture, isTrue);
+    expect(LayerKind.instruction.isTrackFixture, isFalse);
   });
 }

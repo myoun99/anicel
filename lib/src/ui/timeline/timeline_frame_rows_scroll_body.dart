@@ -83,7 +83,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.runEdit,
     this.laneEdit,
     this.dragPreview,
-    this.seSpillInLeadFrames = const {},
+    this.spillInLeadFrames = const {},
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.substrateGeneration = '',
@@ -227,10 +227,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// dragged layer's row (through its gate), never this body.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
 
-  /// Track-SE rows whose display clone starts with a spill-in block, each
-  /// with how far into that block the cut starts (UI-R7 #6: `~` at the cut
-  /// start, start grip stands down; F-113: the waveforms start there).
-  final Map<LayerId, int> seSpillInLeadFrames;
+  /// Track-owned rows whose display clone starts with a block spilling in
+  /// from an earlier cut, each with how far into it the cut starts — see
+  /// [TimelineGridHooks.spillInLeadFrames].
+  final Map<LayerId, int> spillInLeadFrames;
 
   @override
   State<TimelineFrameRowsScrollBody> createState() =>
@@ -283,7 +283,7 @@ typedef _RowMemoInputs = ({
   // the camera track / instruction registry, and the SE spill-in lead
   // (F-113: the waveform's start moves with it, so it keys the memo too).
   ByIdentity<Object?> auxiliaryIdentity,
-  int? seSpillInLeadFrames,
+  int? spillInLeadFrames,
   // REC1-D: the clip-marker switch is a display fact — toggling it must
   // invalidate SE rows (the memo-token discipline).
   String? seClipMarkerTooltip,
@@ -509,7 +509,7 @@ class _TimelineFrameRowsScrollBodyState
       commaDrag: widget.commaDrag,
       rangeGesture: widget.rangeGesture,
       runEdit: widget.runEdit,
-      seSpillInLeadFrames: widget.seSpillInLeadFrames[layer.id],
+      spillInLeadFrames: widget.spillInLeadFrames[layer.id],
       windowBucket: widget.windowBucket,
       viewportMainExtent: widget.viewportMainExtent,
       substrateGeneration: widget.substrateGeneration,
@@ -544,7 +544,7 @@ class _TimelineFrameRowsScrollBodyState
             metrics: widget.metrics,
             frameRate: widget.projectFrameRate,
             audioPeaksFor: widget.audioPeaksFor,
-            spillInLeadFrames: widget.seSpillInLeadFrames[layer.id],
+            spillInLeadFrames: widget.spillInLeadFrames[layer.id],
             onSetClipOffset: widget.audioLane?.onSetClipOffset == null
                 ? null
                 : (clipIndex, offsetFrames) =>
@@ -633,7 +633,7 @@ class _TimelineFrameRowsScrollBodyState
       hasActivateCell: widget.onActivateCell != null,
       dragPreview: ByIdentity(widget.dragPreview),
       auxiliaryIdentity: ByIdentity(_auxiliaryIdentityFor(row.layer)),
-      seSpillInLeadFrames: widget.seSpillInLeadFrames[row.layer.id],
+      spillInLeadFrames: widget.spillInLeadFrames[row.layer.id],
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       seAudioPeaks: ByList(_seAudioPeaksOf(row.layer)),
       showSeconds: widget.showSeconds,

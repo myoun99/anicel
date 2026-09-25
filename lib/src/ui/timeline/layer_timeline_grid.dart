@@ -725,7 +725,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       unionLaneForLayer: widget.hooks.unionLaneForLayer,
       runEdit: widget.hooks.runEdit,
       laneEdit: widget.hooks.laneEdit,
-      seSpillInLeadFrames: widget.hooks.seSpillInLeadFrames,
+      spillInLeadFrames: widget.hooks.spillInLeadFrames,
       memoAux: widget.memoAux,
       substrateGeneration: widget.hooks.substrateGeneration,
     );

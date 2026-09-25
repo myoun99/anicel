@@ -39,9 +39,31 @@ class Transitions {
   final SelectionAccess _selection;
   final ChangeSink _changes;
 
+  /// The two forms a drag of the transition row previews, in the track-SE
+  /// rows' shape (`TrackSe.previewFormsOf`): [row] projected onto the active
+  /// cut for the cut's rows, as [trackTransitionDisplayLayer] projects the
+  /// committed one, and [row] itself for the storyboard's strip. Both ride
+  /// the one drag-preview channel, so a mark follows the hand on either
+  /// surface and the release commits once.
+  ///
+  /// ↩️The row had a channel of its own, global form only, and the cut's
+  /// row stayed off the shared one because a global-keyed entry there
+  /// would have leaked into its projection. The SE rows had already
+  /// answered that with the second form (유저 2026-09-25: 「se블록이랑
+  /// 똑같이 글로벌이 주인인 상태랑 똑같지않나? 그거 그대로 법 통일해서
+  /// 적용해도 문제되나?」).
+  ({Layer shown, Layer? global}) previewFormsOf(Layer row) => (
+    shown: _projectOntoCut(
+      row,
+      cutStart: _project.activeCutGlobalStartFrame,
+      duration: _project.activeCutOrNull?.duration ?? 0,
+    ).display,
+    global: row,
+  );
+
   /// The active track's transition spans on the GLOBAL frame axis — the one
   /// reader for every surface that has to answer a transition question
-  /// (the sheet's のりしろ, the cut view's read-only marks, the compositor's
+  /// (the sheet's のりしろ, the cut view's marks, the compositor's
   /// ramp). They are plain records so nobody downstream has to know a layer is
   /// behind them — start, length and the TERM'S MARK, which is what says
   /// whether the span moves both cuts or only its own.
@@ -65,14 +87,15 @@ class Transitions {
       trackTransitionOwner(layerId) != null;
 
   /// The track's TRANSITION row as a cut-local display clone — the camera
-  /// section's read-only third row.
+  /// section's third row.
   ///
   /// 🚨 Unlike the SE clones this is a PROJECTION, not a window
   /// ([transitionMarkInCut]): a span that crosses this cut's boundary shows
   /// at its FULL length on the side it belongs to, because half a bowtie
   /// says nothing to whoever is reading the row. The clone therefore does
   /// NOT describe where the span really is — the global row does that, and
-  /// the global row is the only one that may be edited.
+  /// an edit made on this row is written THERE, to the span the mark was
+  /// drawn from ([transitionSpanStartShownInCutAt]).
   ///
   /// Cached on the same terms as the SE clones: same source layer + same
   /// window = the same instance back, so identity-keyed row memos hold.
@@ -82,24 +105,32 @@ class Transitions {
     final duration = _project.activeCutOrNull?.duration ?? 0;
     final cached = _transitionDisplayClone;
     if (cached != null &&
-        identical(cached.$1, source) &&
-        cached.$2 == cutStart &&
-        cached.$3 == duration) {
-      return cached.$4;
+        identical(cached.source, source) &&
+        cached.cutStart == cutStart &&
+        cached.duration == duration) {
+      return cached.display;
     }
-    final (display, crossing) = _projectOntoCut(
+    final walk = _projectOntoCut(
       source,
       cutStart: cutStart,
       duration: duration,
     );
-    _transitionDisplayClone = (source, cutStart, duration, display, crossing);
-    return display;
+    _transitionDisplayClone = (
+      source: source,
+      cutStart: cutStart,
+      duration: duration,
+      display: walk.display,
+      crossing: walk.crossing,
+      origins: walk.origins,
+    );
+    return walk.display;
   }
 
   /// The projection walk onto the cut whose frames are `[cutStart,
   /// cutStart + duration)`, with the projected keys of the one-sided spans
-  /// that cross it.
-  (Layer, Set<int>) _projectOntoCut(
+  /// that cross it, and where each projected mark came from — its span's
+  /// GLOBAL start, by projected key.
+  ({Layer display, Set<int> crossing, Map<int, int> origins}) _projectOntoCut(
     Layer source, {
     required int cutStart,
     required int duration,
@@ -109,6 +140,7 @@ class Transitions {
     // same walk — the clone re-keys spans to cut-local starts, so a marker
     // bound by global key alone would miss or mis-mark projected blocks.
     final crossing = <int>{};
+    final origins = <int, int>{};
     for (final entry in source.instructions.entries) {
       final span = transitionSpanOf(entry);
       final mark = transitionMarkInCut(
@@ -120,6 +152,7 @@ class Transitions {
         continue;
       }
       projected[mark.start] = entry.value;
+      origins[mark.start] = entry.key;
       if (oneSidedSpanCrossesOwnCut(
         span: span,
         cutStart: cutStart,
@@ -128,10 +161,41 @@ class Transitions {
         crossing.add(mark.start);
       }
     }
-    return (source.copyWith(instructions: projected), crossing);
+    return (
+      display: source.copyWith(instructions: projected),
+      crossing: crossing,
+      origins: origins,
+    );
   }
 
-  (Layer, int, int, Layer, Set<int>)? _transitionDisplayClone;
+  ({
+    Layer source,
+    int cutStart,
+    int duration,
+    Layer display,
+    Set<int> crossing,
+    Map<int, int> origins,
+  })?
+  _transitionDisplayClone;
+
+  /// The transition row in the SE rows' spill-in map
+  /// (`TrackSe.trackSeSpillInLeadFrames`): its id, with how far into its
+  /// span the cut starts, when the mark drawn at the cut's frame 0 is a span
+  /// that began in an earlier cut.
+  ///
+  /// UI-R7 #6 is the SE rows' law for that block, and it is this mark's
+  /// too: its head lives in the earlier cut, so its start grip stands down
+  /// here (유저 2026-09-25: 「애초에 넘어온쪽 표시엔 머리그립이 없을텐데.
+  /// se행이 그럴텐데」). The head is edited where it is — the earlier cut,
+  /// or the storyboard.
+  Map<LayerId, int> get transitionSpillInLeadFrames {
+    final row = trackTransitionDisplayLayer;
+    final start = _transitionDisplayClone?.origins[0];
+    final cutStart = _project.activeCutGlobalStartFrame;
+    return start == null || start >= cutStart
+        ? const {}
+        : {row.id: cutStart - start};
+  }
 
   /// D26: the crossing-fade warning for the CUT-VIEW transition row, by
   /// the display clone's projected local start key. The answer is computed
@@ -142,7 +206,8 @@ class Transitions {
     // Resolve the clone first so the cache always answers for the active
     // cut the row is actually showing.
     trackTransitionDisplayLayer;
-    return (_transitionDisplayClone?.$5.contains(projectedStartKey) ?? false)
+    return (_transitionDisplayClone?.crossing.contains(projectedStartKey) ??
+            false)
         ? AppText.strings.tlTransitionCrossingWarning
         : null;
   }
@@ -294,8 +359,9 @@ class Transitions {
   /// 보인다, 로컬은 읽기 전용 — 그립 없음, 엣지 편집 없음」, whose reason is
   /// moving positions and edges from inside a later cut. Creating moves
   /// neither: it writes the global row at a global frame, through the verb
-  /// the storyboard's ＋ presses. Opening and deleting a span from the cut
-  /// view wait on `transition-row-open-in-the-cut-Q1`.
+  /// the storyboard's ＋ presses. The rest of that law went the same day
+  /// (transition-row-open-in-the-cut — see
+  /// [transitionSpanStartShownInCutAt]).
   ///
   /// ⚠️The extra refusal is the projection's ([transitionMarkInCut]): a
   /// span crossing into this cut is drawn from local 0 at its full length,
@@ -314,11 +380,47 @@ class Transitions {
   /// cell as the cut view draws it, which is what 「empty」 means to a
   /// double tap there.
   bool transitionShownInCutAt(int localFrame) =>
-      instructionSpanCovering(
-        trackTransitionDisplayLayer.instructions,
-        localFrame,
-      ) !=
-      null;
+      transitionSpanStartShownInCutAt(localFrame) != null;
+
+  /// The GLOBAL start of the span whose mark the cut's row shows on
+  /// [localFrame], or null where it shows none — the one way back from the
+  /// projection to the span it draws.
+  ///
+  /// 🚨transition-row-open-in-the-cut (유저 2026-09-25): 「편집은 동일하게
+  /// 타임라인에서 다 할수있고, 원본 데이터는 글로벌에서 가지고있음. 일방적인
+  /// 투영만 하되 편집은 가능하게」. Every edit the cut view makes of a mark
+  /// — open it, delete it, drag its edges — is an edit of THIS span, on the
+  /// global row, through the verb the storyboard presses. ⚠️Not
+  /// `cutStart + localFrame`: a span crossing in from the cut before is
+  /// drawn from this cut's frame 0 at its full length, so the frame under
+  /// the hand need not be one of its own.
+  int? transitionSpanStartShownInCutAt(int localFrame) {
+    final shown = instructionSpanCovering(
+      trackTransitionDisplayLayer.instructions,
+      localFrame,
+    );
+    return shown == null ? null : _transitionDisplayClone?.origins[shown.key];
+  }
+
+  /// [transitionSpanStartShownInCutAt] for the verbs that EDIT — open, delete,
+  /// drag an edge: null on an O.L's mark, which the cut draws but does not
+  /// edit ([transitionEditableInCut], 유저 2026-09-26).
+  ///
+  /// ⚠️Not the question [transitionShownInCutAt] answers. A ＋ and a double
+  /// tap ask whether a mark stands there at all — an O.L's does, so nothing
+  /// is made under it — and those two keep asking that.
+  int? transitionSpanStartEditableInCutAt(int localFrame) {
+    final start = transitionSpanStartShownInCutAt(localFrame);
+    final event = start == null
+        ? null
+        : _selection.activeTrack.transitionLayer.instructions[start];
+    return event != null &&
+            transitionEditableInCut(
+              transitionSpanOf(MapEntry(start!, event)).mark,
+            )
+        ? start
+        : null;
+  }
 
   /// Starts a transition span on the GLOBAL axis, where and as long as
   /// [transitionSpanCreationOrNull] says.
@@ -485,14 +587,12 @@ class Transitions {
   /// this used to do — made `cutOpacityAt` treat every span as a symmetric
   /// cross-dissolve, so an F.O faded the next cut IN and behaved as an O.L
   /// (user 2026-08-11). An id the vocabulary no longer holds falls back to the
-  /// bowtie, which is the shape a file from another build most likely meant.
+  /// bowtie ([transitionMarkOf]).
   TransitionSpan transitionSpanOf(MapEntry<int, InstructionEvent> entry) => (
     start: entry.key,
     length: entry.value.length,
-    mark:
-        _camera.cameraInstructionSet
-            .defById(entry.value.instructionId)
-            ?.markType ??
-        CameraInstructionMarkType.ol,
+    mark: transitionMarkOf(
+      _camera.cameraInstructionSet.defById(entry.value.instructionId),
+    ),
   );
 }

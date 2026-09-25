@@ -97,7 +97,7 @@ class _XSheetGridColumns {
               frameRate: _state.widget.hooks.projectFrameRate,
               audioPeaksFor: _state.widget.hooks.audioPeaksFor,
               spillInLeadFrames:
-                  _state.widget.hooks.seSpillInLeadFrames[entry.layer.id],
+                  _state.widget.hooks.spillInLeadFrames[entry.layer.id],
               onSetClipOffset:
                   _state.widget.hooks.audioLane?.onSetClipOffset == null
                   ? null
@@ -170,7 +170,7 @@ class _XSheetGridColumns {
         layer.id,
       ),
       seClipMarkerTooltip: _state.widget.hooks.seClipMarkerTooltip,
-      seSpillInLeadFrames: _state.widget.hooks.seSpillInLeadFrames[layer.id],
+      spillInLeadFrames: _state.widget.hooks.spillInLeadFrames[layer.id],
       layer: layer,
       baseLayer: entry.layer,
       playbackFrameCount: _state.widget.hooks.playbackFrameCount,

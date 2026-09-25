@@ -44,8 +44,10 @@ class Track {
   ///
   /// What it holds are ordinary [InstructionEvent]s; the span gestures, the
   /// edit dialog and the bowtie painter are the direction row's, unchanged.
-  /// A CUT's timeline windows this row for READING only — authoring happens
-  /// on the global axis ("글로벌 트랙이 메인, 컷 타임라인은 보여주기만").
+  /// A CUT's timeline PROJECTS this row, and an edit made there is written
+  /// here — the data lives on the global axis only (유저 2026-09-25: 「원본
+  /// 데이터는 글로벌에서 가지고있음. 일방적인 투영만 하되 편집은 가능하게」;
+  /// it had been 「컷 타임라인은 보여주기만」 since 08-09).
   ///
   /// Always present (a fixture like the cut's camera row): older files
   /// backfill one on load, so no consumer has to handle its absence.

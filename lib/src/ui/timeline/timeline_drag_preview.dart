@@ -39,10 +39,11 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
 
   final Layer previewLayer;
 
-  /// Track-SE drags only (UI-R7 #7): the GLOBAL-axis form of the dragged
-  /// layer. [previewLayer] carries the active-cut display clone for the
-  /// timeline row gates; the storyboard's track-global SE strips render
-  /// THIS one. Null for cut-owned layers (both forms are the same).
+  /// Track-owned rows only (UI-R7 #7 — the SE rows, and the transition row
+  /// since 2026-09-25): the GLOBAL-axis form of the dragged layer.
+  /// [previewLayer] carries the active-cut display clone for the timeline
+  /// row gates; the storyboard's track-global strips render THIS one. Null
+  /// for cut-owned layers (both forms are the same).
   final Layer? globalPreviewLayer;
 
   LayerId get layerId => previewLayer.id;
@@ -79,13 +80,14 @@ class BlockMoveDragPreview extends TimelineDragPreview {
 
   final Map<LayerId, Layer> previewLayers;
 
-  /// Track-SE moves only (C2 2026-08-17): the GLOBAL-axis form of each
-  /// moved track-SE layer — the same second form [ExposureEdgeDragPreview]
-  /// has always carried for its edge drags, so the storyboard's
-  /// track-global SE strips follow a MOVE live exactly as they follow a
-  /// comma drag. [previewLayers] keeps the active-cut display clones for
-  /// the timeline row gates; cut-owned layers appear only there (both
-  /// forms are the same).
+  /// Track-owned moves only (C2 2026-08-17 — the SE rows, and the
+  /// transition row since 2026-09-25): the GLOBAL-axis form of each moved
+  /// track-owned layer — the same second form [ExposureEdgeDragPreview] has
+  /// always carried for its edge drags, so the storyboard's track-global
+  /// strips follow a MOVE live exactly as they follow a comma drag.
+  /// [previewLayers] keeps the active-cut display clones for the timeline
+  /// row gates; cut-owned layers appear only there (both forms are the
+  /// same).
   final Map<LayerId, Layer> previewGlobalLayers;
 
   /// The same, for a V-track's EFFECT chain. The V row's fx lanes could not

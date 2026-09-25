@@ -76,7 +76,7 @@ void main() {
                 onSelectFrame: (_) {},
                 audioPeaksFor: (_) => _peaks,
                 projectFrameRate: ProjectFrameRate.fps24,
-                seSpillInLeadFrames: lead,
+                spillInLeadFrames: lead,
               ),
             ),
           ),

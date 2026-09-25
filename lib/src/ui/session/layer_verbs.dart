@@ -68,11 +68,11 @@ class LayerVerbs {
 
   /// The selected rows whose NAME may be edited (⑨).
   ///
-  /// Read-only-in-cut rows are the exception, and they are the same ones
-  /// [canDeleteLayer] refuses for the same reason: a track fixture seen from
-  /// inside a cut is not this cut's to edit.
+  /// A track's fixture row is the exception ([LayerKind.isTrackFixture]),
+  /// and it is the one [canDeleteLayer] refuses for the same reason: it has
+  /// no row verbs of its own on any surface.
   List<LayerId> renameableSelectedLayerIds() =>
-      _selectedLayerIdsWhere((layer) => !layer.kind.isReadOnlyInCut);
+      _selectedLayerIdsWhere((layer) => !layer.kind.isTrackFixture);
 
   /// The selected LAYER rows whose layer passes [keep], in selection order,
   /// once each — the one walk behind [deletableSelectedLayerIds] and
@@ -108,9 +108,9 @@ class LayerVerbs {
   /// was [canDeleteActiveLayer]'s own text, lifted so two askers cannot
   /// drift apart ([[predicates-before-new-kind]]).
   bool canDeleteLayer(Layer activeLayer) {
-    // Read-only where a cut can see it: the transition row is deleted (and
-    // moved) on the global axis, never from inside a cut.
-    if (activeLayer.kind.isReadOnlyInCut) {
+    // A track's fixture (the transition row) goes with its track, from no
+    // surface on its own — its SPANS are what a delete there removes.
+    if (activeLayer.kind.isTrackFixture) {
       return false;
     }
     // Attach rows are accessories: always deletable, never counted toward

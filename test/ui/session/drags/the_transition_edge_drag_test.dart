@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/ui/session/drags/transition_edge_drag.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 /// The transition row's edge drag — the FIRST drag session, and the one
 /// that had no test naming it (the audit's untested-file pass,
@@ -25,7 +26,7 @@ void main() {
 
   ({
     TransitionEdgeDrag? drag,
-    ValueNotifier<Layer?> preview,
+    ValueNotifier<TimelineDragPreview?> preview,
     List<({Map<int, InstructionEvent> instructions, String description})>
     commits,
   })
@@ -35,7 +36,7 @@ void main() {
     TimelineBlockEdge edge = TimelineBlockEdge.end,
     LayerId? layerId,
   }) {
-    final preview = ValueNotifier<Layer?>(null);
+    final preview = ValueNotifier<TimelineDragPreview?>(null);
     addTearDown(preview.dispose);
     final commits =
         <({Map<int, InstructionEvent> instructions, String description})>[];
@@ -46,6 +47,10 @@ void main() {
         edge: edge,
         layerId: layerId,
         preview: preview,
+        // The cut's form stands out by name, so a case can tell which of the
+        // two forms it is reading.
+        formsOf: (row) =>
+            (shown: row.copyWith(name: 'in the cut'), global: row),
         commitInstructions: (instructions, {required description}) =>
             commits.add((instructions: instructions, description: description)),
       ),
@@ -53,6 +58,27 @@ void main() {
       commits: commits,
     );
   }
+
+  /// The row as the drag would leave it, on the global axis — the form the
+  /// storyboard's strip draws.
+  Layer? inFlight(ValueNotifier<TimelineDragPreview?> preview) =>
+      timelineDragPreviewGlobalLayerFor(preview.value, const LayerId('tr'));
+
+  test('a step publishes the row\'s two forms in the SE rows\' shape — the '
+      'cut\'s for the timeline, the track\'s for the storyboard', () {
+    final session = open();
+
+    session.drag!.update(3);
+
+    expect(
+      timelineDragPreviewLayerFor(
+        session.preview.value,
+        const LayerId('tr'),
+      )?.name,
+      'in the cut',
+    );
+    expect(inFlight(session.preview)?.instructions[4]?.length, 9);
+  });
 
   test('⛔no span starts there — no object, no drag', () {
     expect(open(spanStartIndex: 99).drag, isNull);
@@ -73,7 +99,7 @@ void main() {
 
     session.drag!.update(3);
 
-    expect(session.preview.value?.instructions[4]?.length, 9);
+    expect(inFlight(session.preview)?.instructions[4]?.length, 9);
     expect(session.commits, isEmpty, reason: 'nothing lands mid-drag');
   });
 
@@ -82,7 +108,7 @@ void main() {
 
     session.drag!.update(2);
 
-    final instructions = session.preview.value!.instructions;
+    final instructions = inFlight(session.preview)!.instructions;
     expect(instructions.containsKey(4), isFalse);
     expect(instructions[6]?.length, 4);
   });

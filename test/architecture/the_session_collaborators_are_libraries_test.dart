@@ -93,7 +93,11 @@ const _mayNameTheSession = <String, String>{
 /// row the way every fx switch does — the host's copy asked the active
 /// track alone, so another track's S row could not be switched. It was
 /// `EffectsAndFx`'s only read of the role, so it no longer takes it.
-const _sessionInternalsMembers = 38;
+/// 38 → 37 (2026-09-25, the sixth family): the transition row's own drag
+/// preview channel went — its grips and moves publish on the one channel
+/// the SE rows use, in their two forms (the cut's, the track's), so the
+/// session holds no second one (transition-row-open-in-the-cut).
+const _sessionInternalsMembers = 37;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

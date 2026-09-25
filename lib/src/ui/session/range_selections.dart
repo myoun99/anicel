@@ -401,8 +401,7 @@ class RangeSelections {
   /// an SE row" — that substitution is what left the transition row the one row
   /// of this rail a range drag could not touch (user 2026-08-11:
   /// 「선택범위… 트랜지션레이어만 작동안하니까 공통 규칙 그대로」). Selecting is
-  /// reading; the read-only rule bites on the verbs that CHANGE a row, and the
-  /// transition row simply mounts no move half.
+  /// reading; what a selection may then CHANGE is each verb's own question.
   void updateTrackRowRangeSelectionByFrame({
     required LayerId layerId,
     required int anchorGlobalFrame,

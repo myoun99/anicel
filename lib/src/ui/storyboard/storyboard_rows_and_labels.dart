@@ -196,17 +196,14 @@ class _StoryboardRowsAndLabels {
             crossOffset: crossOffset,
           ),
     );
-    final preview = _state.widget.transitionPreview;
-    if (preview == null) {
-      return row(committed);
-    }
-    return ValueListenableBuilder<Layer?>(
-      valueListenable: preview,
-      // By IDENTITY, like the SE preview gate: the in-flight form stands in
-      // for THIS row only when it is this row's layer being dragged.
-      builder: (context, inFlight, _) => row(
-        inFlight != null && inFlight.id == committed.id ? inFlight : committed,
-      ),
+    // The SE strips' gate, as is: a grip or a move publishes the row's two
+    // forms on the one channel, and this strip — the track axis — draws the
+    // GLOBAL one while the cut's rows draw the projection.
+    return TimelineDragPreviewRowGate(
+      dragPreview: _state.widget.dragPreview,
+      layer: committed,
+      useGlobalForm: true,
+      rowBuilder: (context, layer) => row(layer),
     );
   }
 

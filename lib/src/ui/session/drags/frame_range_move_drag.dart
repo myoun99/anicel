@@ -1262,6 +1262,7 @@ class FrameRangeMoveDrag {
         se.sourceId: _trackSe.previewFormsOf(se.sourceAfter),
         se.targetId: _trackSe.previewFormsOf(se.targetAfter),
       },
+      ..._transitionPreviewForms(instructionShifted),
     };
     _internals.dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
@@ -1274,10 +1275,8 @@ class FrameRangeMoveDrag {
         for (final entry in sePreviews.entries) entry.key: entry.value.shown,
         // R27 #8: the frame-axis riders preview in place — a DIRECTION row
         // as the row its shifted blocks make (its spans are its blocks).
-        // ⛔The TRANSITION stays OFF this map: on the ACTIVE track
-        // layerById finds its display clone under the same id, and a
-        // global-keyed entry here would leak into the cut timeline's
-        // read-only projection. It previews on its own channel below.
+        // A riding TRANSITION is in [sePreviews] above, in the SE rows'
+        // two forms.
         for (final entry in riders.directions.entries)
           entry.key: rederiveRunBehaviors(
             entry.value,
@@ -1296,11 +1295,6 @@ class FrameRangeMoveDrag {
       // so a union drag spanning rows froze the camera's markers).
       cameraMarkerLayer: _cameraMarkerLayer(cameraShifted),
     );
-    // C1: the transition channel follows every published step — a riding
-    // transition previews its shifted spans here (C④: it used to be
-    // absent from this path's shift map, so the write CLEARED the channel
-    // and the spans snapped home on every rigid step).
-    _publishTransitionPreview(instructionShifted);
   }
 
   /// The camera row's marker clone for a step that shifted [cameraShifted]
@@ -1392,37 +1386,36 @@ class FrameRangeMoveDrag {
   }
 
   /// Clears every channel this drag publishes to. They live OUTSIDE the
-  /// drag (on the session), so dropping the object does not clear them —
-  /// this is the one piece of forgetting the object cannot do by dying.
+  /// drag (on the session and its collaborators), so dropping the object
+  /// does not clear them — this is the one piece of forgetting the object
+  /// cannot do by dying.
   void _dropPreviewChannels() {
     _camera.showCameraKeysDragPreview(null);
     _internals.dragPreview.value = null;
-    _internals.transitionEdgeDragPreview.value = null;
   }
 
-  /// C1 (2026-08-17): the in-flight form of a range-moved TRANSITION row,
-  /// published on [SessionInternals.transitionEdgeDragPreview] — the
-  /// channel the row's edge drags already preview on and the storyboard's
-  /// transition strip already renders. One preview channel per row family:
-  /// the move joins the edge drag instead of growing a second gate.
+  /// A range-moved TRANSITION row's in-flight forms, in the track-SE rows'
+  /// shape ([Transitions.previewFormsOf]): the row projected onto the active
+  /// cut for the cut's rows, the row itself for the storyboard's strip — so
+  /// it rides the step's one preview beside the SE passengers.
   ///
-  /// A step whose shift map carries no transition entry CLEARS the channel
-  /// (a null write on an already-null notifier is a silent no-op), so an
-  /// ordinary cell move can never leave a stale transition form standing.
-  void _publishTransitionPreview(
+  /// ↩️C1 (2026-08-17) gave it a channel of its own ("one preview channel
+  /// per row family"), off this one because a global-keyed entry here would
+  /// have leaked into the cut's projection. The cut form answers that the
+  /// way it answers it for the SE rows (유저 2026-09-25: 「se블록이랑 똑같이
+  /// 글로벌이 주인인 상태랑 똑같지않나? 그거 그대로 법 통일해서 적용해도
+  /// 문제되나?」).
+  Map<LayerId, ({Layer shown, Layer? global})> _transitionPreviewForms(
     Map<LayerId, Map<int, InstructionEvent>> instructionShifted,
-  ) {
-    Layer? preview;
-    for (final entry in instructionShifted.entries) {
-      final owner = _transitions.trackTransitionOwner(entry.key);
-      if (owner != null) {
-        preview = owner.transitionLayer.copyWith(
-          instructions: SplayTreeMap<int, InstructionEvent>.from(entry.value),
-        );
-      }
-    }
-    _internals.transitionEdgeDragPreview.value = preview;
-  }
+  ) => {
+    for (final entry in instructionShifted.entries)
+      if (_transitions.trackTransitionOwner(entry.key) case final owner?)
+        entry.key: _transitions.previewFormsOf(
+          owner.transitionLayer.copyWith(
+            instructions: SplayTreeMap<int, InstructionEvent>.from(entry.value),
+          ),
+        ),
+  };
 
   /// A range-move drag step: live preview on
   /// [SessionInternals.dragPreview] (repository untouched), the selection
@@ -1620,8 +1613,9 @@ class FrameRangeMoveDrag {
   }
 
   /// Publishes a valid slide step: every plan's commit form (windowed for
-  /// the track-SE rows), the shifted instruction rows, the camera keys on
-  /// their own channel, and the transition on its own.
+  /// the track-SE rows), the shifted instruction rows and a riding
+  /// transition in the same two forms, and the camera keys on their own
+  /// channel.
   void _publishSlidePreview(
     List<DrawingBlockMovePlan> plans,
     FrameAxisRiders riders,
@@ -1651,16 +1645,18 @@ class FrameRangeMoveDrag {
     }
     // A DIRECTION row previews as the row its shifted blocks make — its
     // spans are its blocks (R27), so the cells row reads them there.
-    // ⛔The track-owned TRANSITION row stays OFF this map: on the ACTIVE
-    // track [ProjectAccess.layerById] DOES find its display clone under
-    // the same id (layer_controller inserts it), and a global-keyed entry
-    // here would leak into the cut timeline's read-only projection. It
-    // previews on its own channel below instead.
     for (final entry in riders.directions.entries) {
       previewLayers[entry.key] = rederiveRunBehaviors(
         entry.value,
         cutFrameCount: _project.activeCutFrameCount,
       );
+    }
+    for (final entry in _transitionPreviewForms(instructionShifted).entries) {
+      previewLayers[entry.key] = entry.value.shown;
+      final global = entry.value.global;
+      if (global != null) {
+        previewGlobalLayers[entry.key] = global;
+      }
     }
     _internals.dragPreview.value = BlockMoveDragPreview(
       previewLayers: previewLayers,
@@ -1669,10 +1665,6 @@ class FrameRangeMoveDrag {
       cameraKeyframes: cameraShifted,
       cameraMarkerLayer: _cameraMarkerLayer(cameraShifted),
     );
-    // C1 (2026-08-17): a moved TRANSITION row previews on the row's own
-    // channel — the SAME one its edge drags publish to, which is what
-    // the storyboard's transition strip already renders live.
-    _publishTransitionPreview(instructionShifted);
   }
 
   /// Commits the range move as ONE undo step (layer updates + the brush

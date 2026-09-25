@@ -692,14 +692,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // snapshot and commit as ONE undo entry on release.
             commaDrag: TimelineCommaDragCallbacks(
               onBegin: (layerId, blockStartIndex, edge) =>
-                  _session.edgeDrag.beginExposureEdgeDrag(
+                  _session.edgeDrag.beginCutRowEdgeDrag(
                     layerId: layerId,
                     blockStartIndex: blockStartIndex,
                     edge: edge,
                   ),
-              onUpdate: _session.edgeDrag.updateExposureEdgeDrag,
-              onEnd: _session.edgeDrag.endExposureEdgeDrag,
-              onCancel: _session.edgeDrag.cancelExposureEdgeDrag,
+              onUpdate: _session.edgeDrag.updateCutRowEdgeDrag,
+              onEnd: _session.edgeDrag.endCutRowEdgeDrag,
+              onCancel: _session.edgeDrag.cancelCutRowEdgeDrag,
             ),
             // TVP-style frame ranges (UI-R8): a cell drag SELECTS a range
             // (block-snapped), a drag starting inside the selection MOVES it
@@ -901,10 +901,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // R27 #9: the camera row's opacity IS the camera-view dim
             // notifier — handing it to the slider keeps a drag off the host.
             layerOpacityOverrideOf: _cameraDimOverrideFor,
-            // Sounds carrying over from the previous cut (UI-R7 #6): the
-            // cut start draws `~`, the spill block's start grip stands
-            // down, and its waveform starts that far into the sound (F-113).
-            seSpillInLeadFrames: _session.trackSe.trackSeSpillInLeadFrames,
+            // Blocks carrying over from the previous cut (UI-R7 #6): the
+            // spill block's start grip stands down, a sound's cut start
+            // draws `~` and its waveform starts that far in (F-113) — and
+            // the transition row's mark answers the same way.
+            spillInLeadFrames: {
+              ..._session.trackSe.trackSeSpillInLeadFrames,
+              ..._session.transitions.transitionSpillInLeadFrames,
+            },
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.

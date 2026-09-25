@@ -50,7 +50,7 @@ enum LayerKind {
     linksIntoLinkedCut: true,
     isSingletonPerCut: false,
     isClipboardCopyable: true,
-    isReadOnlyInCut: false,
+    isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
   ),
@@ -77,7 +77,7 @@ enum LayerKind {
     linksIntoLinkedCut: true,
     isSingletonPerCut: true,
     isClipboardCopyable: true,
-    isReadOnlyInCut: false,
+    isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
   ),
@@ -109,7 +109,7 @@ enum LayerKind {
     linksIntoLinkedCut: true,
     isSingletonPerCut: false,
     isClipboardCopyable: true,
-    isReadOnlyInCut: false,
+    isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
   ),
@@ -143,7 +143,7 @@ enum LayerKind {
     // Folders stand down in v1: a folder copy has to carry its members,
     // which the single-layer payload cannot express.
     isClipboardCopyable: false,
-    isReadOnlyInCut: false,
+    isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
   ),
@@ -176,7 +176,7 @@ enum LayerKind {
     // SE rows are track-owned — duplicating one would recreate a shape the
     // model retired.
     isClipboardCopyable: false,
-    isReadOnlyInCut: false,
+    isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: false,
   ),
@@ -212,7 +212,7 @@ enum LayerKind {
     linksIntoLinkedCut: false,
     isSingletonPerCut: false,
     isClipboardCopyable: true,
-    isReadOnlyInCut: false,
+    isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
   ),
@@ -227,9 +227,11 @@ enum LayerKind {
   /// gestures, [InstructionEvent], the edit dialog and the bowtie painter
   /// all serve it unchanged. Only two things differ: its vocabulary picker
   /// is filtered to the transition terms
-  /// ([cameraInstructionIsTransition]), and inside a CUT's timeline it is
-  /// READ-ONLY — the cut view windows it for reading, authoring happens on
-  /// the global axis ("글로벌 트랙이 메인, 컷 타임라인은 보여주기만").
+  /// ([cameraInstructionIsTransition]), and inside a CUT's timeline it is a
+  /// PROJECTION of the track's row — the data stays on the global axis, and
+  /// an edit made in the cut is written there (유저 2026-09-25: 「원본
+  /// 데이터는 글로벌에서 가지고있음. 일방적인 투영만 하되 편집은 가능하게」,
+  /// which reversed 「컷 타임라인은 보여주기만」).
   transition(
     'transition',
     holdsDrawings: false,
@@ -244,18 +246,17 @@ enum LayerKind {
     // in a cut's stack. It sits with the camera for the same reason — it is
     // about the picture rather than in it.
     composites: false,
-    // Read-only in a cut, so there is no picture opacity for a bulk sweep
-    // to write. Answering true here is what made "set all layers" try to
-    // write a row the cut does not own.
+    // No picture, so no picture opacity for a bulk sweep to write.
+    // Answering true here is what made "set all layers" try to write a row
+    // the cut does not own.
     hasPictureOpacity: false,
     // Nothing of the TRANSITION row's own to move — it is notation on the
-    // track's axis, read-only where a cut can see it.
+    // track's axis.
     hasLayerTransform: false,
     // No transform and no chain to bypass, so the master switch would read
     // an always-on flag and report every row mixed.
     hasTransformFxSwitch: false,
-    // A grade on a boundary annotation has nothing to filter — and the row
-    // is read-only where a cut can reach it anyway.
+    // A grade on a boundary annotation has nothing to filter.
     hasLayerEffects: false,
     carriesInstructions: true,
     exportsCels: false,
@@ -264,7 +265,7 @@ enum LayerKind {
     // The TRANSITION row is track-owned like SE: duplicating it would
     // recreate a shape the model retired (one row per track).
     isClipboardCopyable: false,
-    isReadOnlyInCut: true,
+    isTrackFixture: true,
     reordersInCut: false,
     celNameIsIdentity: true,
   ),
@@ -298,7 +299,7 @@ enum LayerKind {
     linksIntoLinkedCut: true,
     isSingletonPerCut: true,
     isClipboardCopyable: false,
-    isReadOnlyInCut: false,
+    isTrackFixture: false,
     reordersInCut: false,
     celNameIsIdentity: true,
   ),
@@ -349,7 +350,7 @@ enum LayerKind {
     // wherever the paste lands. Its grade would be a different picture
     // there, so the row is made in place instead of pasted.
     isClipboardCopyable: false,
-    isReadOnlyInCut: false,
+    isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
   );
@@ -373,7 +374,7 @@ enum LayerKind {
     required this.linksIntoLinkedCut,
     required this.isSingletonPerCut,
     required this.isClipboardCopyable,
-    required this.isReadOnlyInCut,
+    required this.isTrackFixture,
     required this.reordersInCut,
     required this.celNameIsIdentity,
   });
@@ -509,9 +510,9 @@ enum LayerKind {
   /// read — which is what a range selection measures. Miss one and the row is
   /// half-drawn.
   ///
-  /// ⚠️It does NOT license editing. The EDGE GRIPS ask this AND
-  /// [isReadOnlyInCut]: the transition row's local placement is a
-  /// projection, so a grip there would be dragging a lie.
+  /// ⚠️The transition row's grips in a CUT drag a projection: its marks are
+  /// drawn where the span shows, not where it is, so the drag is mapped back
+  /// to the global span first (`EdgeDrag.beginCutRowEdgeDrag`).
   ///
   /// 🆕And since R27 #16 it does not answer for the BAND either — see
   /// [bandIsInstructionsOnly]. Six of the eight facilities above are
@@ -568,16 +569,23 @@ enum LayerKind {
   /// members, which the single-layer payload cannot express.
   final bool isClipboardCopyable;
 
-  /// Whether a row of this kind is READ-ONLY where a cut can see it — the
-  /// user's law for the transition row: "글로벌 트랙이 메인, 컷 타임라인은
-  /// 보여주기만".
+  /// Whether a row of this kind is its TRACK's fixture — made with the
+  /// track, one per track — so the ROW's own verbs (rename, delete) stand
+  /// down on every surface that shows it. Selection may still land on it
+  /// (arrow-walking the rows must not skip a row the eye can see).
   ///
-  /// Selection may still land on it (arrow-walking the rows must not skip a
-  /// row the eye can see), but every verb that would CHANGE it — rename,
-  /// move, delete, edge drag — refuses. Those verbs live on the global axis,
-  /// in the storyboard panel, where the span really is; here the row's local
-  /// placement is a projection and editing it would be editing a lie.
-  final bool isReadOnlyInCut;
+  /// The storyboard's label row never offered them, and a cut's row answers
+  /// the same: 유저 2026-09-25 「편집은 동일하게 타임라인에서 다 할수있고」.
+  ///
+  /// ⚠️Its SPANS are another question, and this flag no longer answers it.
+  /// It was `isReadOnlyInCut` until transition-row-open-in-the-cut: the
+  /// 08-09 law 「글로벌 ↔ 로컬은 다르게 보인다, 로컬은 읽기 전용 — 그립 없음,
+  /// 엣지 편집 없음」 kept every edit of the row on the global axis, and the
+  /// same answer reversed it (「원본 데이터는 글로벌에서 가지고있음. 일방적인
+  /// 투영만 하되 편집은 가능하게」) — a cut's marks are created, opened,
+  /// deleted and dragged there, and each edit is written to the span the
+  /// mark shows, on the global row.
+  final bool isTrackFixture;
 
   /// Whether a row of this kind may be RE-ORDERED by dragging it in a cut's
   /// rail.
@@ -590,10 +598,10 @@ enum LayerKind {
   /// rows still drag — among themselves, which the drop policy's rank check
   /// enforces (`timelineCameraSectionRank`).
   ///
-  /// ⚠️Not the same question as [isReadOnlyInCut]. That one is about
-  /// a row whose truth lives on another axis, and the transition answers yes
-  /// to both for different reasons; the camera row is fully editable here and
-  /// simply has nowhere else to be.
+  /// ⚠️Not the same question as [isTrackFixture]. That one is about the
+  /// row's own verbs, and the transition answers yes to both for different
+  /// reasons; the camera row is fully editable here and simply has nowhere
+  /// else to be.
   final bool reordersInCut;
 
   /// Whether a cel's NAME is its identity on a row of this kind: the rename

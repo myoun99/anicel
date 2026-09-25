@@ -138,7 +138,7 @@ class TimelinePanel extends StatefulWidget {
     this.opacityDragPreview,
     this.masterOpacityValue = 1.0,
     this.dragPreview,
-    this.seSpillInLeadFrames = const {},
+    this.spillInLeadFrames = const {},
     this.cutEndDrag,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
@@ -173,10 +173,10 @@ class TimelinePanel extends StatefulWidget {
   /// [TimelineRowCellsPainter.substrateGeneration].
   final String substrateGeneration;
 
-  /// Track-SE rows whose display clone starts with a spill-in block, each
-  /// with how far into that block the cut starts (UI-R7 #6: `~` at the cut
-  /// start, start grip stands down; F-113: the waveform starts there).
-  final Map<LayerId, int> seSpillInLeadFrames;
+  /// Track-owned rows whose display clone starts with a block spilling in
+  /// from an earlier cut, each with how far into it the cut starts — see
+  /// [TimelineGridHooks.spillInLeadFrames].
+  final Map<LayerId, int> spillInLeadFrames;
 
   /// The frame cursor (editing playhead / playback position). Only the
   /// cursor-driven widgets subscribe — a tick never rebuilds the panel or
@@ -657,7 +657,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
       onToggleAttachGroup: widget.onToggleAttachGroup,
       opacityDragPreview: widget.opacityDragPreview,
-      seSpillInLeadFrames: widget.seSpillInLeadFrames,
+      spillInLeadFrames: widget.spillInLeadFrames,
       cutEndDrag: widget.cutEndDrag,
       substrateGeneration: widget.substrateGeneration,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
