@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/session_legend_callbacks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
@@ -20,7 +23,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 void main() {
   const layout = LayerMark(process: LayerProcess.layout);
 
-  Future<({List<LayerMark> marks, List<LayerKind> kinds})> pump(
+  Future<_Heard> pump(
     WidgetTester tester, {
     required TimelineRowFilter filter,
     Set<LayerMark> marksInUse = const {},
@@ -28,6 +31,7 @@ void main() {
   }) async {
     final marks = <LayerMark>[];
     final kinds = <LayerKind>[];
+    final cleared = <String>[];
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -41,7 +45,7 @@ void main() {
                 onToggleVisibilitySolo: () {},
                 onSheetAllOn: () {},
                 onSheetAllOff: () {},
-                onClearAllMarks: () {},
+                onClearMarkFilter: () => cleared.add('marks'),
                 onClearAllFillReferences: () {},
                 onMuteAllSe: () {},
                 onUnmuteAllSe: () {},
@@ -65,7 +69,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    return (marks: marks, kinds: kinds);
+    return (marks: marks, kinds: kinds, cleared: cleared);
   }
 
   PanelFlyoutItem entry(WidgetTester tester, String key) => tester
@@ -110,6 +114,56 @@ void main() {
     expect(heard.kinds, [LayerKind.se]);
   });
 
+  testWidgets('the mark menu offers the filter\'s own way back — lit while a '
+      'colour is held, and it is what the press asks for '
+      '(clear-all-marks-meaning-Q1)', (tester) async {
+    var heard = await pump(tester, filter: TimelineRowFilter.none);
+    await tester.tap(find.byKey(const ValueKey<String>('legend-mark')));
+    await tester.pumpAndSettle();
+    const key = 'legend-mark-filter-clear';
+    expect(
+      entry(tester, key).enabled,
+      isFalse,
+      reason: 'nothing held, nothing to let go of',
+    );
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
+    heard = await pump(
+      tester,
+      filter: TimelineRowFilter(markColors: {layout}),
+      marksInUse: {layout},
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('legend-mark')));
+    await tester.pumpAndSettle();
+    expect(entry(tester, key).enabled, isTrue);
+    await tester.tap(find.byKey(const ValueKey<String>(key)));
+    await tester.pumpAndSettle();
+    expect(heard.cleared, ['marks']);
+    expect(heard.marks, isEmpty, reason: 'not a toggle of one colour');
+  });
+
+  test('and the session\'s wiring lets go of the colours alone — the other '
+      'facets stay as they were', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    TimelineRowFilter? set;
+    sessionLegendCallbacks(
+      session,
+      rowFilter: TimelineRowFilter(
+        markColors: {layout},
+        kinds: const {LayerKind.se},
+        fxOnly: true,
+      ),
+      onSetRowFilter: (filter) => set = filter,
+    ).onClearMarkFilter();
+    expect(set?.markColors, isEmpty);
+    expect(set?.kinds, {LayerKind.se});
+    expect(set?.fxOnly, isTrue);
+  });
+
   testWidgets('nothing marked and nothing held: no colour list at all', (
     tester,
   ) async {
@@ -127,3 +181,10 @@ void main() {
     );
   });
 }
+
+/// What the legend asked of its host while a test pressed it.
+typedef _Heard = ({
+  List<LayerMark> marks,
+  List<LayerKind> kinds,
+  List<String> cleared,
+});

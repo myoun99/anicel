@@ -103,41 +103,6 @@ void main() {
       s.layers.firstWhere((layer) => layer.id == seLayer.id).onTimesheet,
       !sheetBefore,
     );
-
-    // The bulk sweeps include the track SE rows now too.
-    marks(s).setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.conte));
-    marks(s).clearAllLayerMarks();
-    expect(s.layers.every((layer) => layer.mark == LayerMark.none), isTrue);
-  });
-
-  test('clearAllLayerMarks clears in one undo and no-ops when markless', () {
-    final s = session();
-    final markedId = s.requireActiveCut.layers
-        .firstWhere((layer) => layer.kind == LayerKind.animation)
-        .id;
-    // KEY, not LO: the drawing row is born LO (F-76), and writing the label
-    // it already wears changes nothing, so it would bank no undo to sweep.
-    marks(s).setLayerMark(markedId, const LayerMark(process: LayerProcess.key));
-    final undosAfterMark = s.canUndo;
-    expect(undosAfterMark, isTrue);
-
-    marks(s).clearAllLayerMarks();
-    expect(s.layers.every((layer) => layer.mark == LayerMark.none), isTrue);
-    s.undo();
-    expect(
-      s.layers.firstWhere((layer) => layer.id == markedId).mark,
-      const LayerMark(process: LayerProcess.key),
-    );
-
-    // A markless sweep adds no history: clearing twice then undoing ONCE
-    // returns to the marked state (the second clear was a no-op).
-    marks(s).clearAllLayerMarks();
-    marks(s).clearAllLayerMarks();
-    s.undo();
-    expect(
-      s.layers.firstWhere((layer) => layer.id == markedId).mark,
-      const LayerMark(process: LayerProcess.key),
-    );
   });
 
   test('the sheet sweep leaves ATTACH rows alone — they ride their base, '

@@ -775,7 +775,7 @@ void main() {
     'tlBypassAllFx': (s) => s.tlBypassAllFx,
     'tlAllOnTimesheet': (s) => s.tlAllOnTimesheet,
     'tlAllOffTimesheet': (s) => s.tlAllOffTimesheet,
-    'tlClearAllMarks': (s) => s.tlClearAllMarks,
+    'tlClearMarkFilter': (s) => s.tlClearMarkFilter,
     'tlClearAllFillRefs': (s) => s.tlClearAllFillRefs,
     'tlColVisibility': (s) => s.tlColVisibility,
     'tlColLayerKind': (s) => s.tlColLayerKind,

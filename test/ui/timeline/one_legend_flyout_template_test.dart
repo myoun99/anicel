@@ -20,7 +20,7 @@ void main() {
     onToggleVisibilitySolo: () {},
     onSheetAllOn: () {},
     onSheetAllOff: () {},
-    onClearAllMarks: () {},
+    onClearMarkFilter: () {},
     onClearAllFillReferences: () {},
     onMuteAllSe: () {},
     onUnmuteAllSe: () {},
@@ -91,7 +91,7 @@ void main() {
     await pump(tester, withLegend: false, showRowSolos: true);
     for (final (cell, _, _) in [
       ...cells,
-      ('legend-mark', 'legend-mark-clear', 'legend-filter-mark-layout'),
+      ('legend-mark', 'legend-mark-filter-clear', 'legend-filter-mark-layout'),
     ]) {
       // ⛔The key stays on the cell whether or not it can open a flyout —
       // it is the column's stable address.
@@ -149,7 +149,7 @@ void main() {
   testWidgets('the MARK cell shows only the marks in use', (tester) async {
     await pump(tester, withLegend: true, showRowSolos: true);
     var flyout = await openFlyout(tester, 'legend-mark');
-    expect(flyout.items, contains('legend-mark-clear'));
+    expect(flyout.items, contains('legend-mark-filter-clear'));
     expect(
       flyout.dividers,
       0,
@@ -168,7 +168,7 @@ void main() {
       },
     );
     flyout = await openFlyout(tester, 'legend-mark');
-    expect(flyout.items, contains('legend-mark-clear'));
+    expect(flyout.items, contains('legend-mark-filter-clear'));
     expect(flyout.items, contains('legend-filter-mark-layout'));
     expect(flyout.dividers, 1);
   });
@@ -183,7 +183,7 @@ void main() {
       marksInUse: {const LayerMark(process: LayerProcess.layout)},
     );
     final flyout = await openFlyout(tester, 'legend-mark');
-    expect(flyout.items, contains('legend-mark-clear'));
+    expect(flyout.items, contains('legend-mark-filter-clear'));
     expect(flyout.items, isNot(contains('legend-filter-mark-layout')));
     expect(flyout.dividers, 0);
   });

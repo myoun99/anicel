@@ -1541,7 +1541,7 @@ enum AppStrings {
   String get tlBypassAllFx => _s('tlBypassAllFx');
   String get tlAllOnTimesheet => _s('tlAllOnTimesheet');
   String get tlAllOffTimesheet => _s('tlAllOffTimesheet');
-  String get tlClearAllMarks => _s('tlClearAllMarks');
+  String get tlClearMarkFilter => _s('tlClearMarkFilter');
   String get tlClearAllFillRefs => _s('tlClearAllFillRefs');
   String get tlColVisibility => _s('tlColVisibility');
   String get tlColLayerKind => _s('tlColLayerKind');
@@ -2553,7 +2553,7 @@ enum AppStrings {
     'tlBypassAllFx': 'Bypass all fx',
     'tlAllOnTimesheet': 'All on timesheet',
     'tlAllOffTimesheet': 'All off timesheet',
-    'tlClearAllMarks': 'Clear all marks',
+    'tlClearMarkFilter': 'Clear mark filter',
     'tlClearAllFillRefs': 'Clear all fill references',
     'tlColVisibility': 'Visibility column',
     'tlColLayerKind': 'Layer kind column',
@@ -3841,7 +3841,7 @@ enum AppStrings {
     'tlBypassAllFx': 'FXをすべてバイパス',
     'tlAllOnTimesheet': 'すべてシートに載せる',
     'tlAllOffTimesheet': 'すべてシートから外す',
-    'tlClearAllMarks': 'マークをすべて消去',
+    'tlClearMarkFilter': 'マークフィルターを解除',
     'tlClearAllFillRefs': '塗り参照をすべて解除',
     'tlColVisibility': '表示列',
     'tlColLayerKind': 'レイヤー種類列',
@@ -5151,7 +5151,7 @@ enum AppStrings {
     'tlBypassAllFx': 'FX 모두 우회',
     'tlAllOnTimesheet': '모두 시트에 올리기',
     'tlAllOffTimesheet': '모두 시트에서 내리기',
-    'tlClearAllMarks': '마크 모두 지우기',
+    'tlClearMarkFilter': '마크 필터 해제',
     'tlClearAllFillRefs': '채색 참조 모두 해제',
     'tlColVisibility': '표시 열',
     'tlColLayerKind': '레이어 종류 열',
@@ -6553,7 +6553,7 @@ enum AppStrings {
     'tlBypassAllFx': 'Contourner tous les FX',
     'tlAllOnTimesheet': 'Tout mettre sur la feuille',
     'tlAllOffTimesheet': 'Tout retirer de la feuille',
-    'tlClearAllMarks': 'Effacer tous les repères',
+    'tlClearMarkFilter': 'Effacer le filtre de repères',
     'tlClearAllFillRefs': 'Effacer toutes les références de remplissage',
     'tlColVisibility': 'Colonne visibilité',
     'tlColLayerKind': 'Colonne type de calque',
@@ -7812,7 +7812,7 @@ enum AppStrings {
     'tlBypassAllFx': '旁通全部 FX',
     'tlAllOnTimesheet': '全部放上摄影表',
     'tlAllOffTimesheet': '全部移出摄影表',
-    'tlClearAllMarks': '清除所有标记',
+    'tlClearMarkFilter': '清除标记筛选',
     'tlClearAllFillRefs': '清除所有填充参考',
     'tlColVisibility': '可见性列',
     'tlColLayerKind': '图层类型列',

@@ -31,7 +31,7 @@ class LayerLegendCallbacks {
     required this.onToggleVisibilitySolo,
     required this.onSheetAllOn,
     required this.onSheetAllOff,
-    required this.onClearAllMarks,
+    required this.onClearMarkFilter,
     required this.onClearAllFillReferences,
     required this.onMuteAllSe,
     required this.onUnmuteAllSe,
@@ -57,7 +57,7 @@ class LayerLegendCallbacks {
   final VoidCallback onToggleVisibilitySolo;
   final VoidCallback onSheetAllOn;
   final VoidCallback onSheetAllOff;
-  final VoidCallback onClearAllMarks;
+  final VoidCallback onClearMarkFilter;
   final VoidCallback onClearAllFillReferences;
   final VoidCallback onMuteAllSe;
   final VoidCallback onUnmuteAllSe;
@@ -380,12 +380,19 @@ class TimelineLayerControlsHeader extends StatelessWidget {
       flyout: legend == null
           ? null
           : _LegendFlyout(
+              // 🚨THE FILTER'S OWN WAY BACK, not the labels' eraser
+              // (clear-all-marks-meaning-Q1, 유저 2026-09-25: 「마크 모두
+              // 지우기를 삭제. 그리고 마크 필터해제 넣고」). The row that
+              // stood here wiped every layer's label; beside the solo list it
+              // read as 「undo the solo」, and pressed that way it erased the
+              // project's labels and left the solo in place.
               bulk: () => [
                 PanelFlyoutItem(
-                  keyValue: 'legend-mark-clear',
-                  label: AppText.strings.tlClearAllMarks,
-                  icon: Icons.label_off_outlined,
-                  onSelected: legend.onClearAllMarks,
+                  keyValue: 'legend-mark-filter-clear',
+                  label: AppText.strings.tlClearMarkFilter,
+                  icon: Icons.filter_alt_off_outlined,
+                  enabled: rowFilter.markColors.isNotEmpty,
+                  onSelected: legend.onClearMarkFilter,
                 ),
               ],
               // 🚨THE MARKS IN USE, not every mark there
