@@ -192,9 +192,23 @@ class _StoryboardRailRows {
   /// in the same order or a span and a slide would disagree about which row
   /// the pointer just crossed.
   List<TimelineDisplayRow> _seRowsInDisplayOrder(Track track) => [
-    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
+    for (final slot in _shownSeSlots(track))
       if (_trackSeAt(track, slot) case final layer?)
         TimelineDisplayRow.layer(layer, layerIndex: slot),
+  ];
+
+  /// The S slots the rail SHOWS for [track], top slot first — the order the
+  /// rail draws them (slot 0 sits just above the V row) — with the legend's
+  /// filter applied ([_filterAllowsSeRow]).
+  ///
+  /// 🚨ONE LIST for everything that lays an S row out: the rail's labels, the
+  /// strips beside them, and the one row table the bands, the sheet, the
+  /// select-drag, the ring and the swipe read. The filter once reached the
+  /// labels alone, so every row under a hidden one parted from its strip by
+  /// a row (storyboard-filter-leaves-the-strips, measured 94 over 124).
+  List<int> _shownSeSlots(Track track) => [
+    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
+      if (_filterAllowsSeRow(track, slot)) slot,
   ];
 
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
@@ -546,22 +560,17 @@ class _StoryboardRailRows {
   }
 
   /// The SE section's rail rows for [track], top slot first: each slot
-  /// the filter allows, with its audio lane label and transform lane
-  /// labels while the row is expanded.
-  List<Widget> _seRowsFor(Track track) {
-    final topSlot = _seSlotCount(track) - 1;
-    final seRows = <Widget>[
-      for (var slot = topSlot; slot >= 0; slot--)
-        if (_filterAllowsSeRow(track, slot)) ...[
-          _state._rows.seLabelRow(track, slot),
-          if (_state.widget.expandedSeAudioRows.contains(
-            StoryboardPanel.seRowKey(track, slot),
-          ))
-            ..._seLaneLabels(track, slot),
-        ],
-    ];
-    return seRows;
-  }
+  /// the rail shows ([_shownSeSlots]), with its audio lane label and
+  /// transform lane labels while the row is expanded.
+  List<Widget> _seRowsFor(Track track) => [
+    for (final slot in _shownSeSlots(track)) ...[
+      _state._rows.seLabelRow(track, slot),
+      if (_state.widget.expandedSeAudioRows.contains(
+        StoryboardPanel.seRowKey(track, slot),
+      ))
+        ..._seLaneLabels(track, slot),
+    ],
+  ];
 
   /// One S row's lane labels on the shared substrate, row for row with
   /// [_seLaneStrips]: its headers answer to the timeline's own switch and
@@ -1199,7 +1208,7 @@ class _StoryboardRailRows {
       railRow: (track: track, layer: track.transitionLayer, seSlot: null),
       height: heights.transition,
     ));
-    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) {
+    for (final slot in _shownSeSlots(track)) {
       final layer = _trackSeAt(track, slot);
       slots.add((
         row: layer == null ? null : LayerRowAddress(layer.id),
@@ -1228,6 +1237,10 @@ class _StoryboardRailRows {
           ));
         }
       }
+    }
+    // The filter hides the V row as the rail does — the row and its lanes.
+    if (!_filterAllowsTrackRow(track)) {
+      return slots;
     }
     slots.add((
       row: TrackRowAddress(track.id),
@@ -1270,6 +1283,11 @@ class _StoryboardRailRows {
     TimelineScale scale,
     List<Widget> trackGlobalRows,
   ) {
+    // The filter hides the V row as the rail does — the strip and its lanes
+    // with it, or every row under it parts from its label.
+    if (!_filterAllowsTrackRow(track)) {
+      return trackGlobalRows;
+    }
     return [
       // Prebuilt from the RAW project outside the drag-preview builder
       // (R10-③): identical instances per step = subtree rebuilds skipped.
@@ -1353,7 +1371,7 @@ class _StoryboardRailRows {
       frameGeometry: _state._frameGeometry,
     );
     return [
-      for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) ...[
+      for (final slot in _shownSeSlots(track)) ...[
         // The gate keeps comma drags LIVE here (UI-R7 #7): these rows
         // are built once per panel build (identical instances across
         // cut-trim preview steps, R10-③), so without it an SE edge drag

@@ -220,10 +220,17 @@ class _StoryboardRowsAndLabels {
     if (hooks == null || trackLayer == null) {
       return row;
     }
-    // The rail lists the slots top-down, which is the track's list
-    // reversed; `modelInsertionForSlot` infers that from the two lists.
-    final displayRows = track.seLayers.reversed.toList();
-    final displayIndex = _seSlotCount(track) - 1 - slot;
+    // The rail lists the slots it SHOWS top-down — the track's list
+    // reversed, less the rows the filter hides, as the timeline's display
+    // rows leave them out; `modelInsertionForSlot` infers the rest from the
+    // two lists.
+    final displayRows = [
+      for (final shown in _state._railRows._shownSeSlots(track))
+        ?_trackSeAt(track, shown),
+    ];
+    final displayIndex = displayRows.indexWhere(
+      (layer) => layer.id == trackLayer.id,
+    );
     return LayerRowDragTarget(
       subject: LayerRowSubject(trackLayer.id),
       slotBefore: displayIndex,
