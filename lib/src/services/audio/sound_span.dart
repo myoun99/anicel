@@ -13,9 +13,9 @@ import 'wav16_header.dart';
 /// 구간만 품는다, 「비디오든 이미지든 오디오든 관계없이 법 하나로」). Null
 /// when it cannot be decoded.
 ///
-/// A WAV because it is the one sound this app writes ([wav16HeaderBytes]):
-/// every door that reads a sound reads it, and a take recorded here is one
-/// already.
+/// A WAV because it is the one sound this app writes ([wav16Bytes]): every
+/// door that reads a sound reads it, and a take recorded here is one too
+/// (only since 09-25 — see there).
 ///
 /// ⚠️In the SOURCE's time ([int16PcmOfFrames]), not the conform's: the
 /// conform applies the project's audio speed to whatever it reads, so a
@@ -37,22 +37,15 @@ Uint8List? soundSpanAsWav(
   if (decoded == null || decoded.channels <= 0) {
     return null;
   }
-  final pcm = int16PcmOfFrames(
-    decoded,
-    (first: kept.first, count: kept.count),
-    clock.rate.inSourceTime(clock.speed),
+  return wav16Bytes(
+    int16PcmOfFrames(
+      decoded,
+      (first: kept.first, count: kept.count),
+      clock.rate.inSourceTime(clock.speed),
+    ),
+    sampleRate: decoded.sampleRate,
+    channels: decoded.channels,
   );
-  final data = pcm.buffer.asUint8List(pcm.offsetInBytes, pcm.lengthInBytes);
-  return (BytesBuilder(copy: false)
-        ..add(
-          wav16HeaderBytes(
-            dataBytes: data.length,
-            sampleRate: decoded.sampleRate,
-            channels: decoded.channels,
-          ),
-        )
-        ..add(data))
-      .takeBytes();
 }
 
 /// What project [frames] play of [sound], as interleaved 16-bit PCM — what

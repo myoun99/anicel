@@ -44,3 +44,32 @@ Uint8List wav16HeaderBytes({
   header.setUint32(40, dataBytes, Endian.little);
   return header.buffer.asUint8List();
 }
+
+/// [pcm] — interleaved 16-bit samples — as a whole WAV file: the header
+/// above, then the samples.
+///
+/// For a sound this app MADE and holds whole: a recorded take, the
+/// count-in's beep, the piece a trimmed sound is carried as. The export
+/// streams an hour, so it writes the header itself and the samples after.
+///
+/// 🪦A take and the beep were written by the CONFORM encoder, from when a
+/// conform was a WAV. It stopped being one on 08-30 and nothing told them:
+/// every take was a file no decoder reads — no waveform, no sound (유저
+/// 09-25, card `F-178` ⑥).
+Uint8List wav16Bytes(
+  Int16List pcm, {
+  required int sampleRate,
+  required int channels,
+}) {
+  final data = pcm.buffer.asUint8List(pcm.offsetInBytes, pcm.lengthInBytes);
+  return (BytesBuilder(copy: false)
+        ..add(
+          wav16HeaderBytes(
+            dataBytes: data.length,
+            sampleRate: sampleRate,
+            channels: channels,
+          ),
+        )
+        ..add(data))
+      .takeBytes();
+}

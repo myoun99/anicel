@@ -11,6 +11,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart';
+import '../../models/audio_pcm_scale.dart' show int16PcmOf;
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
@@ -29,7 +30,7 @@ import '../../services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import '../playback/audio_input_monitor.dart';
 import '../playback/audio_playback_schedule.dart' show ScheduledAudioClip;
-import '../../services/audio/conform_pcm_codec.dart' show encodeConform;
+import '../../services/audio/wav16_header.dart' show wav16Bytes;
 import '../../services/commands/update_media_assets_command.dart';
 import '../../models/se_take_placement.dart';
 import '../../services/audio/audio_peaks_extractor.dart'
@@ -337,10 +338,10 @@ class EditorVoiceRecording {
     try {
       final sampleRate = audioConformStore.projectSampleRate;
       final samples = _cueBeepSamples(sampleRate: sampleRate, level: 0.5);
-      final wav = encodeConform(
-        samples: samples,
-        channels: 1,
+      final wav = wav16Bytes(
+        int16PcmOf(samples),
         sampleRate: sampleRate,
+        channels: 1,
       );
       _deleteCueBeepDirectory(); // A stale one only happens if the file vanished.
       final directory = Directory.systemTemp.createTempSync('qa_cue_');
@@ -1151,10 +1152,13 @@ class EditorVoiceRecording {
         }
       }
     }
-    final wav = encodeConform(
-      samples: samples,
-      channels: channels,
+    // A WAV, the file every sound door reads ([wav16Bytes]) — 🪦it was the
+    // conform encoder's output, and no decoder reads that (유저 09-25:
+    // 「녹음중에는 파형 보이는데 녹음끝내면 사라지네」, card `F-178` ⑥).
+    final wav = wav16Bytes(
+      int16PcmOf(samples),
       sampleRate: recording.sampleRate,
+      channels: channels,
     );
     final carry = await _stageRecordingWav(wav, laneName: lane.name);
     if (carry == null) {
