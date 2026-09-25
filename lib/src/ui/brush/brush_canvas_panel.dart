@@ -23,6 +23,8 @@ import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/cel_pixel_region.dart' show regionInArtworkSpace;
+import '../../services/selection_placement.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';

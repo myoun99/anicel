@@ -121,8 +121,24 @@ class _CanvasPanelSelection {
     if (coordinator == null) {
       return null;
     }
-    final lift = buildSelectionLiftDabs(
+    // 🚨THE SHAPE IS THE CANVAS'S, THE PIXELS ARE THE ROW'S OWN
+    // (a-marquee-on-a-posed-row): the marquee is taken back through the
+    // row's placement to the artwork it shows — the pixel verbs' own
+    // restatement ([regionInArtworkSpace]) — and the lifted stamp comes out
+    // on the canvas, where the box that moves it lives ([stampOnCanvas]).
+    final placement = _state.widget.interactiveContentPose;
+    final canvasSize = _state.widget.canvasSize;
+    final inArtwork = regionInArtworkSpace(
       region: region,
+      pose: placement?.pose,
+      anchorPoint: placement?.anchorPoint,
+      canvasSize: canvasSize,
+    );
+    if (inArtwork == null) {
+      return null;
+    }
+    final lift = buildSelectionLiftDabs(
+      region: inArtwork,
       surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
       liftId: '${DateTime.now().microsecondsSinceEpoch}',
       options:
@@ -149,9 +165,13 @@ class _CanvasPanelSelection {
       // What the USER selected (F-108's [CanvasSelectionCommands.region]) —
       // null when this box is the move tool's own whole-picture target.
       userSelection: _state.widget.selectionCommands?.region,
+      placement: placement,
     );
     _state._rebuild(() {});
-    return (liftToken: token, stampDab: lift.stampDab);
+    return (
+      liftToken: token,
+      stampDab: stampOnCanvas(lift.stampDab, placement, canvasSize),
+    );
   }
 
   /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands

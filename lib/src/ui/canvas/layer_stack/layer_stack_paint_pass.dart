@@ -464,13 +464,59 @@ class _LayerStackPaintPass {
       };
 
   Rect _withTheFloat(Rect drawn) {
-    final float = _painter.floatOverlay?.value?.drawnWorldRect;
-    if (float == null || float.isEmpty) {
+    final onCanvas = _painter.floatOverlay?.value?.drawnWorldRect;
+    if (onCanvas == null || onCanvas.isEmpty) {
       return drawn;
     }
+    // The slot's own space — see [_slotFromCanvas].
+    final intoSlot = _slotFromCanvas;
+    final float = intoSlot == null
+        ? onCanvas
+        : MatrixUtils.transformRect(intoSlot, onCanvas);
     // A slot that draws nothing answers [Rect.zero], and a union with it
     // would reach back to the origin.
     return drawn.isEmpty ? float : drawn.expandToInclude(float);
+  }
+
+  /// What takes the selection's float — CANVAS space, by its contract
+  /// ([SelectionFloatPaint]) — into the active slot, which is drawn under
+  /// its row's pose wrap: that wrap, undone. Null for an unplaced row,
+  /// whose slot IS the canvas.
+  ///
+  /// 🚨a-marquee-on-a-posed-row (2026-09-25): the lift takes a posed row's
+  /// pixels out through its placement onto the canvas, where the box moves
+  /// them (`stampOnCanvas`). Drawn inside the wrap as they came, the float
+  /// of a row moved right by 100 showed 100 further right than its box.
+  late final Matrix4? _slotFromCanvas = () {
+    final active = _activeRowIn(_painter.nodes);
+    final pose = active?.pose;
+    if (pose == null) {
+      return null;
+    }
+    final wrap = layerPoseMatrix(
+      pose,
+      _painter.canvasSize,
+      anchorPoint: active!.anchorPoint,
+    );
+    return wrap.invert() == 0 ? null : wrap;
+  }();
+
+  /// The one active slot in [nodes], wherever the folders put it.
+  static _PaintActiveSurface? _activeRowIn(
+    List<CompositeNode<_PaintRow>> nodes,
+  ) {
+    for (final node in nodes) {
+      final found = switch (node) {
+        CompositeLeaf(payload: final _PaintActiveSurface active) => active,
+        CompositeLeaf() => null,
+        CompositeGroup(:final children) => _activeRowIn(children),
+        CompositeAdjustment(:final children) => _activeRowIn(children),
+      };
+      if (found != null) {
+        return found;
+      }
+    }
+    return null;
   }
 
   /// The active row at its COMMITTED surface alone, measured as a cached row
@@ -771,13 +817,21 @@ class _LayerStackPaintPass {
       // half-opacity row previews a transform at half opacity,
       // which is what the commit will look like.
       //
-      // ⚠️Inside the POSE wrap as well (the whole switch is). For
-      // an unposed row that changes nothing; for a posed one the
-      // float now travels with its layer instead of ignoring the
-      // pose, but the drag delta rides through the pose matrix
-      // with it — fine for translation, and worth an eye on a
-      // scaled or rotated row.
-      _painter.floatOverlay?.value?.paintInto(into);
+      // ⚠️Inside the POSE wrap as well (the whole switch is) — and the
+      // float is CANVAS space, so for a posed row the wrap is undone
+      // for it ([_slotFromCanvas]). ↩️It used to ride the wrap, which
+      // was right only while the lift took canvas coordinates as the
+      // row's own and moved the wrong pixels (a-marquee-on-a-posed-row).
+      final float = _painter.floatOverlay?.value;
+      final intoSlot = _slotFromCanvas;
+      if (float != null && intoSlot != null) {
+        into.save();
+        into.transform(intoSlot.storage);
+        float.paintInto(into);
+        into.restore();
+      } else {
+        float?.paintInto(into);
+      }
       into.restore();
     }
 

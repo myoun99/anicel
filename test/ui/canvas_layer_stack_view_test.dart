@@ -18,6 +18,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart' show TransformPose;
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -274,6 +275,81 @@ void main() {
         at(4, 0),
         [255, 0, 0],
         reason: 'and where nothing is above it, the float shows',
+      );
+      cache.dispose();
+    });
+
+    // 🚨a-marquee-on-a-posed-row (2026-09-25): the lift carries a posed
+    // row's pixels OUT through its placement onto the canvas, where the box
+    // moves them — so the float is canvas space, and the slot it draws in
+    // sits under the row's pose wrap. Riding that wrap as it used to, a row
+    // moved right by 2 showed its float 2 further right than its box.
+    testWidgets('a POSED active row keeps the float where the box put it', (
+      tester,
+    ) async {
+      final cache = cacheWithStroke();
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      final image = await tester.runAsync(() async {
+        final recorder = PictureRecorder();
+        Canvas(recorder, const Rect.fromLTWH(0, 0, 2, 2)).drawRect(
+          const Rect.fromLTWH(0, 0, 2, 2),
+          Paint()..color = const Color(0xFFFF0000),
+        );
+        return recorder.endRecording().toImage(2, 2);
+      });
+      addTearDown(image!.dispose);
+      // The box put the float at canvas (2,0)-(4,2).
+      float.value = SelectionFloatPaint(image: image, imageLeft: 2, imageTop: 0);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RepaintBoundary(
+              key: const ValueKey<String>('stack-capture'),
+              child: SizedBox(
+                width: 8,
+                height: 8,
+                child: CanvasLayerStackView(
+                  nodes: [
+                    CompositeLeaf<CanvasStackRow>(
+                      CanvasActiveLayerRow(
+                        opacity: 1,
+                        // The row placed 2 to the right of where it is drawn.
+                        pose: TransformPose(center: CanvasPoint(x: 6, y: 4)),
+                      ),
+                    ),
+                  ],
+                  activeSurfacePainter: BitmapSurfacePainter(
+                    surface: BitmapSurface(canvasSize: canvasSize, tileSize: 4),
+                    viewport: CanvasViewport(),
+                    showTransparentBackground: false,
+                  ),
+                  floatOverlay: float,
+                  imageCache: cache,
+                  canvasSize: canvasSize,
+                  viewport: CanvasViewport(),
+                  paintPaper: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final pixels = await capture(tester);
+      List<int> at(int x, int y) {
+        final offset = (y * 8 + x) * 4;
+        return pixels.sublist(offset, offset + 3);
+      }
+
+      expect(at(2, 0), [255, 0, 0], reason: 'the float is where its box is');
+      expect(at(3, 1), [255, 0, 0]);
+      expect(
+        at(5, 0),
+        isNot([255, 0, 0]),
+        reason: 'and not placed a second time by the row\'s pose',
       );
       cache.dispose();
     });

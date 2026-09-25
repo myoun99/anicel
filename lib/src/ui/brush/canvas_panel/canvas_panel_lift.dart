@@ -63,6 +63,7 @@ class _CanvasPanelLift {
     required BitmapSurface holed,
     required BrushDab eraseDab,
     required BrushFrameKey key,
+    required LayerPoseSample? placement,
   }) {
     final session = _MoveSession(
       region: region,
@@ -71,6 +72,7 @@ class _CanvasPanelLift {
       key: key,
       eraseDab: eraseDab,
       holed: holed,
+      placement: placement,
     );
     _session = session;
     final coordinator = _state.widget._editableCoordinator;
@@ -120,6 +122,12 @@ class _CanvasPanelLift {
     eraseDab,
     stampDab,
   ];
+
+  /// The float [session] ends with, back in the artwork of the row it was
+  /// lifted from — the one crossing a landing makes, through the same
+  /// placement the lift crossed out through (a-marquee-on-a-posed-row).
+  BrushDab _stampBackInArtwork(_MoveSession session, BrushDab stampDab) =>
+      stampInArtwork(stampDab, session.placement, _state.widget.canvasSize);
 
   /// 🚨★★★**THE OTHER CELS THE SAME CONFIRM LANDS ON** — the frame range's
   /// whole block (F-116-b / F-164).
@@ -197,18 +205,37 @@ class _CanvasPanelLift {
     // ⛔The pivot is the BOX's — 유저: 「확대/축소의 기준점은 **항상 상자의
     // 중심**」, and with a range live that is the one box on screen, so the
     // same affine describes every cel's landing.
+    // 🚨A POSED ROW'S CELS CROSS THE WAY THE STANDING ONE DID
+    // (a-marquee-on-a-posed-row): the user's outline is taken back into the
+    // artwork, and each cel's own stamp goes out onto the canvas, takes the
+    // box's transform there and comes back ([stampOnCanvas] ·
+    // [stampInArtwork]). A cel's own whole picture is already its artwork.
+    final placement = session.placement;
+    final canvasSize = _state.widget.canvasSize;
+    final userSelection = session.userSelection;
+    final userSelectionInArtwork = userSelection == null
+        ? null
+        : regionInArtworkSpace(
+            region: userSelection,
+            pose: placement?.pose,
+            anchorPoint: placement?.anchorPoint,
+            canvasSize: canvasSize,
+          );
     for (final key in ladder) {
       final cel = store.canonicalKeyOf(key);
       if (landings.containsKey(cel)) {
         continue;
       }
+      if (userSelection != null && userSelectionInArtwork == null) {
+        continue;
+      }
       final surface = coordinator.currentSurfaceOf(key);
       final lift = buildSelectionLiftDabs(
         region:
-            session.userSelection ??
+            userSelectionInArtwork ??
             CanvasSelectionRegion.shape(
               CanvasSelectionShape.wholePicture(
-                _state.widget.canvasSize,
+                canvasSize,
                 bitmapSurfaceContentBounds(surface),
               ),
             ),
@@ -232,7 +259,14 @@ class _CanvasPanelLift {
           // `transformStampDab` carries it by moving the centre.
           affine == null
               ? lift.stampDab
-              : transformStampDab(lift.stampDab, affine),
+              : stampInArtwork(
+                  transformStampDab(
+                    stampOnCanvas(lift.stampDab, placement, canvasSize),
+                    affine,
+                  ),
+                  placement,
+                  canvasSize,
+                ),
         ),
         cacheInvalidationSink: _state.widget.cacheInvalidationSink,
       );
@@ -259,7 +293,10 @@ class _CanvasPanelLift {
     // confirms post-frame, possibly after this panel went with it.
     void run() {
       final historyManager = _state.widget.historyManager;
-      final dabs = _landingDabs(session.eraseDab, stampDab);
+      final dabs = _landingDabs(
+        session.eraseDab,
+        _stampBackInArtwork(session, stampDab),
+      );
       if (historyManager == null) {
         // Headless hosts (focused tests): land raw.
         coordinator.commitSourceStroke(
@@ -356,7 +393,10 @@ class _CanvasPanelLift {
     }
     void run() {
       coordinator.commitSourceStroke(
-        sourceDabs: _landingDabs(session.eraseDab, stampDab),
+        sourceDabs: _landingDabs(
+          session.eraseDab,
+          _stampBackInArtwork(session, stampDab),
+        ),
         cacheInvalidationSink: _state.widget.cacheInvalidationSink,
       );
     }
@@ -384,6 +424,7 @@ class _MoveSession {
     required this.userSelection,
     required this.eraseDab,
     required this.holed,
+    required this.placement,
   });
 
   final int token;
@@ -416,6 +457,13 @@ class _MoveSession {
   /// answer that without the order having to stay put.
   final CanvasSelectionRegion? userSelection;
   final BrushDab eraseDab;
+
+  /// Where the row the session was cut from stood on the canvas when it
+  /// was cut — its placement, or null for an unplaced row. The stamp
+  /// floats on the canvas and lands back through THIS
+  /// ([stampInArtwork]), the one it was lifted through, so the two
+  /// crossings cannot disagree (a-marquee-on-a-posed-row).
+  final LayerPoseSample? placement;
 
   /// Null after a memory warning took it — never a lost edit, only a lost
   /// computation.

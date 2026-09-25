@@ -25,6 +25,9 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart'
+    show LayerPoseSample;
+import 'package:anicel/src/models/transform_track.dart' show TransformPose;
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -113,6 +116,9 @@ void main() {
     // F-116-b: the cel ladder a confirm lands on. Null = the standing cel,
     // which is what the session answers with no range live.
     List<BrushFrameKey> Function()? transformTargetKeys,
+    // a-marquee-on-a-posed-row: where the row stands on the canvas — the
+    // placement the editing canvas wraps the active row in. Null = unposed.
+    LayerPoseSample? placement,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -185,6 +191,7 @@ void main() {
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: cacheSink,
                 transformTargetKeys: transformTargetKeys,
+                interactiveContentPose: placement,
                 historyManager: history,
                 brushToolState: brush,
                 selectionCommands: commands,
@@ -891,6 +898,99 @@ void main() {
     // Outside the region the move tool does nothing.
     await dragOnLayer(tester, const Offset(150, 150), const Offset(170, 170));
     expect(inkAt(env.coordinator, 40, 35), isNonZero);
+  });
+
+  /// 🚨a-marquee-on-a-posed-row (found 2026-09-25, measured): the marquee
+  /// is drawn on the CANVAS, around the picture the user sees; a posed row
+  /// shows its artwork somewhere else. The lift took the marquee as the
+  /// row's own coordinates, lifted the empty artwork under it, and the move
+  /// opened no session at all — the picture stayed where it was.
+  ///
+  /// The oracle is the one sentence for every placement: the row's ARTWORK
+  /// ends up where the placement puts the moved picture — the pixels move
+  /// by the canvas drag carried back through the placement.
+  group('a POSED row: the box moves the picture the user sees', () {
+    Future<void> selectMoveConfirm(
+      WidgetTester tester,
+      ({
+        BrushFrameEditingCoordinator coordinator,
+        HistoryManager history,
+        CanvasSelectionCommands commands,
+        Future<void> Function(CanvasTool tool) setTool,
+        Future<void> Function(CanvasViewport viewport) setViewport,
+        ValueNotifier<TransformToolOptions> transformOptions,
+        BrushEditCacheInvalidationSink cacheSink,
+      })
+      env,
+    ) async {
+      // Around what the canvas SHOWS: artwork 30..60 placed at 130..160.
+      await dragOnLayer(tester, const Offset(120, 20), const Offset(170, 70));
+      expect(env.commands.hasSelection, isTrue);
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(
+        tester,
+        const Offset(132.5, 32.5),
+        const Offset(142.5, 37.5),
+      );
+      expect(
+        env.commands.movePending,
+        isTrue,
+        reason: 'the lift found the picture under the marquee',
+      );
+      env.commands.confirmPendingMove();
+      await tester.pump();
+    }
+
+    testWidgets('moved right by 100: the drag moves the artwork by the drag',
+        (tester) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+      await selectMoveConfirm(tester, env);
+
+      expect(inkAt(env.coordinator, 40, 35), isNonZero);
+      expect(inkAt(env.coordinator, 70, 65), isNonZero);
+      expect(
+        inkAt(env.coordinator, 30, 30),
+        0,
+        reason: 'the picture LEFT where it was — it did not stay behind',
+      );
+      expect(
+        inkAt(env.coordinator, 140, 35),
+        0,
+        reason: 'and nothing landed at the canvas coordinates as artwork',
+      );
+    });
+
+    testWidgets('turned a quarter about its middle and moved right by 100: '
+        'the artwork moves by the drag turned back', (tester) async {
+      // The ink's own middle (45,45) is the anchor, placed at (145,45) and
+      // turned 90° clockwise — the diagonal (30,30)→(60,60) shows as
+      // (160,30)→(130,60), inside the same marquee.
+      final env = await pumpSelectionPanel(
+        tester,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: 145, y: 45),
+            rotationDegrees: 90,
+          ),
+          anchorPoint: CanvasPoint(x: 45, y: 45),
+        ),
+      );
+      await selectMoveConfirm(tester, env);
+
+      // The canvas drag (+10,+5), turned back a quarter: (+5,−10).
+      expect(inkAt(env.coordinator, 35, 20), isNonZero);
+      expect(inkAt(env.coordinator, 65, 50), isNonZero);
+      expect(inkAt(env.coordinator, 30, 30), 0);
+    });
   });
 
   /// 🚨★★★**F-164 — 유저 2026-09-18 실기**: 「변형중에 다른프레임가면 변형
