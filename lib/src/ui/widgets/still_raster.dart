@@ -123,6 +123,13 @@ class StillRaster extends SingleChildRenderObjectWidget {
   static int get censusCaptures => _capturesEver;
   static int _capturesEver = 0;
 
+  /// The frame the last image of ANY region was taken on — one a frame. A
+  /// snapshot is a fixed price (1.6–2.0 ms of raster on the real Windows
+  /// app, whatever its size, 2026-09-25), and the regions one pick changes
+  /// become still together: taken on the same frame, their prices landed on
+  /// it at once.
+  static int? _lastCaptureFrame;
+
   @override
   RenderStillRaster createRenderObject(BuildContext context) =>
       RenderStillRaster(
@@ -446,8 +453,10 @@ class _StillLayer extends OffsetLayer {
         return;
       }
       // `>`: the frame clock ticks after the scene is built, so the frame
-      // the region changed in already reads one here.
-      if (_frame - _changedAt > _stillFramesNeeded) {
+      // the region changed in already reads one here. And one image a
+      // frame across every region ([StillRaster._lastCaptureFrame]).
+      if (_frame - _changedAt > _stillFramesNeeded &&
+          StillRaster._lastCaptureFrame != _frame) {
         _capture();
         return;
       }
@@ -459,7 +468,7 @@ class _StillLayer extends OffsetLayer {
   }
 
   /// Takes the image of the region as the scene last had it, aligned to
-  /// the device pixel grid, and asks for a frame to show it in.
+  /// the device pixel grid, for the next frame to show.
   void _capture() {
     final fit = _owner._gridFit();
     if (fit == null) {
@@ -487,6 +496,7 @@ class _StillLayer extends OffsetLayer {
         _owner._standDown = StillStandDown.unvouched;
         return;
       }
+      StillRaster._lastCaptureFrame = _frame;
       final image = toImageSync(bounds, pixelRatio: fit.scale);
       _owner._captureCount += 1;
       _image = image;
@@ -503,8 +513,15 @@ class _StillLayer extends OffsetLayer {
     }
     // The scene still holds the children: re-add this layer so the next
     // frame draws the image instead.
+    //
+    // ⛔NOT A FRAME OF ITS OWN (2026-09-25, H40). One asked for here shows
+    // nothing new — the image is of what is already on screen — and its
+    // frame counted as still for every other region, which then took ITS
+    // image and asked for another: a brush pick with the settings open grew
+    // nine frames longer, ~20 ms more of UI thread, and the images taken in
+    // a row landed on the stroke that followed (worst frame 48 → 63 ms).
+    // The next frame that comes anyway draws it.
     markNeedsAddToScene();
-    SchedulerBinding.instance.scheduleFrame();
   }
 
   /// The one picture the scene gets instead of the region: [image] put

@@ -318,6 +318,71 @@ void main() {
     expect(region.debugCaptureCount, 1, reason: 'a still region is taken once');
   });
 
+  testWidgets('taking an image asks for no frame of its own', (tester) async {
+    // H40 (2026-09-25): a frame asked for here shows nothing new, and it
+    // counted as still for every other region — a brush pick with the
+    // settings open grew nine frames longer.
+    await _pump(tester, _box());
+    final region = _region(tester);
+    for (var still = 0; still < StillRaster.stillFrames; still += 1) {
+      await _frame(tester);
+    }
+    expect(region.debugCaptureCount, 1);
+    expect(
+      tester.binding.hasScheduledFrame,
+      isFalse,
+      reason: 'the image is of what is already on screen; the next frame '
+          'that comes anyway draws it',
+    );
+    await _frame(tester);
+    expect(region.debugDrawnFromImage, isTrue);
+  });
+
+  testWidgets('regions still at once take their images a frame apart', (
+    tester,
+  ) async {
+    // A snapshot is a fixed price, and the regions one pick changes become
+    // still together — taken on one frame, their prices landed on it at
+    // once, on the stroke that followed.
+    await pumpSurface(
+      tester,
+      Row(
+        // ⚠️Stretched: a childless ColoredBox under the Row's loose height
+        // takes the smallest size — zero — and an empty region never takes
+        // an image, which left this test measuring nothing.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Expanded(child: StillRaster(debugLabel: 'a', child: _box())),
+          Expanded(
+            child: StillRaster(debugLabel: 'b', child: _box(color: _blue)),
+          ),
+        ],
+      ),
+      left: _left,
+      width: _width,
+      height: _height,
+    );
+    final regions = tester
+        .renderObjectList<RenderStillRaster>(find.byType(StillRaster))
+        .toList();
+    expect(regions, hasLength(2));
+    int taken() => regions.fold(0, (sum, r) => sum + r.debugCaptureCount);
+    final tookOn = <int>[];
+    for (var frame = 1; frame <= StillRaster.stillFrames + 3; frame += 1) {
+      final before = taken();
+      await _frame(tester);
+      expect(
+        taken() - before,
+        lessThanOrEqualTo(1),
+        reason: 'frame $frame took ${taken() - before} images',
+      );
+      if (taken() > before) {
+        tookOn.add(frame);
+      }
+    }
+    expect(tookOn, hasLength(2), reason: 'both regions took their image');
+  });
+
   testWidgets('its image is counted, and let go of with the region', (
     tester,
   ) async {
