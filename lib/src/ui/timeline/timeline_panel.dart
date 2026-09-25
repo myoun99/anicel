@@ -11,7 +11,6 @@ import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
-import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'layer_rail_window.dart'
     show
@@ -32,7 +31,7 @@ import 'timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_metrics.dart';
-import 'layer_label_controls.dart' show layerRailColumnWidthsIn;
+import 'layer_label_controls.dart' show LayerMarkEdit, layerRailColumnWidthsIn;
 import '../widgets/app_icon_button.dart';
 import 'timeline_command_bar.dart';
 import 'timeline_run_end_handles.dart';
@@ -298,7 +297,7 @@ class TimelinePanel extends StatefulWidget {
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
   final ValueChanged<LayerId>? onToggleLayerFillReference;
-  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
   /// The AE-style layer fx MASTER (R8: persisted, tri-state), both
   /// orientations;

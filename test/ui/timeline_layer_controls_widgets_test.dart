@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerMarkEdit;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -307,9 +309,9 @@ void main() {
       await tester.pumpWidget(
         _row(
           layer: layer,
-          onLayerMarkSelected: (layerId, mark) {
+          onLayerMarkSelected: (layerId, edit) {
             markedLayerId = layerId;
-            selectedMark = mark;
+            selectedMark = edit(LayerMark.none);
           },
         ),
       );
@@ -507,7 +509,7 @@ Widget _row({
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   ValueChanged<LayerId>? onToggleLayerTimesheet,
-  void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected,
+  void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected,
   LayerFxState fxState = LayerFxState.on,
   ValueChanged<LayerId>? onToggleLayerFx,
   ValueListenable<({Set<LayerId> layerIds, double opacity})?>?

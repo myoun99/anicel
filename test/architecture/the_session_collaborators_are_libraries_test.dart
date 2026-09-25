@@ -54,6 +54,11 @@ const _mayNameTheSession = <String, String>{
   'session_legend_callbacks.dart':
       'A free function that WIRES a session into the timeline legend. It '
       'takes the session as a parameter — it does not hold one.',
+  'session_row_button_presses.dart':
+      'The rail rows\' buttons WIRED to a session, built by the two hosts '
+      'that draw rails (the timeline tab, the storyboard tab) and by the SE '
+      'mixer their speaker opens, for the length of a press — the session '
+      'never constructs it or keeps one.',
 };
 
 /// What `SessionInternals` still carries: the MEASURED remainder of the

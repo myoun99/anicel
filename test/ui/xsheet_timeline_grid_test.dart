@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerMarkEdit;
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -116,9 +118,9 @@ void main() {
 
     await tester.pumpWidget(
       _grid(
-        onLayerMarkSelected: (layerId, mark) {
+        onLayerMarkSelected: (layerId, edit) {
           markedLayerId = layerId;
-          selectedMark = mark;
+          selectedMark = edit(LayerMark.none);
         },
       ),
     );
@@ -607,7 +609,7 @@ Widget _grid({
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   ValueChanged<LayerId>? onToggleLayerTimesheet,
-  void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected,
+  void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
   bool Function(int frameIndex)? isFrameReady,
   TextStyle face = const TextStyle(),

@@ -1002,6 +1002,17 @@ Widget layerAttachmentArrowIcon(BuildContext context, {Key? key}) => Icon(
   color: Theme.of(context).colorScheme.onSurfaceVariant,
 );
 
+/// A pick on a row's label chip, said as the EDIT it makes to a mark: a
+/// label pick puts the picked label, a take pick keeps the label and sets
+/// the take.
+///
+/// 🚨Said as an edit, not as the mark it makes, so a press spread over the
+/// row selection makes the same edit on every row
+/// (row-buttons-act-on-the-selection) — a take picked on one selected row
+/// keeps every other row's own label. As a finished mark it would have
+/// copied the pressed row's label onto them.
+typedef LayerMarkEdit = LayerMark Function(LayerMark current);
+
 class LayerMarkChip extends StatelessWidget {
   const LayerMarkChip({
     super.key,
@@ -1026,7 +1037,7 @@ class LayerMarkChip extends StatelessWidget {
     Layer layer, {
     Key? key,
     required String keyPrefix,
-    required void Function(LayerId layerId, LayerMark mark) onMarkSelected,
+    required void Function(LayerId layerId, LayerMarkEdit edit) onMarkSelected,
     Axis axis = Axis.horizontal,
     bool? isVisible,
   }) : this(
@@ -1042,7 +1053,7 @@ class LayerMarkChip extends StatelessWidget {
   final String keyPrefix;
   final LayerId layerId;
   final LayerMark mark;
-  final void Function(LayerId layerId, LayerMark mark) onMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit) onMarkSelected;
 
   /// 🚨★★★HIDDEN LAYER, DIMMED MARK (유저 2026-08-31, F-56: 「레이어,
   /// 비지블 off면 추가로 색도 비활성화색. **어니언스킨 off상태나 그런 다른
@@ -1122,7 +1133,8 @@ class LayerMarkChip extends StatelessWidget {
       padding: EdgeInsets.zero,
       entriesBuilder: () => layerTakeFlyoutEntries(
         selectedTake: mark.take,
-        onSelected: (take) => onMarkSelected(layerId, mark.withTake(take!)),
+        onSelected: (take) =>
+            onMarkSelected(layerId, (current) => current.withTake(take!)),
       ),
       child: Semantics(
         label: AppText.strings.tlLayerTake,
@@ -1158,7 +1170,7 @@ class LayerMarkChip extends StatelessWidget {
       // answers from the ONE [LayerRevise] set, so renaming a revise renames
       // it everywhere and 원화 can drop 동화검사 without the others noticing.
       entriesBuilder: () => layerMarkFlyoutEntries(
-        onSelected: (option) => onMarkSelected(layerId, option),
+        onSelected: (option) => onMarkSelected(layerId, (_) => option),
       ),
       child: Semantics(
         label: AppText.strings.tlLayerMark,

@@ -10,7 +10,6 @@ import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_mark.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
@@ -211,7 +210,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
   final ValueChanged<LayerId> onToggleLayerTimesheet;
-  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
   /// Drawing rows' FILL-reference toggle (R20-C2, the CSP lighthouse);
   /// null hides it.

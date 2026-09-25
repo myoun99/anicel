@@ -348,7 +348,7 @@ class LayerController {
   }
 
   /// The audio counterpart of [toggleLayerVisibility]: silences the SE
-  /// row's sounds without touching them (view state, not undoable).
+  /// row's sounds without touching them.
   void toggleLayerMuted(LayerId layerId) {
     // Mute changes what the film SOUNDS like, so it is an edit for the
     // same reason the eye is one — the old comment here called it "view
@@ -365,19 +365,27 @@ class LayerController {
   }
 
   /// The SE row's track fader + pan (AUDIO-PRO R1) — mix state alongside
-  /// [toggleLayerMuted], written the same repo-direct way.
+  /// [toggleLayerMuted], and an edit for the same reason: it changes what
+  /// the film sounds like. It wrote straight to the repository until
+  /// 2026-09-25, when the mixer learned to set a whole row selection at
+  /// once (유저: 「소리 … 선택범위 레이어 모두 적용. 언두하나」) — one undo
+  /// needs something to undo.
   void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
-    _repository.updateLayer(
-      layerId: layerId,
-      update: (layer) => layer.copyWith(
-        audioGain: gain == null ? null : (gain < 0.0 ? 0.0 : gain),
-        audioPan: pan?.clamp(-1.0, 1.0),
+    _historyManager.execute(
+      UpdateLayerDisplayCommand(
+        repository: _repository,
+        layerId: layerId,
+        debugLabel: 'Set layer audio',
+        apply: (layer) => layer.copyWith(
+          audioGain: gain == null ? null : (gain < 0.0 ? 0.0 : gain),
+          audioPan: pan?.clamp(-1.0, 1.0),
+        ),
       ),
     );
   }
 
-  /// R26 #30: the layer's composite blend — display state written the
-  /// repo-direct way, and PER-USE like the eye (T9).
+  /// R26 #30: the layer's composite blend — display state, and PER-USE
+  /// like the eye (T9).
   void setLayerBlendMode({
     required LayerId layerId,
     required LayerBlendMode blendMode,

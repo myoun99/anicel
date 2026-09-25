@@ -19,6 +19,7 @@ import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
+import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
 import 'panels/working_panel_surface.dart';
@@ -138,6 +139,10 @@ class StoryboardTabHost extends StatefulWidget {
 
 class _StoryboardTabHostState extends State<StoryboardTabHost> {
   EditorSessionManager get _session => widget.session;
+
+  /// The S rows' buttons as a press asks them — the timeline rail's own
+  /// wiring, spread over the row selection when the pressed row is in it.
+  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(_session);
 
   /// Rail view state (twirled-down lanes, Transform group collapse).
   /// Session-scoped like the timeline's lane expansion; lost on tab switch
@@ -930,7 +935,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // ("애초에 마음에 안 들었었으니까", 2026-08-10).
                     // Timeline-parity layer controls on the ACTIVE cut's SE
                     // rows — the SAME session hooks the timeline host wires.
-                    onToggleLayerVisibility: _session.layerSwitches.toggleLayerVisibility,
+                    onToggleLayerVisibility: _rowPresses.toggleVisibility,
                     onOpenLayerMixer: (anchorContext, layerId) => unawaited(
                       showSeLayerMixer(
                         anchorContext,
@@ -943,12 +948,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         .soloedSeLayerIds
                         .value
                         .contains(layerId),
-                    onLayerOpacityChanged: _session.opacityVerbs.previewLayerOpacity,
-                    onLayerOpacityChangeEnd: _session.opacityVerbs.commitLayerOpacity,
-                    onLayerMarkSelected: _session.layerMarks.setLayerMark,
+                    onLayerOpacityChanged: _rowPresses.previewOpacity,
+                    onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
+                    onLayerMarkSelected: _rowPresses.pickMark,
                     // B5③ (ordered twice): the timeline rows' sheet toggle on
                     // this rail too — the same session verb.
-                    onToggleLayerTimesheet: _session.layerSwitches.toggleLayerTimesheet,
+                    onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
                     layerOnTimesheetOf: _session.layerSwitches.isLayerOnTimesheet,
                     layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
                     seRowLaneOpenOf: (track, slot) => _expandedSeAudioRows
@@ -956,7 +961,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     trackLaneOpenOf: (track) =>
                         _expandedTransformTracks.contains(track.id.value),
                     layerFxStateOf: _session.effectsAndFx.layerFxState,
-                    onToggleLayerFx: _session.effectsAndFx.toggleLayerFx,
+                    onToggleLayerFx: _rowPresses.toggleFx,
                     // The timeline's rail legend on this panel too (UI-R5): the
                     // same session-backed bulk flyouts + master opacity bar; the
                     // row solos stand down (the storyboard rail is track-global,

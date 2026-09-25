@@ -16,6 +16,7 @@ import 'timeline/se_layer_mixer.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
+import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'timeline/timeline_tile_raster_source.dart'
     show timelineSubstrateGeneration;
@@ -432,34 +433,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     return null;
   }
 
-  void _toggleLayerVisibility(LayerId layerId) {
-    final view = widget.cameraViewEnabled;
-    if (view != null && _kindOf(layerId) == LayerKind.camera) {
-      view.value = !view.value;
-      return;
-    }
-    _session.layerSwitches.toggleLayerVisibility(layerId);
-  }
-
-  // Opacity drags preview per move and commit ONE write on release
-  // (R4 #4): the camera row's slider is the camera-view dim notifier —
-  // already cheap and live, so it applies on both hooks.
-  //
-  // ONE router for both hooks, because the routing question is one
-  // question. [sessionWrite] is the only thing the preview and the commit
-  // disagree about, and it is a value.
-  void _applyLayerOpacity(
-    LayerId layerId,
-    double opacity,
-    void Function(LayerId layerId, double opacity) sessionWrite,
-  ) {
-    final dim = widget.cameraDimOpacity;
-    if (dim != null && _kindOf(layerId) == LayerKind.camera) {
-      dim.value = opacity;
-      return;
-    }
-    sessionWrite(layerId, opacity);
-  }
+  /// The rail rows' buttons as a press asks them — spread over the row
+  /// selection when the pressed row is in it. The camera row's eye and
+  /// slider drive the camera view (R4 #4: its dim is already cheap and
+  /// live, so it applies on the drag as on the release).
+  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(
+    _session,
+    cameraView: widget.cameraViewEnabled,
+    cameraDim: widget.cameraDimOpacity,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -680,20 +662,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             },
             // Kind-dispatched (unified layer controls): the camera row drives
             // the camera-view notifiers, every other row the layer flags.
-            onToggleLayerVisibility: _toggleLayerVisibility,
-            onLayerOpacityChanged: (layerId, opacity) => _applyLayerOpacity(
-              layerId,
-              opacity,
-              _session.opacityVerbs.previewLayerOpacity,
-            ),
-            onLayerOpacityChangeEnd: (layerId, opacity) => _applyLayerOpacity(
-              layerId,
-              opacity,
-              _session.opacityVerbs.commitLayerOpacity,
-            ),
-            onToggleLayerTimesheet: _session.layerSwitches.toggleLayerTimesheet,
-            onToggleLayerFillReference: _session.layerSwitches.toggleLayerFillReference,
-            onLayerMarkSelected: _session.layerMarks.setLayerMark,
+            onToggleLayerVisibility: _rowPresses.toggleVisibility,
+            onLayerOpacityChanged: _rowPresses.previewOpacity,
+            onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
+            onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
+            onToggleLayerFillReference: _rowPresses.toggleFillReference,
+            onLayerMarkSelected: _rowPresses.pickMark,
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
             layerFxStateOf: _session.effectsAndFx.layerFxState,
@@ -702,10 +676,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.
             onToggleLayerCollapsed: _session.folders.toggleLayerCollapsed,
-            onToggleLayerFx: _session.effectsAndFx.toggleLayerFx,
+            onToggleLayerFx: _rowPresses.toggleFx,
             // Per-layer onion skin (UI-R17 #5, TVPaint style).
             layerOnionSkinEnabledOf: _session.onionSkin.isLayerOnionSkinEnabled,
-            onToggleLayerOnionSkin: _session.onionSkin.toggleLayerOnionSkin,
+            onToggleLayerOnionSkin: _rowPresses.toggleOnionSkin,
             displayedOnionSkinOn: _session.onionSkin.displayedLayersOnionSkinEnabled,
             // Comma edge drags preview live from the session's drag-start
             // snapshot and commit as ONE undo entry on release.
@@ -916,7 +890,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             opacityDragPreview: _session.opacityVerbs.dragPreview,
             masterOpacityValue: _session.opacityVerbs.lastMasterOpacity,
             // R27 #6: the blend mode reads and commits from the LABEL now.
-            onLayerBlendModeSelected: _session.layerSwitches.setLayerBlendMode,
+            onLayerBlendModeSelected: _rowPresses.pickBlendMode,
             // R27 #9: the camera row's opacity IS the camera-view dim
             // notifier — handing it to the slider keeps a drag off the host.
             layerOpacityOverrideOf: _cameraDimOverrideFor,

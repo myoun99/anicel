@@ -53,23 +53,21 @@ class LayerSwitchVerbs {
     _changes.notifyChanged();
   }
 
-  /// Silences/unsilences an SE row's sounds (the mute button — view state
-  /// like visibility, not undoable): playback and export skip muted
-  /// layers' clips, waveforms keep displaying.
+  /// Silences/unsilences an SE row's sounds: playback and export skip
+  /// muted layers' clips, waveforms keep displaying. An undoable edit, so
+  /// the history listener re-uploads a live mix — no refresh of its own.
   void toggleLayerMuted(LayerId layerId) {
     _controllers.layerController.toggleLayerMuted(layerId);
-    _changes.refreshLiveAudioSchedule();
     _changes.notifyChanged();
   }
 
-  /// The SE row's track fader + pan (mix state like mute, repo-direct).
+  /// The SE row's track fader + pan — an undoable edit, like mute.
   void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
     _controllers.layerController.setLayerAudio(
       layerId: layerId,
       gain: gain,
       pan: pan,
     );
-    _changes.refreshLiveAudioSchedule();
     _changes.notifyChanged();
   }
 

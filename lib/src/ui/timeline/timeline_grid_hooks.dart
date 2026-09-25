@@ -6,9 +6,9 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
-import '../../models/layer_mark.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import 'layer_label_controls.dart' show LayerMarkEdit;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -318,7 +318,7 @@ class TimelineGridHooks {
 
   final ValueChanged<LayerId>? onToggleLayerFx;
 
-  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
   final ValueChanged<LayerId>? onToggleLayerFillReference;

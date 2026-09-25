@@ -847,7 +847,7 @@ class EditorSessionManager extends ChangeNotifier
   // sits on the GLOBAL axis.
   late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: projectSettings, trackSe: trackSe, transitions: transitions);
 
-  late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections);
+  late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections, history: historyManager);
 
   /// ⚠️Two ROLE members, not forwarders: [SessionInternals.rowIsSelected]
   /// and [SelectionAccess.clearRowSelection] are asked of the SESSION by
@@ -1981,8 +1981,8 @@ class EditorSessionManager extends ChangeNotifier
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor, internals: this);
 
   /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
-  /// listener and by the repo-direct mix edits (mute/fader/pan/solo,
-  /// which bypass history).
+  /// listener and by the SE solo — the one mix switch that bypasses
+  /// history (mute, fader and pan are edits and undo).
   @override
   void refreshLiveAudioSchedule() {
     if (playbackRig.audioDeviceTransport.carryingPlayback) {

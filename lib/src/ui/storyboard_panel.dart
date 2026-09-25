@@ -923,7 +923,7 @@ class StoryboardPanel extends StatefulWidget {
   /// Commit-on-release hook (R4 #4); null keeps per-move writes.
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
-  final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
 
   /// B5③ (2026-08-17, ordered twice before): the timeline rows' timesheet
   /// toggle on this rail's rows too — the SAME session verb the timeline
@@ -2680,7 +2680,7 @@ class _StoryboardSeLabel extends StatelessWidget {
   /// Commit-on-release hook (R4 #4); null keeps per-move writes.
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
-  final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
 
   /// B5③: the timeline rows' sheet toggle, on this rail too.
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
@@ -2890,7 +2890,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
 
   /// B5③: the timeline row's three controls, same verbs (see class doc).
   final ValueChanged<LayerId>? onToggleLayerVisibility;
-  final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
 
   @override
