@@ -243,7 +243,7 @@ class _CutCommands {
   /// them already wears [mark].
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) {
     final project = _coordinator.repository.requireProject();
-    if (UpdateCutMarkCommand.targetsOf(project, cutIds).every(
+    if (LinkedCutFieldCommand.linkedCutsOf(project, cutIds).every(
       (cutId) => requireCut(project, cutId).metadata.mark == mark,
     )) {
       return;

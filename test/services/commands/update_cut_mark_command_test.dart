@@ -11,6 +11,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/commands/linked_cut_field_command.dart';
 import 'package:anicel/src/services/commands/update_cut_mark_command.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
@@ -100,6 +101,26 @@ void main() {
     expect(_markOf(repository, _cut2), _layout, reason: 'its own label back');
   });
 
+  test('an undo gives the LABEL back and leaves the rest of the metadata as '
+      'it stands — the walk writes one field, not a snapshot', () {
+    final repository = _repository();
+    final command = UpdateCutMarkCommand(
+      repository: repository,
+      cutIds: const [_cut2],
+      mark: _key,
+    )..execute();
+    final labelled = requireCut(repository.requireProject(), _cut2).metadata;
+    repository.updateCutMetadata(
+      cutId: _cut2,
+      metadata: labelled.copyWith(note: 'written after the label'),
+    );
+
+    command.undo();
+    final restored = requireCut(repository.requireProject(), _cut2).metadata;
+    expect(restored.mark, _layout);
+    expect(restored.note, 'written after the label');
+  });
+
   /// 🗣️「선택범위 한상태로 조작가능한거 물론이고」.
   test('the cuts a selection covers take the label as ONE step', () {
     final repository = _repository();
@@ -121,10 +142,10 @@ void main() {
   test('the targets are each cut and its siblings, once each', () {
     final project = _repository().requireProject();
     expect(
-      UpdateCutMarkCommand.targetsOf(project, const [_cut1, _cut2]),
+      LinkedCutFieldCommand.linkedCutsOf(project, const [_cut1, _cut2]),
       [_cut1, _cut2],
     );
-    expect(UpdateCutMarkCommand.targetsOf(project, const [_cut3]), [_cut3]);
+    expect(LinkedCutFieldCommand.linkedCutsOf(project, const [_cut3]), [_cut3]);
   });
 
   test('the label is saved with the cut, and an unlabelled cut writes none', () {

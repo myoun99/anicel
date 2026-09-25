@@ -66,6 +66,7 @@ import 'relink_media_asset_command.dart';
 import 'rasterize_layer_reference_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
+import 'linked_cut_field_command.dart';
 import 'update_cut_mark_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
