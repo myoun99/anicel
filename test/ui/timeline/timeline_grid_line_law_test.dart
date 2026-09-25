@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart'
+    show timelineRulerSecondsLabel;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineBaseGridAlpha;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
@@ -54,6 +56,29 @@ void main() {
       moreOrLessEquals(timelineBaseGridAlpha),
       reason: 'UI-R14 #4: one faint value across all three panels',
     );
+  });
+
+  test('the grid rules its second line where the ruler writes a second — a '
+      'nonsense rate included', () {
+    // One answer to 「does a second begin here」: the ruler reads a nonsense
+    // rate as 24, and the grid ruled no second at all for it.
+    for (final fps in [24, 30, 0]) {
+      for (var frame = 6; frame <= 120; frame += 6) {
+        final ruled =
+            timelineFrameBoundaryLineInk(
+              frameIndex: frame,
+              frameCellExtent: 24,
+              framesPerSecond: fps,
+              colorScheme: scheme,
+            ) ==
+            timelineGridSecondLineInk();
+        final marked = timelineRulerSecondsLabel(
+          frameIndex: frame,
+          framesPerSecond: fps,
+        ).isNotEmpty;
+        expect(ruled, marked, reason: 'frame $frame at $fps fps');
+      }
+    }
   });
 
   test('the position convention is boundary + the ruler\'s own half-pixel '

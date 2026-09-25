@@ -7,6 +7,7 @@ import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/ui/conte/conte_words_in.dart';
@@ -438,9 +439,9 @@ void main() {
     });
 
     test('the running time reads minutes, seconds and frames', () {
-      expect(conteRunningTimeLabel(30004, 24), '20:50+4');
-      expect(conteRunningTimeLabel(23, 24), '0:00+23');
-      expect(conteRunningTimeLabel(24 * 61 + 12, 24), '1:01+12');
+      expect(runningTimeLabel(30004, 24), '20:50+4');
+      expect(runningTimeLabel(23, 24), '0:00+23');
+      expect(runningTimeLabel(24 * 61 + 12, 24), '1:01+12');
     });
   });
 

@@ -4,7 +4,8 @@ library;
 
 import 'dart:ui' show Offset, Rect;
 
-import '../project_frame_rate.dart' show secondsPlusFramesLabel;
+import '../project_frame_rate.dart'
+    show runningTimeLabel, secondsPlusFramesLabel;
 import '../sheet_marks.dart';
 import '../sheet_paint_layer.dart';
 import 'conte_ink_windows.dart';
@@ -134,7 +135,7 @@ Iterable<SheetMark> _cover(
   );
   yield centred(
     '${source.cuts.length}${words.cutsSuffix}      '
-    '${conteRunningTimeLabel(frames, source.framesPerSecond)}',
+    '${runningTimeLabel(frames, source.framesPerSecond)}',
     slots.cuts,
     _CoverSlots.closingSize,
   );
@@ -189,15 +190,6 @@ class _CoverSlots {
 
   Rect _across(double top, double size) =>
       Rect.fromLTWH(_m.marginX, top, _m.bodyWidth, _line(size));
-}
-
-/// A book's running time the way a conte's cover prints it — minutes,
-/// seconds and frames: `20:52+12`.
-String conteRunningTimeLabel(int frames, int framesPerSecond) {
-  final fps = framesPerSecond < 1 ? 1 : framesPerSecond;
-  final seconds = frames ~/ fps;
-  final clock = '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
-  return '$clock+${frames % fps}';
 }
 
 /// The printed form: the cut box, the table and the silhouette — the

@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_grid_metrics.dart' show timelineStrideHolding;
+import 'timeline_second.dart';
 import '../repaint_props.dart';
 
 /// The frame grid, ONE SHEET per grid (UI-R10 #26 → UI-R13 #7 → UI-R18
@@ -443,7 +444,10 @@ Color timelineStandingGround(Color resting, ColorScheme colorScheme) =>
     return null;
   }
   if (frameIndex % 6 == 0) {
-    return framesPerSecond > 0 && frameIndex % framesPerSecond == 0
+    return timelineOnSecondBoundary(
+          frameIndex: frameIndex,
+          framesPerSecond: framesPerSecond,
+        )
         ? timelineGridSecondLineInk()
         : timelineGridSixLineInk(colorScheme);
   }
@@ -734,7 +738,11 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
       shown(frame);
       frame += beatPeriod
     ) {
-      final paint = framesPerSecond > 0 && frame % framesPerSecond == 0
+      final paint =
+          timelineOnSecondBoundary(
+            frameIndex: frame,
+            framesPerSecond: framesPerSecond,
+          )
           ? secondPaint
           : sixPaint;
       line(positionOf(frame), paint);

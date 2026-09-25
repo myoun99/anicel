@@ -81,12 +81,14 @@ void main() {
         }
       }
     }
-    // The duration formatter is the ONE other place allowed to divide by the
+    // The duration split is the ONE other place allowed to divide by the
     // rate, and it answers the other question (see the group above).
+    // ↩️The timesheet document and the envelope were let off too; the
+    // timesheet's line had long gone, and the envelope's seconds and frames
+    // read the one split now (2026-09-26, with the conte cover's running
+    // time — the third copy of that division).
     offenders.removeWhere(
-      (line) => line.startsWith('lib/src/models/project_frame_rate.dart') ||
-          line.startsWith('lib/src/models/timesheet_document.dart') ||
-          line.startsWith('lib/src/models/envelope/cut_envelope_source.dart'),
+      (line) => line.startsWith('lib/src/models/project_frame_rate.dart'),
     );
     expect(
       offenders,

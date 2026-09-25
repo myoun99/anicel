@@ -20,8 +20,8 @@ class CutEnvelopeCutLine {
   final int durationFrames;
   final int fps;
 
-  int get seconds => durationFrames ~/ fps;
-  int get frames => durationFrames % fps;
+  int get seconds => durationSecondsAndFrames(durationFrames, fps).seconds;
+  int get frames => durationSecondsAndFrames(durationFrames, fps).frames;
 
   /// The sheet's `초+コマ` reading, when a form wants it in one box.
   String get lengthLabel => secondsPlusFramesLabel(durationFrames, fps);

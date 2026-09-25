@@ -11,6 +11,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_second.dart';
 import '../repaint_props.dart';
 import '../text/word_condensation.dart';
 
@@ -33,12 +34,16 @@ import '../text/word_condensation.dart';
 String timelineRulerSecondsLabel({
   required int frameIndex,
   required int framesPerSecond,
-}) {
-  final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
-  return frameIndex % safeFps == 0
-      ? timelineRulerSecondOf(frameIndex: frameIndex, framesPerSecond: safeFps)
-      : '';
-}
+}) =>
+    timelineOnSecondBoundary(
+      frameIndex: frameIndex,
+      framesPerSecond: framesPerSecond,
+    )
+    ? timelineRulerSecondOf(
+        frameIndex: frameIndex,
+        framesPerSecond: framesPerSecond,
+      )
+    : '';
 
 /// The second [frameIndex] lies in, counted from 0 like the marks — what
 /// the playhead writes on the seconds line wherever it stands (I-16); the
@@ -47,7 +52,7 @@ String timelineRulerSecondOf({
   required int frameIndex,
   required int framesPerSecond,
 }) {
-  final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+  final safeFps = timelineSecondFrames(framesPerSecond);
   return '${frameIndex ~/ safeFps}';
 }
 
@@ -475,7 +480,7 @@ final class TimelineRulerScale {
       _labelEveryFramesOf[this] ??= _measuredLabelEveryFrames();
 
   int _measuredLabelEveryFrames() {
-    final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+    final safeFps = timelineSecondFrames(framesPerSecond);
     final longest = showSeconds
         ? '$safeFps'
         : '${frameEndIndexExclusive > 1 ? frameEndIndexExclusive : 1}';
@@ -608,7 +613,7 @@ final class TimelineRulerScale {
     if (!showSeconds) {
       return '${frameIndex + 1}';
     }
-    final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+    final safeFps = timelineSecondFrames(framesPerSecond);
     return '${frameIndex % safeFps + 1}';
   }
 
@@ -627,7 +632,7 @@ final class TimelineRulerScale {
     if (!showSeconds) {
       return endIndexExclusive - 1;
     }
-    final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+    final safeFps = timelineSecondFrames(framesPerSecond);
     return (endIndexExclusive ~/ safeFps) * safeFps - 1;
   }
 
