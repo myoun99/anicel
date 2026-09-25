@@ -80,6 +80,31 @@ class PressFireScope extends InheritedWidget {
       oldWidget.fireOn != fireOn;
 }
 
+/// Something ABOVE a set of controls that has to hear that one is about to
+/// fire on the DOWN — before it fires.
+///
+/// The rail's column swipe folds what a press and the sweep after it write
+/// into one undo (swipe-is-one-undo), so it needs the history as it stood
+/// BEFORE the press. It cannot see that itself: a pointer-down reaches the
+/// deepest handler first, and the pressed button has written its step by
+/// the time any ancestor hears the down.
+class PressFireWatch extends InheritedWidget {
+  const PressFireWatch({
+    super.key,
+    required this.beforeFire,
+    required super.child,
+  });
+
+  final VoidCallback beforeFire;
+
+  /// Read when a press lands, not while building — so no dependency.
+  static VoidCallback? maybeOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<PressFireWatch>()?.beforeFire;
+
+  @override
+  bool updateShouldNotify(PressFireWatch oldWidget) => false;
+}
+
 /// What an inner button keeps so it still LOOKS like a button.
 ///
 /// ⛔The ink, the hover and the disabled look all come from the widget having
@@ -232,6 +257,7 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
           }
           _mine.add(event.pointer);
           if (fireOn == PressFire.down) {
+            PressFireWatch.maybeOf(context)?.call();
             widget.onPressed?.call();
           }
         },

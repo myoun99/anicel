@@ -13,6 +13,7 @@ import '../models/track_transform_lane_carrier.dart'
 import '../services/import/import_layer_spot.dart';
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
+import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_grid_metrics.dart'
@@ -461,7 +462,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => RailSweepHistory(
+    history: _session.historyManager,
+    changed: _session.notifyChanged,
+    child: _panel(context),
+  );
+
+  Widget _panel(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     // No per-tick host rebuild (W4 perf pass): playback ticks and scrub
     // moves ride _playheadGlobalFrame into the panel's playhead overlay +

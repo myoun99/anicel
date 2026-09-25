@@ -39,6 +39,7 @@ import 'timeline/timeline_frame_range_gesture.dart';
 import 'timeline/timeline_run_end_handles.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
+import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_panel.dart';
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
@@ -444,7 +445,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   );
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => RailSweepHistory(
+    history: _session.historyManager,
+    changed: _session.notifyChanged,
+    child: _panel(context),
+  );
+
+  Widget _panel(BuildContext context) {
     // Playback ticks flow into the frame cursor (see _syncFrameCursor) —
     // NEVER as a panel rebuild: only the cursor-driven widgets (playhead
     // layer, rulers, lane values, counter) subscribe, so the grids'

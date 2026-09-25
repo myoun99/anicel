@@ -1,5 +1,7 @@
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import '../../services/history_manager.dart';
+import '../input/control_press_claim.dart' show PressFireWatch;
 import '../input/value_control_pointers.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'layer_rail_columns.dart';
@@ -72,6 +74,50 @@ List<RailSwipeRow<TRow>> uniformRailRowsIn<TRow>({
   return [for (var index = first; index <= last; index += 1) rowAt(index)];
 }
 
+/// The history a sweep writes into, provided by the hosts that wire rails
+/// to a session.
+///
+/// 🚨ONE SWEEP IS ONE UNDO (swipe-is-one-undo, 유저 08-28: 「일괄로 버튼
+/// 조작하고 언두하면 바꼈던 레이어들 다 한번에 언두되야하는데 안됨」 — the
+/// 「일괄조작」 of I-1 is this swipe). A sweep marks the history before its
+/// first write and folds everything after it into one step when it lets
+/// go ([HistoryManager.foldSince]). Measured before: three rows swept, three
+/// steps, and one Ctrl+Z took back one row.
+///
+/// It also takes back what a sweep painted when the cursor draws back over
+/// it (F-182) — exactly, by retracting the row's own step
+/// ([HistoryManager.retractSince]).
+///
+/// Absent — a rail mounted on its own — a sweep writes row by row, and a
+/// row it draws back from is pressed again.
+class RailSweepHistory extends InheritedWidget {
+  const RailSweepHistory({
+    super.key,
+    required this.history,
+    required this.changed,
+    required super.child,
+  });
+
+  final HistoryManager history;
+
+  /// Tells the host a take-back moved the document. The forward writes
+  /// notify through their own verbs; a take-back has no verb of its own.
+  final VoidCallback changed;
+
+  /// Read at a press, a move and a release, not while building — so no
+  /// dependency.
+  static RailSweepHistory? maybeOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<RailSweepHistory>();
+
+  @override
+  bool updateShouldNotify(RailSweepHistory oldWidget) =>
+      history != oldWidget.history;
+}
+
+/// One row a sweep painted: whether it pressed the row's control, and how
+/// many history steps that press wrote — what taking it back has to undo.
+typedef _Stroke<TRow> = ({Object id, TRow row, bool pressed, int steps});
+
 /// Turns a vertical drag that STARTS on a rail row's button into a
 /// Krita-style paint-swipe down the rows.
 ///
@@ -140,46 +186,85 @@ class RailColumnSwipe<TRow> extends StatefulWidget {
 class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   RailToggleColumn<TRow>? _column;
   bool? _targetValue;
-  final Set<Object> _painted = <Object>{};
+
+  /// The rows this sweep holds, in the order it reached them: the pressed
+  /// row first, then outward. A cursor drawing back takes them off the top
+  /// — the newest are always the farthest out.
+  final List<_Stroke<TRow>> _strokes = <_Stroke<TRow>>[];
+  final Set<Object> _held = <Object>{};
 
   /// The pointer that opened this gesture — the latch asks whether a control
   /// claimed it. No drag callback carries the id, so a Listener reads it.
   int? _downPointer;
 
-  /// How far along the rail this sweep has already been carried — the
-  /// press, then wherever each update left it.
+  /// The history as it stood just before a column's button fired on this
+  /// press ([PressFireWatch]) — the button writes its step before the
+  /// sweep can hear the down.
+  HistoryMark? _pressMark;
+
+  /// Where the sweep under way folds from ([RailSweepHistory]).
+  HistoryMark? _sweepMark;
+
+  void _markPress() =>
+      _pressMark = RailSweepHistory.maybeOf(context)?.history.mark;
+
+  /// Where along the rail the press was — one end of the stretch the sweep
+  /// holds; the cursor is the other.
   ///
   /// 🚨★★★THE SWEEP IS CONTINUOUS AND THE POINTER IS NOT. Every update
-  /// paints the whole stretch from here to where it lands, so the rows an
-  /// unreported move flew over are painted by the move that arrives. ⛔It is
-  /// set on the PRESS as well, not on the first update: the recogniser
-  /// reports its start where the press was ([DragStartBehavior.down]), and a
-  /// segment that began at the first update instead would leave the rows
-  /// between the press and it unswept.
-  double? _sweptTo;
+  /// holds the whole stretch from the press to where the cursor lands, so
+  /// the rows an unreported move flew over are painted by the move that
+  /// arrives (F-66). ⛔It is set on the PRESS, not on the first update: the
+  /// recogniser reports its start where the press was
+  /// ([DragStartBehavior.down]).
+  double? _startAlong;
 
-  void _paintAt(RailSwipeRow<TRow>? row) {
-    final column = _column;
-    final target = _targetValue;
-    if (row == null || column == null || target == null) {
-      return;
-    }
-    if (!_painted.add(row.id)) {
-      return;
-    }
-    // Only rows that DISAGREE are touched: a swipe sets a value, it does not
-    // flip each row it passes (drag back over one and it must not come
-    // undone), and on a tri-state column it is what keeps the third state
-    // out of the sweep's way.
-    //
-    // A row with NO control in this column reads null and is skipped for a
-    // different reason: not that it agrees, but that there is nothing there
-    // to disagree — a sheet swipe crossing an attach row must leave the
-    // arrow it finds alone.
+  /// Paints [row] to the target: pressed only if it DISAGREES — a swipe
+  /// sets a value, it does not flip each row it passes, and on a tri-state
+  /// column that is what keeps the third state out of the sweep's way.
+  ///
+  /// A row with NO control in this column reads null and is held without
+  /// a press: not that it agrees, but that there is nothing there to
+  /// disagree — a sheet swipe crossing an attach row leaves the arrow alone.
+  _Stroke<TRow> _paint(RailSwipeRow<TRow> row) {
+    final column = _column!;
     final value = column.valueOf(row.row);
-    if (value != null && value != target) {
-      column.toggle(row.row);
+    if (value == null || value == _targetValue) {
+      return (id: row.id, row: row.row, pressed: false, steps: 0);
     }
+    final history = RailSweepHistory.maybeOf(context)?.history;
+    final before = history?.mark.pushed ?? 0;
+    column.toggle(row.row);
+    return (
+      id: row.id,
+      row: row.row,
+      pressed: true,
+      steps: (history?.mark.pushed ?? 0) - before,
+    );
+  }
+
+  /// Puts [stroke]'s row back as it was before the sweep reached it.
+  ///
+  /// 🚨F-182 (유저 2026-09-25): 「레이어 라벨 버튼 드래그 일괄조작, 원래
+  /// 위치로 돌아가면 원복하도록」. ⛔NOT by pressing it again when the press
+  /// wrote a step: a tri-state row the sweep turned off would come back
+  /// ON, not mixed. Its own step is RETRACTED — undone exactly, and never
+  /// offered to redo. A control with no history (the onion, a solo, the
+  /// camera's view) has two states, so pressing again is exact there.
+  void _takeBack(_Stroke<TRow> stroke) {
+    if (!stroke.pressed) {
+      return;
+    }
+    final scope = RailSweepHistory.maybeOf(context);
+    final mark = _sweepMark;
+    if (stroke.steps > 0 && scope != null && mark != null) {
+      for (var step = 0; step < stroke.steps; step += 1) {
+        scope.history.retractSince(mark);
+      }
+      scope.changed();
+      return;
+    }
+    _column!.toggle(stroke.row);
   }
 
   /// The coordinate that runs ALONG the rail — down the layer rail, ACROSS
@@ -190,7 +275,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   /// The coordinate that runs ACROSS the rail. It names the column.
   ///
   /// 🚨These two are the whole axis story. Everything else here — the latch,
-  /// the painted set, the "only rows that disagree" rule — is written in
+  /// the held stretch, the "only rows that disagree" rule — is written in
   /// along/across and does not know which way the rail points.
   double _across(Offset local) =>
       widget.axis == Axis.vertical ? local.dx : local.dy;
@@ -207,12 +292,27 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     return rows.isEmpty ? null : rows.first;
   }
 
-  /// Paints every row between where the sweep last reached and [along].
+  /// Holds exactly the stretch from the press to [along]: rows the cursor
+  /// has drawn back from are taken back, newest first, and rows it has
+  /// reached are painted, outward from the press.
   void _sweepTo(double along) {
-    final from = _sweptTo ?? along;
-    _sweptTo = along;
-    for (final row in widget.rowsIn(from, along)) {
-      _paintAt(row);
+    final start = _startAlong;
+    if (start == null) {
+      return;
+    }
+    final stretch = widget.rowsIn(start, along);
+    final reached = {for (final row in stretch) row.id};
+    // The pressed row stays whatever happens: it is the press's, not the
+    // sweep's.
+    while (_strokes.length > 1 && !reached.contains(_strokes.last.id)) {
+      final stroke = _strokes.removeLast();
+      _held.remove(stroke.id);
+      _takeBack(stroke);
+    }
+    for (final row in along >= start ? stretch : stretch.reversed) {
+      if (_held.add(row.id)) {
+        _strokes.add(_paint(row));
+      }
     }
   }
 
@@ -266,21 +366,37 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     final pointer = _downPointer;
     final pressedItsButton = pointer != null && controlOwnsTap(pointer);
     _targetValue = pressedItsButton ? value : !value;
-    _painted.clear();
-    _sweptTo = alongPosition;
-    if (pressedItsButton) {
-      _painted.add(row.id);
-    } else {
-      _paintAt(row);
-    }
+    _strokes.clear();
+    _held
+      ..clear()
+      ..add(row.id);
+    _startAlong = alongPosition;
+    // The button's own step is part of the sweep when it fired; otherwise
+    // the sweep's first write is this row's.
+    _sweepMark = pressedItsButton
+        ? _pressMark
+        : RailSweepHistory.maybeOf(context)?.history.mark;
+    _strokes.add(
+      pressedItsButton
+          ? (id: row.id, row: row.row, pressed: false, steps: 0)
+          : _paint(row),
+    );
     return true;
   }
 
   void _end() {
+    final mark = _sweepMark;
+    if (mark != null) {
+      RailSweepHistory.maybeOf(
+        context,
+      )?.history.foldSince(mark, 'Sweep a rail column');
+    }
+    _sweepMark = null;
     _column = null;
     _targetValue = null;
-    _painted.clear();
-    _sweptTo = null;
+    _strokes.clear();
+    _held.clear();
+    _startAlong = null;
   }
 
   @override
@@ -288,17 +404,27 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     return Listener(
       onPointerDown: (event) => _downPointer = event.pointer,
       // ⛔Cleared on the way out: a stale id would let the NEXT press be read
-      // as 「a button already did this」 when nothing claimed at all.
-      onPointerUp: (event) => _downPointer = null,
-      onPointerCancel: (event) => _downPointer = null,
-      child: _RailSwipeDetector(
-        axis: widget.axis,
-        columnAt: _columnAt,
-        alongOf: _along,
-        onStart: _start,
-        onUpdate: _sweepTo,
-        onEnd: _end,
-        child: widget.child,
+      // as 「a button already did this」 when nothing claimed at all — and a
+      // stale mark would fold from a press that is long gone.
+      onPointerUp: (event) {
+        _downPointer = null;
+        _pressMark = null;
+      },
+      onPointerCancel: (event) {
+        _downPointer = null;
+        _pressMark = null;
+      },
+      child: PressFireWatch(
+        beforeFire: _markPress,
+        child: _RailSwipeDetector(
+          axis: widget.axis,
+          columnAt: _columnAt,
+          alongOf: _along,
+          onStart: _start,
+          onUpdate: _sweepTo,
+          onEnd: _end,
+          child: widget.child,
+        ),
       ),
     );
   }
