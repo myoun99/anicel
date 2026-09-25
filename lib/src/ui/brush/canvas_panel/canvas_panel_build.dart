@@ -143,12 +143,12 @@ class _PanelBuild {
   /// The deck — underlay, canvas, overlay, the tap layer, the tool cursors,
   /// the selection layer and the idle ants.
   ///
-  /// ⛔Always a deck, with the canvas at one keyed place in it. The bare
-  /// canvas stood alone while no cursor visual was armed, and that switch
-  /// cost twice: a predicate missing from its list dropped a cursor outright
-  /// (the fill bucket was dead on the three sheets, which pass no underlay or
-  /// overlay), and crossing it re-created the whole content — a sheet's every
-  /// stratum re-recorded when its brush switch was touched.
+  /// ⛔Always a deck. The bare canvas stood alone while no cursor visual was
+  /// armed, and that switch cost twice: a predicate missing from its list
+  /// dropped a cursor outright (the fill bucket was dead on the three
+  /// sheets, which pass no underlay or overlay), and crossing it re-created
+  /// the whole content — a sheet's every stratum re-recorded when its brush
+  /// switch was touched.
   Widget _toolDeck(BuildContext context) {
     final overlayBuilder = _overlayBuilder;
     final underlayBuilder = _underlayBuilder;
@@ -173,11 +173,7 @@ class _PanelBuild {
               _state._selectionFloat,
             ),
           ),
-        // Keyed: an underlay that comes and goes above it moves its index.
-        Positioned.fill(
-          key: const ValueKey<String>('brush-canvas-deck-view'),
-          child: _canvasView,
-        ),
+        Positioned.fill(child: _canvasView),
         if (overlayBuilder != null)
           Positioned.fill(
             child: overlayBuilder(
