@@ -103,6 +103,7 @@ import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
     show
+        TimelineGripPaper,
         TimelineRowChromeResolver,
         TimelineRowEditChromeLayer,
         TimelineRowGripCallbacks;
@@ -4503,6 +4504,23 @@ class _StoryboardTrackRow extends StatelessWidget {
         }(),
   ];
 
+  /// The plates the row's grips stand on: a cut's first panel starts its
+  /// plate and its last panel ends it — the plate's round corners — and
+  /// every boundary between panels is the plate's straight edge.
+  TimelineGripPaper _gripPaper(List<_StoryboardStripGrip> grips) => (
+    cornerStarts: {
+      for (final grip in grips)
+        if (grip.panelIndex == 0) grip.startFrame,
+    },
+    cornerEnds: {
+      for (var index = 0; index < grips.length; index += 1)
+        if (index == grips.length - 1 ||
+            grips[index + 1].cutId != grips[index].cutId)
+          grips[index].endFrameExclusive,
+    },
+    cornerRadius: StoryboardCutBlocksPainter.plateCornerRadius,
+  );
+
   /// The STRIP's half of the shared range gesture.
   ///
   /// The strip is a CUT-OWNED row, so its selection is the cut-local one —
@@ -4836,15 +4854,24 @@ class _StoryboardTrackRow extends StatelessWidget {
                   ),
                 ),
               ),
-            // THE EDGES, on the strip with the panels they divide. They ride
-            // ABOVE the strip and cut gestures so an edge keeps its priority
-            // over both; the middles keep the rest.
+            // THE EDGES, at the panels' boundaries. They ride ABOVE the strip
+            // and cut gestures so an edge keeps its priority over both; the
+            // middles keep the rest.
             //
             // One shape of grip, and where it sits decides what it does: the
             // first panel's leading edge is the CUT's lead edge, and every
             // trailing edge is its panel's comma with the cut's length
             // riding the row end (edge unification — the division verb is
-            // gone). The cut block itself has no edges any more.
+            // gone). The cut block has no grips of its own besides these.
+            //
+            // 🗣️ON THE WHOLE PLATE, in its corners (유저 2026-09-25: 「제대로
+            // 컷블록의 위치에 존재하지않아. 내부에 존재하는느낌」 · 「공통
+            // 적용해서」): the I-43 triangle takes the block's corners, and the
+            // cut's block is the plate — its end edge the plate's top-right,
+            // its start edge the bottom-left, the two corners the cut's title
+            // and length leave free. ↩️They lay on the picture strip since
+            // #757 (07-25, 「a cut edge is always ON the strip」), which put
+            // every triangle in the strip's corners, inside the plate.
             //
             // THE timeline's chrome layer, not a cut-shaped copy of it: one
             // painter and one gesture layer for the whole row, where this
@@ -4856,22 +4883,24 @@ class _StoryboardTrackRow extends StatelessWidget {
                 ),
                 left: 0,
                 right: 0,
-                top: stripBand.top,
-                height: stripBand.height,
+                top: 0,
+                height: laneHeight,
                 child: TimelineRowEditChromeLayer(
                   paintKey: ValueKey<String>(
                     'storyboard-edit-chrome-${track.id.value}',
                   ),
-                  // The ground is what the grips actually SIT ON (B1
-                  // 2026-08-17). With thumbnails shown the strip band is
-                  // panel pictures — paper-white composites, so the plate
-                  // ground made the bars light and invisible over them.
-                  // Same predicate as the blocks painter's `showThumbnails`,
-                  // so the ground and the picture cannot drift apart.
-                  gripGround: thumbnailFor != null
+                  // The ground is what the grips' corners actually SIT ON:
+                  // the plate's bands — so the ground law gives the light
+                  // mark on the dark plate whether or not thumbnails show
+                  // (유저 2026-09-25: 「배경이 어두워서 엣지가 잘 안보여 …
+                  // 기본을 하얀색으로한다던가」). ↩️B1 (08-17) gave them the
+                  // picture's white while they stood on the strip: a
+                  // panel's picture is left-aligned, so the end triangle
+                  // mostly stood on the plate past it, dark on dark. Only a
+                  // row too short for bands leaves the pictures under the
+                  // corners — there B1's picture ground still holds.
+                  gripGround: stripBand.top <= 0 && thumbnailFor != null
                       ? storyboardPanelPictureGroundColor
-                      // Thumbnails off: the strip is the block's own
-                      // resting plate (feedback #11), dark, light bars.
                       : storyboardCutBlockBackgroundColor(
                           Theme.of(context).colorScheme,
                           active: false,
@@ -4903,9 +4932,10 @@ class _StoryboardTrackRow extends StatelessWidget {
                     gripIdScope: track.id.value,
                     layer: null,
                     baseLayer: null,
-                    crossAxisExtent: stripBand.height,
+                    crossAxisExtent: laneHeight,
                     axis: Axis.horizontal,
                     includeRunEdges: false,
+                    gripPaper: _gripPaper(grips),
                   ),
                   geometry: frameGeometry,
                   axis: Axis.horizontal,

@@ -57,10 +57,13 @@ const double _gripCrossShare = 1 / 2;
 /// 🚨I-44: [crossAxisExtent] is the PAPER's — the box the block's paper
 /// fills across its host. A timeline row's paper stops short of the row
 /// seam the grid sheet draws under the row, so the rows hand in
-/// [timelineRowPaperExtent] of their own height; the storyboard's cut plate
-/// hands in its picture strip, which no seam crosses. A triangle measured
+/// [timelineRowPaperExtent] of their own height; the storyboard's cut row
+/// hands in its whole plate, which no seam crosses. A triangle measured
 /// on the wrong box stands a seam's width off the corner it has to be (유저
 /// 2026-09-23: 「모서리랑 블록이랑 모서리가 통일안되서 … 확실하게 통일해줘」).
+/// ↩️The cut row handed in its picture strip until 유저 2026-09-25 (「제대로
+/// 컷블록의 위치에 존재하지않아. 내부에 존재하는느낌」): the triangles sat in
+/// the strip's corners, inside the plate.
 ///
 /// THE law for both kinds of mount: the sparse rows lay a widget out by it,
 /// and the dense rows' chrome resolves the same placement through
@@ -123,11 +126,17 @@ double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) =>
 /// LEADING end on its FAR side (the timeline's bottom-left, the X-sheet's
 /// top-right), the end edge's the TRAILING end on the NEAR side (top-right,
 /// bottom-left).
+///
+/// [cornerRadius] is the corner of the paper under the box when that paper
+/// is not the block the box was laid out for — the storyboard's cut plate,
+/// round at the cut's ends and straight between its panels
+/// ([TimelineGripPaper]). Null asks the block's own ([blockEdgeGripCornerRadius]).
 Path blockEdgeGripPath(
   Rect box, {
   required TimelineBlockEdge edge,
   required Axis axis,
   double arcBleed = 0,
+  double? cornerRadius,
 }) {
   final horizontal = axis == Axis.horizontal;
   final a0 = horizontal ? box.left : box.top;
@@ -153,7 +162,7 @@ Path blockEdgeGripPath(
   final alongEnd = Offset(legAlong, 0);
   final acrossEnd = Offset(0, legAcross);
 
-  final radius = blockEdgeGripCornerRadius(box, axis: axis);
+  final radius = cornerRadius ?? blockEdgeGripCornerRadius(box, axis: axis);
   final reach = radius + arcBleed;
   if (radius <= 0 || reach >= radius * math.sqrt2) {
     // No paper corner to follow — or a bleed wide enough to swallow it.

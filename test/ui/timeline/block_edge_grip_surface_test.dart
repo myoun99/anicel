@@ -17,6 +17,9 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
+import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
+    show StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -127,9 +130,11 @@ void main() {
     });
   });
 
-  testWidgets('B1: a strip grip over the THUMBNAILS reads the picture '
-      'ground — dark bar over the paper-white panels, while the timeline '
-      'row hands its grips its layer\'s paper', (tester) async {
+  testWidgets('🗣️with THUMBNAILS shown the cut row\'s grips still stand on '
+      'the plate — its corners are the plate\'s bands — so the ink is the '
+      'light one, while the timeline row hands its grips its layer\'s paper '
+      '(유저 2026-09-25: 「배경이 어두워서 엣지가 잘 안보여 … 기본을 '
+      '하얀색으로」)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -151,24 +156,68 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The workspace serves thumbnails, so the strip band under these grips
-    // is panel PICTURES — paper-white composites, not the cut-block plate.
-    // The plate ground here was the device report (B1 2026-08-17): light
-    // bars, invisible over white boards.
+    // The workspace serves thumbnails — and the grips' corners stand on the
+    // plate's bands all the same. ↩️B1 (08-17) read the picture's white
+    // while the grips stood on the strip; a picture is left-aligned, so an
+    // end grip mostly stood on the plate past it, dark on dark.
     final ground = timelineRowChromePainter(
       tester,
       _trackId.value,
       prefix: 'storyboard',
     )!.gripGround;
-    expect(ground, storyboardPanelPictureGroundColor);
-    // And the ground law turns it into the DARK ink — the pixel the user
+    expect(ground, AppColors.washUp);
+    // And the ground law turns it into the LIGHT ink — the pixel the user
     // actually looks at.
     expect(
       blockEdgeGripColor(
         BlockEdgeGripInk.rest,
         ground: ground,
       ).withValues(alpha: 1),
-      timelineTextOnLightGroundColor,
+      timelineTextOnDarkGroundColor,
+    );
+  });
+
+  testWidgets('B1 where it still holds: a row too short for bands is all '
+      'picture, so there the grips read the picture ground', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final manager = EditorSessionManager(initialProject: _project());
+    addTearDown(manager.dispose);
+    const short = StoryboardCutBlocksPainter.bandsMinBlockHeight - 4;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(brightness: Brightness.dark),
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: manager,
+            builder: (context, _) => StoryboardTabHost(
+              session: manager,
+              pixelsPerFrame: 12,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+              thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
+                  null,
+              trackLaneHeight: short,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      StoryboardCutBlocksPainter.stripBandOf(short).top,
+      0,
+      reason: '⛔전제: the bands fold at this height',
+    );
+    expect(
+      timelineRowChromePainter(
+        tester,
+        _trackId.value,
+        prefix: 'storyboard',
+      )!.gripGround,
+      storyboardPanelPictureGroundColor,
     );
   });
 

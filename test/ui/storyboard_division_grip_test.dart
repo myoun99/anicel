@@ -18,17 +18,22 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
+    show TimelineRowChromeResolver, TimelineRowGripTarget;
 
 import 'timeline/timeline_row_chrome_probe.dart';
 
-/// The cut block has no edge grips of its own any more: a cut edge is always
-/// ON the strip. EVERY leading edge is a rolling edit with the block in front
-/// of it — the panel before it, or at a cut's first panel the previous cut's
-/// last panel — so the lengths trade and nothing else moves (I-21: one lead
-/// edge law with the frame axis). EVERY trailing edge — inner and last
-/// alike — is its panel's comma: the later panels ripple along glued and the
-/// cut's length rides the row end (edge unification; the division verb is
-/// gone). One shape of grip; where it sits decides what it re-times.
+/// The cut block has no edge grips of its own besides its panels': the first
+/// panel's leading edge is the cut's, the last one's trailing edge is its
+/// length. They stand in the PLATE's corners (유저 2026-09-25); ↩️#757 had put
+/// them on the picture strip. EVERY leading edge is a rolling edit with the
+/// block in front of it — the panel before it, or at a cut's first panel the
+/// previous cut's last panel — so the lengths trade and nothing else moves
+/// (I-21: one lead edge law with the frame axis). EVERY trailing edge —
+/// inner and last alike — is its panel's comma: the later panels ripple
+/// along glued and the cut's length rides the row end (edge unification;
+/// the division verb is gone). One shape of grip; where it sits decides what
+/// it re-times.
 const _trackId = TrackId('grip-track');
 
 Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
@@ -165,27 +170,96 @@ void main() {
     );
   });
 
-  testWidgets('the edges sit on the STRIP, not over the cut\'s bands', (
-    tester,
-  ) async {
+  testWidgets('🗣️the edges sit in the CUT PLATE\'s corners — an end edge '
+      'hangs from the plate\'s top, a start edge stands on its bottom (유저 '
+      '2026-09-25: 「제대로 컷블록의 위치에 존재하지않아. 내부에 '
+      '존재하는느낌」)', (tester) async {
     await _openStoryboard(tester);
 
     final row = find.byKey(
       ValueKey<String>('storyboard-track-timeline-area-${_trackId.value}'),
     );
     final rowRect = tester.getTopLeft(row) & tester.getSize(row);
-    final band = StoryboardCutBlocksPainter.stripBandOf(rowRect.height);
-    final grip = timelineRowChromeGlobalRect(
+    Rect grip(String id) => timelineRowChromeGlobalRect(
       tester,
       _trackId.value,
-      'block-edge-grip-end-grip-track-0',
+      id,
       prefix: 'storyboard',
     );
+    final end = grip('block-edge-grip-end-grip-track-0');
+    final start = grip('block-edge-grip-start-grip-track-0');
 
-    // I-43: the grip is its triangle's box — the NEAR half of the strip for
-    // an end edge — and it stays inside the strip, clear of the bands.
-    expect(grip.top, rowRect.top + band.top);
-    expect(grip.height, moreOrLessEquals(band.height / 2));
+    // I-43: the grip is its triangle's box — the NEAR half of the plate for
+    // an end edge, the FAR half for a start edge — in the plate's corners.
+    // ↩️It was the strip's half, clear of the bands (#757), which put every
+    // triangle inside the plate.
+    expect(end.top, rowRect.top);
+    expect(end.height, moreOrLessEquals(rowRect.height / 2));
+    expect(start.bottom, moreOrLessEquals(rowRect.bottom));
+    expect(start.height, moreOrLessEquals(rowRect.height / 2));
+  });
+
+  test('a resolver over the same panels but other plates is another '
+      'resolver', _samePanelsOtherPlates);
+
+  testWidgets('a triangle takes the corner of the PLATE it stands in — '
+      'round at the cut\'s ends, straight between its panels', (
+    tester,
+  ) async {
+    await _openStoryboard(tester);
+
+    TimelineRowGripTarget grip(String id) =>
+        timelineRowChromeTarget(
+              tester,
+              _trackId.value,
+              id,
+              prefix: 'storyboard',
+            )
+            as TimelineRowGripTarget;
+    const plate = StoryboardCutBlocksPainter.plateCornerRadius;
+    // Cut 1: two panels — the plate's corners at its ends only.
+    expect(grip('block-edge-grip-start-grip-track-0').paperCorner, plate);
+    expect(grip('block-edge-grip-end-grip-track-0').paperCorner, 0);
+    expect(grip('block-edge-grip-start-grip-track-1').paperCorner, 0);
+    expect(grip('block-edge-grip-end-grip-track-1').paperCorner, plate);
+    // Cut 2: one panel, both its edges the plate's.
+    expect(grip('block-edge-grip-start-grip-track-2').paperCorner, plate);
+    expect(grip('block-edge-grip-end-grip-track-2').paperCorner, plate);
+
+    // And the painter draws by it: the ink reaches the box's very corner
+    // between panels, and follows the plate's round at the cut's end.
+    final painter = timelineRowChromePainter(
+      tester,
+      _trackId.value,
+      prefix: 'storyboard',
+    )!;
+    final laid = _PathSpy();
+    painter.paint(
+      laid,
+      tester.getSize(
+        timelineRowChromeFinder(_trackId.value, prefix: 'storyboard'),
+      ),
+    );
+    Path inkOf(TimelineRowGripTarget target) => laid.paths.singleWhere(
+      (path) => target.rect.inflate(1).contains(path.getBounds().center),
+    );
+    final inner = grip('block-edge-grip-end-grip-track-0');
+    final cutEnd = grip('block-edge-grip-end-grip-track-1');
+    expect(
+      inkOf(inner).contains(inner.rect.topRight.translate(-0.5, 0.5)),
+      isTrue,
+      reason: 'the plate is straight between panels: a sharp corner',
+    );
+    expect(
+      inkOf(cutEnd).contains(cutEnd.rect.topRight.translate(-1.5, 1.5)),
+      isFalse,
+      reason: 'the plate\'s own round (8) takes the tip at the cut\'s end',
+    );
+    expect(
+      inkOf(cutEnd).contains(cutEnd.rect.topRight.translate(-1, 12)),
+      isTrue,
+      reason: '⛔전제: the ink is there, inside the round',
+    );
   });
 
   testWidgets('an edge BETWEEN two panels is that panel\'s COMMA (edge '
@@ -541,4 +615,49 @@ Future<void> _dragTimelineGrip(
   await tester.pump();
   await gesture.up();
   await tester.pumpAndSettle();
+}
+
+/// The same panels under other plates — one cut of two panels, or two cuts
+/// of one — are other corners, so the row must not keep the old resolver.
+void _samePanelsOtherPlates() {
+  TimelineRowChromeResolver resolver(Set<int> starts, Set<int> ends) =>
+      TimelineRowChromeResolver(
+        gripBlocks: const [
+          (
+            ordinal: 0,
+            startIndex: 0,
+            endIndexExclusive: 5,
+            startGrip: true,
+            endGrip: true,
+          ),
+          (
+            ordinal: 1,
+            startIndex: 5,
+            endIndexExclusive: 10,
+            startGrip: true,
+            endGrip: true,
+          ),
+        ],
+        gripIdScope: 'track',
+        layer: null,
+        baseLayer: null,
+        crossAxisExtent: 64,
+        axis: Axis.horizontal,
+        includeRunEdges: false,
+        gripPaper: (cornerStarts: starts, cornerEnds: ends, cornerRadius: 8),
+      );
+  final oneCut = resolver({0}, {10});
+  expect(oneCut.matches(resolver({0}, {10})), isTrue);
+  expect(oneCut.matches(resolver({0, 5}, {5, 10})), isFalse);
+}
+
+/// Every path a painter fills, as it filled it.
+class _PathSpy implements Canvas {
+  final paths = <Path>[];
+
+  @override
+  void drawPath(Path path, Paint paint) => paths.add(path);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
