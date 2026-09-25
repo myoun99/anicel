@@ -1,6 +1,0 @@
-- [Anicel について](README.md)
-- [絵コンテ作業](storyboard.md)
-- [レイヤーの色ラベル](layer-labels.md)
-- [出力](export.md)
-- [サウンドレイヤー](sound-layers.md)
-- [カットごとのキャンバスサイズ](canvas-size.md)
