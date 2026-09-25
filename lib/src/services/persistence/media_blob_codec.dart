@@ -407,9 +407,13 @@ bool _writeFramedBlocks(
 /// the asset, byte for byte — that is what lets a stored entry be handed
 /// out later as a plain byte range.
 ///
-/// Answers how many bytes actually landed, which is [length] unless the
-/// source ran short — [copyMediaBytesToFile] is the caller that cares.
-int _writeVerbatim(
+/// 🪦`copyMediaBytesToFile` was this road for bytes going OUT — a carried
+/// conform restored without holding it whole. The restore went on 09-07
+/// (a conform is read where it lies) and it stayed with no caller but its
+/// tests; the one copy out of the project file now is the room keeping
+/// what a save leaves behind, which streams through
+/// `ScratchFile.writeStreamed` (09-25).
+void _writeVerbatim(
   RandomAccessFile out,
   int length,
   int Function(Uint8List, int, int) readInto,
@@ -425,36 +429,5 @@ int _writeVerbatim(
     }
     out.writeFromSync(buffer, 0, got);
     at += got;
-  }
-  return at;
-}
-
-/// Copies [length] bytes from [readInto] into a file at [destinationPath],
-/// a block at a time, and answers whether all of them arrived.
-///
-/// 🚨★★★**FOR THE COPIES THAT CHANGE NOTHING.** Restoring a carried
-/// conform out of a project, or handing a stored asset to somewhere else,
-/// is bytes in and the same bytes out — and doing it through `readSync()`
-/// puts the whole thing in memory to achieve exactly that. An hour of
-/// dialogue is ~428MB compressed, which is the allocation the carry and
-/// staging rounds spent themselves removing.
-///
-/// ⛔It writes STRAIGHT to [destinationPath] rather than through a `.part`
-/// neighbour, because the callers differ on whether they can afford one
-/// (the conform cache's collector only deletes files it can prove are
-/// conforms, so a `.part` there would be invisible to it for ever). Whether
-/// a torn file is safe is the CALLER's question; this one only promises to
-/// say `false` when it could not finish.
-bool copyMediaBytesToFile({
-  required String destinationPath,
-  required int length,
-  required int Function(Uint8List buffer, int position, int size) readInto,
-  int chunkBytes = mediaBlockBytes,
-}) {
-  final out = File(destinationPath).openSync(mode: FileMode.write);
-  try {
-    return _writeVerbatim(out, length, readInto, chunkBytes) == length;
-  } finally {
-    out.closeSync();
   }
 }
