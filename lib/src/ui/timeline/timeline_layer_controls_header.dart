@@ -398,21 +398,31 @@ class TimelineLayerControlsHeader extends StatelessWidget {
               // Answering EMPTY when nothing is marked is what drops the
               // divider too — the old `showRowSolos && marksInUse
               // .isNotEmpty` gate, said once by the template.
-              solo: () => marksInUse.isEmpty
-                  ? const []
-                  : [
-                      PanelFlyoutHeader(AppText.strings.tlSoloColor),
-                      for (final mark
-                          in marksInUse.toList()
-                            ..sort((a, b) => a.sortKey.compareTo(b.sortKey)))
-                        if (!mark.isNone)
+              //
+              // 🚨AND EVERY MARK THE FILTER HOLDS, in use or not
+              // (mark-filter-held-after-its-mark-is-gone, 유저 2026-09-25:
+              // 「레이아웃만 켜고, 다시 돌리려고 마크 모두 지우기 눌렀는데도
+              // 초기화안됨」). Clearing every label left LO in the filter and
+              // gone from this list: every row but the standing one hidden,
+              // and nothing here to uncheck.
+              solo: () {
+                final listed = {...marksInUse, ...rowFilter.markColors}
+                  ..removeWhere((mark) => mark.isNone);
+                return listed.isEmpty
+                    ? const []
+                    : [
+                        PanelFlyoutHeader(AppText.strings.tlSoloColor),
+                        for (final mark
+                            in listed.toList()
+                              ..sort((a, b) => a.sortKey.compareTo(b.sortKey)))
                           PanelFlyoutItem(
                             keyValue: 'legend-filter-mark-${mark.keySlug}',
                             label: layerMarkDisplayName(mark),
                             checked: rowFilter.markColors.contains(mark),
                             onSelected: () => legend.onToggleMarkFilter(mark),
                           ),
-                    ],
+                      ];
+              },
             ),
       child: _legendIcon(
         Icons.label_outline,
@@ -423,15 +433,19 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget _buildTypeButton(LayerLegendCallbacks? legend, Color restColor) {
+    // The kinds on the rows AND every kind the filter holds — a kind whose
+    // last row went away stays listed so its solo can still be undone, as
+    // the mark solo's does (mark-filter-held-after-its-mark-is-gone).
+    final listed = {...kindsInUse, ...rowFilter.kinds};
     return _cell(
       keyValue: 'legend-kind',
       tooltip: AppText.strings.tlColLayerKind,
-      entriesBuilder: legend == null || kindsInUse.isEmpty || !showRowSolos
+      entriesBuilder: legend == null || listed.isEmpty || !showRowSolos
           ? null
           : () => [
               PanelFlyoutHeader(AppText.strings.tlSoloKind),
               for (final kind in LayerKind.values)
-                if (kindsInUse.contains(kind))
+                if (listed.contains(kind))
                   PanelFlyoutItem(
                     keyValue: 'legend-filter-kind-${kind.name}',
                     label: layerKindDisplayName(kind),
