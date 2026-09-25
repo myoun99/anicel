@@ -119,6 +119,9 @@ void main() {
     // a-marquee-on-a-posed-row: where the row stands on the canvas — the
     // placement the editing canvas wraps the active row in. Null = unposed.
     LayerPoseSample? placement,
+    // …and where each cel of the ladder's row stands (④). Null = every cel
+    // through the standing row's.
+    LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -191,6 +194,7 @@ void main() {
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: cacheSink,
                 transformTargetKeys: transformTargetKeys,
+                cellPlacementOf: cellPlacementOf,
                 interactiveContentPose: placement,
                 historyManager: history,
                 brushToolState: brush,
@@ -1109,6 +1113,57 @@ void main() {
         0,
         reason: 'past the selection it was clipped',
       );
+    });
+
+    // ④ A range confirm lands every cel of the range (F-116-b), and a range
+    // can name rows placed differently: each cel crosses through its OWN
+    // row's placement, the one the pixel verbs restate an outline through.
+    testWidgets('a range confirm lands each cel through its OWN row\'s '
+        'placement', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      // The other cel's row is placed 100 to the LEFT: its ink at artwork
+      // (130,40) shows at canvas (30,40), inside the same outline as the
+      // standing cel's (unplaced) picture.
+      final placedLeft = (
+        pose: TransformPose(center: CanvasPoint(x: -100, y: 0)),
+        anchorPoint: CanvasPoint(x: 0, y: 0),
+      );
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => [keys[0], keys[1]],
+        cellPlacementOf: (key) => key == keys[1] ? placedLeft : null,
+      );
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(130, 40)]);
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      env.commands.setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 20, top: 20, right: 70, bottom: 70),
+        ),
+      );
+      await tester.pump();
+
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.setTransformValues(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        scale: 1,
+      );
+      await tester.pump();
+      env.commands.applyTransform();
+      await tester.pump();
+
+      env.coordinator.selectFrame(keys[1]);
+      expect(
+        inkAt(env.coordinator, 140, 45),
+        isNonZero,
+        reason: 'its own ink, moved +10,+5 in its own artwork',
+      );
+      expect(inkAt(env.coordinator, 130, 40), 0, reason: 'and not left');
     });
   });
 

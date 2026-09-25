@@ -150,6 +150,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.celEditable = true,
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
+    this.cellPlacementOf,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
@@ -290,6 +291,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// anywhere below: the many-cel path IS the one-cel path. Hosts with no
   /// cel ladder at all (the viewer, the sheet) simply pass nothing.
   final List<BrushFrameKey> Function()? transformTargetKeys;
+
+  /// Where each cel of [transformTargetKeys] stands on the canvas — its
+  /// row's placement, the one the pixel verbs restate an outline through
+  /// (`CellVerbs.placementOf`). A range over several rows lands each cel
+  /// through its OWN row's placement (a-marquee-on-a-posed-row ④).
+  ///
+  /// ⚠️Null (a host with no rows behind it — the focused tests) crosses
+  /// every cel through the standing row's, the one the lift crossed.
+  final LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf;
   final List<BrushFrameKey> availableFrameKeys;
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;

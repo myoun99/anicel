@@ -7,6 +7,7 @@ import '../../models/pixel_verb_subject.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
+import '../../services/layer_pose_matrix.dart' show LayerPoseSample;
 import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import 'render_caches.dart';
@@ -200,6 +201,29 @@ class CellVerbs {
     );
   }
 
+  /// Where [key]'s row stands on the canvas at the frame you stand on — the
+  /// placement the stack PAINTS it with ([layerPlacementAt]) — or null for
+  /// an unplaced row, or a key on no row of the open cut.
+  ///
+  /// ⛔ONE ANSWER for every verb that restates a canvas outline on the cels a
+  /// range names: the pixel verbs ([_targetsFor]) and the other cels a
+  /// transform's confirm lands on (a-marquee-on-a-posed-row ④ — each cel
+  /// crosses through its OWN row's placement, not the standing row's). The
+  /// raw track value read before missed the anchor, the fx switch and every
+  /// folder above the row.
+  LayerPoseSample? placementOf(BrushFrameKey key) {
+    final cut = _project.activeCutOrNull;
+    final layer = cut?.layers.byId(key.layerId);
+    if (cut == null || layer == null) {
+      return null;
+    }
+    return layerPlacementAt(
+      cut: cut,
+      layer: layer,
+      frameIndex: _selection.currentFrameIndex,
+    );
+  }
+
   /// The cels a press names, each carrying the marquee restated in its own
   /// layer's artwork space.
   ///
@@ -211,25 +235,15 @@ class CellVerbs {
     CanvasSelectionRegion? region,
   ) {
     final cut = _project.requireActiveCut;
-    final frameIndex = _selection.currentFrameIndex;
     // ⚠️Mapped into each layer's OWN artwork space: a posed layer draws its
     // pixels somewhere else than the marquee was drawn, and the region has
     // to follow. An unposed layer — the overwhelming majority — gets it
     // back unchanged.
-    //
-    // Through the placement the stack PAINTS the row with
-    // ([layerPlacementAt]): the raw track value it read before missed the
-    // anchor, the fx switch and every folder above the row.
     CanvasSelectionRegion? onLayer(BrushFrameKey key) {
-      final layer = cut.layers.byId(key.layerId);
-      if (region == null || layer == null) {
+      if (region == null) {
         return region;
       }
-      final placement = layerPlacementAt(
-        cut: cut,
-        layer: layer,
-        frameIndex: frameIndex,
-      );
+      final placement = placementOf(key);
       return regionInArtworkSpace(
         region: region,
         pose: placement?.pose,

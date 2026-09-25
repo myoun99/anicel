@@ -207,25 +207,30 @@ class _CanvasPanelLift {
     // same affine describes every cel's landing.
     // 🚨A POSED ROW'S CELS CROSS THE WAY THE STANDING ONE DID
     // (a-marquee-on-a-posed-row): the user's outline is taken back into the
-    // artwork, and each cel's own stamp goes out onto the canvas, takes the
-    // box's transform there and comes back ([stampOnCanvas] ·
-    // [stampInArtwork]). A cel's own whole picture is already its artwork.
-    final placement = session.placement;
+    // cel's artwork, and the cel's own stamp goes out onto the canvas, takes
+    // the box's transform there and comes back ([stampOnCanvas] ·
+    // [stampInArtwork]) — each through its OWN row's placement
+    // ([BrushCanvasPanel.cellPlacementOf]), since a range can name several
+    // rows placed differently. A cel's own whole picture is already its
+    // artwork.
+    final placementOf =
+        _state.widget.cellPlacementOf ?? (_) => session.placement;
     final canvasSize = _state.widget.canvasSize;
     final userSelection = session.userSelection;
-    final userSelectionInArtwork = userSelection == null
-        ? null
-        : regionInArtworkSpace(
-            region: userSelection,
-            pose: placement?.pose,
-            anchorPoint: placement?.anchorPoint,
-            canvasSize: canvasSize,
-          );
     for (final key in ladder) {
       final cel = store.canonicalKeyOf(key);
       if (landings.containsKey(cel)) {
         continue;
       }
+      final placement = placementOf(key);
+      final userSelectionInArtwork = userSelection == null
+          ? null
+          : regionInArtworkSpace(
+              region: userSelection,
+              pose: placement?.pose,
+              anchorPoint: placement?.anchorPoint,
+              canvasSize: canvasSize,
+            );
       if (userSelection != null && userSelectionInArtwork == null) {
         continue;
       }
