@@ -553,6 +553,22 @@ void main() {
       expect(inTheRoom(), hasLength(1), reason: 'kept, not copied again');
     });
 
+    test('a copy already in the room is not made again — a carried movie is '
+        'gigabytes', () async {
+      final source = sourceFile('take.wav');
+      final bytes = File(source).readAsBytesSync();
+      final minted = mintMediaCarry(source);
+      final (:path, :offset) = fileHolding(bytes);
+      final entry = (name: minted, offset: offset, length: bytes.length);
+      await store.keepLeftBehind(path, [entry]);
+      final heard = <double>[];
+
+      await store.keepLeftBehind(path, [entry], onProgress: heard.add);
+
+      expect(heard, isEmpty, reason: 'nothing was copied the second time');
+      expect(store.find(carry(source, minted)), isNotNull);
+    });
+
     test('its bar runs from nothing to all of it, and never back', () async {
       final first = sourceFile('a.wav');
       final second = sourceFile('b.wav', length: 3 * 1024 * 1024);
