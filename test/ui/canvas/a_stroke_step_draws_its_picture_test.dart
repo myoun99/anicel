@@ -219,7 +219,11 @@ void main() {
             child: SizedBox(
               width: view.width,
               height: view.height,
+              // Keyed by the cache: the view adopts the cache it is first
+              // built with, so a stroke with a cache of its own needs a view
+              // of its own — or its counts are another stroke's.
               child: CanvasLayerStackView(
+                key: ObjectKey(buffers),
                 nodes: nodes,
                 imageCache: images,
                 debugBufferCache: buffers,
