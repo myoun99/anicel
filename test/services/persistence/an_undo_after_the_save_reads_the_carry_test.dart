@@ -1,13 +1,18 @@
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart'
+    show MediaFileBytes;
+import 'package:anicel/src/services/media/project_media_sources.dart'
+    show mediaEntryNameIn, mediaLeftBehind;
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show parseAnicelZipLayoutFile;
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
-    show anicelMediaEntryNames;
+    show anicelMediaEntryNames, anicelMediaEntryPrefix;
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/media_pool.dart';
@@ -151,15 +156,27 @@ void main() {
     expect(reopened.projectFile.mediaByteSourceFor(path).readSync(), carried);
   });
 
-  test('⛔a save that leaves nothing behind keeps nothing', () async {
-    file.markDirty();
-
+  test('⛔what the write stores is not left behind — only what the file '
+      'holds and the write does not', () async {
+    final other = normalizedMediaPath('${root.path}/other.wav');
+    File(other).writeAsBytesSync(edited);
+    await pool.addMediaAssets([other], carried: true);
     await save();
+    final kept = carryIn(session, path)!;
+    final dropped = carryIn(session, other)!;
+
+    final left = mediaLeftBehind(
+      projectFilePath: projectPath,
+      mediaInFile: file.mediaInFile,
+      mediaToStore: {kept: MediaFileBytes(path)},
+    );
 
     expect(
-      stagedCopyIn(session, path),
-      isNull,
-      reason: 'the carry is still in the file — there is nothing to keep',
+      [for (final entry in left) '$anicelMediaEntryPrefix${entry.name}'],
+      [mediaEntryNameIn(file.mediaInFile, dropped)],
+      reason:
+          'a copy of what the write stores is made for nothing — the save '
+          'retires it the moment it absorbs the carry',
     );
   });
 
@@ -185,7 +202,18 @@ void main() {
 
   test('the save\'s bar runs through the copy first, and never '
       'back', () async {
-    expect(pool.removeMediaAsset(path), isTrue);
+    // Most of the file, so the copy is most of the bar — and a write that
+    // reported its own share from zero would be heard going back.
+    final random = Random(7);
+    final noise = normalizedMediaPath('${root.path}/noise.wav');
+    File(noise).writeAsBytesSync(
+      Uint8List.fromList(
+        List<int>.generate(1 << 20, (_) => random.nextInt(256)),
+      ),
+    );
+    await pool.addMediaAssets([noise], carried: true);
+    await save();
+    expect(pool.removeMediaAsset(noise), isTrue);
     final heard = <double>[];
 
     await save(onProgress: heard.add);
