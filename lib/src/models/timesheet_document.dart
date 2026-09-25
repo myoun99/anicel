@@ -741,7 +741,7 @@ class _LayerCellsPass {
          // [drawingHeadOf] is the one place that decides which is which;
          // the cel export reads the same answer through [Frame.celNumber].
          for (final frame in layer.frames)
-           frame.id: drawingHeadOf(frame.name),
+           frame.id: drawingHeadOf(frame.name, kind: layer.kind),
        },
        seNamesByFrameId = <FrameId, String?>{
          if (includeSeNames)

@@ -231,7 +231,7 @@ class _WorkspaceCollapsedRows {
       isLayerSoloed: session.visibilitySolo.soloedSeLayerIds.value.contains(
         layer.id,
       ),
-      isLinked: session.layerVerbs.isLayerLinked(layer.id),
+      linkPartners: session.layerVerbs.linkPartnersOf(layer.id),
       // A row HAS lanes when its lanes are not empty — the same question the
       // panel asks. Hardcoding `true` gave a twirl to rows that have nothing
       // to twirl.

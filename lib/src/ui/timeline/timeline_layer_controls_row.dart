@@ -159,7 +159,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onionSkinEnabled = false,
     this.onToggleLayerOnionSkin,
     this.opacityDragPreview,
-    this.isLinked = false,
+    this.linkPartners = const [],
     this.onLayerBlendModeSelected,
     this.opacityOverride,
     this.chromeless = false,
@@ -293,9 +293,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
   opacityDragPreview;
 
-  /// Link badge (L4): this layer's pictures are shared with a link group
-  /// ("이름이 같으면 같은 그림") — a small chain icon after the name.
-  final bool isLinked;
+  /// Link badge (L4): the rows this layer shares its pictures with — its
+  /// link group's other members, each as a row reads ([linkPartnerLines]) —
+  /// shown as a small chain icon after the name whose tooltip names them.
+  /// Empty: not linked, no badge.
+  ///
+  /// 🗣️유저 2026-09-25: 「링크버튼통해서 어디랑 링크되고있는지만 제대로
+  /// 표시하게」. ↩️It was a bool, and the tooltip a fixed sentence.
+  final List<String> linkPartners;
 
   /// R27 #6: the blend-mode dropdown lives in the LABEL now (rightmost
   /// slot, past the opacity bar) instead of the timeline toolbar. Null
@@ -674,11 +679,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
       readableText(axis, layer.name, style: layerRowNameStyle(context));
 
   Widget? _linkBadge(ColorScheme colorScheme) {
-    if (!isLinked) return null;
+    if (linkPartners.isEmpty) return null;
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: AppTooltip(
-        message: AppText.strings.tlLinkedLayerTooltip,
+        message: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
         child: Icon(
           Icons.link,
           key: ValueKey<String>('$keyPrefix-layer-link-badge-${layer.id}'),

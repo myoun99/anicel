@@ -561,7 +561,10 @@ class FrameVerbs {
     final celNumber = frame?.celNumber;
     final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
     return switch (exposureState) {
-      TimelineCellExposureState.drawingStart => celNumberOrMark(frame?.name),
+      TimelineCellExposureState.drawingStart => celNumberOrMark(
+        frame?.name,
+        kind: layer.kind,
+      ),
       TimelineCellExposureState.held => celNumber ?? '',
       TimelineCellExposureState.markHeld =>
         celNumber == null ? inbetweenMark : '$celNumber $inbetweenMark',

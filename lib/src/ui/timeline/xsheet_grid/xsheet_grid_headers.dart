@@ -103,7 +103,8 @@ class _XSheetGridHeaders {
       mainExtent: naturalHeaderExtent,
       depth: entry.depth,
       onSettledPress: _state.widget.hooks.onSettledPress,
-      isLinked: _state.widget.hooks.layerIsLinkedOf?.call(layer.id) ?? false,
+      linkPartners:
+          _state.widget.hooks.layerLinkPartnersOf?.call(layer.id) ?? const [],
       opacityOverride: _state.widget.hooks.layerOpacityOverrideOf?.call(
         layer.id,
       ),

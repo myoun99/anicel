@@ -56,6 +56,38 @@ void main() {
     expect(s.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
   });
 
+  test('🗣️Add Layer names picture rows BG, then BOOK — BOOK again for '
+      'the next, the same name stacked', () {
+    // 유저 2026-09-25: 「BG가없으면 BG만들고, BG있으면 BOOK으로 쌓도록」.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    expect(
+      s.requireActiveCut.layers.map((layer) => layer.name),
+      isNot(contains('BG')),
+      reason: '⛔전제: the default cut holds no BG yet',
+    );
+
+    final names = <String>[];
+    for (var i = 0; i < 3; i += 1) {
+      s.layerStack.addLayerOfKind(LayerKind.image);
+      names.add(s.activeLayer!.name);
+    }
+    expect(names, ['BG', 'BOOK', 'BOOK']);
+  });
+
+  test('🗣️an image row\'s unnamed cel names NO frame in the canvas title — '
+      'no mark stands for the picture the layer is', () {
+    // 유저 2026-09-25: 「이미지레이어는 프레임 이름 없으면 중간나누기 마크가
+    // 아니라 이름을 안보이게」.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.layerStack.addLayerOfKind(LayerKind.image);
+    s.selectFrameIndex(0);
+    expect(s.activeLayer!.frames.single.name, isNull, reason: '⛔전제');
+    expect(s.canvasSelectionLabels.frameLabel, isEmpty);
+    expect(s.canvasSelectionLabels.layerLabel, 'BG');
+  });
+
   test('the image row is EDGE-LESS: the session refuses a comma/edge drag '
       'on its own block (D22)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());

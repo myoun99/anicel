@@ -73,7 +73,12 @@ void main() {
           'the getter the sheet and the export read asks the same answer — '
           'a body of its own is the copy no behaviour test can see',
     );
-    expect(text, contains('DrawingHead drawingHeadOf(String? name)'));
+    expect(
+      text,
+      contains(
+        'DrawingHead drawingHeadOf(String? name, {required LayerKind kind})',
+      ),
+    );
     final spelled = [
       for (final (_, code) in codeLines(File(home)))
         if (code.contains(mark)) code,

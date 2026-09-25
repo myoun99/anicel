@@ -68,8 +68,9 @@ void main() {
     Axis axis, {
     double cell = 24,
     double crossExtent = rowExtent,
+    Layer? row,
   }) => TimelineRowCellsPainter(
-        layer: layer,
+        layer: row ?? layer,
         geometry: testFrameGeometry(
           frameCellExtent: cell,
           frameEndIndexExclusive: frames,
@@ -266,12 +267,15 @@ void main() {
     }
   });
 
-  FlipHudPainter flipWindow(String label) => FlipHudPainter(
+  FlipHudPainter flipWindow(
+    String label, {
+    LayerKind kind = LayerKind.animation,
+  }) => FlipHudPainter(
     snapshot: FlipHudSnapshot(
       rows: [
         FlipHudRow(
           name: 'A',
-          kind: LayerKind.animation,
+          kind: kind,
           runs: [FlipHudRun(startIndex: 0, length: 2, label: label)],
         ),
       ],
@@ -312,7 +316,11 @@ void main() {
     );
   });
 
-  Future<_Laid> foldedStrip(WidgetTester tester, String label) async {
+  Future<_Laid> foldedStrip(
+    WidgetTester tester,
+    String label, {
+    LayerKind kind = LayerKind.animation,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -323,7 +331,7 @@ void main() {
                 rows: [
                   FlipHudRow(
                     name: 'A',
-                    kind: LayerKind.animation,
+                    kind: kind,
                     runs: [FlipHudRun(startIndex: 0, length: 2, label: label)],
                   ),
                 ],
@@ -362,6 +370,63 @@ void main() {
       timelineInbetweenMarkRadius(9.5, cellExtent: 12, crossExtent: room.height),
       reason: 'the strip\'s 9.5px type, fitted to its 12px cell',
     );
+  });
+
+  // 🗣️유저 2026-09-25: 「이미지레이어는 프레임 이름 없으면 중간나누기 마크가
+  // 아니라 이름을 안보이게 하는 상태로」 — the layer IS the picture there,
+  // so its unnamed head is neither a mark nor a word, on every surface.
+  group('an IMAGE row\'s unnamed head wears NOTHING', () {
+    final image = Layer(
+      id: const LayerId('bg'),
+      name: 'BG',
+      kind: LayerKind.image,
+      frames: const [],
+      timeline: const {},
+    );
+
+    for (final axis in Axis.values) {
+      test('on its row: no mark and no word — a dot INSIDE the block is '
+          'still a mark ($axis)', () {
+        final painter = rowPainter(axis, row: image);
+        final laid = _Laid();
+        painter.paint(laid, rowSize(axis));
+
+        expect(
+          laid.circles.map((circle) => circle.center),
+          [painter.paperRectFor(2).center],
+          reason: 'the dot at 2 is the only circle',
+        );
+        expect(
+          laid.paragraphs.where(
+            (box) => box.overlaps(painter.cellRectFor(0)),
+          ),
+          isEmpty,
+        );
+      });
+    }
+
+    test('in the flip window', () {
+      final size = FlipHudMetrics.sizeFor(FlipHudAxis.frame);
+      final unnamed = _Laid();
+      flipWindow('', kind: LayerKind.image).paint(unnamed, size);
+      expect(unnamed.circles, isEmpty);
+      final named = _Laid();
+      flipWindow('BG1', kind: LayerKind.image).paint(named, size);
+      expect(
+        named.paragraphs.where((box) => (box.height - font).abs() < 1e-6),
+        hasLength(1),
+        reason: '⛔전제: a NAMED image cel still writes its name',
+      );
+      expect(
+        unnamed.paragraphs.where((box) => (box.height - font).abs() < 1e-6),
+        isEmpty,
+      );
+    });
+
+    testWidgets('on the folded row\'s strip', (tester) async {
+      final unnamed = await foldedStrip(tester, '', kind: LayerKind.image);
+      expect(unnamed.circles, isEmpty);
+    });
   });
 
   test('the sheet draws an unnamed head and a block\'s dot as ONE small '

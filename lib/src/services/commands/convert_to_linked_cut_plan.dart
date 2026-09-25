@@ -1,8 +1,9 @@
+import 'package:collection/collection.dart' show IterableExtension;
+
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 
 /// The 겸용 변경 plan: what linking [targetCutId] to [originCutId] will
@@ -10,7 +11,8 @@ import '../../models/project.dart';
 /// confirmation dialog shows (링크 목록, 교체 장수, 새로 나타나는 항목,
 /// 보존 팁, undo 명시), and the command's exact work order.
 ///
-/// Rules (user-confirmed): matching is by NAME — the SINGLETON kinds (one
+/// Rules (user-confirmed): matching is by NAME ([_partnersByOrigin] pairs
+/// namesakes) — the SINGLETON kinds (one
 /// conte row, one camera row a cut) by KIND; conflicts resolve
 /// **원본 승리** exactly once at conversion; unique frames JOIN the
 /// shared bank both ways; layers present on one side only UNION into the
@@ -28,11 +30,11 @@ class ConvertToLinkedCutPlan {
   /// or by kind for a singleton kind.
   final List<({LayerId originLayerId, LayerId targetLayerId})> layerPairs;
 
-  /// Origin drawing layers with no name match in the target — the target
+  /// Origin drawing layers with no partner in the target — the target
   /// gains linked copies with empty timelines.
   final List<LayerId> originOnlyLayerIds;
 
-  /// Target drawing layers with no name match in the origin — the origin
+  /// Target drawing layers with no partner in the origin — the origin
   /// gains linked copies with empty timelines.
   final List<LayerId> targetOnlyLayerIds;
 
@@ -96,17 +98,16 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
     for (final layer in targetCut.layers)
       if (linksIntoLinkedCut(layer)) layer,
   ];
-  final targetByName = <String, Layer>{
-    for (final layer in targetDrawing)
-      if (!layer.kind.isSingletonPerCut) layer.name: layer,
-  };
-  // A SINGLETON kind pairs by KIND (F-84): each cut holds one conte row and
-  // one camera row whatever they are called, and pairing them by name
-  // would union a SECOND one into each cut the moment the names differ.
-  final targetByKind = <LayerKind, Layer>{
-    for (final layer in targetDrawing)
-      if (layer.kind.isSingletonPerCut) layer.kind: layer,
-  };
+  bool alreadyLinked(Layer origin, Layer target) =>
+      project.linkRegistry
+          .groupOf(cutId: targetCut.id, layerId: target.id)
+          ?.contains(cutId: originCut.id, layerId: origin.id) ??
+      false;
+  final partners = _partnersByOrigin(
+    origins: originDrawing,
+    targets: targetDrawing,
+    alreadyLinked: alreadyLinked,
+  );
   final matchedTargetIds = <LayerId>{};
   final matchedOriginIds = <LayerId>{};
 
@@ -114,25 +115,14 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
   var replaced = 0;
   var joining = 0;
   for (final origin in originDrawing) {
-    final target = origin.kind.isSingletonPerCut
-        ? targetByKind[origin.kind]
-        : targetByName[origin.name];
-    // Pairs are SAME-KIND only: image and animation rows draw names from
-    // the same A/B/C pool, and a cross-kind link group would hand a BG
-    // picture to a drawing row (and make updateLayerKind's kind-mirror
-    // meaningless). A name collision across kinds simply doesn't match.
-    if (target == null || target.kind != origin.kind) {
+    final target = partners[origin.id];
+    if (target == null) {
       continue;
     }
     matchedTargetIds.add(target.id);
     matchedOriginIds.add(origin.id);
     // Already linked to each other (e.g. a 겸용 re-run): nothing to do.
-    final alreadyLinked =
-        project.linkRegistry
-            .groupOf(cutId: targetCut.id, layerId: target.id)
-            ?.contains(cutId: originCut.id, layerId: origin.id) ??
-        false;
-    if (alreadyLinked) {
+    if (alreadyLinked(origin, target)) {
       continue;
     }
     pairs.add((originLayerId: origin.id, targetLayerId: target.id));
@@ -157,6 +147,69 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
     replacedFrameCount: replaced,
     joiningFrameCount: joining,
   );
+}
+
+/// Which target row each origin row links to, by origin id.
+///
+/// Rows pair within their NAME — and a SINGLETON kind within its KIND
+/// (F-84): each cut holds one conte row and one camera row whatever they are
+/// called, and pairing them by name would union a SECOND one into each cut
+/// the moment the names differ.
+///
+/// 🗣️Several rows may share a name — image rows stack as BOOK, BOOK, …
+/// (유저 2026-09-25: 「레이어이름+프레임이름 통해서 같은거끼리 짝짓고, 아니면
+/// 쌓인 순서대로」). Within a name, rows pair in three passes: the rows
+/// already linked to each other (a 겸용 re-run must find its own partner,
+/// not a namesake), then the rows sharing a picture NAME, then the rest in
+/// stacking order. ↩️It was one map by name, and of two namesakes the last
+/// one silently won.
+///
+/// Pairs are SAME-KIND only: an image row and an animation row can wear one
+/// name, and a cross-kind link group would hand a BG picture to a drawing
+/// row (and make updateLayerKind's kind-mirror meaningless). A name
+/// collision across kinds simply doesn't match.
+Map<LayerId, Layer> _partnersByOrigin({
+  required List<Layer> origins,
+  required List<Layer> targets,
+  required bool Function(Layer origin, Layer target) alreadyLinked,
+}) {
+  Object pairingKey(Layer layer) =>
+      layer.kind.isSingletonPerCut ? layer.kind : (layer.kind, layer.name);
+  final targetsByKey = <Object, List<Layer>>{};
+  for (final target in targets) {
+    targetsByKey.putIfAbsent(pairingKey(target), () => []).add(target);
+  }
+  final partners = <LayerId, Layer>{};
+  final taken = <LayerId>{};
+  void pairWhere(bool Function(Layer origin, Layer target) same) {
+    for (final origin in origins) {
+      if (partners.containsKey(origin.id)) {
+        continue;
+      }
+      final target = targetsByKey[pairingKey(origin)]?.firstWhereOrNull(
+        (target) => !taken.contains(target.id) && same(origin, target),
+      );
+      if (target != null) {
+        partners[origin.id] = target;
+        taken.add(target.id);
+      }
+    }
+  }
+
+  pairWhere(alreadyLinked);
+  pairWhere(_shareAPictureName);
+  pairWhere((_, _) => true);
+  return partners;
+}
+
+/// Whether [origin] and [target] hold a cel of the same name — the name
+/// that is a picture's identity on a row (「같은 이름 = 같은 그림」).
+bool _shareAPictureName(Layer origin, Layer target) {
+  final names = {
+    for (final frame in origin.frames)
+      if (frame.celNumber != null) frame.celNumber,
+  };
+  return target.frames.any((frame) => names.contains(frame.celNumber));
 }
 
 /// [ConvertToLinkedCutPlan] resolved to display strings — exactly what

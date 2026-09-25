@@ -671,7 +671,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
             layerFxStateOf: _session.effectsAndFx.layerFxState,
-            layerIsLinkedOf: _session.layerVerbs.isLayerLinked,
+            layerLinkPartnersOf: _session.layerVerbs.linkPartnersOf,
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.

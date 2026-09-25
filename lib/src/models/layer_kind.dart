@@ -726,6 +726,20 @@ enum LayerKind {
   /// panel that does. Copy the frames instead and the copies are real blocks.
   bool get acceptsRepeatRegions => holdsDrawings && !coversWithoutGaps;
 
+  /// Whether a cel WITHOUT A NAME on this kind is the layer's own picture,
+  /// which the layer's name addresses — rather than the in-between mark.
+  ///
+  /// 🗣️유저 2026-09-25: 「이미지레이어는 프레임 이름 없으면 중간나누기
+  /// 마크가아니라 이름을 안보이게 하는 상태로 … 이름없어도 출력은 이 규칙은
+  /// 이미지레이어에만 적용. 애니메이션레이어는 이름없으면 출력안함」. So its head
+  /// writes nothing ([drawingHeadOf]) and the cel export writes it under the
+  /// layer's name alone.
+  ///
+  /// ⛔DERIVED from [holdsSingleCel]: the picture IS the layer there, so an
+  /// unnamed cel has no run of drawings to sit between, and a mark would
+  /// claim one.
+  bool get unnamedCelIsTheLayer => holdsSingleCel;
+
   String toJson() => jsonValue;
 
   static LayerKind fromJson(Object? json) {

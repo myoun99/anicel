@@ -312,7 +312,8 @@ class TimelineRowCellsPainter extends CustomPainter
       // cel names, exactly like before — the SHEET alone carries the
       // repeat-word convention (UI-R14 #3 rolled the timeline back).
       writing = switch (exposureState) {
-        TimelineCellExposureState.drawingStart => drawingHeadOf(frameName),
+        TimelineCellExposureState.drawingStart =>
+          drawingHeadOf(frameName, kind: layer.kind),
         TimelineCellExposureState.markHeld ||
         TimelineCellExposureState.markUncovered => timelineInbetweenMarkWriting,
         _ => timelineCellWritesNothing,

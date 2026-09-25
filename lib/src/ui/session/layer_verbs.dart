@@ -11,6 +11,7 @@ import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'session_roles.dart';
+import '../text/place_lines.dart' show linkPartnerLines;
 
 /// The LAYER VERBS — deleting, duplicating, linking and unlinking,
 /// renaming and copying a layer, and adding a row above the active one —
@@ -224,6 +225,21 @@ class LayerVerbs {
       return false;
     }
     return _project.repository.requireProject().linkRegistry.isLinked(
+      cutId: cut.id,
+      layerId: layerId,
+    );
+  }
+
+  /// The rows the layer shares its pictures with, in the ACTIVE cut
+  /// ([linkPartnerLines]) — what the link badge names. Empty when it is not
+  /// linked.
+  List<String> linkPartnersOf(LayerId layerId) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    return linkPartnerLines(
+      _project.repository.requireProject(),
       cutId: cut.id,
       layerId: layerId,
     );

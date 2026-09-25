@@ -65,6 +65,7 @@ void main() {
           ]),
           cut('c2', '2', [
             layer('b', 'B', [frame('b1', 'x')]),
+            layer('bg', 'BG', [frame('bg1')], kind: LayerKind.image),
           ]),
         ],
       ),
@@ -107,6 +108,13 @@ void main() {
       ['drawing 1/A/1', 'drawing 1/A/${unnamedDrawingMark.glyph}', 'drawing 1/A/${unnamedDrawingMark.glyph}', 'drawing 2/B/x'],
       reason: 'a blank name prints the mark, as the sheet prints it',
     );
+  });
+
+  test('🗣️an IMAGE row\'s unnamed cel prints no mark — the row is the '
+      'picture, so its name is the whole of the place', () {
+    // 유저 2026-09-25: 「이미지레이어는 프레임 이름 없으면 중간나누기
+    // 마크가아니라 이름을 안보이게」.
+    expect(placesOf([drawn('c2', 'bg', 'bg1')]), ['drawing 2/BG/']);
   });
 
   test('a row the TRACK owns is named by its track', () {

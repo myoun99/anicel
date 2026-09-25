@@ -49,7 +49,7 @@ final class DrawingCelPlace extends CelPlace {
     required Frame frame,
   }) : ownerName = rowOwnerName(track: track, cut: cut),
        layerName = layer.name,
-       celName = celNumberOrMark(frame.name);
+       celName = celNumberOrMark(frame.name, kind: layer.kind);
 
   final String ownerName;
   final String layerName;

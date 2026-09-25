@@ -63,7 +63,9 @@ class ExportCelGroupTask {
   final Frame baseFrame;
 
   /// The printed cel number — [Frame.celNumber] of [baseFrame]. An axis
-  /// frame without one is the in-between mark and never becomes a task.
+  /// frame without one is the in-between mark and never becomes a task —
+  /// but on a row whose unnamed cel is the layer's own picture it is one,
+  /// and this is empty ([_fileCelName]).
   final String celName;
 
   /// Relative to the export directory; may contain `/` subfolders.
@@ -190,14 +192,6 @@ Frame? celGroupMemberFrame({
   return byId(member, exposedFrameIdAt(member.timeline, firstExposure));
 }
 
-/// One task per numbered cel of every bundle the selection touches.
-///
-/// A bundle exists for every base whose stack holds a selected picture —
-/// the base itself, or an attach row riding it (부속 preset: the base is
-/// OFF and its parts are ON). A cel is planned only where some picture
-/// member has a frame: 「그림이 존재하는 영역만 출력」 — paper alone is not a
-/// picture. Bundles the user unticked in the cel list ([skipped]) are
-/// planned but marked, so the list keeps showing them.
 /// One cut as this export run sees it: the cut itself, the name its files
 /// carry (a 겸용 group's joined name), the run's namer and the bundles the
 /// user unticked. They travel together because every step of the walk needs
@@ -209,12 +203,21 @@ typedef _CutRun = ({
   Set<LayerId> skipped,
 });
 
+/// One task per numbered cel of every bundle the selection touches.
+///
+/// A bundle exists for every base whose stack holds a selected picture —
+/// the base itself, or an attach row riding it (부속 preset: the base is
+/// OFF and its parts are ON). A cel is planned only where some picture
+/// member has a frame: 「그림이 존재하는 영역만 출력」 — paper alone is not a
+/// picture. Bundles the user unticked in the cel list ([skipped]) are
+/// planned but marked, so the list keeps showing them.
 Iterable<ExportCelGroupTask> _celGroupTasksFor(
   _CutRun cut,
   ExportCelsSelection selection,
 ) sync* {
+  final unnamedFiled = <String>{};
   for (final bundle in _celBundlesOf(cut.cut, selection)) {
-    yield* _bundleTasks(bundle, cut);
+    yield* _bundleTasks(bundle, cut, unnamedFiled: unnamedFiled);
   }
 }
 
@@ -293,17 +296,15 @@ Layer _bundleAxis(List<Layer> pictures, Layer base) {
 }
 
 /// One task per numbered cel of [bundle] — the axis frames that carry a
-/// cel number AND a picture.
+/// cel number AND a picture. [unnamedFiled] holds the labels whose unnamed
+/// cel the cut has already filed.
 Iterable<ExportCelGroupTask> _bundleTasks(
   _CelBundle bundle,
-  _CutRun cut,
-) sync* {
+  _CutRun cut, {
+  required Set<String> unnamedFiled,
+}) sync* {
   for (final axisFrame in _inCelOrder(bundle.axis.frames)) {
-    // An unnamed drawing is the in-between mark, not a cel: no file. The
-    // sheet prints the mark for the very same frame ([Frame.celNumber]
-    // decides for both); numbering it by position here invented a cel the
-    // sheet never listed (유저 2026-09-09).
-    final celName = axisFrame.celNumber;
+    final celName = _fileCelName(bundle.axis, axisFrame);
     if (celName == null) {
       continue;
     }
@@ -316,6 +317,14 @@ Iterable<ExportCelGroupTask> _bundleTasks(
         ),
     ];
     if (!_holdsAPicture(bundle, frames)) {
+      continue;
+    }
+    // 🗣️유저 2026-09-25: 「같은 이름 레이어가 존재하고 똑같이 이름없는게
+    // 존재하면 거기서 순서상 첫 블록만. 하나만 출력되면되」. BOOK rows stack
+    // under one name, so their unnamed cels are all `BOOK`: the first the
+    // walk meets is the file, and the rest are no cel of this export — not
+    // `BOOK_2`, a name nobody gave.
+    if (celName.isEmpty && !unnamedFiled.add(bundle.axis.name)) {
       continue;
     }
     yield ExportCelGroupTask(
@@ -334,6 +343,22 @@ Iterable<ExportCelGroupTask> _bundleTasks(
     );
   }
 }
+
+/// What [frame] of [axis] is called on its file, or null when it writes no
+/// file at all.
+///
+/// An unnamed drawing is the in-between mark, not a cel: no file. The sheet
+/// prints the mark for the very same frame ([Frame.celNumber] decides for
+/// both); numbering it by position here invented a cel the sheet never
+/// listed (유저 2026-09-09).
+///
+/// 🗣️EXCEPT where the unnamed cel is the layer's own picture
+/// ([LayerKind.unnamedCelIsTheLayer]) — 유저 2026-09-25: 「이름없어도 출력은
+/// 이 규칙은 이미지레이어에만 적용. 애니메이션레이어는 이름없으면 출력안함」,
+/// 「이름없이 BOOK 그대로 출력」. Its cel name is empty, so the file wears the
+/// layer's name alone ([celGroupFileBase]).
+String? _fileCelName(Layer axis, Frame frame) =>
+    frame.celNumber ?? (axis.kind.unnamedCelIsTheLayer ? '' : null);
 
 /// [frames] in the order their cels are listed and written: by cel number,
 /// the way a file browser orders names — digits by value, letters without
@@ -510,7 +535,7 @@ ExportCelGroupPlan buildExportCelGroupPlan({
 
 /// `[proj_][cut_]<label><cel>[suffix]` — the bundle reading of the CSP
 /// naming options ([ExportCelNaming.includeLayerName] switches the LABEL
-/// text, the number always prints).
+/// text, the number always prints; a cel with no number keeps its label).
 String celGroupFileBase({
   required String projectName,
   required String cutName,
@@ -525,7 +550,10 @@ String celGroupFileBase({
   if (naming.includeCutName) {
     joined.write('${sanitizeExportFileComponent(cutName)}_');
   }
-  if (naming.includeLayerName) {
+  // An unnamed image cel has no number to print: the layer's name is its
+  // whole name (유저 2026-09-25: 「이름없이 BOOK 그대로 출력」), so it prints
+  // with the label switched off too — else the file would have no name.
+  if (naming.includeLayerName || celName.isEmpty) {
     joined.write(sanitizeExportFileComponent(labelName));
   }
   joined.write(padFrameNumber(celName, naming.frameDigits));

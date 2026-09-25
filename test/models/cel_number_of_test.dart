@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 
 /// ONE ANSWER TO 「DOES THIS DRAWING HAVE A NAME」 (C-save-percent).
 ///
@@ -9,6 +10,8 @@ import 'package:anicel/src/models/frame.dart';
 /// holds a name rather than a frame, so the answer is a function of the
 /// name; these pins say what it answers.
 void main() {
+  const cel = LayerKind.animation;
+
   test('a name prints trimmed; a blank one is no name', () {
     expect(celNumberOf('12'), '12');
     expect(celNumberOf(' 12 '), '12');
@@ -31,14 +34,44 @@ void main() {
     // are the same mark, mark 1.
     expect(unnamedDrawingMark, InbetweenMark.one);
     expect(breakdownMark, InbetweenMark.one);
-    expect(drawingHeadOf('A1'), (word: 'A1', mark: null));
-    expect(drawingHeadOf(null), (word: '', mark: unnamedDrawingMark));
-    expect(drawingHeadOf('   '), (word: '', mark: unnamedDrawingMark));
+    expect(drawingHeadOf('A1', kind: cel), (word: 'A1', mark: null));
+    expect(drawingHeadOf(null, kind: cel), (
+      word: '',
+      mark: unnamedDrawingMark,
+    ));
+    expect(drawingHeadOf('   ', kind: cel), (
+      word: '',
+      mark: unnamedDrawingMark,
+    ));
   });
 
   test('as TEXT the mark is its glyph — a file name, a notice', () {
-    expect(celNumberOrMark('A1'), 'A1');
-    expect(celNumberOrMark(null), unnamedDrawingMark.glyph);
-    expect(celNumberOrMark('   '), unnamedDrawingMark.glyph);
+    expect(celNumberOrMark('A1', kind: cel), 'A1');
+    expect(celNumberOrMark(null, kind: cel), unnamedDrawingMark.glyph);
+    expect(celNumberOrMark('   ', kind: cel), unnamedDrawingMark.glyph);
+  });
+
+  test('🗣️an unnamed cel on an IMAGE row wears NOTHING — the layer is the '
+      'picture, so there is no run for a mark to claim', () {
+    // 🗣️유저 2026-09-25: 「이미지레이어는 프레임 이름 없으면 중간나누기
+    // 마크가아니라 이름을 안보이게 하는 상태로」.
+    const image = LayerKind.image;
+    expect(drawingHeadOf(null, kind: image), (word: '', mark: null));
+    expect(drawingHeadOf('  ', kind: image), (word: '', mark: null));
+    expect(celNumberOrMark(null, kind: image), '');
+    expect(
+      drawingHeadOf('BOOK1', kind: image),
+      (word: 'BOOK1', mark: null),
+      reason: 'a NAMED cel prints its name on every kind',
+    );
+    for (final kind in LayerKind.values) {
+      if (kind != image) {
+        expect(
+          drawingHeadOf(null, kind: kind).mark,
+          unnamedDrawingMark,
+          reason: '${kind.name} keeps the mark',
+        );
+      }
+    }
   });
 }

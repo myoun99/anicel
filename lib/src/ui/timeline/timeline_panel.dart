@@ -89,7 +89,7 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerFillReference,
     required this.onLayerMarkSelected,
     this.layerFxStateOf,
-    this.layerIsLinkedOf,
+    this.layerLinkPartnersOf,
     this.onToggleLayerCollapsed,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
@@ -304,8 +304,9 @@ class TimelinePanel extends StatefulWidget {
   /// null hides it.
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
 
-  /// Link badge state (L4); null shows no badges.
-  final bool Function(LayerId layerId)? layerIsLinkedOf;
+  /// Link badge (L4): the rows a layer shares its pictures with; null shows
+  /// no badges.
+  final List<String> Function(LayerId layerId)? layerLinkPartnersOf;
 
   /// A folder is a LAYER: its eye, opacity, blend, fx switch, FX lanes and
   /// selection all arrive through the layer hooks above. R10 R3 took its
@@ -627,7 +628,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       onLayerMarkSelected: widget.onLayerMarkSelected,
       layerFxStateOf: widget.layerFxStateOf,
-      layerIsLinkedOf: widget.layerIsLinkedOf,
+      layerLinkPartnersOf: widget.layerLinkPartnersOf,
       onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
       onToggleLayerFx: widget.onToggleLayerFx,
       layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,

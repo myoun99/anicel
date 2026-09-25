@@ -651,7 +651,7 @@ enum AppStrings {
   String get tlNoLayers => _s('tlNoLayers');
   String get tlLegendLayer => _s('tlLegendLayer');
   String get tlAllDisplayedOpacity => _s('tlAllDisplayedOpacity');
-  String get tlLinkedLayerTooltip => _s('tlLinkedLayerTooltip');
+  String get tlLinkedWith => _s('tlLinkedWith');
 
   /// The reference row's file button — its tooltip, the button being an
   /// icon only — and its popover's first line when the press acts on
@@ -2594,7 +2594,7 @@ enum AppStrings {
     'tlNoLayers': 'No layers',
     'tlLegendLayer': 'LAYER',
     'tlAllDisplayedOpacity': 'All displayed layers opacity',
-    'tlLinkedLayerTooltip': 'Linked layer — pictures are shared',
+    'tlLinkedWith': 'Linked with',
     'tlLayerReference': 'Reference',
     'tlReferenceSourceShort': 'Runs {n} frames past the source',
     'tlSelectedLayers': 'Selected layers',
@@ -3913,7 +3913,7 @@ enum AppStrings {
     'tlNoLayers': 'レイヤーがありません',
     'tlLegendLayer': 'レイヤー',
     'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
-    'tlLinkedLayerTooltip': 'リンクレイヤー — 絵を共有しています',
+    'tlLinkedWith': 'リンク先',
     'tlLayerReference': '参照',
     'tlReferenceSourceShort': '素材より{n}フレーム長い',
     'tlSelectedLayers': '選択したレイヤー',
@@ -5222,7 +5222,7 @@ enum AppStrings {
     'tlNoLayers': '레이어 없음',
     'tlLegendLayer': '레이어',
     'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
-    'tlLinkedLayerTooltip': '링크 레이어 — 그림을 공유합니다',
+    'tlLinkedWith': '링크 대상',
     'tlLayerReference': '참조',
     'tlReferenceSourceShort': '원본보다 {n}프레임 깁니다',
     'tlSelectedLayers': '선택한 레이어',
@@ -6608,7 +6608,7 @@ enum AppStrings {
     'tlNoLayers': 'Aucun calque',
     'tlLegendLayer': 'CALQUE',
     'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
-    'tlLinkedLayerTooltip': 'Calque lié — les images sont partagées',
+    'tlLinkedWith': 'Lié à',
     'tlLayerReference': 'Référence',
     'tlReferenceSourceShort': 'Dépasse la source de {n} images',
     'tlSelectedLayers': 'Calques sélectionnés',
@@ -7845,7 +7845,7 @@ enum AppStrings {
     'tlNoLayers': '没有图层',
     'tlLegendLayer': '图层',
     'tlAllDisplayedOpacity': '所有显示图层的不透明度',
-    'tlLinkedLayerTooltip': '链接图层 — 画面是共享的',
+    'tlLinkedWith': '链接到',
     'tlLayerReference': '引用',
     'tlReferenceSourceShort': '超出素材{n}帧',
     'tlSelectedLayers': '所选图层',

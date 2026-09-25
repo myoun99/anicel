@@ -156,7 +156,9 @@ typedef _RailRowMemoInputs = ({
   bool groupFoldExpanded,
   LayerFxState fxState,
   bool onionSkinEnabled,
-  bool isLinked,
+  // The rows the pictures are shared with — a fresh list every build, so
+  // compared by what it holds ([ByList]).
+  ByList<String> linkPartners,
   bool soloed,
   AttachedPlacement? attachArrow,
   double layerRowHeight,

@@ -8,6 +8,7 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
+import '../models/layer_kind.dart';
 import '../models/storyboard_coverage.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import '../models/timeline_row_address.dart';
@@ -481,7 +482,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
           if (cell.frameId == null)
             timelineCellWritesNothing
           else
-            drawingHeadOf(frameNames[cell.frameId]),
+            drawingHeadOf(
+              frameNames[cell.frameId],
+              kind: LayerKind.storyboard,
+            ),
       ],
       commaLabels: [
         for (final cell in cells)

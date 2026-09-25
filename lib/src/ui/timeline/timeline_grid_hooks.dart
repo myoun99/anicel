@@ -86,7 +86,7 @@ class TimelineGridHooks {
     this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
     this.layerFxStateOf,
-    this.layerIsLinkedOf,
+    this.layerLinkPartnersOf,
     this.onToggleLayerCollapsed,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
@@ -287,13 +287,13 @@ class TimelineGridHooks {
   /// The AE-style layer fx MASTER (R8: persisted, tri-state); null hides it.
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
 
-  /// Link badge state (L4): whether a layer's pictures are shared with a
-  /// link group. Null shows no badges.
+  /// Link badge (L4): the rows a layer shares its pictures with (empty: not
+  /// linked). Null shows no badges.
   ///
   /// (x-sheet) The link badge (L4) and the camera column's live opacity (R27 #9):
   /// two answers the panel held for the rail alone, until the sheet's
   /// header became the rail's row stood up and asked for them too.
-  final bool Function(LayerId layerId)? layerIsLinkedOf;
+  final List<String> Function(LayerId layerId)? layerLinkPartnersOf;
 
   /// The row twirl that folds a FOLDER's members (the attach fold has its
   /// own hook because it is session state, not layer state).

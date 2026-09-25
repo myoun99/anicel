@@ -68,6 +68,17 @@ void main() {
     timeline: timeline ? exposed(frames) : const {},
   );
 
+  /// An IMAGE row holding [cel] — a picture row wears 미술, as Add Layer
+  /// makes one ([LayerMark.bornOfKind]).
+  Layer image(String id, String name, Frame cel) => Layer(
+    id: LayerId(id),
+    name: name,
+    kind: LayerKind.image,
+    frames: [cel],
+    mark: art,
+    timeline: exposed([cel]),
+  );
+
   Project projectWith(List<Layer> layers, {CameraInstructionSet? defs}) =>
       Project(
         id: const ProjectId('project'),
@@ -365,6 +376,89 @@ void main() {
     );
     expect(files(built), ['CUT1_A003.png']);
     expect(built.cels.single.baseFrame.id.value, 'f1');
+  });
+
+  test('🗣️an IMAGE row\'s unnamed cel files under the layer\'s name alone '
+      '— an animation row\'s still files nothing', () {
+    // 유저 2026-09-25: 「이름없어도 출력은 이 규칙은 이미지레이어에만 적용.
+    // 애니메이션레이어는 이름없으면 출력안함」 · 「이름없이 BOOK 그대로 출력」.
+    final layers = [
+      base('a', 'A', [frame('f1', unnamed: true)]),
+      image('bg', 'BG', frame('b1', unnamed: true)),
+      image('book', 'BOOK', frame('k1', name: 'BOOK1')),
+    ];
+    final built = plan(layers, spec: const CelsExportSpec(addArt: true));
+    expect(
+      files(built),
+      ['BG.png', 'BOOKBOOK1.png'],
+      reason: 'a named image cel is layer + frame name, as every cel is',
+    );
+    expect(built.cels.first.celName, isEmpty);
+    expect(
+      files(
+        plan(
+          layers,
+          spec: const CelsExportSpec(
+            addArt: true,
+            naming: ExportCelNaming(includeLayerName: false),
+          ),
+        ),
+      ),
+      ['BG.png', 'BOOK1.png'],
+      reason:
+          'with the label switched off, the layer\'s name is still the '
+          'unnamed cel\'s only name — a file must have one',
+    );
+  });
+
+  test('🗣️rows stacked under ONE name file their unnamed cel ONCE — the '
+      'first the walk meets, not a BOOK_2 nobody named', () {
+    // 유저 2026-09-25: 「같은 이름 레이어가 존재하고 똑같이 이름없는게
+    // 존재하면 거기서 순서상 첫 블록만. 하나만 출력되면되」.
+    final built = plan([
+      image('k1', 'BOOK', frame('p1', unnamed: true)),
+      image('k2', 'BOOK', frame('p2', unnamed: true)),
+      image('k3', 'BOOK', frame('p3', name: '2')),
+    ], spec: const CelsExportSpec(addArt: true));
+    expect(files(built), ['BOOK.png', 'BOOK2.png']);
+    expect(built.cels.first.baseLayer.id.value, 'k1');
+  });
+
+  test('…and ONCE per CUT: another cut\'s unnamed BG is another picture', () {
+    final project = Project(
+      id: const ProjectId('project'),
+      name: 'Project',
+      tracks: [
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          cuts: [
+            for (final id in ['c1', 'c2'])
+              Cut(
+                id: CutId(id),
+                name: id.toUpperCase(),
+                duration: 2,
+                canvasSize: const CanvasSize(width: 8, height: 8),
+                layers: [
+                  image('$id-bg', 'BG', frame('$id-b', unnamed: true)),
+                  createCameraLayer(cutId: CutId(id)),
+                ],
+              ),
+          ],
+        ),
+      ],
+      createdAt: DateTime.utc(2026),
+    );
+    final built = buildExportCelGroupPlan(
+      project: project,
+      activeCutId: const CutId('c1'),
+      spec: const CelsExportSpec(
+        addArt: true,
+        scope: ExportScopeKind.project,
+        naming: ExportCelNaming(includeCutName: true),
+      ),
+    );
+    expect(files(built), ['C1_BG.png', 'C2_BG.png']);
   });
 
   test('the sheet and the export agree on which drawing is a cel', () {

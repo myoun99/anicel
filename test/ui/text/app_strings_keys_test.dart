@@ -816,7 +816,7 @@ void main() {
     'tlNoLayers': (s) => s.tlNoLayers,
     'tlLegendLayer': (s) => s.tlLegendLayer,
     'tlAllDisplayedOpacity': (s) => s.tlAllDisplayedOpacity,
-    'tlLinkedLayerTooltip': (s) => s.tlLinkedLayerTooltip,
+    'tlLinkedWith': (s) => s.tlLinkedWith,
     'tlAudioLane': (s) => s.tlAudioLane,
     'tlNameTagGroup': (s) => s.tlNameTagGroup,
     'tlTransformGroup': (s) => s.tlTransformGroup,

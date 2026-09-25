@@ -106,8 +106,10 @@ class _LayerGridRailRows {
       onionSkinEnabled:
           _state.widget.hooks.layerOnionSkinEnabledOf?.call(row.layer.id) ??
           false,
-      isLinked:
-          _state.widget.hooks.layerIsLinkedOf?.call(row.layer.id) ?? false,
+      linkPartners: ByList(
+        _state.widget.hooks.layerLinkPartnersOf?.call(row.layer.id) ??
+            const <String>[],
+      ),
       // Solo is SESSION state, not a Layer field, so the layer comparison
       // cannot see it: the speaker's accent tint went stale the moment
       // solo moved anywhere but this row. It has always been shown here —
@@ -291,8 +293,9 @@ class _LayerGridRailRows {
       groupFoldExpanded: fold.expanded,
       onToggleGroupFold: fold.onToggle,
       opacityDragPreview: _state.widget.hooks.opacityDragPreview,
-      isLinked:
-          _state.widget.hooks.layerIsLinkedOf?.call(row.layer.id) ?? false,
+      linkPartners:
+          _state.widget.hooks.layerLinkPartnersOf?.call(row.layer.id) ??
+          const [],
       onLayerBlendModeSelected: _state.widget.hooks.onLayerBlendModeSelected,
       opacityOverride: _state.widget.hooks.layerOpacityOverrideOf?.call(
         row.layer.id,

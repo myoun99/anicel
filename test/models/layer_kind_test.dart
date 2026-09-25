@@ -271,4 +271,7 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.se,
   });
+  column('unnamedCelIsTheLayer', (kind) => kind.unnamedCelIsTheLayer, {
+    LayerKind.image,
+  });
 }
