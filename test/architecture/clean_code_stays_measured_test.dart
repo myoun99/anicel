@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/refactor/app_sources.dart';
 import '../../tool/refactor/clean_code_scan.dart';
 
 /// Round 2 of the audit (clean code, 2026-09-03) measured three numbers
@@ -125,7 +128,12 @@ void main() {
   /// head became a step of its own (the in-between mark round), which took
   /// `_paintPanelWriting` under the line. 🔬Measured on the lane rebased
   /// onto `8ead3d87d`, where master stood at the ceiling.
-  const longBodies = 436;
+  ///
+  /// ⚠️436 → 433 on 2026-09-25: master stood at 435, and two of those were
+  /// the brush lab's — the scan's `lib/dev/` exclusion never matched the
+  /// relative root this test hands it (`appDartFiles` answers for every
+  /// scan now; ratchet-dev-exclusion-relative-root).
+  const longBodies = 433;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -210,12 +218,13 @@ void main() {
   /// master and the lane names this one and no other. ⛔Not split to fit:
   /// the pool's verbs are one conversation (its header says why), and the
   /// question joined it.
-  /// ⚠️The diff tool reads one class fewer than this test, on both trees:
-  /// handed an absolute root it drops `lib/dev/` as the scan says, while
-  /// this test's `'lib'` gives paths with no leading slash, which the
-  /// `'/lib/dev/'` check never matches — so the dev tool's own long class
-  /// counts here. Read the count off this test, not off the tool.
-  const longClasses = 60;
+  ///
+  /// ⚠️60 → 59 on 2026-09-25: the one long class the brush lab owns left
+  /// the count. The scan's `lib/dev/` exclusion never matched this test's
+  /// relative `'lib'` — the diff tool, handed an absolute root, read one
+  /// class fewer on both trees — and `appDartFiles` answers for both now
+  /// (ratchet-dev-exclusion-relative-root).
+  const longClasses = 59;
 
   late CleanCodeScan scan;
   setUpAll(() {
@@ -224,6 +233,25 @@ void main() {
 
   test('the premise: it read the real tree', () {
     expect(scan.functions, greaterThan(9000));
+  });
+
+  test('the premise: the brush lab is not the app, from any root', () {
+    expect(
+      Directory('lib/dev').existsSync(),
+      isTrue,
+      reason: 'LIVENESS — there is a lab to leave out',
+    );
+    final relative = appDartFiles('lib');
+    expect(
+      relative.where((path) => path.contains('lib/dev/')),
+      isEmpty,
+      reason: 'the ratchets hand the scans a relative root',
+    );
+    expect(
+      relative.length,
+      appDartFiles(Directory('lib').absolute.path).length,
+      reason: 'a relative root and an absolute one read the same tree',
+    );
   });
 
   void ratchet(String what, List<CleanCodeFinding> found, int ceiling) {

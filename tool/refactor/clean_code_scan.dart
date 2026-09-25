@@ -9,6 +9,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/source/line_info.dart';
 
+import 'app_sources.dart';
+
 /// One measured declaration: where it is and what was measured.
 class CleanCodeFinding {
   CleanCodeFinding(this.where, this.value);
@@ -47,21 +49,13 @@ class CleanCodeScan {
   static const longClassOver = 600;
 }
 
-/// Scans every `.dart` file under [root] (`lib/dev/` excluded).
+/// Scans every `.dart` file under [root] ([appDartFiles]: `lib/dev/`
+/// excluded).
 CleanCodeScan scanCleanCode(String root) {
-  final files =
-      Directory(root)
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.dart'))
-          .toList()
-        ..sort((a, b) => a.path.compareTo(b.path));
   final visitor = _Visitor();
-  for (final file in files) {
-    final path = file.path.replaceAll('\\', '/');
-    if (path.contains('/lib/dev/')) continue;
+  for (final path in appDartFiles(root)) {
     final result = parseString(
-      content: file.readAsStringSync(),
+      content: File(path).readAsStringSync(),
       path: path,
       featureSet: FeatureSet.latestLanguageVersion(),
       throwIfDiagnostics: false,
