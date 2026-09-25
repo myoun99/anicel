@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -57,6 +58,26 @@ Future<List<DecodedImageFrame>> decodeImageFrames(Uint8List bytes) async {
     return frames;
   } finally {
     codec.dispose();
+  }
+}
+
+/// The picture a media FILE holds — a still, a GIF's first frame, a PSD's
+/// composite — through [decodeImageFrames], or null when it cannot be read
+/// (a file that went away, or not an image at all). A sheet prints an empty
+/// box for null, which is what it printed before anyone chose one.
+///
+/// ⛔ONE READER for the images a sheet prints (the logo, a 도장, a cover
+/// picture). The envelope's cache decoded its own first frame beside this
+/// recipe and never learned the PSD detour.
+Future<ui.Image?> readImageFileOrNull(String path) async {
+  try {
+    final frames = await decodeImageFrames(await File(path).readAsBytes());
+    for (final frame in frames.skip(1)) {
+      frame.image.dispose();
+    }
+    return frames.isEmpty ? null : frames.first.image;
+  } on Object {
+    return null;
   }
 }
 

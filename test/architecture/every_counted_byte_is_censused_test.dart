@@ -246,8 +246,8 @@ const _imageHolders = <String, String>{
       'for; each is of a picture the display buffer\'s kept image drew and '
       'still pins until its next compose, so nothing is held through them '
       'that the buffer does not hold anyway',
-  'lib/src/ui/envelope/envelope_image_cache.dart → _images':
-      'a handful of decoded logos and stamps, one per role, decoded once '
+  'lib/src/ui/sheet/sheet_image_cache.dart → _images':
+      'a handful of decoded logos, cover pictures and stamps, decoded once '
       'for the life of the workspace; its own doc says it needs an eviction '
       'the day it holds cels',
   'lib/src/ui/export/export_preview_engine.dart → _cache':

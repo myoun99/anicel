@@ -8,7 +8,7 @@ void main() {
   group('TextCelStyle', () {
     test('round-trips through JSON with every axis set', () {
       const style = TextCelStyle(
-        fontFamily: 'M PLUS 1p',
+        fontFamily: 'Yu Gothic',
         fontSize: 96,
         bold: true,
         letterSpacing: 2.5,
@@ -29,7 +29,7 @@ void main() {
 
     test('copyWith clears the nullable axes through the sentinel', () {
       const style = TextCelStyle(
-        fontFamily: 'M PLUS 1p',
+        fontFamily: 'Yu Gothic',
         outlineColor: 0xFF000000,
         backgroundColor: 0xFFC95C5C,
       );
@@ -43,7 +43,7 @@ void main() {
       expect(cleared.backgroundColor, isNull);
       expect(
         style.copyWith(bold: true).fontFamily,
-        'M PLUS 1p',
+        'Yu Gothic',
         reason: 'untouched axes keep their values',
       );
     });

@@ -4,6 +4,7 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_process.dart';
 import '../../models/project.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
@@ -19,11 +20,7 @@ import '../../models/storyboard_timeline_layout.dart';
 /// dialogue is the SE blocks', the number is the cut's name, and the times
 /// are the storyboard layout's global frames. Nothing on the sheet is
 /// authored anywhere but where it already lived.
-ConteSheetSource buildConteSheetSource(
-  Project project, {
-  String title = '',
-  String episode = '',
-}) {
+ConteSheetSource buildConteSheetSource(Project project) {
   final layout = buildStoryboardTimelineLayout(project);
   final cuts = <ConteCutSource>[];
   for (final entry in layout) {
@@ -41,10 +38,16 @@ ConteSheetSource buildConteSheetSource(
       ),
     );
   }
+  // The work's own words, read where every paper form reads them — the
+  // envelope's rule: an unnamed work prints the project's name.
+  final info = project.timesheetInfo;
   return ConteSheetSource(
     cuts: cuts,
-    title: title,
-    episode: episode,
+    title: info.title.isEmpty ? project.name : info.title,
+    episode: info.episode,
+    logoAssetPath: info.logoAssetPath,
+    coverImagePath: info.coverImagePath,
+    conteStaffName: info.staffFor(LayerProcess.conte.jsonValue).name,
     framesPerSecond: project.frameRate.countingBase,
   );
 }

@@ -165,7 +165,6 @@ void main() {
         cells: const [],
         cutBands: const [],
         emptyRowsFrom: 0,
-        pageTotalLabel: page.pageTotalLabel,
       );
       final empty = await render(
         const ConteSheetSource(cuts: []),

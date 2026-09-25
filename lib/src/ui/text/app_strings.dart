@@ -804,8 +804,10 @@ enum AppStrings {
   String get sbOneStoryboardRowPerCut => _s('sbOneStoryboardRowPerCut');
 
   /// The conte sheet panel.
-  String get cnActionColumn => _s('cnActionColumn');
-  String get cnConte => _s('cnConte');
+
+  /// The conte panel's page readout on the two pages that carry no number.
+  String get cnPageCover => _s('cnPageCover');
+  String get cnPageBlank => _s('cnPageBlank');
 
   /// '{n}' is the comma count.
   String get tlSetCommaTemplate => _s('tlSetCommaTemplate');
@@ -2678,8 +2680,8 @@ enum AppStrings {
     'tlPull': 'Pull (close frames)',
     'sbOneStoryboardRowPerCut':
         'This cut already has a storyboard row. A cut can hold only one.',
-    'cnActionColumn': 'Action',
-    'cnConte': 'Conte',
+    'cnPageCover': 'Cover',
+    'cnPageBlank': 'Blank',
     'tlBlankX': 'Blank / X',
     'tlMark': 'Mark $inbetweenMark',
     'tlSetCommasN': 'Set N commas',
@@ -3994,8 +3996,8 @@ enum AppStrings {
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
     'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
-    'cnActionColumn': 'アクション',
-    'cnConte': '絵コンテ',
+    'cnPageCover': '表紙',
+    'cnPageBlank': '白紙',
     'tlBlankX': '中割なし / ×',
     'tlMark': 'マーク $inbetweenMark',
     'tlSetCommasN': 'Nコマに設定',
@@ -5305,8 +5307,8 @@ enum AppStrings {
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
     'sbOneStoryboardRowPerCut': '이 컷에는 이미 스토리보드 레이어가 있습니다. 컷당 하나만 가능합니다.',
-    'cnActionColumn': '액션',
-    'cnConte': '콘티',
+    'cnPageCover': '표지',
+    'cnPageBlank': '빈 장',
     'tlBlankX': '중간 없음 / ×',
     'tlMark': '마크 $inbetweenMark',
     'tlSetCommasN': 'N코마로 설정',
@@ -6695,8 +6697,8 @@ enum AppStrings {
         'Ce plan a déjà un calque storyboard. Un seul par plan.',
     'cnPreviousPage': 'Page précédente',
     'cnNextPage': 'Page suivante',
-    'cnActionColumn': 'Action',
-    'cnConte': 'Storyboard',
+    'cnPageCover': 'Couv.',
+    'cnPageBlank': 'Vierge',
     'tlBlankX': 'Vide / X',
     'tlMark': 'Repère $inbetweenMark',
     'tlSetCommasN': 'Régler sur N commas',
@@ -7932,8 +7934,8 @@ enum AppStrings {
     'sbOneStoryboardRowPerCut': '该镜头已有分镜图层，每个镜头只能有一个。',
     'cnPreviousPage': '上一页',
     'cnNextPage': '下一页',
-    'cnActionColumn': '动作',
-    'cnConte': '分镜',
+    'cnPageCover': '封面',
+    'cnPageBlank': '空白页',
     'tlBlankX': '空 / ×',
     'tlMark': '标记 $inbetweenMark',
     'tlSetCommasN': '设为 N 格',

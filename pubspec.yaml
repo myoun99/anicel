@@ -101,11 +101,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # ⚠️This asset entry covers EVERY file in assets/fonts/ — the UI faces
-  # declared under `fonts:` below AND the conte PDF's two, which the PDF
-  # writer loads by name through rootBundle rather than as a family.
-  #
-  # 콘티 PDF: M PLUS 1p 가 라틴+가나+한자, IBM Plex Sans KR 이 한글.
+  # ⚠️This asset entry covers EVERY file in assets/fonts/ — the faces
+  # declared under `fonts:` below, which the conte PDF writer also loads by
+  # path through rootBundle to embed (AppTypography.bundledFiles), and
+  # their OFL texts.
   assets:
     - assets/fonts/
     - assets/licenses/

@@ -4,23 +4,24 @@ import 'package:flutter/painting.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart';
-import '../conte/conte_fonts.dart';
+import '../theme/app_theme.dart' show AppTypography;
 
 /// ONE canvas-text implementation (R5, ⓣ): the SE NAME TAG draws it live
 /// over the picture. ↩️The TEXT LAYER baked it into cels until F-154
 /// removed the kind — the text tool the user plans for ordinary layers
-/// writes with this same machinery. Engine text through the bundled conte
-/// faces (registered at startup), the same bytes the PDF path embeds, so
-/// screen/export can never disagree on a glyph.
+/// writes with this same machinery. Engine text in the app's BUNDLED faces
+/// ([AppTypography.bundledFamily], 유저 2026-09-25: 「글꼴 앱에서 정한거
+/// 통일」) — declared in `pubspec.yaml`, so the engine has them from the
+/// first frame and a picture prints the same letters on every machine.
+/// ↩️A text with no chosen face used to print in the OS's, with the conte's
+/// own faces catching CJK behind it.
 ///
 /// Layout: hard newlines only (no auto-wrap in v1); [TextCelStyle.align]
 /// spreads lines around the anchor's x, the first line's TOP sits at the
 /// anchor's y. A null anchor centers the block on the canvas.
 
 /// A laid-out text block: where it lands and how to draw it. Built
-/// SYNCHRONOUSLY so a CustomPainter can use it (font registration is
-/// idempotent and warmed at startup; a cold frame measures in the
-/// fallback face and reflows once, the conte panel's rule).
+/// SYNCHRONOUSLY so a CustomPainter can use it.
 class TextCelLayout {
   TextCelLayout._({
     required this.inkBounds,
@@ -110,11 +111,13 @@ TextCelLayout layoutTextCel({
             letterSpacing: style.letterSpacing == 0
                 ? null
                 : style.letterSpacing,
-            fontFamily: style.fontFamily,
-            // CJK safety on every family choice (platform default
-            // included): the bundled faces catch what the primary face
-            // misses.
-            fontFamilyFallback: const [conteJpFontFamily, conteKrFontFamily],
+            fontFamily: style.fontFamily ?? AppTypography.bundledFamily,
+            // CJK safety on every family choice: the app's bundled faces
+            // catch what a chosen face misses, in the app's own order.
+            fontFamilyFallback: const [
+              AppTypography.bundledFamily,
+              ...AppTypography.bundledFallback,
+            ],
             height: 1.25,
           ),
         ),

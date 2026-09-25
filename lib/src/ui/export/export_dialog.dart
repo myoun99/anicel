@@ -28,6 +28,7 @@ import '../../models/layer.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
+import '../../models/conte/conte_notation.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
@@ -855,6 +856,9 @@ class ExportDialogState extends State<ExportDialog> {
   TimesheetNotation get _sheetNotation =>
       TimesheetNotation.of(_session.languageSettings.value.notationLanguage);
 
+  ConteNotation get _conteNotation =>
+      ConteNotation.of(_session.languageSettings.value.notationLanguage);
+
   /// The app's face the documents export in — this window's, which is the
   /// panels' (documents-in-which-face-Q1). Read before a render is queued:
   /// the render may run after the window has closed.
@@ -930,7 +934,7 @@ class ExportDialogState extends State<ExportDialog> {
       return (cached.$2, cached.$3);
     }
     final source = buildConteSheetSource(project);
-    final pages = layoutConteSheet(
+    final pages = layoutConteBook(
       source,
       metrics: ConteSheetMetrics(cameraAspect: _session.camera.cameraFrameAspect),
     );
@@ -968,7 +972,9 @@ class ExportDialogState extends State<ExportDialog> {
     EnvelopeExportSpec spec,
     Project project,
   ) {
-    final form = CutEnvelopePresets.byId(spec.formId);
+    // The work's form, the one the panel shows (유저 답
+    // envelope-form-in-export: the export follows it).
+    final form = CutEnvelopePresets.byId(project.timesheetInfo.envelopeFormId);
     final cuts = resolveExportCuts(
       project: project,
       activeCutId: _activeCut.id,
@@ -1201,23 +1207,28 @@ class ExportDialogState extends State<ExportDialog> {
     required int pictureWidth,
     double scale = 1,
     CanvasSize? outputSize,
+    required ConteNotation notation,
   }) async {
     final pictures = await _renderContePictures([page], width: pictureWidth);
     final ink = await _renderConteInk([page]);
+    final images = await readContePageImages([page], source);
     try {
       return await renderContePageImage(
         page: page,
         source: source,
         pictureFor: (cutId, frame) => pictures[(cutId, frame)],
+        imageFor: (path) => images[path],
         inkImageFor: (key) => ink[key],
         scale: scale,
         outputSize: outputSize,
+        notation: notation,
       );
     } finally {
-      for (final image in pictures.values) {
-        image.dispose();
-      }
-      for (final image in ink.values) {
+      for (final image in [
+        ...pictures.values,
+        ...ink.values,
+        ...images.values,
+      ]) {
         image.dispose();
       }
     }
@@ -1584,8 +1595,11 @@ class ExportDialogState extends State<ExportDialog> {
       page.metrics.pageWidth,
       page.metrics.pageHeight,
     );
+    // The printed words are in the key: switching the notation language
+    // must not show the other language's cached page.
+    final notation = _conteNotation;
     _preview.request(
-      key: 'conte:${page.pageIndex}',
+      key: 'conte:${page.pageIndex}:${notation.name}',
       caption: 'p${page.pageIndex + 1}',
       // Preview pictures at panel resolution — fast, and the run
       // re-renders sharper ones anyway.
@@ -1594,6 +1608,7 @@ class ExportDialogState extends State<ExportDialog> {
         source,
         pictureWidth: 128,
         outputSize: outputSize,
+        notation: notation,
       ),
     );
   }
@@ -1618,7 +1633,7 @@ class ExportDialogState extends State<ExportDialog> {
       // different layer sets of the same SIZE must not share a
       // cached render.
       key:
-          'envelope:${task.owner.id.value}:${spec.formId}:'
+          'envelope:${task.owner.id.value}:${task.layout.form.id}:'
           '${spec.paperMode.toJson()}:${spec.sheetWidth}:'
           '${[for (final layer in spec.orderedLayers) layer.jsonValue].join('+')}'
           ':${face.fontFamily}',
@@ -2403,6 +2418,7 @@ class ExportDialogState extends State<ExportDialog> {
   Future<String> _exportConte() async {
     final (source, pages) = _conteSheet();
     final spec = _specs.conte;
+    final notation = _conteNotation;
     if (spec.format == ExportConteFormat.pageImage) {
       // Streamed like every image export: ONE page's cell pictures live
       // at a time (a cut spanning two pages re-renders once per page —
@@ -2415,6 +2431,7 @@ class ExportDialogState extends State<ExportDialog> {
           source,
           pictureWidth: cellWidth,
           scale: spec.sheetScale.toDouble(),
+          notation: notation,
         ),
         fileNameFor: (index) => _contePageFileName(index, pages.length),
         says: _Tally.contePages,
@@ -2462,6 +2479,22 @@ class ExportDialogState extends State<ExportDialog> {
         image.dispose();
       }
     }
+    // The media images the pages print (the logo, the cover's picture) —
+    // one raw copy each for the file, the same lifecycle again.
+    final sheetImages = await readContePageImages(pages, source);
+    final pdfImages = <String, ContePdfPicture>{};
+    try {
+      for (final entry in sheetImages.entries) {
+        final picture = await ContePdfPicture.fromImage(entry.value);
+        if (picture != null) {
+          pdfImages[entry.key] = picture;
+        }
+      }
+    } finally {
+      for (final image in sheetImages.values) {
+        image.dispose();
+      }
+    }
     final fonts = await ContePdfFonts.load();
     _reportProgress(pages.length, pages.length + 1);
     final bytes = await writeContePdf(
@@ -2469,7 +2502,9 @@ class ExportDialogState extends State<ExportDialog> {
       pages: pages,
       fonts: fonts,
       pictures: pdfPictures,
+      images: pdfImages,
       inkPictures: inkPictures,
+      notation: notation,
     );
     final file = File(_joinLocation('conte.pdf'));
     await file.parent.create(recursive: true);
@@ -4189,25 +4224,6 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.envelope;
     final cutPaper = spec.paperMode == CutEnvelopePaperMode.cut;
     return [
-      ExportAccordion(
-        title: AppText.strings.exForm,
-        summary: CutEnvelopePresets.byId(spec.formId).name,
-        expansion: _expansion('envelope-form', open: true),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: ExportPillStrip(
-            items: [
-              for (final form in CutEnvelopePresets.all)
-                _pill(
-                  keyValue: 'export-envelope-form-${form.id}',
-                  label: form.name,
-                  selected: spec.formId == form.id,
-                  onPick: () => _updateSpec(spec.copyWith(formId: form.id)),
-                ),
-            ],
-          ),
-        ),
-      ),
       ExportAccordion(
         title: AppText.strings.exPaperLabel,
         summary: cutPaper

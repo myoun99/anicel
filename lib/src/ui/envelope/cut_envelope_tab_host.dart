@@ -45,13 +45,13 @@ class CutEnvelopeTabHost extends StatefulWidget {
     this.brushAllowed = false,
     this.onBrushAllowedChanged,
     this.imageFor,
+    this.imageRepaint,
   });
 
   final EditorSessionManager session;
 
-  /// Which bundled form to print. Owned above the tab group, like the
-  /// viewport; a project-level choice (and a form EDITOR) come with the
-  /// preset round.
+  /// Which bundled form to print — the work's choice
+  /// (`TimesheetInfo.envelopeFormId`), chosen here and kept with the work.
   final String formId;
   final ValueChanged<String>? onFormIdChanged;
 
@@ -80,9 +80,13 @@ class CutEnvelopeTabHost extends StatefulWidget {
   /// Resolves a media asset path (logo, 도장) to a decoded image.
   final ui.Image? Function(String assetPath)? imageFor;
 
+  /// Notifies when an image [imageFor] answered null for has landed — the
+  /// page's inputs do not change for it, so this is what repaints it.
+  final Listenable? imageRepaint;
+
   // No shrink floor of its own: the envelope is a PAGE that scales into
-  // whatever it is given, and unlike the conte it mounts no chrome row
-  // under the shell — so the panel's own floor is the whole story. Stating
+  // whatever it is given and mounts no chrome row under the shell — the
+  // conte's case too — so the panel's own floor is the whole story. Stating
   // a larger number here would only raise the bottom dock's minimum for
   // every tab beside it.
 
@@ -214,7 +218,10 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                           ? null
                           : (key) => inkController.displayImageFor(null, key),
                       liveInkKeys: {for (final window in mounted) window.key},
-                      repaint: inkController,
+                      repaint: Listenable.merge([
+                        inkController,
+                        widget.imageRepaint,
+                      ]),
                     ),
                     child: const SizedBox.expand(),
                   ),

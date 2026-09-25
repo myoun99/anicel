@@ -2520,13 +2520,22 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                       bottom: _capsuleMargin,
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: _capsule(
-                          colorScheme,
-                          keyValue: 'canvas-page-strip',
-                          width: _pageStripWidth,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: pageStrip,
+                        // A panel shorter than the strip gets the whole strip,
+                        // smaller — never a column that overflows, and never
+                        // one missing a control. Its height is its controls
+                        // and a readout that wraps (「12 / 51」 is two lines
+                        // in 30px), so no floor number can promise it room.
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: _capsule(
+                            colorScheme,
+                            keyValue: 'canvas-page-strip',
+                            width: _pageStripWidth,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: pageStrip,
+                            ),
                           ),
                         ),
                       ),

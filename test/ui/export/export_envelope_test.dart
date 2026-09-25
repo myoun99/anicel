@@ -22,6 +22,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
@@ -111,7 +112,6 @@ void main() {
 
     test('a chosen shape round-trips through JSON', () {
       const spec = EnvelopeExportSpec(
-        formId: CutEnvelopePresets.digitalId,
         paperMode: CutEnvelopePaperMode.sheet,
         scope: ExportScopeKind.project,
         sheetWidth: 3508,
@@ -415,6 +415,46 @@ void main() {
       );
       expect(inked!.$1, greaterThan(200), reason: 'red ink, from the store');
       expect(inked.$2, lessThan(80));
+    });
+
+    testWidgets('the export prints the WORK\'s form, and the tab has no '
+        'form picker of its own', (tester) async {
+      // 유저 답 envelope-form-in-export: 「출력은 작품의 서식을 따른다
+      // (출력 창의 고르기는 뺀다)」.
+      final session = EditorSessionManager(
+        initialProject: project().copyWith(
+          timesheetInfo: TimesheetInfo.empty.copyWith(
+            envelopeFormId: CutEnvelopePresets.digitalId,
+          ),
+        ),
+      );
+      addTearDown(session.dispose);
+      final state = await pumpDialog(tester, session);
+      for (final form in CutEnvelopePresets.all) {
+        expect(
+          find.byKey(ValueKey<String>('export-envelope-form-${form.id}')),
+          findsNothing,
+        );
+      }
+      // The real-sheet mode is the form's own shape, so the page height
+      // says which form printed: the two bundled forms differ in aspect.
+      await tapSetting(tester, 'export-envelope-paper-sheet');
+      await tapSetting(tester, 'export-envelope-width-1240');
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final file = File(
+        '${temp.path}${Platform.pathSeparator}CUT39_envelope.png',
+      );
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(file.readAsBytesSync()),
+      ))!;
+      addTearDown(image.dispose);
+      final digital = (1240 / CutEnvelopePresets.digital.aspectRatio).round();
+      final analog = (1240 / CutEnvelopePresets.analog.aspectRatio).round();
+      expect(digital, isNot(analog));
+      expect((image.width, image.height), (1240, digital));
     });
   });
 }

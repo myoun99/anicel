@@ -1,15 +1,22 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
-/// The decoded logo and 도장 the cut envelope prints, by asset path.
+import '../../services/import/raster_cel_import.dart' show readImageFileOrNull;
+
+/// The decoded media images the sheets print, by asset path — the company
+/// logo (the conte's body pages and the envelope), the conte's cover
+/// picture, the envelope's 도장.
 ///
-/// 🚨THE PAINTER ASKS SYNCHRONOUSLY. `CutEnvelopePainter.imageFor` returns a
+/// 🚨THE PAINTER ASKS SYNCHRONOUSLY. A sheet painter's `imageFor` returns a
 /// `ui.Image?` right now — it is inside a paint pass and cannot await — so a
 /// path it has never seen answers null ONCE, the decode runs off to the side,
-/// and [onLoaded] brings the frame back when there is something to draw.
+/// and the cache NOTIFIES when there is something to draw. A painter hands
+/// it to its `repaint`: its compared inputs do not change when a picture
+/// lands, so nothing else would bring the frame back. ↩️It used to call back
+/// into the workspace, which rebuilt everything — and the painters, seeing
+/// equal inputs, did not repaint: a logo showed only after the next pan.
 ///
 /// ⛔A miss is remembered too. A path that fails to decode (deleted file,
 /// something that is not an image) must not be retried every paint: that
@@ -17,15 +24,11 @@ import 'package:flutter/foundation.dart';
 /// null IS the memory of that, which is why the lookup asks
 /// `containsKey` rather than testing the value.
 ///
-/// ⚠️Envelope images are a handful — one logo and one stamp per role — and
-/// each decodes once for the life of the workspace. This is not a general
-/// image cache and has no eviction; if it ever holds cels it needs one.
-class EnvelopeImageCache {
-  EnvelopeImageCache({required this.onLoaded});
-
-  /// Called after a decode lands, so the host can repaint with it.
-  final VoidCallback onLoaded;
-
+/// ⚠️Sheet images are a handful — a logo, a cover picture, one stamp per
+/// role — and each decodes once for the life of the workspace. This is not
+/// a general image cache and has no eviction; if it ever holds cels it
+/// needs one.
+class SheetImageCache extends ChangeNotifier {
   final Map<String, ui.Image?> _images = <String, ui.Image?>{};
 
   /// The image for [assetPath], or null while it is still being read — and
@@ -42,36 +45,26 @@ class EnvelopeImageCache {
   }
 
   Future<void> _load(String assetPath) async {
-    ui.Image? image;
-    try {
-      final bytes = await File(assetPath).readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes);
-      try {
-        image = (await codec.getNextFrame()).image;
-      } finally {
-        codec.dispose();
-      }
-    } on Object {
-      // A stamp whose file went away is not an error the user can act on
-      // from here — the envelope simply prints the empty box, which is the
-      // same thing it printed before anyone chose one.
-      image = null;
-    }
+    // A stamp whose file went away is not an error the user can act on from
+    // here — the sheet simply prints the empty box.
+    final image = await readImageFileOrNull(assetPath);
     if (_disposed) {
       image?.dispose();
       return;
     }
     _images[assetPath] = image;
-    onLoaded();
+    notifyListeners();
   }
 
   bool _disposed = false;
 
+  @override
   void dispose() {
     _disposed = true;
     for (final image in _images.values) {
       image?.dispose();
     }
     _images.clear();
+    super.dispose();
   }
 }

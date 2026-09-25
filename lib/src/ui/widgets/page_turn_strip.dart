@@ -30,6 +30,7 @@ List<Widget> pageTurnStrip({
   required ({int index, int count, String readout}) page,
   required ValueChanged<int>? onTurnTo,
   List<Widget> leading = const <Widget>[],
+  int? Function(String typed)? indexOfTyped,
 }) {
   if (page.count <= 1) {
     // ⛔The PAGE cluster goes; [leading] does not. 유저 확정 ⑥ is about a
@@ -73,10 +74,13 @@ List<Widget> pageTurnStrip({
           return;
         }
         // '3' and '3/7' both mean page three (the readout's own
-        // spelling round-trips).
-        final parsed = int.tryParse(text.split('/').first.trim());
-        if (parsed != null) {
-          onTurnTo(parsed - 1);
+        // spelling round-trips) — unless the host numbers its pages its
+        // own way, and then it says what the typed number means.
+        final target = indexOfTyped == null
+            ? _pageIndexOf(text)
+            : indexOfTyped(text);
+        if (target != null) {
+          onTurnTo(target);
         }
       },
     ),
@@ -93,3 +97,10 @@ List<Widget> pageTurnStrip({
 }
 
 void _noDrag(double units) {}
+
+/// Page `n` of a readout spelled `n` or `n/N`, as an index; null for
+/// anything else.
+int? _pageIndexOf(String typed) {
+  final number = int.tryParse(typed.split('/').first.trim());
+  return number == null ? null : number - 1;
+}

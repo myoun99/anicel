@@ -12,10 +12,12 @@ library;
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
-import '../project_frame_rate.dart' show secondsPlusFramesLabel;
 import 'conte_sheet_source.dart';
 
-/// The sheet's fixed measurements.
+/// The sheet's fixed measurements — the first preset's page (유저
+/// 2026-09-25, the reference sheets: 「위에 헤더에 컷 화면 내용 초 … 아래부분은
+/// 가로선으로 칸이 나뉘어져있지않아 … 컷 칸은 화면/내용/초랑 공간
+/// 떨어져있어」).
 class ConteSheetMetrics {
   const ConteSheetMetrics({
     this.pageWidth = 595.28,
@@ -25,35 +27,71 @@ class ConteSheetMetrics {
 
   final double pageWidth;
   final double pageHeight;
-  double get margin => 28;
-  double get headerHeight => 34;
+
+  /// Left and right: the cut box starts here, the table ends here.
+  double get marginX => 30;
+
+  /// The band above the table: the page number on its left, the company
+  /// logo on its right (유저 답 conte-body-header: 「쪽번호를 왼쪽위로
+  /// 옮기고(1/51이런식으로 전체 페이지도 표시), 오른쪽위는 회사로고」).
+  double get topBandTop => 9;
+  double get topBandHeight => 20;
+  double get logoWidth => 72;
+
+  double get tableTop => 34;
+
+  /// The header ROW — カット · 画面 · ACTION · DIALOGUE · 秒.
+  double get headerRowHeight => 18;
 
   /// FIVE, fixed (design): a conte page is five cells, and a sheet whose
   /// row count drifts with content stops being a sheet.
   int get rowsPerPage => 5;
 
-  double get cutColumnWidth => 30;
-  double get timeColumnWidth => 38;
+  /// The two number columns are as wide as their numbers set in the app's
+  /// face (유저 2026-09-25: 「글꼴 앱에서 정한거 통일」), whose digits are
+  /// wide — 0.76em. A four-digit cut number at 9pt bold measures 27.4pt.
+  /// The numbers print on one line ([SheetWordsFit.oneLine]); ↩️in 28 and
+  /// 32 a total broke into two lines and sat on the block length above it.
+  double get cutColumnWidth => 34;
 
-  /// The project's camera ratio. The PICTURE column is as wide as a row is
-  /// tall times this — the picture keeps the film's shape and the text
-  /// columns take what is left. Letterboxing it to a fixed column would
-  /// make the cell's silhouette disagree with the cut's, which the design
-  /// refuses.
+  /// The cut box stands apart from the table.
+  double get cutGap => 6;
+
+  /// Just 「00+00」 (유저 2026-09-25: 「초수 칸 너무 좌우 기니까 좀 더
+  /// 슬림하게. 00+00 이정도 크기가 딱 들어갈정도로」): the total at 9pt bold
+  /// in the app's face measures 34.9pt (BIZ's digits are all one width, so
+  /// 「99+23」 too), and [timeInset] stands on each side. ↩️It was 44.
+  double get timeColumnWidth => 39;
+
+  /// What the time column's numbers keep off its two rules.
+  double get timeInset => 2;
+
+  /// The black of the silhouette around each picture window.
+  double get silhouetteBorder => 3.2;
+  double get ruleWidth => 0.8;
+
+  /// The project's camera ratio. Every picture WINDOW is exactly this shape
+  /// and the column is the window plus the silhouette's black — the picture
+  /// keeps the film's shape and the text columns take what is left. A
+  /// window of another shape showed the well beside every picture as a pale
+  /// sliver (measured 2026-09-25, one of the three lines round a frame).
   final double cameraAspect;
 
-  double get bodyLeft => margin;
-  double get bodyRight => pageWidth - margin;
-  double get bodyTop => margin + headerHeight;
-  double get bodyBottom => pageHeight - margin;
+  double get bodyLeft => marginX;
+  double get bodyRight => pageWidth - marginX;
+  double get bodyTop => tableTop + headerRowHeight;
+  double get bodyBottom => pageHeight - 56;
   double get bodyWidth => bodyRight - bodyLeft;
   double get bodyHeight => bodyBottom - bodyTop;
   double get rowHeight => bodyHeight / rowsPerPage;
 
-  double get pictureWidth => rowHeight * cameraAspect;
+  double get windowHeight => rowHeight - 2 * silhouetteBorder;
+  double get pictureWidth =>
+      windowHeight * cameraAspect + 2 * silhouetteBorder;
 
   double get cutColumnLeft => bodyLeft;
-  double get pictureLeft => cutColumnLeft + cutColumnWidth;
+  double get cutColumnRight => cutColumnLeft + cutColumnWidth;
+  double get pictureLeft => cutColumnRight + cutGap;
   double get actionLeft => pictureLeft + pictureWidth;
   double get timeLeft => bodyRight - timeColumnWidth;
 
@@ -64,6 +102,28 @@ class ConteSheetMetrics {
   double get dialogueWidth => textWidth - actionWidth;
 
   double rowTop(int rowOnPage) => bodyTop + rowOnPage * rowHeight;
+
+  /// Row [row]'s picture window — the silhouette's hole.
+  Rect windowRect(int row) => Rect.fromLTRB(
+    pictureLeft + silhouetteBorder,
+    rowTop(row) + silhouetteBorder,
+    actionLeft - silhouetteBorder,
+    rowTop(row + 1) - silhouetteBorder,
+  );
+
+  Rect get pageNumberSlot =>
+      Rect.fromLTWH(marginX, topBandTop, 120, topBandHeight);
+
+  Rect get logoSlot => Rect.fromLTWH(
+    bodyRight - logoWidth,
+    topBandTop,
+    logoWidth,
+    topBandHeight,
+  );
+
+  /// The page's running total, under the table's right end.
+  Rect get pageTotalSlot =>
+      Rect.fromLTRB(timeLeft - 40, bodyBottom + 4, bodyRight, bodyBottom + 20);
 }
 
 /// One cell placed on a page.
@@ -142,7 +202,6 @@ class ContePlacedCutBand {
     required this.cutName,
     required this.cutRect,
     required this.timeRect,
-    required this.lengthLabel,
     required this.showsNumber,
     required this.showsLength,
   });
@@ -152,14 +211,25 @@ class ContePlacedCutBand {
   final Rect cutRect;
   final Rect timeRect;
 
-  /// The cut's own length, printed bottom-right of the TIME box.
-  final String lengthLabel;
-
   /// A cut split across pages prints its number on the first page it
   /// appears and its length on the last — the two ends of one box that
   /// happens to be cut in half by the page.
   final bool showsNumber;
   final bool showsLength;
+}
+
+/// What a page of the conte IS (유저 2026-09-25: 「보통 1페이지는 표지,
+/// 2페이지는 인쇄할때 생각해서 빈용지, 3페이지부터 콘티 본 페이지」).
+enum ContePageKind {
+  /// The work, its episode, its picture, its length and its conte artist.
+  cover,
+
+  /// The cover's back when printed on both sides — nothing on it, so the
+  /// body's first page lands on a right-hand page.
+  blank,
+
+  /// The sheet proper: five cells a page.
+  body,
 }
 
 /// One page of the sheet.
@@ -169,27 +239,72 @@ class ContePageLayout {
     required this.cells,
     required this.cutBands,
     required this.emptyRowsFrom,
-    required this.pageTotalLabel,
     required this.metrics,
-  });
+    this.kind = ContePageKind.body,
+    int? bodyIndex,
+    this.bodyCount = 1,
+  }) : bodyIndex = bodyIndex ?? pageIndex;
 
+  /// Where the page stands in the whole conte, cover included — the index
+  /// the panel turns to and the paper-plane ink is keyed by.
   final int pageIndex;
+  final ContePageKind kind;
   final List<ContePlacedCell> cells;
   final List<ContePlacedCutBand> cutBands;
 
-  /// The first row a cell could not be placed on, or null when the page is
-  /// full. The rows from here down get ONE big X (design): the hole is
-  /// deliberate, and paper says so with a stroke rather than with grey.
-  final int? emptyRowsFrom;
+  /// Where a BODY page stands among the body's pages, from 0.
+  final int bodyIndex;
 
-  /// The running total printed at the page's foot: the lengths of the cuts
-  /// that END on this page (design — a cut spanning pages is counted where
-  /// it finishes).
-  final String pageTotalLabel;
+  /// How many body pages the sheet has — the N of the 「n / N」 a body page
+  /// prints top-left.
+  final int bodyCount;
+
+  /// This page's number among the body's pages, from 1 — the cover and the
+  /// blank page carry none (유저 답 conte-page-numbering: 「그냥 표지는
+  /// 번호로 인식안하게하자. 콘티 본문만 번호 명명해서 늘어나도록」).
+  int get bodyNumber => bodyIndex + 1;
+
+  /// The first row a cell could not be placed on, or null when the page is
+  /// full. Nothing marks the hole on paper any more (user, 2026-08-06: the
+  /// big X is gone) — a blank row is just a blank row.
+  final int? emptyRowsFrom;
 
   final ConteSheetMetrics metrics;
 
   bool get hasHole => emptyRowsFrom != null;
+}
+
+/// The whole conte as printed: the cover, the blank page behind it, then
+/// the body [layoutConteSheet] lays out — the order the panel turns through
+/// and the exports print.
+List<ContePageLayout> layoutConteBook(
+  ConteSheetSource source, {
+  ConteSheetMetrics metrics = const ConteSheetMetrics(),
+}) {
+  final body = layoutConteSheet(source, metrics: metrics);
+  ContePageLayout bare(int index, ContePageKind kind) => ContePageLayout(
+    pageIndex: index,
+    kind: kind,
+    cells: const [],
+    cutBands: const [],
+    emptyRowsFrom: null,
+    metrics: metrics,
+    bodyCount: body.length,
+  );
+  return [
+    bare(0, ContePageKind.cover),
+    bare(1, ContePageKind.blank),
+    for (final page in body)
+      ContePageLayout(
+        pageIndex: page.pageIndex + 2,
+        bodyIndex: page.pageIndex,
+        cells: page.cells,
+        cutBands: page.cutBands,
+        emptyRowsFrom: page.emptyRowsFrom,
+        metrics: metrics,
+        bodyCount: body.length,
+      ),
+  ];
 }
 
 /// Lays [source] out onto pages.
@@ -236,26 +351,17 @@ List<ContePageLayout> layoutConteSheet(
             metrics.bodyRight,
             bottom,
           ),
-          lengthLabel: secondsPlusFramesLabel(
-            cut.durationFrames,
-            source.framesPerSecond,
-          ),
           showsNumber: bandFirstPage[cutId] ?? true,
           showsLength: endingHere.any((c) => c.cutId.value == cutId),
         ),
       );
     }
-    final total = endingHere.fold<int>(
-      0,
-      (sum, cut) => sum + cut.durationFrames,
-    );
     pages.add(
       ContePageLayout(
         pageIndex: pages.length,
         cells: cells,
         cutBands: bands,
         emptyRowsFrom: hole ? row : null,
-        pageTotalLabel: secondsPlusFramesLabel(total, source.framesPerSecond),
         metrics: metrics,
       ),
     );
@@ -329,5 +435,15 @@ List<ContePageLayout> layoutConteSheet(
   if (cells.isNotEmpty || pages.isEmpty) {
     flushPage(hole: row < metrics.rowsPerPage);
   }
-  return pages;
+  return [
+    for (final page in pages)
+      ContePageLayout(
+        pageIndex: page.pageIndex,
+        cells: page.cells,
+        cutBands: page.cutBands,
+        emptyRowsFrom: page.emptyRowsFrom,
+        metrics: page.metrics,
+        bodyCount: pages.length,
+      ),
+  ];
 }

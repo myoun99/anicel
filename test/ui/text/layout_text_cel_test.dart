@@ -12,8 +12,30 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/text/text_cel_render.dart';
 
+import '../../helpers/app_faces.dart';
+
 void main() {
   const canvas = CanvasSize(width: 400, height: 300);
+
+  // 유저 2026-09-25: 「글꼴 앱에서 정한거 통일하는거 해주고」 — a text with no
+  // chosen face prints in the app's bundled one, not in whatever the OS
+  // hands the engine.
+  testWidgets('a text with no chosen face sets in the app\'s face', (
+    tester,
+  ) async {
+    await loadTheAppFaces();
+    final layout = layoutTextCel(
+      content: const TextCelContent(
+        text: 'iiii',
+        style: TextCelStyle(fontSize: 20),
+      ),
+      canvas: canvas,
+    );
+    addTearDown(layout.dispose);
+    // The test's own font sets every glyph one em wide — 80 here; the app's
+    // face sets an i narrow.
+    expect(layout.textSize.width, lessThan(40));
+  });
 
   testWidgets('a short line has ink inside the canvas', (tester) async {
     final layout = layoutTextCel(

@@ -2,10 +2,40 @@ import 'dart:ui' as ui;
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/conte/conte_notation.dart';
+import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/sheet_marks.dart';
+import '../../services/import/raster_cel_import.dart' show readImageFileOrNull;
 import '../conte/conte_page_painter.dart';
 import 'offscreen_raster.dart';
+
+/// Every media image [pages] print — the company logo, the cover's picture
+/// — decoded by the asset path its mark names; one that cannot be read is
+/// absent, and its place prints empty, as on the panel.
+///
+/// ⛔THE MARKS SAY WHICH. The exports read the images the pages NAME rather
+/// than a list of their own: a list kept here printed the logo and dropped
+/// the cover's picture the panel showed. The caller owns the images.
+Future<Map<String, ui.Image>> readContePageImages(
+  Iterable<ContePageLayout> pages,
+  ConteSheetSource source,
+) async {
+  final images = <String, ui.Image>{};
+  final asked = <String>{};
+  for (final page in pages) {
+    for (final mark in contePageMarks(page, source)) {
+      if (mark is SheetImage && asked.add(mark.assetPath)) {
+        final image = await readImageFileOrNull(mark.assetPath);
+        if (image != null) {
+          images[mark.assetPath] = image;
+        }
+      }
+    }
+  }
+  return images;
+}
 
 /// Renders one conte page offscreen with the panel's own renderer
 /// ([ContePagePainter], fit-to-size path) — what the Conte tab shows is
@@ -18,9 +48,11 @@ Future<ui.Image> renderContePageImage({
   required ContePageLayout page,
   required ConteSheetSource source,
   ui.Image? Function(String cutId, int pictureFrame)? pictureFor,
+  ui.Image? Function(String assetPath)? imageFor,
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
   double scale = 1,
   CanvasSize? outputSize,
+  ConteNotation notation = ConteNotation.ja,
 }) {
   final metrics = page.metrics;
   final (:width, :height) = offscreenRasterSize(
@@ -36,7 +68,9 @@ Future<ui.Image> renderContePageImage({
       page: page,
       source: source,
       pictureFor: pictureFor,
+      imageFor: imageFor,
       inkImageFor: inkImageFor,
+      notation: notation,
     ).paint(canvas, ui.Size(width.toDouble(), height.toDouble())),
   );
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 
 void main() {
@@ -141,6 +142,31 @@ void main() {
 
       expect(restored.staff, isEmpty);
       expect(restored.logoAssetPath, isNull);
+      expect(restored.coverImagePath, isNull);
+      expect(restored.envelopeFormId, CutEnvelopePresets.analogId);
+    });
+  });
+
+  group('the work\'s paper choices', () {
+    test('the cover picture and the envelope form travel with the work', () {
+      // 유저 답 conte-cover-image: 「표지 그림 칸을 따로」 · 유저 답
+      // sheet-form-choice-home: 「해당 패널에 지금처럼 두고싶고, 그
+      // 상태에서 작품에 저장되도록」.
+      final info = TimesheetInfo.empty.copyWith(
+        coverImagePath: () => 'media/cover.png',
+        envelopeFormId: CutEnvelopePresets.digitalId,
+      );
+
+      final restored = TimesheetInfo.fromJson(info.toJson());
+
+      expect(restored, info);
+      expect(restored.coverImagePath, 'media/cover.png');
+      expect(restored.envelopeFormId, CutEnvelopePresets.digitalId);
+      expect(
+        restored.copyWith(coverImagePath: () => null).coverImagePath,
+        isNull,
+        reason: 'a cover picture can be cleared',
+      );
     });
   });
 }

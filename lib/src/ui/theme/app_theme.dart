@@ -449,6 +449,30 @@ abstract final class AppTypography {
   /// 그게 UD 다), 나눔고딕의 가는 87×92 로 후보 중 가장 가깝다. 작으면 같은
   /// 12px 에서 **한글만 작아 보이고** 폰트가 둘이라는 사실이 화면에 드러난다.
   static const List<String> _fallback = <String>['Nanum Gothic'];
+
+  /// 🚨THE BUNDLED FACES, whatever the UI language — for what has to print
+  /// the same on every machine and in every file (유저 2026-09-25: 「글꼴
+  /// 앱에서 정한거 통일하는거 해주고」): the conte, whose PDF embeds these
+  /// very files, and a text cel, which bakes into the picture. Only the UI
+  /// follows the language ([familyFor]) — a Chinese UI wears the OS's face,
+  /// and an OS face cannot ride inside a PDF.
+  ///
+  /// ↩️The conte printed in faces of its own (M PLUS 1p + IBM Plex Sans KR)
+  /// and a text cel caught CJK in them: two more families, bundled for two
+  /// jobs these two already do.
+  static const String bundledFamily = _family;
+  static const List<String> bundledFallback = _fallback;
+
+  /// The files behind [bundledFamily] and [bundledFallback], as
+  /// `pubspec.yaml` declares them under those names — what a PDF embeds.
+  static const ({String regular, String bold}) bundledFiles = (
+    regular: 'assets/fonts/BIZUDPGothic-Regular.ttf',
+    bold: 'assets/fonts/BIZUDPGothic-Bold.ttf',
+  );
+  static const ({String regular, String bold}) bundledFallbackFiles = (
+    regular: 'assets/fonts/NanumGothic-Regular.ttf',
+    bold: 'assets/fonts/NanumGothic-Bold.ttf',
+  );
 }
 
 /// 🚨★★★**THE APP HAS NO PAGE ROUTES, AND PAYS FOR NO PAGE TRANSITION.**

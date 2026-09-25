@@ -70,25 +70,13 @@ class _WorkspaceDocumentViews {
 
   final ValueNotifier<bool> _envelopeBrushAllowed = ValueNotifier(false);
 
-  /// The logo and 도장 the envelope prints, decoded once each.
+  /// The media images the sheets print (the logo, the cover picture, the
+  /// 도장), decoded once each for the conte and the envelope alike.
   ///
-  /// A repaint is all a landed decode needs, and the envelope tab is the
-  /// only thing that reads it — but the cache lives HERE because that tab is
-  /// rebuilt on every panel switch and would drop its images each time.
-  late final EnvelopeImageCache _envelopeImages = EnvelopeImageCache(
-    onLoaded: () {
-      if (_state.mounted) {
-        _state._rebuild(() {});
-      }
-    },
-  );
-
-  /// Which bundled 봉투 form the panel prints. Session-scoped for now: the
-  /// project-level choice arrives with the form editor, and until there is
-  /// a place to store one, remembering it here beats hard-coding it.
-  final ValueNotifier<String> _envelopeFormId = ValueNotifier(
-    CutEnvelopePresets.analogId,
-  );
+  /// A repaint is all a landed decode needs — the painters listen to it —
+  /// but the cache lives HERE because the tabs are rebuilt on every panel
+  /// switch and would drop their images each time.
+  final SheetImageCache _sheetImages = SheetImageCache();
 
   /// The cel stores are the SESSION's (R5): the archive saves and loads
   /// them with the project; this controller owns only the edit sessions.
@@ -120,8 +108,7 @@ class _WorkspaceDocumentViews {
     _conteInk.dispose();
     _envelopeViewport.dispose();
     _envelopeBrushAllowed.dispose();
-    _envelopeImages.dispose();
-    _envelopeFormId.dispose();
+    _sheetImages.dispose();
     _envelopeInk.dispose();
   }
 }

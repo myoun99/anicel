@@ -45,7 +45,6 @@ void main() {
         cells: cells,
         cutBands: const [],
         emptyRowsFrom: cells.length,
-        pageTotalLabel: '',
         metrics: metrics,
       );
 

@@ -60,6 +60,40 @@ void main() {
     }
   });
 
+  test('🚨문서의 번들 글꼴도 같은 둘이다 — 콘티 PDF 가 박는 파일이 앱의 파일', () {
+    // 유저 2026-09-25: 「글꼴 앱에서 정한거 통일하는거 해주고」. 콘티(PDF 가
+    // 이 파일을 박는다)와 텍스트 셀은 UI 언어와 무관하게 이 둘로 찍는다.
+    expect(
+      AppTypography.bundledFamily,
+      AppTypography.familyFor(AppLanguage.ja),
+    );
+    expect(
+      AppTypography.bundledFallback,
+      AppTypography.fallbackFor(AppLanguage.ja),
+    );
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    for (final (family, files) in [
+      (AppTypography.bundledFamily, AppTypography.bundledFiles),
+      (
+        AppTypography.bundledFallback.single,
+        AppTypography.bundledFallbackFiles,
+      ),
+    ]) {
+      // Each file is declared UNDER its family — the block from the
+      // family's line to the next one — and is on disk.
+      final start = pubspec.indexOf(
+        RegExp('- family: ${RegExp.escape(family)}\\r?\\n'),
+      );
+      expect(start, isNot(-1), reason: family);
+      final next = pubspec.indexOf('- family:', start + 1);
+      final block = pubspec.substring(start, next == -1 ? null : next);
+      for (final path in [files.regular, files.bold]) {
+        expect(block, contains('- asset: $path'), reason: '$family · $path');
+        expect(File(path).existsSync(), isTrue, reason: path);
+      }
+    }
+  });
+
   test('⛔선언한 폰트 파일이 실제로 있다', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final assets = RegExp(r'- asset: (assets/fonts/\S+)')
@@ -82,9 +116,10 @@ void main() {
 /// 「고정폭이면 된다」는 말이라 OS 에 맡기는 것이 맞다.
 void _noWidgetNamesItsOwnFace() {
   test('lib 전체에서 진짜 폰트 이름을 적는 곳이 없다', () {
-    // 폰트가 **자기 일**인 파일 둘은 뺀다: 테마(정의하는 곳)와 콘티 폰트
-    // (PDF 에 임베드하는 파일을 이름으로 부른다).
-    const owners = ['app_theme.dart', 'conte_fonts.dart'];
+    // 폰트가 **자기 일**인 파일 하나만 뺀다: 테마(정의하는 곳). ↩️콘티
+    // 폰트도 빠져 있었다 — 자기 글꼴을 이름으로 불렀기 때문인데, 09-25 에
+    // 앱 글꼴로 통일해 이제 이름을 적지 않는다.
+    const owners = ['app_theme.dart'];
     // 제네릭 패밀리 — CSS 의 그것과 같다. 이름이 아니라 종류다.
     const generic = {'monospace', 'sans-serif', 'serif', 'cursive'};
 

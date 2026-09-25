@@ -94,13 +94,11 @@ import 'widgets/static_raster.dart';
 import 'widgets/superellipse_clip.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
-import 'conte/conte_fonts.dart';
 import 'conte/conte_ink.dart';
 import 'conte/conte_tab_host.dart';
-import '../models/envelope/cut_envelope_presets.dart';
 import 'envelope/cut_envelope_ink.dart';
 import 'envelope/cut_envelope_tab_host.dart';
-import 'envelope/envelope_image_cache.dart';
+import 'sheet/sheet_image_cache.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_cut_blocks_painter.dart' show storyboardCutBlocksPainterFor;
 import 'storyboard_panel.dart' show StoryboardPanel, StoryboardTrackLabelRow;
@@ -1061,9 +1059,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       resume: (saved) =>
           _brushPresets.resumeChoice(ToolChoice.fromJson(saved)),
     );
-    // Warm the conte's embedded faces so the sheet opens with its type
-    // ready (the tab host still awaits, for the cold path).
-    unawaited(ensureConteFontsLoaded());
     _storyboardThumbnails = StoryboardCutThumbnailStore(
       render: _renderStoryboardThumbnail,
       invalidationHub: widget.session.renderCaches.cacheInvalidationHub,
@@ -1632,12 +1627,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     EditorWorkspace.storyboardTabId => StoryboardTabHost.minPanelHeightIn(
       context,
     ),
-    // The conte has no fixed ROWS — it is a page that scales — but it does
-    // have one conditional chrome row, the action field under a selected
-    // cell, and that row is not flexible.
-    EditorWorkspace.conteTabId => ConteTabHost.minPanelHeight,
-    // The envelope has no case here on purpose: a page that scales, with
-    // no chrome row under the shell, has nothing of its own to protect.
+    // The conte and the envelope have no case here on purpose: a page that
+    // scales, with no chrome row under the shell, has nothing of its own to
+    // protect. (↩️The conte had one — an ACTION field under the page — until
+    // its ACTION was edited on the page itself.)
     _ => null,
   };
 

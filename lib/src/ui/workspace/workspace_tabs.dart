@@ -994,6 +994,10 @@ class _WorkspaceTabs {
               onBrushAllowedChanged: (enabled) {
                 _state._views._conteBrushAllowed.value = enabled;
               },
+              // The logo and the cover picture, from the decode cache the
+              // envelope prints from — a landed decode repaints the page.
+              imageFor: _state._views._sheetImages.imageFor,
+              imageRepaint: _state._views._sheetImages,
             ),
           ),
         );
@@ -1014,7 +1018,6 @@ class _WorkspaceTabs {
               _state.widget.session,
               _state._views._envelopeViewport,
               _state._views._envelopeBrushAllowed,
-              _state._views._envelopeFormId,
               _state._views._envelopeInk,
               // F-90: the envelope of the cut under the playhead, turning
               // over at a crossing like the sheet beside it.
@@ -1023,9 +1026,13 @@ class _WorkspaceTabs {
             ]),
             builder: (context) => CutEnvelopeTabHost(
               session: _state.widget.session,
-              formId: _state._views._envelopeFormId.value,
+              // The work's choice, written back to the work — one undo.
+              formId: _state.widget.session.timesheetInfo.envelopeFormId,
               onFormIdChanged: (formId) {
-                _state._views._envelopeFormId.value = formId;
+                final session = _state.widget.session;
+                session.updateTimesheetInfo(
+                  session.timesheetInfo.copyWith(envelopeFormId: formId),
+                );
               },
               viewportController: _state._views._envelopeViewport,
               inkController: _state._views._envelopeInk,
@@ -1038,7 +1045,8 @@ class _WorkspaceTabs {
               // the 작품 정보 round because nothing set a logo or a 도장 path
               // yet, so a resolver had no source. The stamp picker in the
               // sheet-info window is that source.
-              imageFor: _state._views._envelopeImages.imageFor,
+              imageFor: _state._views._sheetImages.imageFor,
+              imageRepaint: _state._views._sheetImages,
             ),
           ),
         );

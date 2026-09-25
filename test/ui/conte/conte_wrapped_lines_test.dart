@@ -2,6 +2,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/conte/conte_fonts.dart';
 import 'package:anicel/src/ui/conte/conte_page_painter.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 
 /// The conte's ONE wrap ([conteWrappedLines]): the panel's own TextPainter
 /// layout read back line by line, printed verbatim by the PDF. These pins
@@ -44,11 +45,12 @@ void main() {
     );
   });
 
-  test('the shared style carries the embedded faces — the wrap\'s '
-      'precondition, and the panel\'s type', () {
+  test('the shared style carries the app\'s bundled faces, the ones the PDF '
+      'embeds — the wrap\'s precondition, and the panel\'s type', () {
+    // 유저 2026-09-25: 「글꼴 앱에서 정한거 통일하는거 해주고」.
     final resolved = conteTextStyle(9, bold: true);
-    expect(resolved.fontFamily, conteJpFontFamily);
-    expect(resolved.fontFamilyFallback, [conteKrFontFamily]);
+    expect(resolved.fontFamily, AppTypography.bundledFamily);
+    expect(resolved.fontFamilyFallback, AppTypography.bundledFallback);
     expect(resolved.fontWeight, FontWeight.w700);
     expect(resolved.height, 1.25);
   });
