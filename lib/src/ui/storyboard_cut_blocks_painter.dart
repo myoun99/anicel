@@ -16,6 +16,9 @@ import 'storyboard_layer_policy.dart';
 import 'text/word_condensation.dart';
 import '../models/storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
+import 'timeline/inbetween_mark_painter.dart';
+import 'timeline/timeline_cell_marker.dart'
+    show TimelineCellWriting, timelineCellWritesNothing;
 import 'timeline/timeline_cell_style.dart';
 import 'timeline/timeline_frame_geometry.dart';
 import 'timeline/timeline_frame_range_policy.dart'
@@ -64,7 +67,7 @@ class StoryboardCutBlockVisual {
     required this.total,
     required this.thumbnails,
     required this.cells,
-    this.cellNames = const [],
+    this.cellHeads = const [],
     this.cellCommaLabels = const [],
     required Rect topBand,
     required Rect strip,
@@ -102,12 +105,13 @@ class StoryboardCutBlockVisual {
   /// rule. Never empty: a cut with no storyboard row still has one cell.
   final List<StoryboardCoverageCell> cells;
 
-  /// Each panel's frame NAME (#15: the timeline convention — the name, or
-  /// the in-between mark when unnamed), parallel to
-  /// [cells]; empty string on the no-row placeholder cell. EMPTY LISTS
-  /// when the bands fold — folding that far means watching the cuts, not
-  /// the panels, so the writing is omitted at the source (probe-visible).
-  final List<String> cellNames;
+  /// What each panel's head writes (#15: the timeline convention — the
+  /// frame's cel number, or the in-between mark when it has none,
+  /// [drawingHeadOf]), parallel to [cells]; nothing on the
+  /// no-row placeholder cell. EMPTY LISTS when the bands fold — folding
+  /// that far means watching the cuts, not the panels, so the writing is
+  /// omitted at the source (probe-visible).
+  final List<TimelineCellWriting> cellHeads;
 
   /// Each panel's printed length (#15: the timeline's comma count, at the
   /// panel's last cell bottom-centre), parallel to [cells]; empty on the
@@ -178,14 +182,8 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
         entry.cutId: layer.name,
   },
   // The STRIP's content: the cut's panels, under the coverage rule — the
-  // same reading the row's edge grips hang on.
-  storyboardCellsByCut: {
-    for (final entry in entries)
-      entry.cutId: storyboardCoverageCells(
-        timeline: storyboardLayerForCut(entry.cut)?.timeline,
-        cutDuration: entry.duration,
-      ),
-  },
+  // same reading the row's edge grips hang on and its flip steps through.
+  storyboardCellsByCut: storyboardCellsByCut(entries),
   geometry: geometry,
   crossAxisExtent: crossAxisExtent,
   minBlockWidth: minBlockWidth,
@@ -425,7 +423,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       strip: bands.strip,
       bottomBand: bands.bottom,
       cells: cells,
-      cellNames: writing.names,
+      cellHeads: writing.heads,
       cellCommaLabels: writing.commaLabels,
       isActive: entry.cutId == activeCutId,
       isRangeSelected:
@@ -452,7 +450,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   }
 
   /// The panels' writing (#15): frame name + comma count per cell, the
-  /// timeline row's conventions (an unnamed head prints the in-between
+  /// timeline row's conventions (an unnamed head wears the in-between
   /// mark). Safe to resolve here — the row lookup no
   /// longer throws on duplicates (#760). A folded block carries no
   /// writing at all: folding that far means watching the cuts.
@@ -462,14 +460,15 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// (F-149): 「일단 이름 없는 기본상태를 속이 찬 동그라미로 통일적용 …
   /// 당장은 제거」 — an unnamed drawing IS an in-between mark, so reading as
   /// one is the point now, and the storyboard follows by asking the same
-  /// [celNumberOrMark] as the timeline.
-  ({List<String> names, List<String> commaLabels}) _cellWriting(
+  /// [drawingHeadOf] as the timeline — the mark as data since
+  /// 2026-09-24 (유저: 「중간나누기 마크1로서 작동했으면」).
+  ({List<TimelineCellWriting> heads, List<String> commaLabels}) _cellWriting(
     StoryboardTimelineLayoutEntry entry,
     List<StoryboardCoverageCell> cells, {
     required bool folded,
   }) {
     if (folded) {
-      return (names: const [], commaLabels: const []);
+      return (heads: const [], commaLabels: const []);
     }
     final frameNames = <FrameId, String?>{
       for (final frame
@@ -477,12 +476,12 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         frame.id: frame.name,
     };
     return (
-      names: [
+      heads: [
         for (final cell in cells)
           if (cell.frameId == null)
-            ''
+            timelineCellWritesNothing
           else
-            celNumberOrMark(frameNames[cell.frameId]),
+            drawingHeadOf(frameNames[cell.frameId]),
       ],
       commaLabels: [
         for (final cell in cells)
@@ -699,18 +698,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   }) {
     final glyph = timelineGlyphPainter(text, style);
     // The plate carries the word as it is DRAWN — narrowed, when it is.
-    final plate = Rect.fromLTWH(
-      offset.dx - 1,
-      offset.dy - 1,
-      glyph.width * fit.x + 2,
-      glyph.height * fit.y + 2,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        plate,
-        const Radius.circular(AppShapes.wellRadius),
-      ),
-      Paint()..color = ground,
+    _paintPlate(
+      canvas,
+      offset & Size(glyph.width * fit.x, glyph.height * fit.y),
+      ground,
     );
     paintTimelineGlyphOnGround(
       canvas,
@@ -720,6 +711,47 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       ground: ground,
       fit: fit,
     );
+  }
+
+  /// The plate carried writing sits on (D29-2): a pixel round [box], the
+  /// writing's own, in [ground] — a word's and a mark's alike.
+  void _paintPlate(Canvas canvas, Rect box, Color ground) => canvas.drawRRect(
+    RRect.fromRectAndRadius(
+      box.inflate(1),
+      const Radius.circular(AppShapes.wellRadius),
+    ),
+    Paint()..color = ground,
+  );
+
+  /// An in-between mark on its OWN plate — [_paintPlatedGlyph]'s carry
+  /// (D29-2) for a panel whose drawing has no cel number: the plate is a
+  /// square as high as a panel name, at the top-left of [room] and narrowed
+  /// into it as the name would be, and the mark sits at its centre in the
+  /// ground law's ink.
+  void _paintPlatedMark(
+    Canvas canvas,
+    InbetweenMark mark,
+    Rect room,
+    Color ground,
+  ) {
+    final style = _panelNameStyle;
+    final side = math.min(
+      timelineGlyphPainter('', style).height,
+      math.min(room.width, room.height),
+    );
+    if (side <= 0) {
+      return;
+    }
+    final box = room.topLeft & Size(side, side);
+    _paintPlate(canvas, box, ground);
+    paintInbetweenMark(canvas, mark, (
+      center: box.center,
+      radius: timelineInbetweenMarkRadius(
+        style.fontSize ?? 12,
+        cellExtent: room.width,
+        crossExtent: room.height,
+      ),
+    ), timelineTextOnColor(ground));
   }
 
   @override
@@ -1059,6 +1091,49 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     }
   }
 
+  /// A panel name's type. One size at every zoom, narrowed into the panel
+  /// instead (B, 유저 2026-09-24). ↩️It shrank with the cell (R26 #38).
+  TextStyle get _panelNameStyle => baseTextStyle.copyWith(
+    color: timelineDrawingInkColor,
+    fontWeight: FontWeight.bold,
+    fontSize: baseTextStyle.fontSize ?? 12,
+  );
+
+  /// A panel's head (#15): its frame's cel number, or — with none — the
+  /// mark, each on its own plate.
+  void _paintPanelHead(
+    Canvas canvas,
+    StoryboardCutBlockVisual block,
+    TimelineCellWriting head,
+    Rect slot,
+  ) {
+    // TOP-LEFT, the cut block title's own anchor (user 2026-07-29):
+    // thumbnail-display writing sits where the sheet's cut number does,
+    // not centred the way block-display glyphs are — the two thumbnail
+    // surfaces read as one.
+    // D29-2: carried on its own plate, so its ground IS the cut title's.
+    final room = Rect.fromLTRB(
+      slot.left + _padding / 2,
+      slot.top + 1,
+      slot.right - _padding / 2,
+      slot.bottom - 1,
+    );
+    final mark = head.mark;
+    if (mark != null) {
+      _paintPlatedMark(canvas, mark, room, _bandGround(block));
+    } else if (head.word.isNotEmpty) {
+      final style = _panelNameStyle;
+      _paintPlatedGlyph(
+        canvas,
+        room.topLeft,
+        head.word,
+        style,
+        ground: _bandGround(block),
+        fit: wordFit(timelineGlyphPainter(head.word, style).size, room.size),
+      );
+    }
+  }
+
   /// A panel's own writing (#15, the timeline row's conventions carried
   /// over): the frame NAME centred in the panel's first frame cell, the
   /// COMMA COUNT bottom-centred in its last — both through the ground law,
@@ -1070,38 +1145,12 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     int index,
     Rect slot,
   ) {
-    if (index >= block.cellNames.length ||
+    if (index >= block.cellHeads.length ||
         index >= block.cellCommaLabels.length ||
         _cellExtent <= 0) {
       return;
     }
-    final name = block.cellNames[index];
-    if (name.isNotEmpty) {
-      // One size at every zoom, narrowed into the panel instead (B, 유저
-      // 2026-09-24). ↩️It shrank with the cell (R26 #38).
-      final nameStyle = baseTextStyle.copyWith(
-        color: timelineDrawingInkColor,
-        fontWeight: FontWeight.bold,
-        fontSize: baseTextStyle.fontSize ?? 12,
-      );
-      // TOP-LEFT, the cut block title's own anchor (user 2026-07-29):
-      // thumbnail-display writing sits where the sheet's cut number does,
-      // not centred the way block-display glyphs are — the two thumbnail
-      // surfaces read as one.
-      // D29-2: carried on its own plate, so its ground IS the cut title's.
-      final at = Offset(slot.left + _padding / 2, slot.top + 1);
-      _paintPlatedGlyph(
-        canvas,
-        at,
-        name,
-        nameStyle,
-        ground: _bandGround(block),
-        fit: wordFit(
-          timelineGlyphPainter(name, nameStyle).size,
-          Size(slot.right - _padding / 2 - at.dx, slot.bottom - 1 - at.dy),
-        ),
-      );
-    }
+    _paintPanelHead(canvas, block, block.cellHeads[index], slot);
     final comma = block.cellCommaLabels[index];
     if (comma.isNotEmpty) {
       // D29: the CUT-BLOCK text grade — the same 11 the band labels wear

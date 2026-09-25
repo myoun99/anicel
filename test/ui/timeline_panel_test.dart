@@ -323,7 +323,7 @@ void main() {
       ),
     );
 
-    expect(timelineCellModel(tester, 'layer-1', 0).glyph, '●');
+    expect(timelineCellModel(tester, 'layer-1', 0).mark, breakdownMark);
     expect(
       timelineCellModel(tester, 'layer-1', 0).semanticsLabel,
       'inbetween mark',

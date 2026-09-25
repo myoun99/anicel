@@ -50,6 +50,49 @@ class ScratchFile {
     }
   }
 
+  /// [write], for [length] bytes that arrive a block at a time and are too
+  /// many to hold — a carried movie the room keeps for an undo
+  /// (`MediaStagingStore.keepLeftBehind`).
+  ///
+  /// ⚠️Null as well when [blocks] ended SHORT: a source that stops early
+  /// ends its stream without an error, and a short file must never wear
+  /// the real name.
+  static Future<String?> writeStreamed(
+    String path,
+    Stream<List<int>> blocks, {
+    required int length,
+  }) async {
+    final partPath = '$path.part';
+    IOSink? sink;
+    try {
+      File(path).parent.createSync(recursive: true);
+      var arrived = 0;
+      sink = File(partPath).openWrite();
+      await sink.addStream(
+        blocks.map((block) {
+          arrived += block.length;
+          return block;
+        }),
+      );
+      await sink.close();
+      sink = null;
+      if (arrived != length) {
+        remove(partPath);
+        return null;
+      }
+      File(partPath).renameSync(path);
+      return path;
+    } on Object {
+      try {
+        await sink?.close();
+      } on Object {
+        // The write already failed; the neighbour goes below.
+      }
+      remove(partPath);
+      return null;
+    }
+  }
+
   /// The bytes at [path], or null when it will not read — a torn write, a
   /// file somebody removed under us.
   static Uint8List? read(String path) {

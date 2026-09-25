@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -516,6 +517,6 @@ void main() {
 /// key (it rendered through a Material `IconButton` until 2026-09-10; same place).
 String? _tooltipOf(WidgetTester tester, Finder button) => tester
     .widget<Tooltip>(
-      find.descendant(of: button, matching: find.byType(Tooltip)),
+      find.descendant(of: button, matching: find.byType(AppTooltip)),
     )
     .message;

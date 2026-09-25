@@ -17,6 +17,7 @@ class _XSheetGridHeaders {
       XSheetTimelineGrid.naturalHeaderBlockExtent(
         hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
         hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
+        columns: _state.widget.metrics.railColumns,
       );
 
   /// Just the column headers — the band strip has its own row above.

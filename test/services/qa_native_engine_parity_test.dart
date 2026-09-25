@@ -25,6 +25,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 
@@ -449,6 +450,61 @@ void main() {
       snapshot(nativeRepeat.surface, canvasSize),
       snapshot(dartResult.surface, canvasSize),
       reason: 'stamp upload cache reuse must stay byte-identical',
+    );
+  });
+
+  // 🚨THE C KERNEL TAKES A MASKED TIP TWO PIXELS AT A TIME, ERASING TOO
+  // (board `brush-kernel-next` ①). Every canvas dab carries a tip mask
+  // prerendered per size, the eraser's included, so the pair path's erase
+  // lanes run on every eraser stroke — and the case above erases with an
+  // analytic tip, which never reaches them. Odd widths leave the scalar loop
+  // a pixel at each row's end.
+  test('masked tips paint and erase the same bytes, two pixels at a time', () {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    const canvasSize = CanvasSize(width: 300, height: 200);
+    final cache = BrushTipStampCache();
+    BrushDab masked(int i, {required bool erase, required double size}) =>
+        cache
+            .resolveDab(
+              BrushDab(
+                center: CanvasPoint(x: 91.3 + i * 13.7, y: 83.9 + i * 5.3),
+                color: 0xFF4466AA,
+                size: size,
+                opacity: erase ? 0.8 : 1,
+                flow: erase ? 0.55 : 0.9,
+                hardness: i.isEven ? 0.35 : 0.85,
+                tipShape: BrushTipShape.round,
+                pressure: 1,
+                sequence: i,
+              ),
+            )
+            .copyWith(erase: erase);
+    final sequence = BrushDabSequence([
+      for (var i = 0; i < 4; i += 1) masked(i, erase: false, size: 71),
+      for (var i = 4; i < 9; i += 1)
+        masked(i - 4, erase: true, size: 33 + i * 6.5),
+    ]);
+
+    QaNativeEngine.debugForceDartFallback = true;
+    final dartResult = materializeBrushDabSequenceOnBitmapSurface(
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 256),
+      sequence: sequence,
+    );
+    QaNativeEngine.debugForceDartFallback = false;
+    final nativeResult = materializeBrushDabSequenceOnBitmapSurface(
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 256),
+      sequence: sequence,
+    );
+    expect(
+      snapshot(nativeResult.surface, canvasSize),
+      snapshot(dartResult.surface, canvasSize),
+    );
+    expect(
+      nativeResult.dirtyTiles.coords.toSet(),
+      dartResult.dirtyTiles.coords.toSet(),
     );
   });
 

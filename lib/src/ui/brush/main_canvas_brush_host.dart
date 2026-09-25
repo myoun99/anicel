@@ -108,6 +108,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.takeStrokePrefixCommand,
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
+    this.cellPlacementOf,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -363,6 +364,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// through to the panel, which is where the law is written down.
   final List<BrushFrameKey> Function()? transformTargetKeys;
 
+  /// Where each of those cels' rows stands on the canvas — passed straight
+  /// through to the panel ([BrushCanvasPanel.cellPlacementOf]).
+  final LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf;
+
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -540,6 +545,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       rowAcceptsStrokes: widget.rowAcceptsStrokes,
       availableFrameKeys: _frameKeys,
       transformTargetKeys: widget.transformTargetKeys,
+      cellPlacementOf: widget.cellPlacementOf,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
       guides: widget.guides,

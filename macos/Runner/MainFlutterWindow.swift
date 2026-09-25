@@ -1,3 +1,4 @@
+import AVFoundation
 import Cocoa
 import FileProvider
 import FlutterMacOS
@@ -134,13 +135,25 @@ final class PathGrantHandler {
     case "touchFileCoordinated":
       PathGrantHandler.touchFileCoordinated(
         sourcePath: arguments?["sourcePath"] as? String, result: result)
+    case "requestMicrophone":
+      PathGrantHandler.requestMicrophone(result: result)
     default:
-      // Only the two folder-grant methods live here. The channel's other
-      // methods are mobile-only on the Dart side — `ensureInitialized` early
-      // -returns for every non-mobile platform and the two all-files methods
-      // short-circuit for non-Android — so answering them here would be
-      // unreachable code pretending to be a contract.
+      // The channel's other methods are mobile-only on the Dart side —
+      // `ensureInitialized` early-returns for every non-mobile platform and
+      // the two all-files methods short-circuit for non-Android — so
+      // answering them here would be unreachable code pretending to be a
+      // contract.
       result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// F-178: the audio capture grant, answered AFTER the user has spoken —
+  /// the iOS twin's contract. The take must not roll while the system
+  /// dialog is still up; a grant or a refusal already given answers at once
+  /// (a refusal is undone in System Settings ▸ Privacy ▸ Microphone).
+  static func requestMicrophone(result: @escaping FlutterResult) {
+    AVCaptureDevice.requestAccess(for: .audio) { granted in
+      DispatchQueue.main.async { result(granted) }
     }
   }
 

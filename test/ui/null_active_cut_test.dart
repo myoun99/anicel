@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
@@ -132,7 +133,6 @@ void main() {
     s.cutVerbs.duplicateActiveCut();
     s.cutVerbs.deleteActiveCut();
     s.layerStack.addLayer();
-    s.layerStack.addLayerOfKind(LayerKind.se);
     s.camera.setCameraKeyframeAtCurrentFrame(pose);
     s.cutVerbs.toggleActiveCutThumbnailFrame();
     s.frameVerbs.selectNextFrame();
@@ -150,6 +150,25 @@ void main() {
     s.undo();
     s.redo();
     expect(s.repository.requireProject().tracks.first.cuts.length, 2);
+  });
+
+  test('an SE row is the TRACK\'s, so the gap takes one: Add layer ▸ SE '
+      'adds it there and stands on it (F-178 — the recorder opens its '
+      'lane through the same verb)', () {
+    final (s, first, _, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    s.selectGlobalFrame(aEnd + 1);
+    expect(s.activeCutId, isNull);
+    final lanesBefore = {for (final lane in s.activeTrack.seLayers) lane.id};
+
+    expect(s.layerStack.canAddLayerOfKind(LayerKind.se), isTrue);
+    s.layerStack.addLayerOfKind(LayerKind.se);
+
+    final lanes = {for (final lane in s.activeTrack.seLayers) lane.id};
+    final added = lanes.difference(lanesBefore).single;
+    expect(s.currentRow, LayerRowAddress(added));
+    expect(s.activeCutId, isNull, reason: 'a track row opens no cut');
   });
 
   test('seeking back onto a cut restores the selection from the null '

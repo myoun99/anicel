@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,9 +8,15 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
+    show parseAnicelZipLayoutFile;
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
+    show anicelMediaEntryName;
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
@@ -57,13 +65,35 @@ void main() {
         (kind: MediaAssetKind.video, write: writeCarriedMovie),
       ];
 
-  Future<void> settleAsync(WidgetTester tester, bool Function() ready) async {
+  Future<void> settleAsync(
+    WidgetTester tester,
+    bool Function() ready, {
+    void Function()? everyFrame,
+  }) async {
     for (var i = 0; i < 60 && !ready(); i += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
       await tester.pump();
+      everyFrame?.call();
     }
+  }
+
+  /// The least the viewer held drawn over the frames [settleAsync] pumps
+  /// with it as `everyFrame`, from the first page it drew — ZERO the moment
+  /// the panel empties its pages, which is what a blink is.
+  Future<({int Function() least, void Function() everyFrame})>
+  drawnAtEveryFrame(WidgetTester tester, EditorSessionManager session) async {
+    await settleAsync(
+      tester,
+      () => session.renderCaches.viewerRasterBytes > 0,
+    );
+    var least = session.renderCaches.viewerRasterBytes;
+    return (
+      least: () => least,
+      everyFrame: () =>
+          least = math.min(least, session.renderCaches.viewerRasterBytes),
+    );
   }
 
   Finder page() => find.byKey(const ValueKey<String>('media-viewer-page'));
@@ -122,32 +152,263 @@ void main() {
     }
 
     testWidgets('${kind.name}, carried and not yet saved: the viewer shows the '
-        'staged copy, and a save while it shows leaves that copy until the '
-        'viewer lets go', (tester) async {
+        'staged copy, and a save while it shows moves it onto the project '
+        'file — the copy goes, the page stays', (tester) async {
       final (:session, :path) = await carrying(tester, directory, write);
       final staged = stagedCopyIn(session, path)!.path;
       OriginalFate.replacedBySomethingElse.befall(path);
 
       final slot = await view(tester, session, path, kind);
       expect(page(), findsOneWidget, reason: 'the staged copy opened');
+      final drawn = await drawnAtEveryFrame(tester, session);
+      expect(drawn.least(), greaterThan(0), reason: 'the premise: drawn');
 
       await saveProject(tester, session, directory);
-      expect(
-        File(staged).existsSync(),
-        isTrue,
-        reason: 'absorbed by the save, but the viewer still reads it',
+      await settleAsync(
+        tester,
+        () => !File(staged).existsSync(),
+        everyFrame: drawn.everyFrame,
       );
-
-      slot.request.value = null;
-      await settleAsync(tester, () => !File(staged).existsSync());
       expect(
         File(staged).existsSync(),
         isFalse,
-        reason: 'let go of, the absorbed copy goes — 「사본 남으면 진짜 '
-            '용서안할게」',
+        reason: 'absorbed by the save, and the viewer followed it — held '
+            'while it showed, the copy used to stay beside the entry that '
+            'replaced it (「사본 남으면 진짜 용서안할게」)',
       );
+      expect(
+        drawn.least(),
+        greaterThan(0),
+        reason: 'the page drawn stayed drawn at every frame: nothing blinked',
+      );
+      expect(
+        session.projectFile.heldArchiveEntries,
+        hasLength(1),
+        reason: 'it reads the entry now',
+      );
+
+      slot.request.value = null;
+      await settleAsync(
+        tester,
+        () => session.projectFile.heldArchiveEntries.isEmpty,
+      );
+      expect(session.projectFile.heldArchiveEntries, isEmpty);
     });
   }
+
+  testWidgets('a movie on the page follows the project saved as another '
+      'file', (tester) async {
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedMovie,
+    );
+    await view(tester, session, path, MediaAssetKind.video);
+    await saveProject(tester, session, directory);
+    final first = session.projectFile.path!;
+    await settleAsync(tester, () => movies.openedAt.last.path == first);
+    expect(movies.openedAt.last.path, first, reason: 'the premise');
+
+    final elsewhere = normalizedMediaPath('${directory.path}/as.anicel');
+    await tester.runAsync(
+      () => session.projectDoor.saveProjectToFile(
+        elsewhere,
+        asked: SaveAsked.byAPerson,
+      ),
+    );
+    await settleAsync(tester, () => movies.openedAt.last.path == elsewhere);
+
+    expect(movies.openedAt.last.path, elsewhere);
+    expect(page(), findsOneWidget);
+  });
+
+  testWidgets('🚨a movie on the page asked to let go of its file — what a '
+      'whole write onto the file asks first — lets go FIRST, then opens it '
+      'again: the page stays, and closing gives back what it took up', (
+    tester,
+  ) async {
+    final closing = ClosingVideoBackend();
+    debugVideoDecodeBackend = movies = closing;
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedMovie,
+    );
+    await saveProject(tester, session, directory);
+    final file = session.projectFile.path!;
+    final slot = await view(tester, session, path, MediaAssetKind.video);
+    expect(page(), findsOneWidget, reason: 'the premise');
+    final drawn = await drawnAtEveryFrame(tester, session);
+    expect(drawn.least(), greaterThan(0), reason: 'the premise: drawn');
+    closing.events.clear();
+
+    // Asked straight, not through a save: the page's reader answers on the
+    // test's own clock, which a save run on the real one never pumps.
+    unawaited(session.projectFile.readersLetGoOf(file));
+    await settleAsync(
+      tester,
+      () => closing.events.length >= 2,
+      everyFrame: drawn.everyFrame,
+    );
+
+    expect(closing.events, [
+      'close $file',
+      'open $file',
+    ], reason: 'let go of first, then opened again');
+    expect(
+      drawn.least(),
+      greaterThan(0),
+      reason: 'the page drawn stayed drawn at every frame: nothing blinked',
+    );
+
+    slot.request.value = null;
+    await settleAsync(
+      tester,
+      () => session.projectFile.heldArchiveEntries.isEmpty,
+    );
+    expect(session.projectFile.heldArchiveEntries, isEmpty);
+  });
+
+  /// 🚨A movie on the page whose asset was taken out of the pool follows ITS
+  /// bytes — never the file its path names by then (audit 09-25): the
+  /// frames already drawn are that carry's.
+  group('a movie on the page taken out of the pool follows its own bytes', () {
+    Future<({EditorSessionManager session, String file, MediaCarry carry})>
+    shownThenTakenOut(WidgetTester tester) async {
+      final (:session, :path) = await carrying(
+        tester,
+        directory,
+        writeCarriedMovie,
+      );
+      await saveProject(tester, session, directory);
+      final carry = carryIn(session, path)!;
+      await view(tester, session, path, MediaAssetKind.video);
+      expect(page(), findsOneWidget, reason: 'the premise');
+      expect(session.mediaPool.removeMediaAsset(path), isTrue);
+      expect(File(path).existsSync(), isTrue, reason: 'the path names a file');
+      return (session: session, file: session.projectFile.path!, carry: carry);
+    }
+
+    testWidgets('through a save-as', (tester) async {
+      final (:session, file: _, :carry) = await shownThenTakenOut(tester);
+      final elsewhere = normalizedMediaPath('${directory.path}/as.anicel');
+
+      await tester.runAsync(
+        () => session.projectDoor.saveProjectToFile(
+          elsewhere,
+          asked: SaveAsked.byAPerson,
+        ),
+      );
+      await settleAsync(tester, () => movies.openedAt.last.path == elsewhere);
+
+      final entry = parseAnicelZipLayoutFile(
+        elsewhere,
+      ).entryNamed(anicelMediaEntryName(carry));
+      expect(entry, isNotNull, reason: 'carried into the new file for it');
+      expect(movies.openedAt.last.span?.offset, entry!.dataOffset);
+    });
+
+    testWidgets('when it lets go of the file for a whole write', (
+      tester,
+    ) async {
+      final (:session, :file, :carry) = await shownThenTakenOut(tester);
+      final opens = movies.openedAt.length;
+
+      unawaited(session.projectFile.readersLetGoOf(file));
+      await settleAsync(tester, () => movies.openedAt.length > opens);
+
+      final entry = parseAnicelZipLayoutFile(
+        file,
+      ).entryNamed(anicelMediaEntryName(carry))!;
+      expect(movies.openedAt.last.path, file);
+      expect(movies.openedAt.last.span?.offset, entry.dataOffset);
+    });
+  });
+
+  testWidgets('a movie let go of for a file it then cannot open says so — '
+      'there is nothing left to read', (tester) async {
+    var refusing = false;
+    debugVideoDecodeBackend = movies = ClosingVideoBackend(
+      refuses: (_) => refusing,
+    );
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedMovie,
+    );
+    await saveProject(tester, session, directory);
+    await view(tester, session, path, MediaAssetKind.video);
+    expect(page(), findsOneWidget, reason: 'the premise');
+    refusing = true;
+
+    unawaited(
+      session.projectFile.readersLetGoOf(session.projectFile.path!),
+    );
+    final failed = find.textContaining(AppText.strings.mediaViewerLoadFailed);
+    await settleAsync(tester, () => tester.any(failed));
+
+    expect(failed, findsOneWidget);
+  });
+
+  testWidgets('a document let go of that nothing opens any more says which '
+      'absence — the way a first open would', (tester) async {
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedPdf,
+    );
+    await saveProject(tester, session, directory);
+    await view(tester, session, path, MediaAssetKind.pdf);
+    expect(page(), findsOneWidget, reason: 'the premise');
+    // The renderer gone: no stand-in opener, and no PDFium under a test.
+    PdfRenderService.debugOpenerOverride = null;
+
+    unawaited(
+      session.projectFile.readersLetGoOf(session.projectFile.path!),
+    );
+    final absent = find.textContaining(
+      AppText.strings.mediaViewerNoPdfRenderer,
+    );
+    await settleAsync(tester, () => tester.any(absent));
+
+    expect(
+      absent,
+      findsOneWidget,
+      reason: '🪦it kept the stand-in and said nothing (audit 09-25)',
+    );
+  });
+
+  testWidgets('a movie the save moves where it will not open stays on the '
+      'page, read where it was', (tester) async {
+    var refused = 0;
+    debugVideoDecodeBackend = movies = ReadingVideoBackend(
+      refuses: (path) {
+        final isTheFile = path.endsWith('project.anicel');
+        refused += isTheFile ? 1 : 0;
+        return isTheFile;
+      },
+    );
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedMovie,
+    );
+    final staged = stagedCopyIn(session, path)!.path;
+    await view(tester, session, path, MediaAssetKind.video);
+    expect(page(), findsOneWidget, reason: 'the premise');
+
+    await saveProject(tester, session, directory);
+    await settleAsync(tester, () => refused > 0);
+    await tester.pump();
+
+    expect(refused, greaterThan(0), reason: 'the premise: it tried');
+    expect(page(), findsOneWidget, reason: 'nothing is gained by losing it');
+    expect(
+      File(staged).existsSync(),
+      isTrue,
+      reason: 'still read, so still held',
+    );
+  });
 
   // A movie kept COMPRESSED is read where the project keeps it: the decoder
   // is fed its blocks decoded (board `carried-movie-compressed-Q1`, 유저

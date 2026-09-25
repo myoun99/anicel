@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -314,7 +315,7 @@ void main() {
       await tester.tap(find.byType(LayerRailSplitter));
       await tester.pumpAndSettle();
       expect(rail.windowExtent(434), resized);
-      expect(find.byType(Tooltip), findsNothing);
+      expect(find.byType(AppTooltip), findsNothing);
     });
   });
 

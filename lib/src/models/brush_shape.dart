@@ -70,6 +70,20 @@ class BrushShape {
     this.colorStretch = 0.0,
   });
 
+  /// 🚨The finest [spacing] a brush may have: 1% of its size (유저
+  /// 2026-09-24: 「간격 최소치 너무 높지않나? 더 작게 해도 될거같은데 클튜나
+  /// 포토샵 참고해서」). Photoshop's brush spacing runs 1%–1000% of the tip,
+  /// default 25%; Clip Studio's fixed spacing is the same percent of the tip
+  /// (100 = tips touching). 5% stood here, which clamped an imported ABR
+  /// brush's 1–4% back up to 5% and left a large tip's edge scalloped. The
+  /// dab step never goes below one pixel whatever this is
+  /// (`BrushDabInterpolator.spacingForBrushSize`), so a small brush pays
+  /// nothing for it.
+  static const double minSpacing = 0.01;
+
+  /// The widest [spacing]: four tip sizes between dabs.
+  static const double maxSpacing = 4.0;
+
   final int color;
   final double size;
   final double opacity;

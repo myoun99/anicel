@@ -23,6 +23,8 @@ import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/cel_pixel_region.dart' show regionInArtworkSpace;
+import '../../services/selection_placement.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
@@ -148,6 +150,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.celEditable = true,
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
+    this.cellPlacementOf,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
@@ -288,6 +291,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// anywhere below: the many-cel path IS the one-cel path. Hosts with no
   /// cel ladder at all (the viewer, the sheet) simply pass nothing.
   final List<BrushFrameKey> Function()? transformTargetKeys;
+
+  /// Where each cel of [transformTargetKeys] stands on the canvas — its
+  /// row's placement, the one the pixel verbs restate an outline through
+  /// (`CellVerbs.placementOf`). A range over several rows lands each cel
+  /// through its OWN row's placement (a-marquee-on-a-posed-row ④).
+  ///
+  /// ⚠️Null (a host with no rows behind it — the focused tests) crosses
+  /// every cel through the standing row's, the one the lift crossed.
+  final LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf;
   final List<BrushFrameKey> availableFrameKeys;
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;
@@ -1869,8 +1881,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           ? widget.fillDabAt
           : null,
       // R26 #18: the live stroke shows clipped to the selection, exactly
-      // as the commit will clip it.
-      selectionRegion: widget.selectionCommands?.region,
+      // as the commit will clip it — in the row's own artwork, where this
+      // view draws (a-marquee-on-a-posed-row).
+      selectionRegion: switch (widget.selectionCommands?.region) {
+        null => null,
+        final selection => _selectionSeat.regionOnTheRow(selection),
+      },
       onStrokeLanderChanged: widget.onStrokeLanderChanged,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
@@ -1933,16 +1949,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The lift (Round 6): anchors, the pre-landing surface, and how a lift ends.
   late final _CanvasPanelLift _lift = _CanvasPanelLift(this);
 
-  /// R16-① bitmap lift: commits [shape]'s ERASE — RAW, outside app
-  /// history (the origin must vanish instantly, but nothing is undoable
-  /// until the session CONFIRMS) — and returns a session token plus the
-  /// lifted stamp dab, which floats until the confirm. Null when the
   /// R26 #13 follow-up: the active cel's tight ink bounds — the implicit
   /// whole-picture transform box frames exactly the picture, PS-style.
   /// Null (no coordinator, or a blank cel) falls back to the canvas rect
   /// inside the selection layer.
+  ///
+  /// 🚨ON THE CANVAS, where the row shows its ink (a-marquee-on-a-posed-row):
+  /// the box is drawn around what the user SEES, and a posed row's ink sits
+  /// somewhere else in its own artwork.
   ({int left, int top, int rightExclusive, int bottomExclusive})?
-  _activeCelContentBounds() {
+  _activeCelContentBounds() =>
+      _whereTheRowShows(_activeCelContentBoundsInArtwork());
+
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  _activeCelContentBoundsInArtwork() {
     final coordinator = widget._editableCoordinator;
     if (coordinator == null) {
       return null;
@@ -1966,6 +1986,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     return bounds;
   }
 
+  /// [bounds] — the active row's ink in its own artwork — as the canvas
+  /// shows it: the box around the four corners the row's placement carries
+  /// them to. An unplaced row's come back as they are.
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  _whereTheRowShows(
+    ({int left, int top, int rightExclusive, int bottomExclusive})? bounds,
+  ) {
+    final placement = widget.interactiveContentPose;
+    if (bounds == null || placement == null) {
+      return bounds;
+    }
+    final onCanvas = artworkToCanvas(placement, widget.canvasSize);
+    final corners = [
+      for (final x in [bounds.left, bounds.rightExclusive])
+        for (final y in [bounds.top, bounds.bottomExclusive])
+          onCanvas.apply(CanvasPoint(x: x.toDouble(), y: y.toDouble())),
+    ];
+    final xs = [for (final corner in corners) corner.x];
+    final ys = [for (final corner in corners) corner.y];
+    return (
+      left: xs.reduce(math.min).floor(),
+      top: ys.reduce(math.min).floor(),
+      rightExclusive: xs.reduce(math.max).ceil(),
+      bottomExclusive: ys.reduce(math.max).ceil(),
+    );
+  }
+
   /// A finished cut outline: lift the pixels under it into the slot.
   ///
   /// Reads the ACTIVE LAYER's committed surface and nothing else — no
@@ -1978,11 +2025,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   void _cutPieceFromShape(CanvasSelectionShape shape) {
     final slot = widget.cutPieceSlot;
     final coordinator = widget._editableCoordinator;
-    if (slot == null || coordinator == null) {
+    // The outline is drawn on the canvas; the pixels are the row's own
+    // (a-marquee-on-a-posed-row) — and the PIECE stays those pure pixels in
+    // the row's own coordinates, as confirmed above.
+    final onTheRow = _selectionSeat.regionOnTheRow(
+      CanvasSelectionRegion.shape(shape),
+    );
+    if (slot == null || coordinator == null || onTheRow == null) {
       return;
     }
     final piece = buildCutPiece(
-      region: CanvasSelectionRegion.shape(shape),
+      region: onTheRow,
       surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
     );
     // Null = the outline covered no paint. Leave the slot alone rather
@@ -2023,10 +2076,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// dab from a different source.
   void _fillDrawnShape(CanvasSelectionShape shape) {
     final build = widget.shapeFillDabFor;
-    if (build == null || widget._editableCoordinator == null) {
+    // Drawn on the canvas, painted into the row's own artwork where the row
+    // shows it (a-marquee-on-a-posed-row).
+    final onTheRow = _selectionSeat.shapeOnTheRow(shape);
+    if (build == null ||
+        widget._editableCoordinator == null ||
+        onTheRow == null) {
       return;
     }
-    final dab = build(shape, _brush.color);
+    final dab = build(onTheRow, _brush.color);
     if (dab == null) {
       return;
     }

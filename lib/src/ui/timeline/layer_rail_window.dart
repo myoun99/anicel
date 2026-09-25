@@ -16,6 +16,7 @@
 /// answer had to be common to all three surfaces.
 library;
 
+import '../widgets/app_tooltip.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -563,7 +564,7 @@ class TimelineSecondsToggleCorner extends StatelessWidget {
     if (onChanged == null) {
       return SizedBox(width: width, height: height);
     }
-    return Tooltip(
+    return AppTooltip(
       message: showSeconds ? 'Show Frames' : 'Show Seconds',
       child: ControlPressClaim(
         onPressed: () => onChanged(!showSeconds),

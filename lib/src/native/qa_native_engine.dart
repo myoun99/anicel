@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:math' as math;
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -30,7 +31,7 @@ class QaNativeEngine {
     this._fillPaperRect,
     this._fillComposeTile,
     this._fillFinishMask,
-    this._dabBlendTiles,
+    this._dabBlendBatch,
     this._stampBlendTiles,
     this._strokeBlendTiles,
     this._alphaBoundsTiles,
@@ -53,8 +54,7 @@ class QaNativeEngine {
     this._gridRasterTile,
     this._resampleRgba,
     this._celPixelPassTile,
-  ) : _spec = calloc<QaDabSpecStruct>(),
-      _celSpec = calloc<QaCelPixelSpecStruct>(),
+  ) : _celSpec = calloc<QaCelPixelSpecStruct>(),
       _celCounts = calloc<Int32>(2);
 
   /// R25-③ batched fill compose: packs compose-tile items + their
@@ -427,10 +427,12 @@ class QaNativeEngine {
     Pointer<QaTileSpanStruct> tiles,
     int tileCount,
     int tileSize,
-    Pointer<QaDabSpecStruct> spec,
+    Pointer<QaDabSpecStruct> specs,
+    Pointer<Int32> clips,
+    int dabCount,
     Pointer<Uint8> changedOut,
   )
-  _dabBlendTiles;
+  _dabBlendBatch;
 
   final void Function(
     Pointer<QaTileSpanStruct> tiles,
@@ -714,6 +716,11 @@ class QaNativeEngine {
     _loadAttempted = false;
   }
 
+  /// Calls [dabBlendBatch] has made, counted in debug builds only — the
+  /// pin that a batch of dabs is ONE call.
+  @visibleForTesting
+  static int debugDabBatchCalls = 0;
+
   /// The loaded engine, or null (Dart fallback). Load happens once.
   static QaNativeEngine? get instance {
     if (debugForceDartFallback) {
@@ -845,13 +852,15 @@ class QaNativeEngine {
               Pointer<Uint8>,
             )
           >('qa_fill_finish_mask');
-      final dabBlendTiles = library
+      final dabBlendBatch = library
           .lookupFunction<
             Void Function(
               Pointer<QaTileSpanStruct>,
               Int32,
               Int32,
               Pointer<QaDabSpecStruct>,
+              Pointer<Int32>,
+              Int32,
               Pointer<Uint8>,
             ),
             void Function(
@@ -859,9 +868,11 @@ class QaNativeEngine {
               int,
               int,
               Pointer<QaDabSpecStruct>,
+              Pointer<Int32>,
+              int,
               Pointer<Uint8>,
             )
-          >('qa_dab_blend_tiles');
+          >('qa_dab_blend_batch');
       final stampBlendTiles = library
           .lookupFunction<
             Void Function(
@@ -1194,7 +1205,7 @@ class QaNativeEngine {
         fillPaperRect,
         fillComposeTile,
         fillFinishMask,
-        dabBlendTiles,
+        dabBlendBatch,
         stampBlendTiles,
         strokeBlendTiles,
         alphaBoundsTiles,
@@ -1710,22 +1721,35 @@ class QaNativeEngine {
   static const int preBlendKindErase = 1;
   static const int preBlendKindStroke = 2;
 
-  /// Blends the prepared dab ([prepareDab]) into every staged span in ONE
-  /// call, fanned across the worker pool (tiles are disjoint, so results
-  /// are byte-identical to the sequential loop). Returns the per-tile
-  /// changed flags (valid until the next batch).
-  Uint8List dabBlendTiles({required int count, required int tileSize}) {
-    _dabBlendTiles(
+  /// Blends the [dabCount] dabs of the batch ([beginDabBatch],
+  /// [prepareDabAt]), in order, into the [tileCount] staged spans in ONE
+  /// call — each span the rect the batch's dabs cover in that tile. The C
+  /// cuts the tiles into row bands and each band applies every dab that
+  /// reaches it, so the bytes are the ones the dabs would have made one at
+  /// a time. Returns the per-tile changed flags (valid until the next
+  /// batch).
+  Uint8List dabBlendBatch({
+    required int tileCount,
+    required int dabCount,
+    required int tileSize,
+  }) {
+    assert(() {
+      debugDabBatchCalls += 1;
+      return true;
+    }());
+    _dabBlendBatch(
       _tileSpans.pointer,
-      count,
+      tileCount,
       tileSize,
-      _spec,
+      _dabSpecs.pointer,
+      _dabClips.pointer,
+      dabCount,
       _batchChanged.pointer,
     );
-    return _batchChanged.pointer.asTypedList(count);
+    return _batchChanged.pointer.asTypedList(tileCount);
   }
 
-  /// The stamp counterpart of [dabBlendTiles].
+  /// The stamp counterpart of [dabBlendBatch], one stamp a call.
   Uint8List stampBlendTiles({
     required int count,
     required int tileSize,
@@ -1828,9 +1852,19 @@ class QaNativeEngine {
   }
 
   // -------------------------------------------------------------------
-  // Generic dab blend (R18 A-1).
+  // Generic dab blend (R18 A-1; one call a batch since ABI 38).
 
-  final Pointer<QaDabSpecStruct> _spec;
+  /// The batch's dab specs, one per [prepareDabAt] index.
+  final _dabSpecs = NativeScratch<QaDabSpecStruct>(
+    (n) => calloc<QaDabSpecStruct>(n),
+    bytesPerElement: sizeOf<QaDabSpecStruct>(),
+  );
+
+  /// Four ints a dab — its clip's left, top, right and bottom (exclusive).
+  final _dabClips = NativeScratch<Int32>(
+    (n) => calloc<Int32>(n),
+    bytesPerElement: 4,
+  );
 
   // ABI 34 — the cel pixel pass (색 변환 / 픽셀 비우기), one tile per call.
   final int Function(
@@ -1962,29 +1996,52 @@ class QaNativeEngine {
     byteBudget: stampUploadByteBudget,
   );
 
-  /// One grow-only arena for the per-dab lattice arrays — copied once per
-  /// dab (prepareDab), read by every tile call of that dab.
-  Pointer<Uint8> _arena = nullptr;
-  int _arenaCapacity = 0;
+  /// How many distinct masks, and how many of their bytes, one dab batch
+  /// may upload with every one of them still resident when the kernel
+  /// reads it. The cache frees from its least recent end, and a batch's
+  /// masks are its most recent entries, so a batch inside both limits
+  /// evicts only masks from before it.
+  ({int count, int bytes}) get batchMaskAllowance =>
+      (count: _maskUploads.entryCap, bytes: _maskUploads.byteBudget);
+
+  /// The grow-only arena the batch's lattice arrays are copied into
+  /// ([prepareDabAt]) and the kernel reads.
+  ///
+  /// ⛔IT GROWS BY OPENING A CHUNK, NEVER BY MOVING ONE: the specs already
+  /// staged in the batch point into the chunks before, so a chunk lives
+  /// until the process does and is reused from the next [beginDabBatch].
+  final List<({Pointer<Uint8> base, int capacity})> _arenaChunks = [];
+  int _arenaChunk = 0;
   int _arenaOffset = 0;
 
-  void _arenaReset(int byteBudget) {
-    if (_arenaCapacity < byteBudget) {
-      if (_arena != nullptr) {
-        calloc.free(_arena);
-      }
-      _arena = calloc<Uint8>(byteBudget);
-      _arenaCapacity = byteBudget;
-    }
+  static const int _arenaChunkBytes = 64 * 1024;
+
+  /// Opens a batch of [dabCount] dabs: room for their specs and clips, and
+  /// the arena back to its start.
+  void beginDabBatch(int dabCount) {
+    _dabSpecs.ensure(dabCount);
+    _dabClips.ensure(dabCount * 4);
+    _arenaChunk = 0;
     _arenaOffset = 0;
   }
 
   Pointer<Uint8> _arenaAlloc(int bytes) {
     // Keep every array 8-byte aligned (doubles).
-    final aligned = (_arenaOffset + 7) & ~7;
+    var aligned = (_arenaOffset + 7) & ~7;
+    while (_arenaChunk < _arenaChunks.length &&
+        aligned + bytes > _arenaChunks[_arenaChunk].capacity) {
+      _arenaChunk += 1;
+      aligned = 0;
+    }
+    if (_arenaChunk == _arenaChunks.length) {
+      final capacity = math.max(bytes, _arenaChunkBytes);
+      _arenaChunks.add((base: calloc<Uint8>(capacity), capacity: capacity));
+      aligned = 0;
+    }
     _arenaOffset = aligned + bytes;
-    assert(_arenaOffset <= _arenaCapacity);
-    return Pointer<Uint8>.fromAddress(_arena.address + aligned);
+    return Pointer<Uint8>.fromAddress(
+      _arenaChunks[_arenaChunk].base.address + aligned,
+    );
   }
 
   Pointer<Double> _arenaFloat64(Float64List data) {
@@ -2014,11 +2071,21 @@ class QaNativeEngine {
   /// [aaContrast]; the two never both apply (see `BrushAntiAlias`).
   static const int dabFlagAaThreshold = 32;
 
-  /// Per-dab setup for [dabBlendTile]: fills the spec struct and uploads
-  /// masks (identity-cached) and lattices (arena). All values mirror the
-  /// Dart materializer's per-dab hoists exactly; the kernel is a pure
-  /// consumer.
-  void prepareDab({
+  /// Stages dab [index] of the batch ([beginDabBatch]) for
+  /// [dabBlendBatch]: fills its spec and its clip, and uploads masks
+  /// (identity-cached) and lattices (arena). All values mirror the Dart
+  /// materializer's per-dab hoists exactly; the kernel is a pure consumer.
+  ///
+  /// ⚠️A batch uploads no more masks than [batchMaskAllowance] — the
+  /// callers cut it there. The mask cache keeps only its newest entry for
+  /// sure, so a batch past the allowance could free a mask an earlier spec
+  /// still points at.
+  void prepareDabAt(
+    int index, {
+    required int clipLeft,
+    required int clipTop,
+    required int clipRightExclusive,
+    required int clipBottomExclusive,
     required double centerX,
     required double centerY,
     required double radius,
@@ -2074,41 +2141,14 @@ class QaNativeEngine {
     Int32List? texVTexel1,
     Float64List? texVFraction,
     Float64List? texVOneMinus,
+    Int32List? tipRowInk,
   }) {
-    var budget = 0;
-    void count(TypedData? data) {
-      if (data != null) {
-        budget += data.lengthInBytes + 8;
-      }
-    }
-
-    count(tipUTexel0);
-    count(tipUFraction);
-    count(tipUOneMinus);
-    count(tipUInRange);
-    count(tipVTexel0);
-    count(tipVFraction);
-    count(tipVOneMinus);
-    count(tipVInRange);
-    count(dualUTexel0);
-    count(dualUTexel1);
-    count(dualUFraction);
-    count(dualUOneMinus);
-    count(dualVTexel0);
-    count(dualVTexel1);
-    count(dualVFraction);
-    count(dualVOneMinus);
-    count(texUTexel0);
-    count(texUTexel1);
-    count(texUFraction);
-    count(texUOneMinus);
-    count(texVTexel0);
-    count(texVTexel1);
-    count(texVFraction);
-    count(texVOneMinus);
-    _arenaReset(budget);
-
-    final spec = _spec.ref;
+    final clip = _dabClips.pointer + index * 4;
+    clip[0] = clipLeft;
+    clip[1] = clipTop;
+    clip[2] = clipRightExclusive;
+    clip[3] = clipBottomExclusive;
+    final spec = _dabSpecs.pointer[index];
     spec.centerX = centerX;
     spec.centerY = centerY;
     spec.radius = radius;
@@ -2194,6 +2234,7 @@ class QaNativeEngine {
     spec.texVOneMinus = texVOneMinus == null
         ? nullptr
         : _arenaFloat64(texVOneMinus);
+    spec.tipRowInk = tipRowInk == null ? nullptr : _arenaInt32(tipRowInk);
   }
 }
 
@@ -2448,6 +2489,9 @@ final class QaDabSpecStruct extends Struct {
   external Pointer<Int32> texVTexel1;
   external Pointer<Double> texVFraction;
   external Pointer<Double> texVOneMinus;
+
+  /// ABI 39: each tip mask row's first and last inked column, or null.
+  external Pointer<Int32> tipRowInk;
 }
 
 /// Mirror of the C `qa_cel_pixel_spec` (ABI 34) — field order/types must

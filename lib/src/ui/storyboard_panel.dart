@@ -25,6 +25,10 @@ import '../models/timeline_coverage.dart'
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_transform_lane_carrier.dart';
+import 'canvas/flip_hud_controller.dart' show FlipHudAxis;
+import 'canvas/flip_hud_model.dart';
+import 'canvas/flip_hud_rows.dart';
+import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import 'audio/waveform_painter.dart';
 import 'storyboard_cut_blocks_painter.dart';
@@ -113,7 +117,6 @@ import 'timeline/timeline_frame_range_gesture.dart'
 import '../models/storyboard_coverage.dart'
     show
         StoryboardCoverageCell,
-        storyboardCoverageCells,
         storyboardDivisionKeys;
 import '../models/timeline_frame_range.dart'
     show TimelineFrameRangeSelection, TimelineLaneSelection;
@@ -163,11 +166,13 @@ part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
 part 'storyboard/storyboard_scroll.dart';
 part 'storyboard/storyboard_rail_rows.dart';
+part 'storyboard/storyboard_sheet.dart';
 
 /// One row of the storyboard rail, as the shared swipe sees it.
 ///
 /// Three kinds share the rail and they do not share a subject — see
-/// `_StoryboardRailRows.railRowsIn`, the only place that builds one.
+/// `_StoryboardRailRows._trackGroupRowGeometry`, the only place that builds
+/// one, and `railRowsIn`, which walks them.
 typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 
 /// One row of a track group's rail, as the strip column lays it out.
@@ -184,11 +189,16 @@ typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 /// as a property lane — which is what the grid sheet paints the lane ground
 /// under (I-44). Neither address says it: the Audio lane keeps none, and an
 /// S slot with no layer keeps none either.
+///
+/// [railRow] is the row as the rail's column swipe sees it — the transition,
+/// S and V rows, which carry the columns. A lane carries none, so it has
+/// none, and the walk steps over it.
 typedef _StoryboardRailSlot = ({
   TimelineRowAddress? row,
   LaneRowAddress? laneRow,
   bool bandRow,
   bool lane,
+  StoryboardRailRow? railRow,
   double height,
 });
 
@@ -509,6 +519,7 @@ class StoryboardPanel extends StatefulWidget {
     this.seSelect,
     this.audioLane,
     this.transitionDefById,
+    this.rowsChannel,
     this.transitionCrossingTooltip,
     this.transitionPreview,
     this.transitionCommaDrag,
@@ -552,7 +563,19 @@ class StoryboardPanel extends StatefulWidget {
   // columns — this one has no blend cell — so the day either needs a new
   // one, the other must be free to stay put. The repetition is the point;
   // do not "clean it up" into a shared constant.
-  static const double _trackLabelWidth = 434;
+  //
+  // 434 → 443 (text-scale-rail-opac, 유저 2026-09-25): the opacity column
+  // this rail shares widened to hold the legend's OPAC at 1×, and the
+  // answer the user picked named both rails.
+  static const double _trackLabelWidth = 443;
+
+  /// [_trackLabelWidth] where [context] lays its text out: this rail pays for
+  /// ITS word-holding column's growth — the opacity bar's; it has no blend
+  /// column — as the timeline's pays for its two (text-scale-rail-columns,
+  /// 유저 2026-09-25: 「칸도 글자 따라 넓어진다」). 0 at 1×.
+  static double railWidthIn(BuildContext context) =>
+      _trackLabelWidth +
+      (layerRailColumnWidthsIn(context).opacity - layerOpacitySlotWidth);
 
   /// The frame ruler's height — and, since the seconds corner is the strip
   /// beside it, that button's too.
@@ -1013,6 +1036,11 @@ class StoryboardPanel extends StatefulWidget {
   /// spans unmarked.
   final CameraInstructionDef? Function(String instructionId)? transitionDefById;
 
+  /// Where this panel hands its stacked rows to the shell — the ↑/↓ walk and
+  /// the flip window read them while the storyboard is the panel being
+  /// worked in ([_StoryboardSheet]). Null for a mount nothing walks.
+  final StoryboardRowsChannel? rowsChannel;
+
   /// D26: crossing-fade warning resolver for the AUTHORING row — global
   /// start keys (this axis is where spans really live).
   final String? Function(int spanStartKey)? transitionCrossingTooltip;
@@ -1110,9 +1138,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   /// The rail's NATURAL width — what its rows cost laid out in full. The
   /// window never changes it, so every row in this file keeps stating
-  /// [StoryboardPanel._trackLabelWidth] and none of them has to learn
-  /// about the splitter.
-  static const double _naturalRailWidth = StoryboardPanel._trackLabelWidth;
+  /// [StoryboardPanel.railWidthIn] and none of them has to learn about the
+  /// splitter.
+  double get _naturalRailWidth => StoryboardPanel.railWidthIn(context);
+
+  /// The S, transition and lane rows' heights where the panel is shown —
+  /// asked here, once, and handed to every row, so a label and its strip
+  /// cannot answer from two contexts ([_storyboardRowHeightsIn]).
+  _StoryboardRowHeights get _rowHeights => _storyboardRowHeightsIn(context);
 
   // ── the horizontal scroll: its own object, in its own file ──────────
   //
@@ -1186,7 +1219,17 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _horizontalController.addListener(_frameAxis.handleScroll);
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
     widget.playheadFrame?.addListener(_handlePlaybackPage);
+    _bindSheet(widget.rowsChannel);
   }
+
+  /// THE STORYBOARD AS A SHEET, handed to the shell's walkers.
+  late final _StoryboardSheet _sheet = _StoryboardSheet(this);
+
+  void _bindSheet(StoryboardRowsChannel? channel) => channel?.bind(
+    this,
+    rows: _sheet.rows,
+    snapshotOf: _sheet.flipHudSnapshot,
+  );
 
   /// R5: the same "bring the selection back into view" tick the timeline
   /// answers, in THIS surface's terms — the strips run on the GLOBAL frame
@@ -1252,6 +1295,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       widget.playheadFrame,
       _handlePlaybackPage,
     );
+    if (!identical(oldWidget.rowsChannel, widget.rowsChannel)) {
+      oldWidget.rowsChannel?.unbind(this);
+      _bindSheet(widget.rowsChannel);
+    }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
     // anchors. Shared policy with the timeline grids.
@@ -1276,6 +1323,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   void dispose() {
+    widget.rowsChannel?.unbind(this);
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.playheadFrame?.removeListener(_handlePlaybackPage);
     _horizontalController.removeListener(_frameAxis.handleScroll);
@@ -1709,7 +1757,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                             key: const ValueKey<String>(
                               'storyboard-track-label-rail',
                             ),
-                            width: StoryboardPanel._trackLabelWidth,
+                            width: _naturalRailWidth,
                             // 🚨The rail's Krita-style column
                             // swipe, the SAME one the timeline
                             // rail wears (유저 2026-08-29: 「타임
@@ -2056,17 +2104,28 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           naturalExtent: _naturalRailWidth,
           availableExtent: frame.availableRailWidth,
           child: SizedBox(
-            width: StoryboardPanel._trackLabelWidth,
+            width: _naturalRailWidth,
             child: TimelineLayerControlsHeader(
               // The storyboard rail states its OWN width, which
               // today is the same number as the timeline's and is
               // deliberately not the same constant (see
-              // [StoryboardPanel._trackLabelWidth]). Widening it
+              // [StoryboardPanel.railWidthIn]). Widening it
               // adds no column here — `hasBlendColumn` is a host
               // answer, not something derived from the width — so
               // the extra width lands in the NAME, which is where
               // a track wants it.
-              metrics: TimelineGridMetrics.defaults,
+              //
+              // The legend's columns are this rail's rows' columns, and
+              // its extent the rail's, as the rows lay them out
+              // (text-scale-rail-columns). Its row is the band's — the
+              // band grew with its words and the legend inside it must
+              // too, or its OPAC is cut at the foot
+              // (text-scale-storyboard-rows).
+              metrics: TimelineGridMetrics.defaults.copyWith(
+                layerControlsWidth: _naturalRailWidth,
+                layerRowHeight: StoryboardPanel._headerBandHeightIn(context),
+                railColumns: layerRailColumnWidthsIn(context),
+              ),
               legend: widget.legend,
               rowFilter: widget.rowFilter,
               showRowSolos: true,
@@ -2426,6 +2485,28 @@ const double _transitionRowHeight = 30;
 /// with that row before.
 const double _laneHeight = 26;
 
+/// The three rows above as they stand where the panel is shown — each the
+/// height it was drawn at plus as much as a row's name grew under the OS
+/// text size ([timelineLayerRowGrowthIn]), 0 at 1×.
+///
+/// 🚨text-scale-storyboard-rows (유저 2026-09-24, 「행도 글자 크기를 따라
+/// 자란다」). The rows round grew the timeline's rows and this panel's legend
+/// band, and not these three: at 2× an S row's name wanted 40 in its 29.
+/// ⛔Everything that lays a row out reads THIS, never the constants — the
+/// rail's labels, the strips beside them, and the one table the bands, the
+/// sheet and the select-drag read. Two of them on different numbers is a
+/// label and its strip parting ways.
+typedef _StoryboardRowHeights = ({double se, double transition, double lane});
+
+_StoryboardRowHeights _storyboardRowHeightsIn(BuildContext context) {
+  final growth = timelineLayerRowGrowthIn(context);
+  return (
+    se: _seRowHeight + growth,
+    transition: _transitionRowHeight + growth,
+    lane: _laneHeight + growth,
+  );
+}
+
 /// The track's SE row count: SE rows are TRACK-owned (list order is THE
 /// ordering every panel renders — timeline parity by identity).
 int _seSlotCount(Track track) => track.seLayers.length;
@@ -2491,7 +2572,7 @@ class _StoryboardLabelShell extends StatelessWidget {
       onTap: onTap,
       child: Container(
         key: rowKey,
-        width: StoryboardPanel._trackLabelWidth,
+        width: StoryboardPanel.railWidthIn(context),
         height: height,
         padding: const EdgeInsets.only(right: 8),
         decoration: chromeless
@@ -2544,6 +2625,7 @@ class _StoryboardSeLabel extends StatelessWidget {
   const _StoryboardSeLabel({
     required this.track,
     required this.slot,
+    required this.height,
     this.laneExpanded = false,
     this.onToggleLane,
     this.activeLayer,
@@ -2563,6 +2645,9 @@ class _StoryboardSeLabel extends StatelessWidget {
 
   final Track track;
   final int slot;
+
+  /// The row's height where the panel is shown ([_StoryboardRowHeights.se]).
+  final double height;
 
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
@@ -2624,7 +2709,7 @@ class _StoryboardSeLabel extends StatelessWidget {
       onTap: trackLayer == null || onSelect == null
           ? null
           : () => onSelect(trackLayer.id),
-      height: _seRowHeight,
+      height: height,
       active: active,
       semanticsLabel: active
           ? AppText.strings.semSelectedLayer
@@ -2649,7 +2734,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                           // above). Both would fire twice.
                           onTap: () {},
                           child: SizedBox(
-                            height: _seRowHeight,
+                            height: height,
                             child: Icon(
                               laneExpanded
                                   ? Icons.arrow_drop_down
@@ -2683,7 +2768,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                   keyPrefix: 'storyboard',
                   idValue: '${track.id.value}-s${slot + 1}',
                   kind: LayerKind.se,
-                  height: _seRowHeight,
+                  height: height,
                   onTap: trackLayer == null || onSelect == null
                       ? null
                       : () => onSelect(trackLayer.id),
@@ -2702,6 +2787,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                 ),
               ),
               ...layerRailTrailingCells(
+                columns: layerRailColumnWidthsIn(context),
                 // NO waveform-hide eye (UI-R7 #8): the timeline rows carry
                 // none either — the twirled-down Audio lane is the "big
                 // waveform" view. The fill-reference slot stays reserved so
@@ -2784,6 +2870,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
     required this.track,
     required this.layer,
     required this.active,
+    required this.height,
     this.onSelectLayer,
     this.onToggleLayerVisibility,
     this.onLayerMarkSelected,
@@ -2795,6 +2882,10 @@ class _StoryboardTransitionLabel extends StatelessWidget {
 
   /// Whether this row is THE selected row (same highlight as every other).
   final bool active;
+
+  /// The row's height where the panel is shown
+  /// ([_StoryboardRowHeights.transition]).
+  final double height;
   final ValueChanged<LayerId>? onSelectLayer;
 
   /// B5③: the timeline row's three controls, same verbs (see class doc).
@@ -2810,7 +2901,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
         'storyboard-transition-label-${track.id.value}',
       ),
       onTap: onSelect == null ? null : () => onSelect(layer.id),
-      height: _transitionRowHeight,
+      height: height,
       active: active,
       semanticsLabel: active
           ? AppText.strings.semSelectedLayer
@@ -2838,7 +2929,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                   keyPrefix: 'storyboard',
                   idValue: '${track.id.value}-transition',
                   kind: LayerKind.transition,
-                  height: _transitionRowHeight,
+                  height: height,
                   onTap: onSelect == null ? null : () => onSelect(layer.id),
                 ),
               ),
@@ -2853,6 +2944,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                 ),
               ),
               ...layerRailTrailingCells(
+                columns: layerRailColumnWidthsIn(context),
                 // The eye: include/exclude this row's composite
                 // contribution (B5③ — 「비지블 = 해당 합성 반영/미반영」).
                 // fx and opacity stay kind-gated off, exactly like the
@@ -3031,6 +3123,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
     required this.track,
     required this.layer,
     required this.width,
+    required this.height,
     required this.timelineScale,
     this.defById,
     this.crossingTooltip,
@@ -3047,6 +3140,9 @@ class _StoryboardTransitionRow extends StatelessWidget {
   /// in-flight edge-drag form while a grip is held.
   final Layer layer;
   final double width;
+
+  /// Its label's height ([_StoryboardRowHeights.transition]) — one row.
+  final double height;
   final TimelineScale timelineScale;
   final CameraInstructionDef? Function(String instructionId)? defById;
 
@@ -3115,7 +3211,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
           child: IgnorePointer(
             child: TimelineFixedFrameSpanLayer(
               geometry: _geometry,
-              crossAxisExtent: _transitionRowHeight,
+              crossAxisExtent: height,
               axis: Axis.horizontal,
               children: timelineRowInstructionOverlays(
                 layer: layer,
@@ -3128,7 +3224,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
                 // one predicate, answered by global key here.
                 crossingWarningTooltip: crossingTooltip,
                 crossingWarningColor: Theme.of(context).colorScheme.error,
-                crossAxisExtent: _transitionRowHeight,
+                crossAxisExtent: height,
               ),
             ),
           ),
@@ -3195,7 +3291,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
           ),
           layer: layer,
           geometry: TimelineFrameGeometryHandle(_geometry),
-          crossAxisExtent: _transitionRowHeight,
+          crossAxisExtent: height,
           select: select,
           railRowAt: railRowAt,
           rows: [TimelineDisplayRow.layer(layer, layerIndex: 0)],
@@ -3214,14 +3310,14 @@ class _StoryboardTransitionRow extends StatelessWidget {
         resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
         commaDrag: commaDrag,
         axis: Axis.horizontal,
-        crossAxisExtent: _transitionRowHeight,
+        crossAxisExtent: height,
       );
       if (grips.isNotEmpty) {
         spans.add(
           Positioned.fill(
             child: TimelineFixedFrameSpanLayer(
               geometry: _geometry,
-              crossAxisExtent: _transitionRowHeight,
+              crossAxisExtent: height,
               axis: Axis.horizontal,
               children: grips,
             ),
@@ -3232,7 +3328,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
     return SizedBox(
       key: ValueKey<String>('storyboard-transition-row-${track.id.value}'),
       width: width,
-      height: _transitionRowHeight,
+      height: height,
       child: Stack(children: spans),
     );
   }
@@ -3249,6 +3345,7 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.layer,
     required this.layoutEntries,
     required this.width,
+    required this.height,
     required this.timelineScale,
     required this.projectFrameRate,
     this.audioPeaksFor,
@@ -3284,6 +3381,9 @@ class _StoryboardSeRow extends StatelessWidget {
   final Layer? layer;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final double width;
+
+  /// Its label's height ([_StoryboardRowHeights.se]) — one row.
+  final double height;
   final TimelineScale timelineScale;
   final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
@@ -3339,7 +3439,7 @@ class _StoryboardSeRow extends StatelessWidget {
     return SizedBox(
       key: ValueKey<String>('storyboard-se-row-$trackIndex-${slot + 1}'),
       width: width,
-      height: _seRowHeight,
+      height: height,
       child: Stack(children: spans),
     );
   }
@@ -3362,13 +3462,13 @@ class _StoryboardSeRow extends StatelessWidget {
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
         ),
-        crossAxisExtent: _seRowHeight,
+        crossAxisExtent: height,
         axis: Axis.horizontal,
         children: timelineRowClipMarkerOverlays(
           layer: layer,
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
-          crossAxisExtent: _seRowHeight,
+          crossAxisExtent: height,
           axis: Axis.horizontal,
           tooltip: tooltip,
           color: Theme.of(context).colorScheme.error,
@@ -3532,7 +3632,7 @@ class _StoryboardSeRow extends StatelessWidget {
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
         geometry: _rowFrames,
-        crossAxisExtent: _seRowHeight,
+        crossAxisExtent: height,
         axis: Axis.horizontal,
         children: grips,
       ),
@@ -3569,7 +3669,7 @@ class _StoryboardSeRow extends StatelessWidget {
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
         geometry: frames,
-        crossAxisExtent: _seRowHeight,
+        crossAxisExtent: height,
         axis: Axis.horizontal,
         children: [
           for (final gap in gaps)
@@ -3602,7 +3702,7 @@ class _StoryboardSeRow extends StatelessWidget {
         startIndex: block.startIndex,
         endIndexExclusive: block.endIndexExclusive,
         // I-44: on the SE paper, which stops a seam short of the row.
-        crossAxisExtent: timelineRowPaperExtent(_seRowHeight),
+        crossAxisExtent: timelineRowPaperExtent(height),
       ),
       child: TimelineBlockEdgeGrip(
         key: ValueKey<String>(
@@ -3627,7 +3727,7 @@ class _StoryboardSeRow extends StatelessWidget {
     key: ValueKey<String>('storyboard-se-range-gesture-slot-${layer.id}'),
     layer: layer,
     geometry: geometry,
-    crossAxisExtent: _seRowHeight,
+    crossAxisExtent: height,
     select: seSelect,
     railRowAt: railRowAt,
     rows: seRowsInDisplayOrder,
@@ -3774,6 +3874,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     required this.carrier,
     required this.lane,
     required this.width,
+    required this.height,
     required this.timelineScale,
     required this.projectFrameRate,
     this.laneEdit,
@@ -3797,6 +3898,9 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   final PropertyLaneRow lane;
 
   final double width;
+
+  /// Its label's height ([_StoryboardRowHeights.lane]) — one row.
+  final double height;
   final TimelineScale timelineScale;
   final ProjectFrameRate projectFrameRate;
   final PropertyLaneEditCallbacks? laneEdit;
@@ -3815,7 +3919,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final metrics = TimelineGridMetrics(
       frameCellWidth: timelineScale.pixelsPerFrame,
-      layerRowHeight: _laneHeight - 2,
+      layerRowHeight: height - 2,
     );
     final frames = timelineScale.pixelsPerFrame <= 0
         ? 0
@@ -3825,7 +3929,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     return SizedBox(
       key: ValueKey<String>(rowKey),
       width: width,
-      height: _laneHeight,
+      height: height,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
         child: laneIsSeAudio(lane)
@@ -3905,7 +4009,8 @@ class StoryboardTrackLabelRow extends StatelessWidget {
   });
 
   /// The rail's own width — what a host windows this row against.
-  static const double railWidth = StoryboardPanel._trackLabelWidth;
+  static double railWidthIn(BuildContext context) =>
+      StoryboardPanel.railWidthIn(context);
 
   /// GROUND OFF: no fill, no active wash, no seams (the folded row's whole
   /// design is the negative space — see [CollapsedRowOverlay]). It is the
@@ -4061,6 +4166,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
               // Where no cut exists (a gap on this track) a press is a no-op;
               // the button is track furniture, only its subject is absent.
               ...layerRailTrailingCells(
+                columns: layerRailColumnWidthsIn(context),
                 // R9 #21: the switch in this row's fx column is the
                 // TRACK's — a row's columns describe the row's own
                 // subject, and this row is the track's.
@@ -4350,13 +4456,8 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// the row's grip material, resolved once for both. A cut with no
   /// storyboard row still answers with ONE cell over the whole cut, so
   /// neither consumer has an empty case to handle.
-  Map<CutId, List<StoryboardCoverageCell>> _cellsByCut() => {
-    for (final entry in layoutEntries)
-      entry.cutId: storyboardCoverageCells(
-        timeline: storyboardLayerForCut(entry.cut)?.timeline,
-        cutDuration: entry.duration,
-      ),
-  };
+  Map<CutId, List<StoryboardCoverageCell>> _cellsByCut() =>
+      storyboardCellsByCut(layoutEntries);
 
   /// One entry per PANEL of the row, in track order — what the edit chrome
   /// hangs its grips on.

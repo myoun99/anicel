@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
 import 'package:anicel/src/services/audio/wav16_header.dart'
     show wav16HeaderBytes;
 import 'package:anicel/src/services/media/project_media_sources.dart';
@@ -57,6 +56,12 @@ void main() {
     List<int>.generate(64 * 1024, (i) => (i ~/ 5 + 101) & 0xFF),
   );
 
+  /// What the original becomes AFTER the second carry — so a reader that
+  /// went to the original instead of the carried bytes would say so.
+  final third = Uint8List.fromList(
+    List<int>.generate(64 * 1024, (i) => (i ~/ 3 + 57) & 0xFF),
+  );
+
   /// A mono 48k 16-bit WAV [seconds] long — a sound the decoder reads, so
   /// the conform measures it for real.
   Uint8List wavOf({required int seconds}) {
@@ -107,11 +112,15 @@ void main() {
   /// What every reader of [path] gets — the one door they all go through.
   List<int> read() => file.mediaByteSourceFor(path).readSync();
 
-  /// The original edited, then carried again after its removal.
+  /// The original edited, then carried again after its removal — and then
+  /// edited once more, so what reads [second] read the CARRIED bytes: the
+  /// original holds [third] by then (audit 09-25 — it held [second], and a
+  /// reader that went to the original passed as well).
   Future<void> carryTheEditAgain() async {
     expect(pool.removeMediaAsset(path), isTrue);
     File(path).writeAsBytesSync(second);
     await pool.addMediaAssets([path], carried: true);
+    File(path).writeAsBytesSync(third);
   }
 
   test('the premise: two carries of one path are two names', () async {
@@ -120,7 +129,8 @@ void main() {
     pool.removeMediaAsset(path);
     await pool.addMediaAssets([path], carried: true);
 
-    expect(pool.mediaAssets.single.carriedAs, isNot(once));
+    expect(once, isNotNull);
+    expect(pool.mediaAssets.single.carriedAs, allOf(isNotNull, isNot(once)));
   });
 
   group('saved, removed, carried again before the next save', () {
@@ -269,6 +279,25 @@ void main() {
     expect(read(), second);
   });
 
+  test('the size shown asks the readers\' own gate — the file\'s record, not '
+      'the directory beside it', () async {
+    await pool.addMediaAssets([path], carried: true);
+    await save();
+    expect(file.mediaStoredBytesFor(path), isNotNull, reason: 'the premise');
+    // A record that does not list the entry the file holds: the readers
+    // then go to the carry's staged copy or its original, never that entry.
+    file.bindToOpenedFile(projectPath, mediaInFile: const {}, unsaved: false);
+
+    expect(
+      file.mediaStoredBytesFor(path),
+      isNull,
+      reason:
+          'only the file on disk knows — it is what is read (🪦the column '
+          'asked the directory while every reader asked the record, audit '
+          '09-25)',
+    );
+  });
+
   test('🚨a project opened after another reports ITS media\'s sizes', () async {
     await pool.addMediaAssets([path], carried: true);
     await save();
@@ -363,9 +392,9 @@ void main() {
   });
 
   group('a movie on the canvas', () {
-    late _ClosingBackend movies;
+    late ClosingVideoBackend movies;
 
-    setUp(() => debugVideoDecodeBackend = movies = _ClosingBackend());
+    setUp(() => debugVideoDecodeBackend = movies = ClosingVideoBackend());
     tearDown(() => debugVideoDecodeBackend = null);
 
     Future<void> placeMovie(
@@ -463,31 +492,4 @@ void main() {
       isNull,
     );
   });
-}
-
-/// A reader that READS what it is handed ([ReadingVideoBackend]), and says
-/// which files the movies it was asked to close were read from.
-class _ClosingBackend extends ReadingVideoBackend {
-  final List<String> closed = [];
-  final Map<int, String> _openAt = {};
-  var _tokens = 0;
-
-  @override
-  Future<({int token, QaVideoInfo info})?> open(
-    String path, {
-    ({int offset, int length, bool framed})? span,
-  }) async {
-    final opened = await super.open(path, span: span);
-    if (opened == null) {
-      return null;
-    }
-    final token = _tokens += 1;
-    _openAt[token] = path;
-    return (token: token, info: opened.info);
-  }
-
-  @override
-  Future<void> close(int token) async {
-    closed.add(_openAt[token]!);
-  }
 }

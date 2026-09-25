@@ -1184,26 +1184,33 @@ class CutCommandCoordinator {
 
   /// Points the [oldPath] asset at [newPath], rewriting the pool entry and
   /// every referencing clip in ONE undo step; no-op when nothing changes
-  /// or the pool does not know [oldPath].
-  void relinkMediaAsset({
+  /// or the pool does not know [oldPath]. [carriedAs], when given, is the
+  /// carry the asset is from now on ([RelinkMediaAssetCommand.carriedAs]).
+  ///
+  /// Answers whether it relinked — what the caller's own follow-up (the
+  /// fingerprints, a staged copy made for [carriedAs]) waits on.
+  bool relinkMediaAsset({
     required String oldPath,
     required String newPath,
+    String? carriedAs,
     String description = 'Relink media',
   }) {
     final project = repository.requireProject();
     if (oldPath == newPath ||
         project.mediaAssetByPath(oldPath) == null ||
         project.mediaAssetByPath(newPath) != null) {
-      return;
+      return false;
     }
     historyManager.execute(
       RelinkMediaAssetCommand(
         repository: repository,
         oldPath: oldPath,
         newPath: newPath,
+        carriedAs: carriedAs,
         description: description,
       ),
     );
+    return true;
   }
 
   /// RELINK-2: the batch form — several assets in ONE undo step.
@@ -1218,12 +1225,16 @@ class CutCommandCoordinator {
   /// pool is keyed by path, so a second asset arriving at a taken path
   /// would either be refused mid-batch (leaving half a relink in the undo
   /// stack) or silently merge two entries into one.
-  void relinkMediaAssets(
+  ///
+  /// Answers the moves it made — what the caller's own follow-up (the
+  /// fingerprints) is owed; a move the guards refused is owed nothing.
+  Map<String, String> relinkMediaAssets(
     Map<String, String> moves, {
     String description = 'Relink media',
   }) {
     final project = repository.requireProject();
     final claimed = <String>{};
+    final made = <String, String>{};
     final commands = <Command>[];
     for (final entry in moves.entries) {
       final oldPath = entry.key;
@@ -1234,6 +1245,7 @@ class CutCommandCoordinator {
           !claimed.add(newPath)) {
         continue;
       }
+      made[oldPath] = newPath;
       commands.add(
         RelinkMediaAssetCommand(
           repository: repository,
@@ -1245,13 +1257,14 @@ class CutCommandCoordinator {
     }
     if (commands.isEmpty) {
       // Nothing survived the guards — no undo step for a no-op.
-      return;
+      return const {};
     }
     historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(description: description, commands: commands),
     );
+    return made;
   }
 
   void updateLayerKind({

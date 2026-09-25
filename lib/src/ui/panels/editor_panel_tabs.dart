@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -30,6 +31,7 @@ class EditorPanelTab {
     this.locked = false,
     this.keepAlive = false,
     this.staticRaster = true,
+    this.stillRaster = true,
     this.sillTrailing,
     this.collapsedExtent = 0,
   });
@@ -84,6 +86,21 @@ class EditorPanelTab {
   /// wrapper notices and stands itself down. See
   /// [StaticRaster.maxConsecutiveCaptures].)
   final bool staticRaster;
+
+  /// Whether the dock region showing this tab may be drawn from one still
+  /// image while nothing in it changes (`StillRaster`, around each dock).
+  /// Defaults to ON, like [staticRaster] and for the same reason.
+  ///
+  /// ⛔A DIFFERENT QUESTION from [staticRaster], so a different field:
+  /// that one asks whether a bake taken on every change pays, this one
+  /// whether the tab's pixels may come from an image at all. The timesheet
+  /// says no to the first — its playhead would stand the bake down for the
+  /// whole of playback — and has no reason to say no to this one.
+  ///
+  /// The canvas says no (유저 2026-09-25, raster-cache-when-still-Q1): it is
+  /// the one surface whose pixels may never move —
+  /// 「결과 절대 바뀌면 안되는건 캔버스뿐임」.
+  final bool stillRaster;
 
   /// What THIS tab puts on the group's 문턱, right-aligned, ahead of the
   /// group's own [EditorPanelTabs.trailing].
@@ -456,20 +473,33 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                           final shown = overflowing
                               ? math.max(0, fits - 1)
                               : tabs.length;
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var index = 0; index < shown; index += 1)
-                                _buildTabButton(index),
-                              if (overflowing)
-                                _TabOverflowButton(
-                                  groupId: widget.groupId,
-                                  hidden: tabs.sublist(shown),
-                                  activeTabId: widget.activeTabId,
-                                  onTabSelected: widget.onTabSelected,
-                                ),
-                            ],
+                          // Room for less than one tab — a timeline or a
+                          // storyboard docked in a rail, whose sill takes
+                          // nearly the rail's whole width — still holds the
+                          // overflow button, the one way to its tabs. It is
+                          // cut at the room's edge rather than laid out
+                          // past it: ↩️the Row overflowed by the button's
+                          // missing width and threw.
+                          return ClipRect(
+                            child: OverflowBox(
+                              alignment: AlignmentDirectional.centerStart,
+                              maxWidth: double.infinity,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (var index = 0; index < shown; index += 1)
+                                    _buildTabButton(index),
+                                  if (overflowing)
+                                    _TabOverflowButton(
+                                      groupId: widget.groupId,
+                                      hidden: tabs.sublist(shown),
+                                      activeTabId: widget.activeTabId,
+                                      onTabSelected: widget.onTabSelected,
+                                    ),
+                                ],
+                              ),
+                            ),
                           );
                         },
                       ),
@@ -1096,7 +1126,7 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
       );
     }
 
-    return Tooltip(
+    return AppTooltip(
       message: widget.label,
       // Manual trigger: hover tooltips still work, but no long-press
       // recognizer competes with drag lifts.

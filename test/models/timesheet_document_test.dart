@@ -312,10 +312,33 @@ void main() {
       expect(cells[1].kind, TimesheetCellKind.held);
       expect(cells[2].kind, TimesheetCellKind.held);
       expect(cells[4].kind, TimesheetCellKind.drawing);
-      expect(cells[4].label, unnamedDrawingMark, reason: 'unnamed = in-between mark glyph');
+      expect(cells[4].mark, unnamedDrawingMark, reason: 'unnamed = the in-between mark');
+      expect(cells[4].label, isEmpty, reason: 'and no word beside it');
       expect(cells[5].kind, TimesheetCellKind.held);
       expect(cells[6].kind, TimesheetCellKind.drawing);
-      expect(cells[6].label, unnamedDrawingMark, reason: 'a blank name is the mark too');
+      expect(cells[6].mark, unnamedDrawingMark, reason: 'a blank name is the mark too');
+    });
+
+    test('a block whose drawing the layer does not hold prints `?` — never '
+        'a number, and never the mark', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer(
+              'A',
+              timeline: {
+                0: const TimelineExposure.drawing(FrameId('gone'), length: 2),
+              },
+            ),
+          ],
+          duration: 4,
+        ),
+      );
+
+      final cells = _firstActionColumn(document).cells;
+      expect(cells[0].kind, TimesheetCellKind.drawing);
+      expect(cells[0].label, '?');
+      expect(cells[0].mark, isNull);
     });
 
     test('X sits only on the first row of an empty run; block-owned dots '
@@ -345,6 +368,12 @@ void main() {
       expect(cells[0].kind, TimesheetCellKind.drawing);
       expect(cells[1].kind, TimesheetCellKind.mark);
       expect(cells[1].spanOffset, 1, reason: 'dot rows keep their span data');
+      expect(
+        cells[1].mark,
+        breakdownMark,
+        reason: 'the dot wears mark 1 — the mark an unnamed head wears',
+      );
+      expect(cells[2].mark, isNull);
       expect(cells[2].kind, TimesheetCellKind.held);
       expect(cells[3].kind, TimesheetCellKind.emptyRunStart);
       expect(

@@ -1,3 +1,4 @@
+import 'app_tooltip.dart';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
@@ -104,7 +105,7 @@ class SettingsSwitchRow extends StatelessWidget {
 Widget settingsHelpTooltip(String? help, Widget child) =>
     help == null || help.isEmpty
     ? child
-    : Tooltip(message: help, child: child);
+    : AppTooltip(message: help, child: child);
 
 /// A settings SECTION heading — the words above a group of controls, with
 /// whatever the group needed explaining as its tooltip.

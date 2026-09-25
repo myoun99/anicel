@@ -319,6 +319,7 @@ double layerRailLeadingSlotWidth(LayerRailLeadingSlot slot) => switch (slot) {
 /// as distinct from a row that merely has nothing to put there.
 List<Widget> layerRailTrailingCells({
   Axis axis = Axis.horizontal,
+  required LayerRailColumnWidths columns,
   Widget? fillReference,
   Widget? fx,
   bool hasOnionColumn = false,
@@ -342,6 +343,7 @@ List<Widget> layerRailTrailingCells({
       layerRailSlot(
         axis,
         layerRailTrailingWidth(
+          columns: columns,
           from: LayerRailTrailingSlot.onion,
           hasOnionColumn: hasOnionColumn,
           hasBlendColumn: hasBlendColumn,
@@ -352,8 +354,8 @@ List<Widget> layerRailTrailingCells({
       if (hasOnionColumn) layerRailSlot(axis, layerOnionSlotWidth, onion),
       layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
       layerRailSlot(axis, layerMuteSlotWidth, mute),
-      layerRailSlot(axis, layerOpacitySlotWidth, opacity),
-      if (hasBlendColumn) layerRailSlot(axis, layerBlendSlotWidth, blend),
+      layerRailSlot(axis, columns.opacity, opacity),
+      if (hasBlendColumn) layerRailSlot(axis, columns.blend, blend),
     ],
   ];
 }
@@ -371,14 +373,17 @@ enum LayerRailTrailingSlot {
   blend,
 }
 
-double _trailingSlotWidth(LayerRailTrailingSlot slot) => switch (slot) {
+double _trailingSlotWidth(
+  LayerRailTrailingSlot slot,
+  LayerRailColumnWidths columns,
+) => switch (slot) {
   LayerRailTrailingSlot.fillReference => layerFillReferenceSlotWidth,
   LayerRailTrailingSlot.fx => layerFxSlotWidth,
   LayerRailTrailingSlot.onion => layerOnionSlotWidth,
   LayerRailTrailingSlot.visibility => layerVisibilitySlotWidth,
   LayerRailTrailingSlot.mute => layerMuteSlotWidth,
-  LayerRailTrailingSlot.opacity => layerOpacitySlotWidth,
-  LayerRailTrailingSlot.blend => layerBlendSlotWidth,
+  LayerRailTrailingSlot.opacity => columns.opacity,
+  LayerRailTrailingSlot.blend => columns.blend,
 };
 
 /// What the trailing cells cost, counting only from [from] onward.
@@ -388,6 +393,7 @@ double _trailingSlotWidth(LayerRailTrailingSlot slot) => switch (slot) {
 /// eye-swipe band finds the eye without restating the control order, and
 /// therefore without going stale the next time a column is added.
 double layerRailTrailingWidth({
+  required LayerRailColumnWidths columns,
   LayerRailTrailingSlot from = LayerRailTrailingSlot.fillReference,
   bool hasOnionColumn = false,
   bool hasBlendColumn = false,
@@ -405,7 +411,7 @@ double layerRailTrailingWidth({
     if (!carried) {
       continue;
     }
-    total += _trailingSlotWidth(slot);
+    total += _trailingSlotWidth(slot, columns);
   }
   return total;
 }

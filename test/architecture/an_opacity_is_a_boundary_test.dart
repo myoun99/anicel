@@ -90,6 +90,12 @@ void main() {
       count: 1,
       why: 'the lifted row under the finger, for the length of the drag.',
     ),
+    'lib/src/ui/widgets/app_tooltip.dart': (
+      count: 1,
+      why: 'the tooltip FADING in and out — Flutter\'s own tooltip fade, '
+          'carried line for line. It lives in the OVERLAY, not inside the '
+          'panel whose button it names, and only while the tooltip shows.',
+    ),
     'lib/src/ui/widgets/command_pill.dart': (
       count: 1,
       why: '⚠️A DISABLED PILL, and the comment beside it is a decision: the '

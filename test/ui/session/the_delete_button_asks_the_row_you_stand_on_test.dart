@@ -52,7 +52,7 @@ void main() {
   );
 
   void standOn(String laneId) =>
-      session.selectRow(LaneRowAddress(before.id, laneId));
+      session.standOnRow(LaneRowAddress(before.id, laneId));
 
   void expectTheDrawingStays(String why) {
     expect(now().timeline, before.timeline, reason: why);

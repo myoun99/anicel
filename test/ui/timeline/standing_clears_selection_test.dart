@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
@@ -120,7 +121,7 @@ void main() {
 
     session.standOnRow(
       LayerRowAddress(other.id),
-      takesLayerActive: false,
+      panel: WorkingPanel.storyboard,
     );
 
     expect(session.rowSelection.value, isEmpty);

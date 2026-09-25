@@ -307,6 +307,47 @@ enum _RenderAsk {
   failed,
 }
 
+/// In the place of a document let go of while a save replaces its file
+/// (`_MediaViewerTabHostState._letGoThenFollow`): the page on screen keeps
+/// its size and the document its page count — so nothing on screen moves —
+/// and nothing is read through it. A page asked of it fails, and is asked
+/// again of the document that takes its place.
+final class _LetGoOf implements ViewerDocument {
+  _LetGoOf(ViewerDocument document, {required int page})
+    : pageCount = document.pageCount,
+      framesPerSecond = document.framesPerSecond,
+      _size = document.pageCount == 0
+          ? ui.Size.zero
+          : document.pageSize(page.clamp(0, document.pageCount - 1));
+
+  @override
+  final int pageCount;
+
+  @override
+  final double? framesPerSecond;
+
+  final ui.Size _size;
+
+  @override
+  ui.Size pageSize(int pageIndex) => _size;
+
+  @override
+  Future<ui.Image> renderPage(
+    int pageIndex, {
+    required int width,
+    required int height,
+  }) => Future.error(StateError('let go of while its file is replaced'));
+
+  @override
+  Future<Uint8List> readRegionRgba(
+    int pageIndex,
+    ({int left, int top, int width, int height}) box,
+  ) => Future.error(StateError('let go of while its file is replaced'));
+
+  @override
+  Future<void> dispose() async {}
+}
+
 class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     implements PlaybackTransport {
   /// Commit sink required by the panel API; the viewer never invalidates
@@ -646,7 +687,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (request == null) {
       return; // The empty state reads from _currentRequest == null.
     }
-    final strings = AppText.strings;
     // ONE landing for every medium: open a document, or say why not. The
     // three arms this replaces differed only in HOW they opened and in
     // which field they parked the result — the guards against a stale
@@ -658,13 +698,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       document = await _openDocument(request);
     } on Object catch (error) {
       if (mounted && generation == _generation) {
-        // 🚨WHY, under the sentence that says WHAT. The engines answer with
-        // a reason — 「this file has no readable video stream」, 「no decoder
-        // for this codec」 — and this arm used to drop it on the floor, so
-        // every unreadable file looked identical to every other one.
-        // ⚠️The detail is the engine's own words and is not translated; the
-        // export path made the same call with the encoder's.
-        setState(() => _message = '${strings.mediaViewerLoadFailed}\n$error');
+        setState(() => _message = _couldNotOpen(error));
       }
       return;
     }
@@ -674,29 +708,170 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     setState(() {
       if (document == null) {
-        // The honest-absence states, and each says WHICH absence: a build
-        // without a PDF rasterizer or without a video reader is a missing
-        // engine the user can act on (a different build), while audio has
-        // no picture at all and never will. ⛔One message for all three
-        // would send someone hunting for a codec they do not need.
-        _message = switch (request.kind) {
-          MediaAssetKind.pdf => strings.mediaViewerNoPdfRenderer,
-          MediaAssetKind.video => strings.mediaViewerNoVideoDecoder,
-          // 🪦Audio moved off this line in 2026-09-08: it HAS a picture now
-          // (its waveform), so an absence here is a conform that could not
-          // be built — a file this build cannot decode, which is the same
-          // sentence a missing video reader gets.
-          MediaAssetKind.audio => strings.mediaViewerNoAudioDecoder,
-          MediaAssetKind.image => strings.mediaViewerCannotDisplay,
-        };
+        _message = _nothingOpensFor(request.kind);
       } else {
         _document = document;
         _loadedToken = generation;
       }
     });
+    if (document is HeldViewerDocument) {
+      _watch(document, request);
+    }
     // The page request goes out on the build this setState causes; the
     // record lands after it, so the NEXT open of this document sees it.
     _rememberFramed();
+  }
+
+  /// Follows [held] each time the bytes it reads move
+  /// ([HeldViewerDocument.moved]).
+  void _watch(HeldViewerDocument held, MediaViewerRequest request) {
+    held.moved.listen((move) => unawaited(_follow(held, request, move)));
+  }
+
+  /// The bytes [was] reads have an answer somewhere else now
+  /// ([HeldViewerDocument.moved]) — a save absorbed the staged copy it
+  /// reads, or wrote the file it reads anew elsewhere. The same [request]
+  /// is opened again on the new answer, swapped
+  /// in once it is open, and [was] let go; the pages already drawn stay,
+  /// being the same bytes, so nothing on screen blinks.
+  ///
+  /// 🚨★★★**HELD WHILE IT SHOWS, THE COPY STAYED WHILE IT SHOWED** — the
+  /// save retires a staged copy only when its reader lets go, so a viewer
+  /// left open kept one on disk beside the entry that replaced it (card
+  /// `canvas-holds-staged-for-session`). ⛔Not through [_load]: that empties
+  /// the panel first, for a new document.
+  ///
+  /// 🚨Opened again on [was]'s OWN bytes ([HeldViewerDocument.again]), never
+  /// on what [request]'s path names by then: removed from the pool or
+  /// carried again, it names another carry — and the pages already drawn
+  /// are this one's (audit 09-25).
+  Future<void> _follow(
+    HeldViewerDocument was,
+    MediaViewerRequest request,
+    HeldBytesMove move,
+  ) async {
+    if (!mounted || !identical(_document, was)) {
+      return;
+    }
+    if (move == HeldBytesMove.replacing) {
+      return _letGoThenFollow(was, request);
+    }
+    final ViewerDocument? fresh;
+    try {
+      fresh = await _openDocument(request, hold: (_) => was.again());
+    } on Object {
+      return; // The old answer still reads; nothing is gained by losing it.
+    }
+    // A cut being read off [was] reads it to the end and lands: the swap
+    // below turns away whatever [was] answers after it, and a cut is not
+    // asked again the way a page is.
+    await _cuts;
+    if (!mounted || !identical(_document, was) || fresh == null) {
+      await fresh?.dispose();
+      return;
+    }
+    _takeUp(fresh, request);
+    unawaited(was.dispose());
+  }
+
+  /// A save is REPLACING the file [was] reads, and cannot while it is held
+  /// open ([HeldBytesMove.replacing]) — so [was] goes FIRST, and its bytes
+  /// open again once the save lets them: the open waits for the save to end
+  /// (card `rewrite-under-offset-readers`). The pages already drawn stay on
+  /// screen meanwhile; a page asked in between is asked again of the new
+  /// document, and a cut waits for it.
+  ///
+  /// 🚨★★★**NOTHING TOUCHES [was] ONCE IT IS LET GO OF.** It stayed the
+  /// document shown until the new one opened, and a picture's descriptor
+  /// read after its dispose — a render, a second dispose — is a native
+  /// crash (audit 09-25). A stand-in with its size and page count takes
+  /// its place ([_LetGoOf]).
+  Future<void> _letGoThenFollow(
+    HeldViewerDocument was,
+    MediaViewerRequest request,
+  ) async {
+    // Every cut already asked of [was] lands before it goes.
+    for (var cuts = _cuts; ; cuts = _cuts) {
+      await cuts;
+      if (identical(cuts, _cuts)) {
+        break;
+      }
+    }
+    if (!mounted || !identical(_document, was)) {
+      return;
+    }
+    final reopened = Completer<void>();
+    _cuts = reopened.future;
+    final standIn = _LetGoOf(was, page: _page);
+    setState(() => _document = standIn);
+    try {
+      await was.dispose();
+      final ViewerDocument? fresh;
+      try {
+        fresh = await _openDocument(request, hold: (_) => was.again());
+      } on Object catch (error) {
+        if (mounted && identical(_document, standIn)) {
+          setState(() => _message = _couldNotOpen(error));
+        }
+        return;
+      }
+      if (!mounted || !identical(_document, standIn)) {
+        await fresh?.dispose();
+        return;
+      }
+      if (fresh == null) {
+        // Nothing opens it now: the stand-in reads nothing, and the panel
+        // says so the way a first open would (audit 09-25 — it said
+        // nothing).
+        setState(() => _message = _nothingOpensFor(request.kind));
+        return;
+      }
+      _takeUp(fresh, request);
+    } finally {
+      reopened.complete();
+    }
+  }
+
+  /// What the panel says when a document will not open.
+  ///
+  /// 🚨WHY, under the sentence that says WHAT. The engines answer with a
+  /// reason — 「this file has no readable video stream」, 「no decoder for
+  /// this codec」 — and the viewer used to drop it on the floor, so every
+  /// unreadable file looked identical to every other one.
+  /// ⚠️The detail is the engine's own words and is not translated; the
+  /// export path made the same call with the encoder's.
+  static String _couldNotOpen(Object error) =>
+      '${AppText.strings.mediaViewerLoadFailed}\n$error';
+
+  /// What the panel says when this build has nothing that opens a [kind] —
+  /// the honest-absence states, each saying WHICH absence: a build without a
+  /// PDF rasterizer or without a video reader is a missing engine the user
+  /// can act on (a different build). ⛔One message for all of them would
+  /// send someone hunting for a codec they do not need.
+  static String _nothingOpensFor(MediaAssetKind kind) => switch (kind) {
+    MediaAssetKind.pdf => AppText.strings.mediaViewerNoPdfRenderer,
+    MediaAssetKind.video => AppText.strings.mediaViewerNoVideoDecoder,
+    // 🪦Audio moved off this line in 2026-09-08: it HAS a picture now (its
+    // waveform), so an absence here is a conform that could not be built —
+    // a file this build cannot decode, which is the same sentence a missing
+    // video reader gets.
+    MediaAssetKind.audio => AppText.strings.mediaViewerNoAudioDecoder,
+    MediaAssetKind.image => AppText.strings.mediaViewerCannotDisplay,
+  };
+
+  /// [fresh] in place of the document shown, for the same [request] — and
+  /// followed in its turn.
+  void _takeUp(ViewerDocument fresh, MediaViewerRequest request) {
+    setState(() {
+      // A render still out on the document it replaces lands nowhere, and
+      // is asked of [fresh].
+      _generation += 1;
+      _renders.clear();
+      _document = fresh;
+    });
+    if (fresh is HeldViewerDocument) {
+      _watch(fresh, request);
+    }
   }
 
   /// Opens whatever [request] names, or null when this medium has nothing
@@ -722,14 +897,20 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// original wins whenever it is still there: an OS opening a file for
   /// itself beats any range wrapped around one」. It does, and it showed the
   /// EDITED file for a carried movie whose original had changed since.
-  Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
+  ///
+  /// [hold] is where the bytes are asked for — the project, or, for a
+  /// document following its bytes, those same bytes again
+  /// ([HeldViewerDocument.again]).
+  Future<ViewerDocument?> _openDocument(
+    MediaViewerRequest request, {
+    HoldMediaBytes? hold,
+  }) async {
     Future<ViewerDocument?> held(
       Future<ViewerDocument?> Function(MediaByteSource source) open,
-    ) => openOnHeldBytes<ViewerDocument>(
-      widget.session.projectFile.holdMediaBytes,
+    ) => openHeldViewerDocument(
+      hold ?? widget.session.projectFile.holdMediaBytes,
       request.path,
       open,
-      HeldViewerDocument.new,
     );
     switch (request.kind) {
       case MediaAssetKind.image:
@@ -1240,18 +1421,24 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// arrives in document units whatever the zoom, and the read is in those
   /// same units, so the piece is the source's own pixels and the stamp's
   /// 100% is that size.
+  ///
+  /// ⚠️Of the page it was drawn on, taken NOW: a cut can wait its turn — a
+  /// cut before it, a document being let go of — and a page turned in the
+  /// meantime would have the outline cut out of the wrong page (audit
+  /// 09-25).
   void _cutFromPage(CanvasSelectionShape shape) {
-    _cuts = _cuts.then((_) => _cut(shape));
+    final page = _page;
+    _cuts = _cuts.then((_) => _cut(shape, page));
   }
 
-  Future<void> _cut(CanvasSelectionShape shape) async {
+  Future<void> _cut(CanvasSelectionShape shape, int page) async {
     final slot = widget.cutPieceSlot;
     final document = _document;
     final pageCount = _pageCount;
     if (!mounted || slot == null || document == null || pageCount == 0) {
       return;
     }
-    final pageIndex = _page.clamp(0, pageCount - 1);
+    final pageIndex = page.clamp(0, pageCount - 1);
     final pixels = viewerPagePixels(document.pageSize(pageIndex));
     // 📨THE BUDGET THE PAGES LIVE UNDER (the import-export session,
     // 2026-09-11: 「뷰어 예산 … 을 따르면 됩니다」). The read is billed as the

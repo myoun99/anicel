@@ -7,7 +7,7 @@ import '../helpers/dart_sources.dart';
 /// 🚨★★ONE ANSWER TO 「DOES THIS DRAWING HAVE A NAME」, AND ONE MARK FOR NO.
 ///
 /// `celNumberOf` (beside `Frame.celNumber`) says whether a drawing has a cel
-/// number, and `celNumberOrMark` what it prints when it has none. Until
+/// number, and `drawingHeadOf` what its head wears when it has none. Until
 /// C-save-percent (2026-09-15) seven places on screen spelled the mark
 /// themselves after their own `frameName.isEmpty`, so a name of spaces
 /// printed as spaces on the timeline and as the mark on the sheet — and a
@@ -20,15 +20,21 @@ import '../helpers/dart_sources.dart';
 /// 속이 찬 동그라미로 통일적용. 추후 두번째 중간나누기 마크(속이 빈)를
 /// 활용할지도 모르겠지만 당장은 제거」.
 ///
-/// So there are TWO names — what an unnamed drawing prints and the dot
-/// inside a block — and ONE glyph behind both, spelled once in the home.
-/// The hollow ○ is spelled nowhere. Splitting them again, the day 유저
-/// wants the second mark back, is one line in the home.
+/// 🚨★★AND ONE MARK AS DATA (2026-09-24). 유저: 「데이터적으로도 같은
+/// 취급시키는거 맞지? 중간나누기 마크1로서 작동했으면하는데. 마크2는 토에이
+/// 타임시트에 속이 빈 동그라미가 있어서 그게 될 예정」. F-149 had made the two
+/// share a GLYPH: the unnamed head printed ● as its name while the dot inside
+/// a block was a mark, so every surface drew them apart — the sheet at two
+/// sizes. Now there are TWO names — what an unnamed drawing wears and the dot
+/// inside a block — for ONE value, mark 1 of `InbetweenMark`, and the ● is
+/// that mark written as TEXT, spelled once in the home. The hollow ○ is
+/// spelled nowhere: mark 2 arrives as a second value of the enum.
 ///
 /// ⛔SO THIS SCANS SOURCE: copies that agree today all pass a behaviour
-/// test. The glyph spelled outside the home, or a
-/// `frameName == null || frameName.isEmpty` anywhere, has started the next
-/// copy.
+/// test. The glyph spelled outside the home, a
+/// `frameName == null || frameName.isEmpty` anywhere, or the unnamed mark
+/// named anywhere but the home — a surface deciding for itself that a drawing
+/// with no number wears it — has started the next copy.
 void main() {
   const home = 'lib/src/models/frame.dart';
   const mark = '●';
@@ -67,6 +73,7 @@ void main() {
           'the getter the sheet and the export read asks the same answer — '
           'a body of its own is the copy no behaviour test can see',
     );
+    expect(text, contains('DrawingHead drawingHeadOf(String? name)'));
     final spelled = [
       for (final (_, code) in codeLines(File(home)))
         if (code.contains(mark)) code,
@@ -78,16 +85,21 @@ void main() {
     );
     expect(
       text,
-      contains('const String unnamedDrawingMark = inbetweenMark;'),
+      contains('const InbetweenMark unnamedDrawingMark = InbetweenMark.one;'),
       reason:
-          '🚨유저: 「이름 없는 기본상태를 속이 찬 동그라미로 통일적용」 — the '
-          'unnamed drawing prints the in-between mark itself, not a glyph '
-          'of its own',
+          '🚨유저: 「중간나누기 마크1로서 작동했으면」 — the unnamed drawing '
+          'wears mark 1 itself, as data, not a glyph of its own',
+    );
+    expect(
+      text,
+      contains('InbetweenMark.one => inbetweenMark'),
+      reason: 'and mark 1 written as text is the one ●',
     );
   });
 
-  test('nobody else spells the mark, nobody spells the retired one, and '
-      'nobody asks whether a frame name is empty', () {
+  test('nobody else spells the mark, nobody spells the retired one, nobody '
+      'asks whether a frame name is empty, and nobody else hands a drawing '
+      'the unnamed mark', () {
     final offenders = <String>[];
     var scanned = 0;
     for (final file in dartFilesUnder('lib')) {
@@ -105,6 +117,11 @@ void main() {
         if (blankNameCheck.hasMatch(code)) {
           offenders.add('$path:$line asks frameName.isEmpty');
         }
+        if (path != home && code.contains('unnamedDrawingMark')) {
+          offenders.add(
+            '$path:$line hands out the unnamed mark — ask drawingHeadOf',
+          );
+        }
       }
     }
     expect(scanned, greaterThan(100), reason: '⛔빈 것을 쟀다');
@@ -112,7 +129,8 @@ void main() {
       offenders,
       isEmpty,
       reason:
-          'ask celNumberOrMark / inbetweenMark — 유저: 「당장은 제거」 for ○',
+          'ask drawingHeadOf / celNumberOrMark / inbetweenMark — 유저: '
+          '「당장은 제거」 for ○',
     );
   });
 

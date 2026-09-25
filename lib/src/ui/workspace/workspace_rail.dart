@@ -46,11 +46,15 @@ class _WorkspaceRail {
   ];
 
   void _toggleRailGroup(String railId) {
+    final opening = !_state._openRails.contains(railId);
     _state._rebuild(() {
       if (!_state._openRails.remove(railId)) {
         _state._openRails.add(railId);
       }
     });
+    if (opening) {
+      _state._claimPanelOf(_state._layout.activeTabIn(railId));
+    }
     _state._layoutPersistence.scheduleLayoutSave();
   }
 
@@ -337,14 +341,7 @@ class _WorkspaceRail {
   /// A panel dropped on a rail button JOINS that group and opens it —
   /// dropping something out of sight would be a silent move.
   void _dropIntoRailGroup(String railId, EditorPanelTabDragData data) {
-    final tabs = _state._layout.tabsIn(railId);
-    _state._mutatingLayout(() {
-      _state._layout.moveTab(
-        tabId: data.tabId,
-        toDockId: railId,
-        insertIndex: tabs.length,
-      );
-    });
+    _state._placeTab(data, railId, _state._layout.tabsIn(railId).length);
     _state._rebuild(() => _state._openRails.add(railId));
     _state._layoutPersistence.scheduleLayoutSave();
   }

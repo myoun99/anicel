@@ -119,10 +119,10 @@ void main() {
     expect(
       session.activeLayerId,
       row.layerId,
-      reason: '⛔`takesLayerActive` is false only on the STORYBOARD rails, '
-          'where the row you stand on and the layer you draw on are '
-          'separate states (유저 2026-07-27). Everywhere else standing on '
-          'a layer row IS picking it',
+      reason: '⛔Only the STORYBOARD\'s rails stand without picking — the '
+          'row you stand on and the layer you draw on are separate states '
+          'there (유저 2026-07-27). Everywhere else standing on a layer row '
+          'IS picking it',
     );
   });
 

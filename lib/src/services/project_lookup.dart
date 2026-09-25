@@ -301,23 +301,11 @@ Set<MediaCarry> projectMediaCarries(Project project) => {
     ?asset.carry,
 };
 
-/// The carry the pool's [path] asset is ([MediaAsset.carry]) — null when
-/// the pool names no such asset, or points at the file instead of carrying
-/// it.
-///
-/// 🚨★★★**THE POOL AS IT IS NOW, NOT THE PATH.** One path can have been
-/// carried twice — removed, then carried again, with an undo able to bring
-/// the first back — and which carry's bytes a reader gets is the one the
-/// pool names at this moment (card `recarry-after-remove-reads-the-old`).
-MediaCarry? projectMediaCarryOf(Project project, String path) {
-  final key = normalizedMediaPath(path);
-  for (final asset in project.mediaAssets) {
-    if (asset.path == key) {
-      return asset.carry;
-    }
-  }
-  return null;
-}
+// 🪦`projectMediaCarryOf` stood here: [Project.mediaAssetByPath] with its
+// own loop, `?.carry` at the end (audit 09-25). The carry the pool names at
+// a path is `project.mediaAssetByPath(path)?.carry` — see
+// `ProjectFile.mediaCarryFor` for why it is the pool's answer and not the
+// path's.
 
 /// Every layer id the project already holds, as raw strings.
 ///

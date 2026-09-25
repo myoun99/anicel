@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
+
 import '../../services/editing/active_cut_helpers.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
@@ -6,6 +8,9 @@ import '../../models/standing_place.dart';
 import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
+import '../../models/track_transform_lane_carrier.dart'
+    show trackIdOfTransformLaneCarrier;
+import '../../models/working_panel.dart';
 import '../timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import '../timeline/property_lane_model.dart'
@@ -89,61 +94,93 @@ class Standing {
   /// 바뀐다 — 그 상태에서 아래 화살표를 누르면 바로 밑이 아니라 밑의 밑이
   /// 선택된다. 🚨UI만 바꾸고 내부를 안 바꾸는 자리가 더 있는지 전수 점검」.
   ///
-  /// [selectLayer] keeps `_verbRow` in step with the active layer, and it is
-  /// not the only way the active layer moves: Add Layer seats one straight on
-  /// the controller, and a controller REBUILD seats one through
-  /// `initialActiveLayerId`. After either, the row was still the old layer's —
-  /// so ↓ counted from there and landed a row further than it looked, and the
-  /// flip counted the old row's blocks.
+  /// [selectLayer] keeps the timeline's row in step with the active layer,
+  /// and it is not the only way the active layer moves: Add Layer seats one
+  /// straight on the controller, and a controller REBUILD seats one through
+  /// `initialActiveLayerId`. After either, the row was still the old layer's
+  /// — so ↓ counted from there and landed a row further than it looked, and
+  /// the flip counted the old row's blocks.
   ///
   /// ⛔It CANNOT be enforced at the read (the shape tried first). A row whose
   /// layer is not the active layer is legitimate: the storyboard's rails stand
-  /// on a row WITHOUT taking the cut's drawing target (유저 2026-07-27,
-  /// `takesLayerActive: false`), so an S row and the active cel layer disagree
-  /// on purpose there — and overriding the read put the ring on the wrong row.
-  /// The two writers say it instead, each where it moved the layer.
+  /// on a row WITHOUT taking the cut's drawing target (유저 2026-07-27), so an
+  /// S row and the active cel layer disagree on purpose there — and
+  /// overriding the read put the ring on the wrong row. The two writers say
+  /// it instead, each where it moved the layer.
+  ///
+  /// The row you just made is the subject OF THE PANEL YOU MADE IT IN: made
+  /// while working in the storyboard (whose layer pill makes S rows), it is
+  /// that rail's row as well — the rail shows it, so that is where you stand.
   void seatVerbRowOnActiveLayer() {
     final seated = _controllers.layerController.activeLayerId;
-    if (seated == null || _verbRow == LayerRowAddress(seated)) {
+    if (seated == null) {
       return;
     }
-    _verbRow = LayerRowAddress(seated);
-    _timelineRow = _verbRow;
+    final row = LayerRowAddress(seated);
+    final railStands =
+        _working.value == WorkingPanel.storyboard &&
+        _trackSe.isTrackOwnedRailLayerId(seated);
+    if (_timelineRow == row && (!railStands || _storyboardRow == row)) {
+      return;
+    }
+    _timelineRow = row;
+    if (railStands) {
+      _storyboardRow = row;
+    }
     publishCurrentRow();
   }
 
   /// F-20, the DELETE half: a row whose layer no longer exists is not a
   /// deliberate stand anywhere — it is a dangling id. A row that still
-  /// resolves is left alone, which is what keeps the storyboard's S rows
-  /// (they resolve through the track) out of this.
+  /// resolves is left alone.
+  ///
+  /// Only the TIMELINE's row is judged here, and dropping it is enough: an
+  /// empty timeline row reads as the active layer's ([timelineStandingRow]).
+  /// The rail's row is judged where it is read ([selectedRow] and
+  /// [storyboardStandingRow] fall back to the track row when the rail no
+  /// longer shows what was stored) — ↩️judging it here too un-seated a V
+  /// track's lane, whose carrier is no cut layer, onto the timeline on every
+  /// rebuild.
   void unseatStrandedVerbRow() {
-    final strandedOwner = _verbRow?.owningLayerId;
+    final strandedOwner = _timelineRow?.owningLayerId;
     if (strandedOwner != null &&
         _project.rangeLayerById(strandedOwner) == null) {
-      _verbRow = null;
       _timelineRow = null;
-      seatVerbRowOnActiveLayer();
+      publishCurrentRow();
     }
   }
 
-  /// The row a frame-axis VERB acts on (R10 #13) — the rail's rows and the
-  /// cut's layer rows alike, whichever the user last engaged.
+  /// WHICH PANEL the frame-axis verbs, the arrows and the bound keys answer
+  /// to: the one last touched (유저 2026-08-05 「마지막으로 무언가 액션이 있었던
+  /// 패널을 기준으로」; 2026-09-24 「마지막으로 만진 패널 … 위아래 이동이
+  /// 타임라인 내부로 샌다거나 그런거 싹 다 해결」).
   ///
-  /// NOT the same thing as [selectedRow], and deliberately so. The user's
-  /// correction when #13 was settled: a V row and a layer row are not
-  /// siblings competing for one slot, they are a HIERARCHY — a V row is a
-  /// cut, a layer row is a layer INSIDE a cut. So [selectedRow] keeps
-  /// saying which row of the FILM is lit (and picking a layer still leaves
-  /// it alone, the 2026-07-27 rule), while this says whose blocks the flip
-  /// counts. Folding the two into one slot is what made picking a layer
-  /// drop the rail's S-row highlight, which is not what either question
-  /// was asking.
-  TimelineRowAddress? _verbRow;
+  /// ↩️There used to be a THIRD row here — the verb's own, beside the two
+  /// panels' rows — and every writer copied one of the two into it. A copy is
+  /// a second answer, and it drifted: one lane arm served both panels, so a
+  /// timeline lane stand wrote the storyboard's row; a V track's lane was
+  /// un-seated onto the timeline on every rebuild; and a program re-seat of
+  /// the drawing target (a hidden row's stand-in) took the flip off the
+  /// storyboard in the middle of a walk. The verb's row is READ off the panel
+  /// being worked in now ([currentRow]), so it cannot name a row that panel
+  /// is not standing on.
+  final ValueNotifier<WorkingPanel> _working = ValueNotifier(
+    WorkingPanel.timeline,
+  );
+
+  WorkingPanel get workingPanel => _working.value;
+
+  /// Rides beside [_internals.currentRowListenable]: a claim moves the panel
+  /// without a session notify, and the flip's axis has to hear it — the
+  /// X-sheet runs its frames down the page, the storyboard never does.
+  ValueListenable<WorkingPanel> get workingPanelListenable => _working;
+
+  void dispose() => _working.dispose();
 
   /// The TIMELINE's own row, the way [_storyboardRow] is the rail's: the
   /// layer or property lane last engaged there. Kept so that returning to
   /// the timeline restores the row you were on rather than resetting to
-  /// whatever the active layer happens to be.
+  /// whatever the active layer happens to be. Null = the active layer's row.
   TimelineRowAddress? _timelineRow;
 
   /// The storyboard rail's own selected row, as picked. Null = never
@@ -176,36 +213,53 @@ class Standing {
     return TrackRowAddress(_selection.selectedTrackId);
   }
 
-  /// 🚨★★★THE CLAIM READS THE STORE, the way [claimTimelineRow] does.
+  /// The row the STORYBOARD's verbs act on: [selectedRow], or a lane of a
+  /// row this rail shows.
   ///
-  /// ⛔It used to read [selectedRow], and that getter answers a DIFFERENT
-  /// question: 「which RAIL row is lit」. A lane is a subject (R10 #19) but
-  /// never a rail row, so the getter collapses it to the track — and this
-  /// claim, which fires on the host's OUTERMOST pointer-down, therefore ran
-  /// last on every press and un-stood you from the lane the press had just
-  /// stood on. One getter answering two questions, which is the shape
-  /// CLAUDE.md names: 「한 플래그가 두 질문에 답하는 것도 발명이다」.
+  /// 🚨★★★IT READS THE STORE. ⛔Its claim used to read [selectedRow], and
+  /// that getter answers a DIFFERENT question: 「which RAIL row is lit」. A
+  /// lane is a subject (R10 #19) but never a rail row, so the getter
+  /// collapses it to the track — and the claim, which fires on the host's
+  /// OUTERMOST pointer-down, therefore ran last on every press and un-stood
+  /// you from the lane the press had just stood on. One getter answering two
+  /// questions, which is the shape CLAUDE.md names: 「한 플래그가 두 질문에
+  /// 답하는 것도 발명이다」.
   ///
   /// 🚨It looked fine for a year because of an accident of timing: a finger
-  /// stood on the RELEASE, after this claim, so the lane survived. A mouse
-  /// never did — pressing a storyboard lane band with a mouse has been
+  /// stood on the RELEASE, after the claim, so the lane survived. A mouse
+  /// never did — pressing a storyboard lane band with a mouse had been
   /// leaving the ring on the track row all along, and only lifting the
   /// finger's carve-out (터치 묘화 ON) made a test say so.
   ///
-  /// ⛔But only a lane THIS RAIL SHOWS. A timeline lane also passes through
-  /// [selectRow], and claiming one here would leave the storyboard's flip
-  /// counting drawings instead of cuts — the very law this claim exists to
-  /// keep (「touching the storyboard hands the flip its rail's row」).
-  /// [_trackSe.trackOwnedRailOwner] is the question already asked of a lane's
-  /// carrier elsewhere, so no new rule is written here.
-  void claimStoryboardRow() {
+  /// ↩️The storyboard's VERBS kept making the same substitution after the
+  /// claim stopped: its cursor block, its ＋ and its Edit asked [selectedRow],
+  /// so their lane arms — 「A lane row holds keys, not blocks」, 「Standing on
+  /// one of the row's LANES answers with the row」 — could never run, and a
+  /// comma pressed while standing on an S row's lane re-timed the CUT.
+  ///
+  /// ⛔Only a lane THIS RAIL SHOWS ([_trackSe.trackOwnedRailOwner], the
+  /// question already asked of a lane's carrier elsewhere).
+  TimelineRowAddress get storyboardStandingRow {
     final stored = _storyboardRow;
-    standVerbsOn(
-      stored is LaneRowAddress &&
-              _trackSe.trackOwnedRailOwner(stored.layerId) != null
-          ? stored
-          : selectedRow,
-    );
+    return stored is LaneRowAddress &&
+            _trackSe.trackOwnedRailOwner(stored.layerId) != null
+        ? stored
+        : selectedRow;
+  }
+
+  /// The row the TIMELINE's verbs act on: the row it last stood on, else the
+  /// active layer's — with nothing picked yet the row you are on is the one
+  /// you draw on. Only a cut with no layers at all falls through to the
+  /// track row.
+  TimelineRowAddress get timelineStandingRow {
+    final stored = _timelineRow;
+    if (stored != null) {
+      return stored;
+    }
+    final layerId = _selection.activeLayerId;
+    return layerId == null
+        ? TrackRowAddress(_selection.selectedTrackId)
+        : LayerRowAddress(layerId);
   }
 
   /// Stores the rail's row. Returns whether the ANSWER moved — the store
@@ -215,8 +269,8 @@ class Standing {
     final before = selectedRow;
     _storyboardRow = row;
     // Picking a rail row is also engaging it, so the verb follows (R10
-    // #13). The reverse does not hold — see [currentRow].
-    standVerbsOn(row);
+    // #13): the storyboard is the panel being worked in.
+    _engage(WorkingPanel.storyboard);
     return selectedRow != before;
   }
 
@@ -225,7 +279,7 @@ class Standing {
   /// no longer the only way to move the flip's subject — touching the
   /// panel at all is, because that is what "I am working here" looks like.
   ///
-  /// Each panel claims the row IT remembers rather than a fresh one, so
+  /// Each panel stands on the row IT remembers rather than a fresh one, so
   /// coming back to the timeline lands on the lane you left open instead
   /// of dropping to the layer row.
   ///
@@ -234,40 +288,74 @@ class Standing {
   /// commits once on release. What the rails DRAW rides
   /// [_internals.currentRowListenable] instead, so the row that moved repaints its
   /// own small cells and nothing else.
-  void claimTimelineRow() {
-    final layerId = _selection.activeLayerId;
-    final next =
-        _timelineRow ?? (layerId == null ? null : LayerRowAddress(layerId));
-    if (next != null) {
-      standVerbsOn(next);
-    }
-  }
+  void claimTimelineRow() => _engage(WorkingPanel.timeline);
 
-  /// Stands the frame-axis verbs on [row] and republishes — the store and
-  /// the publish in ONE step, because a row stored without publishing is a
-  /// ring left on the row the user just left.
-  ///
-  /// ⛔`_verbRow` itself stays private. The panels that claim the row
-  /// (the storyboard rail among them) say WHICH row they stand on; they do
-  /// not get to move the slot without telling the rails it moved.
-  void standVerbsOn(TimelineRowAddress? row) {
-    _verbRow = row;
+  /// The storyboard's half of the same law: touching it hands the flip, the
+  /// arrows and the bound keys its rail's row.
+  void claimStoryboardRow() => _engage(WorkingPanel.storyboard);
+
+  void _engage(WorkingPanel panel) {
+    _working.value = panel;
     publishCurrentRow();
   }
 
-  /// Defaults to the active layer's row, not the track's: with nothing
-  /// picked yet the row you are on is the one you draw on. Only a cut with
-  /// no layers at all falls through to the track row.
-  TimelineRowAddress get currentRow {
-    final stored = _verbRow;
-    if (stored != null) {
-      return stored;
+  /// The surfaces showing each panel on the screen right now
+  /// ([panelInSight]). A panel is on the screen while any of them is — and
+  /// there are two while it moves between docks, because the new one mounts
+  /// before the old one is gone. A panel that never said is not on it.
+  final Map<WorkingPanel, Set<Object>> _surfacesInSight = {
+    for (final panel in WorkingPanel.values) panel: <Object>{},
+  };
+
+  /// 🗣️유저 2026-09-25 (the-touched-panel-out-of-sight-Q1): 「화면에 남은
+  /// 쪽이 받는다」. The panel being worked in leaving the screen — its tab put
+  /// behind another, its rail group shut, the panel closed — hands the work
+  /// to the other panel while THAT one is on the screen. With both off it,
+  /// nothing moves. Coming back is no touch: its tab, or a press inside it,
+  /// claims it again.
+  ///
+  /// ↩️The 09-24 doors all brought a panel forward; putting it away touched
+  /// nothing, so the arrows, the flip and the keys went on walking a panel
+  /// nobody could see.
+  void panelInSight(
+    WorkingPanel panel, {
+    required Object surface,
+    required bool inSight,
+  }) {
+    final surfaces = _surfacesInSight[panel]!;
+    if (inSight) {
+      surfaces.add(surface);
+      return;
     }
-    final layerId = _selection.activeLayerId;
-    return layerId == null
-        ? TrackRowAddress(_selection.selectedTrackId)
-        : LayerRowAddress(layerId);
+    surfaces.remove(surface);
+    if (surfaces.isNotEmpty || _working.value != panel) {
+      return;
+    }
+    final other = switch (panel) {
+      WorkingPanel.timeline => WorkingPanel.storyboard,
+      WorkingPanel.storyboard => WorkingPanel.timeline,
+    };
+    if (_surfacesInSight[other]!.isNotEmpty) {
+      _engage(other);
+    }
   }
+
+  /// The row a frame-axis VERB acts on (R10 #13): the standing row of the
+  /// panel being worked in.
+  ///
+  /// NOT the same thing as [selectedRow], and deliberately so. The user's
+  /// correction when #13 was settled: a V row and a layer row are not
+  /// siblings competing for one slot, they are a HIERARCHY — a V row is a
+  /// cut, a layer row is a layer INSIDE a cut. So [selectedRow] keeps
+  /// saying which row of the FILM is lit (and picking a layer still leaves
+  /// it alone, the 2026-07-27 rule), while this says whose blocks the flip
+  /// counts. Folding the two into one slot is what made picking a layer
+  /// drop the rail's S-row highlight, which is not what either question
+  /// was asking.
+  TimelineRowAddress get currentRow => switch (_working.value) {
+    WorkingPanel.timeline => timelineStandingRow,
+    WorkingPanel.storyboard => storyboardStandingRow,
+  };
 
   /// 🚨T4 — STANDING ON A ROW, as one verb.
   ///
@@ -294,17 +382,20 @@ class Standing {
   /// lane bands stand through THIS verb now instead of a hand-rolled
   /// clear-and-seek that restated the law without the T10 guard). At most
   /// one of the two frames is passed.
-  /// [takesLayerActive] is false on the STORYBOARD's rails, where the row you
-  /// stand on and the layer you draw on are separate states (유저
+  /// [panel] is the panel the row is stood on IN. On the STORYBOARD's rails
+  /// the row you stand on and the layer you draw on are separate states (유저
   /// 2026-07-27). It is a parameter rather than a second verb because the
-  /// clearing law is the same on both panels — only the active layer differs,
+  /// clearing law is the same on both panels — only whose row it is differs,
   /// and stating that difference once here beats restating the law at each
   /// call site, which is the mistake T4 was.
+  /// ↩️It was a flag, `takesLayerActive`, and a flag could say only half of
+  /// it: a LANE stood on in either panel went through one shared lane arm,
+  /// which wrote both panels' rows at once. The panel says the whole of it.
   void standOnRow(
     TimelineRowAddress row, {
+    WorkingPanel panel = WorkingPanel.timeline,
     int? frameIndex,
     int? globalFrameIndex,
-    bool takesLayerActive = true,
   }) {
     // 🚨T10. T4's law is untouched by this: the clearing still lives INSIDE
     // the verb rather than at its call sites — scattering it was T4's whole
@@ -334,23 +425,16 @@ class Standing {
       _selection.clearTimelineSelections();
     }
     switch (row) {
-      case LayerRowAddress(:final layerId):
-        if (takesLayerActive) {
-          selectLayer(layerId);
-        } else {
-          selectRow(row);
-        }
-      case LaneRowAddress(:final layerId):
-        // A LANE also becomes the verb's subject, so Add keys that property
-        // instead of adding a cel (R10 #19). `selectLayer` moves the verb row
-        // to the LAYER, which is why the lane is claimed after it — and why a
-        // layer row needs nothing more.
-        if (takesLayerActive) {
-          selectLayer(layerId);
-        }
+      case LayerRowAddress(:final layerId) when panel == WorkingPanel.timeline:
+        selectLayer(layerId);
+      case LaneRowAddress() when panel == WorkingPanel.timeline:
+        _standOnTimelineLane(row);
+      case LayerRowAddress() || LaneRowAddress():
+        // The storyboard's rails: the rail's row, never the drawing target.
         selectRow(row);
       case TrackRowAddress():
-        // A track row has no layer to make active either way.
+        // A track row has no layer to make active, and it is the storyboard's
+        // row whichever surface names it.
         selectRow(row);
     }
     if (frameIndex != null) {
@@ -370,12 +454,21 @@ class Standing {
   /// yet) — there is nothing to light in that state, and asking would
   /// throw.
   void publishCurrentRow() {
-    if (_internals.disposed ||
-        (_verbRow == null && _selection.activeLayerId == null)) {
+    if (_internals.disposed || !_currentRowAnswers) {
       return;
     }
     _internals.currentRowListenable.value = currentRow;
   }
+
+  /// Whether [currentRow] can answer without a TRACK the film may not have
+  /// yet — the timeline with no row engaged and no active layer, or the
+  /// storyboard of an empty film.
+  bool get _currentRowAnswers => switch (_working.value) {
+    WorkingPanel.timeline =>
+      _timelineRow != null || _selection.activeLayerId != null,
+    WorkingPanel.storyboard =>
+      _project.repository.requireProject().tracks.isNotEmpty,
+  };
 
   /// THE FOLD LAW (R5 #11): what disappears never keeps the selection.
   /// Folding something you are standing INSIDE hands the standing row to
@@ -391,21 +484,34 @@ class Standing {
   /// one place.
   ///
   /// [laneId] null means the whole twirl-down is closing (every lane of the
-  /// layer goes), so the LAYER's own row is what swallows it. A non-null
+  /// layer goes), so the LAYER's own row is what swallows it — or, for a V
+  /// track's lanes, whose carrier is no layer, the TRACK's row. A non-null
   /// [laneId] is a GROUP header closing, and it swallows its members alone
   /// — the header itself stays on screen and is where you land.
-  void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) {
+  ///
+  /// [panel] is the panel whose rail folded: each panel keeps its own
+  /// twirls, so a fold hands on where THAT panel stands.
+  void handOffCurrentRowOnFold(
+    LayerId layerId, {
+    String? laneId,
+    WorkingPanel panel = WorkingPanel.timeline,
+  }) {
     if (laneId == null) {
+      final track = trackIdOfTransformLaneCarrier(layerId);
       handOffOnFold(
-        swallower: LayerRowAddress(layerId),
+        swallower: track == null
+            ? LayerRowAddress(layerId)
+            : TrackRowAddress(track),
         vanished: (address) =>
             address is LaneRowAddress && address.layerId == layerId,
+        panel: panel,
       );
       return;
     }
     handOffOnFold(
       swallower: LaneRowAddress(layerId, laneId),
       vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
+      panel: panel,
     );
   }
 
@@ -448,25 +554,47 @@ class Standing {
   /// code: the folder fold and the attach group fold kept bodies of their own
   /// until F-81, and the attach one asked a narrower question than the fold it
   /// answered for.
+  ///
+  /// [panel] is the panel whose rail folded, and what the fold hands on is
+  /// where THAT panel stands — not which panel you are working in. ↩️Only
+  /// the timeline's twirls reached this law, so folding a storyboard row's
+  /// lanes left the storyboard standing on a lane nobody could see: the
+  /// window drew the row while the flip walked the lane a frame at a time,
+  /// and Delete aimed at its keys.
   void handOffOnFold({
     required TimelineRowAddress swallower,
     required bool Function(TimelineRowAddress address) vanished,
+    WorkingPanel panel = WorkingPanel.timeline,
   }) {
     _rowSelectionVerbs.foldRowSelection(
       vanished: vanished,
       swallower: swallower,
     );
+    if (panel == WorkingPanel.storyboard) {
+      // The rail's own row; the drawing target is not its business
+      // (유저 2026-07-27).
+      if (vanished(storyboardStandingRow)) {
+        _storyboardRow = swallower;
+        publishCurrentRow();
+      }
+      return;
+    }
     final activeLayerId = _selection.activeLayerId;
     final standsInside =
-        vanished(currentRow) ||
+        vanished(timelineStandingRow) ||
         activeLayerId != null && vanished(LayerRowAddress(activeLayerId));
     if (!standsInside) {
       return;
     }
-    if (swallower is LayerRowAddress) {
-      selectLayer(swallower.layerId);
-    } else {
-      selectRow(swallower);
+    switch (swallower) {
+      case LayerRowAddress(:final layerId):
+        _seatLayer(layerId);
+      case LaneRowAddress():
+        _selection.clearFrameRangeSelection();
+        _timelineRow = swallower;
+        publishCurrentRow();
+      case TrackRowAddress():
+        break;
     }
   }
 
@@ -499,18 +627,13 @@ class Standing {
         // highlight resolves it to the containing V row, like any other
         // in-cut row; what moves is the verb's subject.
         //
-        // A lane lives in the TIMELINE, so it is the timeline's row to
-        // remember: coming back to that panel restores the lane rather
-        // than dropping to the layer it hangs under.
+        // ↩️This arm served the TIMELINE's lanes as well, and wrote the
+        // timeline's row here beside the rail's — so a lane stood on in one
+        // panel became the row the OTHER panel came back to. The timeline's
+        // lanes stand through [_standOnTimelineLane] now; this is the rail's.
         //
-        // R5 #12: and the CELL range goes. A frame range is drawn on a
-        // LAYER row, so standing on a property is always leaving the row
-        // it belongs to — but `selectLayer` runs first on this path and
-        // keeps a range whose layer has not changed, which left the band
-        // sitting on the cells while the subject was a lane. Nothing draws
-        // a frame range from a lane, so this can never drop one mid-drag.
+        // R5 #12: the CELL range goes (see [_standOnTimelineLane]).
         _selection.clearFrameRangeSelection();
-        _timelineRow = row;
         if (storeStoryboardRow(row)) {
           _changes.notifyChanged();
         }
@@ -521,6 +644,27 @@ class Standing {
     // a path of its own — publishing once here beats three call sites that
     // must each remember.
     publishCurrentRow();
+  }
+
+  /// Standing on a LANE in the timeline. A lane becomes the verb's subject,
+  /// so Add keys that property instead of adding a cel (R10 #19) — while
+  /// its LAYER stays the drawing target, taken in the same step
+  /// ([_seatLayer]): standing on a property must never cost you the layer.
+  ///
+  /// A lane lives in the TIMELINE here, so it is the timeline's row to
+  /// remember: coming back to that panel restores the lane rather than
+  /// dropping to the layer it hangs under.
+  ///
+  /// R5 #12: and the CELL range goes. A frame range is drawn on a LAYER row,
+  /// so standing on a property is always leaving the row it belongs to — but
+  /// [selectLayer] runs first on this path and keeps a range whose layer has
+  /// not changed, which left the band sitting on the cells while the subject
+  /// was a lane. Nothing draws a frame range from a lane, so this can never
+  /// drop one mid-drag.
+  void _standOnTimelineLane(LaneRowAddress lane) {
+    _working.value = WorkingPanel.timeline;
+    _seatLayer(lane.layerId, row: lane);
+    _selection.clearFrameRangeSelection();
   }
 
   /// The row each cut was last worked on, replayed on the way back in
@@ -597,9 +741,30 @@ class Standing {
 
   /// Selects the CUT's row — the active layer, which is the drawing target
   /// and what the timeline's rail highlights. It does not touch the
-  /// storyboard rail's own [_selection.selectedRow]: the two row selections are
+  /// storyboard rail's own [selectedRow]: the two row selections are
   /// separate (user decision 2026-07-27).
+  ///
+  /// Picking a layer is working in the timeline, so it engages it — R10 #13:
+  /// the flip counts this layer's blocks from here.
   void selectLayer(LayerId layerId) {
+    _working.value = WorkingPanel.timeline;
+    _seatLayer(layerId);
+  }
+
+  /// [selectLayer] minus the engaging: the drawing target and the timeline's
+  /// row move to [layerId], and the panel being worked in stays where it is.
+  ///
+  /// The PROGRAM's re-seats come here — a fold's swallower, an undo's walk, a
+  /// hidden row's stand-in. ↩️They went through [selectLayer], so a cut
+  /// switch whose remembered row happened to be hidden took the flip off the
+  /// storyboard in the middle of a V-row walk: the storyboard's grammar
+  /// leaking into the timeline's, which is the shape 유저 2026-09-24 named
+  /// (「위아래 이동이 타임라인 내부로 샌다거나 그런거 싹 다 해결」).
+  ///
+  /// [row] is the timeline row to stand on when it is not the layer's own —
+  /// one of its LANES, taken in the same publish, so re-standing on the
+  /// lane you are on repaints nothing.
+  void _seatLayer(LayerId layerId, {TimelineRowAddress? row}) {
     var changed = false;
     // A frame-range selection is single-layer (UI-R8): moving to another
     // row drops it. The lane selection follows the same rule.
@@ -627,12 +792,10 @@ class Standing {
       _solo.syncVisibilitySolo();
       changed = true;
     }
-    // R10 #13: picking a layer moves the VERB's row, so the flip counts
-    // this layer's blocks from here. It does NOT touch the rail's row —
-    // that stays where the user put it (2026-07-27), and it is a different
-    // question: which row of the FILM is lit.
-    _verbRow = LayerRowAddress(layerId);
-    _timelineRow = _verbRow;
+    // R10 #13: the TIMELINE's row moves with the layer. It does NOT touch the
+    // rail's row — that stays where the user put it (2026-07-27), and it is
+    // a different question: which row of the FILM is lit.
+    _timelineRow = row ?? LayerRowAddress(layerId);
     // The drawn row rides its own notifier, so leaving a property lane for
     // its layer row repaints the rail even when nothing else changed —
     // "already active is free" stays true for the session notify.
@@ -683,7 +846,9 @@ class Standing {
     final row = place.layer;
     if (row != null && _project.layers.any((layer) => layer.id == row)) {
       _openFoldersAbove(row);
-      selectLayer(row);
+      // The walk moves where the timeline stands, not which panel you are
+      // working in — an undo is a key, not a touch.
+      _seatLayer(row);
     }
     _selection.selectFrameIndex(place.frame);
     keepStandingShown(reveal: true);
@@ -779,7 +944,7 @@ class Standing {
     }
     final standIn = _standInFor(active, stack, hiddenBy);
     if (standIn != null && standIn.id != active.id) {
-      selectLayer(standIn.id);
+      _seatLayer(standIn.id);
       _rangeSelections.revealSelection();
     }
   }

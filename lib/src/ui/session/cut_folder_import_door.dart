@@ -130,7 +130,7 @@ class CutFolderImportDoor {
     final registeredAssets = [
       for (final asset in plan.assets)
         if (copyIntoProject)
-          asset.copyWith(carriedAs: mintMediaCarry())
+          asset.copyWith(carriedAs: mintMediaCarry(asset.path))
         else
           asset,
     ];

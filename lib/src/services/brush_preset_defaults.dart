@@ -8,6 +8,7 @@ import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/brush_pressure_curve.dart';
 import '../models/brush_settings.dart';
+import '../models/brush_shape.dart';
 import '../models/brush_tip_rotation_mode.dart';
 import 'brush_tip_mask_defaults.dart';
 
@@ -140,17 +141,39 @@ final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[
 /// spacing, the rotation mode and the shape of a pressure curve. A pair that
 /// shares all of those is one brush wearing two names, which is what
 /// 「최대한 안겹치도록… 에어브러시 같은게 두개 안생기도록」 (유저) forbids.
+///
+/// 🚨**A GENERAL BRUSH LAYS ITS DABS AT THE FINEST SPACING** (유저
+/// 2026-09-24: 「지금 프리셋 브러시들 간격이 너무 멀어서 일반적인 설정으론
+/// 최소치로 두자. 간격이 필요한 특수한거만 둬도되고」). A brush keeps a gap of
+/// its own only where its look IS the gap — measured on the sample stroke at
+/// an 87 px tip, texture being the neighbour-to-neighbour difference inside
+/// the stroke: the decorations (separate marks); the grain and bristle tips,
+/// whose texture fell to 16–51% at 1% (Rough Pencil, Dark Pencil 4B,
+/// Colored Pencil, Dry Ink, Pastel, Crayon, Graphite Stick, Wet Watercolor,
+/// Flat Bristle, Palette Knife, Grit Spray, Blending Stump, Hatching, Rough
+/// Edge, Concrete, Chalk); the spacing-jitter ones (Charcoal, Dry Brush),
+/// whose jitter needs a gap to move; and the blenders, which pick colour up
+/// once per dab. On a general brush the edge got smoother (its wobble fell
+/// 30–60%) and nothing else moved — except density, which flow builds per
+/// dab: each soft brush took the flow that gives, at its own size, the
+/// density it had, `1 − (1 − flow)^(old step / new step)` (Airbrush at 40 px:
+/// a 2 px step became 1, and 0.12 became 0.062).
 final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // ---- Pencil ----------------------------------------------------------
   BrushPreset(
     id: const BrushPresetId('builtin-pencil'),
     name: 'Pencil',
     groupId: _pencilGroup,
+    // ⚠️Pressure darkens the line as well as widening it — what a pencil
+    // does and ink does not. Only its spacing (15% against the Ink Pen's
+    // 10%) set the two rows apart until both went to the finest spacing
+    // (2026-09-24), and then they drew the same row.
     settings: BrushSettings(
       size: 4,
       hardness: 1.0,
-      spacing: 0.15,
+      spacing: BrushShape.minSpacing,
       sizePressureCurve: BrushPressureCurve.identity(),
+      opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
   BrushPreset(
@@ -162,7 +185,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 0.8,
       opacity: 0.85,
       flow: 0.8,
-      spacing: 0.12,
+      spacing: BrushShape.minSpacing,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.35),
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
@@ -174,7 +197,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 2,
       hardness: 1.0,
-      spacing: 0.08,
+      spacing: BrushShape.minSpacing,
       // A lead has one width; pressure darkens it rather than widening it.
       sizePressureCurve: BrushPressureCurve.linearFrom(0.8),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.45),
@@ -205,7 +228,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 3,
       hardness: 0.95,
       flow: 0.55,
-      spacing: 0.05,
+      spacing: BrushShape.minSpacing,
       opacity: 0.75,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.0,
@@ -252,7 +275,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 6,
       hardness: 0.7,
       flow: 0.8,
-      spacing: 0.08,
+      spacing: BrushShape.minSpacing,
       roundness: 0.55,
       angleDegrees: 35,
       rotationMode: BrushTipRotationMode.fixed,
@@ -296,7 +319,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 8,
       hardness: 1.0,
-      spacing: 0.1,
+      spacing: BrushShape.minSpacing,
       sizePressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -307,7 +330,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 10,
       hardness: 1.0,
-      spacing: 0.08,
+      spacing: BrushShape.minSpacing,
       // The nib that snaps open under pressure: little happens early, then
       // the line swells fast.
       sizePressureCurve: BrushPressureCurve(const [
@@ -324,7 +347,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 3,
       hardness: 1.0,
-      spacing: 0.06,
+      spacing: BrushShape.minSpacing,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.45),
     ),
   ),
@@ -335,7 +358,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 12,
       hardness: 0.85,
-      spacing: 0.07,
+      spacing: BrushShape.minSpacing,
       sizePressureCurve: BrushPressureCurve(const [
         BrushCurvePoint(0.0, 0.05),
         BrushCurvePoint(0.4, 0.22),
@@ -350,7 +373,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 14,
       hardness: 0.9,
-      spacing: 0.1,
+      spacing: BrushShape.minSpacing,
       roundness: 0.3,
       angleDegrees: 45,
       sizePressureCurve: BrushPressureCurve.identity(),
@@ -364,8 +387,8 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 16,
       hardness: 0.8,
       opacity: 0.7,
-      flow: 0.6,
-      spacing: 0.1,
+      flow: 0.436,
+      spacing: BrushShape.minSpacing,
     ),
   ),
   BrushPreset(
@@ -382,7 +405,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       // hard edge at r × (1 + h) / 2, and flipping AA back to high in the
       // panel visibly softens it.
       hardness: 0.85,
-      spacing: 0.05,
+      spacing: BrushShape.minSpacing,
       // ⛔NEVER pair `antiAlias: none` with a tip MASK: the threshold hits
       // mask coverage too, and would binarize a grain or chalk tip whole.
       antiAlias: BrushAntiAlias.none,
@@ -401,7 +424,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 7,
       hardness: 1.0,
       flow: 1.0,
-      spacing: 0.05,
+      spacing: BrushShape.minSpacing,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.55),
     ),
   ),
@@ -413,7 +436,12 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     id: const BrushPresetId('builtin-technical-pen'),
     name: 'Technical Pen',
     groupId: _penGroup,
-    settings: BrushSettings(size: 3, hardness: 1.0, flow: 1.0, spacing: 0.04),
+    settings: BrushSettings(
+      size: 3,
+      hardness: 1.0,
+      flow: 1.0,
+      spacing: BrushShape.minSpacing,
+    ),
   ),
   BrushPreset(
     id: const BrushPresetId('builtin-rough-ink'),
@@ -423,7 +451,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 9,
       hardness: 1.0,
       flow: 1.0,
-      spacing: 0.05,
+      spacing: BrushShape.minSpacing,
       // The LINE is clean and the EDGE is not: a dual grain bites the
       // silhouette without touching the nib's own pressure response.
       dualMask: grainBrushTipMask,
@@ -554,9 +582,9 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 28,
       hardness: 0.3,
-      flow: 0.35,
+      flow: 0.265,
       opacity: 0.8,
-      spacing: 0.05,
+      spacing: BrushShape.minSpacing,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 2.0,
       textureDensity: 0.8,
@@ -598,9 +626,9 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 22,
       hardness: 0.6,
-      flow: 0.75,
+      flow: 0.716,
       opacity: 0.9,
-      spacing: 0.05,
+      spacing: BrushShape.minSpacing,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.4,
       textureDensity: 0.45,
@@ -618,9 +646,9 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 44,
       hardness: 0.35,
-      flow: 0.4,
+      flow: 0.207,
       opacity: 0.75,
-      spacing: 0.05,
+      spacing: BrushShape.minSpacing,
       // A wide flat sable held square to the paper: the angle stays put so
       // the band keeps one width across the sweep.
       roundness: 0.2,
@@ -644,8 +672,8 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 18,
       hardness: 0.9,
-      flow: 0.8,
-      spacing: 0.06,
+      flow: 0.775,
+      spacing: BrushShape.minSpacing,
       tipMask: bristleBrushTipMask,
       // Bristles rake along the stroke, so the tip turns with it.
       rotationMode: BrushTipRotationMode.direction,
@@ -673,8 +701,8 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 20,
       hardness: 0.65,
-      flow: 0.9,
-      spacing: 0.06,
+      flow: 0.853,
+      spacing: BrushShape.minSpacing,
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 1.5,
       textureDensity: 0.5,
@@ -687,8 +715,8 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _oilGroup,
     settings: BrushSettings(
       size: 26,
-      flow: 0.95,
-      spacing: 0.05,
+      flow: 0.9,
+      spacing: BrushShape.minSpacing,
       tipMask: bristleBrushTipMask,
       rotationMode: BrushTipRotationMode.direction,
       textureMaskSource: canvasWeaveTextureMask,
@@ -752,10 +780,10 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 40,
       hardness: 0.05,
-      flow: 0.12,
+      flow: 0.062,
       opacity: 0.9,
       // Tight spacing is what makes an airbrush build rather than band.
-      spacing: 0.05,
+      spacing: BrushShape.minSpacing,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -766,8 +794,8 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 24,
       hardness: 0.25,
-      flow: 0.7,
-      spacing: 0.1,
+      flow: 0.394,
+      spacing: BrushShape.minSpacing,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -778,9 +806,9 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 44,
       hardness: 0.1,
-      flow: 0.18,
+      flow: 0.086,
       opacity: 0.85,
-      spacing: 0.05,
+      spacing: BrushShape.minSpacing,
       textureMaskSource: paperGrainTextureMask,
       // 🚨TEXTURE SCALE 0.7 IS THE WHOLE SEPARATION from Airbrush. The
       // texture period is `mask size × scale`, so 0.7 is a ~45px grain that

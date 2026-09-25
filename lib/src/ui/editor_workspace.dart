@@ -1,3 +1,4 @@
+import 'widgets/app_tooltip.dart';
 import 'widgets/app_icon_button.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -105,6 +106,7 @@ import 'storyboard_cut_blocks_painter.dart' show storyboardCutBlocksPainterFor;
 import 'storyboard_panel.dart' show StoryboardPanel, StoryboardTrackLabelRow;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
+import '../models/working_panel.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'timeline/collapsed_row_overlay.dart';
 import 'timeline/timeline_grid_metrics.dart'
@@ -122,9 +124,9 @@ import 'timeline/timeline_layer_controls_row.dart'
 import 'timeline/frame_panel_sill_controls.dart';
 import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/layer_rail_window.dart';
-import '../models/layer_kind.dart' show LayerKind;
 import 'canvas/flip_hud_controller.dart';
 import 'canvas/flip_hud_model.dart';
+import 'canvas/flip_hud_rows.dart';
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/property_lane_model.dart'
@@ -133,7 +135,6 @@ import 'timeline/property_lane_model.dart'
         buildTimelineDisplayRows,
         indexOfDisplayRow,
         parseLaneGroupKey;
-import 'timeline/timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';
 import 'timeline/timeline_row_filter.dart';
@@ -142,6 +143,8 @@ import '../models/onion_skin_settings.dart';
 import 'panels/onion_skin_panel.dart';
 import 'panels/tool_size_preset_panel.dart';
 import 'storyboard_tab_host.dart';
+import 'storyboard/storyboard_rows_channel.dart';
+import 'storyboard_layer_policy.dart' show storyboardPanelsOnTrack;
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart' show TimelinePanel;
@@ -1113,7 +1116,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
     widget.layerNav?.bind(this, _stepDisplayedLayer);
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
-    _flipHud.syncFlipAxisWithTimeline();
+    _flipHud.syncFlipAxis();
+    // The axis belongs to the panel being worked in, and a claim moves that
+    // panel without a session notify.
+    widget.session.workingPanelListenable.addListener(_flipHud.syncFlipAxis);
     // The viewers follow the PROJECT: seed them from it now, and again
     // whenever a different one is opened under us.
     _syncViewersWithProject();
@@ -1138,13 +1144,43 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     this,
   );
 
-  /// ↑/↓ layer nav (UI-R20 #14): steps the active layer through the rows
-  /// the timeline DISPLAYS. The inputs must mirror what this state hands
-  /// the timeline tab (row filter, hidden sections, fx resolver) — a
-  /// facet joining the display policy joins here too, or the keys and the
-  /// screen disagree.
+  /// What the STORYBOARD panel stacks — bound by that panel, read by the ↑/↓
+  /// walk and the flip window while it is the panel being worked in.
+  final StoryboardRowsChannel _storyboardRows = StoryboardRowsChannel();
+
+  /// ↑/↓ layer nav (UI-R20 #14): steps through the rows the panel being
+  /// worked in DISPLAYS. The inputs must mirror what this state hands the
+  /// timeline tab (row filter, hidden sections, fx resolver) — a facet
+  /// joining the display policy joins here too, or the keys and the screen
+  /// disagree.
+  ///
+  /// 🗣️유저 2026-09-24: 「v행에 서있다가 위 키 누르면 S1행으로 이동 … 위아래
+  /// 이동이 타임라인 내부로 샌다거나 그런거 싹 다 해결」. ↩️The walk was the
+  /// timeline's whatever panel you were in: the V row is not one of its
+  /// rows, so ↑ from it fell back to the active layer and stepped inside the
+  /// cut. The storyboard walks the rows IT stacks now, the same step over a
+  /// different list ([stepAlongRows]).
   void _stepDisplayedLayer(int direction) {
     final session = widget.session;
+    if (session.workingPanel == WorkingPanel.storyboard) {
+      final rows = _storyboardRows.rows;
+      var from = rows.indexOf(session.currentRow);
+      if (from == -1) {
+        // A row this rail no longer shows (its lanes folded) stands on the
+        // row the rail lights — the fallback its standing ring takes.
+        from = rows.indexOf(session.selectedRow);
+      }
+      final target = stepAlongRows(
+        rows,
+        fromIndex: from,
+        direction: direction,
+        current: session.currentRow,
+      );
+      if (target != null) {
+        session.standOnRow(target, panel: WorkingPanel.storyboard);
+      }
+      return;
+    }
     final target = adjacentDisplayedRow(
       layers: session.layers,
       activeLayerId: session.activeLayerId,
@@ -1207,10 +1243,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     if (_layout.locateTab(tabId) != null) {
       _tabs.closeTab(tabId);
     } else {
+      final dockId = _defaultDockOf(tabId);
       _mutatingLayout(() {
-        _layout.addTab(tabId, toDockId: _defaultDockOf(tabId));
+        _layout.addTab(tabId, toDockId: dockId);
       });
-      _rail.ensureRailOpen(_defaultDockOf(tabId));
+      _rail.ensureRailOpen(dockId);
+      _claimPanelIfFront(tabId, dockId);
     }
   }
 
@@ -1406,6 +1444,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     }
     _panelFlash.dispose();
     widget.session.removeListener(_syncViewersWithProject);
+    widget.session.workingPanelListenable.removeListener(
+      _flipHud.syncFlipAxis,
+    );
     for (final slot in _viewerSlots.values) {
       slot.request.removeListener(_writeViewerBookmarks);
       slot.position.removeListener(_writeViewerBookmarks);
@@ -1465,6 +1506,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     if (!wasVisible && _layoutPersistence.isStoryboardVisible) {
       clampPlayheadForStoryboard(widget.session);
     }
+  }
+
+  /// A panel brought forward by ITS OWN BUTTON — its tab, the floor switch
+  /// when it lies on the floor, the rail button that opens its group — is a
+  /// panel touched (유저 2026-09-24: 「탭 버튼 눌러 콘티로 바꾸는것도 콘티를
+  /// 만진것으로」, and 「입구같은거나 규칙/법 완벽하게 통일」). The timeline's
+  /// buttons are the same buttons, so they say the same thing.
+  ///
+  /// ⛔Only a PRESS: the panel's host claims every pointer-down inside it,
+  /// and its buttons live in the dock's chrome, outside the host — so the
+  /// tab you pressed to bring the storyboard forward left the arrows walking
+  /// the timeline you had just put away.
+  void _claimPanelOf(String? tabId) {
+    switch (tabId) {
+      case EditorWorkspace.timelineTabId:
+        widget.session.claimTimelineRow();
+      case EditorWorkspace.storyboardTabId:
+        widget.session.claimStoryboardRow();
+    }
+  }
+
+  /// [_claimPanelOf] for a door that PLACES a panel rather than fronting it
+  /// — its tab dropped somewhere, the Panels list showing it again: the
+  /// panel was the one in hand, and it is touched when it lands in front of
+  /// [dockId]. A tab added behind another is no panel brought forward.
+  void _claimPanelIfFront(String tabId, String dockId) {
+    if (_layout.activeTabIn(dockId) == tabId) {
+      _claimPanelOf(tabId);
+    }
+  }
+
+  /// A tab PLACED by hand — dropped on a strip, on an empty dock or on a
+  /// rail button: the one move all three drops make, and the one claim.
+  void _placeTab(EditorPanelTabDragData data, String dockId, int insertIndex) {
+    _mutatingLayout(() {
+      _layout.moveTab(
+        tabId: data.tabId,
+        toDockId: dockId,
+        insertIndex: insertIndex,
+      );
+    });
+    _claimPanelIfFront(data.tabId, dockId);
   }
 
   /// One rail's COLUMN: every group the user has open on that side,
@@ -2448,7 +2531,7 @@ class _RailGroupButton extends StatelessWidget {
             selected: open,
             onPressed: onPressed,
           )
-        : Tooltip(
+        : AppTooltip(
             message: tooltip,
             child: Material(
               key: ValueKey<String>('rail-group-$railId'),

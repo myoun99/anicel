@@ -302,6 +302,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         crossExtent:
             _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
         leadingOrigin: timelineLayerRowLeadingBorder,
+        columns: _metrics.railColumns,
       );
 
   @override

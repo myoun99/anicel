@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -98,7 +99,7 @@ void main() {
       anchorIndex: 0,
       headIndex: 19,
       spanLaneIds: const [],
-      framesAreGlobal: true,
+      panel: WorkingPanel.storyboard,
     );
     expect(manager.laneRangeSelection.value!.startIndex, 0);
     expect(manager.laneRangeSelection.value!.endIndexExclusive, 20);
@@ -131,7 +132,7 @@ void main() {
       anchorIndex: 13,
       headIndex: 15,
       spanLaneIds: const [],
-      framesAreGlobal: true,
+      panel: WorkingPanel.storyboard,
     );
     expect(
       manager.cells.canDeleteCellAtCurrentFrame,
@@ -182,7 +183,7 @@ void main() {
       anchorIndex: 6,
       headIndex: 15,
       spanLaneIds: const [],
-      framesAreGlobal: true,
+      panel: WorkingPanel.storyboard,
     );
 
     // Cut 1 is open: it sees 6..10 as 6..10 of its own.
@@ -213,7 +214,7 @@ void main() {
         anchorIndex: 12,
         headIndex: 15,
         spanLaneIds: const [],
-        framesAreGlobal: true,
+        panel: WorkingPanel.storyboard,
       );
       // Cut 1 (0..10) cannot see 12..16 at all.
       expect(manager.cutLocalLaneRangeSelection.value, isNull);

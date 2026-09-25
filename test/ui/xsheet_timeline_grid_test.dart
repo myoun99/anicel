@@ -22,6 +22,13 @@ import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 String _xsheetGlyph(WidgetTester tester, String layerId, int frameIndex) =>
     timelineCellModel(tester, layerId, frameIndex, prefix: 'xsheet').glyph;
 
+/// The in-between mark the X-sheet cell wears, or null.
+InbetweenMark? _xsheetMark(
+  WidgetTester tester,
+  String layerId,
+  int frameIndex,
+) => timelineCellModel(tester, layerId, frameIndex, prefix: 'xsheet').mark;
+
 void main() {
   testWidgets('renders integrated layer controls in headers', (tester) async {
     await tester.pumpWidget(_grid());
@@ -209,7 +216,7 @@ void main() {
       ),
     );
 
-    expect(_xsheetGlyph(tester, 'layer-2', 2), unnamedDrawingMark);
+    expect(_xsheetMark(tester, 'layer-2', 2), unnamedDrawingMark);
   });
 
   testWidgets('shows held exposure marker', (tester) async {
@@ -249,7 +256,7 @@ void main() {
       ),
     );
 
-    expect(_xsheetGlyph(tester, 'layer-2', 2), '●');
+    expect(_xsheetMark(tester, 'layer-2', 2), breakdownMark);
     expect(
       timelineCellModel(tester, 'layer-2', 2, prefix: 'xsheet').semanticsLabel,
       'inbetween mark',
@@ -266,13 +273,13 @@ void main() {
       ),
     );
 
-    expect(_xsheetGlyph(tester, 'layer-2', 2), '●');
+    expect(_xsheetMark(tester, 'layer-2', 2), breakdownMark);
   });
 
   testWidgets('empty cells stay blank', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(_xsheetGlyph(tester, 'layer-1', 2), isNot(unnamedDrawingMark));
+    expect(_xsheetMark(tester, 'layer-1', 2), isNot(unnamedDrawingMark));
     expect(
       timelineCellModel(tester, 'layer-1', 2, prefix: 'xsheet').semanticsLabel,
       isNull,
@@ -334,7 +341,7 @@ void main() {
       ),
     );
 
-    expect(_xsheetGlyph(tester, 'layer-2', 2), '●');
+    expect(_xsheetMark(tester, 'layer-2', 2), breakdownMark);
   });
 
   testWidgets('marks only the active current cell as selected', (tester) async {
@@ -369,7 +376,7 @@ void main() {
             : TimelineCellExposureState.uncovered,
       ),
     );
-    expect(_xsheetGlyph(tester, 'layer-1', 0), unnamedDrawingMark);
+    expect(_xsheetMark(tester, 'layer-1', 0), unnamedDrawingMark);
 
     await tester.pumpWidget(
       _grid(
@@ -407,7 +414,7 @@ void main() {
             : null,
       ),
     );
-    expect(_xsheetGlyph(tester, 'layer-1', 0), '●');
+    expect(_xsheetMark(tester, 'layer-1', 0), breakdownMark);
   });
 
   testWidgets('held exposure run renders as one vertical block', (

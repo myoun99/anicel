@@ -515,6 +515,22 @@ AnicelZipLayout recoverAnicelZipLayoutFile(String path) => _readingFile(
   (length, readAt) => _recoverFrom(length: length, readAt: readAt),
 );
 
+/// The directory a READER of the file at [path] goes by: its tail's, or —
+/// when a save died and tore the tail — the one [recoverAnicelZipLayoutFile]
+/// finds. Throws what the recovery throws when neither answers.
+///
+/// 🚨One 「parse, else recover」 — the open and the readers of what the file
+/// carries each spelled it (audit 09-25). ⛔Not for a save deciding whether
+/// it may APPEND: a torn tail must send that one down the whole write,
+/// which is why it parses alone.
+AnicelZipLayout readAnicelZipLayoutFile(String path) {
+  try {
+    return parseAnicelZipLayoutFile(path);
+  } on FormatException {
+    return recoverAnicelZipLayoutFile(path);
+  }
+}
+
 /// [recoverAnicelZipLayoutFile] over bytes already in hand — the same
 /// recovery, so a test can open every state a crash can leave without a
 /// file per state.

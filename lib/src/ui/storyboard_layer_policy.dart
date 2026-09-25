@@ -1,7 +1,10 @@
 import '../models/cut.dart';
+import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../models/storyboard_coverage.dart';
+import '../models/storyboard_timeline_layout.dart';
 
 /// The cut's storyboard row, or null when it has none.
 ///
@@ -21,6 +24,55 @@ Layer? storyboardLayerForCut(Cut cut) {
     }
   }
   return null;
+}
+
+/// Each cut's PANELS, under the coverage rule — the V row's blocks: what its
+/// strip paints, what its edge grips hang on, what its flip steps through.
+/// A cut with no storyboard row answers with ONE cell over the whole cut, so
+/// no reader has an empty case to handle.
+///
+/// ★One reading, because it had become three: the strip's painter and the
+/// row's grips each spelled this map out, and the flip was about to be the
+/// third (유저 2026-09-24: 「콘티레이어 있으면 콘티레이어 블록기준」).
+Map<CutId, List<StoryboardCoverageCell>> storyboardCellsByCut(
+  Iterable<StoryboardTimelineLayoutEntry> entries,
+) => {
+  for (final entry in entries)
+    entry.cutId: storyboardCoverageCells(
+      timeline: storyboardLayerForCut(entry.cut)?.timeline,
+      cutDuration: entry.duration,
+    ),
+};
+
+/// One PANEL of a track's V row, on the track's global axis.
+typedef StoryboardTrackPanel = ({
+  int start,
+  int endExclusive,
+  StoryboardTimelineLayoutEntry cut,
+});
+
+/// The V row's blocks laid on the TRACK's global axis, in order — each cut's
+/// panels at the cut's own place ([storyboardCellsByCut]), so a cut with a
+/// conte row is several blocks and a cut without one is a single block that
+/// happens to be the whole cut. The frames between cuts are no block at
+/// all: a gap is walked a frame at a time, like any uncovered frame.
+///
+/// ★The unit is I-21's (유저 2026-09-12, 「그 컷 블록에 콘티블록있으면 그
+/// 블록의 헤드까지. 이것도 똑같은 법인거지」): the V row's lead edge trades
+/// frames across exactly these, and the flip counts exactly these.
+List<StoryboardTrackPanel> storyboardPanelsOnTrack(
+  List<StoryboardTimelineLayoutEntry> entries,
+) {
+  final cells = storyboardCellsByCut(entries);
+  return [
+    for (final entry in entries)
+      for (final cell in cells[entry.cutId]!)
+        (
+          start: entry.startFrame + cell.startIndex,
+          endExclusive: entry.startFrame + cell.endIndexExclusive,
+          cut: entry,
+        ),
+  ];
 }
 
 /// Every storyboard row on [cut] — one in every reachable state, more only

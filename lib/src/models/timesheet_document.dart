@@ -1,6 +1,7 @@
 import 'camera_instruction.dart';
 import 'cut.dart';
-import 'frame.dart' show celNumberOrMark;
+import 'frame.dart'
+    show DrawingHead, InbetweenMark, breakdownMark, drawingHeadOf;
 import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
@@ -101,6 +102,7 @@ class TimesheetCell {
   const TimesheetCell(
     this.kind, {
     this.label,
+    this.mark,
     this.spanLength,
     this.spanOffset,
     this.markType,
@@ -113,9 +115,15 @@ class TimesheetCell {
 
   final TimesheetCellKind kind;
 
-  /// Cel number for [TimesheetCellKind.drawing] cells; the writing for
+  /// Cel number for [TimesheetCellKind.drawing] cells — empty when the
+  /// drawing has none and wears its [mark] instead; the writing for
   /// [TimesheetCellKind.instructionStart] cells.
   final String? label;
+
+  /// The in-between mark the cell wears: a [TimesheetCellKind.mark] row's
+  /// dot, and a drawing's head when it has no cel number ([drawingHeadOf]) —
+  /// one mark, drawn one way (유저 2026-09-24).
+  final InbetweenMark? mark;
 
   /// Rows the span covers. Drawing spans set it on the start cell only
   /// (vertical text fitting); instruction spans set it on EVERY covered
@@ -726,14 +734,14 @@ class _LayerCellsPass {
   }) : cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank),
        covered = List<bool>.filled(rowCount, false),
        entries = layer.timeline.entries.toList(growable: false),
-       labelsByFrameId = <FrameId, String>{
-         // The sheet writes the cel NUMBER verbatim; unnamed cels print the
-         // in-between division mark — never an invented number (R5-④, same
-         // glyph the mark rows use). [celNumberOf] is the one place that
-         // decides which is which; the cel export reads the same answer
-         // through [Frame.celNumber].
+       headsByFrameId = <FrameId, DrawingHead>{
+         // The sheet writes the cel NUMBER verbatim; unnamed cels wear the
+         // in-between division mark — never an invented number (R5-④, the
+         // mark the mark rows wear, as data since 2026-09-24).
+         // [drawingHeadOf] is the one place that decides which is which;
+         // the cel export reads the same answer through [Frame.celNumber].
          for (final frame in layer.frames)
-           frame.id: celNumberOrMark(frame.name),
+           frame.id: drawingHeadOf(frame.name),
        },
        seNamesByFrameId = <FrameId, String?>{
          if (includeSeNames)
@@ -753,8 +761,39 @@ class _LayerCellsPass {
   /// data (XDTS/TDTS export reads that, never these display cells).
   final List<bool> covered;
   final List<MapEntry<int, TimelineExposure>> entries;
-  final Map<FrameId, String> labelsByFrameId;
+  final Map<FrameId, DrawingHead> headsByFrameId;
   final Map<FrameId, String?> seNamesByFrameId;
+
+  /// The cell a drawing's head writes: its cel number or its mark
+  /// ([headsByFrameId]) — `?` for a frame the layer does not hold.
+  TimesheetCell _headCell(
+    TimesheetCellKind kind,
+    FrameId? frameId, {
+    required int spanLength,
+    String? seName,
+  }) {
+    final head = headsByFrameId[frameId] ?? (word: '?', mark: null);
+    return TimesheetCell(
+      kind,
+      label: head.word,
+      mark: head.mark,
+      spanLength: spanLength,
+      seName: seName,
+    );
+  }
+
+  /// A covered row after a drawing's head: the block's in-between dot where
+  /// it has one ([breakdownMark]), a plain hold elsewhere.
+  static TimesheetCell _coveredRow({
+    required bool breakdown,
+    required int spanLength,
+    required int spanOffset,
+  }) => TimesheetCell(
+    breakdown ? TimesheetCellKind.mark : TimesheetCellKind.held,
+    mark: breakdown ? breakdownMark : null,
+    spanLength: spanLength,
+    spanOffset: spanOffset,
+  );
 
   /// Front-hold relocation (UI-R11 #6 → UI-R12 #17): the sheet's DATA
   /// moves the cel to the chain's first row FOR REAL — chain + anchor
@@ -878,17 +917,18 @@ class _LayerCellsPass {
         ? rowsEnd
         : (chainEndExclusive + block.length!).clamp(0, rowCount);
     final runLength = mergedEndExclusive - start;
-    cells[start] = TimesheetCell(
+    cells[start] = _headCell(
       TimesheetCellKind.drawing,
-      label: labelsByFrameId[exposure.frameId] ?? '?',
+      exposure.frameId,
       spanLength: runLength,
     );
     for (var row = start + 1; row < mergedEndExclusive; row += 1) {
       final blockOffset = row - chainEndExclusive;
-      cells[row] = TimesheetCell(
-        block != null && blockOffset >= 0 && block.hasBreakdownAt(blockOffset)
-            ? TimesheetCellKind.mark
-            : TimesheetCellKind.held,
+      cells[row] = _coveredRow(
+        breakdown:
+            block != null &&
+            blockOffset >= 0 &&
+            block.hasBreakdownAt(blockOffset),
         spanLength: runLength,
         spanOffset: row - start,
       );
@@ -917,18 +957,19 @@ class _LayerCellsPass {
       cells[runStart] = TimesheetCell(
         TimesheetCellKind.drawing,
         label: owner.label,
+        mark: owner.mark,
         spanLength: runLength,
         seName: owner.seName,
       );
     }
     for (var row = runStart + 1; row < rowsEnd; row += 1) {
       final prior = cells[row];
+      // Breakdown dots already written for the block's own
+      // rows keep their mark; the hold rows are plain holds.
+      final keepsDot = row < start && prior.kind == TimesheetCellKind.mark;
       cells[row] = TimesheetCell(
-        // Breakdown dots already written for the block's own
-        // rows keep their glyph; the hold rows are plain holds.
-        row < start && prior.kind == TimesheetCellKind.mark
-            ? TimesheetCellKind.mark
-            : TimesheetCellKind.held,
+        keepsDot ? TimesheetCellKind.mark : TimesheetCellKind.held,
+        mark: keepsDot ? prior.mark : null,
         spanLength: runLength,
         spanOffset: row - runStart,
       );
@@ -980,11 +1021,11 @@ class _LayerCellsPass {
     TimelineExposure exposure, {
     required int rowsEnd,
   }) {
-    cells[start] = TimesheetCell(
+    // The convention (UI-R13 #4): the repeat's first row writes
+    // the CEL it restarts on; the word begins on the next row.
+    cells[start] = _headCell(
       TimesheetCellKind.repeatStart,
-      // The convention (UI-R13 #4): the repeat's first row writes
-      // the CEL it restarts on; the word begins on the next row.
-      label: labelsByFrameId[exposure.frameId] ?? '?',
+      exposure.frameId,
       spanLength: rowsEnd - start,
     );
     for (var row = start + 1; row < rowsEnd; row += 1) {
@@ -1008,9 +1049,9 @@ class _LayerCellsPass {
     required String? seName,
   }) {
     final endExclusive = (start + exposure.length!).clamp(0, rowCount);
-    cells[start] = TimesheetCell(
+    cells[start] = _headCell(
       TimesheetCellKind.drawing,
-      label: labelsByFrameId[exposure.frameId] ?? '?',
+      exposure.frameId,
       spanLength: endExclusive - start,
       seName: seName,
     );
@@ -1019,10 +1060,8 @@ class _LayerCellsPass {
       // Held rows know their place in the span so the painter can gate
       // the ACTION hold bar per the exposure-bar setting (drawn from the
       // (N+1)th comma of N+ holds only).
-      cells[row] = TimesheetCell(
-        exposure.hasBreakdownAt(row - start)
-            ? TimesheetCellKind.mark
-            : TimesheetCellKind.held,
+      cells[row] = _coveredRow(
+        breakdown: exposure.hasBreakdownAt(row - start),
         spanLength: endExclusive - start,
         spanOffset: row - start,
       );

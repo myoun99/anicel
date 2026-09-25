@@ -8,6 +8,7 @@ import '../theme/app_theme.dart' show AppColors, AppShapes;
 import 'editor_panel_layout.dart';
 import 'editor_panel_tabs.dart';
 import 'panel_flash.dart';
+import '../widgets/still_raster.dart';
 
 export '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
 
@@ -101,25 +102,37 @@ class EditorDockHost extends StatelessWidget {
     // BUTTON is: onto a rail button to join that group, onto a rail's empty
     // space to make one, onto the floating region's sill to join it. Those
     // three are the whole vocabulary.
-    return EditorPanelTabs(
-      groupId: dockId,
-      compact: compact,
-      chromeless: chromeless,
-      stripAtBottom: stripAtBottom,
-      trailing: trailing,
-      tabs: [for (final id in tabIds) tabResolver(id)],
-      activeTabId: activeTabId,
-      onTabSelected: onTabSelected,
-      canAcceptTab: canAcceptTab,
-      onTabMoved: onTabMoved,
-      onTabDragChanged: onTabDragChanged,
-      // The sill's own controls stand down while anything is in flight, so
-      // the strip goes back to being landing area.
-      draggingTab: draggingTab,
-      collapsed: collapsed,
-      onToggleLock: onToggleLock,
-      onCloseTab: onCloseTab,
-      flash: flash,
+    //
+    // The whole region is one [StillRaster] (유저 2026-09-25,
+    // raster-cache-when-still-Q1): every panel is in a dock, so every panel
+    // is drawn from one image while it stays the same, and a new panel gets
+    // that without anyone remembering to ask — unless the tab showing says
+    // no ([EditorPanelTab.stillRaster]). Only the ACTIVE tab paints, so
+    // only its answer counts.
+    final tabs = [for (final id in tabIds) tabResolver(id)];
+    return StillRaster(
+      debugLabel: 'dock:$dockId',
+      enabled: tabs.every((tab) => tab.id != activeTabId || tab.stillRaster),
+      child: EditorPanelTabs(
+        groupId: dockId,
+        compact: compact,
+        chromeless: chromeless,
+        stripAtBottom: stripAtBottom,
+        trailing: trailing,
+        tabs: tabs,
+        activeTabId: activeTabId,
+        onTabSelected: onTabSelected,
+        canAcceptTab: canAcceptTab,
+        onTabMoved: onTabMoved,
+        onTabDragChanged: onTabDragChanged,
+        // The sill's own controls stand down while anything is in flight, so
+        // the strip goes back to being landing area.
+        draggingTab: draggingTab,
+        collapsed: collapsed,
+        onToggleLock: onToggleLock,
+        onCloseTab: onCloseTab,
+        flash: flash,
+      ),
     );
   }
 }

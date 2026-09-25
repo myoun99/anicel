@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_tip_defaults.dart';
@@ -159,5 +160,61 @@ void main() {
       defaultBrushGroups.map((group) => group.id).toSet(),
       hasLength(defaultBrushGroups.length),
     );
+  });
+
+  test('a general brush lays its dabs at the finest spacing — only a brush '
+      'whose look IS the gap keeps one of its own', () {
+    // 유저 2026-09-24: 「지금 프리셋 브러시들 간격이 너무 멀어서 일반적인
+    // 설정으론 최소치로 두자. 간격이 필요한 특수한거만 둬도되고」.
+    // Measured 2026-09-24 on the sample stroke at an 87 px tip: at 1% a grain
+    // or bristle tip's texture fell to 16–51% of what it had.
+    const grain = 'its grain is the gap between stamps';
+    const ownGap = <String, String>{
+      'builtin-chalk-preset': grain,
+      'builtin-rough-pencil': grain,
+      'builtin-dark-pencil': grain,
+      'builtin-colored-pencil': grain,
+      'builtin-dry-ink': grain,
+      'builtin-pastel': grain,
+      'builtin-crayon': grain,
+      'builtin-graphite-stick': grain,
+      'builtin-wet-watercolor': grain,
+      'builtin-flat-bristle': grain,
+      'builtin-palette-knife': grain,
+      'builtin-grit-spray': grain,
+      'builtin-blending-stump': grain,
+      'builtin-hatching': grain,
+      'builtin-rough-edge': grain,
+      'builtin-concrete': grain,
+      'builtin-blender': 'a blender picks colour up once per dab',
+      'builtin-water-blend': 'a blender picks colour up once per dab',
+      'builtin-charcoal': 'its spacing jitter needs a gap to scatter',
+      'builtin-dry-brush': 'its spacing jitter needs a gap to scatter',
+      'builtin-splatter-preset': 'a decoration: separate marks',
+      'builtin-stipple': 'a decoration: separate dots',
+      'builtin-sponge': 'a decoration: separate dabs of sponge',
+      'builtin-cloud': 'a decoration: separate puffs',
+      'builtin-grass': 'a decoration: separate blades',
+      'builtin-sparkle': 'a decoration: separate sparkles',
+      'builtin-snow': 'a decoration: separate flakes',
+      'builtin-bubble': 'a decoration: separate bubbles',
+      'builtin-leaves': 'a decoration: separate leaves',
+    };
+    for (final preset in defaultBrushPresets) {
+      final why = ownGap[preset.id.value];
+      if (why == null) {
+        expect(
+          preset.settings.spacing,
+          BrushShape.minSpacing,
+          reason: '${preset.name} is a general brush',
+        );
+      } else {
+        expect(
+          preset.settings.spacing,
+          greaterThan(BrushShape.minSpacing),
+          reason: '${preset.name} keeps its gap — $why',
+        );
+      }
+    }
   });
 }

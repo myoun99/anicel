@@ -16,6 +16,8 @@ import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/source/line_info.dart';
 
+import 'app_sources.dart';
+
 /// One normalised token and where it sits in its file.
 class CloneToken {
   CloneToken(this.norm, this.offset);
@@ -132,22 +134,13 @@ class _Bodies extends RecursiveAstVisitor<void> {
   }
 }
 
-/// Every function body under [libRoot] (`lib/dev/` excluded), as
-/// normalised token streams.
+/// Every function body under [libRoot] ([appDartFiles]: `lib/dev/`
+/// excluded), as normalised token streams.
 List<CloneBody> cloneBodies(String libRoot) {
   final bodies = <CloneBody>[];
-  final files =
-      Directory(libRoot)
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.dart'))
-          .toList()
-        ..sort((a, b) => a.path.compareTo(b.path));
-  for (final file in files) {
-    final path = file.path.replaceAll('\\', '/');
-    if (path.contains('/lib/dev/')) continue;
+  for (final path in appDartFiles(libRoot)) {
     final result = parseString(
-      content: file.readAsStringSync(),
+      content: File(path).readAsStringSync(),
       path: path,
       featureSet: FeatureSet.latestLanguageVersion(),
       throwIfDiagnostics: false,

@@ -35,8 +35,7 @@ import '../../services/import/media_import_planner.dart'
 import '../../services/media/media_asset_uses.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/project_lookup.dart'
-    show projectMediaCarryOf, requireLayerAnywhere;
+import '../../services/project_lookup.dart' show requireLayerAnywhere;
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
 import 'project_file.dart';
@@ -170,6 +169,18 @@ class MediaPool {
   /// answered yes to, so the new carry's bytes were never taken (card
   /// `recarry-after-remove-reads-the-old`). Each carry is its own now
   /// ([MediaAsset.carriedAs]), and one that arrives is new by definition.
+  /// 🪦Before the doors asked this (2026-09-23), a placed file kept inside
+  /// was read from where it lay at the first save — edited or deleted in
+  /// between, the save carried that instead.
+  ///
+  /// A landing that fails after this leaves a staged copy no asset names:
+  /// the orphan the run's room takes when the run ends, the same as any.
+  ///
+  /// ⚠️A file the pool already has is left alone: the landing keeps the
+  /// pool's entry, whose bytes are the ones the user asked to keep, and the
+  /// file on disk may have moved on since. 🪦So placing a carried file from
+  /// the pool copied its original AGAIN once a save had absorbed the first
+  /// copy — the edited original, when it had been edited.
   Future<void> holdCarriedBytes(Iterable<MediaAsset> arriving) =>
       _staging.stageCarriedBytes(_carriesToHold(arriving));
 
@@ -306,48 +317,51 @@ class MediaPool {
   /// ⚠️Async because the re-stage below runs in an isolate — see
   /// [MediaStagingStore.stageCarriedBytes].
   Future<void> relinkMediaAsset(String pickedOld, String picked) async {
-    // In the pool's one spelling: the pool, the conforms, the fingerprints
-    // and the staging are all keyed by it ([normalizedMediaPath]).
+    // In the pool's one spelling: the pool, the conforms and the
+    // fingerprints are all keyed by it ([normalizedMediaPath]).
     final oldPath = normalizedMediaPath(pickedOld);
     final newPath = normalizedMediaPath(picked);
-    final carriedBefore = projectMediaCarryOf(
-      _project.repository.requireProject(),
-      oldPath,
-    );
-    _conforms.invalidate(newPath);
-    _project.cutCommandCoordinator.relinkMediaAsset(
-      oldPath: oldPath,
-      newPath: newPath,
-    );
-    _fingerprints.moveMediaFingerprints({oldPath: newPath});
-    // 🚨★★★**THIS RELINK RE-STAGES; THE BATCH ONE MOVES. THE DIFFERENCE
-    // IS WHAT EACH CALLER KNOWS.**
+    // 🚨★★★**A CARRIED ASSET RELINKED BY HAND IS A NEW CARRY; THE BATCH
+    // ONE KEEPS ITS OWN. THE DIFFERENCE IS WHAT EACH CALLER KNOWS.**
     //
     // Here the user picked a file by hand and said「this asset is THAT
-    // one」. Nothing checked that it holds the same content — so carrying
-    // the OLD staged bytes over to the new key would keep serving the old
-    // picture under the name of the new file, for ever, with the project
-    // insisting it was right.
-    //
+    // one」. Nothing checked that it holds the same content, so its bytes
+    // are taken now, under a name of their own
+    // ([RelinkMediaAssetCommand.carriedAs]) — and staged BEFORE the pool
+    // records it, like every carry ([MediaStagingStore.stageCarriedBytes]).
     // The batch relink below verified identity before proposing anything,
-    // so there the bytes ARE the same and moving them costs one rename
-    // instead of re-reading every matched file.
-    if (carriedBefore != null) {
-      _staging.retire(carriedBefore);
+    // so there the bytes ARE the same and the carry goes with the asset.
+    //
+    // ⛔The old carry's copy stays where it is. The relink is one undo step
+    // away from being taken back, and its bytes are what the undo reads.
+    // 🪦It was retired here — even when the relink was then refused — and
+    // an undo found only the original, or nothing (audit 09-25).
+    //
+    // ⛔「Is it carried」 is the asset's own answer, not a hand-rolled
+    // `any(... && asset.carried)`: a second spelling of it is how the kind
+    // ceiling came to be enforced in two places and disagree with itself.
+    final project = _project.repository.requireProject();
+    final carry = project.mediaAssetByPath(oldPath)?.carried == true
+        ? (poolPath: newPath, token: mintMediaCarry(newPath))
+        : null;
+    if (carry != null) {
+      await _staging.stageCarriedBytes([carry]);
     }
-    // ⛔Through [projectMediaCarryOf] rather than a hand-rolled
-    // `any(... && asset.carried)`. The asset's carry is the ONE answer to
-    // 「does this project carry it」, and a second spelling of it here is
-    // how the kind ceiling came to be enforced in two places and disagree
-    // with itself. The carry keeps its token across the move; its name
-    // changes with the path, so the new file's bytes are a new name.
-    final carriedAfter = projectMediaCarryOf(
-      _project.repository.requireProject(),
-      newPath,
+    _conforms.invalidate(newPath);
+    final relinked = _project.cutCommandCoordinator.relinkMediaAsset(
+      oldPath: oldPath,
+      newPath: newPath,
+      carriedAs: carry?.token,
     );
-    if (carriedAfter != null) {
-      await _staging.stageCarriedBytes([carriedAfter]);
+    if (!relinked) {
+      // Refused (the path is taken, the asset is gone): nothing moved, so
+      // the facts stay where they were and the new copy has no carry.
+      if (carry != null) {
+        _staging.retire(carry);
+      }
+      return;
     }
+    _fingerprints.moveMediaFingerprints({oldPath: newPath});
     refreshMediaExistence();
     _changes.notifyChanged();
   }
@@ -370,27 +384,20 @@ class MediaPool {
     for (final newPath in moves.values) {
       _conforms.invalidate(newPath);
     }
-    _project.cutCommandCoordinator.relinkMediaAssets(moves);
+    final made = _project.cutCommandCoordinator.relinkMediaAssets(moves);
     // 🚨 The fingerprints follow, or the next save erases the very facts
     // this relink was decided by — the store is keyed by path and the save
     // keeps only keys the pool still holds. Left out, the feature works
     // exactly once per asset and only on the machine that imported it.
-    _fingerprints.moveMediaFingerprints(moves);
-    // And the staged bytes, keyed by the same path — see
-    // [MediaStagingStore.rename]. The sentence above about derived state
-    // is the whole reason both of these lines exist.
+    // ⛔Only the moves the pool took: a refused one moved nothing, and its
+    // destination may be another asset's, whose facts these would replace.
     //
-    // ⚠️MOVED, not re-staged, and only because this caller EARNED it: the
-    // matcher accepts a candidate only when its identity matches the one
-    // recorded for the missing asset, so the bytes are the same bytes and
-    // re-reading every matched file would be work for nothing. The
-    // by-hand relink above cannot say that, and re-stages.
-    final project = _project.repository.requireProject();
-    for (final move in moves.entries) {
-      if (projectMediaCarryOf(project, move.value) case final moved?) {
-        _staging.rename((poolPath: move.key, token: moved.token), move.value);
-      }
-    }
+    // The carries go along untouched — the matcher accepts a candidate only
+    // when its identity matches the one recorded for the missing asset, so
+    // the bytes are the same bytes, under the name they already have
+    // ([mintMediaCarry]). The by-hand relink above cannot say that, and
+    // carries anew.
+    _fingerprints.moveMediaFingerprints(made);
     refreshMediaExistence();
     _changes.notifyChanged();
   }
@@ -529,7 +536,7 @@ class MediaPool {
     }
     // A carry of its own, even for a path carried once before and removed:
     // that one's bytes are an undo's to bring back ([MediaAsset.carriedAs]).
-    final carriedAs = mintMediaCarry();
+    final carriedAs = mintMediaCarry(path);
     await _staging.stageCarriedBytes([(poolPath: path, token: carriedAs)]);
     _project.cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)

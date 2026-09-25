@@ -429,16 +429,35 @@ class _TimesheetCellsPass {
         cellTop: slot.cellTop,
       );
     } else {
-      _painter._text(
-        canvas,
-        slot.cell.label ?? '',
-        Offset(slot.centerX, slot.cellTop + 3),
-        fontSize: 10,
-        color: TimesheetDocumentPainter._ink,
-        centeredAtX: true,
-      );
+      _paintHead(canvas, slot);
     }
   }
+
+  /// What a drawing's head row writes: its cel number, or — with none —
+  /// its mark, the dot a block's in-between rows wear (one mark, 유저
+  /// 2026-09-24: 「타임시트패널에서 동그라미는 작은걸로 통일」).
+  void _paintHead(Canvas canvas, _CellSlot slot) {
+    final mark = slot.cell.mark;
+    if (mark != null) {
+      _paintMark(canvas, slot, mark);
+      return;
+    }
+    _painter._text(
+      canvas,
+      slot.cell.label ?? '',
+      Offset(slot.centerX, slot.cellTop + 3),
+      fontSize: 10,
+      color: TimesheetDocumentPainter._ink,
+      centeredAtX: true,
+    );
+  }
+
+  /// An in-between mark, at the centre of its row.
+  void _paintMark(Canvas canvas, _CellSlot slot, InbetweenMark mark) =>
+      paintInbetweenMark(canvas, mark, (
+        center: Offset(slot.centerX, slot.cellCenterY),
+        radius: timesheetInbetweenMarkRadius,
+      ), TimesheetDocumentPainter._ink);
 
   /// A held cell's bar, by column: the SE red bar or the action hold bar.
   void _paintHeldCell(Canvas canvas, _CellSlot slot) {
@@ -477,14 +496,7 @@ class _TimesheetCellsPass {
     // NOTATION-language repeat word runs VERTICALLY from the
     // next slot.row (UI-R11 #14) — the expanded cel numbers live in
     // the timeline for exporters, never here. No guide line.
-    _painter._text(
-      canvas,
-      slot.cell.label ?? '',
-      Offset(slot.centerX, slot.cellTop + 3),
-      fontSize: 10,
-      color: TimesheetDocumentPainter._ink,
-      centeredAtX: true,
-    );
+    _paintHead(canvas, slot);
     final wordRows = (slot.cell.spanLength ?? 1) - 1;
     if (wordRows > 0) {
       _painter._paintVerticalWord(
@@ -527,11 +539,9 @@ class _TimesheetCellsPass {
       case TimesheetCellKind.mark:
         // Block-owned inbetween dot: FILLED ● (same glyph as the
         // timeline cells), not the legacy hollow ○.
-        canvas.drawCircle(
-          Offset(slot.centerX, slot.cellCenterY),
-          2.8,
-          Paint()..color = TimesheetDocumentPainter._ink,
-        );
+        if (slot.cell.mark case final mark?) {
+          _paintMark(canvas, slot, mark);
+        }
       case TimesheetCellKind.repeatStart:
         _paintRepeatStart(canvas, slot);
       case TimesheetCellKind.repeatSpan:

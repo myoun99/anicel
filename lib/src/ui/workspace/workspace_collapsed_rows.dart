@@ -12,65 +12,6 @@ class _WorkspaceCollapsedRows {
 
   final _EditorWorkspaceState _state;
 
-  FlipHudRow flipHudRow(
-    TimelineDisplayRow row,
-    EditorSessionManager session, {
-    required bool withRuns,
-  }) {
-    final layer = row.layer;
-    final lane = row.lane;
-    if (lane != null) {
-      final keys = withRuns
-          ? (lane.keyedFrames.toList()..sort())
-          : const <int>[];
-      return FlipHudRow(
-        name: lane.label,
-        kind: layer.kind,
-        isLane: true,
-        // A key row has no cels, so it prints no timesheet X — the same
-        // reason the cells painter withholds one there.
-        holdsDrawings: false,
-        runs: [
-          for (final frame in keys)
-            FlipHudRun(
-              startIndex: frame,
-              length: 1,
-              isKey: true,
-              holdKey: lane.holdOutFrames.contains(frame),
-            ),
-        ],
-      );
-    }
-    final runs = <FlipHudRun>[];
-    if (withRuns) {
-      for (final entry in layer.timeline.entries) {
-        final exposure = entry.value;
-        // Ghosts are derived edges, not authored blocks — the run-label
-        // painter leaves them out for the same reason.
-        if (!exposure.isDrawing || exposure.ghost) {
-          continue;
-        }
-        runs.add(
-          FlipHudRun(
-            startIndex: entry.key,
-            length: exposure.length ?? 1,
-            label: session.frameVerbs.frameNameForLayer(layer, entry.key) ?? '',
-          ),
-        );
-      }
-      runs.sort((a, b) => a.startIndex.compareTo(b.startIndex));
-    }
-    return FlipHudRow(
-      name: layer.name,
-      kind: layer.kind,
-      runs: runs,
-      // The cells painter's own rule for the X: only rows that hold
-      // drawings print one, and SE columns stay blank between entries.
-      holdsDrawings:
-          layer.kind.holdsDrawings && !layerKindUsesSeSheetCells(layer.kind),
-    );
-  }
-
   /// The collapsed row over the artwork — only for the tabs that HAVE a row
   /// to show. A collapsed conte or viewer says nothing here, which is the
   /// same answer its zero [EditorPanelTab.collapsedExtent] gives inside.
@@ -200,7 +141,7 @@ class _WorkspaceCollapsedRows {
       rail: _state._railExtents[LayerRailId.storyboard],
       // F-143: the storyboard's own axis, beside its own rail window.
       frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
-      naturalRailWidth: StoryboardTrackLabelRow.railWidth,
+      naturalRailWidth: StoryboardTrackLabelRow.railWidthIn(_state.context),
       pixelsPerFrame: pixelsPerFrame,
       framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
       // No track (an empty film) falls back to the overlay's own strip,
@@ -287,7 +228,9 @@ class _WorkspaceCollapsedRows {
       // reads it — not a second opinion, the same getters.
       fxState: session.effectsAndFx.layerFxState(layer.id),
       onionSkinEnabled: session.onionSkin.isLayerOnionSkinEnabled(layer.id),
-      isLayerSoloed: session.soloedSeLayerIds.value.contains(layer.id),
+      isLayerSoloed: session.visibilitySolo.soloedSeLayerIds.value.contains(
+        layer.id,
+      ),
       isLinked: session.layerVerbs.isLayerLinked(layer.id),
       // A row HAS lanes when its lanes are not empty — the same question the
       // panel asks. Hardcoding `true` gave a twirl to rows that have nothing

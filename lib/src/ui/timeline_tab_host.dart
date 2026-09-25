@@ -8,6 +8,8 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
+import '../models/working_panel.dart';
+import 'panels/working_panel_surface.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
 import 'timeline/se_layer_mixer.dart';
@@ -472,11 +474,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     // Touching this panel makes it the one the frame-axis verbs answer to
     // (user, 2026-08-05). A row pick is no longer the only way to move the
     // flip's subject — working here at all is, which is what picking up a
-    // panel actually feels like. Translucent so every child still gets its
-    // own gesture; this only listens.
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => _session.claimTimelineRow(),
+    // panel actually feels like. Putting it away hands the work on to the
+    // storyboard when that is on the screen (user, 2026-09-25).
+    return WorkingPanelSurface(
+      onTouch: _session.claimTimelineRow,
+      onSight: (surface, {required inSight}) => _session.panelInSight(
+        WorkingPanel.timeline,
+        surface: surface,
+        inSight: inSight,
+      ),
       child: ListenableBuilder(
         listenable: Listenable.merge([
           ?widget.cameraViewEnabled,
@@ -647,8 +653,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // object (F-101).
             audioLane: sessionAudioLaneCallbacks(_session),
             onAddLayer: _session.layerStack.addLayer,
-            isLayerSoloed: (layerId) =>
-                _session.soloedSeLayerIds.value.contains(layerId),
+            isLayerSoloed: (layerId) => _session
+                .visibilitySolo
+                .soloedSeLayerIds
+                .value
+                .contains(layerId),
             onOpenLayerMixer: (anchorContext, layerId) => unawaited(
               showSeLayerMixer(
                 anchorContext,

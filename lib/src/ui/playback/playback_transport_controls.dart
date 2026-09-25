@@ -24,13 +24,13 @@ Future<void> toggleVoiceRecordingWithFeedback(
   if (session.voiceRecording.isVoiceRecording.value) {
     message = await session.voiceRecording.stopVoiceRecordingAndPlace();
   } else if (!await AppStorage.ensureMicrophoneAccess()) {
-    // Android's runtime grant; the Future waits out the system dialog.
+    // The OS grant (Android, iOS, macOS): the Future waits out the system
+    // dialog, so a take never rolls before the answer is in (F-178).
     message = strings.recordMicPermissionDenied;
   } else {
     message = switch (session.voiceRecording.startVoiceRecording()) {
       VoiceRecordStartResult.started ||
       VoiceRecordStartResult.alreadyRecording => null,
-      VoiceRecordStartResult.needsSeLane => strings.recordSelectSeLane,
       VoiceRecordStartResult.deviceFailed => strings.recordMicOpenFailed,
     };
   }

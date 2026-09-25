@@ -14,6 +14,7 @@ import '../media/project_media_sources.dart'
 import 'brush_drawing_binary_codec.dart';
 import 'anicel_incremental_writer.dart';
 import 'open_project_file.dart';
+import 'same_file.dart';
 import 'save_failure.dart' show SaveNotSwappedIn;
 import 'scratch_file.dart';
 import 'session_scratch.dart';
@@ -382,8 +383,8 @@ class AnicelFileService {
     /// Entries something reads by OFFSET right now
     /// (`ProjectFile.heldArchiveEntries`): a save that packs the file in
     /// place leaves them where they are ([compactAnicelInPlace]'s
-    /// `staying`), and keeps them in the directory even when the project
-    /// no longer carries them.
+    /// `staying`). That they stay in the directory at all is [mediaToStore]'s
+    /// — the caller stores what its readers hold.
     Set<String> heldEntries = const {},
 
     /// False writes a COPY: the stores do not adopt refs into [filePath]
@@ -426,6 +427,13 @@ class AnicelFileService {
     /// cannot be. So the caller takes the swap, and with it the shape the
     /// staging road already had: adopt the temp, replace, repoint.
     void Function(String tempPath)? onFullWriteLeftAt,
+
+    /// Waited for just before a whole write is renamed onto [filePath]: the
+    /// readers holding that file open let go of it
+    /// (`ProjectFile.readersLetGoOf`) — Windows refuses a rename onto a file
+    /// anything in this process holds open. The session's own cel handle is
+    /// [renameWithRetry]'s to let go; the media readers are the session's.
+    Future<void> Function()? beforeReplacing,
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
@@ -502,7 +510,7 @@ class AnicelFileService {
     };
     final refsHere = <BrushFrameKey>{
       for (final entry in baked.fileRefs.entries)
-        if (_samePath(entry.value.filePath, filePath)) entry.key,
+        if (namesTheSameFile(entry.value.filePath, filePath)) entry.key,
     };
     final sound =
         !rewriteWhole &&
@@ -543,7 +551,10 @@ class AnicelFileService {
     /// one left behind reads whatever lands on its old bytes.
     void moveRefs(Map<int, AnicelRelocation> moved) {
       for (final store in stores) {
-        store.relocateFileRefs((path) => _samePath(path, filePath), moved);
+        store.relocateFileRefs(
+          (path) => namesTheSameFile(path, filePath),
+          moved,
+        );
       }
     }
 
@@ -586,6 +597,7 @@ class AnicelFileService {
       sessionFields: sessionFields,
       onProgress: onProgress,
       onFullWriteLeftAt: onFullWriteLeftAt,
+      beforeReplacing: beforeReplacing,
     );
     adoptEach(adopted);
     return settle(lost(adopted));
@@ -837,7 +849,8 @@ class AnicelFileService {
     // [baked] — its hot surfaces are native-backed and cannot cross.
     final cleanRefsToVerify = <(String, int, int)>[
       for (final ref in baked.fileRefs.entries)
-        if (!dirty.contains(ref.key) && _samePath(ref.value.filePath, filePath))
+        if (!dirty.contains(ref.key) &&
+            namesTheSameFile(ref.value.filePath, filePath))
           (anicelCelEntryName(ref.key), ref.value.dataOffset, ref.value.length),
     ];
     // 🚨Refs a DIRTY cel still holds into this file — a rekeyed cel keeps
@@ -848,7 +861,7 @@ class AnicelFileService {
     final heldByDirtyCels = <String, int>{
       for (final key in dirty)
         if (baked.fileRefs[key] case final ref?
-            when _samePath(ref.filePath, filePath))
+            when namesTheSameFile(ref.filePath, filePath))
           anicelCelEntryName(key): ref.dataOffset,
     };
     // ⛔A bool, not [onProgress]: the port now opens for the refs even with
@@ -871,17 +884,13 @@ class AnicelFileService {
           // above and the append below must agree on what leaves.
           namesLeaving: (layout) => {
             ...removedNames,
-            // ⛔A HELD entry does not leave, even when the project no longer
-            // carries it: something reads it by offset right now — a viewer
-            // on an asset just taken out of the pool, a canvas row an undo
-            // may bring back — and leaving would make its span a hole the
-            // push-down writes over. It leaves with the first save after the
-            // reader lets go (audit 2026-09-24, `carried-bytes-audit-0924`).
+            // A held entry is not among them: what a reader holds is in
+            // [mediaToStore] (`ProjectFileDoor._carryFor`).
             ..._namesToDrop(
               layout,
               mediaToStore: mediaToStore,
               conforms: conforms,
-            ).difference(heldEntries),
+            ),
           },
         );
         if (sound == null) {
@@ -1151,6 +1160,7 @@ class AnicelFileService {
     ProjectConforms conforms = const ProjectConforms.none(),
     void Function(double)? onProgress,
     void Function(String tempPath)? onFullWriteLeftAt,
+    Future<void> Function()? beforeReplacing,
   }) async {
     final allKeys = <BrushFrameKey>{
       ...baked.hot.keys,
@@ -1236,6 +1246,10 @@ class AnicelFileService {
       onFullWriteLeftAt(tempPath);
       return refs;
     }
+    // The readers of the file let go FIRST ([save]'s `beforeReplacing`) —
+    // awaited here, before the swap, where the refs still read the old file
+    // in its place; nothing may wait between the swap and the adopt below.
+    await beforeReplacing?.call();
     // SYNC rename: existing refs into the replaced file carry offsets of
     // the OLD layout, so no event may run between the swap and the
     // caller's adoptSavedFile — sync-to-return is microtask-tight.
@@ -1449,17 +1463,12 @@ class AnicelFileService {
     // back. No pixel bytes load here — each cel is a ~200-byte header
     // read for its key + geometry.
     final (:projectJsonBytes, :cels) = await Isolate.run(() {
-      AnicelZipLayout layout;
-      try {
-        layout = parseAnicelZipLayoutFile(filePath);
-      } on FormatException {
-        // A save died partway: open the last one that finished (plus, if
-        // it died committing, what it had fully written). The file stays
-        // torn on disk until the next save — which the service forces down
-        // the FULL path (the incremental precondition re-parses this same
-        // tail and fails) — so opening is enough to heal on save.
-        layout = recoverAnicelZipLayoutFile(filePath);
-      }
+      // A save that died partway opens as the last one that finished (plus,
+      // if it died committing, what it had fully written). The file stays
+      // torn on disk until the next save — which the service forces down
+      // the FULL path (the incremental precondition re-parses this same
+      // tail and fails) — so opening is enough to heal on save.
+      final layout = readAnicelZipLayoutFile(filePath);
       final projectEntry = layout.projectEntry();
       if (projectEntry == null) {
         throw const FormatException('Not an Anicel project (.anicel).');
@@ -1609,10 +1618,10 @@ class AnicelFileService {
     final read = <String>{
       for (final store in stores)
         for (final ref in store.bakedSnapshotForSave().fileRefs.values)
-          ref.filePath.replaceAll(r'\', '/'),
+          ref.filePath,
     };
     _retiring.removeWhere((archive) {
-      if (read.contains(archive.replaceAll(r'\', '/'))) {
+      if (read.any((path) => namesTheSameFile(path, archive))) {
         return false;
       }
       OpenProjectFile.instance.releaseFor(archive);
@@ -1621,7 +1630,7 @@ class AnicelFileService {
     });
   }
 
-  static bool _samePath(String a, String b) =>
-      a.replaceAll('\\', '/').toLowerCase() ==
-      b.replaceAll('\\', '/').toLowerCase();
+  // 🪦`samePath` stood here — one of five spellings of 「is this the same
+  // project file」, and the only one that folded case (audit 09-25). It is
+  // [namesTheSameFile] now, for all five.
 }

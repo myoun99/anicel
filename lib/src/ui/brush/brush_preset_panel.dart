@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import '../widgets/app_icon_button.dart';
 import 'dart:async';
 
@@ -260,7 +261,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// A `Listener` consumes nothing, so the drag recogniser underneath is
   /// untouched.
   Widget _dismissTooltipsOnPress(Widget child) => Listener(
-    onPointerDown: (_) => Tooltip.dismissAllToolTips(),
+    onPointerDown: (_) => AppTooltip.dismissAllToolTips(),
     child: child,
   );
   BrushGroupId? _springTarget;
@@ -1303,7 +1304,7 @@ class _BrushGroupTab extends StatelessWidget {
     // switch groups under the finger.
     final instant = InstantTapRegion(onTap: (_) => onTap(), child: body);
     final face = showTooltip
-        ? Tooltip(message: label, child: instant)
+        ? AppTooltip(message: label, child: instant)
         : instant;
     return SizedBox(height: extent, child: face);
   }

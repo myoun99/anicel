@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -677,7 +678,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (!isLinked) return null;
     return Padding(
       padding: const EdgeInsets.only(left: 4),
-      child: Tooltip(
+      child: AppTooltip(
         message: AppText.strings.tlLinkedLayerTooltip,
         child: Icon(
           Icons.link,
@@ -741,6 +742,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   List<Widget> _trailingCells(ColorScheme colorScheme) =>
       layerRailTrailingCells(
         axis: axis,
+        columns: metrics.railColumns,
         fillReference: _fillReferenceToggle(),
         fx: _fxSwitch(),
         hasOnionColumn: onToggleLayerOnionSkin != null,
@@ -886,6 +888,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       optionKeyPrefix: '$keyPrefix-layer-blend-option-',
       blendMode: layer.blendMode,
       isGroup: isGroup,
+      slotExtent: metrics.railColumns.blend,
       onBlendModeSelected: (mode) => onSelected(layer.id, mode),
     );
   }

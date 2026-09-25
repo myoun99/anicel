@@ -58,6 +58,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../core/path_names.dart' show pathHash;
 import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../media/media_byte_source.dart';
 import '../persistence/anicel_incremental_writer.dart'
@@ -318,7 +319,7 @@ class ConformCacheLayout {
   String conformPathFor(String mediaPath) {
     final normalized = normalizedMediaPath(mediaPath);
     final name = normalized.substring(normalized.lastIndexOf('/') + 1);
-    final key = AppSave.pathHash(
+    final key = pathHash(
       '$normalized|$sampleRate|$speedNumerator/$speedDenominator',
     );
     return '$directory/$name.${key.toRadixString(16).padLeft(8, '0')}.wav';

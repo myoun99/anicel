@@ -12,6 +12,9 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart'
+    show LayerPoseSample;
+import 'package:anicel/src/models/transform_track.dart' show TransformPose;
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -53,7 +56,13 @@ void main() {
       Future<void> Function(CanvasTool tool) setTool,
     })
   >
-  pumpPanel(WidgetTester tester, {CanvasTool tool = CanvasTool.select}) async {
+  pumpPanel(
+    WidgetTester tester, {
+    CanvasTool tool = CanvasTool.select,
+    // a-marquee-on-a-posed-row: where the row stands on the canvas. Null =
+    // unposed.
+    LayerPoseSample? placement,
+  }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -74,6 +83,7 @@ void main() {
                 BrushToolState.defaults.copyWith(tool: tool),
               ),
               selectionCommands: commands,
+              interactiveContentPose: placement,
               // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to
               // canvas coordinates one for one, and an uncontrolled panel
               // now opens at the IDENTITY — one artwork px per DEVICE px,
@@ -167,6 +177,37 @@ void main() {
     await env.setTool(CanvasTool.brush);
 
     // One stroke straddling the boundary: 20 → 60.
+    final view = find.byKey(const ValueKey<String>('brush-canvas-view'));
+    await dragOnLayer(tester, view, const Offset(20, 50), const Offset(60, 50));
+
+    expect(inkAt(env.coordinator, 22, 50), isNonZero, reason: 'inside lands');
+    expect(inkAt(env.coordinator, 55, 50), 0, reason: 'outside is clipped');
+  });
+
+  // 🚨a-marquee-on-a-posed-row (2026-09-25): the selection is drawn on the
+  // CANVAS, the pen draws in the row's own artwork (the draw-through wrap).
+  // On a posed row the two only meet once the selection is taken back
+  // through the row's placement — without it, a stroke inside the outline
+  // the user sees was clipped away whole.
+  testWidgets('on a POSED row the brush paints inside the selection it '
+      'shows', (tester) async {
+    final env = await pumpPanel(
+      tester,
+      placement: (
+        pose: TransformPose(center: CanvasPoint(x: 100, y: 0)),
+        anchorPoint: CanvasPoint(x: 0, y: 0),
+      ),
+    );
+    // The canvas band 100..140 — artwork 0..40 on this row.
+    env.commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 100, top: 0, right: 140, bottom: 200),
+      ),
+    );
+    await env.setTool(CanvasTool.brush);
+
+    // The view is wrapped in the placement, so offsets from its corner are
+    // the row's artwork: a stroke 20 → 60, shown at canvas 120 → 160.
     final view = find.byKey(const ValueKey<String>('brush-canvas-view'));
     await dragOnLayer(tester, view, const Offset(20, 50), const Offset(60, 50));
 

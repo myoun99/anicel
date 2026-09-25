@@ -10,6 +10,7 @@ import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/tile_pyramid.dart';
 import '../editor_session_manager.dart';
 import '../widgets/static_raster.dart';
+import '../widgets/still_raster.dart';
 
 /// ONE line of the memory readout: what a thing is, in the user's words,
 /// and what it costs right now.
@@ -236,6 +237,9 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
       id: 'panelRasters',
       bytes:
           StaticRaster.censusBytes +
+          // A dock region's still image (2026-09-25) is the same kind of
+          // holding: a panel region kept as a raster while nothing changes.
+          StillRaster.censusBytes +
           // ⛔The editing canvas's display buffer belongs on the same row:
           // it is a panel holding a raster of itself, kept for as long as
           // nothing changes. It lives in a widget State, so it is PUSHED

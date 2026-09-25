@@ -340,12 +340,11 @@ void main() {
     });
   });
 
-  test('🚨a relink carries the staged bytes to the new path', () async {
+  test('🚨a relinked carry is held at the new path', () async {
     final from = compressibleFile('take.wav');
     final original = File(from).readAsBytesSync();
     await pool.addMediaAssets([from], carried: true);
     expect(stagedCopyIn(session, from), isNotNull);
-    final before = carryIn(session, from)!;
 
     final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
     File(to).writeAsBytesSync(original);
@@ -355,11 +354,9 @@ void main() {
       stagedCopyIn(session, to),
       isNotNull,
       reason:
-          '⛔the staged name is DERIVED from the pool path, so a relink '
-          'that left it behind would make a carried asset look unstaged '
-          'while its bytes waited under a name nothing points at',
+          '⛔a carried asset that looked unstaged after a relink would be '
+          'back to the promise being kept at save time',
     );
-    expect(session.mediaStagingStore.find(before), isNull);
 
     File(to).deleteSync();
     expect(session.projectFile.mediaByteSourceFor(to).readSync(), original);
@@ -386,29 +383,38 @@ void main() {
   });
 
   group('🚨relink: the two kinds know different things', () {
-    test('a BY-HAND relink re-stages from the file the user picked', () async {
+    /// A DIFFERENT file — nothing checks that it matches.
+    ({String path, Uint8List bytes}) otherFile(String name) {
+      final bytes = Uint8List(180 * 1024);
+      for (var i = 0; i < bytes.length; i += 1) {
+        bytes[i] = (i ~/ 5 + 7) & 0xFF;
+      }
+      final path = '${root.path}/$name'.replaceAll(r'\', '/');
+      File(path).writeAsBytesSync(bytes);
+      return (path: path, bytes: bytes);
+    }
+
+    test('a BY-HAND relink carries the file the user picked, as a carry of '
+        'its own', () async {
       final from = compressibleFile('take.wav');
       await pool.addMediaAssets([from], carried: true);
-      expect(stagedCopyIn(session, from), isNotNull);
       final before = carryIn(session, from)!;
+      final other = otherFile('other.wav');
 
-      // A DIFFERENT file — nothing checked that it matches.
-      final to = '${root.path}/other.wav'.replaceAll(r'\', '/');
-      final otherBytes = Uint8List(180 * 1024);
-      for (var i = 0; i < otherBytes.length; i += 1) {
-        otherBytes[i] = (i ~/ 5 + 7) & 0xFF;
-      }
-      File(to).writeAsBytesSync(otherBytes);
-
-      await pool.relinkMediaAsset(from, to);
-
-      expect(session.mediaStagingStore.find(before), isNull);
-      final staged = stagedCopyIn(session, to);
-      expect(staged, isNotNull, reason: 'the new file is held');
+      await pool.relinkMediaAsset(from, other.path);
 
       expect(
+        carryIn(session, other.path)!.token,
+        isNot(before.token),
+        reason:
+            '⛔kept, the carry\'s one name would mean two sets of bytes — '
+            'the old file\'s, which an undo reads, and the picked one\'s',
+      );
+      final staged = stagedCopyIn(session, other.path);
+      expect(staged, isNotNull, reason: 'the new file is held');
+      expect(
         mediaAppFileSource(staged!.path).readSync(),
-        otherBytes,
+        other.bytes,
         reason:
             '⛔the bytes are the ONE THE USER PICKED. Moving the old staged '
             'blob over would keep serving the old picture under the new '
@@ -416,8 +422,89 @@ void main() {
       );
     });
 
-    test('a BATCH relink moves the bytes, because the matcher checked '
-        'identity first', () async {
+    test('🚨an undo of a by-hand relink reads the bytes the asset had — the '
+        'old carry\'s copy stays for it (audit 09-25)', () async {
+      final from = compressibleFile('take.wav');
+      final original = File(from).readAsBytesSync();
+      await pool.addMediaAssets([from], carried: true);
+      final before = carryIn(session, from)!;
+      await pool.relinkMediaAsset(from, otherFile('other.wav').path);
+      File(from).deleteSync();
+
+      session.undo();
+
+      expect(carryIn(session, from), before);
+      expect(
+        session.projectFile.mediaByteSourceFor(from).readSync(),
+        original,
+        reason:
+            '🪦the relink retired this copy, and the undo found only the '
+            'original — gone here, as it is when a relink is needed',
+      );
+    });
+
+    test('and after a save: the save takes the carry the pool names, and '
+        'leaves the one the undo brings back', () async {
+      final from = compressibleFile('take.wav');
+      final original = File(from).readAsBytesSync();
+      await pool.addMediaAssets([from], carried: true);
+      await pool.relinkMediaAsset(from, otherFile('other.wav').path);
+      File(from).deleteSync();
+      await session.projectDoor.saveProjectToFile(
+        '${root.path}/scene.anicel',
+        asked: SaveAsked.byAPerson,
+      );
+
+      session.undo();
+
+      expect(
+        session.projectFile.mediaByteSourceFor(from).readSync(),
+        original,
+      );
+    });
+
+    test('a by-hand relink the pool refuses moves nothing — not the facts, '
+        'not the bytes', () async {
+      final from = compressibleFile('take.wav');
+      final taken = otherFile('taken.wav');
+      await pool.addMediaAssets([from, taken.path], carried: true);
+      session.mediaFingerprints
+        ..rememberMediaFingerprint(from, File(from).readAsBytesSync())
+        ..rememberMediaFingerprint(taken.path, taken.bytes);
+      final facts = [
+        session.mediaFingerprints.recordedMediaIdentity(from),
+        session.mediaFingerprints.recordedMediaIdentity(taken.path),
+      ];
+      final carries = [carryIn(session, from), carryIn(session, taken.path)];
+      final copies = session.mediaStagingStore.list().length;
+
+      // The path is another asset's: the coordinator refuses.
+      await pool.relinkMediaAsset(from, taken.path);
+
+      expect(
+        [carryIn(session, from), carryIn(session, taken.path)],
+        carries,
+      );
+      expect(
+        [
+          session.mediaFingerprints.recordedMediaIdentity(from),
+          session.mediaFingerprints.recordedMediaIdentity(taken.path),
+        ],
+        facts,
+        reason:
+            '🪦the fingerprints moved whatever the pool said, onto the other '
+            'asset\'s path — the very facts a relink is decided by',
+      );
+      expect(
+        session.mediaStagingStore.list(),
+        hasLength(copies),
+        reason: 'the copy taken for a carry that never came is gone again',
+      );
+      expect(stagedCopyIn(session, from), isNotNull);
+    });
+
+    test('a BATCH relink keeps the carry, because the matcher checked '
+        'identity first — the same copy, under the same name', () async {
       final from = compressibleFile('take.wav');
       final original = File(from).readAsBytesSync();
       await pool.addMediaAssets([from], carried: true);
@@ -430,10 +517,51 @@ void main() {
       final before = carryIn(session, from)!;
       pool.relinkMediaAssets({from: to});
 
+      expect(carryIn(session, to)!.token, before.token);
       final staged = stagedCopyIn(session, to);
       expect(staged, isNotNull);
       expect(mediaAppFileSource(staged!.path).readSync(), original);
-      expect(session.mediaStagingStore.find(before), isNull);
+      expect(
+        session.mediaStagingStore.find(before)!.path,
+        staged.path,
+        reason:
+            '🪦the copy was RENAMED after the new path, and an undo of the '
+            'relink looked for the old name and found nothing',
+      );
+      expect(session.mediaStagingStore.list(), hasLength(1));
+    });
+
+    test('a batch move the pool refuses moves no facts — beside one it '
+        'makes, which moves its own', () async {
+      final from = compressibleFile('take.wav');
+      final taken = otherFile('taken.wav');
+      final lost = otherFile('lost.wav');
+      await pool.addMediaAssets([from, taken.path, lost.path]);
+      final ledger = session.mediaFingerprints
+        ..rememberMediaFingerprint(from, File(from).readAsBytesSync())
+        ..rememberMediaFingerprint(taken.path, taken.bytes)
+        ..rememberMediaFingerprint(lost.path, lost.bytes);
+      final facts = [
+        ledger.recordedMediaIdentity(from),
+        ledger.recordedMediaIdentity(taken.path),
+      ];
+      final lostFacts = ledger.recordedMediaIdentity(lost.path);
+      final found = '${root.path}/found.wav'.replaceAll(r'\', '/');
+      File(found).writeAsBytesSync(lost.bytes);
+
+      pool.relinkMediaAssets({from: taken.path, lost.path: found});
+
+      expect(
+        [
+          ledger.recordedMediaIdentity(from),
+          ledger.recordedMediaIdentity(taken.path),
+        ],
+        facts,
+        reason:
+            '🪦the facts followed every move asked for, onto the other '
+            'asset\'s path — the very facts a relink is decided by',
+      );
+      expect(ledger.recordedMediaIdentity(found), lostFacts);
     });
 
     test('a by-hand relink of a REFERENCED asset stages nothing', () async {

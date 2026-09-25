@@ -9,6 +9,8 @@ import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 
+import 'app_sources.dart';
+
 class Decl {
   Decl(this.file, this.kind, this.name);
   final String file;
@@ -25,12 +27,9 @@ List<File> dartFiles(String dir) => Directory(dir)
 void main(List<String> args) {
   final root = args[0].replaceAll('\\', '/');
   final decls = <Decl>[];
-  final libFiles = dartFiles('$root/lib');
-  for (final file in libFiles) {
-    final path = file.path.replaceAll('\\', '/');
-    if (path.contains('/lib/dev/')) continue;
+  for (final path in appDartFiles('$root/lib')) {
     final unit = parseString(
-      content: file.readAsStringSync(),
+      content: File(path).readAsStringSync(),
       path: path,
       featureSet: FeatureSet.latestLanguageVersion(),
       throwIfDiagnostics: false,

@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
+import '../../models/frame.dart' show InbetweenMark;
 import '../../native/qa_native_engine.dart';
 import '../text/word_condensation.dart';
 import 'timeline_frame_window.dart';
@@ -26,14 +27,14 @@ import '../../core/bake_once_lru.dart';
 /// canvas calls per cell.
 ///
 /// ⚠️ The ink is IN the tile. The emitter writes the substrate and then
-/// the foreground — hold-dash capsules inline, glyph text through the A8
-/// atlas (T3) — into one op stream, and `_paint` skips its Dart foreground
-/// pass for any span a tile covers. This doc used to say the opposite
-/// ("foreground ink stays the painter's Dart pass on top"), which was true
-/// of the tile's first shape and has misled at least one reader into
-/// costing a text-layering round wrongly; the stale-while-revalidate note
-/// below is the honest description, naming the two technologies it chooses
-/// between as "baked A8 glyphs ↔ TextPainter".
+/// the foreground — hold-dash capsules and in-between marks inline, glyph
+/// text through the A8 atlas (T3) — into one op stream, and `_paint` skips
+/// its Dart foreground pass for any span a tile covers. This doc used to say
+/// the opposite ("foreground ink stays the painter's Dart pass on top"),
+/// which was true of the tile's first shape and has misled at least one
+/// reader into costing a text-layering round wrongly; the
+/// stale-while-revalidate note below is the honest description, naming the
+/// two technologies it chooses between as "baked A8 glyphs ↔ TextPainter".
 ///
 /// The classic Dart pass is the FALLBACK, for spans with no usable tile.
 ///
@@ -140,6 +141,15 @@ class TimelineGridTileStore {
     if (entry != null) {
       _entries[key] = entry;
       if (entry.matches(painter, spanEndIndexExclusive, devicePixelRatio)) {
+        return entry.image;
+      }
+      if (entry.stillShows(
+        painter,
+        spanStartIndex,
+        spanEndIndexExclusive,
+        devicePixelRatio,
+      )) {
+        entry.celContentRevision = painter.celContentRevision;
         return entry.image;
       }
     }
@@ -267,6 +277,7 @@ class TimelineGridTileStore {
           // (the LRU survives cut trips and the 'projectId:cutId' string is
           // reproduced exactly on return; only the NEXT bump healed it).
           celContentRevision: rastered.celContentRevision,
+          substrate: rastered.substrate,
           baseTextStyle: request.painter.baseTextStyle,
           spanEndIndexExclusive: request.spanEndIndexExclusive,
           devicePixelRatio: request.devicePixelRatio,
@@ -446,10 +457,10 @@ class TimelineGridTileStore {
   }
 
   /// Rasters the request and returns the image TOGETHER WITH the content
-  /// revision the raster's answers described — sampled in the same
-  /// synchronous block as the substrate emit, so pixels and stamp can
-  /// never disagree.
-  Future<({ui.Image image, int celContentRevision})?> _raster(
+  /// revision the raster's answers described and the substrate it laid
+  /// down — both sampled in the same synchronous block as the substrate
+  /// emit, so pixels, stamp and substrate can never disagree.
+  Future<_Rastered?> _raster(
     QaNativeEngine engine,
     _TileRequest request,
   ) async {
@@ -471,7 +482,7 @@ class TimelineGridTileStore {
     // and nothing can bump the revision inside one block. This value is
     // what the pixels actually describe; the drain stamps it verbatim.
     final sampledCelContentRevision = painter.celContentRevision;
-    timelineGridEmitSubstrate(
+    final substrate = timelineGridEmitSubstrate(
       writer,
       painter: painter,
       spanStartIndex: request.spanStartIndex,
@@ -504,13 +515,37 @@ class TimelineGridTileStore {
     }
 
     final image = await _upload(pixels, tileWidth, tileHeight);
-    return (image: image, celContentRevision: sampledCelContentRevision);
+    return (
+      image: image,
+      celContentRevision: sampledCelContentRevision,
+      substrate: substrate,
+    );
   }
 
-  /// Bakes and emits the span's FOREGROUND ink (T3): hold-dash capsules
-  /// inline, glyph text through the A8 atlas — geometry and ink probed
-  /// from the painter (the substrate's fidelity rule). Returns the
-  /// transient atlas the GLYPH ops reference, or null (no glyphs).
+  /// The op stream [_emitForeground] writes for a span — what a tile bakes
+  /// over its substrate, readable without a native engine.
+  @visibleForTesting
+  Future<Int32List> debugForegroundOps({
+    required TimelineTileRasterSource painter,
+    required int spanStartIndex,
+    required int spanEndIndexExclusive,
+    required double devicePixelRatio,
+  }) async {
+    final writer = TimelineGridTileOpWriter();
+    await _emitForeground(
+      writer,
+      painter: painter,
+      spanStartIndex: spanStartIndex,
+      spanEndIndexExclusive: spanEndIndexExclusive,
+      devicePixelRatio: devicePixelRatio,
+    );
+    return writer.build();
+  }
+
+  /// Bakes and emits the span's FOREGROUND ink (T3): hold-dash capsules and
+  /// in-between marks inline, glyph text through the A8 atlas — geometry and
+  /// ink probed from the painter (the substrate's fidelity rule). Returns
+  /// the transient atlas the GLYPH ops reference, or null (no glyphs).
   Future<_TileAtlas?> _emitForeground(
     TimelineGridTileOpWriter writer, {
     required TimelineTileRasterSource painter,
@@ -543,6 +578,20 @@ class TimelineGridTileStore {
         index,
     ]) {
       final model = painter.cellModelAt(frameIndex);
+      final mark = model.mark;
+      if (mark != null) {
+        final place = painter.inbetweenMarkLayoutFor(frameIndex);
+        final center = horizontal
+            ? place.center.translate(-originMain, 0)
+            : place.center.translate(0, -originMain);
+        _emitInbetweenMark(
+          writer,
+          mark,
+          Rect.fromCircle(center: center * dpr, radius: place.radius * dpr),
+          timelineGridPackRgba(painter.foregroundInkFor(model)),
+        );
+        continue;
+      }
       if (model.glyph.isEmpty) {
         continue;
       }
@@ -666,6 +715,30 @@ class TimelineGridTileStore {
     return _TileAtlas(width: atlasWidth, height: atlasHeight, alpha: atlas);
   }
 
+  /// An in-between mark as tile ops over [disc], its box in tile pixels —
+  /// the shape [paintInbetweenMark] draws on the classic pass, where the
+  /// painter lays it.
+  static void _emitInbetweenMark(
+    TimelineGridTileOpWriter writer,
+    InbetweenMark mark,
+    Rect disc,
+    int rgba,
+  ) {
+    switch (mark) {
+      case InbetweenMark.one:
+        // A rounded rect as round as it is large is the disc.
+        writer.rrectFill(
+          disc.left,
+          disc.top,
+          disc.width,
+          disc.height,
+          disc.width / 2,
+          15,
+          rgba,
+        );
+    }
+  }
+
   Future<ui.Image> _upload(
     Uint8List pixels,
     int tileWidth,
@@ -689,8 +762,16 @@ class _TileRequest {
   final double devicePixelRatio;
 }
 
+/// What `_raster` hands the drain: the pixels, and the revision and the
+/// substrate they describe.
+typedef _Rastered = ({
+  ui.Image image,
+  int celContentRevision,
+  TimelineRowSubstrate substrate,
+});
+
 class _TileEntry {
-  const _TileEntry({
+  _TileEntry({
     required this.substrateGeneration,
     required this.layer,
     required this.coverageIdentity,
@@ -701,6 +782,7 @@ class _TileEntry {
     required this.frameNameForLayer,
     required this.celHasContentForLayer,
     required this.celContentRevision,
+    required this.substrate,
     required this.baseTextStyle,
     required this.spanEndIndexExclusive,
     required this.devicePixelRatio,
@@ -738,7 +820,15 @@ class _TileEntry {
   /// content reads, never a live read at store time (a crossing landing
   /// mid-raster would stamp pre-crossing pixels as post-crossing and
   /// `matches` would serve them fresh forever).
-  final int celContentRevision;
+  ///
+  /// It moves only by [stillShows]: a newer revision whose substrate is
+  /// this tile's own, read in one synchronous block.
+  int celContentRevision;
+
+  /// The paper and lines `_raster` laid down — read in the same block as
+  /// [celContentRevision]. Every pixel the content answers can reach is in
+  /// here: the ink over it asks the exposure, never the content.
+  final TimelineRowSubstrate substrate;
 
   final TextStyle baseTextStyle;
   final int spanEndIndexExclusive;
@@ -761,6 +851,45 @@ class _TileEntry {
   /// re-rasters (glyphs live in the tiles too — T3 — so the glyph
   /// sources join the key).
   bool matches(
+    TimelineTileRasterSource painter,
+    int spanEndIndexExclusive,
+    double devicePixelRatio,
+  ) =>
+      celContentRevision == painter.celContentRevision &&
+      _sameLookBesideContent(painter, spanEndIndexExclusive, devicePixelRatio);
+
+  /// Whether this tile still shows the row although the content revision
+  /// moved.
+  ///
+  /// 🚨THE REVISION IS ONE NUMBER FOR THE WHOLE TIMELINE (F-166). It bumps
+  /// when the pen goes down or up and on every committed stroke, so every
+  /// visible tile of every row went stale three times a stroke and the
+  /// drain re-rastered them all — at pen-down, the moment the stroke needs
+  /// the thread most — while only the cel under the pen could have
+  /// changed. The revision can say THAT something moved, not WHERE; the
+  /// substrate can: it is every pixel the content answers reach
+  /// ([substrate]). Same look, same substrate ⇒ the same pixels, so the
+  /// tile takes the new revision instead of a raster.
+  bool stillShows(
+    TimelineTileRasterSource painter,
+    int spanStartIndex,
+    int spanEndIndexExclusive,
+    double devicePixelRatio,
+  ) =>
+      _sameLookBesideContent(
+        painter,
+        spanEndIndexExclusive,
+        devicePixelRatio,
+      ) &&
+      _sameSubstrate(
+        substrate,
+        painter.substrateIn(spanStartIndex, spanEndIndexExclusive),
+      );
+
+  static bool _sameSubstrate(TimelineRowSubstrate a, TimelineRowSubstrate b) =>
+      listEquals(a.paper, b.paper) && listEquals(a.lines, b.lines);
+
+  bool _sameLookBesideContent(
     TimelineTileRasterSource painter,
     int spanEndIndexExclusive,
     double devicePixelRatio,
@@ -787,7 +916,6 @@ class _TileEntry {
         exposureStateForLayer == painter.exposureStateForLayer &&
         frameNameForLayer == painter.frameNameForLayer &&
         celHasContentForLayer == painter.celHasContentForLayer &&
-        celContentRevision == painter.celContentRevision &&
         baseTextStyle == painter.baseTextStyle &&
         paperGround == painter.paperGround &&
         blockFrameLines == painter.blockFrameLines &&
@@ -854,8 +982,9 @@ Int32List timelineGridSubstrateOps({
 }
 
 /// The writer-append form of [timelineGridSubstrateOps] — the store
-/// appends the foreground pass (T3) to the same stream.
-void timelineGridEmitSubstrate(
+/// appends the foreground pass (T3) to the same stream. Answers the
+/// substrate it wrote, which the store keeps beside the tile.
+TimelineRowSubstrate timelineGridEmitSubstrate(
   TimelineGridTileOpWriter writer, {
   required TimelineTileRasterSource painter,
   required int spanStartIndex,
@@ -899,6 +1028,7 @@ void timelineGridEmitSubstrate(
       timelineGridPackRgba(line.color),
     );
   }
+  return substrate;
 }
 
 /// A piece's corners as the op stream states them. Every rounded corner

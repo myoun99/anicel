@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kTouchSlop;
@@ -642,7 +643,7 @@ void main() {
       onGroupsReordered: (_) {},
     );
 
-    expect(find.byType(Tooltip), findsWidgets);
+    expect(find.byType(AppTooltip), findsWidgets);
 
     final drag = await tester.startGesture(tester.getCenter(_tab('ink')));
     await tester.pump(const Duration(milliseconds: 100));
@@ -656,7 +657,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('brush-preset-tab-rail')),
-        matching: find.byType(Tooltip),
+        matching: find.byType(AppTooltip),
       ),
       findsNothing,
       reason: 'nothing in a dragging tab may reach for the overlay',

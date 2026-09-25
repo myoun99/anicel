@@ -4,7 +4,11 @@ import '../input/value_control_pointers.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'layer_rail_columns.dart';
 import 'layer_label_controls.dart'
-    show layerFxSlotWidth, layerOnionSlotWidth, layerVisibilitySlotWidth;
+    show
+        LayerRailColumnWidths,
+        layerFxSlotWidth,
+        layerOnionSlotWidth,
+        layerVisibilitySlotWidth;
 import '../widgets/axis_gesture_detector.dart';
 
 /// A column a rail can SWIPE: where its band sits at a given row depth,
@@ -468,6 +472,7 @@ const double _railTrailingPadding = 8.0;
 List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   required double crossExtent,
   required double leadingOrigin,
+  required LayerRailColumnWidths columns,
   bool hasOnionColumn = false,
   bool hasBlendColumn = false,
   RailToggle<TRow>? visibility,
@@ -501,6 +506,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
         crossExtent -
         _railTrailingPadding -
         layerRailTrailingWidth(
+          columns: columns,
           from: after,
           hasOnionColumn: hasOnionColumn,
           hasBlendColumn: hasBlendColumn,

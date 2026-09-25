@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'app_support_path.dart';
+import 'same_file.dart';
 
 /// The app container's PER-RUN room: `<container>/Sessions/<pid>/`.
 ///
@@ -252,7 +253,7 @@ class SessionScratch {
   /// a run that died between `createSync` and `openSync`, and nothing is
   /// coming back for it.
   static bool _runHasEnded(Directory folder) {
-    if (folder.path.replaceAll(r'\', '/') == thisRunsFolder()) {
+    if (namesTheSameFile(folder.path, thisRunsFolder())) {
       return false;
     }
     final lock = File('${folder.path}/$_lockName');

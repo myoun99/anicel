@@ -515,8 +515,6 @@ class BrushToolState {
   static const double defaultSize = 10.0;
   static const double defaultOpacity = 1.0;
   static const int defaultColor = 0xFF000000;
-  static const double minSpacing = 0.05;
-  static const double maxSpacing = 4.0;
   static const double defaultSpacing = 0.25;
   static const double defaultHardness = 1.0;
   static const double defaultFlow = 1.0;
@@ -1124,7 +1122,9 @@ class BrushToolState {
     if (!value.isFinite) {
       return defaultSpacing;
     }
-    return value.clamp(minSpacing, maxSpacing).toDouble();
+    return value
+        .clamp(BrushShape.minSpacing, BrushShape.maxSpacing)
+        .toDouble();
   }
 
   /// Clamps unit-interval settings (hardness, flow) to [0, 1].

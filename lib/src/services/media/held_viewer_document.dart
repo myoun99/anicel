@@ -1,7 +1,32 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'media_byte_source.dart'
+    show
+        HeldBytesMove,
+        HeldMediaBytes,
+        HoldMediaBytes,
+        MediaByteSource,
+        openOnHeldBytes;
 import 'viewer_document.dart';
+
+/// [open] on the bytes [hold] answers for [path], as a document that holds
+/// them until it has closed ([HeldViewerDocument], [openOnHeldBytes]) — the
+/// viewer's, the import window's PDF preview, a PDF placement: the
+/// document's counterpart of `openHeldMovie`.
+///
+/// 🪦Each of the three spelled the same call with the same two type
+/// arguments and the same keeper (audit 09-25).
+Future<ViewerDocument?> openHeldViewerDocument(
+  HoldMediaBytes hold,
+  String path,
+  Future<ViewerDocument?> Function(MediaByteSource source) open,
+) => openOnHeldBytes<ViewerDocument, ViewerDocument>(
+  hold,
+  path,
+  open,
+  HeldViewerDocument.new,
+);
 
 /// A document, and the bytes it reads given back once it has closed.
 ///
@@ -12,10 +37,22 @@ import 'viewer_document.dart';
 /// window at a time would have been the second to be taught it, and an
 /// image the third.
 final class HeldViewerDocument implements ViewerDocument {
-  HeldViewerDocument(this._document, this._release);
+  HeldViewerDocument(this._document, HeldMediaBytes held)
+    : _release = held.release,
+      moved = held.moved,
+      again = held.again;
 
   final ViewerDocument _document;
   final void Function() _release;
+
+  /// Each time the bytes this document reads have an answer somewhere else
+  /// — or are about to ([HeldMediaBytes.moved]) — the viewer opens them
+  /// [again] and lets this one go, in the order the move says.
+  final Stream<HeldBytesMove> moved;
+
+  /// The bytes this document reads, held again wherever they are now
+  /// ([HeldMediaBytes.again]) — never what the path names by then.
+  final Future<HeldMediaBytes> Function() again;
 
   @override
   int get pageCount => _document.pageCount;

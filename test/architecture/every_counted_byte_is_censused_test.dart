@@ -168,6 +168,10 @@ const _notCensused = <String, String>{
   'lib/src/ui/widgets/static_raster.dart → rasterBytes':
       'one baked panel weighing itself; StaticRaster.censusBytes sums '
       'every live bake and THAT is what the census reads',
+  'lib/src/ui/widgets/still_raster.dart → rasterBytes':
+      'one dock region\'s still image weighing itself; '
+      'StillRaster.censusBytes sums every live region and THAT is what the '
+      'census reads',
 
   // — Budgets, not holdings. A ceiling is not memory in use.
   'lib/src/ui/playback/playback_cache_budget.dart → maxBytes':

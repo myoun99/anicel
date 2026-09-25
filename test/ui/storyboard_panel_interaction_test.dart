@@ -1339,11 +1339,15 @@ void main() {
 
     testWidgets('the pinned ruler follows horizontal scrolling with the '
         'blocks', (tester) async {
+      // Cuts longer than the view, so there is room to scroll. Two 24-frame
+      // cuts were 384px in a 936px view: the only room was the view filled
+      // up to a whole cell, 0–7px, and it was 0 once the OPAC column made
+      // the view a whole number of cells (text-scale-rail-opac).
       await _pumpStoryboardPanel(
         tester,
         _singleTrackProject([
-          _cut('cut-a', name: 'Cut A'),
-          _cut('cut-b', name: 'Cut B'),
+          _cut('cut-a', name: 'Cut A', duration: 120),
+          _cut('cut-b', name: 'Cut B', duration: 120),
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
@@ -1912,7 +1916,8 @@ Future<void> _pumpStoryboardPanel(
   ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
 }) async {
   // The rail matches the timeline's — 372 in UI-R5, 434 since the user
-  // unified the two widths (2026-08-04) — so the surface must stay wide
+  // unified the two widths (2026-08-04), 443 since the OPAC column widened
+  // (2026-09-25) — so the surface must stay wide
   // enough to keep every cut block of the three-cut fixtures on screen.
   await tester.binding.setSurfaceSize(const Size(1400, 600));
   addTearDown(() => tester.binding.setSurfaceSize(null));

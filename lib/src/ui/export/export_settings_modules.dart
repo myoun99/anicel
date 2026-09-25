@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 import '../text/full_width_numerals.dart';
 
@@ -270,7 +271,7 @@ class ExportPillStrip extends StatelessWidget {
     // width up (its label ellipsising) when the column is narrower than
     // the strip — a strip never overflows its row.
     return Flexible(
-      child: tooltip == null ? pill : Tooltip(message: tooltip, child: pill),
+      child: tooltip == null ? pill : AppTooltip(message: tooltip, child: pill),
     );
   }
 }

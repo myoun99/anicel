@@ -173,4 +173,10 @@ const Set<String> _allowedFiles = {
   // calls it is the entrance and stages there. Splitting the staging into
   // the planner would put a disk write inside a pure plan.
   'lib/src/services/import/media_import_planner.dart',
+  // A relink by hand is a new carry ([RelinkMediaAssetCommand.carriedAs]),
+  // minted and staged by the pool's relink — the entrance; the coordinator
+  // and the command only hand it to the asset inside the undo step, the way
+  // the planner hands over an import's.
+  'lib/src/services/commands/cut_command_coordinator.dart',
+  'lib/src/services/commands/relink_media_asset_command.dart',
 };

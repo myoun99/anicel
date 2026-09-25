@@ -5,8 +5,10 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 
 import '../../core/path_names.dart';
-import '../../models/media_asset.dart' show MediaCarry, normalizedMediaPath;
+import '../../models/media_asset.dart'
+    show MediaCarry, mediaCarryName, mediaNameParts;
 import 'media_blob_codec.dart';
+import 'scratch_file.dart';
 import 'session_scratch.dart';
 
 /// 🚨★★★**WHAT「품기」MEANS BETWEEN THE IMPORT AND THE FIRST SAVE.**
@@ -35,13 +37,15 @@ import 'session_scratch.dart';
 /// owes is a LIFETIME, and this one's is now written in its PATH: it lives
 /// in [SessionScratch]'s room for this run, retired by the save that
 /// absorbs it, and gone with the room when the run ends. A room still
-/// standing at the next launch is a crash, and what it holds is offered
-/// back rather than swept.
+/// standing at the next launch belonged to a run that crashed, and goes
+/// then (유저 확정 2026-09-10 — see the 🪦 note above [list]).
 ///
-/// 🚨**The name is DERIVED, never recorded** — the same rule the conform
-/// store follows ("under a name derived by rule from the source path —
-/// nothing recorded, nothing to fall out of sync"). A staged file that
-/// nothing remembers cannot be remembered wrongly.
+/// 🚨**A staged file is named by its carry, and nothing here records it**
+/// ([mediaCarryName]) — the name is minted with the carry and kept by the
+/// asset it belongs to ([MediaAsset.carriedAs]), the way the conform store
+/// names a file by rule from its source path ("nothing recorded, nothing
+/// to fall out of sync"). A staged file that no list remembers cannot be
+/// remembered wrongly.
 class MediaStagingStore {
   MediaStagingStore({String? directoryPath})
     : _injected = directoryPath?.replaceAll(r'\', '/');
@@ -81,14 +85,16 @@ class MediaStagingStore {
   @visibleForTesting
   static bool debugStageInline = false;
 
-  /// 🚨Separators normalised HERE, once.
+  /// 🚨Separators normalised HERE, once — every path built from it
+  /// ([_basePathFor]) is in the one spelling, and a path the file system
+  /// LISTS is put in it where it is listed ([list]; [holdsAnyCopyOf] reads
+  /// only its name, through [fileNameOfPath]).
   ///
-  /// Every method compares a path it BUILT ([pathFor]) against a path the
-  /// filesystem LISTED, and on Windows those disagree the moment a caller
-  /// hands in a `\`-flavoured directory — `Directory.systemTemp` does. An
-  /// earlier keep-set sweep failed to match a single live file that way
-  /// and deleted the lot; that sweep is gone — the room's lifetime replaced
-  /// it — but [find] and [list] still stand on the same comparison, so the
+  /// On Windows the two disagree the moment a caller hands in a
+  /// `\`-flavoured directory — `Directory.systemTemp` does. An earlier
+  /// keep-set sweep failed to match a single live file that way and deleted
+  /// the lot; that sweep is gone — the room's lifetime replaced it — but
+  /// [find] and [list] still stand on the one spelling, so the
   /// normalisation stays where it cannot be forgotten.
   /// 🚨★★★**RESOLVED ON USE, NOT IN THE CONSTRUCTOR** — because resolving
   /// it BUILDS AND LOCKS the run's room ([SessionScratch.stagedFolder]),
@@ -104,16 +110,12 @@ class MediaStagingStore {
 
   final String? _injected;
 
-  /// Where [carry]'s staged bytes live, framed or not.
-  ///
-  /// The suffix carries the same meaning it does inside the archive — see
-  /// [mediaFramedEntrySuffix] — so a staged file can be streamed into the
+  /// Where [carry]'s staged bytes live, before the framed suffix — which
+  /// carries the same meaning it does inside the archive
+  /// ([mediaFramedEntrySuffix]), so a staged file can be streamed into the
   /// .anicel without being decoded and re-encoded on the way.
-  String pathFor(MediaCarry carry, {required bool framed}) =>
-      mediaPathFramed(_basePathFor(carry), framed: framed);
-
   String _basePathFor(MediaCarry carry) =>
-      '$directoryPath/${stagedNameFor(carry)}';
+      '$directoryPath/${mediaCarryName(carry)}';
 
   /// The staged copy of [carry], or null when there is none.
   ///
@@ -135,7 +137,7 @@ class MediaStagingStore {
       final file = File(candidate);
       if (file.existsSync()) {
         return StagedMedia(
-          path: file.path.replaceAll(r'\', '/'),
+          path: candidate,
           framed: mediaEntryIsFramed(candidate),
           storedLength: file.lengthSync(),
         );
@@ -153,18 +155,20 @@ class MediaStagingStore {
   /// that asset back.
   ///
   /// ⚠️Read off the names on disk, which is where the path is: every carry
-  /// of one path shares the name's front (the path's hash) and its back
-  /// (the file's name) — see [stagedNameFor].
+  /// made at one path shares the name's front (the path's hash) and its
+  /// back (the file's name) — see [mediaNameParts]. One relinked away since
+  /// still counts, which is the safe side: an undo of the relink brings it
+  /// back here.
   bool holdsAnyCopyOf(String poolPath) {
     final directory = Directory(directoryPath);
     if (!directory.existsSync()) {
       return false;
     }
-    final (:front, :back) = _stagedNameEnds(poolPath);
+    final (:hash, :safe) = mediaNameParts(poolPath);
     for (final entity in directory.listSync()) {
-      final name = fileNameOfPath(entity.path.replaceAll(r'\', '/'));
-      if (name.startsWith(front) &&
-          mediaFramedOrPlainPaths(back).any(name.endsWith)) {
+      final name = fileNameOfPath(entity.path);
+      if (name.startsWith('$hash-') &&
+          mediaFramedOrPlainPaths('-$safe').any(name.endsWith)) {
         return true;
       }
     }
@@ -280,7 +284,7 @@ class MediaStagingStore {
 
   /// Whether [carry]'s copy is only waiting on its reader to retire.
   bool _retiring(MediaCarry carry) =>
-      _retireWhenLetGo.contains(stagedNameFor(carry));
+      _retireWhenLetGo.contains(mediaCarryName(carry));
 
   /// [stageCarriedBytes] for bytes that have no file yet — a voice take,
   /// which this app MADE rather than copied from somewhere.
@@ -329,46 +333,80 @@ class MediaStagingStore {
     );
   }
 
-  /// Follows an asset whose pool path changed — a relink.
+  /// 🚨★★★**WHAT A SAVE LEAVES BEHIND, THE ROOM KEEPS** (유저 2026-09-25,
+  /// board `undo-after-save-reads-the-original`: 「이번 실행의 앱 룸으로
+  /// 옮겨 둔다」).
   ///
-  /// 🚨★★★**THE NAME IS DERIVED, SO IT HAS TO MOVE WHEN THE PATH DOES.**
-  /// Deriving the name is what makes a staged file impossible to remember
-  /// wrongly, and the price is exactly this: nothing points at it, so a
-  /// path change orphans it silently. The asset would then look unstaged —
-  /// back to the promise being kept at save time — while the bytes it was
-  /// promised sat under the old name waiting for the sweep.
+  /// A save takes out of the file every carry the pool no longer names —
+  /// 09-13's 「삭제하고 저장해도 파일 크기 안 줄어든다」 — and an undo can
+  /// bring that carry back. Its bytes were then nowhere but its original:
+  /// edited since, or gone. So before the save writes, each entry of [left]
+  /// is copied out of the file at [archivePath] into this run's room under
+  /// the name it wears there, which is the name and framing its staged copy
+  /// would have ([find]) — and the file still shrinks. It lives as long as
+  /// the room: until this run ends, as a failed copy does.
   ///
-  /// ⚠️The fingerprints already move this way (`_moveMediaFingerprints`),
-  /// and for the same reason. Derived state follows its key or it is not
-  /// derived, it is stale.
+  /// ⛔Not copied again: a copy that is here already. One a save absorbed
+  /// while a reader held it is still here, retiring ([hold]) — it IS these
+  /// bytes, so it stays instead.
   ///
-  /// The carry keeps its token: a relink moves the asset, and
-  /// `copyWith(path:)` keeps [MediaAsset.carriedAs] with it.
-  void rename(MediaCarry from, String toPoolPath) {
-    final staged = find(from);
-    if (staged == null) {
-      return;
+  /// ⚠️An entry that will not copy is skipped ([ScratchFile.writeStreamed]
+  /// answers null), as [stageCarriedBytes] skips a file that will not open:
+  /// the save goes on, and that carry's undo reads its original, as before
+  /// this. Streamed through the IO threads a block at a time — a carried
+  /// movie is gigabytes, and this runs while the save window is up;
+  /// [onProgress] hears each block as a fraction of everything to copy.
+  Future<void> keepLeftBehind(
+    String archivePath,
+    List<MediaLeftBehind> left, {
+    void Function(double)? onProgress,
+  }) async {
+    final todo = [
+      for (final entry in left)
+        if (!_keepIfHere(_keyOf(entry.name))) entry,
+    ];
+    final total = todo.fold(0, (sum, entry) => sum + entry.length);
+    var copied = 0;
+    for (final entry in todo) {
+      await ScratchFile.writeStreamed(
+        '$directoryPath/${entry.name}',
+        File(archivePath)
+            .openRead(entry.offset, entry.offset + entry.length)
+            .map((block) {
+              copied += block.length;
+              onProgress?.call(copied / total);
+              return block;
+            }),
+        length: entry.length,
+      );
     }
-    final destination = pathFor(
-      (poolPath: toPoolPath, token: from.token),
-      framed: staged.framed,
-    );
-    if (destination == staged.path) {
-      return;
-    }
-    Directory(directoryPath).createSync(recursive: true);
-    // ⛔The destination is emptied first: a rename onto an existing file
-    // fails on Windows, and the bytes already there belong to whatever
-    // used to hold that name — which the caller has just replaced.
-    final existing = File(destination);
-    if (existing.existsSync()) {
-      existing.deleteSync();
-    }
-    File(staged.path).renameSync(destination);
   }
 
+  /// Keeps the copy named [key] if it is in the room already — cancelling
+  /// its retirement when it was only waiting on a reader, since the bytes a
+  /// save is about to leave behind are the ones it holds — and answers
+  /// whether it was.
+  bool _keepIfHere(String key) =>
+      _retireWhenLetGo.remove(key) ||
+      mediaFramedOrPlainPaths(
+        '$directoryPath/$key',
+      ).any((path) => File(path).existsSync());
+
+  /// The carry name a room file called [name] is kept under — its name less
+  /// the framed suffix.
+  String _keyOf(String name) => mediaEntryIsFramed(name)
+      ? name.substring(0, name.length - mediaFramedEntrySuffix.length)
+      : name;
+
+  // 🪦**A RELINK USED TO RENAME THE STAGED COPY HERE** (`rename`), because
+  // the name was derived from the path and had to follow it — and an undo
+  // of the relink then looked for the old name and found nothing: the only
+  // copy of a carry whose original was gone (audit 09-25). The name is
+  // minted with the carry now ([mintMediaCarry]) and a relink keeps it, so
+  // nothing here moves when a path does.
+
   /// Staged copies a reader holds OPEN right now ([hold]), by
-  /// [stagedNameFor], and how many hold each.
+  /// [mediaCarryName], and how many hold each.
   final Map<String, int> _held = {};
 
   /// Held copies whose retirement came while a reader had them — each goes
@@ -388,7 +426,7 @@ class MediaStagingStore {
   /// `ProjectFile.holdMediaBytes` keeps for an archive entry the in-place
   /// push-down would move, kept for the step that would take this one.
   void Function() hold(MediaCarry carry) {
-    final key = stagedNameFor(carry);
+    final key = mediaCarryName(carry);
     _held.update(key, (count) => count + 1, ifAbsent: () => 1);
     return () {
       final left = _held[key]! - 1;
@@ -410,7 +448,7 @@ class MediaStagingStore {
   /// bytes shrank, and a save must not leave half of an absorbed import
   /// behind (유저 08-27: 「사본 남으면 진짜 용서안할게」).
   void retire(MediaCarry carry) {
-    final key = stagedNameFor(carry);
+    final key = mediaCarryName(carry);
     if (_held.containsKey(key)) {
       _retireWhenLetGo.add(key);
       return;
@@ -418,7 +456,7 @@ class MediaStagingStore {
     _deleteCopies(key);
   }
 
-  /// Both spellings of the copy named [key] ([stagedNameFor]), gone —
+  /// Both spellings of the copy named [key] ([mediaCarryName]), gone —
   /// whichever is on disk depends on whether the bytes shrank.
   void _deleteCopies(String key) {
     for (final candidate in mediaFramedOrPlainPaths('$directoryPath/$key')) {
@@ -478,40 +516,10 @@ class MediaStagingStore {
     ];
   }
 
-  /// The staged file's name for [carry] — derived, never recorded, and
-  /// safe on every filesystem: `<path hash>-<token>-<file name>`, the token
-  /// left out for the carry that has none (`''`).
-  ///
-  /// The file name rides behind the hash for the same reason the archive
-  /// entry's does: a person looking in the folder should be able to tell
-  /// what they are looking at.
-  ///
-  /// Public because [_stageBytes] runs in an isolate and has to derive the
-  /// same name over there; a second spelling of this rule is exactly the
-  /// drift the derived-name design exists to make impossible.
-  static String stagedNameFor(MediaCarry carry) {
-    final (:front, :back) = _stagedNameEnds(carry.poolPath);
-    return carry.token.isEmpty
-        ? '$front${back.substring(1)}'
-        : '$front${carry.token}$back';
-  }
-
-  /// What the staged name of every carry of [poolPath] starts and ends
-  /// with: the path's hash, and its file name ([holdsAnyCopyOf]).
-  static ({String front, String back}) _stagedNameEnds(String poolPath) {
-    final normalized = normalizedMediaPath(poolPath);
-    var hash = 0x811c9dc5;
-    for (final unit in normalized.codeUnits) {
-      hash = ((hash ^ unit) * 0x01000193) & 0xFFFFFFFF;
-    }
-    final safe = fileNameOfPath(
-      normalized,
-    ).replaceAll(RegExp('[^A-Za-z0-9._-]'), '_');
-    return (
-      front: '${hash.toRadixString(16).padLeft(8, '0')}-',
-      back: '-$safe',
-    );
-  }
+  // 🪦`stagedNameFor` spelled the carry's name out a second time — the same
+  // hash, sanitising and token rule as the archive entry's (audit 09-25,
+  // connascence). The name is [mediaCarryName] now, one function the
+  // isolate in [_stageBytes] can call as well as this side.
 }
 
 /// One staged file.
@@ -534,8 +542,15 @@ class StagedMedia {
   final int storedLength;
 }
 
-/// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so the
-/// isolate closure captures a list of strings and nothing else.
+/// A media entry a save is about to leave behind, where it lies in the
+/// project file — [length] bytes from [offset] — and [name], the name it
+/// wears there without the folder: its carry's name, framed suffix and all
+/// ([MediaStagingStore.keepLeftBehind]).
+typedef MediaLeftBehind = ({String name, int offset, int length});
+
+/// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so
+/// the isolate closure captures the carries — records of two strings — and
+/// the folder, and nothing else.
 ///
 /// ONE handle per file: `MediaFileBytes.readIntoSync` opens and closes per
 /// call, which a 4GB asset at 512KB blocks would pay eight thousand times.
@@ -558,7 +573,7 @@ List<({String path, bool framed, int storedLength})> _stageBytes(
     }
     try {
       final written = writeMediaBlob(
-        basePath: '$directoryPath/${MediaStagingStore.stagedNameFor(carry)}',
+        basePath: '$directoryPath/${mediaCarryName(carry)}',
         length: handle.lengthSync(),
         readInto: (buffer, position, size) {
           handle.setPositionSync(position);

@@ -4,17 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/pixel_verb_subject.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
@@ -308,15 +312,39 @@ void main() {
     );
   });
 
-  /// 🚨★★★**THE SELECTION'S SOFTNESS IS PART OF THE SELECTION.** A Ctrl+T
-  /// lift on a marquee honoured 확장·페더·AA; these four verbs ran on a hard
-  /// mask whatever the user had set, so one outline meant two things. The
-  /// parameter was wired all the way to `celPixelWalkFor` — only the press
-  /// site never passed it. 유저 확정 2026-09-09 (`pixel-verbs-mask-options`
-  /// = 가): 「선택툴로 선택한채로 사용할때 … 선택의 aa 따르게」.
-  ///
-  /// ⚠️Two halves, and each has its own mutant: the WORKSPACE has to publish
-  /// the fact, and the PRESS has to pass it on.
+  /// ⚠️Ink written through the COORDINATOR, not the store beside it. The
+  /// fixture one level up seeds `renderCaches.brushFrameStore` directly and
+  /// that is enough for the ladder tests, which only ask WHICH cels a press
+  /// names — but the press itself reads `coordinator.currentSurfaceOf`,
+  /// which answers with an empty 256-tile surface for the same key. A pin
+  /// on the PIXELS has to put the drawing where the verb will look.
+  void inkThroughCoordinator(EditorSessionManager session) {
+    final key = cellVerbsOf(session).pixelVerbCellKeys().single;
+    final coordinator = session.pixelEditingCoordinator!;
+    final base = coordinator.currentSurfaceOf(key);
+    final bytes = base.tileSize * base.tileSize * 4;
+    coordinator.restoreSurfaceSnapshot(
+      key,
+      base.putTiles([
+        (
+          coord: TileCoord(x: 0, y: 0),
+          tile: BitmapTile(
+            size: base.tileSize,
+            pixels: Uint8List(bytes)..fillRange(0, bytes, 0xFF),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  int alphaAt(EditorSessionManager session, int x, int y) {
+    final key = cellVerbsOf(session).pixelVerbCellKeys().single;
+    final tile = session.pixelEditingCoordinator!
+        .currentSurfaceOf(key)
+        .tileAt(TileCoord(x: 0, y: 0))!;
+    return tile.pixels[tile.byteOffsetForPixel(x: x, y: y) + 3];
+  }
+
   /// 🚨★★★**THE SELECTION'S SOFTNESS IS PART OF THE SELECTION.** A Ctrl+T
   /// lift on a marquee honoured 확장·페더·AA; these four verbs ran on a hard
   /// mask whatever the user had set, so one outline meant two things. The
@@ -327,39 +355,6 @@ void main() {
   /// ⚠️Two halves, and each has its own mutant: the WORKSPACE has to publish
   /// the fact, and the PRESS has to pass it on.
   group('the selection\'s softness reaches the pixel verbs', () {
-    /// ⚠️Ink written through the COORDINATOR, not the store beside it. The
-    /// fixture one level up seeds `renderCaches.brushFrameStore` directly and
-    /// that is enough for the ladder tests, which only ask WHICH cels a press
-    /// names — but the press itself reads `coordinator.currentSurfaceOf`,
-    /// which answers with an empty 256-tile surface for the same key. A pin
-    /// on the PIXELS has to put the drawing where the verb will look.
-    void inkThroughCoordinator(EditorSessionManager session) {
-      final key = cellVerbsOf(session).pixelVerbCellKeys().single;
-      final coordinator = session.pixelEditingCoordinator!;
-      final base = coordinator.currentSurfaceOf(key);
-      final bytes = base.tileSize * base.tileSize * 4;
-      coordinator.restoreSurfaceSnapshot(
-        key,
-        base.putTiles([
-          (
-            coord: TileCoord(x: 0, y: 0),
-            tile: BitmapTile(
-              size: base.tileSize,
-              pixels: Uint8List(bytes)..fillRange(0, bytes, 0xFF),
-            ),
-          ),
-        ]),
-      );
-    }
-
-    int alphaAt(EditorSessionManager session, int x, int y) {
-      final key = cellVerbsOf(session).pixelVerbCellKeys().single;
-      final tile = session.pixelEditingCoordinator!
-          .currentSurfaceOf(key)
-          .tileAt(TileCoord(x: 0, y: 0))!;
-      return tile.pixels[tile.byteOffsetForPixel(x: x, y: y) + 3];
-    }
-
     testWidgets('the workspace publishes it, beside the colour and the '
         'marquee', (tester) async {
       final session = await pump(tester);
@@ -417,6 +412,94 @@ void main() {
         greaterThan(hard),
         reason: '⛔the whole round: the press used to ignore this and both '
             'runs came out identical',
+      );
+    });
+  });
+
+  /// The marquee is drawn on the canvas and the pixels live in each row's
+  /// artwork, so the press carries it through the placement the stack PAINTS
+  /// the row with (`layerPlacementAt`). It used to read the raw track value,
+  /// which missed the fx switch and every folder above the row.
+  group('the marquee reaches a row where the row shows', () {
+    CanvasSelectionRegion box(double left, double right) =>
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: left, top: 0, right: right, bottom: 40),
+        );
+
+    /// The canvas centre, moved right by [dx] — a position key's pose.
+    TransformTrack movedRight(EditorSessionManager session, double dx) {
+      final size = session.requireActiveCut.canvasSize;
+      return TransformTrack(
+        keyframes: {
+          0: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + dx, y: size.height / 2),
+          ),
+        },
+      );
+    }
+
+    Future<void> clearUnder(
+      WidgetTester tester,
+      EditorSessionManager session,
+      CanvasSelectionRegion marquee,
+    ) async {
+      session.pixelVerbCanvas = () => (
+        region: marquee,
+        argb: 0xFF000000,
+        mask: SelectionMaskOptions.none,
+      );
+      cellVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
+      await tester.pump();
+    }
+
+    testWidgets('a row whose transform is switched OFF shows where it stands '
+        '— its keys do not move the marquee', (tester) async {
+      final session = await pump(tester);
+      final row = await drawableRow(tester, session);
+      session.updateLayerTransformTrack(row.id, movedRight(session, 100));
+      session.effectsAndFx.toggleLayerTransformFx(row.id);
+      await tester.pump();
+      expect(
+        session.requireActiveCut.layers.byId(row.id)!.transformEnabled,
+        isFalse,
+        reason: 'fixture: keyed, and bypassed',
+      );
+      inkThroughCoordinator(session);
+
+      await clearUnder(tester, session, box(0, 40));
+
+      expect(alphaAt(session, 20, 20), 0);
+    });
+
+    testWidgets('a row inside a MOVED folder is cleared where the folder shows '
+        'it', (tester) async {
+      final session = await pump(tester);
+      final row = await drawableRow(tester, session);
+      const folder = LayerId('moved-folder');
+      final cut = session.requireActiveCut;
+      session.repository.replaceLayer(layer: row.copyWith(folderId: folder));
+      session.repository.insertLayer(
+        cutId: cut.id,
+        layer: createFolderLayer(
+          id: folder,
+          name: 'F',
+        ).copyWith(transformTrack: movedRight(session, 100)),
+        index: cut.layers.indexWhere((layer) => layer.id == row.id) + 1,
+      );
+      session.refreshAfterCutCommand();
+      session.selectLayer(row.id);
+      await tester.pump();
+      inkThroughCoordinator(session);
+
+      // The ink at artwork x 0..40 shows at canvas x 100..140.
+      await clearUnder(tester, session, box(100, 140));
+
+      expect(alphaAt(session, 20, 20), 0);
+      expect(
+        alphaAt(session, 120, 20),
+        255,
+        reason: 'what sits at the marquee\'s ARTWORK coordinates is not what '
+            'it was drawn over',
       );
     });
   });

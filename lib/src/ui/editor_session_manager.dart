@@ -25,7 +25,6 @@ import '../services/persistence/app_memory_settings.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import 'brush/brush_tool_state.dart' show CanvasTool;
 import '../models/app_input_settings.dart';
-import 'session/drags/drawing_block_move_drag.dart';
 import 'session/drags/media_placement_drag.dart';
 import 'session/attach_fx_confirm.dart';
 import 'session/editor_app_settings.dart';
@@ -64,6 +63,7 @@ import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
+import '../models/working_panel.dart';
 import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
@@ -159,6 +159,7 @@ import 'session/cell_verbs.dart';
 import 'session/folders_and_attachments.dart';
 import 'session/project_settings.dart';
 import 'session/frame_verbs.dart';
+import 'session/track_axis_walk.dart';
 import 'session/standing.dart';
 import 'session/cut_move_drag.dart';
 import 'session/trimmed_pieces.dart';
@@ -467,6 +468,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     internals: this,
+    soloedSeLayerIds: visibilitySolo.soloedSeLayerIds,
     renderCaches: renderCaches,
     settings: projectSettings,
     audioConformStore: audioConformStore,
@@ -485,9 +487,12 @@ class EditorSessionManager extends ChangeNotifier
     // Transport stop finishes a rolling take (REC1-B): record = play +
     // capture, so ending one ends the other. The result message goes out
     // on the notice channel — this path has no button to return through.
+    //
+    // ⚠️The guard stays at the call: awaiting on a stop that rolled no take
+    // would push everything below to a later microtask, and every stop
+    // lands its cut and frame synchronously today.
     if (voiceRecording.isVoiceRecording.value) {
-      voiceRecording.voiceRecordingNotice.value =
-          await voiceRecording.stopVoiceRecordingAndPlace();
+      await voiceRecording.finishTakeThroughTheNotice();
     }
     if (lastPosition.cutId != editingSession.activeCutId) {
       selectCut(lastPosition.cutId);
@@ -511,8 +516,7 @@ class EditorSessionManager extends ChangeNotifier
     // The gap-stop twin of _onPlaybackStopped's take finish: a lane is
     // cut-independent, so a take may legitimately end over a gap.
     if (voiceRecording.isVoiceRecording.value) {
-      voiceRecording.voiceRecordingNotice.value =
-          await voiceRecording.stopVoiceRecordingAndPlace();
+      await voiceRecording.finishTakeThroughTheNotice();
     }
     gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
@@ -692,19 +696,32 @@ class EditorSessionManager extends ChangeNotifier
 
   @override
   TimelineRowAddress get currentRow => standing.currentRow;
+
+  /// The panel the arrows, the flip and the bound keys answer to — the one
+  /// last touched ([Standing.workingPanel]).
+  WorkingPanel get workingPanel => standing.workingPanel;
+  ValueListenable<WorkingPanel> get workingPanelListenable =>
+      standing.workingPanelListenable;
+
+  /// The row the STORYBOARD's verbs act on — [selectedRow], or a lane of a
+  /// row that rail shows ([Standing.storyboardStandingRow]).
+  @override
+  TimelineRowAddress get storyboardStandingRow =>
+      standing.storyboardStandingRow;
+
   @override
   void standOnRow(
     TimelineRowAddress row, {
+    WorkingPanel panel = WorkingPanel.timeline,
     int? frameIndex,
     int? globalFrameIndex,
-    bool takesLayerActive = true,
   }) {
     historyManager.places.settle();
     standing.standOnRow(
       row,
+      panel: panel,
       frameIndex: frameIndex,
       globalFrameIndex: globalFrameIndex,
-      takesLayerActive: takesLayerActive,
     );
   }
 
@@ -715,8 +732,11 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   void selectRow(TimelineRowAddress row) => standing.selectRow(row);
-  void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
-      standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
+  void handOffCurrentRowOnFold(
+    LayerId layerId, {
+    String? laneId,
+    WorkingPanel panel = WorkingPanel.timeline,
+  }) => standing.handOffCurrentRowOnFold(layerId, laneId: laneId, panel: panel);
   void handOffCurrentRowOnAttachFold(LayerId baseId) =>
       standing.handOffCurrentRowOnAttachFold(baseId);
   void claimTimelineRow() => standing.claimTimelineRow();
@@ -768,6 +788,19 @@ class EditorSessionManager extends ChangeNotifier
   );
 
   void claimStoryboardRow() => standing.claimStoryboardRow();
+
+  /// A panel surface's word on whether it is on the screen
+  /// ([Standing.panelInSight]). Its last word comes as it is unmounted, which
+  /// at teardown can be after this session is gone.
+  void panelInSight(
+    WorkingPanel panel, {
+    required Object surface,
+    required bool inSight,
+  }) {
+    if (!disposed) {
+      standing.panelInSight(panel, surface: surface, inSight: inSight);
+    }
+  }
   void updateStoryboardCutSelectionByFrame({
     required int anchorGlobalFrame,
     required int headGlobalFrame,
@@ -872,7 +905,7 @@ class EditorSessionManager extends ChangeNotifier
     required int headIndex,
     String? headLaneId,
     required List<String> spanLaneIds,
-    bool framesAreGlobal = false,
+    WorkingPanel panel = WorkingPanel.timeline,
   }) => rangeSelections.updateLaneRangeSelectionDrag(
     layerId: layerId,
     laneId: laneId,
@@ -880,7 +913,7 @@ class EditorSessionManager extends ChangeNotifier
     headIndex: headIndex,
     headLaneId: headLaneId,
     spanLaneIds: spanLaneIds,
-    framesAreGlobal: framesAreGlobal,
+    panel: panel,
   );
   void clearLaneRangeSelection() => rangeSelections.clearLaneRangeSelection();
   bool standingInsideSelection(
@@ -1016,7 +1049,6 @@ class EditorSessionManager extends ChangeNotifier
   // would be a second name for the same verb (round 8, G4).
   late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
 
-  @override
   TimelineRowAddress get selectedRow => standing.selectedRow;
 
   /// Makes a V row THE selected row and nothing else — no cut promotion, no
@@ -1258,14 +1290,13 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches.dispose,
     audioConformStore.dispose,
     appSettings.dispose,
-    soloedSeLayerIds.dispose,
+    visibilitySolo.dispose,
     editingFrameCursor.dispose,
     frameScrub.dispose,
     frameSeekCommitted.dispose,
     _gapGlobalFrameNotifier.dispose,
     frameRangeSelection.dispose,
     brushInputActive.dispose,
-    selectionInteractionActive.dispose,
     dragPreview.dispose,
     transitionEdgeDragPreview.dispose,
     opacityVerbs.dispose,
@@ -1275,6 +1306,7 @@ class EditorSessionManager extends ChangeNotifier
     railView.dispose,
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
+    standing.dispose,
     historyManager.dispose,
   ];
 
@@ -1510,7 +1542,18 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     internals: this,
     renderCaches: renderCaches,
+    trackAxis: trackAxisWalk,
+    workingPanel: () => standing.workingPanel,
+  );
+
+  // The track's axis, walked: the storyboard's rows and a gap's steps.
+  late final TrackAxisWalk trackAxisWalk = TrackAxisWalk(
+    project: this,
+    selection: this,
+    timeline: this,
+    controllers: activeCutControllers,
     projectSettings: projectSettings,
+    trackSe: trackSe,
   );
 
   @override
@@ -1721,7 +1764,6 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     timeline: this,
-    internals: this,
   );
 
   // --- Cut display gates ---------------------------------------------------
@@ -2084,12 +2126,7 @@ class EditorSessionManager extends ChangeNotifier
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
 
   // --- SE mix controls (AUDIO-PRO R1) ---------------------------------------
-
-  /// The solo set — pure MONITORING state (never persisted, never
-  /// exported): non-empty narrows playback/scrub to these SE rows.
-  @override
-  final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
-      ValueNotifier<Set<LayerId>>(const {});
+  // The solo set is [VisibilitySolo.soloedSeLayerIds], held by its toggle.
 
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.
@@ -2239,7 +2276,7 @@ class EditorSessionManager extends ChangeNotifier
   // --- Voice recording, ADR, input meter, take preview ----------------------
   //
   // The section moved to [EditorVoiceRecording]. Unlike the settings block,
-  // it did not come free: its constructor there lists the nineteen session
+  // it did not come free: its constructor there lists the twenty-one session
   // members it reads back, which is what this block's coupling actually is.
   //
   // ⛔The twenty-one forwarders that used to stand here are gone (G3,
@@ -2262,13 +2299,15 @@ class EditorSessionManager extends ChangeNotifier
     activeCutGlobalStartFrame: () => activeCutGlobalStartFrame,
     editingGlobalFrame: () => editingGlobalFrame,
     gapParkedGlobalFrame: () => gapParkedGlobalFrame,
-    activeLayerId: () => activeLayerId,
+    standingRow: () => currentRow,
+    openSeLane: () => layerStack.addSeLane(),
     trackSeGlobalLayerById: trackSeGlobalLayerById,
     mintFrameId: mintFrameId,
     mediaAssets: () => mediaPool.mediaAssets,
     rememberMediaFingerprint: mediaFingerprints.rememberMediaFingerprint,
     staging: mediaStagingStore,
     frameRangeSelection: () => frameRangeSelection,
+    trackFrameRangeSelection: () => trackFrameRangeSelection,
     notify: notifyListeners,
   );
   @override
@@ -2458,15 +2497,8 @@ class EditorSessionManager extends ChangeNotifier
   // axis (slide) and across drawing layers (the cel travels, its brush
   // drawings re-keyed to the new layer). Landing requires empty space —
   // a block move never retimes other blocks. Same channel discipline as
-  // the edge drags: repo untouched until release, one undo per drag.
-
-  /// The drag in flight, or null. ⛔The only thing this class keeps about a
-  /// block move now: its mid-drag state lives on the object and dies with
-  /// the gesture (see [DrawingBlockMoveDrag]).
-  @override
-  DrawingBlockMoveDrag? blockMoveDrag;
-
-  bool get isBlockMoveDragActive => blockMoveDrag != null;
+  // the edge drags: repo untouched until release, one undo per drag. The
+  // drag in flight is held by [drawingBlockMove], which starts and closes it.
 
   /// Whether [layerId] can take part in a block move (source or target):
   /// a plain drawing-section layer. Track-SE rows live on the global axis
@@ -3071,19 +3103,12 @@ class EditorSessionManager extends ChangeNotifier
     }
   }
 
-  /// Selection-tool interactions (marquee/move/transform drags) — counted
-  /// so overlapping holds nest (R15-⑤).
-  @override
-  final ValueNotifier<bool> selectionInteractionActive = ValueNotifier<bool>(
-    false,
-  );
-
   /// R15-⑤: any live editing interaction (brush stroke, selection drag)
   /// blocks frame seeks, scrubs and cut switches entirely — the playhead
   /// moves when the pen lifts, never under it.
   @override
   bool get editingInteractionBusy =>
-      brushInputActive.value || selectionInteractionActive.value;
+      brushInputActive.value || rangeSelections.selectionInteractionActive;
 
   // --- Track-global frame axis (R15-①) -----------------------------------
 

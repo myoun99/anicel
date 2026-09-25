@@ -250,6 +250,25 @@ class FieldSlider extends StatefulWidget {
     Theme.of(context).textTheme.labelSmall ?? const TextStyle(),
   ).lineGrowthOf(TextMeasure.everyScript);
 
+  /// The style a bar writes its value in — the theme's `labelSmall`, set
+  /// solid.
+  static TextStyle? valueStyleIn(BuildContext context) =>
+      Theme.of(context).textTheme.labelSmall?.copyWith(
+        fontFeatures: const [FontFeature.tabularFigures()],
+        // ⛔NO LETTER SPACING ON THE NUMBER. `labelSmall` carries 0.5 and
+        // Flutter lays it after the LAST glyph too, so a centred `50` sits
+        // half a space left of centre — 유저 2026-09-10: 「해당 불투명도
+        // 슬라이더의 텍스트가 제대로 중앙정렬이 아닌거같음. **두자리수가
+        // 미묘하게 왼쪽에 치우쳐있음**」. A number is set solid; the LABEL
+        // beside it is a word and keeps the theme's spacing.
+        letterSpacing: 0,
+      );
+
+  /// How much wider [words] run in the value style here than at 1× — what a
+  /// bar sized around them at 1× adds across (text-scale-rail-columns).
+  static double widthGrowthIn(BuildContext context, Iterable<String> words) =>
+      TextMeasure(context, valueStyleIn(context)).widthGrowthOf(words);
+
   /// Which way the track runs. Vertical fills upward from the bottom and
   /// is dragged up/down — the x-sheet's stood-up rail, where a 28px column
   /// has no room for a horizontal fader.
@@ -611,16 +630,7 @@ class _FieldSliderState extends State<FieldSlider> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final labelStyle = textTheme.labelSmall;
-    final valueStyle = textTheme.labelSmall?.copyWith(
-      fontFeatures: const [FontFeature.tabularFigures()],
-      // ⛔NO LETTER SPACING ON THE NUMBER. `labelSmall` carries 0.5 and
-      // Flutter lays it after the LAST glyph too, so a centred `50` sits
-      // half a space left of centre — 유저 2026-09-10: 「해당 불투명도
-      // 슬라이더의 텍스트가 제대로 중앙정렬이 아닌거같음. **두자리수가
-      // 미묘하게 왼쪽에 치우쳐있음**」. A number is set solid; the LABEL
-      // beside it is a word and keeps the theme's spacing.
-      letterSpacing: 0,
-    );
+    final valueStyle = FieldSlider.valueStyleIn(context);
     // An active gesture echoes locally (snapped like the emitted value);
     // otherwise display derives from widget.value (fully controlled).
     final gestureT = _gestureT;

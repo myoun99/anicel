@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -153,7 +154,7 @@ void main() {
         anchorIndex: 2,
         headIndex: 3,
         spanLaneIds: const [],
-        framesAreGlobal: true,
+        panel: WorkingPanel.storyboard,
       );
       expect(
         session.laneMove.beginLaneRangeMoveDrag(),
@@ -197,7 +198,7 @@ void main() {
         anchorIndex: 2,
         headIndex: 3,
         spanLaneIds: const [],
-        framesAreGlobal: true,
+        panel: WorkingPanel.storyboard,
       );
       expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
       session.laneMove.updateLaneRangeMoveDrag(frameDelta: 4);
@@ -221,7 +222,7 @@ void main() {
         anchorIndex: 2,
         headIndex: 3,
         spanLaneIds: const [],
-        framesAreGlobal: true,
+        panel: WorkingPanel.storyboard,
       );
       expect(session.laneMove.beginLaneRangeMoveDrag(), isFalse);
     });
@@ -253,7 +254,7 @@ void main() {
         anchorIndex: 2,
         headIndex: 3,
         spanLaneIds: const [],
-        framesAreGlobal: true,
+        panel: WorkingPanel.storyboard,
       );
       expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
       session.laneMove.updateLaneRangeMoveDrag(frameDelta: 2);
@@ -319,7 +320,7 @@ void main() {
         anchorIndex: firstDuration + 2,
         headIndex: firstDuration + 3,
         spanLaneIds: const [],
-        framesAreGlobal: true,
+        panel: WorkingPanel.storyboard,
       );
       expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
       session.laneMove.updateLaneRangeMoveDrag(frameDelta: 5);

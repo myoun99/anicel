@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -9,6 +10,8 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/viewer_document.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
+    show parseAnicelZipLayoutFile;
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
@@ -44,13 +47,21 @@ Future<ViewerDocument> openPdfThatReads(MediaByteSource source) async {
 /// ⚠️A framed stretch is read the way the real decoders read one: through
 /// the engine's span reader ([MediaFramedBytes]), decoded.
 class ReadingVideoBackend extends FakeVideoBackend {
-  ReadingVideoBackend({super.readsFramed}) : super(frameCount: 3);
+  ReadingVideoBackend({super.readsFramed, this.refuses})
+    : super(frameCount: 3);
+
+  /// Files this decoder will not open, whatever they hold — the answer a
+  /// reader cannot move to.
+  final bool Function(String path)? refuses;
 
   @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
     ({int offset, int length, bool framed})? span,
   }) async {
+    if (refuses?.call(path) ?? false) {
+      return null;
+    }
     final stored = span == null
         ? MediaFileBytes(path)
         : MediaArchiveBytes(
@@ -66,6 +77,70 @@ class ReadingVideoBackend extends FakeVideoBackend {
     }
     return super.open(path, span: span);
   }
+}
+
+/// A [ReadingVideoBackend] that says which files the movies it was asked to
+/// close were read from — what 「the old document was let go」 is measured by.
+///
+/// ⚠️It holds each file OPEN from the open until a turn after the close, as
+/// a real decoder does on its own thread: held open, Windows refuses a
+/// rename onto the file, so a save that swapped a file in before its reader
+/// had let go fails here the way it fails in the app.
+class ClosingVideoBackend extends ReadingVideoBackend {
+  ClosingVideoBackend({super.refuses});
+
+  final List<String> closed = [];
+  final Map<int, String> _openAt = {};
+  final Map<int, RandomAccessFile> _handles = {};
+  var _tokens = 0;
+
+  /// Every open and close, in the order they happened — `open <path>` and
+  /// `close <path>` — what 「let go FIRST, then opened again」 is read off.
+  final List<String> events = [];
+
+  /// While set, every open waits for it — the moment a reader has asked
+  /// and the decoder has not answered yet.
+  Completer<void>? openGate;
+
+  @override
+  Future<({int token, QaVideoInfo info})?> open(
+    String path, {
+    ({int offset, int length, bool framed})? span,
+  }) async {
+    await openGate?.future;
+    final opened = await super.open(path, span: span);
+    if (opened == null) {
+      return null;
+    }
+    final token = _tokens += 1;
+    _openAt[token] = path;
+    _handles[token] = File(path).openSync();
+    events.add('open $path');
+    return (token: token, info: opened.info);
+  }
+
+  @override
+  Future<void> close(int token) async {
+    closed.add(_openAt[token]!);
+    events.add('close ${_openAt[token]}');
+    await Future<void>.value();
+    _handles.remove(token)?.closeSync();
+  }
+}
+
+/// Tears the tail of the project file at [file] the way an append crash
+/// does (the crash contract): the body survives, the directory does not —
+/// so the next save writes the file WHOLE and swaps it in.
+void tearTheTail(String file) {
+  final healthy = parseAnicelZipLayoutFile(file);
+  File(file).openSync(mode: FileMode.append)
+    ..truncateSync(healthy.centralDirectoryOffset + 7)
+    ..closeSync();
+  expect(
+    () => parseAnicelZipLayoutFile(file),
+    throwsFormatException,
+    reason: 'the premise: the tail is torn',
+  );
 }
 
 Future<String> writeCarriedPicture(Directory dir) =>

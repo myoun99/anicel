@@ -131,6 +131,7 @@ void main() {
       // 있는거 싹다 넣어. 뭐 빼지말고."
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
+          columns: layerRailColumnWidthsAtOne,
           hasOnionColumn: true,
           hasBlendColumn: true,
         ),
@@ -141,6 +142,7 @@ void main() {
       // the two cannot part.
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
+          columns: layerRailColumnWidthsAtOne,
           hasOnionColumn: false,
           hasBlendColumn: false,
         ),
@@ -160,6 +162,7 @@ void main() {
       // natural block is that much shorter — and the legend must size from
       // the same answer.
       final natural = XSheetTimelineGrid.naturalHeaderBlockExtent(
+        columns: layerRailColumnWidthsAtOne,
         hasOnionColumn: false,
         hasBlendColumn: false,
       );
@@ -193,6 +196,7 @@ void main() {
       rail.resizeBy(
         -100,
         naturalExtent: XSheetTimelineGrid.naturalHeaderBlockExtent(
+          columns: layerRailColumnWidthsAtOne,
           hasOnionColumn: false,
           hasBlendColumn: false,
         ),
@@ -306,6 +310,7 @@ void main() {
 
       final expected =
           XSheetTimelineGrid.naturalHeaderBlockExtent(
+            columns: layerRailColumnWidthsAtOne,
             hasOnionColumn: false,
             hasBlendColumn: false,
           ) -
@@ -325,6 +330,7 @@ void main() {
       await tester.pumpWidget(_grid());
 
       final expected = XSheetTimelineGrid.naturalHeaderBlockExtent(
+        columns: layerRailColumnWidthsAtOne,
         hasOnionColumn: false,
         hasBlendColumn: false,
       );
@@ -606,11 +612,15 @@ void main() {
   group('the trailing run knows its own order', () {
     test('counting from a slot answers what sits after it', () {
       expect(
-        layerRailTrailingWidth(from: LayerRailTrailingSlot.mute),
+        layerRailTrailingWidth(
+          columns: layerRailColumnWidthsAtOne,
+          from: LayerRailTrailingSlot.mute,
+        ),
         layerMuteSlotWidth + layerOpacitySlotWidth,
       );
       expect(
         layerRailTrailingWidth(
+          columns: layerRailColumnWidthsAtOne,
           from: LayerRailTrailingSlot.mute,
           hasBlendColumn: true,
         ),
@@ -621,10 +631,14 @@ void main() {
       // The difference the hand-written version missed:
       expect(
         layerRailTrailingWidth(
+              columns: layerRailColumnWidthsAtOne,
               from: LayerRailTrailingSlot.mute,
               hasBlendColumn: true,
             ) -
-            layerRailTrailingWidth(from: LayerRailTrailingSlot.mute),
+            layerRailTrailingWidth(
+              columns: layerRailColumnWidthsAtOne,
+              from: LayerRailTrailingSlot.mute,
+            ),
         layerBlendSlotWidth,
       );
     });
@@ -635,8 +649,12 @@ void main() {
       // surface draws every other slot, which is what makes the legend's
       // icons line up over them.
       expect(
-        layerRailTrailingWidth(hasOnionColumn: true, hasBlendColumn: true) -
-            layerRailTrailingWidth(),
+        layerRailTrailingWidth(
+              columns: layerRailColumnWidthsAtOne,
+              hasOnionColumn: true,
+              hasBlendColumn: true,
+            ) -
+            layerRailTrailingWidth(columns: layerRailColumnWidthsAtOne),
         layerOnionSlotWidth + layerBlendSlotWidth,
       );
 

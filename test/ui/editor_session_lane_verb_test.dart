@@ -25,7 +25,7 @@ void main() {
     final layer = session.requireActiveCut.layers.first;
     session.selectLayer(layer.id);
     session.selectFrameIndex(3);
-    session.selectRow(LaneRowAddress(layer.id, laneId));
+    session.standOnRow(LaneRowAddress(layer.id, laneId));
     return session;
   }
 
@@ -126,7 +126,7 @@ void main() {
         (layer) => layer.kind == LayerKind.camera,
       );
       session.selectLayer(camera.id);
-      session.selectRow(LaneRowAddress(camera.id, laneId));
+      session.standOnRow(LaneRowAddress(camera.id, laneId));
       return session;
     }
 
@@ -173,7 +173,7 @@ void main() {
         CameraPose(center: CanvasPoint(x: 900, y: 900), zoom: 2),
       );
 
-      session.selectRow(
+      session.standOnRow(
         LaneRowAddress(
           session.requireActiveCut.layers
               .firstWhere((layer) => layer.kind == LayerKind.camera)

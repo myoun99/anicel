@@ -163,11 +163,13 @@ class XSheetTimelineGrid extends StatefulWidget {
   static double naturalHeaderBlockExtent({
     required bool hasOnionColumn,
     required bool hasBlendColumn,
+    required LayerRailColumnWidths columns,
   }) =>
       _sectionBandHeight +
       (layerRailLeadingWidth - layerSectionLabelSlotWidth) +
       _naturalNameExtent +
       layerRailTrailingWidth(
+        columns: columns,
         hasOnionColumn: hasOnionColumn,
         hasBlendColumn: hasBlendColumn,
       ) +

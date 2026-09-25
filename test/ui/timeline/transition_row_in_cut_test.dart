@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
@@ -165,7 +166,7 @@ void main() {
           .widget<Tooltip>(
             find.descendant(
               of: crossingMarker,
-              matching: find.byType(Tooltip),
+              matching: find.byType(AppTooltip),
             ),
           )
           .message,
@@ -258,21 +259,32 @@ void main() {
       isTrue,
       reason: 'the span reads as a BLOCK, which is what a range can cover',
     );
-    // ⚠️MEASURED, not assumed: the block reaches the cut's end and stops there,
-    // because the resolver walks inside the frame WINDOW. Cut 1 is the outgoing
-    // side, so its mark overhangs into the のりしろ — the part past the cut end
-    // is outside the window and does not join the block. The span is 8 and this
-    // is 4; asserting 8 would be asserting a number the timeline never makes.
+    // ⚠️HOW FAR it reaches is the WINDOW's, not the span's or the cut's: this
+    // is the display's outline («a visual display effect only», the policy
+    // file says), resolved inside the built frame window. Measured 2026-09-25
+    // on this fixture: 3 · 4 · 5 · 8 frames for surfaces 1400 · 1409 · 1600 ·
+    // 2400 — 8 is the whole span, のりしろ included. The earlier claim that
+    // it stops at the cut's end was one window's number, and it broke the day
+    // the rail widened by 9 (text-scale-rail-opac). ⑧ asks that the span
+    // READS as a block from its first frame, which every window answers.
     final covered =
         range.resolvedRange.endFrameIndexExclusive -
         range.resolvedRange.startFrameIndex;
-    expect(covered, session.activeCutSpan.activeCutPlaybackFrameCount - markStart);
+    expect(
+      range.resolvedRange.startFrameIndex,
+      markStart,
+      reason: 'the block begins where the span does',
+    );
     expect(
       covered,
       greaterThan(1),
       reason: 'a range, not the single cell under the cursor',
     );
-    expect(span.length, greaterThan(covered), reason: 'the mark overhangs');
+    expect(
+      covered,
+      lessThanOrEqualTo(span.length),
+      reason: 'and never past the span',
+    );
 
     // And the reason the routing was needed at all: the CEL reader knows
     // nothing about spans, so the row measured empty before.

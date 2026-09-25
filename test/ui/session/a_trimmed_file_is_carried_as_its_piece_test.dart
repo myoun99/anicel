@@ -173,6 +173,48 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('🚨a piece taken out of the pool keeps its name while an undo '
+      'can bring it back — the same span cut again is another piece',
+      (tester) async {
+    final s = session();
+    final gif = await tester.runAsync(() => writeGif('walk.gif'));
+    Future<String> cutAndCarry() async {
+      final piece = (await tester.runAsync(
+        () => s.trimmedPieces.cut(gif!, MediaAssetKind.image, inFrame: 1),
+      ))!.path;
+      await tester.runAsync(() async {
+        final landed = await s.importDoors.importImageFile(
+          path: piece,
+          destination: ImportDestination.activeCutLayer,
+          copyIntoProject: true,
+          sourcePath: gif,
+        );
+        expect(landed, isTrue);
+        s.trimmedPieces.secure(piece);
+      });
+      return piece;
+    }
+
+    final first = await cutAndCarry();
+    expect(
+      File(first).existsSync(),
+      isFalse,
+      reason: 'the premise: only its staged copy holds it now',
+    );
+    expect(s.mediaPool.removeMediaAsset(normalizedMediaPath(first)), isTrue);
+
+    final again = await cutAndCarry();
+
+    expect(
+      mediaFileName(again),
+      isNot(mediaFileName(first)),
+      reason:
+          'the pool had forgotten it and its file was let go of — only the '
+          'room still says the name is taken',
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('🚨a piece whose import did not land leaves nothing behind',
       (tester) async {
     final s = session();

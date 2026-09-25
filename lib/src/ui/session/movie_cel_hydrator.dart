@@ -13,7 +13,8 @@ import '../../services/cut_frame_composite_plan.dart'
     show resolveCutFrameCompositeEntries;
 import '../../services/import/raster_cel_import.dart'
     show rasterizeImageToSurface;
-import '../../services/media/media_byte_source.dart' show HoldMediaBytes;
+import '../../services/media/media_byte_source.dart'
+    show HeldBytesMove, HeldMediaBytes, HoldMediaBytes;
 import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
 import '../../services/straight_rgba_image.dart';
@@ -23,12 +24,16 @@ import 'session_roles.dart';
 /// One movie open for reading. The token is the READER's — it minted it and
 /// only it can read or close by it (「a handle says which movie is whose」),
 /// so the reader is kept beside it rather than asked for again; `close` puts
-/// the movie back and only then the bytes it was reading ([openHeldMovie]).
+/// the movie back and only then the bytes it was reading ([openHeldMovie]);
+/// `moved` says each time those bytes have an answer somewhere else, or are
+/// about to, and `again` holds the same bytes wherever they are then.
 typedef _OpenMovie = ({
   VideoDecodeBackend reader,
   int token,
   QaVideoInfo info,
   Future<void> Function() close,
+  Stream<HeldBytesMove> moved,
+  Future<HeldMediaBytes> Function() again,
 });
 
 /// A movie by the bytes it shows: the row's pool path, and the carry the
@@ -268,7 +273,83 @@ class MovieCelHydrator {
       for (final other in _opened.keys)
         if (other.path == movie.path && other != movie) other,
     ]);
-    return _open(movie.path);
+    return _following(movie, _open(movie.path));
+  }
+
+  /// [opening], followed each time the bytes it reads move
+  /// ([HeldMovie.moved]).
+  Future<_OpenMovie?> _following(_Movie movie, Future<_OpenMovie?> opening) {
+    unawaited(
+      opening
+          .then((opened) {
+            opened?.moved.listen(
+              (move) => unawaited(
+                _follow(movie, opening, opened, move)
+                    // One that will not open again has nothing to follow.
+                    .catchError((Object _) {}),
+              ),
+            );
+          })
+          // An open that failed has nothing to follow; its asker hears why.
+          .catchError((Object _) {}),
+    );
+    return opening;
+  }
+
+  /// [movie]'s bytes have an answer somewhere else — a save absorbed the
+  /// staged copy [was] reads into the project file, or wrote that file anew
+  /// elsewhere. Opened again on the new
+  /// answer FIRST, and only once that is open does it take [was]'s place and
+  /// [was] close: a frame asked meanwhile is read where it was, and one
+  /// already asked of [was] is answered before it closes — the decoder
+  /// answers in the order it is asked ([IsolateVideoDecodeBackend]). The
+  /// pictures and the facts stay: the same carry is the same bytes. An
+  /// answer that will not open leaves [was] reading.
+  ///
+  /// 🚨★★★**HELD FOR THE SESSION, THE COPY WOULD HAVE STAYED FOR THE
+  /// SESSION.** A row opens its movie once; the save retires the staged
+  /// copy it reads only when the reader lets go, and this reader never did —
+  /// so the copy sat on disk beside the entry that replaced it until the app
+  /// quit (card `canvas-holds-staged-for-session`; 유저 08-27: 「사본 남으면
+  /// 진짜 용서안할게」).
+  ///
+  /// ⚠️A save REPLACING the file [was] reads cannot wait for a new answer —
+  /// there is none until it has replaced the file, and it cannot while [was]
+  /// holds it open ([HeldBytesMove.replacing]). Then [was] goes FIRST and the
+  /// movie opens again after: the open waits for the save to end, and a
+  /// frame asked meanwhile waits for the open (card
+  /// `rewrite-under-offset-readers`).
+  ///
+  /// 🚨Opened again on [opened]'s OWN bytes ([HeldMovie.again]), never on
+  /// what [movie]'s path names by then: removed from the pool or carried
+  /// again, it names another carry — and the pictures already drawn, and
+  /// what the movie turned out to be, are this one's (audit 09-25).
+  Future<void> _follow(
+    _Movie movie,
+    Future<_OpenMovie?> was,
+    _OpenMovie opened,
+    HeldBytesMove move,
+  ) async {
+    if (_disposed || !identical(_opened[movie], was)) {
+      return;
+    }
+    if (move == HeldBytesMove.replacing) {
+      _opened[movie] = _following(
+        movie,
+        _close(was).then((_) => _openAgain(movie, opened)),
+      );
+      return;
+    }
+    final opening = _openAgain(movie, opened);
+    final fresh = await opening;
+    if (fresh == null || _disposed || !identical(_opened[movie], was)) {
+      // Nothing to move to — or [was] was let go meanwhile, by whoever
+      // closed it.
+      await _close(opening);
+      return;
+    }
+    _opened[movie] = _following(movie, opening);
+    await _close(was);
   }
 
   /// Closes [movies] and forgets what each turned out to be, and showed.
@@ -283,9 +364,15 @@ class MovieCelHydrator {
     }
   }
 
-  Future<_OpenMovie?> _open(String path) async {
+  Future<_OpenMovie?> _open(String path) => _openOn(path, _holdBytes);
+
+  /// [opened]'s bytes opened again, wherever they are now.
+  Future<_OpenMovie?> _openAgain(_Movie movie, _OpenMovie opened) =>
+      _openOn(movie.path, (_) => opened.again());
+
+  Future<_OpenMovie?> _openOn(String path, HoldMediaBytes hold) async {
     final reader = videoDecodeBackend;
-    final movie = await openHeldMovie(reader, _holdBytes, path);
+    final movie = await openHeldMovie(reader, hold, path);
     return movie == null
         ? null
         : (
@@ -293,6 +380,8 @@ class MovieCelHydrator {
             token: movie.token,
             info: movie.info,
             close: movie.close,
+            moved: movie.moved,
+            again: movie.again,
           );
   }
 

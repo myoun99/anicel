@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
@@ -36,6 +37,7 @@ Widget _grid({
   required List<Layer> layers,
   required ValueChanged<LayerId> onToggleLayerVisibility,
   required bool withBlendColumn,
+  TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -43,6 +45,7 @@ Widget _grid({
         width: 1000,
         height: 400,
         child: LayerTimelineGrid(
+          metrics: metrics,
           hooks: TimelineGridHooks(
             activeLayerId: layers.first.id,
             frameCursor: ValueNotifier<int>(0),
@@ -70,6 +73,7 @@ Future<List<LayerId>> _swipeDownTheEyeColumn(
   WidgetTester tester, {
   required bool withBlendColumn,
   List<double> stepsInRows = const [1, 1],
+  TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
 }) async {
   // 🚨THE FIXTURE HAS TO ACTUALLY FLIP. A harness that only RECORDS the
   // toggle cannot measure the law the sweep follows now: the button fires on
@@ -84,6 +88,7 @@ Future<List<LayerId>> _swipeDownTheEyeColumn(
       builder: (context, setState) => _grid(
         layers: layers,
         withBlendColumn: withBlendColumn,
+        metrics: metrics,
         onToggleLayerVisibility: (id) {
           toggled.add(id);
           setState(() {
@@ -167,6 +172,28 @@ void main() {
           'the eye band must follow the rail\'s own trailing order, not a '
           'hand-written tail that predates the blend column',
     );
+  });
+
+  // text-scale-rail-columns (유저 2026-09-25, 「칸도 글자 따라 넓어진다」):
+  // the opacity and blend columns grow with their words, and the bands
+  // are read off the same columns — on the 1× ones, the eye's band would
+  // sit a column's growth off the eye.
+  testWidgets('and on GROWN columns — the bands follow the widths the '
+      'rail lays out', (tester) async {
+    const grown = (opacity: 60.0, blend: 80.0);
+    final toggled = await _swipeDownTheEyeColumn(
+      tester,
+      withBlendColumn: true,
+      metrics: TimelineGridMetrics.defaults.copyWith(
+        railColumns: grown,
+        layerControlsWidth: timelineLayerControlsWidthFor(grown),
+      ),
+    );
+    expect(toggled, [
+      const LayerId('layer-a'),
+      const LayerId('layer-b'),
+      const LayerId('layer-c'),
+    ]);
   });
 
   // 🚨★★★F-66 ON THE REAL RAIL (유저 2026-09-10): 「**렉걸리는** 상태에서

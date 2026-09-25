@@ -5,6 +5,7 @@ import '../../models/range_snap.dart';
 import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/working_panel.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
@@ -442,11 +443,17 @@ class RangeSelections {
   /// lane. Starting on ANOTHER layer's lanes activates that layer
   /// (선택하면 액티브 레이어가 바뀜); lanes of the active layer leave it
   /// unchanged — the fx-row selection rides ALONGSIDE the active layer.
-  /// [framesAreGlobal] says which axis the surface counted in — the same
-  /// question `BlockShift.shiftAnchorFor` asks for the frame-shift verbs. The
-  /// storyboard's strips ARE the track's global axis; a cut panel's are
-  /// its window, and a track-SE row's span is translated onto the global
-  /// axis on the way in, because that is where the selection lives.
+  /// [panel] is the panel the drag is on, and it says two things the panel
+  /// already decides. WHICH AXIS the surface counted in — the same question
+  /// `BlockShift.shiftAnchorFor` asks for the frame-shift verbs: the
+  /// storyboard's strips ARE the track's global axis; a cut panel's are its
+  /// window, and a track-SE row's span is translated onto the global axis on
+  /// the way in, because that is where the selection lives. And what
+  /// "activates that layer" means there: on the storyboard it is the rail's
+  /// row, never the drawing target (유저 2026-07-27). ↩️It was a flag,
+  /// `framesAreGlobal`, which answered only the first — so an S row's lane
+  /// dragged on the storyboard made that S row the timeline's drawing target
+  /// and handed the flip to the timeline.
   void updateLaneRangeSelectionDrag({
     required LayerId layerId,
     required String laneId,
@@ -454,7 +461,7 @@ class RangeSelections {
     required int headIndex,
     String? headLaneId,
     required List<String> spanLaneIds,
-    bool framesAreGlobal = false,
+    WorkingPanel panel = WorkingPanel.timeline,
   }) {
     final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
     if (carrierTrackId != null) {
@@ -478,15 +485,27 @@ class RangeSelections {
         }
         return;
       }
-      if (_selection.activeLayerId != layerId) {
-        // selectLayer first: it drops the OLD selection (a different
-        // layer's), then the fresh span lands for the new active layer.
-        _internals.selectLayer(layerId);
+      switch (panel) {
+        case WorkingPanel.timeline when _selection.activeLayerId != layerId:
+          // selectLayer first: it drops the OLD selection (a different
+          // layer's), then the fresh span lands for the new active layer.
+          _internals.selectLayer(layerId);
+        case WorkingPanel.storyboard
+            when _selection.storyboardStandingRow.owningLayerId != layerId:
+          // The rail's row, the way the V track's lanes above take theirs.
+          _internals.standOnRow(
+            LayerRowAddress(layerId),
+            panel: WorkingPanel.storyboard,
+          );
+        case WorkingPanel.timeline || WorkingPanel.storyboard:
+          break;
       }
     }
     // THE ONE-SELECTION LAW — see [claimSelection].
     claimSelection(TimelineSelectionKind.lanes);
-    final toGlobal = framesAreGlobal ? 0 : _project.rowAxisOffset(layerId);
+    final toGlobal = panel == WorkingPanel.storyboard
+        ? 0
+        : _project.rowAxisOffset(layerId);
     final start = math.max(0, math.min(anchorIndex, headIndex)) + toGlobal;
     final endExclusive = math.max(anchorIndex, headIndex) + 1 + toGlobal;
     if (endExclusive <= start) {
@@ -934,11 +953,17 @@ class RangeSelections {
     return (layerId: rowLayerId, first: start, lastExclusive: lastExclusive);
   }
 
+  /// Selection-tool interactions (marquee/move/transform drags) — counted
+  /// so overlapping holds nest (R15-⑤).
   int _selectionInteractionHolds = 0;
+
+  /// Whether a selection-tool interaction holds the playhead — the count
+  /// itself, so the flag cannot disagree with the holds it stands for.
+  /// Nothing listened to it; the session asks it when a seek comes.
+  bool get selectionInteractionActive => _selectionInteractionHolds > 0;
 
   void beginSelectionInteraction() {
     _selectionInteractionHolds += 1;
-    _internals.selectionInteractionActive.value = true;
     _playbackRig.prerenderScheduler.beginInputHold();
   }
 
@@ -947,7 +972,5 @@ class RangeSelections {
       _selectionInteractionHolds -= 1;
       _playbackRig.prerenderScheduler.endInputHold();
     }
-    _internals.selectionInteractionActive.value =
-        _selectionInteractionHolds > 0;
   }
 }

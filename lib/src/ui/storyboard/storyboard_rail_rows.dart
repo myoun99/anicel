@@ -192,9 +192,23 @@ class _StoryboardRailRows {
   /// in the same order or a span and a slide would disagree about which row
   /// the pointer just crossed.
   List<TimelineDisplayRow> _seRowsInDisplayOrder(Track track) => [
-    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
+    for (final slot in _shownSeSlots(track))
       if (_trackSeAt(track, slot) case final layer?)
         TimelineDisplayRow.layer(layer, layerIndex: slot),
+  ];
+
+  /// The S slots the rail SHOWS for [track], top slot first — the order the
+  /// rail draws them (slot 0 sits just above the V row) — with the legend's
+  /// filter applied ([_filterAllowsSeRow]).
+  ///
+  /// 🚨ONE LIST for everything that lays an S row out: the rail's labels, the
+  /// strips beside them, and the one row table the bands, the sheet, the
+  /// select-drag, the ring and the swipe read. The filter once reached the
+  /// labels alone, so every row under a hidden one parted from its strip by
+  /// a row (storyboard-filter-leaves-the-strips, measured 94 over 124).
+  List<int> _shownSeSlots(Track track) => [
+    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
+      if (_filterAllowsSeRow(track, slot)) slot,
   ];
 
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
@@ -234,50 +248,50 @@ class _StoryboardRailRows {
       );
 
   /// How tall ONE S ROW stands on the rail: the row, plus its lanes when
-  /// twirled open. The same construction `railRowsForTrack` lays out, read
-  /// back as a number.
+  /// twirled open — its run in the table the rail is drawn from
+  /// ([_trackGroupRowGeometry]), read back as a number.
   double _seRowGroupExtent(Track track, int slot) {
-    var extent = _seRowHeight;
-    if (_state.widget.expandedSeAudioRows.contains(
-      StoryboardPanel.seRowKey(track, slot),
-    )) {
-      extent += _seLanes(track, slot).length * _laneHeight;
+    var extent = 0.0;
+    var inRun = false;
+    for (final row in _trackGroupRowGeometry(track)) {
+      if (row.railRow?.seSlot == slot) {
+        inRun = true;
+      } else if (inRun && !row.lane) {
+        break;
+      }
+      if (inRun) {
+        extent += row.height;
+      }
     }
     return extent;
   }
 
-  /// How tall one TRACK GROUP stands on the rail: its S rows, its V row,
-  /// and its transform lanes when twirled open.
+  /// How tall one TRACK GROUP stands on the rail: every row of it in the
+  /// table the rail is drawn from — its S rows, its V row, and their lanes
+  /// when twirled open.
   ///
   /// This — not [StoryboardPanel.trackLaneHeight] — is a V row's drag
   /// pitch. Two V rows are separated by the whole group between them, so
   /// counting in the V row's own 64px moved two tracks per group and the
   /// widget test caught it immediately.
-  double _trackGroupExtent(Track track) {
-    var extent = _state.widget.trackLaneHeight + _transitionRowHeight;
-    for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
-      // Through the S row's own accounting, so an open S row is counted
-      // once and identically by both drags.
-      extent += _seRowGroupExtent(track, slot);
-    }
-    if (_state.widget.expandedTransformTracks.contains(track.id.value)) {
-      extent += _trackOwnLanes(track).length * _laneHeight;
-    }
-    return extent;
-  }
+  double _trackGroupExtent(Track track) => _trackGroupRowGeometry(
+    track,
+  ).fold(0, (extent, row) => extent + row.height);
 
   /// How much of [_trackGroupExtent] stands ABOVE the V row — the rail draws
   /// the transition row and then the S rows before it (④).
   ///
   /// The V row is the handle but the GROUP is the pitch, so the drag has to
   /// be told where the handle sits inside the run; see
-  /// [LayerRowDragTarget.grabOffsetWithinRun]. Written as the same sum
-  /// [_trackGroupExtent] makes, minus the parts that come after, so the two
-  /// cannot drift apart.
+  /// [LayerRowDragTarget.grabOffsetWithinRun]. Read off the same table as
+  /// [_trackGroupExtent], so the two cannot drift apart.
   double _trackGroupExtentAboveVRow(Track track) {
-    var extent = _transitionRowHeight;
-    for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
-      extent += _seRowGroupExtent(track, slot);
+    var extent = 0.0;
+    for (final row in _trackGroupRowGeometry(track)) {
+      if (row.row is TrackRowAddress) {
+        break;
+      }
+      extent += row.height;
     }
     return extent;
   }
@@ -309,55 +323,35 @@ class _StoryboardRailRows {
   /// ⚠️It still stops at the far end of the segment, so a press near the top
   /// of a hundred-track board costs what it always did rather than the whole
   /// board.
+  ///
+  /// 🚨IT WALKS THE TABLE THE RAIL IS DRAWN FROM ([_trackGroupRowGeometry]).
+  /// It kept a sum of its own and counted the S rows from slot 0, while the
+  /// rail draws the TOP slot first — so with two S rows a stroke that stopped
+  /// on S2 hid S1 and left S2 alone (found by text-scale-storyboard-rows).
   List<RailSwipeRow<StoryboardRailRow>> railRowsIn(double fromY, double toY) {
     final lo = fromY <= toY ? fromY : toY;
     final hi = fromY <= toY ? toY : fromY;
     final rows = <RailSwipeRow<StoryboardRailRow>>[];
-
-    // Takes the row when its extent meets the segment. The identity is what
-    // the sweep dedupes by, so it has to separate a track's V row from its
-    // S rows.
-    void take(StoryboardRailRow subject, double rowTop, double extent) {
-      if (rowTop <= hi && rowTop + extent > lo) {
-        rows.add((
-          row: subject,
-          depth: 0,
-          id: subject.layer?.id.value ?? 'v-${subject.track.id.value}',
-        ));
-      }
-    }
-
     var top = 0.0;
     for (final track in _state.widget.project.tracks) {
-      if (top > hi) {
-        break;
+      for (final row in _trackGroupRowGeometry(track)) {
+        if (top > hi) {
+          return rows;
+        }
+        // A lane carries no column of its own, so the walk steps OVER it —
+        // the thing a fixed sampling step could never be trusted to do. The
+        // identity is what the sweep dedupes by, so it has to separate a
+        // track's V row from its S rows.
+        final subject = row.railRow;
+        if (subject != null && top + row.height > lo) {
+          rows.add((
+            row: subject,
+            depth: 0,
+            id: subject.layer?.id.value ?? 'v-${subject.track.id.value}',
+          ));
+        }
+        top += row.height;
       }
-      // The rail draws the transition row, then the S rows, then the V row
-      // (④) — the same order [_trackGroupExtentAboveVRow] sums.
-      take(
-        (track: track, layer: track.transitionLayer, seSlot: null),
-        top,
-        _transitionRowHeight,
-      );
-      var slotTop = top + _transitionRowHeight;
-      for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
-        // The S ROW itself stands at the top of its group; the lanes that
-        // follow it are the rest of [_seRowGroupExtent] and carry no column
-        // of their own — so the walk steps OVER them, which is the thing a
-        // fixed sampling step could never be trusted to do.
-        take(
-          (track: track, layer: _trackSeAt(track, slot), seSlot: slot),
-          slotTop,
-          _seRowHeight,
-        );
-        slotTop += _seRowGroupExtent(track, slot);
-      }
-      take(
-        (track: track, layer: null, seSlot: null),
-        top + _trackGroupExtentAboveVRow(track),
-        _state.widget.trackLaneHeight,
-      );
-      top += _trackGroupExtent(track);
     }
     return rows;
   }
@@ -382,7 +376,8 @@ class _StoryboardRailRows {
     // over it.
 
     return railSwipeColumns<StoryboardRailRow>(
-      crossExtent: StoryboardPanel._trackLabelWidth,
+      crossExtent: _state._naturalRailWidth,
+      columns: layerRailColumnWidthsIn(_state.context),
       leadingOrigin: 0,
       visibility: (valueOf: _rowEyeOn, toggle: _toggleRowEye),
       // The transition row draws no fx switch, and a kind that shows none
@@ -565,22 +560,17 @@ class _StoryboardRailRows {
   }
 
   /// The SE section's rail rows for [track], top slot first: each slot
-  /// the filter allows, with its audio lane label and transform lane
-  /// labels while the row is expanded.
-  List<Widget> _seRowsFor(Track track) {
-    final topSlot = _seSlotCount(track) - 1;
-    final seRows = <Widget>[
-      for (var slot = topSlot; slot >= 0; slot--)
-        if (_filterAllowsSeRow(track, slot)) ...[
-          _state._rows.seLabelRow(track, slot),
-          if (_state.widget.expandedSeAudioRows.contains(
-            StoryboardPanel.seRowKey(track, slot),
-          ))
-            ..._seLaneLabels(track, slot),
-        ],
-    ];
-    return seRows;
-  }
+  /// the rail shows ([_shownSeSlots]), with its audio lane label and
+  /// transform lane labels while the row is expanded.
+  List<Widget> _seRowsFor(Track track) => [
+    for (final slot in _shownSeSlots(track)) ...[
+      _state._rows.seLabelRow(track, slot),
+      if (_state.widget.expandedSeAudioRows.contains(
+        StoryboardPanel.seRowKey(track, slot),
+      ))
+        ..._seLaneLabels(track, slot),
+    ],
+  ];
 
   /// One S row's lane labels on the shared substrate, row for row with
   /// [_seLaneStrips]: its headers answer to the timeline's own switch and
@@ -1205,6 +1195,7 @@ class _StoryboardRailRows {
   }
 
   List<_StoryboardRailSlot> _trackGroupRowGeometry(Track track) {
+    final heights = _state._rowHeights;
     final slots = <_StoryboardRailSlot>[];
     // Index 0 is the TOP of the group ([_trackRowBand] accumulates y from
     // here), and the transition row heads it — above the S rows, the way the
@@ -1214,16 +1205,18 @@ class _StoryboardRailRows {
       laneRow: null,
       bandRow: false,
       lane: false,
-      height: _transitionRowHeight,
+      railRow: (track: track, layer: track.transitionLayer, seSlot: null),
+      height: heights.transition,
     ));
-    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) {
+    for (final slot in _shownSeSlots(track)) {
       final layer = _trackSeAt(track, slot);
       slots.add((
         row: layer == null ? null : LayerRowAddress(layer.id),
         laneRow: null,
         bandRow: false,
         lane: false,
-        height: _seRowHeight,
+        railRow: (track: track, layer: layer, seSlot: slot),
+        height: heights.se,
       ));
       if (layer != null &&
           _state.widget.expandedSeAudioRows.contains(
@@ -1239,16 +1232,22 @@ class _StoryboardRailRows {
             laneRow: audio ? null : LaneRowAddress(layer.id, lane.laneId),
             bandRow: !audio,
             lane: true,
-            height: _laneHeight,
+            railRow: null,
+            height: heights.lane,
           ));
         }
       }
+    }
+    // The filter hides the V row as the rail does — the row and its lanes.
+    if (!_filterAllowsTrackRow(track)) {
+      return slots;
     }
     slots.add((
       row: TrackRowAddress(track.id),
       laneRow: null,
       bandRow: false,
       lane: false,
+      railRow: (track: track, layer: null, seSlot: null),
       height: _state.widget.trackLaneHeight,
     ));
     // The V track's OWN lane rows ([_trackTransformLaneStrips]'s shape): its fx
@@ -1265,7 +1264,8 @@ class _StoryboardRailRows {
           laneRow: LaneRowAddress(carrierId, lane.laneId),
           bandRow: true,
           lane: true,
-          height: _laneHeight,
+          railRow: null,
+          height: heights.lane,
         ));
       }
     }
@@ -1283,6 +1283,11 @@ class _StoryboardRailRows {
     TimelineScale scale,
     List<Widget> trackGlobalRows,
   ) {
+    // The filter hides the V row as the rail does — the strip and its lanes
+    // with it, or every row under it parts from its label.
+    if (!_filterAllowsTrackRow(track)) {
+      return trackGlobalRows;
+    }
     return [
       // Prebuilt from the RAW project outside the drag-preview builder
       // (R10-③): identical instances per step = subtree rebuilds skipped.
@@ -1339,6 +1344,7 @@ class _StoryboardRailRows {
     TimelineScale scale,
   ) {
     final seRowsInDisplayOrder = _seRowsInDisplayOrder(track);
+    final heights = _state._rowHeights;
     Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
       railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
         track: track,
@@ -1351,6 +1357,7 @@ class _StoryboardRailRows {
       layer: layer,
       layoutEntries: entries,
       width: width,
+      height: heights.se,
       timelineScale: scale,
       projectFrameRate: _state.widget.projectFrameRate,
       audioPeaksFor: _state.widget.audioPeaksFor,
@@ -1364,7 +1371,7 @@ class _StoryboardRailRows {
       frameGeometry: _state._frameGeometry,
     );
     return [
-      for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) ...[
+      for (final slot in _shownSeSlots(track)) ...[
         // The gate keeps comma drags LIVE here (UI-R7 #7): these rows
         // are built once per panel build (identical instances across
         // cut-trim preview steps, R10-③), so without it an SE edge drag
@@ -1407,6 +1414,7 @@ class _StoryboardRailRows {
       frames: const [],
     );
     final laneEdit = _state.widget.trackLaneEditFor?.call(track);
+    final laneHeight = _state._rowHeights.lane;
     return [
       // The fx chain's strips, row for row with its labels — the rail and
       // the strips share no scaffolding, so the two lists are built from the
@@ -1438,6 +1446,7 @@ class _StoryboardRailRows {
                   carrier: carrier,
                   lane: lane,
                   width: width,
+                  height: laneHeight,
                   timelineScale: scale,
                   projectFrameRate: _state.widget.projectFrameRate,
                   laneEdit: laneEdit,
@@ -1478,6 +1487,7 @@ class _StoryboardRailRows {
               : layer,
           lane: lane,
           width: width,
+          height: _state._rowHeights.lane,
           timelineScale: scale,
           projectFrameRate: _state.widget.projectFrameRate,
           // The S row's lanes take the range gesture too (R5 ③b). Their

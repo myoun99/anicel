@@ -7,6 +7,7 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
+import '../editor_command_actions.dart' show createActiveInstance;
 import '../editor_session_manager.dart';
 
 /// B8 (2026-08-17): 상단 버튼의 패널 스코프 — the shared toolbar's layer,
@@ -22,7 +23,8 @@ import '../editor_session_manager.dart';
 /// cut-local, active-layer verbs — every delegation byte-identical to what
 /// the toolbar read before this interface existed. The STORYBOARD's answers
 /// are its own standing row crossed with the track-global playhead
-/// ([EditorSessionManager.selectedRow] × [EditorSessionManager.editingGlobalFrame]),
+/// ([EditorSessionManager.storyboardStandingRow] ×
+/// [EditorSessionManager.editingGlobalFrame]),
 /// because that rail's standing row is separate state from the cut's
 /// drawing target (유저 2026-07-27) — the reason every session getter the
 /// toolbar used to read answered about the WRONG panel from over there.
@@ -61,6 +63,10 @@ abstract class ToolbarPanelContext {
 
   bool get canCreateInstance;
 
+  /// The frame `＋`'s press — beside its gate (T25), because a KEY presses it
+  /// too (I-19) and the key must do exactly what this panel's button does.
+  void createInstance();
+
   bool get canBlankExposure;
   void blankExposure();
 
@@ -82,6 +88,11 @@ abstract class ToolbarPanelContext {
   /// 동일 작동).
   bool get canSelectRowSpan;
   void selectRowSpan();
+
+  /// The row the frame pill's shove (push/pull) aims at with nothing
+  /// selected — null leaves the session's own rule (the active layer at the
+  /// cut-local cell). One answer for the shove buttons and their keys.
+  TimelineRowAddress? get shiftCurrentRow;
 
   // --- SHARED pill ----------------------------------------------------------
 
@@ -113,7 +124,11 @@ abstract class ToolbarPanelContext {
 ///
 /// ★ONE ANSWER FOR THE BUTTON AND ITS KEY (I-19). The pill lights from these
 /// and fires them; Ctrl+X/C/V/B and Delete fire the same getters on the
-/// timeline's context, so a key can never do what its button would not.
+/// context of the panel being worked in, so a key can never do what its
+/// button would not. ↩️They fired the TIMELINE's context whichever panel you
+/// were in (09-13, the one every bound film verb spoke to then — a session's
+/// pick, not a ruling: the order was 「여러 단축키 기존 버튼에 연결」), and the
+/// storyboard's pill answered differently from its own keys.
 extension ToolbarSharedPresses on ToolbarPanelContext {
   void Function()? get cutPress => canCutRun ? cutRun : null;
 
@@ -175,6 +190,9 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   bool get canCreateInstance => session.canCreateInstance;
 
   @override
+  void createInstance() => createActiveInstance(session);
+
+  @override
   bool get canBlankExposure => session.exposureVerbs.canBlankExposureAtCurrentFrame;
 
   @override
@@ -197,6 +215,9 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
 
   @override
   void selectRowSpan() => session.rangeSelections.selectRowSpanForCurrentRow();
+
+  @override
+  TimelineRowAddress? get shiftCurrentRow => null;
 
   @override
   /// R5q1: CUTS are the storyboard's noun, so this panel's Edit does not
@@ -326,7 +347,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   bool get servesActiveLayerVerbs => false;
 
   bool get _standingOnTransitionRow {
-    final row = session.selectedRow;
+    final row = session.storyboardStandingRow;
     return row is LayerRowAddress &&
         session.isTrackTransitionLayerId(row.layerId);
   }
@@ -352,6 +373,39 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
       return true;
     }
     return session.storyboardCursor.canCreateSeEntryAtStoryboardCursor;
+  }
+
+  /// ⑬/B8 CREATE on this panel: the selection rungs first (this panel's own
+  /// selections — the S-row range, a lane span, the strip's cut-local
+  /// range), then the standing row. On the transition row the two verbs are
+  /// one: `editTransitionSpanInstance` creates on an empty frame and edits
+  /// on a covered one (「그게아니라 인스턴스편집버튼으로 작동하도록」); on
+  /// an S row the `＋` authors a fresh entry at the cursor.
+  ///
+  /// ↩️The two verbs are two again (F-105, 유저 2026-09-15 「통일 — 편집
+  /// 버튼은 빈 칸에서 꺼진다」 · 「만약 내가 말했던거라면 철회야」): on the
+  /// transition row the `＋` creates, as it does on every row.
+  ///
+  /// Moved here from the host so the frame-`＋` KEY presses what this
+  /// panel's button presses (I-19) when the storyboard is the panel being
+  /// worked in.
+  @override
+  void createInstance() {
+    if (session.cellInstances.createInstancesForSelection()) {
+      return;
+    }
+    if (_standingOnTransitionRow) {
+      session.transitions.createTransitionSpanAtPlayhead();
+      return;
+    }
+    // D28: on the cut row with a storyboard layer, the ＋ divides the
+    // panel under the cursor (self-gated by the one cursor resolver).
+    if (session.storyboardCursor.canCreateStoryboardPanelAtCursor) {
+      session.storyboardCursor.createStoryboardPanelAtCursor();
+      return;
+    }
+    // Self-gated: only a standing S row with an EMPTY cursor frame authors.
+    session.storyboardCursor.createSeEntryAtStoryboardCursor();
   }
 
   // An exposure X and a cell mark are cut-local, active-layer notions with
@@ -382,7 +436,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   /// stale re-key the select path already removed).
   ({LayerId? layerId, TrackId? trackId, int anchorFrame, int headFrame})?
   get _rowSpanTarget {
-    switch (session.selectedRow) {
+    switch (session.storyboardStandingRow) {
       case TrackRowAddress(:final trackId):
         final span = session.rowSpans.trackCutSpan(trackId);
         if (span == null) {
@@ -413,6 +467,12 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
 
   @override
   bool get canSelectRowSpan => _rowSpanTarget != null;
+
+  /// Which rail is asking: with nothing selected the frame pill's shove
+  /// aims at the row THIS rail lights (a cut row shoves cuts, an S row
+  /// shoves sounds), which is not the session's active-layer fallback.
+  @override
+  TimelineRowAddress? get shiftCurrentRow => session.selectedRow;
 
   @override
   void selectRowSpan() {
@@ -457,7 +517,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (session.cells.cellSelectionClaimsSubject) {
       return null;
     }
-    switch (session.selectedRow) {
+    switch (session.storyboardStandingRow) {
       case LayerRowAddress(:final layerId)
           when session.isTrackTransitionLayerId(layerId):
         // F-105 (유저 2026-09-15, 「통일 — 편집 버튼은 빈 칸에서 꺼진다」): Edit

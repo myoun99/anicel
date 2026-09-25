@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame.dart' show InbetweenMark;
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
@@ -16,6 +17,7 @@ import '../text/vertical_writing.dart'
 import '../canvas/viewport_canvas_transform.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/timeline_instruction_row_visual.dart'
     show instructionLabelInset;
 import '../timeline/timeline_cut_end_handle.dart'

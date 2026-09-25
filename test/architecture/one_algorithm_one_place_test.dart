@@ -194,8 +194,16 @@ import '../../tool/refactor/clone_scan.dart';
 /// answering two questions.
 /// Only one candidate left with it: the others in the family were already
 /// under the 40-token floor and never counted.
+///
+/// 90 → 91 (2026-09-25, the app tooltip). The new pair is
+/// `_HoldingRawTooltipState._handleTap` and `._handleLongPress` in
+/// `ui/widgets/app_tooltip.dart` — Flutter's two trigger handlers, carried
+/// with the rest of `RawTooltip` line for line, because the fork's one rule
+/// is that only the pointer route differs from Flutter's tooltip.
+/// ⛔Not merged: a shared helper would make the fork a rewrite, and there
+/// are two of them — the third is what earns a merge.
 void main() {
-  const ceiling = 90;
+  const ceiling = 91;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

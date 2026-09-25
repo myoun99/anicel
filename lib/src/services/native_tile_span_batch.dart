@@ -1,9 +1,9 @@
 import 'dart:ffi' show Pointer, Uint8;
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/dirty_region.dart';
 import '../models/tile_coord.dart';
+import '../models/tiles_covering.dart';
 import '../native/qa_native_engine.dart';
 
 /// Stages one span per tile that [clip] touches into the engine's span
@@ -27,33 +27,52 @@ List<TileCoord> stageTileSpans(
   required DirtyRegion clip,
   required int tileSize,
   required Pointer<Uint8> Function(TileCoord coord) pointerFor,
+}) => stageTileSpansCovering(
+  native,
+  clips: [clip],
+  tileSize: tileSize,
+  pointerFor: pointerFor,
+);
+
+/// [stageTileSpans] for a batch of regions (ABI 38 — the generic dabs of a
+/// call, `qa_dab_blend_batch`): one span per tile ANY of [clips] touches,
+/// the rect they make there together, each tile once. One region stages
+/// exactly the spans it always did.
+List<TileCoord> stageTileSpansCovering(
+  QaNativeEngine native, {
+  required List<DirtyRegion> clips,
+  required int tileSize,
+  required Pointer<Uint8> Function(TileCoord coord) pointerFor,
 }) {
-  final (:firstX, :lastX, :firstY, :lastY) = clip.tileRange(tileSize: tileSize);
-  final left = clip.left;
-  final top = clip.top;
-  final rightExclusive = clip.rightExclusive;
-  final bottomExclusive = clip.bottomExclusive;
-  final coords = <TileCoord>[];
-  native.ensureTileSpanBatch((lastY - firstY + 1) * (lastX - firstX + 1));
-  for (var tileY = firstY; tileY <= lastY; tileY += 1) {
-    final tileTop = tileY * tileSize;
-    final spanTop = math.max(top, tileTop);
-    final spanBottomExclusive = math.min(bottomExclusive, tileTop + tileSize);
-    for (var tileX = firstX; tileX <= lastX; tileX += 1) {
-      final coord = TileCoord(x: tileX, y: tileY);
-      final tileLeft = tileX * tileSize;
-      native.setTileSpan(
-        coords.length,
-        tilePixels: pointerFor(coord),
-        tileLeft: tileLeft,
-        tileTop: tileTop,
-        spanLeft: math.max(left, tileLeft),
-        spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
-        spanTop: spanTop,
-        spanBottomExclusive: spanBottomExclusive,
+  final spans = <TileCoord, DirtyRegion>{};
+  for (final clip in clips) {
+    for (final part in tileSpansOf(clip, tileSize: tileSize)) {
+      final span = DirtyRegion(
+        left: part.left,
+        top: part.top,
+        rightExclusive: part.rightExclusive,
+        bottomExclusive: part.bottomExclusive,
       );
-      coords.add(coord);
+      final held = spans[part.coord];
+      spans[part.coord] = held == null ? span : held.union(span);
     }
+  }
+  final coords = spans.keys.toList()
+    ..sort((a, b) => a.y != b.y ? a.y.compareTo(b.y) : a.x.compareTo(b.x));
+  native.ensureTileSpanBatch(coords.length);
+  for (var index = 0; index < coords.length; index += 1) {
+    final coord = coords[index];
+    final span = spans[coord]!;
+    native.setTileSpan(
+      index,
+      tilePixels: pointerFor(coord),
+      tileLeft: coord.x * tileSize,
+      tileTop: coord.y * tileSize,
+      spanLeft: span.left,
+      spanRightExclusive: span.rightExclusive,
+      spanTop: span.top,
+      spanBottomExclusive: span.bottomExclusive,
+    );
   }
   return coords;
 }

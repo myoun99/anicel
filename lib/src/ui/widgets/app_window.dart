@@ -1,3 +1,4 @@
+import 'app_tooltip.dart';
 import 'app_icon_button.dart';
 import 'package:flutter/material.dart';
 
@@ -296,7 +297,7 @@ class AppWindow extends StatelessWidget {
   Widget _actionButton(ThemeData theme, AppWindowAction action) {
     final hint = action.tooltip;
     final button = _actionButtonBody(theme, action);
-    return hint == null ? button : Tooltip(message: hint, child: button);
+    return hint == null ? button : AppTooltip(message: hint, child: button);
   }
 
   Widget _actionButtonBody(ThemeData theme, AppWindowAction action) {

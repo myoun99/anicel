@@ -6,7 +6,8 @@
 // so the next copy has nothing to drift from.
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
+import 'package:anicel/src/models/frame.dart'
+    show InbetweenMark, breakdownMark, unnamedDrawingMark;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -17,7 +18,7 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_block_visual.dart';
 Layer _layer(LayerKind kind) =>
     Layer(id: const LayerId('l'), name: 'L', frames: const [], kind: kind);
 
-String _marker(
+TimelineCellWriting _marker(
   LayerKind kind,
   TimelineCellExposureState state, {
   bool emptyRunStart = false,
@@ -29,6 +30,10 @@ String _marker(
   frameName: frameName,
 );
 
+TimelineCellWriting _word(String word) => (word: word, mark: null);
+
+TimelineCellWriting _mark(InbetweenMark mark) => (word: '', mark: mark);
+
 void main() {
   group('the timesheet X', () {
     test('marks the first cell of an empty run on a drawing row', () {
@@ -38,14 +43,14 @@ void main() {
           TimelineCellExposureState.uncovered,
           emptyRunStart: true,
         ),
-        'X',
+        _word('X'),
       );
     });
 
     test('only the FIRST cell — the rest of the run stays blank', () {
       expect(
         _marker(LayerKind.animation, TimelineCellExposureState.uncovered),
-        '',
+        timelineCellWritesNothing,
       );
     });
 
@@ -57,7 +62,7 @@ void main() {
             TimelineCellExposureState.uncovered,
             emptyRunStart: true,
           ),
-          '',
+          timelineCellWritesNothing,
           reason: '$kind',
         );
       }
@@ -65,18 +70,19 @@ void main() {
   });
 
   group('a drawing start', () {
-    test('shows the frame name, or the in-between mark when it has none', () {
+    test('writes the frame name, or wears the in-between mark when it has '
+        'none', () {
       expect(
         _marker(
           LayerKind.animation,
           TimelineCellExposureState.drawingStart,
           frameName: 'A',
         ),
-        'A',
+        _word('A'),
       );
       expect(
         _marker(LayerKind.animation, TimelineCellExposureState.drawingStart),
-        unnamedDrawingMark,
+        _mark(unnamedDrawingMark),
       );
       expect(
         _marker(
@@ -84,7 +90,7 @@ void main() {
           TimelineCellExposureState.drawingStart,
           frameName: '',
         ),
-        unnamedDrawingMark,
+        _mark(unnamedDrawingMark),
       );
       expect(
         _marker(
@@ -92,8 +98,8 @@ void main() {
           TimelineCellExposureState.drawingStart,
           frameName: '  ',
         ),
-        unnamedDrawingMark,
-        reason: 'a blank name is no name — the sheet prints the mark for it too',
+        _mark(unnamedDrawingMark),
+        reason: 'a blank name is no name — the sheet wears the mark for it too',
       );
     });
 
@@ -115,20 +121,37 @@ void main() {
           TimelineCellExposureState.drawingStart,
           frameName: 'K',
         ),
-        '',
+        timelineCellWritesNothing,
       );
     });
   });
 
-  test('a held cell is blank and a mark is ●', () {
-    expect(_marker(LayerKind.animation, TimelineCellExposureState.held), '');
+  test('a held cell is blank and a dotted one wears the block\'s mark', () {
+    expect(
+      _marker(LayerKind.animation, TimelineCellExposureState.held),
+      timelineCellWritesNothing,
+    );
     expect(
       _marker(LayerKind.animation, TimelineCellExposureState.markHeld),
-      '●',
+      _mark(breakdownMark),
     );
     expect(
       _marker(LayerKind.animation, TimelineCellExposureState.markUncovered),
-      '●',
+      _mark(breakdownMark),
     );
+  });
+
+  test('🗣️an unnamed head and the dot inside a block are ONE mark, as data '
+      '(유저 2026-09-24: 「중간나누기 마크1로서 작동했으면」)', () {
+    final head = _marker(
+      LayerKind.animation,
+      TimelineCellExposureState.drawingStart,
+    ).mark;
+    final dot = _marker(
+      LayerKind.animation,
+      TimelineCellExposureState.markHeld,
+    ).mark;
+    expect(head, InbetweenMark.one);
+    expect(dot, InbetweenMark.one);
   });
 }

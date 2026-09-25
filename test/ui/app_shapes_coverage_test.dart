@@ -111,6 +111,10 @@ const _allowed = <String>[
   // IS `circular(2)` — it was only ever flagged because the literal is not
   // in the source.
   'BorderRadius.circular(_thickness / 2)',
+  // Not a corner at all: `StillRaster` READS the rounded clip a descendant
+  // pushed, to notice it changing. A `ClipRRectLayer` BUILT anywhere would
+  // still be caught — only the switch case that reads one is let through.
+  'case ClipRRectLayer(',
 ];
 
 /// Whole files the rule cannot reach.

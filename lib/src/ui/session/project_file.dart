@@ -11,6 +11,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
@@ -21,20 +23,23 @@ import '../../services/media/project_media_sources.dart'
         MediaBytesAt,
         ProjectConforms,
         mediaEntryHeld,
+        mediaEntryNameIn,
         projectConformSources,
         readableAnicelLayout,
         storedMediaBytesFor;
+import '../../services/persistence/anicel_file_service.dart'
+    show AnicelFileService;
 import '../../services/persistence/anicel_incremental_writer.dart'
-    show parseAnicelZipLayoutFile;
+    show AnicelZipLayout;
 import '../../services/persistence/anicel_project_archive.dart'
     show
         anicelConformEntryNames,
         anicelMediaEntryName,
-        anicelMediaEntryNames,
         anicelMediaEntryPrefix;
 import '../../services/persistence/media_blob_codec.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/project_lookup.dart' show projectMediaCarryOf;
+import '../../services/persistence/same_file.dart'
+    show namesTheSameFile;
 import 'session_roles.dart';
 
 /// The project file this session is bound to, and everything derived from
@@ -71,12 +76,18 @@ class ProjectFile {
   Set<String> _mediaInFile = const {};
 
   /// The carry the pool's [poolPath] asset is right now, or null when the
-  /// pool points at the file ([projectMediaCarryOf]) — the first half of
+  /// pool points at the file or names nothing there — the first half of
   /// 「where are these bytes」, and what a reader that KEEPS an answer keys
-  /// it by (the conform store, the canvas's movie rows): a path's bytes are
-  /// one carry's, and the pool can come to name another.
+  /// it by (the conform store, the canvas's movie rows).
+  ///
+  /// 🚨★★★**THE POOL AS IT IS NOW, NOT THE PATH.** One path can have been
+  /// carried twice — removed, then carried again, with an undo able to bring
+  /// the first back — and which carry's bytes a reader gets is the one the
+  /// pool names at this moment (card `recarry-after-remove-reads-the-old`).
+  /// 🪦`projectMediaCarryOf` asked the same thing with a loop of its own
+  /// beside [Project.mediaAssetByPath] (audit 09-25).
   MediaCarry? mediaCarryFor(String poolPath) =>
-      projectMediaCarryOf(_requireProject(), poolPath);
+      _requireProject().mediaAssetByPath(poolPath)?.carry;
 
   /// What [poolPath]'s bytes ACTUALLY occupy right now, or null when only
   /// the file on disk knows.
@@ -98,16 +109,17 @@ class ProjectFile {
   /// remembered at save/open rather than asked for here.
   ///
   /// ⚠️In the order every reader looks ([storedMediaBytesFor]) — the project
-  /// file first — so the size shown is the size of the bytes that are READ.
-  /// 🪦The staged copy answered first here alone.
+  /// file first — and through the same gate ([_storedFor]: the file's own
+  /// record, [mediaInFile]), so the size shown is the size of the bytes that
+  /// are READ. 🪦The staged copy answered first here alone; then the layout
+  /// answered here while the readers asked the record (audit 09-25).
   int? mediaStoredBytesFor(String poolPath) {
     final carry = mediaCarryFor(poolPath);
     if (carry == null) {
       return null;
     }
-    final archived = _archivedMediaBytes();
-    for (final name in anicelMediaEntryNames(carry)) {
-      if (archived[name] case final length?) {
+    if (mediaEntryNameIn(_mediaInFile, carry) case final name?) {
+      if (_archivedMediaBytes()[name] case final length?) {
         return length;
       }
     }
@@ -220,9 +232,9 @@ class ProjectFile {
   /// ⚠️Invalidated by [invalidateConformStoredBytes] on two events and
   /// they are BOTH needed: a completed save (the carried entry's length
   /// moved) and the conform store answering (a conform was just built, or
-  /// dropped by [AudioConformStore.releaseDiskBacked]). Keying on the save
-  /// generation alone — what the media map does — would leave a freshly
-  /// conformed sound showing nothing until the next save.
+  /// dropped by [AudioConformStore.releaseDiskBacked]). Keying on the file
+  /// generation alone ([_fileGeneration], what the media map does) would
+  /// leave a freshly conformed sound showing nothing until the next save.
   Map<String, int> get conformStoredBytes {
     final known = _conformStoredBytes;
     if (known != null) {
@@ -321,23 +333,26 @@ class ProjectFile {
   /// `recarry-after-remove-reads-the-old`). An asset the pool points at
   /// rather than carries reads its file, whatever an earlier carry of the
   /// same path left in the file or the store.
-  ({MediaByteSource source, void Function() Function()? hold})
-  _whereTheBytesAre(String poolPath) {
+  _Whereabouts _whereTheBytesAre(String poolPath) {
     final carry = mediaCarryFor(poolPath);
     if (carry == null) {
-      return (source: MediaFileBytes(poolPath), hold: null);
+      final file = MediaFileBytes(poolPath);
+      return (source: file, hold: null, carry: null, stored: file);
     }
-    final (:stored, :at) = storedMediaBytesFor(
+    return _whereTheCarryIs(carry);
+  }
+
+  /// Where [carry]'s bytes are — [_whereTheBytesAre] for a carry already
+  /// known: what a reader following its bytes asks ([HeldMediaBytes.again]),
+  /// THESE bytes whatever the pool names at their path by then.
+  _Whereabouts _whereTheCarryIs(MediaCarry carry) {
+    final (:stored, :at) = _storedFor(
       carry,
-      // Parsed only when the file holds this carry — the pool asks per row,
-      // and a carry not saved yet has nothing in there to find.
-      layout: mediaEntryHeld(_mediaInFile, carry)
-          ? readableAnicelLayout(_projectFilePath)
-          : null,
-      archivePath: _projectFilePath,
-      staging: _staging,
+      () => readableAnicelLayout(_projectFilePath),
     );
     return (
+      carry: carry,
+      stored: stored,
       // 🚨A framed entry is decoded HERE and nowhere downstream. Every
       // consumer asked for「the bytes of this asset」and must keep getting
       // them — the block index is this layer's business, and the reader
@@ -353,6 +368,131 @@ class ProjectFile {
     );
   }
 
+  /// [carry]'s stored bytes and where they were found
+  /// ([storedMediaBytesFor]) — asked for a reader, and again after a save
+  /// for the readers already holding ([_tellTheHoldersWhatMoved]). [layout]
+  /// is the project file's, read only when the file holds this carry — the
+  /// pool asks per row, and a carry not saved yet has nothing in there to
+  /// find.
+  ({MediaByteSource stored, MediaBytesAt at}) _storedFor(
+    MediaCarry carry,
+    AnicelZipLayout? Function() layout,
+  ) => storedMediaBytesFor(
+    carry,
+    layout: mediaEntryHeld(_mediaInFile, carry) ? layout() : null,
+    archivePath: _projectFilePath,
+    staging: _staging,
+  );
+
+  /// Every hold handed out and not given back yet that has a carry — what a
+  /// save asks about: to store what they read ([heldCarries]), to tell each
+  /// whose bytes it moved ([HeldMediaBytes.moved]), and to wait for the ones
+  /// it asked to let go ([readersLetGoOf]).
+  final List<_LiveHold> _liveHolds = [];
+
+  /// What the readers hold that is the project's own — an entry of the file
+  /// or a staged copy — by carry: what a save stores beside what the pool
+  /// names (`ProjectFileDoor._carryFor`).
+  ///
+  /// ⛔A HELD carry does not leave, even when the project no longer carries
+  /// it: something reads it by offset right now — a viewer on an asset just
+  /// taken out of the pool, a canvas row an undo may bring back — and
+  /// leaving would make its span a hole the push-down writes over. It leaves
+  /// with the first save after the reader lets go (audit 2026-09-24,
+  /// `carried-bytes-audit-0924`).
+  /// 🆕STORED, not merely kept (audit 09-25, `audit-0925-carry-follow`): it
+  /// used to be a name the in-place save declined to drop, so a whole write
+  /// — a save-as, a torn tail healed — left it behind, and the record of
+  /// what the file holds ([mediaInFile]) never listed it: a reader holding
+  /// it was told its bytes had moved to the ORIGINAL and followed there, and
+  /// an undo that brought the asset back read the original too.
+  Map<MediaCarry, MediaByteSource> get heldCarries {
+    late final layout = readableAnicelLayout(_projectFilePath);
+    return {
+      for (final live in _liveHolds)
+        if (_storedFor(live.carry, () => layout) case (
+          :final stored,
+          :final at,
+        ) when at != MediaBytesAt.original)
+          live.carry: stored,
+    };
+  }
+
+  /// Tells every live hold whose carry the file just saved answers from
+  /// somewhere else — the save absorbed the staged copy it reads, or wrote
+  /// the file it reads somewhere new ([HeldBytesMove.elsewhere]).
+  ///
+  /// 🚨★★★**THE READER MOVES, NOT THE BYTES.** The staged copy is retired by
+  /// the save whether or not anyone holds it; held, it only waits for its
+  /// reader to let go ([MediaStagingStore.hold]) — and a reader that holds
+  /// for the session (a canvas's movie row) never did, so the copy stayed on
+  /// disk beside the entry that replaced it until the app quit (card
+  /// `canvas-holds-staged-for-session`). Told, the reader opens again on the
+  /// entry and lets the copy go.
+  ///
+  /// ⚠️「Somewhere else」 is the ANSWER, not the kind of place: a stored
+  /// source is equal to another only where it is the same stretch of the
+  /// same file, so an entry of the file a save-as left behind has moved as
+  /// surely as a staged copy has.
+  void _tellTheHoldersWhatMoved() {
+    // Read once for every holder — a central directory per movie row per
+    // save is the cost this would otherwise add to every save.
+    late final layout = readableAnicelLayout(_projectFilePath);
+    for (final live in _liveHolds) {
+      final now = _storedFor(live.carry, () => layout).stored;
+      // Told once per answer: a reader still on its way there — or one
+      // that could not follow — hears again only when the answer moves on.
+      if (now != live.stored && now != live.toldOf) {
+        live.toldOf = now;
+        live.moves.add(HeldBytesMove.elsewhere);
+      }
+    }
+  }
+
+  /// Asks every reader holding [filePath] open to let go of it, and waits
+  /// until they have — what a whole write needs before it can replace that
+  /// file (`AnicelFileService.save`'s `beforeReplacing`).
+  ///
+  /// 🚨★★★**THE REPLACE FAILED UNDER EVERY READER, FOR AS LONG AS IT READ.**
+  /// A whole write (a torn tail healed, refs the file no longer backs) is
+  /// built beside the file and renamed onto it — and Windows refuses a
+  /// rename onto a file anything in this process holds open. A canvas row
+  /// holds its movie for the session, so a save that had to write whole
+  /// went to the failed copy for as long as the row was there (card
+  /// `rewrite-under-offset-readers`). The session's own cel handle already
+  /// lets go first ([AnicelFileService.renameWithRetry]); this is the same
+  /// for the readers, told [HeldBytesMove.replacing] — and each opens again
+  /// once the save has ended, because the next hold waits for it
+  /// ([holdMediaBytes]).
+  ///
+  /// ⚠️Bounded by [lettingGoAtMost]: a reader that does not follow its hold
+  /// (a placement mid-render, the import window's preview) never lets go on
+  /// being asked, and a save must not wait on it forever. Past the bound the
+  /// replace is tried anyway, and meets the refusal it always met.
+  Future<void> readersLetGoOf(String filePath) async {
+    final holding = [
+      for (final live in _liveHolds)
+        if (live.stored.span?.path case final path?
+            when namesTheSameFile(path, filePath))
+          live,
+    ];
+    // Every one of them, told before or not: one that could not follow an
+    // earlier move still holds this file.
+    for (final live in holding) {
+      live.moves.add(HeldBytesMove.replacing);
+    }
+    await Future.wait([
+      for (final live in holding) live.released.future,
+    ]).timeout(lettingGoAtMost, onTimeout: () => const []);
+  }
+
+  /// How long a save waits for the readers it asked to let go
+  /// ([readersLetGoOf]). A reader that follows lets go within a decoder's
+  /// round trip; one that does not, never. A test that must see the letting
+  /// go rather than the bound sets it past its own timeout.
+  @visibleForTesting
+  static Duration lettingGoAtMost = const Duration(seconds: 2);
+
   /// Entries a reader holds by OFFSET right now ([holdMediaBytes]), and
   /// how many hold each.
   final Map<String, int> _heldEntries = {};
@@ -367,15 +507,20 @@ class ProjectFile {
   /// 🚨★★★**FOR A READER THAT KEEPS READING** — a document the viewer holds
   /// open: a movie the OS decoder reads by offset frame after frame, a PDF
   /// read a page at a time. [mediaByteSourceFor] is resolved per call and
-  /// held by no one; a document is held by definition. Two steps of a save
-  /// would pull bytes from under it, and each answer is kept from its own:
+  /// held by no one; a document is held by definition. Three steps of a
+  /// save would pull bytes from under it, and each answer is kept from its
+  /// own:
   ///  * an archive entry from the IN-PLACE push-down (since 2026-09-23 live
   ///    bytes slide down, and the next round writes over where they were —
   ///    where a save used to write a new file beside the old one, which an
   ///    open reader went on reading untouched) — [heldArchiveEntries];
   ///  * a staged copy from the retirement that follows its absorption —
-  ///    [MediaStagingStore.hold].
-  /// The original is the user's file, and nothing here moves it.
+  ///    [MediaStagingStore.hold];
+  ///  * the file itself from a WHOLE write that replaces it — the reader is
+  ///    asked to let go first, and holds again once the save has ended
+  ///    ([readersLetGoOf], [HeldBytesMove.replacing]).
+  /// And whatever a reader holds, the save stores ([heldCarries]). The
+  /// original is the user's file, and nothing here moves it.
   ///
   /// ⚠️Waits out a save already running: it may be moving these very bytes,
   /// and a range read off the directory it is about to supersede would be
@@ -383,25 +528,44 @@ class ProjectFile {
   ///
   /// `release` is idempotent — call it once the reader has CLOSED, not
   /// when it decides to.
-  Future<HeldMediaBytes> holdMediaBytes(String poolPath) async {
-    // The wait and the hold in ONE step — see [saveSettled]: a save that
+  Future<HeldMediaBytes> holdMediaBytes(String poolPath) =>
+      _hold(() => _whereTheBytesAre(poolPath));
+
+  /// [where]'s bytes, held — [holdMediaBytes] for any answer, and what
+  /// [HeldMediaBytes.again] asks again.
+  Future<HeldMediaBytes> _hold(_Whereabouts Function() where) async {
+    // The wait and the hold in ONE step ([_saveEnded]): a save that
     // woke on the same completion must not begin between them, or it moves
     // what this is about to hold without having counted it.
     while (_saveInFlight) {
       await _saveEnded.future;
     }
-    final (:source, :hold) = _whereTheBytesAre(poolPath);
+    final whereabouts = where();
+    final (:source, :hold, :carry, :stored) = whereabouts;
     final letGo = hold?.call();
+    // A file the pool points at is not the project's to move: nothing
+    // follows it.
+    final live = carry == null ? null : _LiveHold(carry, stored);
+    if (live != null) {
+      _liveHolds.add(live);
+    }
     var released = false;
-    return (
+    return HeldMediaBytes(
       source: source,
       release: () {
         if (released) {
           return;
         }
         released = true;
+        _liveHolds.remove(live);
         letGo?.call();
+        live?.released.complete();
+        unawaited(live?.moves.close());
       },
+      moved: live?.moves.stream ?? const Stream<HeldBytesMove>.empty(),
+      again: carry == null
+          ? () => _hold(() => whereabouts)
+          : () => _hold(() => _whereTheCarryIs(carry)),
     );
   }
 
@@ -468,38 +632,37 @@ class ProjectFile {
   /// [mediaByteSourceFor] follows: a compaction moves every byte, and a
   /// range kept from before would read whatever landed on those offsets.
   ///
-  /// ⛔The entry name is DERIVED, not recorded. Media records its entry
-  /// names because an old project may have been written under a different
-  /// rule; a conform is younger than that problem, and recording a second
-  /// map would be a second thing to keep in step.
+  /// ⛔The entry name is DERIVED, not recorded: the path and the settings
+  /// say it, and both spellings are asked. Media keeps a record of its names
+  /// ([mediaInFile]) because a carry's name is its own
+  /// ([MediaAsset.carriedAs]), not its path's; a conform has no such thing,
+  /// and a second record would be a second thing to keep in step.
+  ///
+  /// A torn tail is read the way every reader reads it
+  /// ([readableAnicelLayout]); nothing readable, and the decode still works
+  /// — which is the entire fallback this optimisation stands on.
   MediaByteSource? carriedConformFor(String sourcePath) {
     final archivePath = _projectFilePath;
-    if (archivePath == null) {
+    final layout = readableAnicelLayout(archivePath);
+    if (archivePath == null || layout == null) {
       return null;
     }
     final project = _requireProject();
-    try {
-      final layout = parseAnicelZipLayoutFile(archivePath);
-      // Only the names the CURRENT settings produce. A conform carried at
-      // another rate is not a conform for this project any more, and the
-      // next save is what takes it away.
-      for (final name in anicelConformEntryNames(
-        sourcePath,
-        sampleRate: project.audioSampleRate,
-        speedNumerator: project.audioSpeedNumerator,
-        speedDenominator: project.audioSpeedDenominator,
-      )) {
-        final entry = layout.entryNamed(name);
-        if (entry != null) {
-          return MediaArchiveBytes.ofEntry(
-            archivePath: archivePath,
-            entry: entry,
-          );
-        }
+    // Only the names the CURRENT settings produce. A conform carried at
+    // another rate is not a conform for this project any more, and the
+    // next save is what takes it away.
+    for (final name in anicelConformEntryNames(
+      sourcePath,
+      sampleRate: project.audioSampleRate,
+      speedNumerator: project.audioSpeedNumerator,
+      speedDenominator: project.audioSpeedDenominator,
+    )) {
+      if (layout.entryNamed(name) case final entry?) {
+        return MediaArchiveBytes.ofEntry(
+          archivePath: archivePath,
+          entry: entry,
+        );
       }
-    } on Object {
-      // A torn or momentarily unreadable archive: the decode below still
-      // works, which is the entire fallback this optimisation stands on.
     }
     return null;
   }
@@ -561,22 +724,13 @@ class ProjectFile {
   /// instead of racing it. Read through [autosaveShouldStandDown].
   bool _saveInFlight = false;
 
-  /// Completes when the save in flight ends — what [saveSettled] waits on.
-  Completer<void> _saveEnded = Completer<void>()..complete();
-
-  /// Waits out a save in flight, and the next if one starts in between.
-  ///
-  /// ⚠️Only for a caller that does nothing a save could race once it is
-  /// through. One that goes on to write, or to hold what a save moves,
-  /// waits inside the same step it acts in ([beginSaveWhenSettled],
+  /// Completes when the save in flight ends — what a writer and a hold wait
+  /// on, each inside the step it acts in ([beginSaveWhenSettled],
   /// [holdMediaBytes]): two callers woken by the same save both find it
   /// over, and an `await` between the wait and the act lets the other one
-  /// act first.
-  Future<void> saveSettled() async {
-    while (_saveInFlight) {
-      await _saveEnded.future;
-    }
-  }
+  /// act first. 🪦`saveSettled` waited alone, and nothing called it once
+  /// both did it this way (a0db20fa1).
+  Completer<void> _saveEnded = Completer<void>()..complete();
 
   /// Raised for the WHOLE save, retirement included — see
   /// [ProjectFileDoor.saveProjectToFile], which says why the window has to
@@ -688,6 +842,10 @@ class ProjectFile {
     // keyed by; takes stay put now, and the cache is keyed by source
     // rather than by anything the project owns, so a save moves nothing a
     // conform depends on.
+    //
+    // The readers are another matter: the file answers for what the save
+    // absorbed now, and a reader still on a staged copy follows it.
+    _tellTheHoldersWhatMoved();
   }
 
   /// The session is bound to [filePath], which was just OPENED: it holds
@@ -754,4 +912,36 @@ class ProjectFile {
     _failedCopy = null;
     _failedCopyEdits = null;
   }
+}
+
+/// Where a medium's bytes are, how to keep them there while they are read,
+/// and whose they are ([ProjectFile._whereTheBytesAre]).
+typedef _Whereabouts = ({
+  MediaByteSource source,
+  void Function() Function()? hold,
+  MediaCarry? carry,
+  MediaByteSource stored,
+});
+
+/// A hold handed out and not given back yet, that has a carry
+/// ([ProjectFile.holdMediaBytes]) — what a save stores, tells when its bytes
+/// move, and waits for when it must replace their file.
+final class _LiveHold {
+  _LiveHold(this.carry, this.stored);
+
+  final MediaCarry carry;
+
+  /// The answer the hold was given.
+  final MediaByteSource stored;
+
+  /// The answer it was last told its bytes moved to — so a save that finds
+  /// them still there does not tell it again.
+  MediaByteSource? toldOf;
+
+  /// [HeldMediaBytes.moved]. ONE listener, the reader — and what is told
+  /// before it listens waits for it: a movie opens slowly enough for a save
+  /// to bind in between.
+  final moves = StreamController<HeldBytesMove>();
+
+  final released = Completer<void>();
 }

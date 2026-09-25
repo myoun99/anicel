@@ -4,8 +4,9 @@ import '../core/copy_with_sentinel.dart';
 import 'stroke.dart';
 import 'text_cel_style.dart';
 
-/// The in-between division mark (中割) — the one glyph both of its uses
-/// print: a drawing without a cel number, and the dot inside a block.
+/// The in-between division mark (中割) written as TEXT — mark 1's glyph
+/// ([InbetweenMark.glyph]), for both of its uses: a drawing without a cel
+/// number, and the dot inside a block.
 ///
 /// 🚨★★F-149 (유저 2026-09-16): 「프레임 이름 없는 기본 상태도 중간나누기
 /// 마크(속이 빈 동그라미)고, 중간나누기 마크(속이 찬 동그라미)도 중간나누기
@@ -13,15 +14,58 @@ import 'text_cel_style.dart';
 /// 기본상태를 속이 찬 동그라미로 통일적용. 추후 두번째 중간나누기
 /// 마크(속이 빈)를 활용할지도 모르겠지만 당장은 제거」.
 ///
-/// ⇒ TWO names below, ONE glyph here. The hollow ○ the unnamed drawing
-/// printed until now is retired; the day 유저 wants a second mark back,
-/// [unnamedDrawingMark] gets its own glyph and nothing else moves.
+/// ⇒ ONE glyph here. The hollow ○ the unnamed drawing printed until F-149
+/// is retired; the second mark 유저 has in mind arrives as a second
+/// [InbetweenMark] (2026-09-24), with a glyph of its own.
 const String inbetweenMark = '●';
 
-/// What a drawing without a cel number prints where the number would stand
-/// — the in-between mark, the same on the sheet, the timeline, the flip
-/// HUD, the storyboard and a save's notice.
-const String unnamedDrawingMark = inbetweenMark;
+/// THE in-between marks as DATA — what a cell carries, not a glyph it prints.
+///
+/// 🗣️유저 2026-09-24: 「데이터적으로도 같은 취급시키는거 맞지? 중간나누기
+/// 마크1로서 작동했으면하는데. 마크2는 토에이 타임시트에 속이 빈 동그라미가
+/// 있어서 그게 될 예정이고, 아무튼 중간나누기는 마크1이랑 마크2 두개로
+/// 나눌예정」. ↩️F-149 had made the two share a GLYPH only: a drawing with no
+/// cel number printed [inbetweenMark] as its name, while the dot inside a
+/// block was a mark — so every surface drew the two apart, the sheet at two
+/// sizes. They are one mark now, [one], from the model up; mark 2 (the Toei
+/// sheet's hollow ○) arrives as a second value here.
+enum InbetweenMark {
+  /// Mark 1 — the filled ●.
+  one;
+
+  /// The mark written as TEXT — a file name, a menu, a notice. Surfaces that
+  /// draw draw its shape instead.
+  String get glyph => switch (this) {
+    InbetweenMark.one => inbetweenMark,
+  };
+}
+
+/// The mark a drawing without a cel number wears where the number would
+/// stand — mark 1, the same mark as the dot inside a block (유저
+/// 2026-09-24), on the sheet, the timeline, the flip HUD, the storyboard and
+/// in a save's notice.
+const InbetweenMark unnamedDrawingMark = InbetweenMark.one;
+
+/// The mark the dot inside a block wears (its breakdown offsets) — mark 1,
+/// the same mark as [unnamedDrawingMark]. The mark-2 round is where a block
+/// says which.
+const InbetweenMark breakdownMark = InbetweenMark.one;
+
+/// What a drawing's head wears where its block starts: a [word] — its cel
+/// number — or, with none, a [mark].
+typedef DrawingHead = ({String word, InbetweenMark? mark});
+
+/// What a drawing named [name] wears where its block starts, as DATA: its
+/// cel number, or — with none — no word and [unnamedDrawingMark].
+///
+/// 🚨ONE ANSWER for every surface that shows a drawing's head — the
+/// timeline's rows, the flip window, the folded strip, the storyboard's
+/// panels, the sheet — so the mark it wears is the mark of the dot inside a
+/// block, drawn by the same code (유저 2026-09-24).
+DrawingHead drawingHeadOf(String? name) => switch (celNumberOf(name)) {
+  final celNumber? => (word: celNumber, mark: null),
+  null => (word: '', mark: unnamedDrawingMark),
+};
 
 /// The cel number a drawing named [name] prints: [name] trimmed, or null
 /// when nothing is left of it.
@@ -37,10 +81,13 @@ String? celNumberOf(String? name) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
-/// What a drawing named [name] prints where its block starts: its cel
-/// number, or [unnamedDrawingMark].
-String celNumberOrMark(String? name) =>
-    celNumberOf(name) ?? unnamedDrawingMark;
+/// What a drawing named [name] WRITES where its block starts, as TEXT — a
+/// file name, a notice: [drawingHeadOf], its mark spelled as its glyph. A
+/// surface that draws asks [drawingHeadOf] and draws the mark.
+String celNumberOrMark(String? name) {
+  final head = drawingHeadOf(name);
+  return head.mark?.glyph ?? head.word;
+}
 
 /// One DRAWING in a layer's cel bank.
 ///

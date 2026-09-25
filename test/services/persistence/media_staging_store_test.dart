@@ -3,7 +3,9 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/media_asset.dart' show MediaCarry;
+import 'package:anicel/src/core/path_names.dart';
+import 'package:anicel/src/models/media_asset.dart'
+    show MediaCarry, mediaNameParts, mintMediaCarry;
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -327,21 +329,31 @@ void main() {
       expect(store.holdsAnyCopyOf(path), isFalse);
     });
 
-    test('the carry a project had before carries had names is staged under '
-        'the name the path alone gave', () {
-      final path = '${root.path}/take.wav'.replaceAll(r'\', '/');
+    test('a copy that shares only the path\'s hash is not a copy of the path '
+        '— the file\'s name says whose it is', () async {
+      final path = sourceFile('take.wav');
+      final (:hash, safe: _) = mediaNameParts(path);
+      Directory('${root.path}/Staged').createSync(recursive: true);
+      // What only a collision could put there — the name's back end is the
+      // only witness left, and it had none (audit 09-25).
+      File('${root.path}/Staged/$hash-c9-other.wav').writeAsBytesSync([1]);
+
+      expect(store.holdsAnyCopyOf(path), isFalse);
+    });
+
+    test('a copy is staged under its carry\'s name — the path alone gives '
+        'the name of a carry from before names were minted', () async {
+      final path = sourceFile('take.wav');
+      final minted = mintMediaCarry(path);
+
+      final legacy = (await store.stage(carry(path, '')))!;
+      final named = (await store.stage(carry(path, minted)))!;
+
       expect(
-        MediaStagingStore.stagedNameFor(carry(path, '')),
-        isNot(contains('--')),
+        fileNameOfPath(legacy.path),
+        matches(RegExp(r'^[0-9a-f]{8}-take\.wav(\.z)?$')),
       );
-      expect(
-        MediaStagingStore.stagedNameFor(carry(path, 'c1')),
-        endsWith('-c1-take.wav'),
-      );
-      expect(
-        MediaStagingStore.stagedNameFor(carry(path, '')),
-        endsWith('-take.wav'),
-      );
+      expect(fileNameOfPath(named.path), startsWith(minted));
     });
 
     test('a copy held under the OS spelling of its path is the copy the save '
@@ -437,53 +449,200 @@ void main() {
     );
   });
 
-  group('a relink takes the staged bytes with it', () {
-    test('🚨the derived name follows the pool path', () async {
+  /// 🚨★★★**WHAT A SAVE LEAVES BEHIND, THE ROOM KEEPS** (유저 2026-09-25 「이번
+  /// 실행의 앱 룸으로 옮겨 둔다」): the entry is copied out of the project
+  /// file under the name it wears there — and found as its carry's copy.
+  group('what a save leaves behind, the room keeps', () {
+    /// A stand-in project file: [entry] between bytes that are not it.
+    ({String path, int offset}) fileHolding(Uint8List entry) {
+      final path = '${root.path}/scene.anicel'.replaceAll(r'\', '/');
+      File(path).writeAsBytesSync([
+        ...List<int>.filled(333, 7),
+        ...entry,
+        ...List<int>.filled(99, 9),
+      ]);
+      return (path: path, offset: 333);
+    }
+
+    /// Everything in the room's folder, `.part` neighbours included.
+    List<String> inTheRoom() => [
+      for (final entity in Directory('${root.path}/Staged').listSync())
+        fileNameOfPath(entity.path),
+    ];
+
+    test('🚨the entry lands under its carry\'s name, and is that carry\'s '
+        'copy', () async {
+      final source = sourceFile('take.wav');
+      final bytes = File(source).readAsBytesSync();
+      final minted = mintMediaCarry(source);
+      final (:path, :offset) = fileHolding(bytes);
+
+      await store.keepLeftBehind(path, [
+        (name: minted, offset: offset, length: bytes.length),
+      ]);
+
+      final kept = store.find(carry(source, minted));
+      expect(kept, isNotNull, reason: 'the undo asks the room by the carry');
+      expect(
+        File(kept!.path).readAsBytesSync(),
+        bytes,
+        reason: 'the entry\'s bytes, not the file around them',
+      );
+      expect(kept.framed, isFalse);
+    });
+
+    test('a framed entry stays framed — the room keeps what the file '
+        'stored', () async {
+      final source = sourceFile('take.wav');
+      final bytes = File(source).readAsBytesSync();
+      final minted = mintMediaCarry(source);
+      final (:path, :offset) = fileHolding(bytes);
+
+      await store.keepLeftBehind(path, [
+        (
+          name: '$minted$mediaFramedEntrySuffix',
+          offset: offset,
+          length: bytes.length,
+        ),
+      ]);
+
+      expect(store.find(carry(source, minted))?.framed, isTrue);
+    });
+
+    test('⛔a copy that ended short is not kept — a short file never wears '
+        'the name', () async {
+      final source = sourceFile('take.wav');
+      final bytes = File(source).readAsBytesSync();
+      final minted = mintMediaCarry(source);
+      final (:path, :offset) = fileHolding(bytes);
+
+      await store.keepLeftBehind(path, [
+        (name: minted, offset: offset, length: bytes.length + 4096),
+      ]);
+
+      expect(store.find(carry(source, minted)), isNull);
+      expect(inTheRoom(), isEmpty, reason: 'and no neighbour is left either');
+    });
+
+    test('🚨a copy waiting on its reader to retire is kept — the reader '
+        'letting go does not take it', () async {
+      final source = sourceFile('conte.pdf');
+      final minted = mintMediaCarry(source);
+      final c = carry(source, minted);
+      final staged = (await store.stage(c))!;
+      final stored = File(staged.path).readAsBytesSync();
+      final letGo = store.hold(c);
+      store.retire(c);
+      expect(store.find(c), isNull, reason: 'the premise: it is retiring');
+      final (:path, :offset) = fileHolding(stored);
+
+      await store.keepLeftBehind(path, [
+        (
+          name: fileNameOfPath(staged.path),
+          offset: offset,
+          length: stored.length,
+        ),
+      ]);
+      letGo();
+
+      expect(
+        store.find(c)?.path,
+        staged.path,
+        reason: 'those are the bytes the save leaves behind',
+      );
+      expect(inTheRoom(), hasLength(1), reason: 'kept, not copied again');
+    });
+
+    test('a file that will not read keeps nothing, and leaves no '
+        'neighbour', () async {
+      final minted = mintMediaCarry('${root.path}/take.wav');
+
+      await store.keepLeftBehind('${root.path}/gone.anicel', [
+        (name: minted, offset: 0, length: 4096),
+      ]);
+
+      expect(inTheRoom(), isEmpty);
+    });
+
+    test('a copy already in the room is not made again — a carried movie is '
+        'gigabytes', () async {
+      final source = sourceFile('take.wav');
+      final bytes = File(source).readAsBytesSync();
+      final minted = mintMediaCarry(source);
+      final (:path, :offset) = fileHolding(bytes);
+      final entry = (name: minted, offset: offset, length: bytes.length);
+      await store.keepLeftBehind(path, [entry]);
+      final heard = <double>[];
+
+      await store.keepLeftBehind(path, [entry], onProgress: heard.add);
+
+      expect(heard, isEmpty, reason: 'nothing was copied the second time');
+      expect(store.find(carry(source, minted)), isNotNull);
+    });
+
+    test('its bar runs from nothing to all of it, and never back', () async {
+      final first = sourceFile('a.wav');
+      final second = sourceFile('b.wav', length: 3 * 1024 * 1024);
+      final one = File(first).readAsBytesSync();
+      final two = File(second).readAsBytesSync();
+      final (:path, :offset) = fileHolding(
+        Uint8List.fromList([...one, ...two]),
+      );
+      final heard = <double>[];
+
+      await store.keepLeftBehind(
+        path,
+        [
+          (name: mintMediaCarry(first), offset: offset, length: one.length),
+          (
+            name: mintMediaCarry(second),
+            offset: offset + one.length,
+            length: two.length,
+          ),
+        ],
+        onProgress: heard.add,
+      );
+
+      expect(heard.length, greaterThan(2), reason: 'a block at a time');
+      expect(heard.first, lessThan(1));
+      for (var i = 1; i < heard.length; i += 1) {
+        expect(heard[i], greaterThanOrEqualTo(heard[i - 1]));
+      }
+      expect(heard.last, 1);
+    });
+  });
+
+  group('a relink moves the asset, not its bytes', () {
+    test('🚨a carry minted at one path is found at the next — one copy, '
+        'answering both', () async {
       final from = sourceFile('take.wav');
       final original = File(from).readAsBytesSync();
-      final staged = (await store.stage(carry(from)))!;
+      final minted = mintMediaCarry(from);
+      final staged = (await store.stage(carry(from, minted)))!;
       final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
 
-      store.rename(carry(from), to);
+      final moved = store.find(carry(to, minted));
 
       expect(
-        store.find(carry(from)),
-        isNull,
-        reason: 'nothing is left under the old key',
-      );
-      final moved = store.find(carry(to));
-      expect(
-        moved,
-        isNotNull,
+        moved?.path,
+        staged.path,
         reason:
-            '⛔otherwise the asset looks unstaged — back to the promise '
-            'being kept at save time — while its bytes wait under a name '
-            'nothing points at',
+            '🪦the name followed the path, so a relink RENAMED the copy — and '
+            'an undo of it looked for the old name and found nothing',
       );
-      expect(moved!.framed, staged.framed);
-      expect(mediaAppFileSource(moved.path).readSync(), original);
-      expect(store.list(), hasLength(1), reason: 'moved, not copied');
-    });
-
-    test('renaming something never staged does nothing', () async {
-      store.rename(carry('${root.path}/never.wav'), '${root.path}/other.wav');
-      expect(store.list(), isEmpty);
-    });
-
-    test('a destination that already holds bytes is replaced', () async {
-      // The caller has just pointed the pool path at a different file, so
-      // whatever was staged under it belongs to the asset being replaced.
-      final from = sourceFile('take.wav');
-      final to = sourceFile('other.wav', length: 120 * 1024);
-      await store.stage(carry(from));
-      await store.stage(carry(to));
-      expect(store.list(), hasLength(2));
-
-      store.rename(carry(from), to);
-
+      expect(mediaAppFileSource(moved!.path).readSync(), original);
+      expect(store.find(carry(from, minted))?.path, staged.path);
       expect(store.list(), hasLength(1));
-      expect(store.find(carry(to)), isNotNull);
-      expect(store.find(carry(from)), isNull);
+    });
+
+    test('a carry from before names were minted is found by the path it is '
+        'at', () async {
+      final from = sourceFile('take.wav');
+      await store.stage(carry(from, 'c1'));
+      final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
+
+      expect(store.find(carry(to, 'c1')), isNull);
+      expect(store.find(carry(from, 'c1')), isNotNull);
     });
   });
 

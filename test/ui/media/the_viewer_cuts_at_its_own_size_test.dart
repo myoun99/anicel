@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -21,8 +23,10 @@ import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
+import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드 존재안하니
 /// 한손가락 핑거시 팬 … 그리고 뷰어패널의 잘라내기툴 사용 가능하도록.
@@ -75,9 +79,14 @@ void main() {
   });
 
   /// The viewer at a DISPLAY zoom of 34% — the user's own example — and
-  /// already framed, so the view stays where it was put.
-  Future<void> pumpViewer(WidgetTester tester) async {
-    slot.framedFor.value = path;
+  /// already framed, so the view stays where it was put: [on]'s medium at
+  /// [open], or the plain session's reference.
+  Future<void> pumpViewer(
+    WidgetTester tester, {
+    EditorSessionManager? on,
+    String open = path,
+  }) async {
+    slot.framedFor.value = open;
     slot.viewport.value = CanvasViewport(zoom: 0.34, panX: 40, panY: 40);
     await tester.pumpWidget(
       MaterialApp(
@@ -86,7 +95,7 @@ void main() {
             valueListenable: slot.position,
             builder: (context, position, _) => MediaViewerTabHost(
               viewerId: 'media-viewer',
-              session: session,
+              session: on ?? session,
               request: slot.request,
               position: position,
               onPositionChanged: (next) => slot.position.value = next,
@@ -99,7 +108,7 @@ void main() {
         ),
       ),
     );
-    slot.open(const MediaViewerRequest(path: path, kind: MediaAssetKind.pdf));
+    slot.open(MediaViewerRequest(path: open, kind: MediaAssetKind.pdf));
     await tester.pumpAndSettle();
   }
 
@@ -250,6 +259,214 @@ void main() {
     await tester.pump();
 
     expect(held.isEmpty, isTrue);
+  });
+
+  testWidgets('a read out when a save moves the copy it reads from holds '
+      'its piece — the same bytes are on screen, and the viewer follows once '
+      'it has landed', (tester) async {
+    final directory = Directory.systemTemp.createTempSync('anicel-cut-moves');
+    deleteAfterSessionEnds(directory);
+    final (session: carried, path: carriedPath) = await carrying(
+      tester,
+      directory,
+      writeCarriedPdf,
+    );
+    final opened = <FakePdfDocument>[];
+    PdfRenderService.debugOpenerOverride = (source) async {
+      // Read, so each open is of the bytes the project answers with.
+      await openPdfThatReads(source);
+      final fresh = FakePdfDocument(pageSizes: const [pageSize]);
+      opened.add(fresh);
+      return fresh;
+    };
+    await pumpViewer(tester, on: carried, open: carriedPath);
+    final cutFrom = opened.single..holdRegionReads();
+    await cutDrag(tester);
+    expect(cutFrom.regionReads, hasLength(1), reason: 'the read is out');
+
+    await saveProject(tester, carried, directory);
+    await tester.pump();
+    expect(opened, hasLength(2), reason: 'the premise: the save moved it');
+    cutFrom.releaseRegionReads();
+    await tester.pump();
+    await tester.pump();
+
+    expect(held.isNotEmpty, isTrue, reason: 'what was cut is what is shown');
+    expect(cutFrom.disposed, isTrue, reason: 'and the viewer followed after');
+  });
+
+  testWidgets('a page being drawn when a save moves the copy it reads from '
+      'is asked again of where the bytes are now — the document let go of '
+      'fails it', (tester) async {
+    final directory = Directory.systemTemp.createTempSync('anicel-page-moves');
+    deleteAfterSessionEnds(directory);
+    final (session: carried, path: carriedPath) = await carrying(
+      tester,
+      directory,
+      writeCarriedPdf,
+    );
+    final opened = <FakePdfDocument>[];
+    PdfRenderService.debugOpenerOverride = (source) async {
+      await openPdfThatReads(source);
+      final fresh = FakePdfDocument(
+        pageSizes: const [pageSize, pageSize],
+        cancelsWhenDisposed: true,
+      );
+      opened.add(fresh);
+      return fresh;
+    };
+    await pumpViewer(tester, on: carried, open: carriedPath);
+    final was = opened.single..holdRender(1);
+    slot.position.value = 1;
+    await tester.pump();
+    expect(was.renderRequests.last.$1, 1, reason: 'page 2 is being drawn');
+
+    await saveProject(tester, carried, directory);
+    for (var i = 0; i < 20 && !was.disposed; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+    }
+    expect(was.disposed, isTrue, reason: 'the premise: the viewer followed');
+    // Failed BEFORE the next build asks for the page: an answer from the
+    // document let go of must not stand for the one on screen now.
+    was.releaseRender(1);
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      opened.last.renderRequests.map((ask) => ask.$1),
+      contains(1),
+      reason: 'asked again of the new answer, not given up on',
+    );
+  });
+
+  /// A carried PDF of [pages] pages in the project file, shown — and every
+  /// document the viewer opens on it, in order. [reopen], when given, holds
+  /// back every open after the first until it completes.
+  Future<({EditorSessionManager session, List<FakePdfDocument> opened})>
+  shownFromTheFile(
+    WidgetTester tester, {
+    Completer<void>? reopen,
+    int pages = 1,
+  }) async {
+    final directory = Directory.systemTemp.createTempSync('anicel-lets-go');
+    deleteAfterSessionEnds(directory);
+    final (session: carried, path: carriedPath) = await carrying(
+      tester,
+      directory,
+      writeCarriedPdf,
+    );
+    await saveProject(tester, carried, directory);
+    final opened = <FakePdfDocument>[];
+    PdfRenderService.debugOpenerOverride = (source) async {
+      await openPdfThatReads(source);
+      if (opened.isNotEmpty) {
+        await reopen?.future;
+      }
+      final fresh = FakePdfDocument(
+        pageSizes: List<ui.Size>.filled(pages, pageSize),
+      );
+      opened.add(fresh);
+      return fresh;
+    };
+    await pumpViewer(tester, on: carried, open: carriedPath);
+    return (session: carried, opened: opened);
+  }
+
+  testWidgets('a read out when the document is asked to let go of its file '
+      'holds its piece — the document goes only once it has landed', (
+    tester,
+  ) async {
+    final (:session, :opened) = await shownFromTheFile(tester);
+    final cutFrom = opened.single..holdRegionReads();
+    await cutDrag(tester);
+    expect(cutFrom.regionReads, hasLength(1), reason: 'the read is out');
+
+    unawaited(session.projectFile.readersLetGoOf(session.projectFile.path!));
+    await tester.pump();
+    expect(cutFrom.disposed, isFalse, reason: 'not while a cut reads it');
+    cutFrom.releaseRegionReads();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(held.isNotEmpty, isTrue, reason: 'what was cut is what is shown');
+    expect(cutFrom.disposed, isTrue, reason: 'let go of once it landed');
+    expect(opened, hasLength(2), reason: 'and opened again');
+  });
+
+  testWidgets('🚨nothing asks the document let go of for a page — a page '
+      'turned to meanwhile is asked of the one that replaces it', (
+    tester,
+  ) async {
+    final reopen = Completer<void>();
+    final (:session, :opened) = await shownFromTheFile(
+      tester,
+      reopen: reopen,
+      pages: 2,
+    );
+    final was = opened.single;
+
+    unawaited(session.projectFile.readersLetGoOf(session.projectFile.path!));
+    await tester.pump();
+    await tester.pump();
+    expect(was.disposed, isTrue, reason: 'the premise: let go of');
+    final askedBefore = was.renderRequests.length;
+    slot.position.value = 1;
+    await tester.pump();
+    await tester.pump();
+    expect(
+      was.renderRequests,
+      hasLength(askedBefore),
+      reason: 'a picture read after its dispose is a native crash',
+    );
+
+    reopen.complete();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(
+      opened.last.renderRequests.map((ask) => ask.$1),
+      contains(1),
+      reason: 'asked of the document that took its place',
+    );
+  });
+
+  testWidgets('a cut asked while the document is let go of waits for the one '
+      'that replaces it — and cuts the page it was drawn on', (tester) async {
+    final reopen = Completer<void>();
+    final (:session, :opened) = await shownFromTheFile(
+      tester,
+      reopen: reopen,
+      pages: 2,
+    );
+    final was = opened.single;
+
+    unawaited(session.projectFile.readersLetGoOf(session.projectFile.path!));
+    await tester.pump();
+    await tester.pump();
+    expect(was.disposed, isTrue, reason: 'the premise: let go of');
+    expect(opened, hasLength(1), reason: 'the premise: not open again yet');
+    await cutDrag(tester);
+    expect(was.regionReads, isEmpty, reason: 'never asked of what was let go');
+    // Turned while the cut waits its turn.
+    slot.position.value = 1;
+    await tester.pump();
+
+    reopen.complete();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(opened, hasLength(2));
+    expect(opened.last.regionReads, hasLength(1), reason: 'asked of this one');
+    expect(
+      opened.last.regionReads.single.$1,
+      0,
+      reason: 'the page the outline was drawn on, not the one turned to since',
+    );
+    expect(held.isNotEmpty, isTrue);
   });
 
   testWidgets('the cached pages make room for the read — and the one on '

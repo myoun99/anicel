@@ -3,7 +3,8 @@
 // isolates; the shared probes live in helpers/home_page_probes.dart.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
+import 'package:anicel/src/models/frame.dart'
+    show breakdownMark, unnamedDrawingMark;
 import 'package:anicel/main.dart';
 
 import 'helpers/home_page_probes.dart';
@@ -245,20 +246,20 @@ void main() {
       await tester.tap(markButton);
       await tester.pumpAndSettle();
 
-      expectCellText('default-layer-1', 1, '●');
+      expectCellMark('default-layer-1', 1, breakdownMark);
       expect(
         anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
         isTrue,
       );
       // The drawing start is untouched.
-      expectCellText('default-layer-1', 0, unnamedDrawingMark);
+      expectCellMark('default-layer-1', 0, unnamedDrawingMark);
 
       await tester.ensureVisible(markButton);
       await tester.pumpAndSettle();
       await tester.tap(markButton);
       await tester.pumpAndSettle();
 
-      expectNoCellText('default-layer-1', 1, '●');
+      expectNoCellMark('default-layer-1', 1, breakdownMark);
       expect(
         anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
         isFalse,
@@ -285,7 +286,7 @@ void main() {
       await tester.tap(newFrameButton);
       await tester.pumpAndSettle();
 
-      expectCellText('default-layer-1', 0, unnamedDrawingMark);
+      expectCellMark('default-layer-1', 0, unnamedDrawingMark);
       expectCellText('default-layer-2', 0, 'X');
       expect(anyCellSemanticsLabel('default-layer-1', 'drawing start'), isTrue);
       expect(
@@ -381,7 +382,7 @@ void main() {
         const ValueKey<String>('shared-delete-button'),
       );
       expectNoCellText('default-layer-1', 0, 'A1');
-      expectNoCellText('default-layer-1', 0, '●');
+      expectNoCellMark('default-layer-1', 0, unnamedDrawingMark);
       expect(
         await isActionButtonEnabled(
           tester,

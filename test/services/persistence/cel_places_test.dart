@@ -104,7 +104,7 @@ void main() {
         drawn('c1', 'a', 'a2'),
         drawn('c1', 'a', 'a1'),
       ]),
-      ['drawing 1/A/1', 'drawing 1/A/$unnamedDrawingMark', 'drawing 1/A/$unnamedDrawingMark', 'drawing 2/B/x'],
+      ['drawing 1/A/1', 'drawing 1/A/${unnamedDrawingMark.glyph}', 'drawing 1/A/${unnamedDrawingMark.glyph}', 'drawing 2/B/x'],
       reason: 'a blank name prints the mark, as the sheet prints it',
     );
   });

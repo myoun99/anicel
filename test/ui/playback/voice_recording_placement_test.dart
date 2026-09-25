@@ -4,7 +4,12 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_frame_range.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
@@ -268,12 +273,9 @@ void main() {
     manager.dispose();
   });
 
-  test('REC1-B: start refuses without an armed SE lane; an armed start '
-      'ROLLS the transport, mutes the lane, and stop lands the take', () async {
+  test('REC1-B: a start ROLLS the transport, mutes the lane, and stop '
+      'lands the take', () async {
     final manager = session();
-    // The default active row is a drawing layer: no armed destination.
-    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.needsSeLane);
-
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
     manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
@@ -322,6 +324,277 @@ void main() {
     );
     manager.dispose();
   });
+
+  // 🗣️F-178 (유저 2026-09-24): 「어디에 서있든 녹음가능하게하고, 동작을 se행에
+  // 안서있으면 새 se레이어만들고 거기서하고, 서있으면 해당se행에서 시작하도록」.
+  group('F-178: the take goes where you stand', () {
+    Set<LayerId> laneIdsOf(EditorSessionManager manager) => {
+      for (final lane in manager.activeTrack.seLayers) lane.id,
+    };
+
+    test('standing on an SE row the storyboard way records on THAT row — '
+        'the drawing layer staying active does not refuse it', () async {
+      final manager = session();
+      final laneId = manager.activeTrack.seLayers.first.id;
+      // The storyboard's rails stand on a row without taking the layer you
+      // draw on (유저 2026-07-27): this is the stand the refusal missed.
+      manager.standing.standOnRow(
+        LayerRowAddress(laneId),
+        panel: WorkingPanel.storyboard,
+      );
+      expect(manager.activeLayerId, isNot(laneId), reason: 'fixture');
+      final lanesBefore = laneIdsOf(manager);
+      manager.voiceRecording.debugVoiceRecorderFactory =
+          () => _FakeRecorder(takeOfSeconds(0.5));
+
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+      expect(manager.voiceRecording.recordingMutedLayerIds, {laneId});
+      expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
+
+      expect(laneIdsOf(manager), lanesBefore, reason: 'no lane was opened');
+      expect(
+        manager.activeTrack.seLayers
+            .firstWhere((lane) => lane.id == laneId)
+            .audioClips,
+        hasLength(1),
+      );
+      manager.dispose();
+    });
+
+    test('standing on any other row opens the lane 「Add layer ▸ SE」 makes, '
+        'stands on it, and lands the take there', () async {
+      final manager = session();
+      // Stood on on purpose: a stand nobody made reads the active layer,
+      // which would follow the new lane without the lane being stood on.
+      manager.selectLayer(manager.activeLayerId!);
+      final lanesBefore = laneIdsOf(manager);
+      manager.voiceRecording.debugVoiceRecorderFactory =
+          () => _FakeRecorder(takeOfSeconds(0.5));
+
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+      final opened = laneIdsOf(manager).difference(lanesBefore).single;
+      expect(manager.currentRow, LayerRowAddress(opened));
+      expect(manager.voiceRecording.recordingMutedLayerIds, {opened});
+      expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
+
+      final lanes = manager.activeTrack.seLayers;
+      for (final lane in lanes) {
+        expect(
+          lane.audioClips,
+          hasLength(lane.id == opened ? 1 : 0),
+          reason: '${lane.name} holds the take only if it is the new lane',
+        );
+      }
+
+      // The menu's lane, made from the same stand: same name, same slot.
+      final byMenu = session();
+      final menuBefore = laneIdsOf(byMenu);
+      byMenu.layerStack.addLayerOfKind(LayerKind.se);
+      final menuLane = laneIdsOf(byMenu).difference(menuBefore).single;
+      final menuLanes = byMenu.activeTrack.seLayers;
+      expect(
+        lanes.indexWhere((lane) => lane.id == opened),
+        menuLanes.indexWhere((lane) => lane.id == menuLane),
+      );
+      expect(
+        lanes.firstWhere((lane) => lane.id == opened).name,
+        menuLanes.firstWhere((lane) => lane.id == menuLane).name,
+      );
+      byMenu.dispose();
+      manager.dispose();
+    });
+
+    test('a range selected on the S row in the storyboard is the punch '
+        'window, as one selected on the timeline is (#16: the track range '
+        'speaks first)', () async {
+      final manager = session();
+      manager.projectSettings.setProjectFps(4); // 1 s = 4 frames.
+      final laneId = manager.activeTrack.seLayers.first.id;
+      manager.standing.standOnRow(
+        LayerRowAddress(laneId),
+        panel: WorkingPanel.storyboard,
+      );
+      manager.trackFrameRangeSelection.value = TrackFrameRangeSelection(
+        trackId: manager.selectedTrackId,
+        anchorRow: LayerRowAddress(laneId),
+        startFrame: 13,
+        endFrameExclusive: 16,
+      );
+      // Outlasts the 13-frame run-up the head trim eats.
+      manager.voiceRecording.debugVoiceRecorderFactory =
+          () => _FakeRecorder(takeOfSeconds(4));
+
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+      expect(
+        manager.voiceRecording.voiceRecordCueClips.map(
+          (clip) => clip.startFrame,
+        ),
+        [1, 5, 9],
+        reason: 'the count-down into the punch a timeline range builds',
+      );
+      expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
+      final block = drawingBlocks(
+        manager.activeTrack.seLayers
+            .firstWhere((lane) => lane.id == laneId)
+            .timeline,
+      ).single;
+      expect(block.startIndex, 13);
+      expect(block.length, 3);
+      manager.dispose();
+    });
+
+    test('on the storyboard too: standing on the V row opens a lane, and the '
+        'storyboard stands on it — the next take goes there', () async {
+      final manager = session();
+      manager.standing.standOnRow(
+        TrackRowAddress(manager.selectedTrackId),
+        panel: WorkingPanel.storyboard,
+      );
+      final lanesBefore = laneIdsOf(manager);
+      manager.voiceRecording.debugVoiceRecorderFactory =
+          () => _FakeRecorder(takeOfSeconds(0.5));
+
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+      final opened = laneIdsOf(manager).difference(lanesBefore).single;
+      expect(manager.standing.workingPanel, WorkingPanel.storyboard);
+      expect(manager.currentRow, LayerRowAddress(opened));
+      expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
+      manager.dispose();
+    });
+
+    test('a microphone that will not open leaves no lane behind', () {
+      final manager = session();
+      final lanesBefore = laneIdsOf(manager);
+      manager.voiceRecording.debugVoiceRecorderFactory = _DeafRecorder.new;
+
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.deviceFailed,
+      );
+      expect(laneIdsOf(manager), lanesBefore);
+      manager.dispose();
+    });
+
+    // ④ 「지금 루프재생켜두면 녹음이 매번? 되서 뭔가 꼬이는거같은데」.
+    test('the playhead turning back — the loop wrapping — ends the take '
+        'where it had reached, and the roll the take started stops', () async {
+      final manager = session();
+      manager.selectLayer(manager.activeTrack.seLayers.first.id);
+      manager.voiceRecording.debugVoiceRecorderFactory =
+          () => _FakeRecorder(takeOfSeconds(0.5)); // 12 frames captured
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+      final playback = manager.playbackRig.playback;
+
+      playback.seekToGlobalFrame(5);
+      expect(
+        manager.voiceRecording.isVoiceRecording.value,
+        isTrue,
+        reason: 'forward is the take running on',
+      );
+      playback.seekToGlobalFrame(1); // The lap starts over.
+      await pumpEventQueue();
+
+      expect(manager.voiceRecording.isVoiceRecording.value, isFalse);
+      expect(manager.voiceRecording.voiceRecordingNotice.value, isNull);
+      expect(playback.isActive, isFalse);
+      expect(
+        drawingBlocks(manager.activeTrack.seLayers.first.timeline).single.length,
+        6,
+        reason: 'frames 0-5, what the take had reached — not all 12 captured',
+      );
+      manager.dispose();
+    });
+
+    test('a roll the take did not start rolls on past the turn', () async {
+      final manager = session();
+      manager.selectLayer(manager.activeTrack.seLayers.first.id);
+      final playback = manager.playbackRig.playback;
+      playback.play(scope: PlaybackScope.allCuts, startGlobalFrame: 0);
+      manager.voiceRecording.debugVoiceRecorderFactory =
+          () => _FakeRecorder(takeOfSeconds(0.5));
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+
+      playback.seekToGlobalFrame(4);
+      playback.seekToGlobalFrame(0);
+      await pumpEventQueue();
+
+      expect(manager.voiceRecording.isVoiceRecording.value, isFalse);
+      expect(playback.isPlaying, isTrue);
+      expect(
+        drawingBlocks(manager.activeTrack.seLayers.first.timeline).single.length,
+        5,
+      );
+      playback.stop();
+      await pumpEventQueue();
+      manager.dispose();
+    });
+
+    test('a gap is a place on the track too: parked in one, the take '
+        'opens its lane there', () async {
+      final manager = session();
+      manager.cutVerbs.createCut();
+      final track = manager.repository.requireProject().tracks.first;
+      manager.repository.updateCutLeadingGap(
+        cutId: track.cuts[1].id,
+        leadingGapFrames: 4,
+      );
+      manager.selectCut(track.cuts[0].id);
+      manager.selectGlobalFrame(track.cuts[0].duration + 1);
+      expect(manager.activeCutOrNull, isNull, reason: 'fixture: in the gap');
+      final lanesBefore = laneIdsOf(manager);
+      manager.voiceRecording.debugVoiceRecorderFactory =
+          () => _FakeRecorder(takeOfSeconds(0.5));
+
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+      final opened = laneIdsOf(manager).difference(lanesBefore).single;
+      expect(manager.currentRow, LayerRowAddress(opened));
+      expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
+      expect(
+        manager.activeTrack.seLayers
+            .firstWhere((lane) => lane.id == opened)
+            .audioClips,
+        hasLength(1),
+      );
+      manager.dispose();
+    });
+  });
+}
+
+/// A microphone the OS will not open: `start` answers no rate.
+class _DeafRecorder extends AudioRecorder {
+  @override
+  bool get isRecording => false;
+
+  @override
+  int start({
+    required int sampleRate,
+    bool useNullBackend = false,
+    int deviceIndex = -1,
+  }) => 0;
+
+  @override
+  AudioRecording? stop() => null;
 }
 
 /// A microphone stand-in: start always succeeds at the take's rate and

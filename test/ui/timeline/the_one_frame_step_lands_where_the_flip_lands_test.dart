@@ -91,14 +91,38 @@ void main() {
 
       s.frameVerbs.selectNextFrame();
 
+      // Asked on the FILM's axis: the V row is the storyboard's, whose steps
+      // are track frames (past the last cut is a place you may stand, the
+      // way its flip lands there too); the layer and lane rows are the
+      // timeline's, stepping into the cut's own runway. Either way, one
+      // frame on.
       expect(
-        s.currentFrameIndex,
+        s.editingGlobalFrame,
         _cutDuration,
         reason:
             '$row — 유저: 「처음엔 제대로 1프레임씩 이동하는거같더니 … '
             '1프레임이동 로직이 안먹힘」. 컷 끝은 벽이 아니다',
       );
     }
+  });
+
+  test('the V row\'s one-frame step lands where its flip lands', () {
+    final flip = _session();
+    flip.standOnRow(const TrackRowAddress(_trackId), frameIndex: _cutDuration - 1);
+    flip.frameVerbs.flipRow(forward: true);
+
+    final step = _session();
+    step.standOnRow(const TrackRowAddress(_trackId), frameIndex: _cutDuration - 1);
+    step.frameVerbs.selectNextFrame();
+
+    expect(step.editingGlobalFrame, flip.editingGlobalFrame);
+    expect(
+      step.activeCutId,
+      flip.activeCutId,
+      reason: '유저 2026-09-24 「마지막으로 만진 패널」: the V row is the '
+          'storyboard\'s, and both its walks are the track\'s — the step '
+          'used to take the cut\'s runway while the flip parked past it',
+    );
   });
 
   test('🚨갭에 서 있어도 한 프레임 걷는다', () {
@@ -120,7 +144,7 @@ void main() {
         parked + (forward ? 1 : -1),
         reason:
             'forward=$forward — 컷이 없다는 것은 걸을 곳이 없다는 뜻이 아니다. '
-            '플립은 여기서 나간다(`_flipCuts`)',
+            '플립은 여기서 나간다(`TrackAxisWalk.flipPanels`)',
       );
     }
   });
@@ -154,6 +178,24 @@ void main() {
           '셋뿐이다 — 프레임 축 위의 걸음은 그 둘밖에 없다. 네 번째가 생겼다면 '
           '누군가 자기 규칙으로 프레임을 내리고 있고, F-44 가 지운 「행마다 '
           '자기 규칙」이 그렇게 돌아온다',
+    );
+  });
+
+  /// The same law on the TRACK's axis — the storyboard's rows and a gap's
+  /// steps land through one function there too.
+  test('the track axis lands in one place', () {
+    final source = librarySource('lib/src/ui/session/track_axis_walk.dart');
+    expect(
+      RegExp(r'selectGlobalFrame\(').allMatches(source).length,
+      1,
+      reason: 'only `_land` puts the playhead down on the track\'s axis',
+    );
+    expect(
+      RegExp(r'_land\(').allMatches(source).length,
+      4,
+      reason: 'the definition + the V row\'s panels + a track row\'s blocks + '
+          'one frame — a fifth is a walk writing its own landing, the way '
+          'the V row and a gap\'s step each did (one floored, one refused)',
     );
   });
 }

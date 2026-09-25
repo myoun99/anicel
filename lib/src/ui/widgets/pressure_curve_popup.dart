@@ -1,3 +1,4 @@
+import 'app_tooltip.dart';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
@@ -104,7 +105,7 @@ class PressureCurveButton extends StatelessWidget {
     // ANY source counts: the button says "this setting is driven", and after
     // the source axis that is no longer a question about pressure alone.
     final active = enabled && curves.values.any((curve) => curve != null);
-    final button = Tooltip(
+    final button = AppTooltip(
       message: AppText.strings.penPressureTitle,
       child: Material(
         color: Colors.transparent,

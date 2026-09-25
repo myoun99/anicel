@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -997,7 +998,7 @@ void main() {
       );
       expect(h265, findsOneWidget);
       expect(
-        find.ancestor(of: h265, matching: find.byType(Tooltip)),
+        find.ancestor(of: h265, matching: find.byType(AppTooltip)),
         findsOneWidget,
         reason: 'a grayed chip explains itself',
       );

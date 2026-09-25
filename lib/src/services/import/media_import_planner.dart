@@ -172,7 +172,7 @@ MediaAsset importedMediaAsset({
   sourcePath: sourcePath,
   sourceStamp: sourceStamp,
   identity: identity,
-  carriedAs: carried ? mintMediaCarry() : null,
+  carriedAs: carried ? mintMediaCarry(path) : null,
   sourceFps: sourceFps,
   frameCount: frameCount,
   pageCount: pageCount,

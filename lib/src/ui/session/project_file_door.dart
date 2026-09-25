@@ -24,7 +24,11 @@ import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/project_media_sources.dart'
-    show ProjectConforms, mediaEntryNamesFor, projectMediaSources;
+    show
+        ProjectConforms,
+        mediaEntryNamesFor,
+        mediaLeftBehind,
+        projectMediaSources;
 import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show AnicelSessionFields, remapProjectMediaPaths;
@@ -36,6 +40,7 @@ import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/save_failure.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
+import '../../services/persistence/same_file.dart';
 import '../../services/project_lookup.dart'
     show cutPositionOf, projectAudioSourcePaths;
 import 'project_resume.dart';
@@ -449,6 +454,9 @@ class ProjectFileDoor {
   /// It does REPORT what it could not carry, in [celsLostToAMissingFile] —
   /// the one thing the person must hear either way (F-72: a copy one cel
   /// short said nothing, and the previous save's answer stood in for it).
+  /// And it hands the room what it leaves behind of the bound file
+  /// ([_keepWhatItLeavesBehind]) — before the picker, which may place it
+  /// over that very file.
   ///
   /// 🚨 Exists because of the 22-byte placeholder this replaces (실측
   /// iPhone+Drive, 08-26): a provider that refuses in-place writes made
@@ -465,7 +473,9 @@ class ProjectFileDoor {
     void Function(double)? onProgress,
   }) async {
     final cleanAsOf = await _settleWorkInFlight(asked);
-    final carry = _carryFor(onProgress: onProgress);
+    final carry = await _keepWhatItLeavesBehind(
+      _carryFor(onProgress: onProgress),
+    );
     celsLostToAMissingFile = await _saveArchive(path, carry, adoptRefs: false);
     return (
       mediaInFile: {...mediaEntryNamesFor(carry.mediaToStore).values},
@@ -617,14 +627,68 @@ class ProjectFileDoor {
     );
     return (
       project: project,
-      mediaToStore: projectMediaSources(
-        project: project,
-        projectFilePath: _file.path,
-        mediaInFile: _file.mediaInFile,
-        staging: _staging,
-      ),
+      // What the readers hold is stored too, whatever the pool names now
+      // ([ProjectFile.heldCarries]) — the pool's answer for a carry it
+      // names wins, being the same bytes resolved the save's own way.
+      mediaToStore: {
+        ..._file.heldCarries,
+        ...projectMediaSources(
+          project: project,
+          projectFilePath: _file.path,
+          mediaInFile: _file.mediaInFile,
+          staging: _staging,
+        ),
+      },
       conforms: _file.conformsToStore(),
       onProgress: onProgress,
+    );
+  }
+
+  /// [carry], once every media entry of the bound file it does not carry
+  /// forward is in this run's room ([MediaStagingStore.keepLeftBehind]) —
+  /// its bar running through that copy first.
+  ///
+  /// 🚨★★★**A SAVE THAT TAKES A CARRY OUT OF THE FILE HANDS ITS BYTES TO THE
+  /// ROOM FIRST** (유저 2026-09-25 「이번 실행의 앱 룸으로 옮겨 둔다」, board
+  /// `undo-after-save-reads-the-original`): an undo can bring the carry
+  /// back, and the file will not hold it. 🪦Its undo read the original —
+  /// the edited file, or nothing.
+  ///
+  /// ⚠️BEFORE the write, on both roads that can bind the session somewhere
+  /// new — [_writeProjectToFile] and [writeArchiveCopy]: a save onto the
+  /// bound file moves and overwrites those bytes, and a picker placing a
+  /// Save As can put its copy over the very file they lie in. A failed copy
+  /// ([_writeFailedCopy]) moves no binding, so it leaves nothing behind.
+  ///
+  /// The bar is shared by bytes, as the write shares it within an entry:
+  /// the copy is its part of the file it reads from, and the write runs the
+  /// rest.
+  Future<_SaveCarry> _keepWhatItLeavesBehind(_SaveCarry carry) async {
+    final boundFile = _file.path;
+    final left = mediaLeftBehind(
+      projectFilePath: boundFile,
+      mediaInFile: _file.mediaInFile,
+      mediaToStore: carry.mediaToStore,
+    );
+    if (boundFile == null || left.isEmpty) {
+      return carry;
+    }
+    final copying = left.fold(0, (sum, entry) => sum + entry.length);
+    final whole = File(boundFile).lengthSync();
+    final share = copying / (whole > copying ? whole : copying);
+    final report = carry.onProgress;
+    await _staging.keepLeftBehind(
+      boundFile,
+      left,
+      onProgress: report == null ? null : (done) => report(done * share),
+    );
+    return (
+      project: carry.project,
+      mediaToStore: carry.mediaToStore,
+      conforms: carry.conforms,
+      onProgress: report == null
+          ? null
+          : (done) => report(share + (1 - share) * done),
     );
   }
 
@@ -662,6 +726,7 @@ class ProjectFileDoor {
     adoptRefs: adoptRefs,
     rewriteWhole: rewriteWhole,
     onFullWriteLeftAt: onFullWriteLeftAt,
+    beforeReplacing: () => _file.readersLetGoOf(filePath),
   );
 
   /// What the tools are holding — read at each save and put back on open by
@@ -680,12 +745,14 @@ class ProjectFileDoor {
     tools: toolChoice?.read() ?? const {},
   );
 
-  Future<void> _swapIn({required String from, required String to}) =>
-      replaceProjectFileCoordinated(
-        from: from,
-        to: to,
-        stores: _stores,
-      );
+  /// [from] swapped in as [to] through the coordinator — after the readers
+  /// holding [to] open have let go of it, as on the direct road
+  /// ([ProjectFile.readersLetGoOf]): a replace under a held descriptor
+  /// leaves the reader on the file that is gone.
+  Future<void> _swapIn({required String from, required String to}) async {
+    await _file.readersLetGoOf(to);
+    await replaceProjectFileCoordinated(from: from, to: to, stores: _stores);
+  }
 
   Future<void> _writeProjectToFile(
     String filePath, {
@@ -700,7 +767,9 @@ class ProjectFileDoor {
     // file it was saved FROM as well」; the retirement is gone and the
     // capture stayed, for the reason further down.
     final previousPath = _file.path;
-    final carry = _carryFor(onProgress: onProgress);
+    final carry = await _keepWhatItLeavesBehind(
+      _carryFor(onProgress: onProgress),
+    );
     final mediaToStore = carry.mediaToStore;
     // 🚨A Save As is「writing somewhere else」and nothing more subtle: the
     // target is not the file this session has been saving to. 유저
@@ -709,8 +778,7 @@ class ProjectFileDoor {
     // NOT already whole is exactly this one, an overwrite onto an older copy
     // of the same project.
     final saveAs =
-        previousPath != null &&
-        previousPath.replaceAll(r'\', '/') != filePath.replaceAll(r'\', '/');
+        previousPath != null && !namesTheSameFile(previousPath, filePath);
     // 🎯ONE LAW FOR A GRANTED PATH: where the platform has a file
     // coordinator, every write ends in it — an append is followed by a
     // coordinated touch, a whole write is swapped in through a coordinated
@@ -911,9 +979,9 @@ class ProjectFileDoor {
     toolChoice?.resume(resume.tools);
     _file.bindToOpenedFile(
       bindTo ?? filePath,
-      // What this project carries, as the file on disk says. Anything the
-      // pool names that is NOT here is an ordinary outside reference and
-      // resolves by path like it always did.
+      // The media entries the file holds, as it says itself. Whether an
+      // asset is carried is its own `carriedAs`, not whether it is here: a
+      // carry the file does not hold reads its staged copy, or its original.
       mediaInFile: {...result.mediaEntryNames.values},
       // Dirty when the cels are being read out of a staged copy rather than
       // the project's own address — and when the load just HEALED

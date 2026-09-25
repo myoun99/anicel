@@ -25,6 +25,9 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart'
+    show LayerPoseSample;
+import 'package:anicel/src/models/transform_track.dart' show TransformPose;
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -113,6 +116,12 @@ void main() {
     // F-116-b: the cel ladder a confirm lands on. Null = the standing cel,
     // which is what the session answers with no range live.
     List<BrushFrameKey> Function()? transformTargetKeys,
+    // a-marquee-on-a-posed-row: where the row stands on the canvas — the
+    // placement the editing canvas wraps the active row in. Null = unposed.
+    LayerPoseSample? placement,
+    // …and where each cel of the ladder's row stands (④). Null = every cel
+    // through the standing row's.
+    LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -185,6 +194,8 @@ void main() {
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: cacheSink,
                 transformTargetKeys: transformTargetKeys,
+                cellPlacementOf: cellPlacementOf,
+                interactiveContentPose: placement,
                 historyManager: history,
                 brushToolState: brush,
                 selectionCommands: commands,
@@ -891,6 +902,269 @@ void main() {
     // Outside the region the move tool does nothing.
     await dragOnLayer(tester, const Offset(150, 150), const Offset(170, 170));
     expect(inkAt(env.coordinator, 40, 35), isNonZero);
+  });
+
+  /// 🚨a-marquee-on-a-posed-row (found 2026-09-25, measured): the marquee
+  /// is drawn on the CANVAS, around the picture the user sees; a posed row
+  /// shows its artwork somewhere else. The lift took the marquee as the
+  /// row's own coordinates, lifted the empty artwork under it, and the move
+  /// opened no session at all — the picture stayed where it was.
+  ///
+  /// The oracle is the one sentence for every placement: the row's ARTWORK
+  /// ends up where the placement puts the moved picture — the pixels move
+  /// by the canvas drag carried back through the placement.
+  group('a POSED row: the box moves the picture the user sees', () {
+    Future<void> selectMoveConfirm(
+      WidgetTester tester,
+      ({
+        BrushFrameEditingCoordinator coordinator,
+        HistoryManager history,
+        CanvasSelectionCommands commands,
+        Future<void> Function(CanvasTool tool) setTool,
+        Future<void> Function(CanvasViewport viewport) setViewport,
+        ValueNotifier<TransformToolOptions> transformOptions,
+        BrushEditCacheInvalidationSink cacheSink,
+      })
+      env,
+    ) async {
+      // Around what the canvas SHOWS: artwork 30..60 placed at 130..160.
+      await dragOnLayer(tester, const Offset(120, 20), const Offset(170, 70));
+      expect(env.commands.hasSelection, isTrue);
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(
+        tester,
+        const Offset(132.5, 32.5),
+        const Offset(142.5, 37.5),
+      );
+      expect(
+        env.commands.movePending,
+        isTrue,
+        reason: 'the lift found the picture under the marquee',
+      );
+      // The float is on the CANVAS, where the box carried the picture: the
+      // middle dab — shown at (145,45) under both placements below — moved
+      // by the drag.
+      final float = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<SelectionFloatPainter>()
+          .single
+          .float;
+      expect(
+        surfacePixelRgba(
+          float.surface!.surface,
+          155 - float.surfaceOffset.x.round(),
+          50 - float.surfaceOffset.y.round(),
+        ),
+        isNonZero,
+        reason: 'the float shows the picture where the box is',
+      );
+      env.commands.confirmPendingMove();
+      await tester.pump();
+    }
+
+    testWidgets('moved right by 100: the drag moves the artwork by the drag',
+        (tester) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+      await selectMoveConfirm(tester, env);
+
+      expect(inkAt(env.coordinator, 40, 35), isNonZero);
+      expect(inkAt(env.coordinator, 70, 65), isNonZero);
+      expect(
+        inkAt(env.coordinator, 30, 30),
+        0,
+        reason: 'the picture LEFT where it was — it did not stay behind',
+      );
+      expect(
+        inkAt(env.coordinator, 140, 35),
+        0,
+        reason: 'and nothing landed at the canvas coordinates as artwork',
+      );
+    });
+
+    testWidgets('turned a quarter about its middle and moved right by 100: '
+        'the artwork moves by the drag turned back', (tester) async {
+      // The ink's own middle (45,45) is the anchor, placed at (145,45) and
+      // turned 90° clockwise — the diagonal (30,30)→(60,60) shows as
+      // (160,30)→(130,60), inside the same marquee.
+      final env = await pumpSelectionPanel(
+        tester,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: 145, y: 45),
+            rotationDegrees: 90,
+          ),
+          anchorPoint: CanvasPoint(x: 45, y: 45),
+        ),
+      );
+      await selectMoveConfirm(tester, env);
+
+      // The canvas drag (+10,+5), turned back a quarter: (+5,−10).
+      expect(inkAt(env.coordinator, 35, 20), isNonZero);
+      expect(inkAt(env.coordinator, 65, 50), isNonZero);
+      expect(inkAt(env.coordinator, 30, 30), 0);
+    });
+
+    // With NO selection the move tool's box frames the whole picture
+    // (R26 #13) — the picture the canvas SHOWS, which on a posed row is
+    // not where its ink sits in the artwork.
+    testWidgets('with no selection, the box frames the picture where the '
+        'row shows it', (tester) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+      expect(env.commands.hasSelection, isFalse);
+
+      // The unposed pin's grab point, where the row shows it.
+      await moveAtZoom(
+        tester,
+        zoom: 3,
+        grabCanvas: const Offset(136.5, 36.5),
+        byCanvas: const Offset(10, 5),
+      );
+      expect(
+        env.commands.movePending,
+        isTrue,
+        reason: 'the press on the picture opened the whole-picture session',
+      );
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      expect(inkAt(env.coordinator, 40, 35), isNonZero, reason: '+10,+5');
+      expect(inkAt(env.coordinator, 30, 30), 0);
+    });
+
+    // The shape fill paints the outline it was handed (R26 #10) — drawn on
+    // the canvas, so on a posed row the fill goes where the row SHOWS it.
+    testWidgets('a shape fill paints the artwork its outline shows', (
+      tester,
+    ) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.fillShape,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+      expect(inkAt(env.coordinator, 70, 70), 0, reason: 'blank to begin with');
+
+      await dragOnLayer(tester, const Offset(160, 60), const Offset(190, 90));
+      await tester.pump();
+
+      expect(
+        inkAt(env.coordinator, 70, 70),
+        isNonZero,
+        reason: 'the canvas outline (160..190) shows artwork (60..90)',
+      );
+      expect(inkAt(env.coordinator, 170, 70), 0);
+    });
+
+    // The COMMIT's clip, for what reaches it with no live raster to have
+    // been pre-blended through — a shape fill is one (R26 #18: 「선택하고
+    // 그리면 선택 내부만 그려진다」, whatever drew it).
+    testWidgets('a shape fill inside the selection the user sees lands, and '
+        'is clipped to it', (tester) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.fillShape,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+      // The canvas 150..180 × 50..100 — artwork 50..80 on this row.
+      env.commands.setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 150, top: 50, right: 180, bottom: 100),
+        ),
+      );
+      await tester.pump();
+
+      await dragOnLayer(tester, const Offset(160, 60), const Offset(190, 90));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 70, 70), isNonZero, reason: 'inside');
+      expect(
+        inkAt(env.coordinator, 85, 70),
+        0,
+        reason: 'past the selection it was clipped',
+      );
+    });
+
+    // ④ A range confirm lands every cel of the range (F-116-b), and a range
+    // can name rows placed differently: each cel crosses through its OWN
+    // row's placement, the one the pixel verbs restate an outline through.
+    testWidgets('a range confirm lands each cel through its OWN row\'s '
+        'placement', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      // The other cel's row is placed 100 to the LEFT: its ink at artwork
+      // (130,40) shows at canvas (30,40), inside the same outline as the
+      // standing cel's (unplaced) picture.
+      final placedLeft = (
+        pose: TransformPose(center: CanvasPoint(x: -100, y: 0)),
+        anchorPoint: CanvasPoint(x: 0, y: 0),
+      );
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => [keys[0], keys[1]],
+        cellPlacementOf: (key) => key == keys[1] ? placedLeft : null,
+      );
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(130, 40)]);
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      env.commands.setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 20, top: 20, right: 70, bottom: 70),
+        ),
+      );
+      await tester.pump();
+
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.setTransformValues(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        scale: 1,
+      );
+      await tester.pump();
+      env.commands.applyTransform();
+      await tester.pump();
+
+      env.coordinator.selectFrame(keys[1]);
+      expect(
+        inkAt(env.coordinator, 140, 45),
+        isNonZero,
+        reason: 'its own ink, moved +10,+5 in its own artwork',
+      );
+      expect(inkAt(env.coordinator, 130, 40), 0, reason: 'and not left');
+    });
   });
 
   /// 🚨★★★**F-164 — 유저 2026-09-18 실기**: 「변형중에 다른프레임가면 변형
