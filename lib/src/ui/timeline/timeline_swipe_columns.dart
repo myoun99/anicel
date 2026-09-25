@@ -94,7 +94,10 @@ bool? _laneFxValue(
   return hooks.laneGroupOnOf?.call(row.layer.id) ?? lane.groupEnabled;
 }
 
-/// A layer row's fx is tri-state; the sweep paints on, or not on.
+/// A layer row's fx is tri-state, read as the tap flips it: a MIXED row
+/// is on. It was read "on, or not on" — so a sweep turning rows on met a
+/// mixed row, called it off, and toggled it, which the tap resolves OFF;
+/// and a press spread across a row selection reads it this way too.
 bool? _layerFxValue(TimelineGridHooks hooks, TimelineDisplayRow row) {
   final fxStateOf = hooks.layerFxStateOf;
   if (hooks.onToggleLayerFx == null ||
@@ -102,7 +105,7 @@ bool? _layerFxValue(TimelineGridHooks hooks, TimelineDisplayRow row) {
       !layerKindShowsFxToggle(row.layer.kind)) {
     return null;
   }
-  return fxStateOf(row.layer.id) == LayerFxState.on;
+  return fxEnabledFromState(fxStateOf(row.layer.id));
 }
 
 void _fxToggle(TimelineGridHooks hooks, TimelineDisplayRow row) {

@@ -447,12 +447,11 @@ class _StoryboardRailRows {
     if (layer != null) {
       return toggleLayerFx == null || !layerKindShowsFxToggle(layer.kind)
           ? null
-          : (layerFxStateOf?.call(layer.id) ?? LayerFxState.on) ==
-                LayerFxState.on;
+          : fxEnabledFromState(layerFxStateOf?.call(layer.id));
     }
     return toggleTrackFx == null || trackFxStateOf == null
         ? null
-        : trackFxStateOf(row.track) == LayerFxState.on;
+        : fxEnabledFromState(trackFxStateOf(row.track));
   }
 
   void _toggleRowFx(StoryboardRailRow row) {

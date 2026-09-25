@@ -801,6 +801,9 @@ enum LayerFxState { on, off, mixed }
 ///
 /// The one spelling: the session's `isLayerFxEnabled`, the grid hooks and
 /// the storyboard's rail rows each wrote `state != LayerFxState.off` with
-/// the null-means-on default (the audit's clone scan, 2026-09-06).
+/// the null-means-on default (the audit's clone scan, 2026-09-06). The two
+/// column swipes had a third, opposite reading — `== LayerFxState.on`, a
+/// mixed row off — until the row selection's press spread (2026-09-25)
+/// needed the swipe and the press to read one row alike.
 bool fxEnabledFromState(LayerFxState? state) =>
     (state ?? LayerFxState.on) != LayerFxState.off;

@@ -8,7 +8,9 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart' show LayerFxState;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -172,6 +174,35 @@ void main() {
 
     expect(visibility(s).every((on) => on), isTrue);
     expect(s.onionSkin.layerIds.value, isEmpty);
+  });
+
+  testWidgets('a swipe turning fx ON passes a MIXED row by — it read the row '
+      'as off and toggled it, which a tap resolves OFF', (tester) async {
+    final s = await pump(tester);
+    const top = LayerId('l4');
+    const mixed = LayerId('l3');
+    // An effect that applies beside a transform that does not: a mix.
+    s.selectLayer(mixed);
+    s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    s.effectsAndFx.toggleLayerTransformFx(mixed);
+    s.effectsAndFx.toggleLayerFx(top);
+    await tester.pumpAndSettle();
+    expect(
+      [s.effectsAndFx.layerFxState(top), s.effectsAndFx.layerFxState(mixed)],
+      [LayerFxState.off, LayerFxState.mixed],
+      reason: 'the premise',
+    );
+
+    await swipeDown(tester, 'timeline-layer-fx-l4', rows: 1);
+
+    expect(s.effectsAndFx.layerFxState(top), LayerFxState.on);
+    expect(
+      s.effectsAndFx.layerFxState(mixed),
+      isNot(LayerFxState.off),
+      reason:
+          'a mixed row reads ON, as the tap flips it and as a press spread '
+          'across a row selection reads it',
+    );
   });
 
   /// I-1 잔여 — the LEADING run.
