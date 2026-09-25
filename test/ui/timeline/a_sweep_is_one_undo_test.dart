@@ -192,6 +192,29 @@ void main() {
       await hold.release();
     });
 
+    testWidgets('a hand that skips rows going up gives back the far one '
+        'first', (tester) async {
+      final s = await _timeline(tester);
+      final hold = await _press(tester, 'visibility', 'l0');
+
+      await hold.to('l1');
+      // One pointer move across two rows — a fast hand does this. The rows
+      // it skipped are painted from the press outward, so the farthest is
+      // the first to go back.
+      await hold.jump('l3');
+      expect(
+        _eyes(s, const ['l0', 'l1', 'l2', 'l3']),
+        [false, false, false, false],
+        reason: 'the premise',
+      );
+      await hold.to('l2');
+      expect(
+        _eyes(s, const ['l0', 'l1', 'l2', 'l3']),
+        [false, false, false, true],
+      );
+      await hold.release();
+    });
+
     testWidgets('halfway keeps the rows still under the stretch', (
       tester,
     ) async {
@@ -291,12 +314,18 @@ Future<_Hold> _press(
     at = target;
   }
 
+  Future<void> jump(String row) async {
+    at = centreOf(row);
+    await gesture.moveTo(at);
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+
   Future<void> release() async {
     await gesture.up();
     await tester.pumpAndSettle();
   }
 
-  return (to: to, release: release);
+  return (to: to, jump: jump, release: release);
 }
 
 Layer _row(EditorSessionManager s, LayerId id) =>
@@ -433,8 +462,10 @@ List<bool> _eyes(EditorSessionManager s, List<String> ids) => [
   for (final id in ids) _row(s, LayerId(id)).isVisible,
 ];
 
-/// A held press: move it to another row of its column, or let go.
+/// A held press: move it to another row of its column — row by row, or in
+/// one pointer move — or let go.
 typedef _Hold = ({
   Future<void> Function(String row) to,
+  Future<void> Function(String row) jump,
   Future<void> Function() release,
 });
