@@ -58,21 +58,26 @@ const InbetweenMark breakdownMark = InbetweenMark.one;
 typedef DrawingHead = ({String word, InbetweenMark? mark});
 
 /// What a drawing named [name] on a row of [kind] wears where its block
-/// starts, as DATA: its cel number, or — with none — no word and
-/// [unnamedDrawingMark]; nothing at all where the unnamed cel is the layer's
-/// own picture ([LayerKind.unnamedCelIsTheLayer], 유저 2026-09-25: 「중간나누기
+/// starts, as DATA: its cel number, or — with none — no word, and
+/// [unnamedDrawingMark] on the one kind whose unnamed drawing is an
+/// in-between ([LayerKind.unnamedDrawingIsInbetween], animation); nothing at
+/// all on every other kind (유저 2026-09-26: 「애니메이션 이외 레이어는
+/// 이름없으면 진짜 이름없도록 통일」 — 09-25 the image layer first: 「중간나누기
 /// 마크가아니라 이름을 안보이게」).
 ///
 /// 🚨ONE ANSWER for every surface that shows a drawing's head — the
 /// timeline's rows, the flip window, the folded strip, the storyboard's
 /// panels, the sheet — so the mark it wears is the mark of the dot inside a
 /// block, drawn by the same code (유저 2026-09-24). The [kind] is required
-/// so that no surface can answer for an image row without asking.
+/// so that no surface can answer for a row without asking what it is.
 DrawingHead drawingHeadOf(String? name, {required LayerKind kind}) =>
     switch (celNumberOf(name)) {
       final celNumber? => (word: celNumber, mark: null),
-      null when kind.unnamedCelIsTheLayer => (word: '', mark: null),
-      null => (word: '', mark: unnamedDrawingMark),
+      null when kind.unnamedDrawingIsInbetween => (
+        word: '',
+        mark: unnamedDrawingMark,
+      ),
+      null => (word: '', mark: null),
     };
 
 /// The cel number a drawing named [name] prints: [name] trimmed, or null

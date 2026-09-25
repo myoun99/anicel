@@ -735,18 +735,37 @@ enum LayerKind {
   bool get acceptsRepeatRegions => holdsDrawings && !coversWithoutGaps;
 
   /// Whether a cel WITHOUT A NAME on this kind is the layer's own picture,
-  /// which the layer's name addresses — rather than the in-between mark.
+  /// which the layer's name addresses — so the cel EXPORT writes it under
+  /// the layer's name alone.
   ///
   /// 🗣️유저 2026-09-25: 「이미지레이어는 프레임 이름 없으면 중간나누기
   /// 마크가아니라 이름을 안보이게 하는 상태로 … 이름없어도 출력은 이 규칙은
-  /// 이미지레이어에만 적용. 애니메이션레이어는 이름없으면 출력안함」. So its head
-  /// writes nothing ([drawingHeadOf]) and the cel export writes it under the
-  /// layer's name alone.
+  /// 이미지레이어에만 적용. 애니메이션레이어는 이름없으면 출력안함」.
   ///
   /// ⛔DERIVED from [holdsSingleCel]: the picture IS the layer there, so an
   /// unnamed cel has no run of drawings to sit between, and a mark would
   /// claim one.
+  ///
+  /// ↩️It answered what an unnamed head SHOWS too, until 유저 2026-09-26 made
+  /// every kind but animation nameless (「애니메이션 이외 레이어는 이름없으면
+  /// 진짜 이름없도록」) while the export rule stayed the image layer's — two
+  /// questions, two answers, so the showing moved to
+  /// [unnamedDrawingIsInbetween].
   bool get unnamedCelIsTheLayer => holdsSingleCel;
+
+  /// Whether a drawing WITHOUT A NAME on this kind is an in-between — the
+  /// one kind whose unnamed head wears [unnamedDrawingMark]
+  /// ([drawingHeadOf]); on every other kind it shows no name at all.
+  ///
+  /// 🗣️유저 2026-09-26: 「콘티레이어는 이름 없으면 진짜 이름 없도록 하고싶어.
+  /// 이미지 레이어랑 똑같이. 동작은 링크안하고 독립인상태 그대로. 애니메이션
+  /// 이외 레이어는 이름없으면 진짜 이름없도록 통일하고싶어. 그리고
+  /// 이름없다고해서 띠까지 썸네일 차지한다던가 이런거없이 ui는 안바뀌게」 —
+  /// what an unnamed drawing SHOWS, and nothing else: it does not link, move
+  /// or export differently, and the place its name would stand stays.
+  /// ↩️The storyboard's panels wore the mark since F-149 (09-16: 「이름 없는
+  /// 기본상태를 속이 찬 동그라미로 통일」); the image layer stopped on 09-25.
+  bool get unnamedDrawingIsInbetween => this == LayerKind.animation;
 
   String toJson() => jsonValue;
 

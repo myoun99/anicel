@@ -463,6 +463,11 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// one is the point now, and the storyboard follows by asking the same
   /// [drawingHeadOf] as the timeline — the mark as data since
   /// 2026-09-24 (유저: 「중간나누기 마크1로서 작동했으면」).
+  /// ↩️And back to no mark on 2026-09-26 (유저: 「콘티레이어는 이름 없으면
+  /// 진짜 이름 없도록 … 애니메이션 이외 레이어는 이름없으면 진짜
+  /// 이름없도록」) — still by asking [drawingHeadOf], which answers per kind
+  /// ([LayerKind.unnamedDrawingIsInbetween]): the band keeps its place and
+  /// writes nothing.
   ({List<TimelineCellWriting> heads, List<String> commaLabels}) _cellWriting(
     StoryboardTimelineLayoutEntry entry,
     List<StoryboardCoverageCell> cells,
