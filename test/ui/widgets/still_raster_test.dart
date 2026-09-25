@@ -205,6 +205,26 @@ final _layerChanges = <String, Widget Function(bool changed)>{
 
 final _link = LayerLink();
 
+/// A repaint boundary whose own layer is a transform: whoever paints it
+/// moves it by that layer's OFFSET, which lands after the matrix.
+class _TransformBoundary extends SingleChildRenderObjectWidget {
+  const _TransformBoundary({required super.child});
+
+  @override
+  RenderProxyBox createRenderObject(BuildContext context) =>
+      _RenderTransformBoundary();
+}
+
+class _RenderTransformBoundary extends RenderProxyBox {
+  @override
+  bool get isRepaintBoundary => true;
+
+  @override
+  OffsetLayer updateCompositedLayer({
+    required covariant TransformLayer? oldLayer,
+  }) => (oldLayer ?? TransformLayer())..transform = Matrix4.identity();
+}
+
 /// Paints by handing the SAME picture layer a new picture every time —
 /// what `PaintingContext.addLayer` allows, and the one change where no
 /// layer is new and only the picture says anything happened.
@@ -571,6 +591,216 @@ void main() {
       _pixelAt(tester, tinted, probe),
       isNot(_pixelAt(tester, untinted, probe)),
     );
+  });
+
+  testWidgets('a still region asks where it sits cheaply, and fully only '
+      'when something above moved', (tester) async {
+    // A transform to the root for every region on every frame measured
+    // ~28 µs a region on the real Windows app (09-25) and left a matrix
+    // behind each time.
+    Future<void> at(double left) => pumpSurface(
+      tester,
+      RepaintBoundary(child: StillRaster(debugLabel: 'test', child: _box())),
+      left: left,
+      width: _width,
+      height: _height,
+    );
+    await at(_left);
+    await _untilImage(tester);
+    final region = _region(tester);
+    for (var i = 0; i < 10; i += 1) {
+      await _frame(tester);
+    }
+    expect(
+      region.debugFullPlacementChecks,
+      0,
+      reason: 'it sits where its image was taken, so nothing was built to '
+          'say so',
+    );
+
+    await at(_left + 3);
+    expect(region.debugDrawnFromImage, isTrue, reason: 'a whole-pixel move');
+    expect(
+      region.debugFullPlacementChecks,
+      1,
+      reason: 'the move is asked once, fully',
+    );
+    final afterMove = region.debugFullPlacementChecks;
+    for (var i = 0; i < 5; i += 1) {
+      await _frame(tester);
+    }
+    expect(
+      region.debugFullPlacementChecks,
+      afterMove,
+      reason: 'and where it sits now is remembered',
+    );
+  });
+
+  testWidgets('a region under a scale moves when an ancestor and a '
+      'descendant of the scale move by opposite amounts', (tester) async {
+    // Every offset summed stays put; under the scale, the region still
+    // lands half a pixel over — a new sub-pixel phase, as in the group
+    // below.
+    Future<void> at({required double outer, required double inner}) =>
+        pumpSurface(
+          tester,
+          RepaintBoundary(
+            child: Transform.scale(
+              scale: 2,
+              alignment: Alignment.topLeft,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  Positioned(
+                    left: inner,
+                    top: 0,
+                    width: 60,
+                    height: 40,
+                    child: RepaintBoundary(
+                      child: StillRaster(debugLabel: 'test', child: _box()),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          left: outer,
+          width: _width,
+          height: _height,
+        );
+    await at(outer: _left, inner: 10);
+    await _untilImage(tester);
+    final region = _region(tester);
+    expect(region.debugDrawnFromImage, isTrue);
+
+    await at(outer: _left + 0.5, inner: 10 - 0.5);
+    expect(region.debugDrawnFromImage, isFalse);
+  });
+
+  testWidgets('a region paints again when a scale above it changes, with '
+      'no offset moving', (tester) async {
+    Future<void> scaled(double scale) => pumpSurface(
+      tester,
+      RepaintBoundary(
+        child: Transform.scale(
+          scale: scale,
+          alignment: Alignment.topLeft,
+          child: StillRaster(debugLabel: 'test', child: _box()),
+        ),
+      ),
+      left: _left,
+      width: _width,
+      height: _height,
+    );
+    // Both scales, not a scale of 1: that one paints with no transform
+    // layer at all, and the layer appearing would say it moved.
+    await scaled(1.5);
+    await _untilImage(tester);
+    final region = _region(tester);
+    expect(region.debugDrawnFromImage, isTrue);
+
+    await scaled(2);
+    expect(region.debugDrawnFromImage, isFalse);
+  });
+
+  testWidgets('a region inside a leader paints again the frame the leader '
+      'lands on a new sub-pixel phase', (tester) async {
+    final link = LayerLink();
+    Future<void> leaderAt(double left) => pumpSurface(
+      tester,
+      Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Positioned(
+            left: left,
+            top: 0,
+            width: 60,
+            height: 40,
+            child: CompositedTransformTarget(
+              link: link,
+              child: StillRaster(debugLabel: 'test', child: _box()),
+            ),
+          ),
+        ],
+      ),
+      left: _left,
+      width: _width,
+      height: _height,
+    );
+    await leaderAt(10);
+    await _untilImage(tester);
+    final region = _region(tester);
+    expect(region.debugDrawnFromImage, isTrue);
+
+    await leaderAt(10.5);
+    expect(region.debugDrawnFromImage, isFalse);
+  });
+
+  testWidgets('a region a follower places paints again the frame its '
+      'leader lands on a new sub-pixel phase', (tester) async {
+    // A follower's paint transform is the one it was last added with, so
+    // a question asked before the scene is built is a frame late.
+    final link = LayerLink();
+    Future<void> leaderAt(double left) => pumpSurface(
+      tester,
+      Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Positioned(
+            left: left,
+            top: 0,
+            width: 10,
+            height: 10,
+            child: CompositedTransformTarget(
+              link: link,
+              child: const SizedBox.expand(),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            top: 40,
+            width: 60,
+            height: 40,
+            child: CompositedTransformFollower(
+              link: link,
+              child: StillRaster(debugLabel: 'test', child: _box()),
+            ),
+          ),
+        ],
+      ),
+      left: _left,
+      width: _width,
+      height: _height,
+    );
+    await leaderAt(10);
+    await _untilImage(tester);
+    final region = _region(tester);
+    expect(region.debugDrawnFromImage, isTrue);
+
+    await leaderAt(10.5);
+    expect(region.debugDrawnFromImage, isFalse);
+  });
+
+  testWidgets('a region inside a boundary whose own layer is a transform '
+      'paints again when that boundary lands on a new sub-pixel phase', (
+    tester,
+  ) async {
+    Future<void> at(double left) => pumpSurface(
+      tester,
+      _TransformBoundary(
+        child: StillRaster(debugLabel: 'test', child: _box()),
+      ),
+      left: left,
+      width: _width,
+      height: _height,
+    );
+    await at(_left);
+    await _untilImage(tester);
+    final region = _region(tester);
+    expect(region.debugDrawnFromImage, isTrue);
+
+    await at(_left + 0.5);
+    expect(region.debugDrawnFromImage, isFalse);
   });
 
   group('a region that moves', () {

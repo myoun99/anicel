@@ -230,6 +230,13 @@ class RenderStillRaster extends RenderProxyBox {
   bool get debugDrawnFromImage => _drawnFromImage;
   bool _drawnFromImage = false;
 
+  /// How many frames drawn from the image asked where the region sits the
+  /// full way — a transform to the root — before building the scene,
+  /// rather than cheaply.
+  @visibleForTesting
+  int get debugFullPlacementChecks => _fullPlacementChecks;
+  int _fullPlacementChecks = 0;
+
   /// How the region sat on the device pixel grid when its image was
   /// taken, for tests that need to prove the image was a copy and not a
   /// resample. Null while it paints.
@@ -423,12 +430,92 @@ class _StillLayer extends OffsetLayer {
   /// phase is a resample ([RasterGridFit]), so a region drawn from an
   /// image asks to be re-added whenever it no longer sits where its image
   /// was taken.
+  ///
+  /// ⚠️Asked cheaply first ([_measurePlacement]): building a transform to
+  /// the root for every region on every frame measured ~28 µs a region on
+  /// the real Windows app (09-25) and left a matrix behind each time — the
+  /// full fit is asked only when the layers above have moved.
+  ///
+  /// Under a follower the question waits for [addToScene]: a follower's
+  /// paint transform is the one it was last ADDED with, so asked here it
+  /// is a frame old — the region would show a resample for that frame.
   @override
   void updateSubtreeNeedsAddToScene() {
-    if (_picture != null && _owner._gridFit() != _imageFit) {
-      markNeedsAddToScene();
+    if (_picture != null) {
+      if (!_measurePlacement()) {
+        markNeedsAddToScene();
+      } else if (_nowDx != _placedDx ||
+          _nowDy != _placedDy ||
+          _nowBelowTransforms != _placedBelowTransforms) {
+        _owner._fullPlacementChecks += 1;
+        if (_owner._gridFit() != _imageFit) {
+          markNeedsAddToScene();
+        } else {
+          _keepPlacement();
+        }
+      }
     }
     super.updateSubtreeNeedsAddToScene();
+  }
+
+  // Where the layers above put this one: [_measurePlacement] writes the
+  // `_now` fields, [_keepPlacement] makes them the `_placed` ones.
+  double _nowDx = 0;
+  double _nowDy = 0;
+  int _nowBelowTransforms = 0;
+  double _placedDx = double.nan;
+  double _placedDy = double.nan;
+  int _placedBelowTransforms = 0;
+
+  /// Where the layers above put this one, into the `_now` fields: the
+  /// offsets above summed up to each transform, and each such sum with the
+  /// transform that moves it — by identity — folded into one number. A
+  /// walk of a few parents that allocates nothing. False when something
+  /// above places it by other means — a follower.
+  ///
+  /// ⚠️Summed only between transforms: under a scale, an ancestor moving
+  /// one way and a descendant moving the other by as much leave one sum of
+  /// all offsets unchanged while the region moved.
+  ///
+  /// Its own offset is not in it: that moving re-adds this layer, and
+  /// [addToScene] asks the full fit then.
+  bool _measurePlacement() {
+    var dx = 0.0;
+    var dy = 0.0;
+    var below = 0;
+    for (var layer = parent; layer != null; layer = layer.parent) {
+      switch (layer) {
+        case FollowerLayer():
+          return false;
+        case TransformLayer():
+          below = Object.hash(
+            below,
+            dx.hashCode,
+            dy.hashCode,
+            identityHashCode(layer.transform),
+          );
+          // A transform layer's own offset lands after its transform.
+          dx = layer.offset.dx;
+          dy = layer.offset.dy;
+        case OffsetLayer():
+          dx += layer.offset.dx;
+          dy += layer.offset.dy;
+        case LeaderLayer():
+          dx += layer.offset.dx;
+          dy += layer.offset.dy;
+        default:
+      }
+    }
+    _nowDx = dx;
+    _nowDy = dy;
+    _nowBelowTransforms = below;
+    return true;
+  }
+
+  void _keepPlacement() {
+    _placedDx = _nowDx;
+    _placedDy = _nowDy;
+    _placedBelowTransforms = _nowBelowTransforms;
   }
 
   /// Whether the image still shows the region: the gate is open, the
@@ -502,6 +589,9 @@ class _StillLayer extends OffsetLayer {
       _image = image;
       _picture = _pictureOf(image, fit, size);
       _imageFit = fit;
+      if (_measurePlacement()) {
+        _keepPlacement();
+      }
       _imageSignature = signature;
       _capturedAt = _frame;
       StillRaster._capturesEver += 1;
