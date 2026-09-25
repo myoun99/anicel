@@ -4,7 +4,6 @@
 @Timeout(Duration(minutes: 3))
 library;
 
-import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
