@@ -133,7 +133,17 @@ void main() {
   /// the brush lab's — the scan's `lib/dev/` exclusion never matched the
   /// relative root this test hands it (`appDartFiles` answers for every
   /// scan now; ratchet-dev-exclusion-relative-root).
-  const longBodies = 433;
+  ///
+  /// ⚠️433 → 434 on 2026-09-25, ONE name, as the rule above asks:
+  /// `_StillLayer._signatureOf` (still_raster.dart) — what a dock region's
+  /// layer tree IS, as values to compare: a case per layer type Flutter
+  /// has, each naming the properties that can change in place. A flat
+  /// dispatch, the shape the complexity round refused to penalise; split by
+  /// type it would scatter the one list a reader checks against Flutter's
+  /// own layer classes. 🔬`clean_code_diff` between master and the lane
+  /// named it and `_capture`, which had three jobs (take the image, build
+  /// the picture that shows it, report a refusal) and was given one each.
+  const longBodies = 434;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
