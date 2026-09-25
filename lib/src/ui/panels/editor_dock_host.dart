@@ -106,16 +106,20 @@ class EditorDockHost extends StatelessWidget {
     // The whole region is one [StillRaster] (유저 2026-09-25,
     // raster-cache-when-still-Q1): every panel is in a dock, so every panel
     // is drawn from one image while it stays the same, and a new panel gets
-    // that without anyone remembering to ask.
+    // that without anyone remembering to ask — unless the tab showing says
+    // no ([EditorPanelTab.stillRaster]). Only the ACTIVE tab paints, so
+    // only its answer counts.
+    final tabs = [for (final id in tabIds) tabResolver(id)];
     return StillRaster(
       debugLabel: 'dock:$dockId',
+      enabled: tabs.every((tab) => tab.id != activeTabId || tab.stillRaster),
       child: EditorPanelTabs(
         groupId: dockId,
         compact: compact,
         chromeless: chromeless,
         stripAtBottom: stripAtBottom,
         trailing: trailing,
-        tabs: [for (final id in tabIds) tabResolver(id)],
+        tabs: tabs,
         activeTabId: activeTabId,
         onTabSelected: onTabSelected,
         canAcceptTab: canAcceptTab,

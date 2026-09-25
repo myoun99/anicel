@@ -29,9 +29,17 @@ import 'static_raster.dart';
 /// ⚠️The price, measured the same day: an image composited from an
 /// offscreen is not bit-for-bit what painting in place gives — 251 of 3.46
 /// million window pixels, 247 of them by 1/255 and none by more than
-/// 5/255, at translucent edges. The user took it: the canvas is the one
-/// thing whose pixels may never move (「결과 절대 바뀌면 안되는건 캔버스뿐임」),
-/// and no canvas is under one of these.
+/// 5/255, at translucent edges. The user took it for the panels. The
+/// canvas is the one thing whose pixels may never move
+/// (「결과 절대 바뀌면 안되는건 캔버스뿐임」), so a region showing it is
+/// never drawn from an image ([enabled]).
+///
+/// 🚨That last sentence was first written as "no canvas is under one of
+/// these", and it was false: the canvas is a TAB, of the floor dock, and
+/// the first real-app run found the floor's region holding a 12 MB image of
+/// it. The measurement build behind the numbers above wrapped the floor
+/// too. A claim about what a blanket wrapper does NOT cover is checked
+/// against the regions it actually made.
 ///
 /// ## How it knows the region has not changed
 ///
@@ -64,11 +72,16 @@ class StillRaster extends SingleChildRenderObjectWidget {
   const StillRaster({
     super.key,
     required this.debugLabel,
+    this.enabled = true,
     required Widget super.child,
   });
 
   /// Names this region in diagnostics. Use the dock's id.
   final String debugLabel;
+
+  /// False while the region shows content whose pixels may not come from
+  /// an image — the canvas. The region paints, and holds no image.
+  final bool enabled;
 
   /// Frames a region has to stay the same for before its image is taken —
   /// the Skia raster cache's own "stable for three frames".
@@ -111,6 +124,7 @@ class StillRaster extends SingleChildRenderObjectWidget {
   RenderStillRaster createRenderObject(BuildContext context) =>
       RenderStillRaster(
         debugLabel: debugLabel,
+        enabled: enabled,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
       );
 
@@ -121,6 +135,7 @@ class StillRaster extends SingleChildRenderObjectWidget {
   ) {
     renderObject
       ..debugLabel = debugLabel
+      ..enabled = enabled
       ..devicePixelRatio = EffectiveDevicePixelRatio.of(context);
   }
 }
@@ -138,6 +153,10 @@ enum StillStandDown {
 
   /// Switched off by [StaticRaster.globallyEnabled].
   disabled,
+
+  /// Showing content whose pixels may not come from an image
+  /// ([StillRaster.enabled]).
+  optedOut,
 
   /// Zero-size box.
   empty,
@@ -157,11 +176,25 @@ enum StillStandDown {
 class RenderStillRaster extends RenderProxyBox {
   RenderStillRaster({
     required this.debugLabel,
+    required bool enabled,
     required double devicePixelRatio,
-  }) : _devicePixelRatio = devicePixelRatio;
+  }) : _enabled = enabled,
+       _devicePixelRatio = devicePixelRatio;
 
   /// Names this region in diagnostics; carries no behaviour.
   String debugLabel;
+
+  /// See [StillRaster.enabled]. Turning it off drops the image at once
+  /// rather than at the next change.
+  bool get enabled => _enabled;
+  bool _enabled;
+  set enabled(bool value) {
+    if (_enabled == value) {
+      return;
+    }
+    _enabled = value;
+    _restart();
+  }
 
   double _devicePixelRatio;
   double get devicePixelRatio => _devicePixelRatio;
@@ -264,6 +297,9 @@ class RenderStillRaster extends RenderProxyBox {
     }
     if (!StaticRaster.globallyEnabled.value) {
       return StillStandDown.disabled;
+    }
+    if (!_enabled) {
+      return StillStandDown.optedOut;
     }
     if (!hasSize || size.isEmpty) {
       return StillStandDown.empty;

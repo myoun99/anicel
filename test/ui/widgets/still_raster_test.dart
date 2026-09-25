@@ -428,6 +428,36 @@ void main() {
     }
   });
 
+  testWidgets('a region whose content says no paints, and lets go at once', (
+    tester,
+  ) async {
+    // The canvas's answer (유저 2026-09-25: 「결과 절대 바뀌면 안되는건
+    // 캔버스뿐임」): the image goes the moment the region is told, not at
+    // the next change — a canvas switched onto the floor has not changed.
+    Future<void> show({required bool enabled}) => pumpSurface(
+      tester,
+      StillRaster(debugLabel: 'test', enabled: enabled, child: _box()),
+      left: _left,
+      width: _width,
+      height: _height,
+    );
+
+    await show(enabled: true);
+    await _untilImage(tester);
+    final region = _region(tester);
+    expect(region.debugDrawnFromImage, isTrue);
+
+    await show(enabled: false);
+    expect(region.debugDrawnFromImage, isFalse);
+    expect(StillRaster.censusBytes, 0);
+    for (var i = 0; i < 20; i += 1) {
+      await _frame(tester);
+    }
+    expect(region.debugDrawnFromImage, isFalse);
+    expect(region.standDown, StillStandDown.optedOut);
+    expect(region.debugCaptureCount, 1);
+  });
+
   testWidgets('where the engine keeps its own raster cache it never takes '
       'one', (tester) async {
     StillRaster.debugCachePaysOverride = false;

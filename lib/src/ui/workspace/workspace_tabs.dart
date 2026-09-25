@@ -233,6 +233,10 @@ class _WorkspaceTabs {
           // need it: with every panel closed, a canvas full of artwork
           // measured 2.5 ms hovering and 4.9 ms mid-stroke.
           staticRaster: false,
+          // Nor from a still image, for a reason of its own: the canvas
+          // is the one surface whose pixels may never move (유저
+          // 2026-09-25, 「결과 절대 바뀌면 안되는건 캔버스뿐임」).
+          stillRaster: false,
           builder: (context) => Stack(
             fit: StackFit.expand,
             children: [

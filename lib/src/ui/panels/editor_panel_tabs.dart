@@ -31,6 +31,7 @@ class EditorPanelTab {
     this.locked = false,
     this.keepAlive = false,
     this.staticRaster = true,
+    this.stillRaster = true,
     this.sillTrailing,
     this.collapsedExtent = 0,
   });
@@ -85,6 +86,21 @@ class EditorPanelTab {
   /// wrapper notices and stands itself down. See
   /// [StaticRaster.maxConsecutiveCaptures].)
   final bool staticRaster;
+
+  /// Whether the dock region showing this tab may be drawn from one still
+  /// image while nothing in it changes (`StillRaster`, around each dock).
+  /// Defaults to ON, like [staticRaster] and for the same reason.
+  ///
+  /// ⛔A DIFFERENT QUESTION from [staticRaster], so a different field:
+  /// that one asks whether a bake taken on every change pays, this one
+  /// whether the tab's pixels may come from an image at all. The timesheet
+  /// says no to the first — its playhead would stand the bake down for the
+  /// whole of playback — and has no reason to say no to this one.
+  ///
+  /// The canvas says no (유저 2026-09-25, raster-cache-when-still-Q1): it is
+  /// the one surface whose pixels may never move —
+  /// 「결과 절대 바뀌면 안되는건 캔버스뿐임」.
+  final bool stillRaster;
 
   /// What THIS tab puts on the group's 문턱, right-aligned, ahead of the
   /// group's own [EditorPanelTabs.trailing].
