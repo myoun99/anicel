@@ -4295,13 +4295,15 @@ class ExportDialogState extends State<ExportDialog> {
           children: [
             ExportPillStrip(
               items: [
-                for (final layer in SheetPaintLayer.values)
+                // The strata an envelope HAS — it shows no film pictures.
+                for (final layer in EnvelopeExportSpec.strata)
                   _pill(
                     keyValue: 'export-envelope-layer-${layer.jsonValue}',
                     label: switch (layer) {
                       SheetPaintLayer.paper => AppText.strings.exPaperLabel,
                       SheetPaintLayer.form => AppText.strings.exForm,
                       SheetPaintLayer.content => AppText.strings.exContent,
+                      SheetPaintLayer.picture => AppText.strings.exPictureLayer,
                       SheetPaintLayer.ink => AppText.strings.exInk,
                     },
                     selected: spec.layers.contains(layer),

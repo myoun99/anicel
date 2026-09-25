@@ -2,7 +2,7 @@
 /// all print from ([SheetMark]).
 library;
 
-import 'dart:ui' show Rect;
+import 'dart:ui' show Offset, Rect;
 
 import '../project_frame_rate.dart' show secondsPlusFramesLabel;
 import '../sheet_marks.dart';
@@ -37,8 +37,11 @@ const int _blockLength = 0xFF8C8C8C;
 /// built (F-88: the conte's numbers follow a cut-length drag).
 typedef ConteLiveLength = int? Function(String cutId);
 
-/// Every mark [page] prints, strata in paint order: the paper, the form,
-/// the values, the handwriting — a cover, a blank page or a body page.
+/// Every mark [page] prints, each in its stratum: the paper, the form, the
+/// typed values, the film's pictures (with the camera work written on
+/// them), the handwriting — a cover, a blank page or a body page. A
+/// picture and a value never overlap, so the strata stack to this page in
+/// any order a layered export or a bake picks.
 List<SheetMark> contePageMarks(
   ContePageLayout page,
   ConteSheetSource source, {
@@ -71,13 +74,15 @@ List<SheetMark> contePageMarks(
 /// the cover's picture, the book's cut count and running time, and the
 /// conte artist. It carries no page number.
 ///
-/// ONE STACK, a little above the page's middle (유저 2026-09-25, seeing the
-/// first one: 「작품제목 더 크게하고, 길어져서 다 안들어가면 크기
-/// 작게하는방향 … 화수는 좀 더 타이틀이랑 붙여서. 전체적으로 위쪽으로
-/// 좁히자. 살짝 전체적으로 중앙 위 감각」 · 「표지 컷이랑 콘티랑 같은
-/// 폰트로. 크기나 이런거 전부」): the title as large as its line allows, the
-/// episode right under it, and the two closing lines set alike. The
-/// picture's place is kept whether or not there is a picture.
+/// Laid about the PICTURE (유저 2026-09-25, on the first two previews:
+/// 「작품제목 더 크게하고, 길어져서 다 안들어가면 크기 작게하는방향 …
+/// 화수는 좀 더 타이틀이랑 붙여서」 · 「표지 컷이랑 콘티랑 같은 폰트로.
+/// 크기나 이런거 전부」 · 「너무 위쪽정렬이야. 표지에서 컷이랑 콘티는
+/// 중앙아래 느낌 원해. 정확히는 로고랑 밑 공간의 중앙쯤? 로고도 좀 더
+/// 내리자. 중앙느낌」): the picture holds the page's middle, the title —
+/// as large as its line allows — and the episode right under it stand on
+/// it, and the two closing lines, set alike, sit in the middle of the room
+/// below it. The picture's place is kept whether or not there is one.
 Iterable<SheetMark> _cover(
   ConteSheetMetrics m,
   ConteSheetSource source,
@@ -88,20 +93,8 @@ Iterable<SheetMark> _cover(
   const closingSize = 13.0;
   // The conte's 1.25 line: a slot one line tall.
   double line(double size) => size * 1.25;
-  final pictureWidth = m.pageWidth * 0.44;
-  final pictureHeight = m.pageHeight * 0.26;
   const pictureGap = 28.0;
   const closingGap = 4.0;
-  final stack =
-      line(titleSize) +
-      line(episodeSize) +
-      pictureGap +
-      pictureHeight +
-      pictureGap +
-      line(closingSize) * 2 +
-      closingGap;
-  // The stack's middle at 42% of the page — above the middle, not on it.
-  final top = m.pageHeight * 0.42 - stack / 2;
 
   Rect across(double top, double height) =>
       Rect.fromLTWH(m.marginX, top, m.bodyWidth, height);
@@ -123,15 +116,21 @@ Iterable<SheetMark> _cover(
     fit: fit,
   );
 
-  final title = across(top, line(titleSize));
-  final episode = across(title.bottom, line(episodeSize));
-  final picture = Rect.fromLTWH(
-    (m.pageWidth - pictureWidth) / 2,
-    episode.bottom + pictureGap,
-    pictureWidth,
-    pictureHeight,
+  final picture = Rect.fromCenter(
+    center: Offset(m.pageWidth / 2, m.pageHeight / 2),
+    width: m.pageWidth * 0.44,
+    height: m.pageHeight * 0.26,
   );
-  final cuts = across(picture.bottom + pictureGap, line(closingSize));
+  final episode = across(
+    picture.top - pictureGap - line(episodeSize),
+    line(episodeSize),
+  );
+  final title = across(episode.top - line(titleSize), line(titleSize));
+  final closing = line(closingSize) * 2 + closingGap;
+  final cuts = across(
+    (picture.bottom + m.pageHeight) / 2 - closing / 2,
+    line(closingSize),
+  );
   final staff = across(cuts.bottom + closingGap, line(closingSize));
 
   yield words(
@@ -149,7 +148,7 @@ Iterable<SheetMark> _cover(
   );
   final image = source.coverImagePath;
   if (image != null) {
-    yield SheetImage(SheetPaintLayer.content, assetPath: image, slot: picture);
+    yield SheetImage(SheetPaintLayer.picture, assetPath: image, slot: picture);
   }
   final frames = source.cuts.fold<int>(
     0,
@@ -234,14 +233,23 @@ Iterable<SheetMark> _form(ConteSheetMetrics m, ConteNotation notation) sync* {
 
   // The silhouette: ONE black shape down the picture column with a window
   // of the camera's own shape cut per row (유저 2026-09-25: 「검정색 사각형
-  // 실루엣은 남기되 그거랑 겹친 이상한 반투명한 라인같은거 없앤단거야」).
+  // 실루엣은 남기되 그거랑 겹친 이상한 반투명한 라인같은거 없앤단거야」),
+  // each window's corners rounded the app's way (「지브리콘티처럼 모서리
+  // 둥글게하자. 우리 앱 통일 모서리 따라서」 · 「카메라는 사각형이라
+  // 둥글게하면 둥근만큼 잘리잖아. 그거는 전혀 문제없고 의도한 대가야.
+  // 기존 상태에서 둥글게만」).
   yield SheetFill(
     SheetPaintLayer.form,
     rect: Rect.fromLTRB(m.pictureLeft, m.bodyTop, m.actionLeft, m.bodyBottom),
     argb: _ink,
   );
   for (var row = 0; row < m.rowsPerPage; row += 1) {
-    yield SheetFill(SheetPaintLayer.form, rect: m.windowRect(row), argb: _well);
+    yield SheetFill(
+      SheetPaintLayer.form,
+      rect: m.windowRect(row),
+      argb: _well,
+      cornerRadius: m.windowRadius,
+    );
   }
 
   // The head's words, in the notation language — a word longer than its
@@ -338,7 +346,7 @@ Iterable<SheetMark> _cell(
     // and so is the well that covers the bars between its rows.
     if (picture.right > m.actionLeft) {
       yield SheetFill(
-        SheetPaintLayer.content,
+        SheetPaintLayer.picture,
         rect: Rect.fromLTRB(
           m.actionLeft,
           picture.top,
@@ -348,19 +356,25 @@ Iterable<SheetMark> _cell(
         argb: _ink,
       );
     }
-    yield SheetFill(SheetPaintLayer.content, rect: window, argb: _well);
+    yield SheetFill(
+      SheetPaintLayer.picture,
+      rect: window,
+      argb: _well,
+      cornerRadius: m.windowRadius,
+    );
   }
   yield SheetPicture(
-    SheetPaintLayer.content,
+    SheetPaintLayer.picture,
     cutId: cell.cutId,
     pictureFrame: cell.source.pictureFrame,
     slot: window,
+    cornerRadius: m.windowRadius,
   );
   final labels = cell.source.cameraLabels;
   if (labels.isNotEmpty) {
     final slot = window.deflate(2);
     yield SheetWords(
-      SheetPaintLayer.content,
+      SheetPaintLayer.picture,
       text: labels.first,
       slot: slot,
       size: 8,
@@ -369,7 +383,7 @@ Iterable<SheetMark> _cell(
     );
     if (labels.length > 1) {
       yield SheetWords(
-        SheetPaintLayer.content,
+        SheetPaintLayer.picture,
         text: labels.last,
         slot: slot,
         size: 8,

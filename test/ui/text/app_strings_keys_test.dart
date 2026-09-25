@@ -536,6 +536,7 @@ void main() {
     'exSheetLayers': (s) => s.exSheetLayers,
     'exContent': (s) => s.exContent,
     'exInk': (s) => s.exInk,
+    'exPictureLayer': (s) => s.exPictureLayer,
     'exFiles': (s) => s.exFiles,
     'exOneImage': (s) => s.exOneImage,
     'exOnePerLayer': (s) => s.exOnePerLayer,

@@ -188,6 +188,11 @@ class _ContePdfPageWriter {
 
   void _print(SheetMark mark) {
     switch (mark) {
+      case SheetFill(:final rect, :final argb, :final cornerRadius)
+          when cornerRadius > 0:
+        _g.setFillColor(PdfColor.fromInt(argb));
+        _traceRounded(rect, cornerRadius);
+        _g.fillPath();
       case SheetFill(:final rect, :final argb):
         _fillRect(rect, PdfColor.fromInt(argb));
       case SheetRule(:final rect, :final argb):
@@ -196,10 +201,21 @@ class _ContePdfPageWriter {
         _fillRect(rect, PdfColor.fromInt(argb));
       case SheetWords():
         _words(mark);
-      case SheetPicture(:final cutId, :final pictureFrame, :final slot):
+      case SheetPicture(
+        :final cutId,
+        :final pictureFrame,
+        :final slot,
+        :final cornerRadius,
+      ):
         final image = pictures[(cutId, pictureFrame)];
         if (image != null) {
+          _g.saveContext();
+          if (cornerRadius > 0) {
+            _traceRounded(slot, cornerRadius);
+            _g.clipPath();
+          }
           _contained(image, slot);
+          _g.restoreContext();
         }
       case SheetImage(:final assetPath, :final slot):
         final image = images[assetPath];
@@ -218,6 +234,40 @@ class _ContePdfPageWriter {
     _g.setFillColor(color);
     _g.drawRect(rect.left, _y(rect.bottom), rect.width, rect.height);
     _g.fillPath();
+  }
+
+  /// The app's corner — a superellipse on flat sides — as a path on the
+  /// page, TRACED from the engine's own shape, the one the panel draws: a
+  /// PDF has no superellipse, and a circle's arc would be a second corner.
+  /// Traced every half point; the points a flat side adds say nothing, so
+  /// they go.
+  void _traceRounded(ui.Rect rect, double radius) {
+    final shape = ui.Path()
+      ..addRSuperellipse(
+        ui.RSuperellipse.fromRectAndRadius(rect, ui.Radius.circular(radius)),
+      );
+    final points = <ui.Offset>[];
+    for (final metric in shape.computeMetrics()) {
+      for (var along = 0.0; along < metric.length; along += 0.5) {
+        final point = metric.getTangentForOffset(along)!.position;
+        // Drop the middle of three points on one straight line.
+        if (points.length >= 2) {
+          final (a, b) = (points[points.length - 2], points.last);
+          final cross =
+              (b.dx - a.dx) * (point.dy - a.dy) -
+              (b.dy - a.dy) * (point.dx - a.dx);
+          if (cross.abs() < 1e-6) {
+            points.removeLast();
+          }
+        }
+        points.add(point);
+      }
+    }
+    _g.moveTo(points.first.dx, _y(points.first.dy));
+    for (final point in points.skip(1)) {
+      _g.lineTo(point.dx, _y(point.dy));
+    }
+    _g.closePath();
   }
 
   void _contained(PdfImage image, ui.Rect slot) {

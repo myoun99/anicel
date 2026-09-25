@@ -301,6 +301,18 @@ void _printMark(
   SheetMarkImages images,
 ) {
   switch (mark) {
+    case SheetFill(:final rect, :final argb, :final cornerRadius)
+        when cornerRadius > 0:
+      // The app's corner. A corner is a curve, so it is anti-aliased; the
+      // flat sides are still cut on the grid, so they stay one colour to
+      // the pixel.
+      canvas.drawRSuperellipse(
+        ui.RSuperellipse.fromRectAndRadius(
+          grid.snap(rect),
+          Radius.circular(cornerRadius * grid.scale),
+        ),
+        Paint()..color = Color(argb),
+      );
     case SheetFill(:final rect, :final argb):
       canvas.drawRect(
         grid.snap(rect),
@@ -317,14 +329,27 @@ void _printMark(
       );
     case SheetWords():
       _inPaperSpace(canvas, grid, () => _paintWords(canvas, mark, style));
-    case SheetPicture(:final cutId, :final pictureFrame, :final slot):
+    case SheetPicture(
+      :final cutId,
+      :final pictureFrame,
+      :final slot,
+      :final cornerRadius,
+    ):
       final image = images.pictureFor?.call(cutId, pictureFrame);
       if (image != null) {
-        _inPaperSpace(
-          canvas,
-          grid,
-          () => _paintContained(canvas, image, slot, FilterQuality.medium),
-        );
+        _inPaperSpace(canvas, grid, () {
+          canvas.save();
+          if (cornerRadius > 0) {
+            canvas.clipRSuperellipse(
+              ui.RSuperellipse.fromRectAndRadius(
+                slot,
+                Radius.circular(cornerRadius),
+              ),
+            );
+          }
+          _paintContained(canvas, image, slot, FilterQuality.medium);
+          canvas.restore();
+        });
       }
     case SheetImage(:final assetPath, :final slot):
       final image = images.imageFor?.call(assetPath);

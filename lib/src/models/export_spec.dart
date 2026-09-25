@@ -623,13 +623,17 @@ class EnvelopeExportSpec extends ExportTabSpec {
     this.separateLayerFiles = false,
   });
 
-  /// Every stratum, which is what a flat PNG of the sheet means.
-  static const Set<SheetPaintLayer> defaultLayers = {
+  /// The strata an envelope HAS, in painting order — it shows no film
+  /// pictures ([SheetPaintLayer.picture] is the conte's).
+  static const List<SheetPaintLayer> strata = [
     SheetPaintLayer.paper,
     SheetPaintLayer.form,
     SheetPaintLayer.content,
     SheetPaintLayer.ink,
-  };
+  ];
+
+  /// Every stratum, which is what a flat PNG of the sheet means.
+  static const Set<SheetPaintLayer> defaultLayers = {...strata};
 
   final CutEnvelopePaperMode paperMode;
   final ExportScopeKind scope;

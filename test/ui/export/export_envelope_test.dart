@@ -101,7 +101,7 @@ void main() {
 
       expect(spec.paperMode, CutEnvelopePaperMode.cut);
       expect(spec.layers, EnvelopeExportSpec.defaultLayers);
-      expect(spec.orderedLayers, SheetPaintLayer.values);
+      expect(spec.orderedLayers, EnvelopeExportSpec.strata);
       expect(spec.separateLayerFiles, isFalse);
       expect(
         spec.toJson(),
@@ -332,7 +332,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      for (final layer in SheetPaintLayer.values) {
+      for (final layer in EnvelopeExportSpec.strata) {
         final file = File(
           '${temp.path}${Platform.pathSeparator}'
           'CUT39_envelope_${layer.jsonValue}.png',

@@ -28,17 +28,27 @@ sealed class SheetMark {
   final SheetPaintLayer layer;
 }
 
-/// A filled rectangle: the paper, a silhouette, a window's tone.
+/// A filled rectangle: the paper, a picture's frame, a window's tone.
 ///
-/// Printed WITHOUT anti-aliasing (F-179): a sheet never rotates, so every
-/// fill is axis-aligned, and an edge cut on the device grid is wholly one
+/// Its edges are cut on the device grid (F-179): a sheet never rotates, so
+/// every fill is axis-aligned, and an edge cut on the grid is wholly one
 /// colour or the other — the paper's own rule, for everything a sheet
 /// fills.
+///
+/// [cornerRadius] rounds its four corners the app's way — a superellipse
+/// corner on flat sides (`AppShapes`), the radius one of the app's own
+/// (`AppCornerRadii`). Zero is square.
 final class SheetFill extends SheetMark {
-  const SheetFill(super.layer, {required this.rect, required this.argb});
+  const SheetFill(
+    super.layer, {
+    required this.rect,
+    required this.argb,
+    this.cornerRadius = 0,
+  });
 
   final Rect rect;
   final int argb;
+  final double cornerRadius;
 }
 
 /// Which long edge of a rule holds its place when the rule is widened to
@@ -130,17 +140,22 @@ final class SheetWords extends SheetMark {
 /// A cell's picture, contained in [slot]. The printer finds the image by
 /// ([cutId], [pictureFrame]) — the panel in its thumbnail store, the PDF
 /// among the pictures its export rendered.
+///
+/// Clipped to the slot's corners ([cornerRadius], the window it sits in):
+/// a square picture in a rounded window would cover the window's corners.
 final class SheetPicture extends SheetMark {
   const SheetPicture(
     super.layer, {
     required this.cutId,
     required this.pictureFrame,
     required this.slot,
+    this.cornerRadius = 0,
   });
 
   final String cutId;
   final int pictureFrame;
   final Rect slot;
+  final double cornerRadius;
 }
 
 /// A media image — the company logo — contained in [slot].

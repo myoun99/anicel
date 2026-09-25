@@ -86,6 +86,65 @@ void main() {
     expect(inked(5, 5), isFalse, reason: 'the slot clips what outruns it');
   });
 
+  testWidgets('a rounded fill and a picture cut to a rounded slot leave their '
+      'corners bare; a square fill does not', (tester) async {
+    // The app's corner on a printed window (유저 2026-09-25: 「모서리
+    // 둥글게 … 우리 앱 통일 모서리 따라서」).
+    final picture = (await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder).drawPaint(Paint()..color = const Color(0xFF00FF00));
+      final drawn = recorder.endRecording();
+      final image = await drawn.toImage(8, 8);
+      drawn.dispose();
+      return image;
+    }))!;
+    addTearDown(picture.dispose);
+    final recorder = ui.PictureRecorder();
+    paintSheetMarks(
+      ui.Canvas(recorder),
+      const Size(100, 40),
+      (viewport: null, devicePixelRatio: 1, paper: const Size(100, 40)),
+      [
+        const SheetFill(
+          SheetPaintLayer.form,
+          rect: Rect.fromLTWH(0, 0, 30, 30),
+          argb: 0xFF000000,
+          cornerRadius: 6,
+        ),
+        const SheetFill(
+          SheetPaintLayer.form,
+          rect: Rect.fromLTWH(35, 0, 30, 30),
+          argb: 0xFF000000,
+        ),
+        const SheetPicture(
+          SheetPaintLayer.content,
+          cutId: 'c',
+          pictureFrame: 0,
+          slot: Rect.fromLTWH(70, 0, 30, 30),
+          cornerRadius: 6,
+        ),
+      ],
+      style: (size, {required bold, required color}) =>
+          TextStyle(fontSize: size, color: color),
+      images: SheetMarkImages(pictureFor: (cutId, frame) => picture),
+    );
+    final drawn = recorder.endRecording();
+    final pixels = (await tester.runAsync(() async {
+      final image = await drawn.toImage(100, 40);
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return data!;
+    }))!;
+    drawn.dispose();
+    int alpha(int x, int y) => pixels.getUint8((y * 100 + x) * 4 + 3);
+
+    expect(alpha(0, 0), 0, reason: 'the rounded fill\'s corner is bare');
+    expect(alpha(15, 15), 255);
+    expect(alpha(35, 0), 255, reason: 'a square fill fills its corner');
+    expect(alpha(70, 0), 0, reason: 'the picture is cut to the round');
+    expect(alpha(85, 15), 255);
+  });
+
   test('a title too long for its line is set SMALLER, as large as fits — a '
       'short one keeps its size', () {
     // 유저 2026-09-25: 「길어져서 다 안들어가면 크기 작게하는방향」. The

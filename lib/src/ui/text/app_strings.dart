@@ -1061,6 +1061,7 @@ enum AppStrings {
   String get exSheetLayers => _s('exSheetLayers');
   String get exContent => _s('exContent');
   String get exInk => _s('exInk');
+  String get exPictureLayer => _s('exPictureLayer');
   String get exFiles => _s('exFiles');
   String get exOneImage => _s('exOneImage');
   String get exOnePerLayer => _s('exOnePerLayer');
@@ -2228,6 +2229,7 @@ enum AppStrings {
     'exSheetLayers': 'Layers',
     'exContent': 'Content',
     'exInk': 'Ink',
+    'exPictureLayer': 'Pictures',
     'exFiles': 'Files',
     'exOneImage': 'One image',
     'exOnePerLayer': 'One per layer',
@@ -3421,6 +3423,7 @@ enum AppStrings {
     'exSheetLayers': 'レイヤー',
     'exContent': '内容',
     'exInk': '線画',
+    'exPictureLayer': '絵',
     'exFiles': 'ファイル',
     'exOneImage': '画像1枚',
     'exOnePerLayer': 'レイヤーごとに1枚',
@@ -4736,6 +4739,7 @@ enum AppStrings {
     'exSheetLayers': '레이어',
     'exContent': '내용',
     'exInk': '선화',
+    'exPictureLayer': '그림',
     'exFiles': '파일',
     'exOneImage': '이미지 한 장',
     'exOnePerLayer': '레이어마다 한 장',
@@ -6096,6 +6100,7 @@ enum AppStrings {
     'exSheetLayers': 'Calques',
     'exContent': 'Contenu',
     'exInk': 'Encre',
+    'exPictureLayer': 'Images',
     'exFiles': 'Fichiers',
     'exOneImage': 'Une image',
     'exOnePerLayer': 'Une par calque',
@@ -7400,6 +7405,7 @@ enum AppStrings {
     'exSheetLayers': '图层',
     'exContent': '内容',
     'exInk': '线稿',
+    'exPictureLayer': '画面',
     'exFiles': '文件',
     'exOneImage': '单张图片',
     'exOnePerLayer': '每图层一张',

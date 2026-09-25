@@ -12,6 +12,7 @@ library;
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
+import '../../core/app_corner_radii.dart';
 import 'conte_sheet_source.dart';
 
 /// The sheet's fixed measurements — the first preset's page (유저
@@ -110,6 +111,12 @@ class ConteSheetMetrics {
     actionLeft - silhouetteBorder,
     rowTop(row + 1) - silhouetteBorder,
   );
+
+  /// A picture window's corner — the app's window corner (유저 2026-09-25:
+  /// 「지브리콘티처럼 모서리 둥글게하자. 우리 앱 통일 모서리 따라서」).
+  /// The camera's picture inside is cut to it; 「그거는 전혀 문제없고
+  /// 의도한 대가야」.
+  double get windowRadius => AppCornerRadii.window;
 
   Rect get pageNumberSlot =>
       Rect.fromLTWH(marginX, topBandTop, 120, topBandHeight);

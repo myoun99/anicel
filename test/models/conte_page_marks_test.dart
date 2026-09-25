@@ -1,6 +1,7 @@
 import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/app_corner_radii.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/conte/conte_notation.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
@@ -102,6 +103,93 @@ void main() {
       );
       expect(underside, hasLength(1));
       expect(underside.single.hold, SheetRuleHold.far);
+    });
+
+    test('the picture windows — and the pictures cut to them — wear the '
+        'app\'s window corner; the black around them keeps its own', () {
+      // 유저 2026-09-25: 「지브리콘티처럼 모서리 둥글게하자. 우리 앱 통일
+      // 모서리 따라서」 · 「기존 상태에서 둥글게만」.
+      final fills = marks.whereType<SheetFill>();
+      final windows = fills.where((fill) => fill.argb == 0xFFEDEDED);
+      expect(windows, hasLength(m.rowsPerPage));
+      for (final window in windows) {
+        expect(window.cornerRadius, AppCornerRadii.window);
+      }
+      expect(silhouette, fills.firstWhere((f) => f.argb == 0xFF101010).rect);
+      expect(
+        fills.firstWhere((fill) => fill.argb == 0xFF101010).cornerRadius,
+        0,
+        reason: 'the column meets the head\'s rules square, as before',
+      );
+      for (final picture in marks.whereType<SheetPicture>()) {
+        expect(picture.cornerRadius, AppCornerRadii.window);
+      }
+    });
+
+    test('the film\'s pictures — with the camera work written on them — are '
+        'their own stratum, apart from the typed values and never on them',
+        () {
+      // 유저 2026-09-25: 「흰 배경/ 용지서식(칸이나 픽쳐 텍스트나 이런거)/그림
+      // 이런식으로. psd출력할때 이런느낌으로」 · 「그림 수정하거나 텍스트
+      // 바뀌거나 하는데 용지 리빌드하면 너무 비효율적」.
+      final panned = ConteSheetSource(
+        framesPerSecond: 24,
+        cuts: [
+          ConteCutSource(
+            cutId: const CutId('P'),
+            name: 'P',
+            durationFrames: 24,
+            cumulativeEndFrames: 24,
+            cells: const [
+              ConteCellSource(
+                startFrame: 0,
+                endFrameExclusive: 24,
+                pictureFrame: 0,
+                action: 'ハヤト走る',
+                cameraLabels: ['PAN→', 'T.U'],
+              ),
+            ],
+          ),
+        ],
+      );
+      final framed = contePageMarks(layoutConteSheet(panned).single, panned);
+      final pictures = framed.where(
+        (mark) => mark.layer == SheetPaintLayer.picture,
+      );
+      expect(pictures.whereType<SheetPicture>(), hasLength(1));
+      expect(
+        pictures.whereType<SheetWords>().map((words) => words.text),
+        ['PAN→', 'T.U'],
+        reason: 'the camera work is written ON the picture',
+      );
+      final values = framed.where(
+        (mark) => mark.layer == SheetPaintLayer.content,
+      );
+      expect(values.whereType<SheetPicture>(), isEmpty);
+      expect(
+        values.whereType<SheetWords>().map((words) => words.text),
+        contains('ハヤト走る'),
+      );
+      Rect placeOf(SheetMark mark) => switch (mark) {
+        SheetPicture(:final slot) => slot,
+        SheetWords(:final slot) => slot,
+        SheetFill(:final rect) => rect,
+        SheetImage(:final slot) => slot,
+        _ => Rect.zero,
+      };
+      for (final picture in pictures) {
+        for (final value in values.whereType<SheetWords>()) {
+          if (value.text.isEmpty) {
+            continue;
+          }
+          expect(
+            placeOf(picture).overlaps(value.slot),
+            isFalse,
+            reason: '「${value.text}」 lies off every picture, so the two '
+                'strata stack either way',
+          );
+        }
+      }
     });
 
     test('the body has no row rules — only the head\'s and the foot', () {
@@ -251,12 +339,14 @@ void main() {
       expect(cover.whereType<SheetRule>(), isEmpty, reason: 'no table');
     });
 
-    test('the cover is one stack a little above the middle: the title large '
-        'and shrinking to fit, the episode right under it, the closing lines '
-        'set alike', () {
+    test('the cover is laid about its picture: the picture on the page\'s '
+        'middle, the title large and shrinking to fit with the episode right '
+        'under it above, the closing lines set alike in the middle of the '
+        'room below', () {
       // 유저 2026-09-25: 「작품제목 더 크게하고, 길어져서 다 안들어가면 크기
-      // 작게하는방향 … 화수는 좀 더 타이틀이랑 붙여서 … 중앙 위 감각」 ·
-      // 「표지 컷이랑 콘티랑 같은 폰트로. 크기나 이런거 전부」.
+      // 작게하는방향 … 화수는 좀 더 타이틀이랑 붙여서」 · 「표지 컷이랑
+      // 콘티랑 같은 폰트로. 크기나 이런거 전부」 · 「컷이랑 콘티는 중앙아래
+      // 느낌 … 로고랑 밑 공간의 중앙쯤? 로고도 좀 더 내리자. 중앙느낌」.
       final cover = contePageMarks(book.first, bookSource);
       final words = cover.whereType<SheetWords>().toList();
       final (title, episode, cuts, staff) = (
@@ -277,9 +367,15 @@ void main() {
         );
       }
       final picture = cover.whereType<SheetImage>().single.slot;
-      final middle = (title.slot.top + staff.slot.bottom) / 2;
-      expect(middle, lessThan(book.first.metrics.pageHeight / 2));
+      final pageHeight = book.first.metrics.pageHeight;
+      expect(picture.center.dy, closeTo(pageHeight / 2, 1e-9));
+      expect(
+        (cuts.slot.top + staff.slot.bottom) / 2,
+        closeTo((picture.bottom + pageHeight) / 2, 1e-9),
+        reason: 'the closing lines in the middle of the room below it',
+      );
       // Top to bottom, nothing overlapping.
+      expect(title.slot.bottom, lessThanOrEqualTo(episode.slot.top));
       expect(episode.slot.bottom, lessThanOrEqualTo(picture.top));
       expect(picture.bottom, lessThanOrEqualTo(cuts.slot.top));
       expect(cuts.slot.bottom, lessThanOrEqualTo(staff.slot.top));
