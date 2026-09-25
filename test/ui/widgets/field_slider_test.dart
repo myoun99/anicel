@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
@@ -982,9 +983,142 @@ void main() {
       await tester.pumpWidget(verticalHarness(value));
 
       // The x-sheet gives this column 42px and the drag math measures the
-      // slot (`_trackExtent = constraints.maxHeight`), so a readout that
-      // sized the bar would put the fill and the finger on two scales.
+      // slot (the bar's `constraints.maxHeight`), so a readout that sized
+      // the bar would put the fill and the finger on two scales.
       expect(tester.getSize(trackOf(sliderKey)).height, trackWidth);
     });
   });
+
+  group('a new value is a repaint of the bar, not a relayout of its row', () {
+    // 2026-09-26: the bar read its track length through a layout builder,
+    // which re-lays itself out on every rebuild — and a relayout climbs to
+    // the row's first relayout boundary. In the tool settings that is the
+    // scroll view's content: a brush pick laid the whole panel column out
+    // (and a drag did it on every move), each object laid out a semantics
+    // update as well.
+    testWidgets('a new value lays out nothing above the bar', (tester) async {
+      final value = ValueNotifier<double>(0.2);
+      addTearDown(value.dispose);
+      var layouts = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: trackWidth,
+                child: _LayoutCounter(
+                  onLayout: () => layouts += 1,
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: value,
+                    builder: (context, v, _) => FieldSlider(
+                      key: sliderKey,
+                      value: v,
+                      min: 0,
+                      max: 1,
+                      label: 'Test',
+                      onChanged: (next) => value.value = next,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      String? written() => tester
+          .widget<Semantics>(
+            find.descendant(
+              of: find.byKey(sliderKey),
+              matching: find.byWidgetPredicate(
+                (w) => w is Semantics && w.properties.slider == true,
+              ),
+            ),
+          )
+          .properties
+          .value;
+      final before = layouts;
+      final was = written();
+
+      value.value = 0.7;
+      await tester.pump();
+
+      expect(
+        written(),
+        isNot(was),
+        reason: 'fixture: the bar took the new value',
+      );
+      expect(
+        layouts,
+        before,
+        reason: 'the bar\'s size did not change, so nothing above it may be '
+            'laid out again',
+      );
+    });
+
+    testWidgets('and the drag math still follows the bar when its width '
+        'does change', (tester) async {
+      final value = ValueNotifier<double>(0.2);
+      addTearDown(value.dispose);
+      final width = ValueNotifier<double>(trackWidth);
+      addTearDown(width.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Center(
+              child: ValueListenableBuilder<double>(
+                valueListenable: width,
+                builder: (context, w, _) => SizedBox(
+                  width: w,
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: value,
+                    builder: (context, v, _) => FieldSlider(
+                      key: sliderKey,
+                      value: v,
+                      min: 0,
+                      max: 1,
+                      label: 'Test',
+                      onChanged: (next) => value.value = next,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      width.value = trackWidth * 2;
+      await tester.pump();
+
+      final track = tester.getRect(trackOf(sliderKey));
+      await tester.tapAt(track.centerLeft + Offset(track.width * 0.75, 0));
+      await tester.pump();
+
+      expect(value.value, moreOrLessEquals(0.75, epsilon: 0.02));
+    });
+  });
+}
+
+/// Counts the layouts of whatever sits between its parent and the bar.
+class _LayoutCounter extends SingleChildRenderObjectWidget {
+  const _LayoutCounter({required this.onLayout, required super.child});
+
+  final VoidCallback onLayout;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderLayoutCounter(onLayout);
+}
+
+class _RenderLayoutCounter extends RenderProxyBox {
+  _RenderLayoutCounter(this.onLayout);
+
+  final VoidCallback onLayout;
+
+  @override
+  void performLayout() {
+    onLayout();
+    super.performLayout();
+  }
 }
