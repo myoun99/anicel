@@ -34,11 +34,7 @@ import '../text/word_condensation.dart';
 String timelineRulerSecondsLabel({
   required int frameIndex,
   required int framesPerSecond,
-}) =>
-    timelineOnSecondBoundary(
-      frameIndex: frameIndex,
-      framesPerSecond: framesPerSecond,
-    )
+}) => timelineOnSecondBoundary(frameIndex, framesPerSecond)
     ? timelineRulerSecondOf(
         frameIndex: frameIndex,
         framesPerSecond: framesPerSecond,

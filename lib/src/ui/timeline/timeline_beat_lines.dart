@@ -444,10 +444,7 @@ Color timelineStandingGround(Color resting, ColorScheme colorScheme) =>
     return null;
   }
   if (frameIndex % 6 == 0) {
-    return timelineOnSecondBoundary(
-          frameIndex: frameIndex,
-          framesPerSecond: framesPerSecond,
-        )
+    return timelineOnSecondBoundary(frameIndex, framesPerSecond)
         ? timelineGridSecondLineInk()
         : timelineGridSixLineInk(colorScheme);
   }
@@ -738,11 +735,7 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
       shown(frame);
       frame += beatPeriod
     ) {
-      final paint =
-          timelineOnSecondBoundary(
-            frameIndex: frame,
-            framesPerSecond: framesPerSecond,
-          )
+      final paint = timelineOnSecondBoundary(frame, framesPerSecond)
           ? secondPaint
           : sixPaint;
       line(positionOf(frame), paint);

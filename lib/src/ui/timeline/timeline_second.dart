@@ -11,7 +11,5 @@ int timelineSecondFrames(int framesPerSecond) =>
 
 /// Whether a second begins at [frameIndex] — where the ruler writes its
 /// mark and the grid rules its second line.
-bool timelineOnSecondBoundary({
-  required int frameIndex,
-  required int framesPerSecond,
-}) => frameIndex % timelineSecondFrames(framesPerSecond) == 0;
+bool timelineOnSecondBoundary(int frameIndex, int framesPerSecond) =>
+    frameIndex % timelineSecondFrames(framesPerSecond) == 0;
