@@ -937,6 +937,24 @@ void main() {
         isTrue,
         reason: 'the lift found the picture under the marquee',
       );
+      // The float is on the CANVAS, where the box carried the picture: the
+      // middle dab — shown at (145,45) under both placements below — moved
+      // by the drag.
+      final float = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<SelectionFloatPainter>()
+          .single
+          .float;
+      expect(
+        surfacePixelRgba(
+          float.surface!.surface,
+          155 - float.surfaceOffset.x.round(),
+          50 - float.surfaceOffset.y.round(),
+        ),
+        isNonZero,
+        reason: 'the float shows the picture where the box is',
+      );
       env.commands.confirmPendingMove();
       await tester.pump();
     }
