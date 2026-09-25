@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
@@ -1553,22 +1555,30 @@ Rect _paintNodeExtent(
   }
 }
 
-/// One composited canvas-resolution raster and where it belongs.
+/// What a paint puts on the screen for the display buffer, and where it
+/// belongs: the raster ([_BufferImage]) or the picture that raster would
+/// have been made from ([_BufferPicture]).
 ///
 /// [rect] is in canvas space and is whole-pixel aligned, so the src/dst pair
 /// of the final `drawImageRect` is exact: the ONE resample the display is
 /// entitled to happens in the viewport transform and nowhere else.
-class _DisplayBuffer {
-  const _DisplayBuffer({
+sealed class _DisplayBuffer {
+  const _DisplayBuffer({required this.rect});
+
+  final Rect rect;
+}
+
+/// One composited canvas-resolution raster.
+final class _BufferImage extends _DisplayBuffer {
+  const _BufferImage({
     required this.image,
-    required this.rect,
+    required super.rect,
     required this.pixelWidth,
     required this.pixelHeight,
     this.owned = true,
   });
 
   final ui.Image image;
-  final Rect rect;
   final double pixelWidth;
   final double pixelHeight;
 
@@ -1579,6 +1589,16 @@ class _DisplayBuffer {
   /// [[native-tile-pixel-lifetime]] and the bake's revision counter both
   /// exist to make structurally impossible rather than merely unlikely.
   final bool owned;
+}
+
+/// The picture a patch's raster would have been made from, recorded in
+/// the buffer's own pixels and drawn straight onto the screen — the same
+/// bytes wherever the paint pass says so, and one render pass fewer.
+/// Always the paint's to dispose once drawn.
+final class _BufferPicture extends _DisplayBuffer {
+  const _BufferPicture({required this.picture, required super.rect});
+
+  final ui.Picture picture;
 }
 
 /// The geometry field probe's state — the numbers every buffer decision
@@ -2010,3 +2030,8 @@ int _treeSignature(List<CompositeNode<_PaintRow>> list) {
 /// playback, the camera and the export do.
 @visibleForTesting
 int debugCappedFallbacks = 0;
+
+/// Off, every patch rasters its head as it did before pictures were drawn
+/// — the reference a parity test compares the pictures against.
+@visibleForTesting
+bool debugDrawBufferPictures = true;

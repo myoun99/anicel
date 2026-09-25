@@ -120,6 +120,11 @@ class DisplayBufferCache {
   Object? _realBaseStaticKey;
   LiveSurfaceTokens _realBaseTokens = noLiveSurfaceTokens;
 
+  /// The whole key of the compose the real base is a snapshot of — so a
+  /// compose that kept no image ([store] with none) is still answered by
+  /// [imageFor] once its snapshot lands.
+  Object? _realBaseKey;
+
   /// Whether a snapshot is still on its way. ONE IN FLIGHT AT A TIME, and
   /// that is the cost decision: a snapshot is a whole extra raster pass,
   /// so the buffer does not start another until the last one has landed —
@@ -191,6 +196,7 @@ class DisplayBufferCache {
   /// stored — as the next base. Describes it with what [store] just
   /// recorded (static key, rect, tokens): the two are one picture.
   void promote(Future<ui.Image> pending) {
+    final key = _key;
     final staticKey = _staticKey;
     final rect = _rect;
     final tokens = keptTokens;
@@ -216,6 +222,7 @@ class DisplayBufferCache {
           _realBaseRect = rect;
           _realBaseStaticKey = staticKey;
           _realBaseTokens = tokens;
+          _realBaseKey = key;
           promotedCount += 1;
           _tellHeldBytes();
         },
@@ -277,12 +284,29 @@ class DisplayBufferCache {
 
 
   /// The kept image for [key] over [rect], or null when there is none.
+  ///
+  /// A compose that kept no image — its picture went straight to the
+  /// screen ([store] with none) — is answered by the real base once the
+  /// snapshot of THAT compose has landed: the same picture, rasterized.
+  /// Without it a still canvas would compose its last patch again on every
+  /// paint until something promoted.
   ui.Image? imageFor(Object key, Rect rect) {
-    if (_key == key && _rect == rect) {
-      return _image;
+    if (_key != key || _rect != rect) {
+      return null;
     }
-    return null;
+    final kept =
+        _image ??
+        (_realBaseKey == key && _realBaseRect == rect ? _realBase : null);
+    if (kept != null) {
+      keptCount += 1;
+    }
+    return kept;
   }
+
+  /// How many paints were answered by what is kept, composing nothing.
+  /// The counters' law again: a canvas that stopped being answered while
+  /// still looks exactly like one that is, until the frame rate says so.
+  int keptCount = 0;
 
   /// Keeps [image] as the answer for [key] over [rect], dropping whatever
   /// was there.
@@ -308,6 +332,11 @@ class DisplayBufferCache {
   /// to be able to show.
   int patchedCount = 0;
   int fullCount = 0;
+
+  /// How many of the [patchedCount] kept no image, their picture drawn
+  /// straight onto the screen — the patches that rastered no head. Printed
+  /// beside the others for the same reason they are.
+  int drawnCount = 0;
 
   /// How many stores IN A ROW were drawn from the kept image instead of
   /// from nothing — which is exactly how many canvases the kept image
@@ -440,15 +469,25 @@ class DisplayBufferCache {
   /// not be said, and then nothing is kept to measure from: the next paint
   /// composites whole, which is the honest price of an image nobody can
   /// describe.
+  ///
+  /// [image] is null when the compose's picture was drawn straight onto
+  /// the screen and never rastered — then there is no head to derive from,
+  /// and [imageFor] answers with the real base once that picture's
+  /// snapshot lands. Such a compose patched the real base, so it is never
+  /// [derived].
   void store(
     Object key,
     Object staticKey,
     Rect rect,
-    ui.Image image, {
+    ui.Image? image, {
     bool patched = false,
     bool derived = false,
     LiveSurfaceTokens? tokens,
   }) {
+    assert(
+      image != null || !derived,
+      'a compose kept as no image drew no head',
+    );
     if (patched) {
       patchedCount += 1;
     } else {
@@ -457,11 +496,14 @@ class DisplayBufferCache {
     if (patched && !derived) {
       _patchesSinceAsked += 1;
     }
+    if (image == null) {
+      drawnCount += 1;
+    }
     _derivedDepth = derived ? _derivedDepth + 1 : 0;
     // The same event in the other unit. A compose that started from
     // nothing pins exactly its own image; a derived one pins that on top
     // of everything the chain already held.
-    final imageBytes = image.width * image.height * 4;
+    final imageBytes = image == null ? 0 : image.width * image.height * 4;
     _chainBytes = derived ? _chainBytes + imageBytes : imageBytes;
     if (!identical(_image, image)) {
       _image?.dispose();

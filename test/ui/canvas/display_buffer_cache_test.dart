@@ -459,4 +459,88 @@ void main() {
       expect(cache.wantsPromotionFor(patchedOverRealBase: true), isFalse);
     });
   });
+
+  // A patch whose picture went straight to the screen rastered no head, so
+  // nothing is kept for its key — until the snapshot of that very compose
+  // lands, which is the same picture rastered.
+  group('a compose drawn as its picture keeps no image', () {
+    const rect = Rect.fromLTWH(0, 0, 4, 4);
+    const tokens = (
+      overlay: <Object, Object>{},
+      tiles: <Object, Object>{'t': 'drawn'},
+      ghost: null,
+    );
+
+    test('it counts as a patch, and there is no head to derive from', () {
+      cache.store('k', 'static', rect, null, patched: true, tokens: tokens);
+      expect(cache.patchedCount, 1);
+      expect(cache.drawnCount, 1);
+      expect(cache.isWarm, isFalse);
+      expect(cache.heldBytes, 0);
+      expect(cache.derivedDepth, 0);
+      expect(cache.patchBaseFor('static', rect), isNull);
+      expect(
+        cache.scrollBaseFor('static', rect.shift(const Offset(2, 0))),
+        isNull,
+      );
+      expect(
+        cache.keptTokens,
+        tokens,
+        reason: 'what the next dirty rect is measured from',
+      );
+    });
+
+    test('nothing answers its key until the snapshot of THAT compose '
+        'lands — then the snapshot does', () async {
+      cache.store('k', 'static', rect, null, patched: true, tokens: tokens);
+      expect(cache.imageFor('k', rect), isNull);
+      final landing = Completer<ui.Image>();
+      cache.promote(landing.future);
+      await pumpEventQueue();
+      expect(cache.imageFor('k', rect), isNull, reason: 'still in flight');
+      final real = await makeImage(4);
+      landing.complete(real);
+      await pumpEventQueue();
+      final kept = cache.keptCount;
+      expect(identical(cache.imageFor('k', rect), real), isTrue);
+      expect(cache.keptCount, kept + 1);
+      expect(cache.imageFor('other', rect), isNull);
+      expect(cache.imageFor('k', const Rect.fromLTWH(0, 0, 8, 8)), isNull);
+    });
+
+    test("a snapshot of an EARLIER compose does not answer a later one's "
+        'key — it is only the base to patch from', () async {
+      cache.store('k1', 'static', rect, null, patched: true, tokens: tokens);
+      final landing = Completer<ui.Image>();
+      cache.promote(landing.future);
+      cache.store('k2', 'static', rect, null, patched: true, tokens: tokens);
+      landing.complete(await makeImage(4));
+      await pumpEventQueue();
+      expect(cache.imageFor('k2', rect), isNull);
+      expect(cache.patchBaseFor('static', rect), isNotNull);
+    });
+
+    test('a snapshot over another rect does not answer — the key carries no '
+        'layout, so it comes back resized', () async {
+      cache.store('k', 'static', rect, null, patched: true, tokens: tokens);
+      final landing = Completer<ui.Image>();
+      cache.promote(landing.future);
+      const wider = Rect.fromLTWH(0, 0, 8, 4);
+      cache.store('k', 'static', wider, null, patched: true, tokens: tokens);
+      landing.complete(await makeImage(4));
+      await pumpEventQueue();
+      expect(cache.imageFor('k', wider), isNull);
+    });
+
+    test('a head kept for the key answers before any snapshot', () async {
+      final head = await makeImage(4);
+      cache.store('k', 'static', rect, head, tokens: tokens);
+      expect(cache.drawnCount, 0, reason: 'a head was rastered');
+      final landing = Completer<ui.Image>();
+      cache.promote(landing.future);
+      landing.complete(await makeImage(4));
+      await pumpEventQueue();
+      expect(identical(cache.imageFor('k', rect), head), isTrue);
+    });
+  });
 }
