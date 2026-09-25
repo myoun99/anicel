@@ -17,9 +17,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
-import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -174,50 +171,6 @@ void main() {
         ground: ground,
       ).withValues(alpha: 1),
       timelineTextOnDarkGroundColor,
-    );
-  });
-
-  testWidgets('B1 where it still holds: a row too short for bands is all '
-      'picture, so there the grips read the picture ground', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final manager = EditorSessionManager(initialProject: _project());
-    addTearDown(manager.dispose);
-    const short = StoryboardCutBlocksPainter.bandsMinBlockHeight - 4;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(brightness: Brightness.dark),
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: manager,
-            builder: (context, _) => StoryboardTabHost(
-              session: manager,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
-                  null,
-              trackLaneHeight: short,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      StoryboardCutBlocksPainter.stripBandOf(short).top,
-      0,
-      reason: '⛔전제: the bands fold at this height',
-    );
-    expect(
-      timelineRowChromePainter(
-        tester,
-        _trackId.value,
-        prefix: 'storyboard',
-      )!.gripGround,
-      storyboardPanelPictureGroundColor,
     );
   });
 

@@ -93,7 +93,6 @@ import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
-        storyboardPanelPictureGroundColor,
         timelineBlockCornerRadiusAt,
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecorationAt,
@@ -4896,17 +4895,16 @@ class _StoryboardTrackRow extends StatelessWidget {
                   // 기본을 하얀색으로한다던가」). ↩️B1 (08-17) gave them the
                   // picture's white while they stood on the strip: a
                   // panel's picture is left-aligned, so the end triangle
-                  // mostly stood on the plate past it, dark on dark. Only a
-                  // row too short for bands leaves the pictures under the
-                  // corners — there B1's picture ground still holds.
-                  gripGround: stripBand.top <= 0 && thumbnailFor != null
-                      ? storyboardPanelPictureGroundColor
-                      : storyboardCutBlockBackgroundColor(
-                          Theme.of(context).colorScheme,
-                          active: false,
-                          hovered: false,
-                          rangeSelected: false,
-                        ),
+                  // mostly stood on the plate past it, dark on dark. The
+                  // bands stay whatever the row's height (유저 2026-09-25:
+                  // 「띠는 v행 세로 줄어도 고정으로 그 자리에 두자」), so
+                  // no row leaves the corners on the pictures.
+                  gripGround: storyboardCutBlockBackgroundColor(
+                    Theme.of(context).colorScheme,
+                    active: false,
+                    hovered: false,
+                    rangeSelected: false,
+                  ),
                   // No layer: these blocks are panels of many cuts, and the
                   // row has no run edges for a LayerId to name.
                   layerId: null,

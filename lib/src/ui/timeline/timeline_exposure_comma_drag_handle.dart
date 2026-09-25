@@ -94,6 +94,15 @@ double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) =>
       crossExtent: extentAcross(axis, box.size) / _gripCrossShare,
     ).x;
 
+/// A grip triangle's ROUND END: the corner of the paper under it, and how
+/// far past that circle its ink reaches ([blockEdgeGripPath]).
+///
+/// [paperCorner] is that paper's radius when the paper is not the block the
+/// box was laid out for — the storyboard's cut plate, round at the cut's
+/// ends and straight between its panels ([TimelineGripPaper]). Null asks
+/// the block's own ([blockEdgeGripCornerRadius]).
+typedef BlockEdgeGripRound = ({double? paperCorner, double bleed});
+
 /// The grip's triangle inside its [box]: the right angle in the block's
 /// corner, the two legs along the block's own edges, and the corner cut by
 /// the PAPER'S OWN CIRCLE — the triangle is the paper's corner, inked.
@@ -114,29 +123,23 @@ double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) =>
 ///    lit. 🧪Measured through the tile rasterizer's reference at 1×/1.5×/2×:
 ///    a hovered mark on the white paper wore a light rim along its round end
 ///    at every ratio — the paper's white leaking up to a quarter strength.
-///    [arcBleed] grows the ROUND END ONLY by that much — one device pixel is
-///    the paper's whole edge ramp — so the mark covers the paper's edge
-///    pixels outright and its own edge falls on the row's ground. The
-///    straight legs stay exactly on the block's edges: there the next cell's
-///    grid line and the row above sit a pixel away, and a bleed would ink
-///    them.
+///    [BlockEdgeGripRound.bleed] grows the ROUND END ONLY by that much — one
+///    device pixel is the paper's whole edge ramp — so the mark covers the
+///    paper's edge pixels outright and its own edge falls on the row's
+///    ground. The straight legs stay exactly on the block's edges: there the
+///    next cell's grid line and the row above sit a pixel away, and a bleed
+///    would ink them.
 ///
 /// Stated along the frame axis and across it, so the X-sheet reads it turned
 /// on its side like every other mark: the start edge's corner is the box's
 /// LEADING end on its FAR side (the timeline's bottom-left, the X-sheet's
 /// top-right), the end edge's the TRAILING end on the NEAR side (top-right,
 /// bottom-left).
-///
-/// [cornerRadius] is the corner of the paper under the box when that paper
-/// is not the block the box was laid out for — the storyboard's cut plate,
-/// round at the cut's ends and straight between its panels
-/// ([TimelineGripPaper]). Null asks the block's own ([blockEdgeGripCornerRadius]).
 Path blockEdgeGripPath(
   Rect box, {
   required TimelineBlockEdge edge,
   required Axis axis,
-  double arcBleed = 0,
-  double? cornerRadius,
+  BlockEdgeGripRound round = (paperCorner: null, bleed: 0),
 }) {
   final horizontal = axis == Axis.horizontal;
   final a0 = horizontal ? box.left : box.top;
@@ -162,8 +165,9 @@ Path blockEdgeGripPath(
   final alongEnd = Offset(legAlong, 0);
   final acrossEnd = Offset(0, legAcross);
 
-  final radius = cornerRadius ?? blockEdgeGripCornerRadius(box, axis: axis);
-  final reach = radius + arcBleed;
+  final radius =
+      round.paperCorner ?? blockEdgeGripCornerRadius(box, axis: axis);
+  final reach = radius + round.bleed;
   if (radius <= 0 || reach >= radius * math.sqrt2) {
     // No paper corner to follow — or a bleed wide enough to swallow it.
     moveTo(alongEnd);
@@ -315,7 +319,7 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
       Offset.zero & size,
       edge: edge,
       axis: axis,
-      arcBleed: 1 / devicePixelRatio,
+      round: (paperCorner: null, bleed: 1 / devicePixelRatio),
     ),
     ink,
   );

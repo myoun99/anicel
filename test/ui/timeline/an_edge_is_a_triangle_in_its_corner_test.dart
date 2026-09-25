@@ -239,7 +239,7 @@ void main() {
         box,
         edge: edge,
         axis: Axis.horizontal,
-        arcBleed: bleed,
+        round: (paperCorner: null, bleed: bleed),
       );
       final bounds = grown.getBounds();
       expect(bounds.left, greaterThanOrEqualTo(box.left - 1e-4));

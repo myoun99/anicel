@@ -527,8 +527,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
               target.rect,
               edge: target.edge,
               axis: resolver.axis,
-              arcBleed: 1 / devicePixelRatio,
-              cornerRadius: target.paperCorner,
+              round: (
+                paperCorner: target.paperCorner,
+                bleed: 1 / devicePixelRatio,
+              ),
             ),
             target.id == draggingGripId
                 ? BlockEdgeGripInk.dragging

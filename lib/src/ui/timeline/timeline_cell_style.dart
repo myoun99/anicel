@@ -465,16 +465,17 @@ Color storyboardCutBlockBackgroundColor(
   );
 }
 
-/// The effective ground of the strip's PANEL PICTURES (B1 2026-08-17).
+/// The effective ground of the strip's PANEL PICTURES (B1 2026-08-17) —
+/// what writing laid over the pictures reads against.
 ///
-/// While thumbnails are shown, a grip on the storyboard strip sits on a
-/// PICTURE, not on the cut block's plate — and the pictures are composite
-/// renders on the canvas's white paper, so a plate-ground grip resolved to
-/// the light bar and vanished over them (the device report). The picture's
+/// The pictures are composite renders on the canvas's white paper, so
+/// writing that resolved against the plate went light and vanished over
+/// them (the device report, made of the edge grips then). The picture's
 /// true average would cost a pixel readback per rendered thumbnail; the
 /// paper dominates every real board, so the ground is the paper — a
 /// CONSTANT, chosen once, on the light side of the crossover, and the
-/// ground law turns it into the dark bar.
+/// ground law turns it into the dark ink. ↩️The grips no longer ask: they
+/// stand in the plate's corners since 2026-09-25.
 const Color storyboardPanelPictureGroundColor = Color(0xFFFFFFFF);
 
 /// A cut block's border ink. R26 #8: the resting edge follows the lane's
