@@ -80,10 +80,9 @@ void main() {
     session.cutVerbs.createCut();
     await tester.pumpAndSettle();
     final first = session.repository.requireProject().tracks.first.cuts.first;
+    final span = spanAt(first.duration);
     transitionsOf(session).updateTransitionInstructions(
-      SplayTreeMap<int, InstructionEvent>.fromEntries([
-        spanAt(first.duration),
-      ]),
+      SplayTreeMap<int, InstructionEvent>.from({span.key: span.value}),
     );
     session.selectCut(first.id);
     await tester.pumpAndSettle();
@@ -302,6 +301,10 @@ void main() {
             const ValueKey<String>('timeline-orientation-toggle-button'),
           ),
         );
+        // The sheet runs its frames down the screen, and at 900 tall the
+        // mark's tail sat below the window — measured: a press there hit
+        // nothing but the view.
+        await tester.binding.setSurfaceSize(const Size(1400, 1600));
         await tester.pumpAndSettle();
       }
       expect(
@@ -581,7 +584,11 @@ void main() {
       reason: 'the Edit button lights for the mark under the cursor',
     );
 
-    await editActiveInstance(tester.element(transitionRow()), session);
+    // Not awaited: the verb waits on the window it opens.
+    final editing = editActiveInstance(
+      tester.element(transitionRow()),
+      session,
+    );
     await tester.pumpAndSettle();
 
     final dialog = find.byType(InstructionEventDialog);
@@ -593,6 +600,7 @@ void main() {
     );
     Navigator.of(tester.element(dialog)).pop();
     await tester.pumpAndSettle();
+    await editing;
   });
 
   testWidgets('a delete on the mark removes the GLOBAL span it shows — one '

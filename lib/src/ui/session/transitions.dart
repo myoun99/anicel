@@ -228,7 +228,7 @@ class Transitions {
     required int cutStart,
     required int duration,
   }) {
-    final (display, crossing) = _projectOntoCut(
+    final (:display, :crossing, origins: _) = _projectOntoCut(
       _selection.activeTrack.transitionLayer,
       cutStart: cutStart,
       duration: duration,
