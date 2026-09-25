@@ -108,5 +108,14 @@ void main() {
           'the file it is bound to, written in place — a Save As writes it '
           'whole, letting go of the session\'s own handle and taking it back',
     );
-  });
+  },
+    // The other spelling is the same file only where a backslash IS a
+    // separator. On macOS and Linux it is a character of the name, so the
+    // save writes another file and a Save As is the right answer there
+    // (measured: CI on Linux, 4 opens against 3).
+    skip: Platform.isWindows
+        ? false
+        : 'a backslash separates only on Windows — elsewhere it is part of '
+              'the name, and the other spelling is another file',
+  );
 }
