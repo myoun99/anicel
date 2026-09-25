@@ -72,12 +72,14 @@ void main() {
     Cut cut, {
     TimesheetInfo info = info,
     int fps = fps,
+    int pageSeconds = 6,
     AppLanguage language = AppLanguage.ja,
   }) {
     final document = TimesheetDocument.fromCut(
       cut: cut,
       projectName: 'P',
       fps: fps,
+      pageSeconds: pageSeconds,
       info: info,
     );
     return TimesheetDocumentPainter(
@@ -155,6 +157,12 @@ void main() {
       ),
     ),
     'the frame rate changed': form(base, fps: 30),
+    // The same page length, so the rate alone tells the seconds apart.
+    'the frame rate changed, the page as long': form(
+      base,
+      fps: 36,
+      pageSeconds: 4,
+    ),
     'the cut grown past a page': form(base.copyWith(duration: 200)),
     'a header box hidden': form(
       base,
