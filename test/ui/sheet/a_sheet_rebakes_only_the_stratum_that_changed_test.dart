@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet/sheet_strata.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview;
@@ -261,6 +262,38 @@ void main() {
         await rebakes(() => brushAllowed.value = false),
         only({SheetStratum.ink}),
       );
+    });
+
+    testWidgets('${sheet.sheet}: the ink stands down while the pen is down, '
+        'and bakes again after', (tester) async {
+      await mount(tester);
+      brushAllowed.value = true;
+      await tester.pumpAndSettle();
+      StandDownReason ink() => tester
+          .renderObjectList<RenderStaticRaster>(find.byType(StaticRaster))
+          .singleWhere((raster) => raster.debugLabel == '${sheet.sheet}-ink')
+          .standDown;
+      expect(ink(), StandDownReason.none, reason: 'fixture: baking');
+
+      // The top window's middle, where the pen lands on it.
+      final layer = tester.widget<SheetInkLayer>(find.byType(SheetInkLayer));
+      final at =
+          tester.getTopLeft(find.byType(SheetInkLayer)) +
+          layer.windows.last.screenRect(layer.viewport).center;
+      final pen = await tester.startGesture(at, pointer: 7);
+      await tester.pump();
+      await pen.moveTo(at + const Offset(6, 4));
+      await tester.pump();
+      expect(
+        session.brushInputActive.value,
+        isTrue,
+        reason: 'fixture: the pen is down on the sheet\'s ink',
+      );
+      expect(ink(), StandDownReason.disabled);
+
+      await pen.up();
+      await tester.pumpAndSettle();
+      expect(ink(), StandDownReason.none);
     });
 
     testWidgets('${sheet.sheet}: a drag re-records nothing, and the values '
