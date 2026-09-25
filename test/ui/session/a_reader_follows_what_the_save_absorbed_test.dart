@@ -644,7 +644,12 @@ void main() {
       });
 
       expect(told, HeldBytesMove.replacing);
-    }, timeout: const Timeout(Duration(minutes: 1)));
+    },
+      timeout: const Timeout(Duration(minutes: 1)),
+      // The other spelling is the file only where a backslash separates —
+      // elsewhere it is a letter of another file's name (`same_file.dart`).
+      skip: !Platform.isWindows,
+    );
 
     testWidgets('a reader of another file is not asked — its bytes are not '
         'in the one being replaced', (tester) async {

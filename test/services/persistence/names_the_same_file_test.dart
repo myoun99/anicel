@@ -23,14 +23,44 @@ void main() {
 
   String inRoot(String name) => '${root.path}/$name'.replaceAll(r'\', '/');
 
-  test('the separators never tell two files apart', () {
+  /// The pins below spell the held file with backslashes, which names it
+  /// only where a backslash separates.
+  final otherSpellingIsTheFile = Platform.isWindows
+      ? false
+      : 'a backslash separates only on Windows — elsewhere it is part of '
+            'the name, and the other spelling is another file';
+
+  test('a backslash separates where the platform says so, and is a letter '
+      'of the name everywhere else', () {
     expect(
-      namesTheSameFile(r'C:\work\cut 01.anicel', 'C:/work/cut 01.anicel'),
+      namesTheSameFile(
+        r'C:\work\cut 01.anicel',
+        'C:/work/cut 01.anicel',
+        backslashSeparates: true,
+      ),
       isTrue,
+    );
+    expect(
+      namesTheSameFile(
+        r'/work/cut\01.anicel',
+        '/work/cut/01.anicel',
+        backslashSeparates: false,
+      ),
+      isFalse,
+      reason:
+          'on Linux CI the save wrote a file named with backslashes and '
+          'called it the bound file',
     );
     expect(
       namesTheSameFile('C:/work/cut 01.anicel', 'C:/work/cut 02.anicel'),
       isFalse,
+    );
+  });
+
+  test('and the platform is what answers', () {
+    expect(
+      namesTheSameFile(r'C:\work\cut 01.anicel', 'C:/work/cut 01.anicel'),
+      Platform.isWindows,
     );
   });
 
@@ -70,7 +100,7 @@ void main() {
       isFalse,
       reason: '🪦it compared the strings whole, and kept the file open',
     );
-  });
+  }, skip: otherSpellingIsTheFile);
 
   test('and a read in another spelling reads through the handle it has', () {
     final file = inRoot('held.anicel');
@@ -80,7 +110,7 @@ void main() {
 
     expect(held.readAt(file.replaceAll('/', r'\'), 1, 2), [2, 3]);
     expect(OpenProjectFile.debugOpens, opens, reason: 'not opened again');
-  });
+  }, skip: otherSpellingIsTheFile);
 
   test('🚨a save onto the file the session is bound to, spelled otherwise, '
       'is a save — not a Save As', () async {
@@ -113,9 +143,6 @@ void main() {
     // separator. On macOS and Linux it is a character of the name, so the
     // save writes another file and a Save As is the right answer there
     // (measured: CI on Linux, 4 opens against 3).
-    skip: Platform.isWindows
-        ? false
-        : 'a backslash separates only on Windows — elsewhere it is part of '
-              'the name, and the other spelling is another file',
+    skip: otherSpellingIsTheFile,
   );
 }
