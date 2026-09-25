@@ -174,6 +174,10 @@ class RenderCaches {
     timesheetInkPageStore,
   ];
 
+  /// Every store a cel ref can live in — the drawings, then
+  /// [sheetInkStores], the order every writer lists them in.
+  List<BrushFrameStore> get celStores => [brushFrameStore, ...sheetInkStores];
+
   /// The store a sheet-ink [key] lives in — by its namespace and its plane
   /// — or null for a drawing's key.
   BrushFrameStore? sheetInkStoreFor(BrushFrameKey key) {

@@ -324,6 +324,10 @@ class BrushFrameStore {
   // time. See [SessionScratch].
 
   final Map<BrushFrameKey, BitmapSurface> _bakedSurfaces = {};
+
+  /// This store's own prefix in the scratch room — see
+  /// [ScratchCelFiles.newNamespace] for whose cels it keeps apart.
+  final String _scratchNamespace = ScratchCelFiles.newNamespace();
   final Map<BrushFrameKey, AnicelCelFileRef> _coldCels = {};
   final Map<BrushFrameKey, AnicelCelFileRef> _fileCels = {};
   final Map<BrushFrameKey, int> _hotByteEstimates = {};
@@ -576,7 +580,7 @@ class BrushFrameStore {
   /// 30-second hang; a user would have found it as a hot device.
   bool _storeCold(BrushFrameKey key, AnicelCelBlob blob) {
     final name = anicelCelEntryName(key);
-    final path = ScratchCelFiles.write(name, blob.bytes);
+    final path = ScratchCelFiles.write(_scratchNamespace, name, blob.bytes);
     if (path == null) {
       return false;
     }
@@ -733,8 +737,12 @@ class BrushFrameStore {
     // because the product always swaps the four together (project open, and
     // `_resetSessionForImportedProject`). ⛔Nothing rests on that: letting
     // go early costs one re-open on the next sibling's read, which is why
-    // the release is unconditional rather than counted.
-    OpenProjectFile.instance.release();
+    // the release is not counted.
+    //
+    // ↩️It was UNCONDITIONAL — the one handle, whatever it held. With a
+    // project per tab (I-7) that let go of every OTHER tab's file too, so it
+    // lets go of the files THIS store read from and no others.
+    releaseFilesReadFrom();
     _frames.clear();
     clearDisplayCaches();
     _bakedSurfaces.clear();
@@ -828,6 +836,20 @@ class BrushFrameStore {
         _dirtySinceSave.remove(entry.key);
         _editTicks.remove(entry.key);
       }
+    }
+  }
+
+  /// The files this store's clean cels read from — the project file, or a
+  /// copy a save moved them onto.
+  Set<String> get filesReadFrom => {
+    for (final ref in _fileCels.values) ref.filePath,
+  };
+
+  /// Lets go of the held handle on every file in [filesReadFrom] — the
+  /// store's own, and no other open project's (see [OpenProjectFile]).
+  void releaseFilesReadFrom() {
+    for (final path in filesReadFrom) {
+      OpenProjectFile.instance.releaseFor(path);
     }
   }
 

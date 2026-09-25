@@ -105,10 +105,21 @@ class MediaStagingStore {
   ///
   /// ⚠️An injected path is kept as given — a test's folder is not the
   /// run's room and must not summon one.
+  ///
+  /// 🚨★★★And a folder of ITS OWN inside that room ([_namespace]). The room
+  /// is the run's, and a run holds a store per open project (I-7, 유저
+  /// 2026-09-26). A take's pool path is minted from this folder and checked
+  /// only against this store, so two projects recording on a lane of the
+  /// same name both minted `<Staged>/S1_T01.wav` — one file, two owners, and
+  /// a conform cache that names its output by that path.
   String get directoryPath =>
-      _injected ?? defaultDirectory().replaceAll(r'\', '/');
+      _injected ?? '${defaultDirectory().replaceAll(r'\', '/')}/$_namespace';
 
   final String? _injected;
+
+  final String _namespace = 'm${_namespaces++}';
+
+  static int _namespaces = 0;
 
   /// Where [carry]'s staged bytes live, before the framed suffix — which
   /// carries the same meaning it does inside the archive

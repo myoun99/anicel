@@ -78,9 +78,52 @@ void main() {
   /// Windows would refuse the delete, and POSIX would keep the bytes
   /// readable for the save's rescue.
   void takeTheFileAway(String path) {
-    OpenProjectFile.instance.release();
+    OpenProjectFile.instance.releaseAll();
     File(path).deleteSync();
   }
+
+  test('🚨one open project\'s save never retires an archive another open '
+      'project still reads (I-7)', () async {
+    const service = AnicelFileService();
+    // Project A reads its cels from an archive that waits to go — a rescue
+    // copy, a superseded failed copy — until A's refs leave it.
+    final archiveA = '${directory.path}/a-waiting.anicel';
+    final storeA = BrushFrameStore();
+    storeA.storeBakedSurface(key('a', 'f1'), inked(3));
+    await service.save(
+      project: createDefaultProject().copyWith(id: const ProjectId('a')),
+      brushFrameStore: storeA,
+      filePath: archiveA,
+    );
+    AnicelFileService.retireWhenUnread(archiveA, [storeA]);
+    addTearDown(() {
+      // A's refs leave it, so it goes — and the waiting list with it.
+      storeA.restoreFromFile(const {});
+      AnicelFileService.retireWhenUnread(archiveA, [storeA]);
+    });
+    expect(
+      File(archiveA).existsSync(),
+      isTrue,
+      reason: 'premise: A still reads it',
+    );
+
+    // Project B saves its own file.
+    final storeB = BrushFrameStore();
+    storeB.storeBakedSurface(key('b', 'f1'), inked(5));
+    await service.save(
+      project: createDefaultProject().copyWith(id: const ProjectId('b')),
+      brushFrameStore: storeB,
+      filePath: '${directory.path}/b.anicel',
+    );
+
+    expect(
+      File(archiveA).existsSync(),
+      isTrue,
+      reason: 'the waiting list was checked against whoever was SAVING — B '
+          'found nothing of its own reading A\'s archive and deleted it '
+          'under A\'s refs',
+    );
+  });
 
   test('🚨saving after the file was deleted, with a stroke since, must not '
       'throw a raw PathNotFoundException', () async {
@@ -346,8 +389,8 @@ void main() {
     );
 
     expect(
-      OpenProjectFile.instance.heldPath,
-      path,
+      OpenProjectFile.instance.heldPaths,
+      [path],
       reason:
           '⛔a full save lets go of the file to rename onto it; taking it back '
           'only at the next cold read left it unheld until then',
@@ -379,7 +422,7 @@ void main() {
     // What a POSIX delete or move leaves: the name gone, our descriptor
     // still reading the bytes. Windows refuses both while we hold the file,
     // so the test moves it and hands the session that descriptor.
-    OpenProjectFile.instance.release();
+    OpenProjectFile.instance.releaseAll();
     File(path).renameSync(vault);
     OpenProjectFile.instance.debugHoldAs(vault, path);
     // f1 and f3 cool off to the file alone; the newest, f2, stays hot.
@@ -415,7 +458,7 @@ void main() {
       isEmpty,
       reason: 'the rescue copy goes the moment no ref reads from it',
     );
-    expect(OpenProjectFile.instance.heldPath, path);
+    expect(OpenProjectFile.instance.heldPaths, [path]);
   });
 
   test('🚨with the descriptor gone too, a picture still in RAM is written '

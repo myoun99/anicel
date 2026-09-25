@@ -26,9 +26,15 @@ import '../theme/app_theme.dart' show AppColors;
 import '../../models/app_workspace_colors.dart';
 import '../ui_scale.dart';
 
-/// The APP-level settings an editor session restores once at construction and
-/// persists on every set: language, accents, workspace colors, input, save and
-/// the A/V offset.
+/// The APP-level settings, restored once and persisted on every set:
+/// language, accents, workspace colors, input, save, the A/V offset and the
+/// onion skin's pegs.
+///
+/// 🚨ONE per app, shared by every open project (I-7, 유저 2026-09-26: 여러
+/// 프로젝트를 탭으로). The shell builds it, restores it once and hands it to
+/// each session; a restore per session would re-read every file and write
+/// the app-wide values back over a change whose save had not landed yet.
+/// A session built without one — a test — makes its own, unpersisted.
 ///
 /// The LIVE values do not live here. They sit on the app-wide notifiers
 /// ([AppText.settings], [AppColors.accentSettings],
@@ -110,47 +116,34 @@ class EditorAppSettings {
   /// Injectable persistence; null (tests) keeps the in-memory defaults.
   final AppOnionSkinSettingsStore? _onionSkinSettingsStore;
 
-  /// The live value, handed over by the session.
+  /// The LIVE peg settings, one value for every open project.
   ///
-  /// ⚠️SET IN THE SESSION'S CONSTRUCTOR BODY, not passed in: `OnionSkin` is
-  /// `late final` on the session and this object is built in that same
-  /// initializer list, where `this` cannot be reached at all. Null until
-  /// then, and null forever in a host that has no onion skin — both of
-  /// which the two methods below simply stand down for.
-  ValueNotifier<OnionSkinSettings>? _onionSkinSettings;
-
-  /// Hands the live notifier over. ⛔Before [restore], or the restore has
-  /// nothing to write into.
-  void attachOnionSkin(ValueNotifier<OnionSkinSettings> live) {
-    _onionSkinSettings = live;
-  }
-
   /// 🚨★★★F-150 (유저 2026-09-16): 「어니언 패널에서 세팅한 값이 **세션으로서
   /// 저장안됨. 세션이라기보다 유저설정?**」 — so it restores and persists here,
   /// beside the accents, through the same [_publish] the other seven use.
   ///
-  /// ⛔**WHO OWNS THE LIVE VALUE DID NOT CHANGE.** `OnionSkin` still holds it
-  /// because it is the object that PLANS with it (ARCH-session-state's first
-  /// family, 2026-09-16 — the decision is written at the field). Moving it
-  /// here to persist it would have traded one law for another.
+  /// ↩️The live value used to stay on `OnionSkin`, the object that plans with
+  /// it (ARCH-session-state's first family, 2026-09-16), and was handed over
+  /// here to persist. That held while one session ran per app. With a
+  /// session per open project (I-7, 유저 2026-09-26) a user setting kept per
+  /// session is one copy per tab, and the last one saved wins the file — so
+  /// the value lives here, once, and `OnionSkin` plans with THIS notifier.
+  /// The layer set it ghosts is the project's and stayed there.
+  final ValueNotifier<OnionSkinSettings> onionSkinSettings =
+      ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
+
   Future<void> _restoreOnionSkinSettings() async {
-    final live = _onionSkinSettings;
-    if (live == null) {
-      return;
-    }
     final restored = await _onionSkinSettingsStore?.load();
     if (restored != null) {
-      live.value = restored;
+      onionSkinSettings.value = restored;
     }
   }
 
-  void setOnionSkinSettings(OnionSkinSettings settings) {
-    final live = _onionSkinSettings;
-    if (live == null) {
-      return;
-    }
-    _publish(live, settings, _onionSkinSettingsStore?.save);
-  }
+  void setOnionSkinSettings(OnionSkinSettings settings) => _publish(
+    onionSkinSettings,
+    settings,
+    _onionSkinSettingsStore?.save,
+  );
   // --- UI scale (R11) -------------------------------------------------------
 
   /// Injectable persistence; null (tests) keeps the in-memory default.
@@ -369,9 +362,10 @@ class EditorAppSettings {
       _publish(audioSyncSettings, settings, _audioSyncSettingsStore?.save);
 
   /// [languageSettings] is NOT disposed here: it lives on [AppText],
-  /// app-wide, and outlives this session (as the accent settings do). The
-  /// A/V offset is this object's own, so it goes.
+  /// app-wide, and outlives this object (as the accent settings do). The
+  /// A/V offset and the peg settings are this object's own, so they go.
   void dispose() {
     audioSyncSettings.dispose();
+    onionSkinSettings.dispose();
   }
 }

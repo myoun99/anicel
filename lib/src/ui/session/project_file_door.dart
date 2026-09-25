@@ -433,10 +433,7 @@ class ProjectFileDoor {
   }
 
   /// Every store a cel ref can live in.
-  List<BrushFrameStore> get _stores => [
-    _renderCaches.brushFrameStore,
-    ..._auxCelStores,
-  ];
+  List<BrushFrameStore> get _stores => _renderCaches.celStores;
 
   /// Writes the CURRENT state to [path] as a complete, standalone archive
   /// and changes NOTHING about this session — no path adoption, no ref
@@ -935,6 +932,14 @@ class ProjectFileDoor {
     );
     for (final store in _renderCaches.sheetInkStores) {
       store.restoreFromFile(cels.ink[store] ?? const {});
+    }
+    // The file this session was bound to is not its any more. The process
+    // holds a file per open project now (I-7), so reading the new one no
+    // longer lets the old one go by itself — this is the session that
+    // held it, so this is where it goes.
+    final previous = _file.path;
+    if (previous != null && !namesTheSameFile(previous, filePath)) {
+      OpenProjectFile.instance.releaseFor(previous);
     }
     // Held from now on, not from the first cel read — see
     // [OpenProjectFile.hold] for the gap that left.

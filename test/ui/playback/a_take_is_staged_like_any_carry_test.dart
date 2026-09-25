@@ -86,14 +86,16 @@ void main() {
     );
   }
 
-  /// Every file the staging room holds, by name.
+  /// Every file the staging room holds, by name — each open project's
+  /// store keeps its own folder in it (I-7), so the walk goes down into
+  /// them.
   List<String> stagedNames() {
     final room = Directory(SessionScratch.stagedFolder());
     if (!room.existsSync()) {
       return const [];
     }
     return [
-      for (final entity in room.listSync())
+      for (final entity in room.listSync(recursive: true))
         if (entity is File) entity.path.replaceAll(r'\', '/').split('/').last,
     ];
   }
@@ -116,8 +118,14 @@ void main() {
     final clip = manager.activeTrack.seLayers.first.audioClips.single;
     expect(
       clip.filePath,
-      '${SessionScratch.stagedFolder()}/${lane.name}_T01.wav',
-      reason: 'the pool path is the take\'s address inside the run\'s room',
+      '${manager.mediaStagingStore.directoryPath}/${lane.name}_T01.wav',
+      reason: 'the pool path is the take\'s address in its project\'s own '
+          'folder of the run\'s room',
+    );
+    expect(
+      clip.filePath,
+      startsWith('${SessionScratch.stagedFolder().replaceAll(r'\', '/')}/'),
+      reason: 'inside the run\'s room',
     );
     expect(
       manager.mediaPool.mediaAssets.single.path,
@@ -140,6 +148,39 @@ void main() {
       manager.projectFile.projectHoldsMediaBytes(clip.filePath),
       isTrue,
       reason: 'and the project holds them from the moment the take lands',
+    );
+  });
+
+  test('🚨 two open projects recording on a lane of the same name make two '
+      'takes, not one file with two owners (I-7)', () async {
+    final a = session();
+    final b = session();
+    addTearDown(a.dispose);
+    addTearDown(b.dispose);
+    Future<String> recordOn(EditorSessionManager project) async {
+      final lane = project.activeTrack.seLayers.first;
+      await project.voiceRecording.placeVoiceRecording(
+        takeOfSeconds(1.0),
+        laneId: lane.id,
+        anchorFrame: 0,
+      );
+      return project.activeTrack.seLayers.first.audioClips.single.filePath;
+    }
+
+    final inA = await recordOn(a);
+    final inB = await recordOn(b);
+
+    expect(
+      inA.split('/').last,
+      inB.split('/').last,
+      reason: 'premise: the same take name on both lanes',
+    );
+    expect(
+      inA,
+      isNot(inB),
+      reason: 'the free-name walk asks only its own store, so a room shared '
+          'by every open project handed both the same address — and the '
+          'conform cache names its output by it',
     );
   });
 

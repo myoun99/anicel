@@ -20,7 +20,11 @@ void main() {
   test('an undo payload lands in the VOLATILE room, a cel in the staged '
       'one — the save deletes one and must not reach the other', () {
     final undo = VolatileScratchFiles.write(bytes(16));
-    final cel = ScratchCelFiles.write('cels/abc.celz', bytes(16));
+    final cel = ScratchCelFiles.write(
+      ScratchCelFiles.newNamespace(),
+      'cels/abc.celz',
+      bytes(16),
+    );
 
     expect(undo, isNotNull);
     expect(cel, isNotNull);

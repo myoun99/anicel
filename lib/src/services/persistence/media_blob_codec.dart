@@ -101,6 +101,7 @@
 library;
 
 import 'dart:io';
+import 'dart:math' show Random;
 import 'dart:typed_data';
 
 import '../../native/qa_cel_compressor.dart';
@@ -276,7 +277,15 @@ class MediaBlobHeader {
   // ⛔Written to a neighbour and renamed, and here that is not only about
   // torn files: framedness is not known until the last block, so the bytes
   // have to be somewhere nameless while it is still being decided.
-  final part = File('$basePath.part');
+  //
+  // 🚨The neighbour is THIS write's alone. Two open projects conforming one
+  // source (I-7, 유저 2026-09-26) build the same conform at the same time,
+  // from isolates whose statics do not see each other — a shared `.part`
+  // let each truncate the other's half-written bytes.
+  final part = File(
+    '$basePath.${DateTime.now().microsecondsSinceEpoch}-'
+    '${_partNames.nextInt(1 << 32)}.part',
+  );
   part.parent.createSync(recursive: true);
   final out = part.openSync(mode: FileMode.write);
   bool framed;
@@ -297,9 +306,20 @@ class MediaBlobHeader {
   if (existing.existsSync()) {
     existing.deleteSync();
   }
-  part.renameSync(path);
+  try {
+    part.renameSync(path);
+  } on FileSystemException {
+    // The other writer of the same blob renamed between the delete and
+    // this rename: what stands there is this file's twin, whole.
+    if (!File(path).existsSync()) {
+      rethrow;
+    }
+    part.deleteSync();
+  }
   return (path: path, framed: framed);
 }
+
+final Random _partNames = Random();
 
 /// [writeMediaBlob]'s [readInto] over bytes that are already in memory.
 ///

@@ -68,6 +68,7 @@ import 'text/app_strings.dart';
 import 'canvas/flip_hud_controller.dart' show FlipHudController;
 import 'layout/device_grid.dart';
 import 'layout/device_grid_safe_area.dart';
+import 'session/editor_app_settings.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'widgets/cursor_notice.dart';
@@ -125,6 +126,29 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late final EditorSessionManager _session;
+
+  /// The app's settings — ONE for every open project, restored once here
+  /// (I-7; see [EditorAppSettings]). FLUTTER_TEST keeps widget tests off the
+  /// developer's saved files.
+  late final EditorAppSettings _appSettings = EditorAppSettings(
+    // Language + accent settings persist app-side (UI-R10 #7 / UI-R22 #5).
+    languageSettingsStore:
+        widget.languageSettingsStore ??
+        _unlessTesting(AppLanguageSettingsStore.new),
+    accentSettingsStore: _unlessTesting(AppAccentSettingsStore.new),
+    inputSettingsStore: _unlessTesting(AppInputSettingsStore.new),
+    saveSettingsStore: _unlessTesting(AppSaveSettingsStore.new),
+    memorySettingsStore: _unlessTesting(AppMemorySettingsStore.new),
+    audioSyncSettingsStore: _unlessTesting(AudioSyncSettingsStore.new),
+    // R28 #9: the pasteboard color, on the accents' app-state idiom.
+    workspaceColorsStore: _unlessTesting(AppWorkspaceColorsStore.new),
+    // R11: the UI scale's WRITE half only — it is RESTORED in `main()`
+    // before the first frame, because a late restore would lay the window
+    // out at 100% and then jump.
+    uiScaleStore: _unlessTesting(AppUiScaleStore.new),
+    onionSkinSettingsStore: _unlessTesting(AppOnionSkinSettingsStore.new),
+    frameGridSettingsStore: _unlessTesting(AppFrameGridSettingsStore.new),
+  )..restore();
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();
 
@@ -308,26 +332,8 @@ class _HomePageState extends State<HomePage> {
         );
     _session = EditorSessionManager(
       initialProject: project,
+      appSettings: _appSettings,
       frameworkImageCache: PaintingBinding.instance.imageCache,
-      // Language + accent settings persist app-side (UI-R10 #7 /
-      // UI-R22 #5); FLUTTER_TEST keeps widget tests off the developer's
-      // saved files.
-      languageSettingsStore:
-          widget.languageSettingsStore ??
-          _unlessTesting(AppLanguageSettingsStore.new),
-      accentSettingsStore: _unlessTesting(AppAccentSettingsStore.new),
-      inputSettingsStore: _unlessTesting(AppInputSettingsStore.new),
-      saveSettingsStore: _unlessTesting(AppSaveSettingsStore.new),
-      memorySettingsStore: _unlessTesting(AppMemorySettingsStore.new),
-      audioSyncSettingsStore: _unlessTesting(AudioSyncSettingsStore.new),
-      // R28 #9: the pasteboard color, on the accents' app-state idiom.
-      workspaceColorsStore: _unlessTesting(AppWorkspaceColorsStore.new),
-      // R11: the UI scale's WRITE half only — it is RESTORED in `main()`
-      // before the first frame, because a late restore would lay the
-      // window out at 100% and then jump.
-      uiScaleStore: _unlessTesting(AppUiScaleStore.new),
-      onionSkinSettingsStore: _unlessTesting(AppOnionSkinSettingsStore.new),
-      frameGridSettingsStore: _unlessTesting(AppFrameGridSettingsStore.new),
     );
     // The census cannot reach this State; the session can be reached — the
     // same push the workspace makes for the cut piece.
@@ -520,6 +526,7 @@ class _HomePageState extends State<HomePage> {
     _autosaveClock.dispose();
     _lifecycle?.dispose();
     _session.dispose();
+    _appSettings.dispose();
     _panelsMenu.dispose();
     _brushTool.dispose();
     _transformOptions.dispose();

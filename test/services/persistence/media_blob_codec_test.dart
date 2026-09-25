@@ -198,6 +198,44 @@ void main() {
     /// existing test moved: the property that changed is how much is held
     /// at once, and the only handle a test has on it is the size of the
     /// reads the writer asks for.
+    test('🚨 a write\'s neighbour is its own — a `.part` another writer holds '
+        'at the same name is not touched (I-7)', () {
+      final directory = Directory.systemTemp.createTempSync('anicel-part-');
+      try {
+        final base = '${directory.path}/take.wav';
+        // What a second open project's build of the same conform is
+        // writing while this one runs.
+        final theirs = File('$base.part')..writeAsBytesSync([1, 2, 3]);
+        final bytes = Uint8List.fromList(
+          List<int>.generate(1000, (i) => i & 0xFF),
+        );
+
+        final written = writeMediaBlob(
+          basePath: base,
+          length: bytes.length,
+          readInto: mediaBytesReader(bytes),
+        );
+
+        expect(
+          theirs.readAsBytesSync(),
+          [1, 2, 3],
+          reason: 'a shared neighbour is truncated by whichever write opens '
+              'it second',
+        );
+        expect(File(written.path).existsSync(), isTrue);
+        expect(
+          [
+            for (final entity in directory.listSync())
+              if (entity.path.endsWith('.part')) entity.path,
+          ],
+          hasLength(1),
+          reason: 'and this write left no neighbour of its own behind',
+        );
+      } finally {
+        deleteTempQuietly(directory);
+      }
+    });
+
     test('🚨 no read is larger than one block, whatever the asset weighs', () {
       if (!engineHere()) {
         markTestSkipped('no engine on this run');

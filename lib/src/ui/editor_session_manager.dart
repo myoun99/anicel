@@ -6,23 +6,11 @@ import 'package:flutter/foundation.dart';
 
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
+import '../services/persistence/open_project_file.dart';
 import '../services/project_lookup.dart' show cutPositionOf;
 import '../models/app_language.dart';
-// The six settings stores are injected THROUGH this class into
-// [EditorAppSettings], so their types stay in this file's constructor
-// signature even though nothing here reads them.
-import '../services/persistence/app_language_settings_store.dart';
-import '../services/persistence/app_accent_settings_store.dart';
-import '../services/persistence/app_frame_grid_settings_store.dart';
-import '../services/persistence/app_onion_skin_settings_store.dart';
-import '../services/persistence/app_ui_scale_store.dart';
-import '../services/persistence/app_workspace_colors_store.dart';
-import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
-import '../services/persistence/app_save_settings_store.dart';
-import '../services/persistence/app_memory_settings_store.dart';
 import '../services/persistence/app_memory_settings.dart';
-import '../services/persistence/audio_sync_settings_store.dart';
 import 'brush/brush_tool_state.dart' show CanvasTool;
 import '../models/app_input_settings.dart';
 import 'session/drags/media_placement_drag.dart';
@@ -185,38 +173,17 @@ class EditorSessionManager extends ChangeNotifier
         SessionInternals {
   EditorSessionManager({
     required Project initialProject,
+    EditorAppSettings? appSettings,
     AudioConformStore? audioConformStore,
     MediaStagingStore? mediaStagingStore,
-    AppLanguageSettingsStore? languageSettingsStore,
-    AppAccentSettingsStore? accentSettingsStore,
-    AppInputSettingsStore? inputSettingsStore,
-    AppSaveSettingsStore? saveSettingsStore,
-    AppMemorySettingsStore? memorySettingsStore,
-    AudioSyncSettingsStore? audioSyncSettingsStore,
-    AppWorkspaceColorsStore? workspaceColorsStore,
-    AppUiScaleStore? uiScaleStore,
-    AppOnionSkinSettingsStore? onionSkinSettingsStore,
-    AppFrameGridSettingsStore? frameGridSettingsStore,
     ImageCache? frameworkImageCache,
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _injectedMediaStagingStore = mediaStagingStore,
        _frameworkImageCache = frameworkImageCache,
-       appSettings = EditorAppSettings(
-         languageSettingsStore: languageSettingsStore,
-         accentSettingsStore: accentSettingsStore,
-         workspaceColorsStore: workspaceColorsStore,
-         inputSettingsStore: inputSettingsStore,
-         saveSettingsStore: saveSettingsStore,
-         memorySettingsStore: memorySettingsStore,
-         audioSyncSettingsStore: audioSyncSettingsStore,
-         uiScaleStore: uiScaleStore,
-         onionSkinSettingsStore: onionSkinSettingsStore,
-         frameGridSettingsStore: frameGridSettingsStore,
-       ),
+       _ownsAppSettings = appSettings == null,
+       appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
-    appSettings.attachOnionSkin(onionSkin.settings);
-    appSettings.restore();
     historyManager = HistoryManager()..places.placeNow = () => standingPlace;
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
@@ -277,6 +244,11 @@ class EditorSessionManager extends ChangeNotifier
   /// Everything below is this session's unchanged face on it.
   @override
   final EditorAppSettings appSettings;
+
+  /// Whether [appSettings] is this session's own to let go of: the app's
+  /// one is shared by every open project and released by the shell that
+  /// made it (I-7); a session built without one made it for itself.
+  final bool _ownsAppSettings;
 
   /// The program + notation languages — a value-only channel (widgets
   /// subscribe where they read strings; no whole-session notify).
@@ -410,10 +382,10 @@ class EditorSessionManager extends ChangeNotifier
   /// re-run their budget against the shrunken world. Standing down is
   /// lossless by construction — cels encode to cold, dirty ones stay.
   void respondToMemoryPressure() {
-    renderCaches.brushFrameStore.respondToMemoryPressure();
-    // ⚠️And the sheet-ink stores — cel stores like the drawings', and
-    // until 2026-09-11 they never heard the warning.
-    for (final store in renderCaches.sheetInkStores) {
+    // ⚠️EVERY cel store — the sheet-ink stores are cel stores like the
+    // drawings', and until 2026-09-11 they never heard the warning, so this
+    // walks the one list rather than naming them.
+    for (final store in renderCaches.celStores) {
       store.respondToMemoryPressure();
     }
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
@@ -1236,6 +1208,21 @@ class EditorSessionManager extends ChangeNotifier
     super.dispose();
   }
 
+  /// A project closing lets go of every file it holds: the one it is bound
+  /// to — held by the save or the open, cels or none — and whatever its
+  /// clean cels read from (a copy a save moved them onto). The process holds
+  /// a file per open project (I-7), and a tab that closed has no reason to
+  /// keep its file undeletable.
+  void _letGoOfTheFilesItHolds() {
+    final files = {
+      ?projectFile.path,
+      for (final store in renderCaches.celStores) ...store.filesReadFrom,
+    };
+    for (final path in files) {
+      OpenProjectFile.instance.releaseFor(path);
+    }
+  }
+
   /// Everything the constructor wired up or opened, in the order it must be
   /// let go of — one list this class HOLDS, rather than a teardown it
   /// spells out step by step.
@@ -1288,7 +1275,11 @@ class EditorSessionManager extends ChangeNotifier
     playbackRig.dispose,
     renderCaches.dispose,
     audioConformStore.dispose,
-    appSettings.dispose,
+    () {
+      if (_ownsAppSettings) {
+        appSettings.dispose();
+      }
+    },
     visibilitySolo.dispose,
     editingFrameCursor.dispose,
     frameScrub.dispose,
@@ -1305,6 +1296,7 @@ class EditorSessionManager extends ChangeNotifier
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
     standing.dispose,
+    _letGoOfTheFilesItHolds,
     historyManager.dispose,
   ];
 
@@ -3339,6 +3331,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/onion_skin.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
   late final OnionSkin onionSkin = OnionSkin(
+    settings: appSettings.onionSkinSettings,
     project: this,
     selection: this,
     changes: this,

@@ -210,7 +210,7 @@ void main() {
 
     // The file the drawn cel now lives in goes away: the next copy cannot
     // carry it.
-    OpenProjectFile.instance.release();
+    OpenProjectFile.instance.releaseAll();
     File(original).deleteSync();
     await s.projectDoor.writeArchiveCopy(
       '$base/copy2.anicel',

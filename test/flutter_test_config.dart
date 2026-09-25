@@ -146,7 +146,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // `setUp`, before the body — is last again. That shape needs the release
   // in the same callback: `deleteAfterSessionEnds` in
   // `test/helpers/project_scratch_folder.dart`.
-  setUp(() => addTearDown(OpenProjectFile.instance.release));
+  setUp(() => addTearDown(OpenProjectFile.instance.releaseAll));
   try {
     await testMain();
   } finally {

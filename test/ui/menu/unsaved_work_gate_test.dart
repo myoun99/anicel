@@ -232,7 +232,7 @@ void main() {
       // incremental append and the full rewrite's rename alike — refuses.
       // The session holds the file it saved; only a descriptor that died
       // with it would let the path change under us like this.
-      OpenProjectFile.instance.release();
+      OpenProjectFile.instance.releaseAll();
       File(path).deleteSync();
       Directory(path).createSync();
     });
@@ -334,7 +334,7 @@ void main() {
     // What a POSIX delete leaves: the name gone, the session's descriptor
     // still reading the bytes. Windows refuses to delete a file the session
     // holds, so the test moves it and hands the session that descriptor.
-    OpenProjectFile.instance.release();
+    OpenProjectFile.instance.releaseAll();
     File(path).renameSync('$path.moved');
     OpenProjectFile.instance.debugHoldAs('$path.moved', path);
     expect(fixture.session.projectFile.hasVanished(), isTrue);
