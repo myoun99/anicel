@@ -131,9 +131,17 @@ class ConteSheetMetrics {
     topBandHeight,
   );
 
-  /// The page's running total, under the table's right end.
-  Rect get pageTotalSlot =>
-      Rect.fromLTRB(timeLeft - 40, bodyBottom + 4, bodyRight, bodyBottom + 20);
+  /// The page's running total, under the time column and centred on it
+  /// like the lengths above it (유저 2026-09-25: 「컷 길이도 블록길이나
+  /// 컷길이나 페이지 총 길이나 동일하게 좌우 중앙정렬」) — the slot runs
+  /// past the column on both sides alike, so a total wider than the column
+  /// still centres on it.
+  Rect get pageTotalSlot => Rect.fromLTRB(
+    timeLeft - 20,
+    bodyBottom + 4,
+    bodyRight + 20,
+    bodyBottom + 20,
+  );
 }
 
 /// One cell placed on a page.

@@ -258,6 +258,23 @@ void main() {
         reason: 'a length is one word — broken, 「3+1」 over 「2」 sat on '
             'the block length above it',
       );
+      // 유저 2026-09-25: 「컷 번호 … 중앙정렬하자. 컷 길이도 블록길이나
+      // 컷길이나 페이지 총 길이나 동일하게 좌우 중앙정렬」.
+      final total = words.firstWhere((word) => word.slot == m.pageTotalSlot);
+      final names = words.where(
+        (word) =>
+            word.layer == SheetPaintLayer.content &&
+            word.slot.right <= m.cutColumnRight + 0.001,
+      );
+      expect(names.map((word) => word.text), ['A', 'B']);
+      for (final number in [...inTimeColumn(), ...names, total]) {
+        expect(number.h, SheetAlign.center, reason: number.text);
+      }
+      expect(
+        total.slot.center.dx,
+        closeTo((m.timeLeft + m.bodyRight) / 2, 1e-9),
+        reason: 'the page total centres on the time column',
+      );
       for (final block in a.take(3)) {
         expect(block.bold, isFalse);
         expect(block.size, lessThan(a.last.size));

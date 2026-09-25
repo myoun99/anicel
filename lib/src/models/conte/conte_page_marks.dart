@@ -310,6 +310,7 @@ Iterable<SheetMark> _content(
         size: 9,
         argb: _ink,
         bold: true,
+        h: SheetAlign.center,
         fit: SheetWordsFit.oneLine,
       );
     }
@@ -326,7 +327,7 @@ Iterable<SheetMark> _content(
     size: 9,
     argb: _ink,
     bold: true,
-    h: SheetAlign.end,
+    h: SheetAlign.center,
     fit: SheetWordsFit.oneLine,
   );
 }
@@ -449,7 +450,7 @@ Iterable<SheetMark> _times(
             : slot,
         size: 7,
         argb: _blockLength,
-        h: SheetAlign.end,
+        h: SheetAlign.center,
         v: SheetAlign.end,
         fit: SheetWordsFit.oneLine,
       );
@@ -462,7 +463,7 @@ Iterable<SheetMark> _times(
         size: 9,
         argb: _ink,
         bold: true,
-        h: SheetAlign.end,
+        h: SheetAlign.center,
         v: SheetAlign.end,
         fit: SheetWordsFit.oneLine,
       );
