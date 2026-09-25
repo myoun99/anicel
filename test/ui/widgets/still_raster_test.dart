@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/onion_skin_settings.dart';
@@ -185,13 +186,84 @@ final _layerChanges = <String, Widget Function(bool changed)>{
     ).createShader(bounds),
     child: _box(),
   ),
-  'a leader moved inside the region': (changed) => Padding(
-    padding: EdgeInsets.only(left: changed ? 100 : 0),
-    child: CompositedTransformTarget(link: _link, child: _box()),
+  // The box keeps its size, so its picture is kept too and only where the
+  // leader sits says anything moved.
+  'a leader moved inside the region': (changed) => Stack(
+    children: <Widget>[
+      Positioned(
+        left: changed ? 120 : 10,
+        top: 10,
+        width: 60,
+        height: 60,
+        child: CompositedTransformTarget(link: _link, child: _box()),
+      ),
+    ],
   ),
+  'a picture swapped inside a kept layer': (changed) =>
+      _KeptPictureLayer(color: changed ? _blue : _red),
 };
 
 final _link = LayerLink();
+
+/// Paints by handing the SAME picture layer a new picture every time —
+/// what `PaintingContext.addLayer` allows, and the one change where no
+/// layer is new and only the picture says anything happened.
+class _KeptPictureLayer extends LeafRenderObjectWidget {
+  const _KeptPictureLayer({required this.color});
+
+  final Color color;
+
+  @override
+  _RenderKeptPictureLayer createRenderObject(BuildContext context) =>
+      _RenderKeptPictureLayer(color);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderKeptPictureLayer renderObject,
+  ) {
+    renderObject.color = color;
+  }
+}
+
+class _RenderKeptPictureLayer extends RenderBox {
+  _RenderKeptPictureLayer(this._color);
+
+  Color _color;
+  set color(Color value) {
+    if (value == _color) {
+      return;
+    }
+    _color = value;
+    markNeedsPaint();
+  }
+
+  final LayerHandle<PictureLayer> _kept = LayerHandle<PictureLayer>();
+
+  @override
+  bool get isRepaintBoundary => true;
+
+  @override
+  bool get sizedByParent => true;
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) => constraints.biggest;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawRect(offset & size, Paint()..color = _color);
+    final layer = _kept.layer ??= PictureLayer(offset & size);
+    layer.picture = recorder.endRecording();
+    context.addLayer(layer);
+  }
+
+  @override
+  void dispose() {
+    _kept.layer = null;
+    super.dispose();
+  }
+}
 
 void main() {
   setUpAll(() {

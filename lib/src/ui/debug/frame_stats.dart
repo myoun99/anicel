@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../widgets/static_raster.dart';
+import '../widgets/still_raster.dart';
 import 'measurement_mode.dart';
 
 /// One publication of the frame clock: percentiles over a rolling window,
@@ -135,8 +136,8 @@ class FrameStatsSnapshot {
   final double windowPhysicalHeight;
 
   /// What OUR baked panels cost, which the engine's counters above will
-  /// never show — a `StaticRaster` image is an ordinary `ui.Image` the
-  /// app holds, not a cache entry.
+  /// never show — a `StaticRaster` bake and a `StillRaster` region's still
+  /// image are ordinary `ui.Image`s the app holds, not cache entries.
   ///
   /// Qt warns about exactly our usage for the identical mechanism
   /// (`layer.enabled`: `w × h × 4` per layer, batching lost, "a scene
@@ -382,7 +383,12 @@ abstract final class FrameStats {
     // readings. Both ends come from frame timestamps, the same epoch the
     // fps figure uses, so bakes/s approaching fps still means a surface
     // is re-baking on the pointer instead of on a change.
-    final captures = StaticRaster.censusCaptures;
+    //
+    // A dock region's still image is a bake too (2026-09-25): on Impeller
+    // it is the only kind there is, so leaving it out would read 0/s on
+    // exactly the engine the regions work on.
+    final captures = StaticRaster.censusCaptures + StillRaster.censusCaptures;
+    final bakedBytes = StaticRaster.censusBytes + StillRaster.censusBytes;
     final previousTotal = _lastCaptureTotal;
     final previousVsync = _lastCaptureVsync;
     _lastCaptureTotal = captures;
@@ -413,8 +419,8 @@ abstract final class FrameStats {
       devicePixelRatio: _devicePixelRatio(),
       windowPhysicalWidth: _viewPhysicalSize().width,
       windowPhysicalHeight: _viewPhysicalSize().height,
-      bakedSurfaces: StaticRaster.census.length,
-      bakedMegabytes: StaticRaster.censusBytes / 1024.0 / 1024.0,
+      bakedSurfaces: StaticRaster.census.length + StillRaster.census.length,
+      bakedMegabytes: bakedBytes / 1024.0 / 1024.0,
       bakesPerSecond: bakesPerSecond,
       blockedSurfaces: StaticRaster.censusAvoidableCost.$1,
       blockedArea: StaticRaster.censusAvoidableCost.$2,
