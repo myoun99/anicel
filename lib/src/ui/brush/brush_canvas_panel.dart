@@ -1935,16 +1935,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The lift (Round 6): anchors, the pre-landing surface, and how a lift ends.
   late final _CanvasPanelLift _lift = _CanvasPanelLift(this);
 
-  /// R16-① bitmap lift: commits [shape]'s ERASE — RAW, outside app
-  /// history (the origin must vanish instantly, but nothing is undoable
-  /// until the session CONFIRMS) — and returns a session token plus the
-  /// lifted stamp dab, which floats until the confirm. Null when the
   /// R26 #13 follow-up: the active cel's tight ink bounds — the implicit
   /// whole-picture transform box frames exactly the picture, PS-style.
   /// Null (no coordinator, or a blank cel) falls back to the canvas rect
   /// inside the selection layer.
+  ///
+  /// 🚨ON THE CANVAS, where the row shows its ink (a-marquee-on-a-posed-row):
+  /// the box is drawn around what the user SEES, and a posed row's ink sits
+  /// somewhere else in its own artwork.
   ({int left, int top, int rightExclusive, int bottomExclusive})?
-  _activeCelContentBounds() {
+  _activeCelContentBounds() =>
+      _whereTheRowShows(_activeCelContentBoundsInArtwork());
+
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  _activeCelContentBoundsInArtwork() {
     final coordinator = widget._editableCoordinator;
     if (coordinator == null) {
       return null;
@@ -1966,6 +1970,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _contentBoundsSurface = surface;
     _contentBoundsCached = bounds;
     return bounds;
+  }
+
+  /// [bounds] — the active row's ink in its own artwork — as the canvas
+  /// shows it: the box around the four corners the row's placement carries
+  /// them to. An unplaced row's come back as they are.
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  _whereTheRowShows(
+    ({int left, int top, int rightExclusive, int bottomExclusive})? bounds,
+  ) {
+    final placement = widget.interactiveContentPose;
+    if (bounds == null || placement == null) {
+      return bounds;
+    }
+    final onCanvas = artworkToCanvas(placement, widget.canvasSize);
+    final corners = [
+      for (final x in [bounds.left, bounds.rightExclusive])
+        for (final y in [bounds.top, bounds.bottomExclusive])
+          onCanvas.apply(CanvasPoint(x: x.toDouble(), y: y.toDouble())),
+    ];
+    final xs = [for (final corner in corners) corner.x];
+    final ys = [for (final corner in corners) corner.y];
+    return (
+      left: xs.reduce(math.min).floor(),
+      top: ys.reduce(math.min).floor(),
+      rightExclusive: xs.reduce(math.max).ceil(),
+      bottomExclusive: ys.reduce(math.max).ceil(),
+    );
   }
 
   /// A finished cut outline: lift the pixels under it into the slot.

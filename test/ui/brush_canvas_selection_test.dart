@@ -1009,6 +1009,43 @@ void main() {
       expect(inkAt(env.coordinator, 65, 50), isNonZero);
       expect(inkAt(env.coordinator, 30, 30), 0);
     });
+
+    // With NO selection the move tool's box frames the whole picture
+    // (R26 #13) — the picture the canvas SHOWS, which on a posed row is
+    // not where its ink sits in the artwork.
+    testWidgets('with no selection, the box frames the picture where the '
+        'row shows it', (tester) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+      expect(env.commands.hasSelection, isFalse);
+
+      // The unposed pin's grab point, where the row shows it.
+      await moveAtZoom(
+        tester,
+        zoom: 3,
+        grabCanvas: const Offset(136.5, 36.5),
+        byCanvas: const Offset(10, 5),
+      );
+      expect(
+        env.commands.movePending,
+        isTrue,
+        reason: 'the press on the picture opened the whole-picture session',
+      );
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      expect(inkAt(env.coordinator, 40, 35), isNonZero, reason: '+10,+5');
+      expect(inkAt(env.coordinator, 30, 30), 0);
+    });
   });
 
   /// 🚨★★★**F-164 — 유저 2026-09-18 실기**: 「변형중에 다른프레임가면 변형
