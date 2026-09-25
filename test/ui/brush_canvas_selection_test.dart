@@ -1075,6 +1075,41 @@ void main() {
       );
       expect(inkAt(env.coordinator, 170, 70), 0);
     });
+
+    // The COMMIT's clip, for what reaches it with no live raster to have
+    // been pre-blended through — a shape fill is one (R26 #18: 「선택하고
+    // 그리면 선택 내부만 그려진다」, whatever drew it).
+    testWidgets('a shape fill inside the selection the user sees lands, and '
+        'is clipped to it', (tester) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.fillShape,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+      // The canvas 150..180 × 50..100 — artwork 50..80 on this row.
+      env.commands.setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 150, top: 50, right: 180, bottom: 100),
+        ),
+      );
+      await tester.pump();
+
+      await dragOnLayer(tester, const Offset(160, 60), const Offset(190, 90));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 70, 70), isNonZero, reason: 'inside');
+      expect(
+        inkAt(env.coordinator, 85, 70),
+        0,
+        reason: 'past the selection it was clipped',
+      );
+    });
   });
 
   /// 🚨★★★**F-164 — 유저 2026-09-18 실기**: 「변형중에 다른프레임가면 변형
