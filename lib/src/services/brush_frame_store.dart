@@ -81,6 +81,11 @@ class BrushFrameStore {
   /// timeline to look again, so the tint sat there until some unrelated
   /// rebuild (switching layers) came along. Only the CROSSING bumps, so a
   /// stroke on an already-drawn cel costs nothing.
+  ///
+  /// 🚨It is the tint's ONLY pixel event (F-166, 2026-09-26): the per-edit
+  /// signal below stopped reaching it, because it repainted every row after
+  /// every stroke. So every surface this store replaces runs the detector —
+  /// a way of emptying a cel that skips it leaves a block white over nothing.
   final ValueNotifier<int> celContentRevision = ValueNotifier<int>(0);
 
   /// Bumps on EVERY pixel edit ([markCelEdited]), crossing or not.
@@ -97,20 +102,28 @@ class BrushFrameStore {
   final Set<BrushFrameKey> _celsWithContent = {};
 
   void _noteCelContent(BrushFrameKey canonicalKey) {
+    if (_recordCelContent(canonicalKey)) {
+      celContentRevision.value += 1;
+    }
+  }
+
+  /// Brings the detector's memory up to date for [canonicalKey] and says
+  /// whether it crossed — a batch records each of its cels and bumps once.
+  bool _recordCelContent(BrushFrameKey canonicalKey) {
     // ⛔The SAME question the block draws, not a second copy of it — a
     // detector that crossed on one rule while the paint read another is how
     // the block came to disagree with the drawing in the first place.
     final has = celHasRenderableContent(canonicalKey);
     final had = _celsWithContent.contains(canonicalKey);
     if (has == had) {
-      return;
+      return false;
     }
     if (has) {
       _celsWithContent.add(canonicalKey);
     } else {
       _celsWithContent.remove(canonicalKey);
     }
-    celContentRevision.value += 1;
+    return true;
   }
 
   /// Derived preview caches. NOT byte-budgeted (R19 P3a): every donated or
@@ -1158,6 +1171,7 @@ class BrushFrameStore {
       return;
     }
     var edited = false;
+    var crossed = false;
     for (final key in _celKeysOfCut(cutId)) {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
       final surface = bakedSurfaceOrNull(key)!;
@@ -1179,9 +1193,14 @@ class BrushFrameStore {
       // [_clearAllTiers] precedent).
       _update(_canonicalize(key), _markCacheDirty);
       edited = true;
+      // An offset can carry every line off the canvas.
+      crossed = _recordCelContent(key) || crossed;
     }
     if (edited) {
       celPixelRevision.value += 1;
+    }
+    if (crossed) {
+      celContentRevision.value += 1;
     }
     _scheduleCooling();
   }
@@ -1223,6 +1242,7 @@ class BrushFrameStore {
   /// size (954 of 1024 tiles of an 8K fill deleted by one visit to a
   /// default-sized cut; the user's data-loss report).
   void resizeBakedSurfaces(CanvasSize canvasSize, {required CutId cutId}) {
+    var crossed = false;
     for (final key in _bakedSurfaces.keys.toList()) {
       if (key.cutId != cutId) {
         continue;
@@ -1234,6 +1254,11 @@ class BrushFrameStore {
       _storeHot(key, resizeBitmapSurfaceCanvas(surface, canvasSize));
       _fileCels.remove(key);
       _dirtySinceSave.add(key);
+      // A crop can take every line with it.
+      crossed = _recordCelContent(key) || crossed;
+    }
+    if (crossed) {
+      celContentRevision.value += 1;
     }
     _resizeRefCels(_coldCels, canvasSize, cutId: cutId, read: _readScratchBlob);
     _resizeRefCels(
@@ -1316,12 +1341,19 @@ class BrushFrameStore {
     for (final key in _celKeysOfCut(cutId)) {
       _removeBaked(key);
     }
+    var crossed = false;
     for (final entry in snapshot.entries) {
       _storeHot(entry.key, entry.value);
       _fileCels.remove(entry.key);
       _dirtySinceSave.add(entry.key);
       // The display caches follow the restored truth.
       storeRebuiltDisplayCache(key: entry.key, previewSurface: entry.value);
+      // The removal above crossed each drawn cel to empty; this crosses it
+      // back, or the detector would remember the cut as blank.
+      crossed = _recordCelContent(entry.key) || crossed;
+    }
+    if (crossed) {
+      celContentRevision.value += 1;
     }
     _scheduleCooling();
   }

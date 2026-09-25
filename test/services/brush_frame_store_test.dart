@@ -269,6 +269,92 @@ void main() {
     );
   });
 
+  group('F-166: every surface the store replaces runs the crossing '
+      'detector — the tint hears no other pixel event', () {
+    BitmapSurface inkAt(CanvasSize canvas, TileCoord coord) {
+      final pixels = Uint8List(4 * 4 * 4)..fillRange(0, 16, 255);
+      return BitmapSurface(canvasSize: canvas, tileSize: 4).putTiles([
+        (coord: coord, tile: BitmapTile(size: 4, pixels: pixels)),
+      ]);
+    }
+
+    test('an offset that carries the last line off the pasteboard crosses '
+        'to empty', () {
+      final store = BrushFrameStore();
+      final k = key();
+      store.storeBakedSurface(k, surfaceWithInk());
+      final before = store.celContentRevision.value;
+
+      store.adoptCutCanvasSize(
+        cutId: const CutId('c'),
+        canvasSize: const CanvasSize(width: 4, height: 4),
+        dy: 400,
+      );
+
+      expect(store.celHasRenderableContent(k), isFalse);
+      expect(store.celContentRevision.value, greaterThan(before));
+    });
+
+    test('a crop that takes the last line crosses to empty', () {
+      final store = BrushFrameStore();
+      final k = key();
+      store.storeBakedSurface(
+        k,
+        inkAt(
+          const CanvasSize(width: 16, height: 16),
+          TileCoord(x: 3, y: 3),
+        ),
+      );
+      final before = store.celContentRevision.value;
+
+      store.resizeBakedSurfaces(
+        const CanvasSize(width: 4, height: 4),
+        cutId: const CutId('c'),
+      );
+
+      expect(store.celHasRenderableContent(k), isFalse);
+      expect(store.celContentRevision.value, greaterThan(before));
+    });
+
+    test('an anchored-resize undo crosses back, and REMEMBERS it: emptying '
+        'the restored cel afterwards is a crossing too', () {
+      final store = BrushFrameStore();
+      final k = key();
+      store.storeBakedSurface(k, surfaceWithInk());
+      final snapshot = store.bakedSurfacesForCut(const CutId('c'));
+      store.adoptCutCanvasSize(
+        cutId: const CutId('c'),
+        canvasSize: const CanvasSize(width: 4, height: 4),
+        dy: 400,
+      );
+      final beforeUndo = store.celContentRevision.value;
+
+      store.restoreBakedForCut(const CutId('c'), snapshot);
+
+      expect(store.celHasRenderableContent(k), isTrue);
+      expect(store.celContentRevision.value, greaterThan(beforeUndo));
+      final beforeClear = store.celContentRevision.value;
+      store.storeBakedSurface(
+        k,
+        BitmapSurface(
+          canvasSize: const CanvasSize(width: 4, height: 4),
+          tileSize: 4,
+        ).putTiles([
+          (
+            coord: TileCoord(x: 0, y: 0),
+            tile: BitmapTile(size: 4, pixels: Uint8List(4 * 4 * 4)),
+          ),
+        ]),
+      );
+      expect(
+        store.celContentRevision.value,
+        greaterThan(beforeClear),
+        reason: 'a cleared cel keeps its transparent tile, so only a '
+            'detector that remembered the restore as drawn can see it go',
+      );
+    });
+  });
+
   test('bakedSnapshotForSave is a reference-cheap copy of the truth', () {
     final store = BrushFrameStore();
     final k = key();

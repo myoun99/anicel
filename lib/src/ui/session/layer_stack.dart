@@ -285,18 +285,28 @@ class LayerStack {
     // grey for the whole stroke — the user asked for it to go white the
     // moment the line starts, which is also when the cel stops being
     // "unworked" in any sense that matters.
-    if (_brushInputActive.value &&
-        layer.id == _selection.activeLayerId &&
-        frame.id == _selection.selectedFrame?.id) {
+    if (_brushInputActive.value && _liveStrokeCel == (layer.id, frame.id)) {
       return true;
     }
-    return _renderCaches.brushFrameStore.celHasRenderableContent(
-      _internals.brushFrameKeyForCut(cut, layer.id, frame.id),
-    );
+    return _storeHoldsAPicture(cut, layer.id, frame.id);
   }
 
+  /// The cel a live stroke counts as drawn: the active row's selected
+  /// frame. Null when there is none, and then no block can be it.
+  (LayerId, FrameId)? get _liveStrokeCel {
+    final layerId = _selection.activeLayerId;
+    final frameId = _selection.selectedFrame?.id;
+    return layerId == null || frameId == null ? null : (layerId, frameId);
+  }
+
+  bool _storeHoldsAPicture(Cut cut, LayerId layerId, FrameId frameId) =>
+      _renderCaches.brushFrameStore.celHasRenderableContent(
+        _internals.brushFrameKeyForCut(cut, layerId, frameId),
+      );
+
   /// Bumps whenever [celHasContentForLayer] can have changed anywhere: the
-  /// store crosses empty↔drawn, or the pen goes down on a cel.
+  /// store crosses empty↔drawn, or the pen goes down or up on a cel whose
+  /// answer the live stroke decides.
   ///
   /// The store's own crossing signal (R27 #13) already existed and NOTHING
   /// SUBSCRIBED TO IT — which is the whole bug: the tint is derived state
@@ -304,43 +314,57 @@ class LayerStack {
   /// up when an unrelated edit announced app-wide (switch layers, rename a
   /// frame). This adds the live-stroke half and hands the row painters one
   /// thing to listen to.
+  ///
+  /// 🚨ONLY WHEN AN ANSWER CAN HAVE CHANGED (F-166, 2026-09-26). Every row
+  /// painter, the shared pill and the collapsed rows listen to this one
+  /// number, and every row repainting throws the timeline dock's still
+  /// image away — measured on the real app: a bump at pen-down painted the
+  /// whole timeline again for the stroke's first five frames (16–24 ms of
+  /// raster each against 6), and the pen-up bump did it again.
   final ValueNotifier<int> celTintRevision = ValueNotifier<int>(0);
 
   void _bumpCelTintRevision() => celTintRevision.value += 1;
 
-  /// The three events that can flip [celHasContentForLayer]'s answer.
+  /// The pen going down or up flips an answer only where the live stroke
+  /// is what makes a cel count as drawn — [_liveStrokeCel], while the store
+  /// holds no picture for it. A stroke on a drawn cel changes no block.
+  void _bumpWhereTheLiveStrokeDecides() {
+    final cut = _project.activeCutOrNull;
+    final cel = _liveStrokeCel;
+    if (cut == null || cel == null) {
+      return;
+    }
+    final (layerId, frameId) = cel;
+    if (_storeHoldsAPicture(cut, layerId, frameId)) {
+      return;
+    }
+    _bumpCelTintRevision();
+  }
+
+  /// The two events that can flip [celHasContentForLayer]'s answer.
+  ///
+  /// ⛔NOT EVERY PIXEL EDIT. A third listener stood here, on the store's
+  /// `celPixelRevision`, for 픽셀 비우기: the crossing detector used to ask
+  /// whether the store HOLDS a surface for the cel, and a cleared cel keeps
+  /// its all-transparent tiles, so it never crossed and the block went on
+  /// showing 「그려짐」 (유저 2026-08-27: 「블록도 반영안되는데」). Ninety
+  /// minutes later the detector was made to ask
+  /// `celHasRenderableContent`, which counts ink (#1280) — so the clear
+  /// crosses there, and the per-edit listener only made every row repaint
+  /// after every stroke (F-166). The store's detector runs on every surface
+  /// it replaces; that is where a new way of emptying a cel has to cross.
   void attach() {
-    // The unworked-block tint's two events (see [celTintRevision]): the
-    // store's empty↔drawn crossing, and the pen going down on a cel.
     _renderCaches.brushFrameStore.celContentRevision.addListener(
       _bumpCelTintRevision,
     );
-    _brushInputActive.addListener(_bumpCelTintRevision);
-    // 🚨And the THIRD: any pixel edit at all. The crossing detector above
-    // asks whether the store HOLDS a surface for the cel, not whether that
-    // surface has ink in it — so 픽셀 비우기 leaves an all-transparent
-    // surface, `has == had`, and it never bumps. The block went on showing
-    // 「그려짐」 for a cel with nothing in it (유저 2026-08-27: 「블록도
-    // 반영안되는데」), because the tint's own revision never moved and the
-    // painter's repaint gating had no reason to re-ask.
-    //
-    // ⚠️This fires as often as the user draws — but the timeline host ALSO
-    // merges `celPixelRevision` into its frame-ready signal, so the rebuild
-    // it costs is one that was already happening; what changes is that the
-    // tint re-reads inside it instead of serving a stale answer.
-    _renderCaches.brushFrameStore.celPixelRevision.addListener(
-      _bumpCelTintRevision,
-    );
+    _brushInputActive.addListener(_bumpWhereTheLiveStrokeDecides);
   }
 
   void dispose() {
     _renderCaches.brushFrameStore.celContentRevision.removeListener(
       _bumpCelTintRevision,
     );
-    _renderCaches.brushFrameStore.celPixelRevision.removeListener(
-      _bumpCelTintRevision,
-    );
-    _brushInputActive.removeListener(_bumpCelTintRevision);
+    _brushInputActive.removeListener(_bumpWhereTheLiveStrokeDecides);
     celTintRevision.dispose();
   }
 }

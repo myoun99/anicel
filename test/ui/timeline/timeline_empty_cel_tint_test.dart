@@ -342,12 +342,68 @@ void main() {
       final other = s.layers.firstWhere((l) => l.id != layer.id);
       expect(s.layerStack.celHasContentForLayer(other, 0), isTrue);
 
+      final beforeUp = s.layerStack.celTintRevision.value;
       s.setBrushInputActive(false);
       expect(
         s.layerStack.celHasContentForLayer(layer, 0),
         isFalse,
         reason: 'an abandoned stroke that drew nothing leaves it unworked',
       );
+      expect(
+        s.layerStack.celTintRevision.value,
+        greaterThan(beforeUp),
+        reason: 'and the row has to hear it go grey again',
+      );
+    });
+
+    test('F-166: the pen going down and up on a DRAWN cel moves no tint — '
+        'a bump repainted every row and threw the timeline dock\'s still '
+        'image away for the stroke\'s first frames', () {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.createDrawingAtCurrentFrame();
+      final layer = s.activeLayer!;
+      s.renderCaches.brushFrameStore.storeBakedSurface(
+        s.brushFrameKeyForCut(
+          s.activeCutOrNull!,
+          layer.id,
+          layer.frames.single.id,
+        ),
+        surfaceWithInk(),
+      );
+      final before = s.layerStack.celTintRevision.value;
+
+      s.setBrushInputActive(true);
+      expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
+      s.setBrushInputActive(false);
+      expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
+
+      expect(
+        s.layerStack.celTintRevision.value,
+        before,
+        reason: 'no block changed its answer, so no row may repaint',
+      );
+    });
+
+    test('F-166: a committed stroke that crosses nothing moves no tint', () {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.createDrawingAtCurrentFrame();
+      final layer = s.activeLayer!;
+      final store = s.renderCaches.brushFrameStore;
+      final key = s.brushFrameKeyForCut(
+        s.activeCutOrNull!,
+        layer.id,
+        layer.frames.single.id,
+      );
+      store.storeBakedSurface(key, surfaceWithInk());
+      final before = s.layerStack.celTintRevision.value;
+
+      // What a commit does to a drawn cel: the edit mark, then the donation.
+      store.markCelEdited(key);
+      store.storeBakedSurface(key, surfaceWithInk());
+
+      expect(s.layerStack.celTintRevision.value, before);
     });
 
     test('R27 #13: the store ANNOUNCES the empty↔drawn crossing, and only '

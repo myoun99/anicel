@@ -24,8 +24,9 @@ import '../helpers/app_icon_button_probe.dart';
 /// and nothing at all pinning whether the answer ever reaches the screen.
 ///
 /// ⚠️Only ONE of these guards a fix. The tint test does: it goes red the
-/// moment its listener is removed. The button test guards a law that already
-/// holds — `bar_buttons_follow_the_playhead_test` enumerates the bar and pins
+/// moment the clear stops crossing the store's detector. The button test
+/// guards a law that already holds —
+/// `bar_buttons_follow_the_playhead_test` enumerates the bar and pins
 /// that every button answers DURING a scrub, but its assertion is that the
 /// WHOLE map changed, which one stale button cannot break. This names these
 /// two so that it can.
@@ -149,31 +150,6 @@ void main() {
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
       expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
-    },
-  );
-
-  testWidgets(
-    'a pixel edit moves the block tint\'s revision — 유저: 「블록도 '
-    '반영안되는데」',
-    (tester) async {
-      final session = await pump(tester);
-
-      // 🚨The crossing detector the tint used to ride on asks whether the
-      // store HOLDS a surface for the cel, not whether that surface has ink
-      // in it — so 픽셀 비우기 leaves an all-transparent surface, `has ==
-      // had`, and it never bumped. The block went on saying 「그려짐」 about a
-      // cel with nothing in it. `celPixelRevision` is the signal that does
-      // fire on every surface write.
-      final before = session.layerStack.celTintRevision.value;
-      session.renderCaches.brushFrameStore.celPixelRevision.value += 1;
-      await tester.pump();
-
-      expect(
-        session.layerStack.celTintRevision.value,
-        greaterThan(before),
-        reason: 'the block cannot re-ask 「이 칸에 그림이 있나」 if its own '
-            'revision never moves',
-      );
     },
   );
 
@@ -408,6 +384,40 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
+    },
+  );
+
+  testWidgets(
+    '픽셀 비우기 moves the block tint\'s revision and the block reads empty '
+    '— 유저: 「블록도 반영안되는데」',
+    (tester) async {
+      final session = await pump(tester);
+      final row = session.layers.firstWhere(
+        (l) => layerAcceptsBrushInput(l) && l.frames.isNotEmpty,
+      );
+      session.selectLayer(row.id);
+      // Frame 1 for the timeline case's reason above.
+      session.selectFrameIndex(1);
+      await tester.pumpAndSettle();
+      final layer = session.layers.firstWhere((l) => l.id == row.id);
+      expect(session.layerStack.celHasContentForLayer(layer, 1), isTrue);
+      final before = session.layerStack.celTintRevision.value;
+
+      await clearPixelsFromTheHead(tester);
+
+      // 🚨A cleared cel keeps its all-transparent tiles (undo walks the tiles
+      // that exist), so a detector asking whether the store HOLDS a surface
+      // never crossed and the block went on saying 「그려짐」. It asks
+      // `celHasRenderableContent` now, which counts ink — and that crossing
+      // is the tint's ONLY pixel event since F-166 (the per-edit signal that
+      // stood in for it repainted every row after every stroke).
+      expect(session.layerStack.celHasContentForLayer(layer, 1), isFalse);
+      expect(
+        session.layerStack.celTintRevision.value,
+        greaterThan(before),
+        reason: 'the block cannot re-ask 「이 칸에 그림이 있나」 if its own '
+            'revision never moves',
+      );
     },
   );
 }
