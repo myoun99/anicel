@@ -96,6 +96,39 @@ void main() {
     );
   });
 
+  test('🚨every cel store hears the warning — the three sheet-ink stores '
+      'too, which never did until 2026-09-11', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final caches = session.renderCaches;
+    // Named one by one on purpose: the session walks a LIST of them, and a
+    // list that lost a store would take a test built on the same list with
+    // it.
+    final stores = {
+      'drawings': caches.brushFrameStore,
+      'conte row': caches.conteInkRowStore,
+      'conte page': caches.conteInkPageStore,
+      'envelope': caches.envelopeInkStore,
+    };
+    // Above the floor, so a halving shows as a number.
+    const above = 600 * 1024 * 1024;
+    for (final store in stores.values) {
+      store.hotCelByteBudget = above;
+    }
+
+    session.respondToMemoryPressure();
+
+    for (final entry in stores.entries) {
+      expect(
+        entry.value.hotCelByteBudget,
+        lessThan(above),
+        reason: 'the ${entry.key} store never heard the warning',
+      );
+    }
+  });
+
   test('repeated warnings walk the playback budget down to the floor and no '
       'further', () {
     final session = EditorSessionManager(
