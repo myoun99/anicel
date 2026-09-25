@@ -17,7 +17,6 @@ import '../../services/media/media_byte_source.dart';
 import '../../services/media/movie_span.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/project_lookup.dart' show projectMediaCarryOf;
 import 'session_roles.dart';
 
 /// The IN/OUT the window chose for a file — what a [KeptSpan] is made of
@@ -127,7 +126,7 @@ class TrimmedPieces {
 
   /// Lets go of the file the doors read, once its bytes are held: the door
   /// that placed the piece held them before it landed, as it holds every
-  /// carried file's (`ProjectImportDoors._holdCarried`), and the staged
+  /// carried file's (`MediaPool.holdCarriedBytes`), and the staged
   /// copy is then the only one left.
   ///
   /// ⚠️Only once they ARE held. Staging SKIPS a file it cannot open rather
@@ -141,11 +140,11 @@ class TrimmedPieces {
   /// one — it ran after the landing had recorded the piece.
   void secure(String piece) {
     // The carry the landing recorded — a piece's path is fresh, so the pool
-    // names exactly one ([projectMediaCarryOf]).
-    final carry = projectMediaCarryOf(
-      _project.repository.requireProject(),
-      piece,
-    );
+    // names exactly one.
+    final carry = _project.repository
+        .requireProject()
+        .mediaAssetByPath(piece)
+        ?.carry;
     if (carry != null && _staging.find(carry) != null) {
       _deleteIfThere(piece);
     }

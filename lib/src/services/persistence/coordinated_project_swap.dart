@@ -5,6 +5,7 @@ import '../brush_frame_store.dart';
 import 'anicel_file_service.dart';
 import 'folder_grant.dart' show FolderPicker;
 import 'open_project_file.dart';
+import 'same_file.dart';
 import 'save_failure.dart' show SaveNotSwappedIn;
 
 /// Swaps [from] — a complete archive the stores' refs already point into —
@@ -54,14 +55,13 @@ Future<void> replaceProjectFileCoordinated({
       refusedByProvider: true,
     );
   }
-  final source = from.replaceAll('\\', '/');
   for (final store in stores) {
     final snapshot = store.bakedSnapshotForSave();
     final dirtyAgain = store.dirtyCelKeysSinceSave;
     final moved = <BrushFrameKey, AnicelCelFileRef>{
       for (final entry in snapshot.fileRefs.entries)
         if (!dirtyAgain.contains(entry.key) &&
-            entry.value.filePath.replaceAll('\\', '/') == source)
+            namesTheSameFile(entry.value.filePath, from))
           entry.key: AnicelCelFileRef(
             filePath: to,
             dataOffset: entry.value.dataOffset,

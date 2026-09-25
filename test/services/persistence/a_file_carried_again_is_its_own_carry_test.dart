@@ -56,6 +56,12 @@ void main() {
     List<int>.generate(64 * 1024, (i) => (i ~/ 5 + 101) & 0xFF),
   );
 
+  /// What the original becomes AFTER the second carry — so a reader that
+  /// went to the original instead of the carried bytes would say so.
+  final third = Uint8List.fromList(
+    List<int>.generate(64 * 1024, (i) => (i ~/ 3 + 57) & 0xFF),
+  );
+
   /// A mono 48k 16-bit WAV [seconds] long — a sound the decoder reads, so
   /// the conform measures it for real.
   Uint8List wavOf({required int seconds}) {
@@ -106,11 +112,15 @@ void main() {
   /// What every reader of [path] gets — the one door they all go through.
   List<int> read() => file.mediaByteSourceFor(path).readSync();
 
-  /// The original edited, then carried again after its removal.
+  /// The original edited, then carried again after its removal — and then
+  /// edited once more, so what reads [second] read the CARRIED bytes: the
+  /// original holds [third] by then (audit 09-25 — it held [second], and a
+  /// reader that went to the original passed as well).
   Future<void> carryTheEditAgain() async {
     expect(pool.removeMediaAsset(path), isTrue);
     File(path).writeAsBytesSync(second);
     await pool.addMediaAssets([path], carried: true);
+    File(path).writeAsBytesSync(third);
   }
 
   test('the premise: two carries of one path are two names', () async {
@@ -119,7 +129,8 @@ void main() {
     pool.removeMediaAsset(path);
     await pool.addMediaAssets([path], carried: true);
 
-    expect(pool.mediaAssets.single.carriedAs, isNot(once));
+    expect(once, isNotNull);
+    expect(pool.mediaAssets.single.carriedAs, allOf(isNotNull, isNot(once)));
   });
 
   group('saved, removed, carried again before the next save', () {

@@ -73,7 +73,10 @@ void main() {
     // the save wrote (`a_reader_follows_what_the_save_absorbed_test`), and
     // the copy goes from the disk once it has — let that land before
     // anything counts the opens the one decoder here has seen.
-    bool followed() => staged == null || !File(staged!).existsSync();
+    // ⛔Nothing staged would pass the wait below without waiting for
+    // anything (audit 09-25): the import is what staged it.
+    expect(staged, isNotNull, reason: 'the premise: the import staged it');
+    bool followed() => !File(staged!).existsSync();
     for (var i = 0; i < 60 && !followed(); i += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
@@ -135,6 +138,60 @@ void main() {
       session.requireActiveCut.layers.where(isMovieReference),
       isNotEmpty,
       reason: 'the premise: the opened project has a movie row',
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('🚨a project opened next with NO movie row lets go of the last '
+      'one\'s — the door does it, not a row of the next', (tester) async {
+    final movie = normalizedMediaPath(
+      (await tester.runAsync(() => writeCarriedMovie(directory)))!,
+    );
+    final path = normalizedMediaPath('${directory.path}/held.anicel');
+    final session = await carriedAndSaved(
+      tester,
+      movie: movie,
+      projectPath: path,
+      staging: '${directory.path}/Staged',
+    );
+    await tester.runAsync(() => session.projectDoor.openProjectFromFile(path));
+    await tester.runAsync(
+      () => session.movieCels.hydrate(session.requireActiveCut, 0),
+    );
+    expect(
+      session.projectFile.heldArchiveEntries,
+      isNotEmpty,
+      reason: 'the premise: the canvas holds the entry it reads',
+    );
+    // A project without a movie in it — saved by a session of its own.
+    final empty = normalizedMediaPath('${directory.path}/empty.anicel');
+    final other = EditorSessionManager(
+      initialProject: createDefaultProject(),
+      mediaStagingStore: MediaStagingStore(
+        directoryPath: '${directory.path}/StagedEmpty',
+      ),
+      audioConformStore: soundConformStore(),
+    );
+    addTearDown(other.dispose);
+    await tester.runAsync(
+      () => other.projectDoor.saveProjectToFile(
+        empty,
+        asked: SaveAsked.byAPerson,
+      ),
+    );
+
+    await tester.runAsync(() async {
+      await session.projectDoor.openProjectFromFile(empty);
+      // The letting go is not awaited by the door; give it its turn.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+
+    expect(
+      session.projectFile.heldArchiveEntries,
+      isEmpty,
+      reason:
+          'no row of the next project replaces the last one\'s — the door '
+          'is the only one that lets them go (audit 09-25: nothing pinned it)',
     );
     await tester.pumpAndSettle();
   });

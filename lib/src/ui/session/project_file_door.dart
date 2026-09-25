@@ -36,6 +36,7 @@ import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/save_failure.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
+import '../../services/persistence/same_file.dart';
 import '../../services/project_lookup.dart'
     show cutPositionOf, projectAudioSourcePaths;
 import 'project_resume.dart';
@@ -718,8 +719,7 @@ class ProjectFileDoor {
     // NOT already whole is exactly this one, an overwrite onto an older copy
     // of the same project.
     final saveAs =
-        previousPath != null &&
-        previousPath.replaceAll(r'\', '/') != filePath.replaceAll(r'\', '/');
+        previousPath != null && !namesTheSameFile(previousPath, filePath);
     // 🎯ONE LAW FOR A GRANTED PATH: where the platform has a file
     // coordinator, every write ends in it — an append is followed by a
     // coordinated touch, a whole write is swapped in through a coordinated
@@ -920,9 +920,9 @@ class ProjectFileDoor {
     toolChoice?.resume(resume.tools);
     _file.bindToOpenedFile(
       bindTo ?? filePath,
-      // What this project carries, as the file on disk says. Anything the
-      // pool names that is NOT here is an ordinary outside reference and
-      // resolves by path like it always did.
+      // The media entries the file holds, as it says itself. Whether an
+      // asset is carried is its own `carriedAs`, not whether it is here: a
+      // carry the file does not hold reads its staged copy, or its original.
       mediaInFile: {...result.mediaEntryNames.values},
       // Dirty when the cels are being read out of a staged copy rather than
       // the project's own address — and when the load just HEALED

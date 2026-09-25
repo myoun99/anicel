@@ -169,6 +169,18 @@ class MediaPool {
   /// answered yes to, so the new carry's bytes were never taken (card
   /// `recarry-after-remove-reads-the-old`). Each carry is its own now
   /// ([MediaAsset.carriedAs]), and one that arrives is new by definition.
+  /// 🪦Before the doors asked this (2026-09-23), a placed file kept inside
+  /// was read from where it lay at the first save — edited or deleted in
+  /// between, the save carried that instead.
+  ///
+  /// A landing that fails after this leaves a staged copy no asset names:
+  /// the orphan the run's room takes when the run ends, the same as any.
+  ///
+  /// ⚠️A file the pool already has is left alone: the landing keeps the
+  /// pool's entry, whose bytes are the ones the user asked to keep, and the
+  /// file on disk may have moved on since. 🪦So placing a carried file from
+  /// the pool copied its original AGAIN once a save had absorbed the first
+  /// copy — the edited original, when it had been edited.
   Future<void> holdCarriedBytes(Iterable<MediaAsset> arriving) =>
       _staging.stageCarriedBytes(_carriesToHold(arriving));
 
@@ -305,8 +317,8 @@ class MediaPool {
   /// ⚠️Async because the re-stage below runs in an isolate — see
   /// [MediaStagingStore.stageCarriedBytes].
   Future<void> relinkMediaAsset(String pickedOld, String picked) async {
-    // In the pool's one spelling: the pool, the conforms, the fingerprints
-    // and the staging are all keyed by it ([normalizedMediaPath]).
+    // In the pool's one spelling: the pool, the conforms and the
+    // fingerprints are all keyed by it ([normalizedMediaPath]).
     final oldPath = normalizedMediaPath(pickedOld);
     final newPath = normalizedMediaPath(picked);
     // 🚨★★★**A CARRIED ASSET RELINKED BY HAND IS A NEW CARRY; THE BATCH

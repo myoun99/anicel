@@ -34,7 +34,6 @@ import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
-import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/straight_rgba_image.dart';
@@ -91,6 +90,18 @@ class ProjectImportDoors {
   final RenderCaches _renderCaches;
   final ImportLanding _landing;
   final MediaFingerprintLedger _fingerprints;
+
+  /// 🚨★★★**A PLACEMENT THAT CARRIES HOLDS THE BYTES FIRST.** Every door
+  /// here decides an asset carried from the window's Keep, and the landing
+  /// is what records it in the pool — so each door asks the pool's one
+  /// question for it ([MediaPool.holdCarriedBytes]) BEFORE the landing (유저
+  /// 2026-08-30: 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」; the
+  /// order is [MediaStagingStore.stageCarriedBytes]'s law). 🪦None of the
+  /// five doors did from the day staging landed until 2026-09-23: they
+  /// decide carrying from a VARIABLE (`carried: copyIntoProject`), and the
+  /// scan that keeps the law looked for the literal `carried: true`.
+  /// 🪦A one-line forwarder, `_holdCarried`, stood between them and the pool
+  /// with this paragraph on it (audit 09-25).
   final MediaPool _pool;
   final AudioConformStore _conforms;
   final ProjectFrameRate Function() _frameRate;
@@ -101,35 +112,6 @@ class ProjectImportDoors {
   /// ORIGINAL: gone, the placement failed; edited, the edit landed (card
   /// `carried-bytes-every-reader`).
   final HoldMediaBytes _holdBytes;
-
-  /// 🚨★★★**A PLACEMENT THAT CARRIES HOLDS THE BYTES FIRST.** Every door
-  /// here decides an asset carried from the window's Keep, and the landing
-  /// is what records it in the pool — so the bytes of each carried one in
-  /// [assets] are held HERE, before that record exists (유저 2026-08-30:
-  /// 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」; the law and its
-  /// order are [MediaStagingStore.stageCarriedBytes]'s), through the pool's
-  /// one question for it ([MediaPool.holdCarriedBytes]).
-  ///
-  /// 🪦None of the five doors did, from the day staging landed until
-  /// 2026-09-23: that round staged the pool's own registration, the doors
-  /// decide carrying from a VARIABLE (`carried: copyIntoProject`), and the
-  /// scan that keeps the law looked for the literal `carried: true`. A
-  /// placed file kept inside was read from where it lay at the first save —
-  /// edited or deleted in between, the save carried that instead.
-  ///
-  /// A landing that fails after this leaves a staged copy no asset names:
-  /// the orphan the run's room takes when the run ends, the same as any.
-  ///
-  /// ⚠️A file the pool already has is left alone: the landing keeps the
-  /// pool's entry, whose bytes are the ones the user asked to keep, and the
-  /// file on disk may have moved on since. 🪦So placing a carried file from
-  /// the pool copied its original AGAIN once a save had absorbed the first
-  /// copy — the edited original, when it had been edited. 🪦This asked
-  /// whether the project held the PATH, which after a removal an earlier
-  /// carry answered — and the file carried again was never held (card
-  /// `recarry-after-remove-reads-the-old`).
-  Future<void> _holdCarried(Iterable<MediaAsset> assets) =>
-      _pool.holdCarriedBytes(assets);
 
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
   /// import window's core verb. Reference mode (default) stamps
@@ -199,8 +181,8 @@ class ProjectImportDoors {
     final source = arrival.source;
     // The file where the user keeps it — what the pool points at, kept
     // inside or not. A carried one's bytes are held as well, before it
-    // lands ([_holdCarried]); carrying stopped being the save's business on
-    // 2026-08-30.
+    // lands ([MediaPool.holdCarriedBytes]); carrying stopped being the
+    // save's business on 2026-08-30.
     final identity = readMediaIdentity(source);
 
     final cutId = arrival.cutId;
@@ -255,7 +237,7 @@ class ProjectImportDoors {
       assets = plan.assets;
     }
 
-    await _holdCarried(assets);
+    await _pool.holdCarriedBytes(assets);
     final landed = _landing.land(
       [layer],
       arrival: arrival,
@@ -368,7 +350,7 @@ class ProjectImportDoors {
         carried: copyIntoProject,
       ),
     ];
-    await _holdCarried(assets);
+    await _pool.holdCarriedBytes(assets);
     _landing.land(
       expansion.layers,
       arrival: arrival,
@@ -431,11 +413,10 @@ class ProjectImportDoors {
     if (gate == null) {
       return false;
     }
-    final document = await openOnHeldBytes<ViewerDocument, ViewerDocument>(
+    final document = await openHeldViewerDocument(
       _holdBytes,
       path,
       PdfRenderService.open,
-      HeldViewerDocument.new,
     );
     if (document == null) {
       return false; // Renderer absent — the honest-absence state.
@@ -520,7 +501,7 @@ class ProjectImportDoors {
         assets = plan.assets;
       }
 
-      await _holdCarried(assets);
+      await _pool.holdCarriedBytes(assets);
       final landed = _landing.land(
         [layer],
         arrival: arrival,
@@ -631,7 +612,7 @@ class ProjectImportDoors {
           settings.sound &&
           await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
               null;
-      await _holdCarried([asset]);
+      await _pool.holdCarriedBytes([asset]);
       if (!_landMovieWithSound(planned, asset, withSound: withMovieSound)) {
         return false;
       }
@@ -1058,7 +1039,7 @@ class ProjectImportDoors {
         carried: copyIntoProject,
       ),
     ];
-    await _holdCarried(assets);
+    await _pool.holdCarriedBytes(assets);
     final landed = _landing.landSound(
       arrival: gate,
       offsetFrames: kept.first,

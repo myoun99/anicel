@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/path_names.dart';
 import 'package:anicel/src/models/media_asset.dart'
-    show MediaCarry, mintMediaCarry;
+    show MediaCarry, mediaNameParts, mintMediaCarry;
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -326,6 +326,18 @@ void main() {
       store.retire(carry(path, 'c7'));
       expect(store.holdsAnyCopyOf(path), isTrue, reason: 'still on disk');
       letGo();
+      expect(store.holdsAnyCopyOf(path), isFalse);
+    });
+
+    test('a copy that shares only the path\'s hash is not a copy of the path '
+        '— the file\'s name says whose it is', () async {
+      final path = sourceFile('take.wav');
+      final (:hash, safe: _) = mediaNameParts(path);
+      Directory('${root.path}/Staged').createSync(recursive: true);
+      // What only a collision could put there — the name's back end is the
+      // only witness left, and it had none (audit 09-25).
+      File('${root.path}/Staged/$hash-c9-other.wav').writeAsBytesSync([1]);
+
       expect(store.holdsAnyCopyOf(path), isFalse);
     });
 

@@ -10,7 +10,8 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/media_asset.dart' show MediaCarry;
+import 'package:anicel/src/models/media_asset.dart'
+    show MediaAsset, MediaCarry;
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -20,6 +21,7 @@ import 'package:anicel/src/services/media/project_media_sources.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The first carry of [path] — the save is handed carries, not paths.
@@ -335,5 +337,70 @@ void main() {
     } finally {
       raf.closeSync();
     }
+  });
+
+  /// 🚨A TORN TAIL IS READ THE WAY EVERY READER READS IT
+  /// (`readAnicelZipLayoutFile`). The media beside a conform were carried
+  /// forward from the last whole directory after a crash, and the conforms
+  /// alone parsed the tail, found nothing, and were built all over again —
+  /// both on the save's walk and on the way to playback (audit 09-25).
+  group('a torn tail', () {
+    /// A project that saved a carried conform, and then died appending.
+    Future<({String path, String audio})> savedThenTorn() async {
+      final p = project();
+      await p.service.save(
+        project: createDefaultProject(),
+        brushFrameStore: p.store,
+        filePath: p.path,
+        mediaToStore: {carryOf(p.audio): MediaFileBytes(p.audio)},
+        conforms: carrying(p.audio, writeConform('a.conform', 40000, 7)),
+      );
+      final healthy = parseAnicelZipLayoutFile(p.path);
+      File(p.path).openSync(mode: FileMode.append)
+        ..truncateSync(healthy.centralDirectoryOffset + 7)
+        ..closeSync();
+      expect(
+        () => parseAnicelZipLayoutFile(p.path),
+        throwsFormatException,
+        reason: 'the premise: the tail is torn',
+      );
+      return (path: p.path, audio: p.audio);
+    }
+
+    test('the save\'s walk still finds the conform the file holds', () async {
+      final (:path, :audio) = await savedThenTorn();
+
+      final found = projectConformSources(
+        project: createDefaultProject().copyWith(
+          mediaAssets: [MediaAsset(path: audio, name: '대사', carriedAs: 'c1')],
+        ),
+        conformBasePathFor: (_) => null,
+        projectFilePath: path,
+        sampleRate: 48000,
+        speedNumerator: 1,
+        speedDenominator: 1,
+      );
+
+      expect(found.entries.keys, contains(conformName(audio)));
+    });
+
+    test('and the way to playback reads it from there too', () async {
+      final (:path, :audio) = await savedThenTorn();
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.projectFile.bindToOpenedFile(
+        path,
+        mediaInFile: const {},
+        unsaved: false,
+      );
+
+      expect(
+        session.projectFile.carriedConformFor(audio),
+        isNotNull,
+        reason: 'the sound is not decoded again for want of reading',
+      );
+    });
   });
 }

@@ -218,7 +218,8 @@ void main() {
 
     carry = (poolPath: 'a.wav', token: 'c2'); // removed, carried again
     expect(store.resultFor('a.wav'), isNull, reason: 're-kicked');
-    expect(store.isStreaming('a.wav'), isFalse);
+    // (Whether it STREAMS is asked of a streaming entry — below, with the
+    // streaming policy; this one never streamed, so it could not say.)
     await pumpEventQueue();
     expect(store.resultFor('a.wav')?.frames, 2);
 
@@ -279,6 +280,63 @@ void main() {
       isNot(Float32List.fromList([9, 9, 9, 9])),
       reason: 'the first carry\'s conversion must not play for the second',
     );
+    store.dispose();
+  });
+
+  test('a conform that lands after the pool moved to another carry is the '
+      'FIRST carry\'s — it answers for nothing', () async {
+    MediaCarry? carry = (poolPath: 'a.wav', token: 'c1');
+    final gate = Completer<void>();
+    var runs = 0;
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      resolveCarry: (_) => carry,
+      runner: (request) async {
+        runs += 1;
+        if (runs == 1) {
+          await gate.future;
+        }
+        return _usableResult();
+      },
+      log: (_) {},
+    );
+    store.resultFor('a.wav'); // kicked for c1, and still running
+    await pumpEventQueue();
+    carry = (poolPath: 'a.wav', token: 'c2'); // removed, carried again
+    gate.complete();
+    await pumpEventQueue();
+
+    expect(
+      store.resultFor('a.wav'),
+      isNull,
+      reason:
+          'made of c1\'s bytes — the carry is the one read with them, not '
+          'the one the pool names when the result lands',
+    );
+    await pumpEventQueue();
+    expect(runs, 2, reason: 'kicked again, for c2');
+    store.dispose();
+  });
+
+  test('a carry changed under a FAILURE lets it go — the first carry\'s '
+      'missing file does not stand for the second', () async {
+    MediaCarry? carry = (poolPath: 'gone.wav', token: 'c1');
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      resolveCarry: (_) => carry,
+      runner: (request) async => const ConformResult(
+        outcome: ConformOutcome.sourceMissing,
+        error: 'the source file is missing',
+      ),
+      log: (_) {},
+    );
+    store.resultFor('gone.wav');
+    await pumpEventQueue();
+    expect(store.failureFor('gone.wav'), isNotNull, reason: 'the premise');
+
+    carry = (poolPath: 'gone.wav', token: 'c2');
+
+    expect(store.failureFor('gone.wav'), isNull);
     store.dispose();
   });
 
@@ -388,6 +446,41 @@ void main() {
       store.invalidate('long.wav');
       expect(store.isStreaming('long.wav'), isFalse);
       store.dispose();
+    });
+
+    test('🚨a carry changed under a STREAMING entry lets it go at whatever is '
+        'asked first — the stream and its reader are the first carry\'s',
+        () async {
+      final (conformPath, result) = longConform();
+      MediaCarry? carry;
+      Future<AudioConformStore> streaming() async {
+        carry = (poolPath: 'long.wav', token: 'c1');
+        final store = AudioConformStore(
+          resolveConformPath: (_) => conformPath,
+          projectSampleRate: 100,
+          resolveCarry: (_) => carry,
+          runner: (request) async => result,
+          log: (_) {},
+        );
+        addTearDown(store.dispose);
+        store.resultFor('long.wav');
+        await pumpEventQueue();
+        expect(store.isStreaming('long.wav'), isTrue, reason: 'the premise');
+        expect(store.streamReaderFor('long.wav'), isNotNull);
+        return store;
+      }
+
+      final asked = await streaming();
+      carry = (poolPath: 'long.wav', token: 'c2'); // removed, carried again
+      expect(asked.isStreaming('long.wav'), isFalse);
+
+      final read = await streaming();
+      carry = (poolPath: 'long.wav', token: 'c2');
+      expect(
+        read.streamReaderFor('long.wav'),
+        isNull,
+        reason: 'the reader cached for c1 does not stream c2',
+      );
     });
 
     test('a SHORT conform stays resident and a memory-only long one does '

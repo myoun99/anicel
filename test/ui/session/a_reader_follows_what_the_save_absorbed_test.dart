@@ -471,7 +471,23 @@ void main() {
   /// file open: a canvas row holds its movie for the session, so the save
   /// went to the failed copy for as long as the row was there.
   group('a whole write onto the file a reader holds', () {
-    tearDown(() => ProjectFile.lettingGoAtMost = const Duration(seconds: 2));
+    // The bound as the suite has it — not a number written here again.
+    final bound = ProjectFile.lettingGoAtMost;
+    tearDown(() => ProjectFile.lettingGoAtMost = bound);
+
+    /// [file] opened the way a decoder keeps it — and closed when the test
+    /// ends, if the reader never let go (the test failed before it could).
+    RandomAccessFile openedLikeADecoder(String file) {
+      final reading = File(file).openSync();
+      addTearDown(() {
+        try {
+          reading.closeSync();
+        } on FileSystemException {
+          // Closed by the reader, which is the test passing.
+        }
+      });
+      return reading;
+    }
 
     testWidgets('🚨the reader is asked to let go BEFORE the swap — and the '
         'save lands in the file, not the failed copy', (tester) async {
@@ -489,13 +505,13 @@ void main() {
       final torn = File(file).lengthSync();
       HeldBytesMove? told;
       var lengthWhenTold = -1;
+      // What a decoder does with its answer: opens the file and keeps it
+      // open — and held open, Windows refuses the rename that swaps a whole
+      // write in.
+      final reading = openedLikeADecoder(file);
 
       await tester.runAsync(() async {
         final held = await fileOf(session).holdMediaBytes(path);
-        // What a decoder does with its answer: opens the file and keeps it
-        // open — and held open, Windows refuses the rename that swaps a
-        // whole write in.
-        final reading = File(file).openSync();
         unawaited(
           held.moved.first.then((move) async {
             told = move;
@@ -574,21 +590,60 @@ void main() {
         ),
       );
       // … and then a whole write back onto the file it still holds.
+      final waited = Stopwatch()..start();
       await tester.runAsync(
         () => session.projectDoor.saveProjectToFile(
           file,
           asked: SaveAsked.byAPerson,
         ),
       );
+      waited.stop();
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
 
       expect(told, [
         HeldBytesMove.elsewhere,
         HeldBytesMove.replacing,
       ], reason: 'it still holds the file, having not followed');
+      expect(
+        waited.elapsed,
+        greaterThanOrEqualTo(ProjectFile.lettingGoAtMost),
+        reason: 'the save waited the bound out for it — not less',
+      );
       expect(fileOf(session).failedCopy, isNull, reason: 'the file took it');
       expect(fileOf(session).path, file);
       held.release();
+    }, timeout: const Timeout(Duration(minutes: 1)));
+
+    testWidgets('a reader of the file is asked whichever way the file is '
+        'spelled — one judgment of 「the same file」 (audit 09-25)', (
+      tester,
+    ) async {
+      ProjectFile.lettingGoAtMost = const Duration(hours: 1);
+      final (:session, :path) = await carrying(
+        tester,
+        directory,
+        writeCarriedMovie,
+      );
+      await saveProject(tester, session, directory);
+      final file = fileOf(session).path!;
+      final spelledOtherwise = file.contains('/')
+          ? file.replaceAll('/', r'\')
+          : file.replaceAll(r'\', '/');
+      expect(spelledOtherwise, isNot(file), reason: 'the premise');
+      HeldBytesMove? told;
+
+      await tester.runAsync(() async {
+        final held = await fileOf(session).holdMediaBytes(path);
+        unawaited(
+          held.moved.first.then((move) {
+            told = move;
+            held.release();
+          }),
+        );
+        await fileOf(session).readersLetGoOf(spelledOtherwise);
+      });
+
+      expect(told, HeldBytesMove.replacing);
     }, timeout: const Timeout(Duration(minutes: 1)));
 
     testWidgets('a reader of another file is not asked — its bytes are not '
@@ -636,10 +691,14 @@ void main() {
     testWidgets('where a coordinator swaps the file in, the reader lets go '
         'before the coordinator is asked', (tester) async {
       ProjectFile.lettingGoAtMost = const Duration(hours: 1);
+      // Back to what the suite gave them, not to nothing.
+      final os = FolderPicker.debugOperatingSystem;
+      final replacer = FolderPicker.debugCoordinatedReplacer;
+      final toucher = FolderPicker.debugCoordinatedToucher;
       addTearDown(() {
-        FolderPicker.debugOperatingSystem = null;
-        FolderPicker.debugCoordinatedReplacer = null;
-        FolderPicker.debugCoordinatedToucher = null;
+        FolderPicker.debugOperatingSystem = os;
+        FolderPicker.debugCoordinatedReplacer = replacer;
+        FolderPicker.debugCoordinatedToucher = toucher;
       });
       final (:session, :path) = await carrying(
         tester,
@@ -660,10 +719,10 @@ void main() {
             return true;
           };
       FolderPicker.debugCoordinatedToucher = (path) async => true;
+      final reading = openedLikeADecoder(file);
 
       await tester.runAsync(() async {
         final held = await fileOf(session).holdMediaBytes(path);
-        final reading = File(file).openSync();
         unawaited(
           held.moved.first.then((move) {
             told = move;

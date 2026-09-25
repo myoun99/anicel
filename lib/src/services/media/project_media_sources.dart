@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show immutable;
 
-import '../../models/media_asset.dart' show MediaCarry;
+import '../../models/media_asset.dart' show MediaCarry, mediaCarryName;
 import '../../models/project.dart';
 import '../persistence/anicel_incremental_writer.dart';
 import '../persistence/anicel_project_archive.dart';
@@ -34,10 +34,16 @@ enum MediaBytesAt {
 /// than to trust (audit 2026-09-24, `carried-bytes-audit-0924`).
 ///
 /// 🚨★★★**ASKED BY CARRY, NOT BY PATH.** Both places are named from the
-/// carry ([anicelMediaEntryName], [MediaStagingStore.stagedNameFor]), so
-/// the bytes of an earlier carry of the same path — still in the file, or
-/// still staged, for an undo to bring back — are not an answer to this one
-/// (card `recarry-after-remove-reads-the-old`).
+/// carry ([mediaCarryName]), so the bytes of an earlier carry of the same
+/// path — still in the file, or still staged, for an undo to bring back —
+/// are not an answer to this one (card `recarry-after-remove-reads-the-old`).
+///
+/// ⚠️[layout] is what the caller knows of the file. The save passes the
+/// file's own directory (a byte it holds is never left behind); a reader
+/// passes it only when the file's record says it holds the carry
+/// ([mediaEntryNameIn] over `ProjectFile.mediaInFile`) — a row must not
+/// parse a ZIP to draw itself — and so do the questions beside the reads:
+/// the size shown, and whether the project has the bytes at all.
 ///
 /// STORED, not readable: a framed entry comes back framed — the save
 /// streams it forward as it is, and a reader decodes it
@@ -75,10 +81,20 @@ enum MediaBytesAt {
   return (stored: MediaFileBytes(carry.poolPath), at: MediaBytesAt.original);
 }
 
-/// Whether [entryNames] — the media entries a project file is known to
-/// hold — include [carry]'s, under either spelling.
+/// Which of [carry]'s names [entryNames] — the media entries a project file
+/// is known to hold — includes, under either spelling; null when neither.
+String? mediaEntryNameIn(Set<String> entryNames, MediaCarry carry) {
+  for (final name in anicelMediaEntryNames(carry)) {
+    if (entryNames.contains(name)) {
+      return name;
+    }
+  }
+  return null;
+}
+
+/// Whether [entryNames] include [carry]'s ([mediaEntryNameIn]).
 bool mediaEntryHeld(Set<String> entryNames, MediaCarry carry) =>
-    anicelMediaEntryNames(carry).any(entryNames.contains);
+    mediaEntryNameIn(entryNames, carry) != null;
 
 /// The layout of the project file at [projectFilePath] as a reader should
 /// see it — its tail's directory, or the last one that committed when a
@@ -92,19 +108,16 @@ bool mediaEntryHeld(Set<String> entryNames, MediaCarry carry) =>
 /// media-less archive over the file that still physically held the bytes:
 /// for an asset whose import original was gone (the whole reason carrying
 /// exists), that was silent, permanent loss. The recovery finds what the
-/// torn tail no longer names.
+/// torn tail no longer names ([readAnicelZipLayoutFile] — the open reads the
+/// file the same way).
 AnicelZipLayout? readableAnicelLayout(String? projectFilePath) {
   if (projectFilePath == null || !File(projectFilePath).existsSync()) {
     return null;
   }
   try {
-    return parseAnicelZipLayoutFile(projectFilePath);
+    return readAnicelZipLayoutFile(projectFilePath);
   } on Object {
-    try {
-      return recoverAnicelZipLayoutFile(projectFilePath);
-    } on Object {
-      return null;
-    }
+    return null;
   }
 }
 
@@ -219,17 +232,12 @@ ProjectConforms projectConformSources({
   if (wanted.isEmpty) {
     return const ProjectConforms.none();
   }
-  // The archive's current layout, read once — the same tail-only parse
-  // `projectMediaSources` makes, and for the same reason: a conform
-  // already inside is where its bytes are.
-  AnicelZipLayout? layout;
-  if (projectFilePath != null && File(projectFilePath).existsSync()) {
-    try {
-      layout = parseAnicelZipLayoutFile(projectFilePath);
-    } on Object {
-      layout = null; // A torn tail carries nothing forward; it rebuilds.
-    }
-  }
+  // The archive's layout, read once and the way every reader reads it
+  // ([readableAnicelLayout]): a conform already inside is where its bytes
+  // are — a torn tail's last committed ones included. 🪦This parsed the
+  // tail alone, so after a crash every carried conform was rebuilt while
+  // the media beside it were carried forward (audit 09-25).
+  final layout = readableAnicelLayout(projectFilePath);
 
   final sources = <String, MediaByteSource>{};
   for (final path in wanted) {

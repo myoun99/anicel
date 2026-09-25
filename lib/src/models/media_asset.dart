@@ -372,6 +372,12 @@ class MediaAsset {
       // `carried` — and before THAT the same choice was spelled "was it
       // copied in?" — so those assets keep the answer they were given, as
       // the carry whose bytes are named by the path alone.
+      // ⚠️Nobody asked for this reading, and there is no one's data to
+      // keep (no production data since 08-25). It stays because it is one
+      // expression while the builds being tested wrote these files: a
+      // project one of them saved keeps its carried bytes in the next. The
+      // same holds for [mediaCarryName]'s bare token. Both can go once no
+      // build that wrote them is in use (audit 09-25).
       carriedAs:
           json['carriedAs'] as String? ??
           ((json['carried'] as bool? ?? json['sourcePath'] != null)

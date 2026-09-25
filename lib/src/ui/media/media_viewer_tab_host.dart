@@ -687,7 +687,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (request == null) {
       return; // The empty state reads from _currentRequest == null.
     }
-    final strings = AppText.strings;
     // ONE landing for every medium: open a document, or say why not. The
     // three arms this replaces differed only in HOW they opened and in
     // which field they parked the result — the guards against a stale
@@ -709,21 +708,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     setState(() {
       if (document == null) {
-        // The honest-absence states, and each says WHICH absence: a build
-        // without a PDF rasterizer or without a video reader is a missing
-        // engine the user can act on (a different build), while audio has
-        // no picture at all and never will. ⛔One message for all three
-        // would send someone hunting for a codec they do not need.
-        _message = switch (request.kind) {
-          MediaAssetKind.pdf => strings.mediaViewerNoPdfRenderer,
-          MediaAssetKind.video => strings.mediaViewerNoVideoDecoder,
-          // 🪦Audio moved off this line in 2026-09-08: it HAS a picture now
-          // (its waveform), so an absence here is a conform that could not
-          // be built — a file this build cannot decode, which is the same
-          // sentence a missing video reader gets.
-          MediaAssetKind.audio => strings.mediaViewerNoAudioDecoder,
-          MediaAssetKind.image => strings.mediaViewerCannotDisplay,
-        };
+        _message = _nothingOpensFor(request.kind);
       } else {
         _document = document;
         _loadedToken = generation;
@@ -830,8 +815,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         }
         return;
       }
-      if (!mounted || !identical(_document, standIn) || fresh == null) {
+      if (!mounted || !identical(_document, standIn)) {
         await fresh?.dispose();
+        return;
+      }
+      if (fresh == null) {
+        // Nothing opens it now: the stand-in reads nothing, and the panel
+        // says so the way a first open would (audit 09-25 — it said
+        // nothing).
+        setState(() => _message = _nothingOpensFor(request.kind));
         return;
       }
       _takeUp(fresh, request);
@@ -850,6 +842,22 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// export path made the same call with the encoder's.
   static String _couldNotOpen(Object error) =>
       '${AppText.strings.mediaViewerLoadFailed}\n$error';
+
+  /// What the panel says when this build has nothing that opens a [kind] —
+  /// the honest-absence states, each saying WHICH absence: a build without a
+  /// PDF rasterizer or without a video reader is a missing engine the user
+  /// can act on (a different build). ⛔One message for all of them would
+  /// send someone hunting for a codec they do not need.
+  static String _nothingOpensFor(MediaAssetKind kind) => switch (kind) {
+    MediaAssetKind.pdf => AppText.strings.mediaViewerNoPdfRenderer,
+    MediaAssetKind.video => AppText.strings.mediaViewerNoVideoDecoder,
+    // 🪦Audio moved off this line in 2026-09-08: it HAS a picture now (its
+    // waveform), so an absence here is a conform that could not be built —
+    // a file this build cannot decode, which is the same sentence a missing
+    // video reader gets.
+    MediaAssetKind.audio => AppText.strings.mediaViewerNoAudioDecoder,
+    MediaAssetKind.image => AppText.strings.mediaViewerCannotDisplay,
+  };
 
   /// [fresh] in place of the document shown, for the same [request] — and
   /// followed in its turn.
@@ -899,11 +907,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   }) async {
     Future<ViewerDocument?> held(
       Future<ViewerDocument?> Function(MediaByteSource source) open,
-    ) => openOnHeldBytes<ViewerDocument, ViewerDocument>(
+    ) => openHeldViewerDocument(
       hold ?? widget.session.projectFile.holdMediaBytes,
       request.path,
       open,
-      HeldViewerDocument.new,
     );
     switch (request.kind) {
       case MediaAssetKind.image:

@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import 'same_file.dart';
+
 /// The project file, held OPEN for as long as the session reads from it.
 ///
 /// 🚨★★★**WHY: DELETING THE PROJECT FILE USED TO DELETE THE WORK.** After a
@@ -97,7 +99,8 @@ class OpenProjectFile {
 
   RandomAccessFile _handleFor(String path) {
     final open = _handle;
-    if (open != null && _path == path) {
+    final held = _path;
+    if (open != null && held != null && namesTheSameFile(held, path)) {
       return open;
     }
     // A different project: the old handle has no reason to keep the old
@@ -117,7 +120,8 @@ class OpenProjectFile {
   /// and the protection would be off during exactly the window a save
   /// takes.
   void releaseFor(String path) {
-    if (_path == path) {
+    final held = _path;
+    if (held != null && namesTheSameFile(held, path)) {
       release();
     }
   }
@@ -166,7 +170,8 @@ class OpenProjectFile {
   /// memory flat whatever the project weighs.
   String? copyOut(String path, String destination) {
     final open = _handle;
-    if (open == null || _path != path) {
+    final held = _path;
+    if (open == null || held == null || !namesTheSameFile(held, path)) {
       return null;
     }
     final part = '$destination.part';

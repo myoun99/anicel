@@ -350,6 +350,34 @@ void main() {
     expect(failed, findsOneWidget);
   });
 
+  testWidgets('a document let go of that nothing opens any more says which '
+      'absence — the way a first open would', (tester) async {
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedPdf,
+    );
+    await saveProject(tester, session, directory);
+    await view(tester, session, path, MediaAssetKind.pdf);
+    expect(page(), findsOneWidget, reason: 'the premise');
+    // The renderer gone: no stand-in opener, and no PDFium under a test.
+    PdfRenderService.debugOpenerOverride = null;
+
+    unawaited(
+      session.projectFile.readersLetGoOf(session.projectFile.path!),
+    );
+    final absent = find.textContaining(
+      AppText.strings.mediaViewerNoPdfRenderer,
+    );
+    await settleAsync(tester, () => tester.any(absent));
+
+    expect(
+      absent,
+      findsOneWidget,
+      reason: '🪦it kept the stand-in and said nothing (audit 09-25)',
+    );
+  });
+
   testWidgets('a movie the save moves where it will not open stays on the '
       'page, read where it was', (tester) async {
     var refused = 0;

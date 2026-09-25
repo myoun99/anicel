@@ -1,8 +1,32 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'media_byte_source.dart' show HeldBytesMove, HeldMediaBytes;
+import 'media_byte_source.dart'
+    show
+        HeldBytesMove,
+        HeldMediaBytes,
+        HoldMediaBytes,
+        MediaByteSource,
+        openOnHeldBytes;
 import 'viewer_document.dart';
+
+/// [open] on the bytes [hold] answers for [path], as a document that holds
+/// them until it has closed ([HeldViewerDocument], [openOnHeldBytes]) — the
+/// viewer's, the import window's PDF preview, a PDF placement: the
+/// document's counterpart of `openHeldMovie`.
+///
+/// 🪦Each of the three spelled the same call with the same two type
+/// arguments and the same keeper (audit 09-25).
+Future<ViewerDocument?> openHeldViewerDocument(
+  HoldMediaBytes hold,
+  String path,
+  Future<ViewerDocument?> Function(MediaByteSource source) open,
+) => openOnHeldBytes<ViewerDocument, ViewerDocument>(
+  hold,
+  path,
+  open,
+  HeldViewerDocument.new,
+);
 
 /// A document, and the bytes it reads given back once it has closed.
 ///

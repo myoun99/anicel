@@ -28,6 +28,35 @@ MediaCarry carryOf(String path, [String token = 'c1']) =>
 /// sound for a long time, and a conform rides beside it now.
 void main() {
   group('entry names', () {
+    test('🚨the names are the ones the files hold — pinned, not the function '
+        'compared with itself', () {
+      // FNV-1a of the path, then the file name. Written out once, by the
+      // derivation the archive and the staging room each spelled before it
+      // was one (audit 09-25) — a change here changes what every project
+      // written so far holds.
+      expect(
+        anicelMediaEntryName(carryOf('/work/a.wav', '')),
+        'media/0d96c9e3-a.wav',
+      );
+      expect(
+        anicelMediaEntryName(carryOf('/work/a.wav', 'c1'), framed: true),
+        'media/0d96c9e3-c1-a.wav.z',
+      );
+      expect(
+        mintMediaCarry('/work/a.wav'),
+        matches(RegExp(r'^0d96c9e3-[0-9a-f]{8}-a\.wav$')),
+      );
+      expect(
+        anicelConformEntryName(
+          '/work/a.wav',
+          sampleRate: 48000,
+          speedNumerator: 1,
+          speedDenominator: 1,
+        ),
+        'conform/0d96c9e3-48000-1x1-a.wav',
+      );
+    });
+
     test('the same asset lands on the same name every save', () {
       // It has to: a compaction moves every byte in the file, and the name
       // is the only thing that survives that.

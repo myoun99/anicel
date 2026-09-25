@@ -84,14 +84,16 @@ class MediaStagingStore {
   @visibleForTesting
   static bool debugStageInline = false;
 
-  /// 🚨Separators normalised HERE, once.
+  /// 🚨Separators normalised HERE, once — every path built from it
+  /// ([_basePathFor]) is in the one spelling, and a path the file system
+  /// LISTS is put in it where it is listed ([list]; [holdsAnyCopyOf] reads
+  /// only its name, through [fileNameOfPath]).
   ///
-  /// Every method compares a path it BUILT ([_basePathFor]) against a path the
-  /// filesystem LISTED, and on Windows those disagree the moment a caller
-  /// hands in a `\`-flavoured directory — `Directory.systemTemp` does. An
-  /// earlier keep-set sweep failed to match a single live file that way
-  /// and deleted the lot; that sweep is gone — the room's lifetime replaced
-  /// it — but [find] and [list] still stand on the same comparison, so the
+  /// On Windows the two disagree the moment a caller hands in a
+  /// `\`-flavoured directory — `Directory.systemTemp` does. An earlier
+  /// keep-set sweep failed to match a single live file that way and deleted
+  /// the lot; that sweep is gone — the room's lifetime replaced it — but
+  /// [find] and [list] still stand on the one spelling, so the
   /// normalisation stays where it cannot be forgotten.
   /// 🚨★★★**RESOLVED ON USE, NOT IN THE CONSTRUCTOR** — because resolving
   /// it BUILDS AND LOCKS the run's room ([SessionScratch.stagedFolder]),
@@ -134,7 +136,7 @@ class MediaStagingStore {
       final file = File(candidate);
       if (file.existsSync()) {
         return StagedMedia(
-          path: file.path.replaceAll(r'\', '/'),
+          path: candidate,
           framed: mediaEntryIsFramed(candidate),
           storedLength: file.lengthSync(),
         );
@@ -163,7 +165,7 @@ class MediaStagingStore {
     }
     final (:hash, :safe) = mediaNameParts(poolPath);
     for (final entity in directory.listSync()) {
-      final name = fileNameOfPath(entity.path.replaceAll(r'\', '/'));
+      final name = fileNameOfPath(entity.path);
       if (name.startsWith('$hash-') &&
           mediaFramedOrPlainPaths('-$safe').any(name.endsWith)) {
         return true;
@@ -474,8 +476,9 @@ class StagedMedia {
   final int storedLength;
 }
 
-/// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so the
-/// isolate closure captures a list of strings and nothing else.
+/// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so
+/// the isolate closure captures the carries — records of two strings — and
+/// the folder, and nothing else.
 ///
 /// ONE handle per file: `MediaFileBytes.readIntoSync` opens and closes per
 /// call, which a 4GB asset at 512KB blocks would pay eight thousand times.

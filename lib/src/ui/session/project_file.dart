@@ -23,22 +23,23 @@ import '../../services/media/project_media_sources.dart'
         MediaBytesAt,
         ProjectConforms,
         mediaEntryHeld,
+        mediaEntryNameIn,
         projectConformSources,
         readableAnicelLayout,
         storedMediaBytesFor;
 import '../../services/persistence/anicel_file_service.dart'
     show AnicelFileService;
 import '../../services/persistence/anicel_incremental_writer.dart'
-    show AnicelZipLayout, parseAnicelZipLayoutFile;
+    show AnicelZipLayout;
 import '../../services/persistence/anicel_project_archive.dart'
     show
         anicelConformEntryNames,
         anicelMediaEntryName,
-        anicelMediaEntryNames,
         anicelMediaEntryPrefix;
 import '../../services/persistence/media_blob_codec.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/project_lookup.dart' show projectMediaCarryOf;
+import '../../services/persistence/same_file.dart'
+    show namesTheSameFile;
 import 'session_roles.dart';
 
 /// The project file this session is bound to, and everything derived from
@@ -75,12 +76,18 @@ class ProjectFile {
   Set<String> _mediaInFile = const {};
 
   /// The carry the pool's [poolPath] asset is right now, or null when the
-  /// pool points at the file ([projectMediaCarryOf]) — the first half of
+  /// pool points at the file or names nothing there — the first half of
   /// 「where are these bytes」, and what a reader that KEEPS an answer keys
-  /// it by (the conform store, the canvas's movie rows): a path's bytes are
-  /// one carry's, and the pool can come to name another.
+  /// it by (the conform store, the canvas's movie rows).
+  ///
+  /// 🚨★★★**THE POOL AS IT IS NOW, NOT THE PATH.** One path can have been
+  /// carried twice — removed, then carried again, with an undo able to bring
+  /// the first back — and which carry's bytes a reader gets is the one the
+  /// pool names at this moment (card `recarry-after-remove-reads-the-old`).
+  /// 🪦`projectMediaCarryOf` asked the same thing with a loop of its own
+  /// beside [Project.mediaAssetByPath] (audit 09-25).
   MediaCarry? mediaCarryFor(String poolPath) =>
-      projectMediaCarryOf(_requireProject(), poolPath);
+      _requireProject().mediaAssetByPath(poolPath)?.carry;
 
   /// What [poolPath]'s bytes ACTUALLY occupy right now, or null when only
   /// the file on disk knows.
@@ -102,16 +109,17 @@ class ProjectFile {
   /// remembered at save/open rather than asked for here.
   ///
   /// ⚠️In the order every reader looks ([storedMediaBytesFor]) — the project
-  /// file first — so the size shown is the size of the bytes that are READ.
-  /// 🪦The staged copy answered first here alone.
+  /// file first — and through the same gate ([_storedFor]: the file's own
+  /// record, [mediaInFile]), so the size shown is the size of the bytes that
+  /// are READ. 🪦The staged copy answered first here alone; then the layout
+  /// answered here while the readers asked the record (audit 09-25).
   int? mediaStoredBytesFor(String poolPath) {
     final carry = mediaCarryFor(poolPath);
     if (carry == null) {
       return null;
     }
-    final archived = _archivedMediaBytes();
-    for (final name in anicelMediaEntryNames(carry)) {
-      if (archived[name] case final length?) {
+    if (mediaEntryNameIn(_mediaInFile, carry) case final name?) {
+      if (_archivedMediaBytes()[name] case final length?) {
         return length;
       }
     }
@@ -224,9 +232,9 @@ class ProjectFile {
   /// ⚠️Invalidated by [invalidateConformStoredBytes] on two events and
   /// they are BOTH needed: a completed save (the carried entry's length
   /// moved) and the conform store answering (a conform was just built, or
-  /// dropped by [AudioConformStore.releaseDiskBacked]). Keying on the save
-  /// generation alone — what the media map does — would leave a freshly
-  /// conformed sound showing nothing until the next save.
+  /// dropped by [AudioConformStore.releaseDiskBacked]). Keying on the file
+  /// generation alone ([_fileGeneration], what the media map does) would
+  /// leave a freshly conformed sound showing nothing until the next save.
   Map<String, int> get conformStoredBytes {
     final known = _conformStoredBytes;
     if (known != null) {
@@ -465,7 +473,7 @@ class ProjectFile {
     final holding = [
       for (final live in _liveHolds)
         if (live.stored.span?.path case final path?
-            when AnicelFileService.samePath(path, filePath))
+            when namesTheSameFile(path, filePath))
           live,
     ];
     // Every one of them, told before or not: one that could not follow an
@@ -499,15 +507,20 @@ class ProjectFile {
   /// 🚨★★★**FOR A READER THAT KEEPS READING** — a document the viewer holds
   /// open: a movie the OS decoder reads by offset frame after frame, a PDF
   /// read a page at a time. [mediaByteSourceFor] is resolved per call and
-  /// held by no one; a document is held by definition. Two steps of a save
-  /// would pull bytes from under it, and each answer is kept from its own:
+  /// held by no one; a document is held by definition. Three steps of a
+  /// save would pull bytes from under it, and each answer is kept from its
+  /// own:
   ///  * an archive entry from the IN-PLACE push-down (since 2026-09-23 live
   ///    bytes slide down, and the next round writes over where they were —
   ///    where a save used to write a new file beside the old one, which an
   ///    open reader went on reading untouched) — [heldArchiveEntries];
   ///  * a staged copy from the retirement that follows its absorption —
-  ///    [MediaStagingStore.hold].
-  /// The original is the user's file, and nothing here moves it.
+  ///    [MediaStagingStore.hold];
+  ///  * the file itself from a WHOLE write that replaces it — the reader is
+  ///    asked to let go first, and holds again once the save has ended
+  ///    ([readersLetGoOf], [HeldBytesMove.replacing]).
+  /// And whatever a reader holds, the save stores ([heldCarries]). The
+  /// original is the user's file, and nothing here moves it.
   ///
   /// ⚠️Waits out a save already running: it may be moving these very bytes,
   /// and a range read off the directory it is about to supersede would be
@@ -521,7 +534,7 @@ class ProjectFile {
   /// [where]'s bytes, held — [holdMediaBytes] for any answer, and what
   /// [HeldMediaBytes.again] asks again.
   Future<HeldMediaBytes> _hold(_Whereabouts Function() where) async {
-    // The wait and the hold in ONE step — see [saveSettled]: a save that
+    // The wait and the hold in ONE step ([_saveEnded]): a save that
     // woke on the same completion must not begin between them, or it moves
     // what this is about to hold without having counted it.
     while (_saveInFlight) {
@@ -619,38 +632,37 @@ class ProjectFile {
   /// [mediaByteSourceFor] follows: a compaction moves every byte, and a
   /// range kept from before would read whatever landed on those offsets.
   ///
-  /// ⛔The entry name is DERIVED, not recorded. Media records its entry
-  /// names because an old project may have been written under a different
-  /// rule; a conform is younger than that problem, and recording a second
-  /// map would be a second thing to keep in step.
+  /// ⛔The entry name is DERIVED, not recorded: the path and the settings
+  /// say it, and both spellings are asked. Media keeps a record of its names
+  /// ([mediaInFile]) because a carry's name is its own
+  /// ([MediaAsset.carriedAs]), not its path's; a conform has no such thing,
+  /// and a second record would be a second thing to keep in step.
+  ///
+  /// A torn tail is read the way every reader reads it
+  /// ([readableAnicelLayout]); nothing readable, and the decode still works
+  /// — which is the entire fallback this optimisation stands on.
   MediaByteSource? carriedConformFor(String sourcePath) {
     final archivePath = _projectFilePath;
-    if (archivePath == null) {
+    final layout = readableAnicelLayout(archivePath);
+    if (archivePath == null || layout == null) {
       return null;
     }
     final project = _requireProject();
-    try {
-      final layout = parseAnicelZipLayoutFile(archivePath);
-      // Only the names the CURRENT settings produce. A conform carried at
-      // another rate is not a conform for this project any more, and the
-      // next save is what takes it away.
-      for (final name in anicelConformEntryNames(
-        sourcePath,
-        sampleRate: project.audioSampleRate,
-        speedNumerator: project.audioSpeedNumerator,
-        speedDenominator: project.audioSpeedDenominator,
-      )) {
-        final entry = layout.entryNamed(name);
-        if (entry != null) {
-          return MediaArchiveBytes.ofEntry(
-            archivePath: archivePath,
-            entry: entry,
-          );
-        }
+    // Only the names the CURRENT settings produce. A conform carried at
+    // another rate is not a conform for this project any more, and the
+    // next save is what takes it away.
+    for (final name in anicelConformEntryNames(
+      sourcePath,
+      sampleRate: project.audioSampleRate,
+      speedNumerator: project.audioSpeedNumerator,
+      speedDenominator: project.audioSpeedDenominator,
+    )) {
+      if (layout.entryNamed(name) case final entry?) {
+        return MediaArchiveBytes.ofEntry(
+          archivePath: archivePath,
+          entry: entry,
+        );
       }
-    } on Object {
-      // A torn or momentarily unreadable archive: the decode below still
-      // works, which is the entire fallback this optimisation stands on.
     }
     return null;
   }
@@ -712,22 +724,13 @@ class ProjectFile {
   /// instead of racing it. Read through [autosaveShouldStandDown].
   bool _saveInFlight = false;
 
-  /// Completes when the save in flight ends — what [saveSettled] waits on.
-  Completer<void> _saveEnded = Completer<void>()..complete();
-
-  /// Waits out a save in flight, and the next if one starts in between.
-  ///
-  /// ⚠️Only for a caller that does nothing a save could race once it is
-  /// through. One that goes on to write, or to hold what a save moves,
-  /// waits inside the same step it acts in ([beginSaveWhenSettled],
+  /// Completes when the save in flight ends — what a writer and a hold wait
+  /// on, each inside the step it acts in ([beginSaveWhenSettled],
   /// [holdMediaBytes]): two callers woken by the same save both find it
   /// over, and an `await` between the wait and the act lets the other one
-  /// act first.
-  Future<void> saveSettled() async {
-    while (_saveInFlight) {
-      await _saveEnded.future;
-    }
-  }
+  /// act first. 🪦`saveSettled` waited alone, and nothing called it once
+  /// both did it this way (a0db20fa1).
+  Completer<void> _saveEnded = Completer<void>()..complete();
 
   /// Raised for the WHOLE save, retirement included — see
   /// [ProjectFileDoor.saveProjectToFile], which says why the window has to

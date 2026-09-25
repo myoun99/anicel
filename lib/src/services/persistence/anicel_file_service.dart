@@ -14,6 +14,7 @@ import '../media/project_media_sources.dart'
 import 'brush_drawing_binary_codec.dart';
 import 'anicel_incremental_writer.dart';
 import 'open_project_file.dart';
+import 'same_file.dart';
 import 'save_failure.dart' show SaveNotSwappedIn;
 import 'scratch_file.dart';
 import 'session_scratch.dart';
@@ -509,7 +510,7 @@ class AnicelFileService {
     };
     final refsHere = <BrushFrameKey>{
       for (final entry in baked.fileRefs.entries)
-        if (samePath(entry.value.filePath, filePath)) entry.key,
+        if (namesTheSameFile(entry.value.filePath, filePath)) entry.key,
     };
     final sound =
         !rewriteWhole &&
@@ -550,7 +551,10 @@ class AnicelFileService {
     /// one left behind reads whatever lands on its old bytes.
     void moveRefs(Map<int, AnicelRelocation> moved) {
       for (final store in stores) {
-        store.relocateFileRefs((path) => samePath(path, filePath), moved);
+        store.relocateFileRefs(
+          (path) => namesTheSameFile(path, filePath),
+          moved,
+        );
       }
     }
 
@@ -845,7 +849,8 @@ class AnicelFileService {
     // [baked] — its hot surfaces are native-backed and cannot cross.
     final cleanRefsToVerify = <(String, int, int)>[
       for (final ref in baked.fileRefs.entries)
-        if (!dirty.contains(ref.key) && samePath(ref.value.filePath, filePath))
+        if (!dirty.contains(ref.key) &&
+            namesTheSameFile(ref.value.filePath, filePath))
           (anicelCelEntryName(ref.key), ref.value.dataOffset, ref.value.length),
     ];
     // 🚨Refs a DIRTY cel still holds into this file — a rekeyed cel keeps
@@ -856,7 +861,7 @@ class AnicelFileService {
     final heldByDirtyCels = <String, int>{
       for (final key in dirty)
         if (baked.fileRefs[key] case final ref?
-            when samePath(ref.filePath, filePath))
+            when namesTheSameFile(ref.filePath, filePath))
           anicelCelEntryName(key): ref.dataOffset,
     };
     // ⛔A bool, not [onProgress]: the port now opens for the refs even with
@@ -1458,17 +1463,12 @@ class AnicelFileService {
     // back. No pixel bytes load here — each cel is a ~200-byte header
     // read for its key + geometry.
     final (:projectJsonBytes, :cels) = await Isolate.run(() {
-      AnicelZipLayout layout;
-      try {
-        layout = parseAnicelZipLayoutFile(filePath);
-      } on FormatException {
-        // A save died partway: open the last one that finished (plus, if
-        // it died committing, what it had fully written). The file stays
-        // torn on disk until the next save — which the service forces down
-        // the FULL path (the incremental precondition re-parses this same
-        // tail and fails) — so opening is enough to heal on save.
-        layout = recoverAnicelZipLayoutFile(filePath);
-      }
+      // A save that died partway opens as the last one that finished (plus,
+      // if it died committing, what it had fully written). The file stays
+      // torn on disk until the next save — which the service forces down
+      // the FULL path (the incremental precondition re-parses this same
+      // tail and fails) — so opening is enough to heal on save.
+      final layout = readAnicelZipLayoutFile(filePath);
       final projectEntry = layout.projectEntry();
       if (projectEntry == null) {
         throw const FormatException('Not an Anicel project (.anicel).');
@@ -1618,10 +1618,10 @@ class AnicelFileService {
     final read = <String>{
       for (final store in stores)
         for (final ref in store.bakedSnapshotForSave().fileRefs.values)
-          ref.filePath.replaceAll(r'\', '/'),
+          ref.filePath,
     };
     _retiring.removeWhere((archive) {
-      if (read.contains(archive.replaceAll(r'\', '/'))) {
+      if (read.any((path) => namesTheSameFile(path, archive))) {
         return false;
       }
       OpenProjectFile.instance.releaseFor(archive);
@@ -1630,10 +1630,7 @@ class AnicelFileService {
     });
   }
 
-  /// Whether [a] and [b] name the same project file, whichever way each was
-  /// spelled — what a save asks of a ref, and of a reader it must ask to let
-  /// go (`ProjectFile.readersLetGoOf`).
-  static bool samePath(String a, String b) =>
-      a.replaceAll('\\', '/').toLowerCase() ==
-      b.replaceAll('\\', '/').toLowerCase();
+  // 🪦`samePath` stood here — one of five spellings of 「is this the same
+  // project file」, and the only one that folded case (audit 09-25). It is
+  // [namesTheSameFile] now, for all five.
 }
