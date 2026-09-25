@@ -91,7 +91,9 @@ double timelineLayerRowGrowthIn(BuildContext context) {
 /// 372 → 434 (R27 #6): the blend-mode dropdown moved from the toolbar
 /// into the label's rightmost slot — the rail pays its width, as the
 /// user directed ("레이어라벨 더 키워야겟지").
-const double timelineLayerControlsWidth = 434;
+/// 434 → 443 (text-scale-rail-opac, 유저 2026-09-25): the opacity column
+/// widened to hold the legend's OPAC at 1×, and the rail pays that too.
+const double timelineLayerControlsWidth = 443;
 
 /// [timelineLayerControlsWidth] with [columns] in place of the 1× ones —
 /// the rail pays for its word-holding columns' growth

@@ -1912,7 +1912,8 @@ Future<void> _pumpStoryboardPanel(
   ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
 }) async {
   // The rail matches the timeline's — 372 in UI-R5, 434 since the user
-  // unified the two widths (2026-08-04) — so the surface must stay wide
+  // unified the two widths (2026-08-04), 443 since the OPAC column widened
+  // (2026-09-25) — so the surface must stay wide
   // enough to keep every cut block of the three-cut fixtures on screen.
   await tester.binding.setSurfaceSize(const Size(1400, 600));
   addTearDown(() => tester.binding.setSurfaceSize(null));

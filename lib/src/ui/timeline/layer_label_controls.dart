@@ -261,7 +261,11 @@ const double layerVisibilitySlotWidth = 22;
 const double layerMuteSlotWidth = 18;
 // 64 → 42 (UI-R18 #4): the opacity bar reads fine at two-thirds width
 // across all three panels' rails.
-const double layerOpacitySlotWidth = 42;
+// 42 → 51 (text-scale-rail-opac, 유저 2026-09-25: 「칸을 가장 넓은 글자에
+// 맞게 1배부터 넓힌다」): the legend's resting OPAC wanted 34.8 in the bar's
+// 26 at 1× — short from the start, which growing with the text could never
+// mend. The rails pay the 9.
+const double layerOpacitySlotWidth = 51;
 
 /// R27 #6: the BLEND column — the layer's compositing mode, moved out of
 /// the timeline toolbar and into the label itself (PS/CSP reading: the

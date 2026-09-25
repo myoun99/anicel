@@ -124,9 +124,9 @@ void main() {
   testWidgets(
     'sticky frame ruler lays out full content width without overflow',
     (tester) async {
-      // The rail widened to 372 (R3 #8 → R4 #9) then 434 (R27 #6, the
-      // blend column); keep the frame viewport NARROW but non-degenerate
-      // so the ruler layout is still exercised.
+      // The rail widened to 372 (R3 #8 → R4 #9), 434 (R27 #6, the blend
+      // column) and 443 (the OPAC column); keep the frame viewport NARROW
+      // but non-degenerate so the ruler layout is still exercised.
       await tester.binding.setSurfaceSize(const Size(514, 260));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -331,7 +331,7 @@ void main() {
     // Untouched, the rail window is the rail's NATURAL width — nothing is
     // cut until the user drags the splitter.
     expect(railRect.left, moreOrLessEquals(gridLeft + 16));
-    expect(railRect.width, moreOrLessEquals(434));
+    expect(railRect.width, moreOrLessEquals(443));
     expect(splitterRect.left, moreOrLessEquals(railRect.right));
     expect(splitterRect.width, moreOrLessEquals(5));
     expect(frameGridAreaRect.left, moreOrLessEquals(splitterRect.right));
@@ -387,11 +387,11 @@ void main() {
         .left;
     final wideFrameArea = tester.getRect(frameGridArea).width;
 
-    rail.resizeBy(-234, naturalExtent: 434);
+    rail.resizeBy(-243, naturalExtent: 443);
     await tester.pump();
 
     // The window is 200 wide; the rail INSIDE it never moved or shrank.
-    expect(tester.getSize(railBody).width, moreOrLessEquals(434));
+    expect(tester.getSize(railBody).width, moreOrLessEquals(443));
     final windowRight = gridLeft + 16 + 200;
     expect(
       tester.getRect(find.byType(LayerRailWindow).first).right,
@@ -412,7 +412,7 @@ void main() {
     // And the frame cells took the width the rail gave up.
     expect(
       tester.getRect(frameGridArea).width,
-      moreOrLessEquals(wideFrameArea + 234),
+      moreOrLessEquals(wideFrameArea + 243),
     );
     expect(
       tester
@@ -1161,10 +1161,10 @@ void main() {
       'F-174)', (tester) async {
     // Same frame-viewport width as when the rail was 220px wide, so the
     // scroll offsets below keep exercising the same frame windows.
-    await tester.binding.setSurfaceSize(const Size(944, 600));
+    await tester.binding.setSurfaceSize(const Size(953, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_grid(playbackFrameCount: 24, width: 944));
+    await tester.pumpWidget(_grid(playbackFrameCount: 24, width: 953));
 
     expect(timelineHeaderInWindow(tester, 0), isTrue);
 
@@ -1487,12 +1487,18 @@ void main() {
     final selectedFrameIndices = <int>[];
 
     // 372 rail (R4 #9) + classic 48px cells: the default 800px surface no
-    // longer reaches frame 9's ruler slot.
+    // longer reaches frame 9's ruler slot. The grid takes the whole wide
+    // surface — at its own 900 default, frame 9 sat 1px inside the window
+    // until the OPAC column took 9 more.
     await tester.binding.setSurfaceSize(const Size(1080, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 20),
+      _grid(
+        onSelectFrame: selectedFrameIndices.add,
+        playbackFrameCount: 20,
+        width: 1080,
+      ),
     );
 
     final scrubArea = find.byKey(
@@ -1523,6 +1529,7 @@ void main() {
           return _grid(
             currentFrameIndex: currentFrameIndex,
             playbackFrameCount: 20,
+            width: 1080,
             onSelectFrame: (frameIndex) {
               setState(() => currentFrameIndex = frameIndex);
             },
@@ -2524,12 +2531,12 @@ void main() {
   ) async {
     // Same frame-viewport width as when the rail was 220px wide, so cells
     // 28-32 stay materialized together once 28 scrolls into view.
-    await tester.binding.setSurfaceSize(const Size(944, 600));
+    await tester.binding.setSurfaceSize(const Size(953, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
       _grid(
-        width: 944,
+        width: 953,
         currentFrameIndex: 28,
         playbackFrameCount: 24,
         exposureStateForLayer: (layer, frameIndex) {

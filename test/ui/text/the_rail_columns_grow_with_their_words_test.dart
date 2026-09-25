@@ -18,10 +18,11 @@ import '../../helpers/words_cut_off.dart';
 /// the opacity digits wanted 35.5 in the bar's 26 and 「Normal」 56.6 in the
 /// blend chip's 52, and the sheet's stood-up bars cut the same digits.
 ///
-/// ⚠️The legend's resting OPAC is short by 8.7 at EVERY size, 1× included —
-/// a column narrower than its word from the start, which growth cannot mend
-/// ([text-scale-rail-opac-Q1] asks how to). It is left out of the across
-/// check by name, and only it.
+/// 🚨text-scale-rail-opac (유저 2026-09-25, answering text-scale-rail-opac-Q1:
+/// 「칸을 가장 넓은 글자에 맞게 1배부터 넓힌다」). The legend's resting OPAC
+/// was short by 8.7 at EVERY size, 1× included — a column narrower than its
+/// word from the start, which growth cannot mend. The column widened from
+/// 1×, so the legends are held to the same check as the rows.
 ///
 /// ⚠️In the app's face or not at all ([loadTheAppFaces]), and in the real
 /// root ([AnicelApp]).
@@ -35,9 +36,6 @@ void main() {
     addTearDown(tester.view.reset);
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   }
-
-  List<String> butTheOpacWord(List<String> cut) =>
-      [for (final word in cut) if (!word.startsWith('「OPAC」')) word];
 
   /// A row's opacity bar under [scope] — every rail keys it
   /// `<surface>-layer-opacity-<id>`.
@@ -78,6 +76,11 @@ void main() {
         final rows = find.byType(TimelineLayerControlsRow);
         expect(rows, findsWidgets, reason: 'LIVENESS — the rail shows rows');
         expect(wordsCutAcross(rows), isEmpty);
+        expect(
+          wordsCutAcross(find.byType(TimelineLayerControlsHeader)),
+          isEmpty,
+          reason: 'the legend\'s resting OPAC fits its bar, 1× included',
+        );
 
         final shown = layerRailColumnWidthsIn(tester.element(rows.first));
         expect(
@@ -145,6 +148,7 @@ void main() {
         expect(heading.height, closeTo(bar.height, 0.5));
         // …and runs the whole block the headers run, grown columns and all.
         final legend = find.byType(TimelineLayerControlsHeader).first;
+        expect(wordsCutAcross(legend), isEmpty);
         expect(
           tester.getSize(legend).height,
           closeTo(
@@ -172,10 +176,10 @@ void main() {
 
         final board = find.byType(StoryboardPanel);
         expect(board, findsOneWidget, reason: 'LIVENESS — the board shows');
-        expect(butTheOpacWord(wordsCutAcross(board)), isEmpty);
+        expect(wordsCutAcross(board), isEmpty);
         expect(
           StoryboardPanel.railWidthIn(tester.element(board)),
-          scale == 1.0 ? 434 : greaterThan(434),
+          scale == 1.0 ? 443 : greaterThan(443),
         );
 
         // Its legend's master bar sits over its S rows' bars.

@@ -563,7 +563,11 @@ class StoryboardPanel extends StatefulWidget {
   // columns — this one has no blend cell — so the day either needs a new
   // one, the other must be free to stay put. The repetition is the point;
   // do not "clean it up" into a shared constant.
-  static const double _trackLabelWidth = 434;
+  //
+  // 434 → 443 (text-scale-rail-opac, 유저 2026-09-25): the opacity column
+  // this rail shares widened to hold the legend's OPAC at 1×, and the
+  // answer the user picked named both rails.
+  static const double _trackLabelWidth = 443;
 
   /// [_trackLabelWidth] where [context] lays its text out: this rail pays for
   /// ITS word-holding column's growth — the opacity bar's; it has no blend
