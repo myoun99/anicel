@@ -444,11 +444,11 @@ void main() {
     for (final ratio in const [1.0, 2.0]) {
       // Half a device pixel outside the paper's circle, on the diagonal
       // toward the end edge's corner: ink only if the bleed is there.
-      Offset probe(Rect box) {
+      Offset probe(Rect box, {double past = 0.5}) {
         final center = box.topRight + const Offset(-r, r);
         const inward = Offset(-1, 1);
         return center -
-            inward / inward.distance * (r + 0.5 / ratio);
+            inward / inward.distance * (r + past / ratio);
       }
 
       // The widget grip paints into its own box, at its own origin.
@@ -501,6 +501,18 @@ void main() {
         ),
         isTrue,
         reason: 'the dense rows\' chrome at ${ratio}x',
+      );
+      expect(
+        chromeSpy.paths.single.contains(
+          probe(
+            gripBox(TimelineBlockEdge.end, length: 5, cell: cell),
+            past: 1.5,
+          ),
+        ),
+        isFalse,
+        reason:
+            'a layer row stands on no plate: the tip follows its own '
+            'block\'s round (r $r), not a square corner — ${ratio}x',
       );
     }
   });

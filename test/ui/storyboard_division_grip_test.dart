@@ -147,7 +147,7 @@ void main() {
       'boundary name two edits, not one', (tester) async {
     await _openStoryboard(tester);
 
-    // Panels in track order: cut 1's two, then one each for cuts 2 and 3.
+    // Panels in track order: cut 1's two, cut 2's one, cut 3's two.
     // Panel 1 is INTERIOR to cut 1 and hangs a front grip all the same
     // (user's rule 2026-08-02). It is not the impersonation P5 #8 shipped:
     // panel 0's BACK grip grows the cut at its tail, and panel 1's FRONT
@@ -225,6 +225,12 @@ void main() {
     // Cut 2: one panel, both its edges the plate's.
     expect(grip('block-edge-grip-start-grip-track-2').paperCorner, plate);
     expect(grip('block-edge-grip-end-grip-track-2').paperCorner, plate);
+    // Cut 3, the track's last, two panels: no cut starts where it ends, so
+    // nothing but the plates' ENDS can say its end is a plate's corner.
+    expect(grip('block-edge-grip-start-grip-track-3').paperCorner, plate);
+    expect(grip('block-edge-grip-end-grip-track-3').paperCorner, 0);
+    expect(grip('block-edge-grip-start-grip-track-4').paperCorner, 0);
+    expect(grip('block-edge-grip-end-grip-track-4').paperCorner, plate);
 
     // And the painter draws by it: the ink reaches the box's very corner
     // between panels, and follows the plate's round at the cut's end.
