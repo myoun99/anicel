@@ -24,22 +24,25 @@ import 'static_raster.dart';
 /// the timeline and the side panels were drawn from scratch under every
 /// dab. The measurement build that held each dock region as one image once
 /// it had stayed the same for three frames drew an idle frame in 2.2 ms
-/// instead of 13.5, and a stroke frame in 5.8 ms instead of 19.6.
+/// instead of 13.5, and a stroke frame in 5.8 ms instead of 19.6. This
+/// class, the canvas left out, measured 28.3 → 5.6 ms idle and 37.5 →
+/// 14.6 ms mid-stroke, in alternating pairs within one run of the same
+/// app on a machine other sessions were loading (09-25).
 ///
-/// ⚠️The price, measured the same day: an image composited from an
-/// offscreen is not bit-for-bit what painting in place gives — 251 of 3.46
-/// million window pixels, 247 of them by 1/255 and none by more than
-/// 5/255, at translucent edges. The user took it for the panels. The
-/// canvas is the one thing whose pixels may never move
+/// ⚠️The price: an image composited from an offscreen is not bit-for-bit
+/// what painting in place gives — 225 of 3.46 million window pixels, 221
+/// of them by 1/255 and none by more than 5/255, at translucent edges of
+/// the panels (the same run). The user took it for the panels. The canvas
+/// is the one thing whose pixels may never move
 /// (「결과 절대 바뀌면 안되는건 캔버스뿐임」), so a region showing it is
 /// never drawn from an image ([enabled]).
 ///
 /// 🚨That last sentence was first written as "no canvas is under one of
 /// these", and it was false: the canvas is a TAB, of the floor dock, and
 /// the first real-app run found the floor's region holding a 12 MB image of
-/// it. The measurement build behind the numbers above wrapped the floor
-/// too. A claim about what a blanket wrapper does NOT cover is checked
-/// against the regions it actually made.
+/// it. The measurement build behind the decision wrapped the floor too. A
+/// claim about what a blanket wrapper does NOT cover is checked against
+/// the regions it actually made.
 ///
 /// ## How it knows the region has not changed
 ///
