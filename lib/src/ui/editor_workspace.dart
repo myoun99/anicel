@@ -1935,34 +1935,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           EditorPanelDockSide.left,
         ),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) =>
-                // EVERY read of an extent lives below this line. It is the
-                // narrowest wrapper that still sees them all, so a splitter
-                // drag rebuilds the rails and the region — and stops there.
-                //
-                // ★THE FLOOR RIDES THROUGH AS A CHILD. Building it inside
-                // this builder is what was left of the drag lag: every
-                // frame of every splitter drag rebuilt the canvas panel,
-                // and the edge trailed the cursor by however long that
-                // took. It does not depend on any extent — the cover it
-                // needs reaches it through an InheritedWidget, which
-                // notifies without rebuilding anything between.
-                ListenableBuilder(
-                  // The region's own INSET rides here too. It used to be
-                  // a plain field behind setState, so pulling the
-                  // floating region's side in rebuilt the entire
-                  // workspace — canvas included — once per drag frame,
-                  // which is why that grip stayed heavy after the
-                  // splitter one was fixed.
-                  listenable: Listenable.merge([
-                    _layout.extentRevision,
-                    _bottomInsetOverride,
-                  ]),
-                  child: _docks.buildCenterDock(),
-                  builder: (context, floor) =>
-                      _floorFor(context, floor, room, constraints),
-                ),
+          // 🚨THE FLOOR IS A RELAYOUT BOUNDARY, which is the one job of this
+          // box (F-166, 2026-09-26). The `LayoutBuilder` below owns the build
+          // scope of everything on the floor, so a `setState` there that
+          // lands OUTSIDE a frame — the canvas panel's at every pen-up, any
+          // pointer handler or timer — lays the builder out again on the
+          // next frame. Given the Row's loose height it was no boundary,
+          // and that relayout climbed every box up to the Scaffold:
+          // measured, 21 layouts on each pen-up, each one a repaint mark and
+          // a semantics update. Tight constraints stop it at the builder.
+          // ⚠️The floor is all `Positioned` children and reads only the
+          // maxima, so it was always exactly this big — nothing moves.
+          child: SizedBox.expand(
+            key: const ValueKey<String>('workspace-floor'),
+            child: LayoutBuilder(
+              builder: (context, constraints) =>
+                  // EVERY read of an extent lives below this line. It is the
+                  // narrowest wrapper that still sees them all, so a splitter
+                  // drag rebuilds the rails and the region — and stops there.
+                  //
+                  // ★THE FLOOR RIDES THROUGH AS A CHILD. Building it inside
+                  // this builder is what was left of the drag lag: every
+                  // frame of every splitter drag rebuilt the canvas panel,
+                  // and the edge trailed the cursor by however long that
+                  // took. It does not depend on any extent — the cover it
+                  // needs reaches it through an InheritedWidget, which
+                  // notifies without rebuilding anything between.
+                  ListenableBuilder(
+                    // The region's own INSET rides here too. It used to be
+                    // a plain field behind setState, so pulling the
+                    // floating region's side in rebuilt the entire
+                    // workspace — canvas included — once per drag frame,
+                    // which is why that grip stayed heavy after the
+                    // splitter one was fixed.
+                    listenable: Listenable.merge([
+                      _layout.extentRevision,
+                      _bottomInsetOverride,
+                    ]),
+                    child: _docks.buildCenterDock(),
+                    builder: (context, floor) =>
+                        _floorFor(context, floor, room, constraints),
+                  ),
+            ),
           ),
         ),
         _docks.buildEdgeDock(
