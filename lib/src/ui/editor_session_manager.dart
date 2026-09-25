@@ -2377,7 +2377,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: cells, frameVerbs: frameVerbs, internals: this);
+  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, transitions: transitions, cells: cells, frameVerbs: frameVerbs, internals: this);
 
   @override
   bool get canCreateInstance => cellInstances.canCreateInstance;

@@ -13,6 +13,7 @@ import 'instructions.dart';
 import 'lane_verbs.dart';
 import 'layer_verbs.dart';
 import 'track_se_display.dart';
+import 'transitions.dart';
 import 'frame_verbs.dart';
 import 'cell_verbs.dart';
 
@@ -35,6 +36,7 @@ class CellInstances {
     required LaneVerbs laneVerbs,
     required LayerVerbs layerVerbs,
     required TrackSeDisplay trackSe,
+    required Transitions transitions,
     required FrameVerbs frameVerbs,
     required CellVerbs cells,
   }) : _project = project,
@@ -48,6 +50,7 @@ class CellInstances {
        _laneVerbs = laneVerbs,
        _layerVerbs = layerVerbs,
        _trackSe = trackSe,
+       _transitions = transitions,
        _frameVerbs = frameVerbs,
        _cells = cells;
 
@@ -65,6 +68,7 @@ class CellInstances {
   final LaneVerbs _laneVerbs;
   final LayerVerbs _layerVerbs;
   final TrackSeDisplay _trackSe;
+  final Transitions _transitions;
 
   /// UI-R25 #3: Add with a LIVE selection fills the WHOLE selection —
   /// wherever creation is possible, kind by kind (the rule: anywhere
@@ -113,6 +117,7 @@ class CellInstances {
     // Camera goes FIRST — its undo restores a whole-project snapshot, so it
     // must be the last command undone (CompositeCommand undoes in reverse).
     final cameraCommands = <Command>[];
+    Command? transitionCommand;
     for (final layerId in selection.spanLayerIds) {
       final layer = displayById[layerId];
       if (layer == null) {
@@ -125,6 +130,13 @@ class CellInstances {
         }
         continue;
       }
+      // F-180 × #17: the transition row takes a span as long as the range —
+      // the storyboard's rule for its track range, on the cut view's.
+      if (layer.kind == LayerKind.transition) {
+        transitionCommand =
+            _transitions.transitionSpanCreationInCutCommand();
+        continue;
+      }
       // A direction row fills its gaps the way every cel row does: its
       // spans are its blocks (R27), and a bare one takes the ＋'s span at
       // the write — so it had no branch of its own to keep.
@@ -135,6 +147,7 @@ class CellInstances {
     }
     final commands = <Command>[
       ...cameraCommands,
+      ?transitionCommand,
       if (fills.isNotEmpty)
         ..._controllers.timelineController.drawingFramesCommandsForLayers(
           fills,
@@ -224,7 +237,11 @@ class CellInstances {
       LayerKind.animation ||
       LayerKind.storyboard ||
       LayerKind.image => _frameVerbs.canCreateDrawingAtCurrentFrame,
-      LayerKind.folder || LayerKind.adjustment || LayerKind.transition => false,
+      // F-180: the cut view creates on the transition row too, by the
+      // storyboard's verb ([Transitions.transitionSpanCreationInCutOrNull]).
+      LayerKind.transition =>
+        _transitions.transitionSpanCreationInCutOrNull != null,
+      LayerKind.folder || LayerKind.adjustment => false,
       _ => true,
     };
   }
@@ -256,10 +273,14 @@ class CellInstances {
         _project.activeCutOrNull?.camera.keyframeAt(frameIndex) != null,
       LayerKind.instruction =>
         _instructionVerbs.instructionSpanAt(layer.id, frameIndex) != null,
-      // ⛔Read-only inside a cut and nothing to author on a row that holds
-      // no cel of its own: reporting FULL keeps the fork from offering a
-      // creation their own verbs already refuse.
-      LayerKind.transition || LayerKind.folder || LayerKind.adjustment => true,
+      // What the cell SHOWS — the cut's row is a projection
+      // ([Transitions.transitionShownInCutAt]), and 「빈 칸」 is what the
+      // user is looking at.
+      LayerKind.transition => _transitions.transitionShownInCutAt(frameIndex),
+      // ⛔Nothing to author on a row that holds no cel of its own: reporting
+      // FULL keeps the fork from offering a creation their own verbs
+      // already refuse.
+      LayerKind.folder || LayerKind.adjustment => true,
       LayerKind.se ||
       LayerKind.animation ||
       LayerKind.storyboard ||

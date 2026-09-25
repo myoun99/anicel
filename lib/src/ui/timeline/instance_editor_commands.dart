@@ -96,10 +96,11 @@ Future<void> activateCellEditor(
       // the twirl-down.
       break;
     case LayerKind.transition:
-      // READ-ONLY inside a cut. The cut view windows the track's spans for
-      // reading; a double-tap here must not open the editor, or the
-      // "컷 타임라인은 보여주기만" law would be broken by the one gesture
-      // that looks harmless.
+      // Not OPENED from inside a cut: the "컷 타임라인은 보여주기만" law
+      // (08-09) still holds for a span that is already there. F-180 lifted
+      // it for CREATING only (`createActiveInstance`); whether the cut view
+      // may open and delete one waits on
+      // `transition-row-open-in-the-cut-Q1`.
       //
       // ⚠️Reaching the row's editor is NOT this switch's job even on the
       // global axis, because this whole function dispatches on

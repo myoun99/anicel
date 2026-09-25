@@ -252,27 +252,73 @@ class Transitions {
       return null;
     }
     final track = _selection.activeTrack;
-    final selection = _selection.trackFrameRangeSelection.value;
-    final overThisRow =
-        selection != null &&
-        selection.trackId == track.id &&
-        selection.coversRow(LayerRowAddress(track.transitionLayer.id));
-    final startFrame = overThisRow
-        ? selection.startFrame
-        : _selection.editingGlobalFrame;
-    final length = overThisRow ? selection.lengthFrames : 1;
-    if (startFrame < 0 || length < 1) {
+    final row = LayerRowAddress(track.transitionLayer.id);
+    final onTrack = _selection.trackFrameRangeSelection.value;
+    final inCut = _selection.frameRangeSelection.value;
+    // The cut view's own range counts too (F-180): a cut-local range over
+    // the row's projection starts where its first cell stands globally.
+    final ({int startFrame, int length}) wanted;
+    if (onTrack != null &&
+        onTrack.trackId == track.id &&
+        onTrack.coversRow(row)) {
+      wanted = (startFrame: onTrack.startFrame, length: onTrack.lengthFrames);
+    } else if (inCut != null && inCut.coversRow(row)) {
+      wanted = (
+        startFrame: _project.activeCutGlobalStartFrame + inCut.startIndex,
+        length: inCut.endIndexExclusive - inCut.startIndex,
+      );
+    } else {
+      wanted = (startFrame: _selection.editingGlobalFrame, length: 1);
+    }
+    if (wanted.startFrame < 0 || wanted.length < 1) {
       return null;
     }
     final covering = instructionSpanCovering(
       track.transitionLayer.instructions,
-      startFrame,
+      wanted.startFrame,
     );
-    return covering == null ? (startFrame: startFrame, length: length) : null;
+    return covering == null ? wanted : null;
   }
 
   bool get canCreateTransitionSpanAtPlayhead =>
       transitionSpanCreationOrNull != null;
+
+  /// [transitionSpanCreationOrNull] as the CUT VIEW asks it: the same plan,
+  /// refused where the cut's own row already SHOWS a mark.
+  ///
+  /// 🚨F-180 (유저 2026-09-25): 「타임라인패널에서 트랜지션레이어에
+  /// 서있을떄 +버튼이 활성화안되서 생성안됨. 스토리보드만 됨 …
+  /// 타임라인패널(로컬)에서도 가능하도록」 — and I-9 had asked the same of the
+  /// double tap on 08-29 (「타임라인의 se행이랑 트랜지션행 … 새로만들자」).
+  /// The cut row was read-only by the 08-09 law 「글로벌 ↔ 로컬은 다르게
+  /// 보인다, 로컬은 읽기 전용 — 그립 없음, 엣지 편집 없음」, whose reason is
+  /// moving positions and edges from inside a later cut. Creating moves
+  /// neither: it writes the global row at a global frame, through the verb
+  /// the storyboard's ＋ presses. Opening and deleting a span from the cut
+  /// view wait on `transition-row-open-in-the-cut-Q1`.
+  ///
+  /// ⚠️The extra refusal is the projection's ([transitionMarkInCut]): a
+  /// span crossing into this cut is drawn from local 0 at its full length,
+  /// so its mark can stand over frames the global row has free. A ＋ lit
+  /// there would stack a second span under a mark the user is looking at.
+  ({int startFrame, int length})? get transitionSpanCreationInCutOrNull {
+    final plan = transitionSpanCreationOrNull;
+    if (plan == null) {
+      return null;
+    }
+    final local = plan.startFrame - _project.activeCutGlobalStartFrame;
+    return transitionShownInCutAt(local) ? null : plan;
+  }
+
+  /// Whether the cut's transition row SHOWS a mark on [localFrame] — the
+  /// cell as the cut view draws it, which is what 「empty」 means to a
+  /// double tap there.
+  bool transitionShownInCutAt(int localFrame) =>
+      instructionSpanCovering(
+        trackTransitionDisplayLayer.instructions,
+        localFrame,
+      ) !=
+      null;
 
   /// Starts a transition span on the GLOBAL axis, where and as long as
   /// [transitionSpanCreationOrNull] says.
@@ -282,10 +328,24 @@ class Transitions {
   /// grips own the length from then on — and a span only DOES anything once
   /// it has been dragged across a cut boundary, which is the rule the
   /// geometry enforces rather than this verb.
-  void createTransitionSpanAtPlayhead() {
-    final plan = transitionSpanCreationOrNull;
+  void createTransitionSpanAtPlayhead() =>
+      _execute(_spanCreationCommand(transitionSpanCreationOrNull));
+
+  /// The cut view's ＋ — [createTransitionSpanAtPlayhead] on
+  /// [transitionSpanCreationInCutOrNull]'s plan.
+  void createTransitionSpanInCut() =>
+      _execute(transitionSpanCreationInCutCommand());
+
+  /// The cut view's span as a command, for a caller that composes it into
+  /// a larger step (a cut-local range fills every row it spans at once).
+  UpdateTrackTransitionLayerCommand? transitionSpanCreationInCutCommand() =>
+      _spanCreationCommand(transitionSpanCreationInCutOrNull);
+
+  UpdateTrackTransitionLayerCommand? _spanCreationCommand(
+    ({int startFrame, int length})? plan,
+  ) {
     if (plan == null) {
-      return;
+      return null;
     }
     final track = _selection.activeTrack;
     final before = track.transitionLayer;
@@ -298,17 +358,22 @@ class Transitions {
       ),
     );
     if (next == null) {
+      return null;
+    }
+    return UpdateTrackTransitionLayerCommand(
+      repository: _project.repository,
+      trackId: track.id,
+      before: before,
+      after: before.copyWith(instructions: next),
+      debugLabel: 'Add transition',
+    );
+  }
+
+  void _execute(UpdateTrackTransitionLayerCommand? command) {
+    if (command == null) {
       return;
     }
-    _project.historyManager.execute(
-      UpdateTrackTransitionLayerCommand(
-        repository: _project.repository,
-        trackId: track.id,
-        before: before,
-        after: before.copyWith(instructions: next),
-        debugLabel: 'Add transition',
-      ),
-    );
+    _project.historyManager.execute(command);
     _transitionDisplayClone = null;
     _changes.notifyChanged();
   }
