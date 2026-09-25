@@ -77,7 +77,8 @@ void main() {
     expect(
       storyboardCarriedWritingGround(visual(isRangeSelected: true), scheme),
       isNot(storyboardCarriedWritingGround(visual(), scheme)),
-      reason: 'a range selection tints the bands, so it tints the plates',
+      reason: 'a range selection tints the bands, and the writing reads '
+          'against them',
     );
   });
 }

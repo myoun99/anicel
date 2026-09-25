@@ -29,20 +29,29 @@ import 'timeline/timeline_glyph_cache.dart';
 import 'repaint_props.dart';
 import 'timeline/memo_token.dart';
 
-/// The ground EVERY piece of CARRIED writing on a cut block receives — the
-/// cut's own number and length on the bands, and a panel's name and comma
-/// on their plates.
+/// The ground EVERY piece of CARRIED writing on a cut block receives — all
+/// of it in the bands: the cut's own number and length, and each panel's
+/// name and comma count (유저 2026-09-25: 「이름은 윗 띠, 코마는 아랫 띠」).
 ///
-/// 🚨D29-2 (유저 2026-08-22) — it takes no thumbnail argument, and that is
-/// the point: carried writing never rides a picture, so there is nothing
-/// about the picture to ask.
+/// 🚨D29-2 (유저 2026-08-22) — **MAKE THE GROUND THE SAME, DON'T MEASURE
+/// IT.** It takes no thumbnail argument, and that is the point: carried
+/// writing never rides a picture, so there is nothing about the picture to
+/// ask.
 ///
-/// > 「컷 제목이랑 스토리보드블록의 썸네일없는공간이랑 **뭐가 다른거지?**」
+/// > 「컷블록 내 스토리보드레이어의 블록이름/코마수 텍스트가 아직도 컷블록
+/// > 이랑 규칙 다름 … 그렇게 할거면 **타임라인도** 그렇게 해야하는거야.
+/// > 통일이니까. 그런데 **무거우니까 하기싫고** 그냥 애초에 **받는 바탕을
+/// > 똑같게** 하면 되는거 아닌가? **컷 제목이랑 스토리보드블록의
+/// > 썸네일없는공간이랑 뭐가 다른거지?**」
 ///
-/// The answer was: nothing, once both are carried. Before this, the panel
-/// labels sat ON the thumbnails and had to take the picture's ground, which
-/// resolved BLACK ink while the cut's title — carried by its band — resolved
-/// WHITE. Same block, two inks.
+/// ⛔My answer was to MEASURE the thumbnail's luminance, and the user struck
+/// it down twice over: it would owe the timeline the same treatment, and it
+/// is expensive. The answer was: nothing is different, once both are
+/// carried. Before, the panel labels sat ON the thumbnails and took the
+/// picture's ground — BLACK ink, while the cut's title, carried by its band,
+/// resolved WHITE. Same block, two inks. D29-2 carried them on plates of this
+/// fill over the picture; the plates covered the pictures, so since
+/// 2026-09-25 the labels stand in the bands themselves.
 Color storyboardCarriedWritingGround(
   StoryboardCutBlockVisual block,
   ColorScheme colorScheme,
@@ -84,13 +93,15 @@ class StoryboardCutBlockVisual {
 
   /// The three bands, in row-local coordinates. The STRIP is the picture:
   /// the cut's panels live there and nothing is written over them. The two
-  /// thin bands carry the writing instead — the cut's number at the left
-  /// end of the top one, its length at the right end of the bottom one,
-  /// which is the conte sheet's CUT and TIME columns laid on their side.
+  /// thin bands carry ALL the writing — the cut's number at the left end of
+  /// the top one and its length at the right end of the bottom one (the
+  /// conte sheet's CUT and TIME columns laid on their side), and each
+  /// panel's name over its head in the top one and its comma count under its
+  /// end in the bottom one.
   ///
-  /// When the row is too short for three of anything the bands FOLD: both
-  /// are [Rect.zero] and the strip takes the whole block, with the writing
-  /// falling back over the picture the way it used to sit.
+  /// 🗣️THE BANDS NEVER FOLD (유저 2026-09-25: 「띠는 v행 세로 줄어도 고정으로
+  /// 그 자리에 두자」): a shorter row gives up picture, never writing. ↩️Under
+  /// 44px they used to fold, and the writing fell back over the picture.
   Rect get topBand => _topBand;
   Rect get strip => _strip;
   Rect get bottomBand => _bottomBand;
@@ -99,24 +110,19 @@ class StoryboardCutBlockVisual {
   final Rect _strip;
   final Rect _bottomBand;
 
-  /// Whether the bands folded away (a short row).
-  bool get bandsFolded => _topBand.height <= 0;
-
   /// The cut's panels — the divisions the strip draws, under the coverage
   /// rule. Never empty: a cut with no storyboard row still has one cell.
   final List<StoryboardCoverageCell> cells;
 
   /// What each panel's head writes (#15: the timeline convention — the
   /// frame's cel number, or the in-between mark when it has none,
-  /// [drawingHeadOf]), parallel to [cells]; nothing on the
-  /// no-row placeholder cell. EMPTY LISTS when the bands fold — folding
-  /// that far means watching the cuts, not the panels, so the writing is
-  /// omitted at the source (probe-visible).
+  /// [drawingHeadOf]), parallel to [cells]; nothing on the no-row
+  /// placeholder cell. Written in the TOP band, over the panel's head.
   final List<TimelineCellWriting> cellHeads;
 
-  /// Each panel's printed length (#15: the timeline's comma count, at the
-  /// panel's last cell bottom-centre), parallel to [cells]; empty on the
-  /// no-row placeholder cell, EMPTY LISTS when the bands fold.
+  /// Each panel's printed length (#15: the timeline's comma count), parallel
+  /// to [cells]; empty on the no-row placeholder cell. Written in the
+  /// BOTTOM band, under the panel's end.
   final List<String> cellCommaLabels;
 
   final bool isActive;
@@ -348,39 +354,31 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     );
   }
 
-  /// The thin bands' height, and the shortest block that still gets them.
-  /// Below that the row has no room for three of anything, so they fold and
-  /// the writing falls back over the picture (the same grammar the
-  /// thumbnail's own fallbacks use).
+  /// The thin bands' height — at every row height: they never fold
+  /// ([StoryboardCutBlockVisual.topBand]).
   static const double bandHeight = 13;
-  static const double bandsMinBlockHeight = 44;
 
-  /// The STRIP's vertical slot in a row this tall, row-local. The panels
-  /// are drawn there, so the panel gestures and the panel EDGES are mounted
-  /// there too — one definition, or the picture and the pointer disagree.
-  /// A folded row has no bands, so the strip is the whole row.
-  static ({double top, double height}) stripBandOf(double rowHeight) =>
-      rowHeight < bandsMinBlockHeight
-      ? (top: 0, height: rowHeight)
-      : (top: bandHeight, height: rowHeight - bandHeight * 2);
+  /// The STRIP's vertical slot in a row this tall, row-local — what the
+  /// bands leave. The panels are drawn there, so the panel gestures are
+  /// mounted there too: one definition, or the picture and the pointer
+  /// disagree.
+  static ({double top, double height}) stripBandOf(double rowHeight) => (
+    top: bandHeight,
+    height: math.max(0.0, rowHeight - bandHeight * 2),
+  );
 
-  /// A block's three bands. Folded (both bands [Rect.zero], the strip
-  /// taking everything) when the row is too short — which is [stripBandOf]
-  /// answering with the whole row, so the fold is decided in one place.
+  /// A block's three bands: the two thin ones at its top and bottom, and
+  /// the strip between them ([stripBandOf]).
   ({Rect top, Rect strip, Rect bottom}) _bandsOf(Rect rect) {
     final band = stripBandOf(rect.height);
-    final strip = Rect.fromLTWH(
-      rect.left,
-      rect.top + band.top,
-      rect.width,
-      band.height,
-    );
-    if (band.top <= 0) {
-      return (top: Rect.zero, strip: strip, bottom: Rect.zero);
-    }
     return (
       top: Rect.fromLTWH(rect.left, rect.top, rect.width, bandHeight),
-      strip: strip,
+      strip: Rect.fromLTWH(
+        rect.left,
+        rect.top + band.top,
+        rect.width,
+        band.height,
+      ),
       bottom: Rect.fromLTWH(
         rect.left,
         rect.bottom - bandHeight,
@@ -391,8 +389,8 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   }
 
   /// One cut's block, or null when it lies outside the visible window:
-  /// its rect and bands, the cells with their names and comma labels (only
-  /// when the top band is open), the selection and hover state, the title
+  /// its rect and bands, the cells with their names and comma labels, the
+  /// selection and hover state, the title
   /// and layer label, the total when the block is wide enough, and the
   /// thumbnails when they are shown.
   StoryboardCutBlockVisual? _visualFor(
@@ -416,7 +414,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     final rect = Rect.fromLTWH(left, 0, width, crossAxisExtent);
     final bands = _bandsOf(rect);
     final cells = storyboardCellsByCut[entry.cutId] ?? const [];
-    final writing = _cellWriting(entry, cells, folded: bands.top.height <= 0);
+    final writing = _cellWriting(entry, cells);
     return StoryboardCutBlockVisual(
       cutId: entry.cutId,
       rect: rect,
@@ -453,8 +451,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// The panels' writing (#15): frame name + comma count per cell, the
   /// timeline row's conventions (an unnamed head wears the in-between
   /// mark). Safe to resolve here — the row lookup no
-  /// longer throws on duplicates (#760). A folded block carries no
-  /// writing at all: folding that far means watching the cuts.
+  /// longer throws on duplicates (#760).
   ///
   /// ↩️#15 kept the unnamed head HOLLOW (`○`) precisely so it would NOT
   /// read as the in-between dot (`●`). 유저 reversed that on 2026-09-16
@@ -465,12 +462,8 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// 2026-09-24 (유저: 「중간나누기 마크1로서 작동했으면」).
   ({List<TimelineCellWriting> heads, List<String> commaLabels}) _cellWriting(
     StoryboardTimelineLayoutEntry entry,
-    List<StoryboardCoverageCell> cells, {
-    required bool folded,
-  }) {
-    if (folded) {
-      return (heads: const [], commaLabels: const []);
-    }
+    List<StoryboardCoverageCell> cells,
+  ) {
     final frameNames = <FrameId, String?>{
       for (final frame
           in storyboardLayerForCut(entry.cut)?.frames ?? const <Frame>[])
@@ -580,7 +573,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// answer the same, so pressing a '+' the user can SEE creates, which is
   /// this row's rule read straight.
   static Rect? createAffordanceRectOf(StoryboardCutBlockVisual block) {
-    if (block.hasStoryboardLayer || block.bandsFolded) {
+    if (block.hasStoryboardLayer) {
       return null;
     }
     // A strip too narrow or too flat to hold the whole square holds NO
@@ -632,131 +625,44 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     fontWeight: FontWeight.bold,
   );
 
+  /// The bands' LENGTH words — the cut's length and each panel's comma
+  /// count. D29: the cut-block text grade, the same 11 the title wears, not
+  /// a cell-fitted 9 that shrank to ~6px at storyboard zooms.
   TextStyle get _totalStyle => _labelStyle.copyWith(
     color: timelineDrawingInkColor.withValues(alpha: 0.72),
     // R27 #3: bold — the readout was too easy to miss.
     fontWeight: FontWeight.w700,
   );
 
-  /// The BANDS' composited fill — the ground their writing sits on. Bands
-  /// wear the range tint whenever the block is range-selected (folded
-  /// blocks tint whole, unfolded ones tint exactly the bands), so this is
-  /// one expression of the same fills [_paintBlock] lays down.
+  /// The BANDS' composited fill — the ground ALL of the block's writing
+  /// sits on. The bands wear the range tint whenever the block is
+  /// range-selected, so this is one expression of the same fills
+  /// [_paintBlock] lays down.
   Color _bandGround(StoryboardCutBlockVisual block) =>
       storyboardCarriedWritingGround(block, colorScheme);
 
-  /// The STRIP's underlay — the ground for writing that rides the picture
-  /// area (panel names and commas, the folded block's labels). A range
-  /// selection only reaches the strip when the bands folded (design: the
-  /// selection colours what is NOT the picture). The thumbnails above it
-  /// are unknowable pixels; the deterministic plate beneath them (also the
-  /// pending placeholder's shade) is the honest ground.
+  /// The block's own fill at rest in its state — the plate under the
+  /// strip, and the ground of the one mark the strip carries without
+  /// pictures. The strip never takes the range tint: a selection colours
+  /// what is NOT the picture.
   Color _stripGround(StoryboardCutBlockVisual block) =>
       storyboardCutBlockBackgroundColor(
         colorScheme,
         active: block.isActive,
         hovered: block.isHovered,
-        rangeSelected: block.isRangeSelected && block.bandsFolded,
+        rangeSelected: false,
       );
 
-  /// The ground the strip's WRITING actually sits on (D29 — B1's twin,
-  /// for text): with thumbnails on, the glyphs ride the paper-white
-  /// composite pictures, and reading the dark plate there resolved WHITE
-  /// ink on white thumbnails. Without thumbnails the plate is honest.
+  /// The ground the create `+` sits on in the strip (D29 — B1's twin, for
+  /// text): with thumbnails on, it rides the paper-white composite pictures,
+  /// and reading the dark plate there resolved WHITE ink on white
+  /// thumbnails. Without thumbnails the plate is honest.
   ///
-  /// ⚠️This is for writing that has NOWHERE else to go — a folded block's
-  /// labels and the create `+`. Writing that CAN be carried takes
-  /// [_paintPlatedGlyph] instead, which makes the ground true rather than
-  /// guessing what the picture under it will be (D29-2).
+  /// ⚠️It is for the one mark with NOWHERE else to go. Writing that can
+  /// stand in a band does ([storyboardCarriedWritingGround]), which makes
+  /// its ground true rather than a guess at the picture under it.
   Color _stripWritingGround(StoryboardCutBlockVisual block) =>
       showThumbnails ? storyboardPanelPictureGroundColor : _stripGround(block);
-
-  /// A glyph on its OWN plate — the bands' answer, one level down.
-  ///
-  /// 🚨D29-2 (유저 2026-08-22) — **MAKE THE GROUND THE SAME, DON'T MEASURE
-  /// IT.**
-  ///
-  /// > 「컷블록 내 스토리보드레이어의 블록이름/코마수 텍스트가 아직도 컷블록
-  /// > 이랑 규칙 다름 … 그렇게 할거면 **타임라인도** 그렇게 해야하는거야.
-  /// > 통일이니까. 그런데 **무거우니까 하기싫고** 그냥 애초에 **받는 바탕을
-  /// > 똑같게** 하면 되는거 아닌가? **컷 제목이랑 스토리보드블록의
-  /// > 썸네일없는공간이랑 뭐가 다른거지?**」
-  ///
-  /// ⛔My answer was to MEASURE the thumbnail's luminance, and the user
-  /// struck it down twice over: it would owe the timeline the same
-  /// treatment, and it is expensive. The question underneath — what IS
-  /// different — has a one-line answer: the cut's title left the picture
-  /// (「THE BANDS carry the writing」) and the panel's labels never did.
-  ///
-  /// ★So carry them too. The plate is the band's own fill, so these glyphs
-  /// receive exactly what the cut title receives and the ink law resolves
-  /// the same on both — no measuring, and nothing for the timeline to
-  /// match, because nothing new was invented.
-  void _paintPlatedGlyph(
-    Canvas canvas,
-    Offset offset,
-    String text,
-    TextStyle style, {
-    required Color ground,
-    WordFit fit = wordFitsAsItIs,
-  }) {
-    final glyph = timelineGlyphPainter(text, style);
-    // The plate carries the word as it is DRAWN — narrowed, when it is.
-    _paintPlate(
-      canvas,
-      offset & Size(glyph.width * fit.x, glyph.height * fit.y),
-      ground,
-    );
-    paintTimelineGlyphOnGround(
-      canvas,
-      offset,
-      text,
-      style,
-      ground: ground,
-      fit: fit,
-    );
-  }
-
-  /// The plate carried writing sits on (D29-2): a pixel round [box], the
-  /// writing's own, in [ground] — a word's and a mark's alike.
-  void _paintPlate(Canvas canvas, Rect box, Color ground) => canvas.drawRRect(
-    RRect.fromRectAndRadius(
-      box.inflate(1),
-      const Radius.circular(AppShapes.wellRadius),
-    ),
-    Paint()..color = ground,
-  );
-
-  /// An in-between mark on its OWN plate — [_paintPlatedGlyph]'s carry
-  /// (D29-2) for a panel whose drawing has no cel number: the plate is a
-  /// square as high as a panel name, at the top-left of [room] and narrowed
-  /// into it as the name would be, and the mark sits at its centre in the
-  /// ground law's ink.
-  void _paintPlatedMark(
-    Canvas canvas,
-    InbetweenMark mark,
-    Rect room,
-    Color ground,
-  ) {
-    final style = _panelNameStyle;
-    final side = math.min(
-      timelineGlyphPainter('', style).height,
-      math.min(room.width, room.height),
-    );
-    if (side <= 0) {
-      return;
-    }
-    final box = room.topLeft & Size(side, side);
-    _paintPlate(canvas, box, ground);
-    paintInbetweenMark(canvas, mark, (
-      center: box.center,
-      radius: timelineInbetweenMarkRadius(
-        style.fontSize ?? 12,
-        cellExtent: room.width,
-        crossExtent: room.height,
-      ),
-    ), timelineTextOnColor(ground));
-  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -772,27 +678,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     );
     // The BACKGROUND carries the cut's own states. A range selection tints
     // only what is NOT the picture (design: "a cut selection colours the
-    // area that is not a storyboard block") — the bands, when there are
-    // bands to tint. With none the block is all there is, so it all tints,
-    // which is one sentence with two results rather than two rules.
-    canvas.drawRRect(
-      rrect,
-      Paint()
-        ..color = storyboardCutBlockBackgroundColor(
-          colorScheme,
-          active: block.isActive,
-          hovered: block.isHovered,
-          rangeSelected: block.isRangeSelected && block.bandsFolded,
-        ),
-    );
-    if (block.isRangeSelected && !block.bandsFolded) {
-      final tint = Paint()
-        ..color = storyboardCutBlockBackgroundColor(
-          colorScheme,
-          active: block.isActive,
-          hovered: block.isHovered,
-          rangeSelected: true,
-        );
+    // area that is not a storyboard block") — the bands.
+    canvas.drawRRect(rrect, Paint()..color = _stripGround(block));
+    if (block.isRangeSelected) {
+      final tint = Paint()..color = _bandGround(block);
       canvas.save();
       canvas.clipRRect(rrect);
       canvas.drawRect(block.topBand, tint);
@@ -800,9 +689,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       canvas.restore();
     }
 
-    final inner = block.bandsFolded
-        ? block.rect.deflate(_padding)
-        : block.strip;
+    final inner = block.strip;
     if (showThumbnails && inner.width > 0 && inner.height > 0) {
       canvas.save();
       canvas.clipRRect(rrect);
@@ -878,53 +765,16 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         ),
     );
 
-    if (inner.width <= 0 || inner.height <= 0) {
-      return;
-    }
-    if (block.bandsFolded) {
-      // FOLDED: nowhere to put the writing but over the picture — the
-      // shared ground law keeps it readable there against what is REALLY
-      // under it (D29: folded blocks still paint thumbnails, so the
-      // picture ground applies exactly as on the panel cells).
-      final ground = _stripWritingGround(block);
-      canvas.save();
-      canvas.clipRect(inner);
-      _paintAnchoredLabel(
-        canvas,
-        text: block.title,
-        style: _titleStyle,
-        room: inner.size,
-        anchor: inner.topLeft,
-        alignRight: false,
-        alignBottom: false,
-        ground: ground,
-      );
-      final total = block.total;
-      if (total != null) {
-        _paintAnchoredLabel(
-          canvas,
-          text: total,
-          style: _totalStyle,
-          room: inner.size,
-          anchor: inner.bottomRight,
-          alignRight: true,
-          alignBottom: true,
-          ground: ground,
-        );
-      }
-      canvas.restore();
-      return;
-    }
-
     // THE BANDS carry the writing, so nothing is drawn over the picture and
     // no scrim is needed. Number at the top band's left end, length at the
     // bottom band's right end: the conte sheet's CUT and TIME columns sit
     // outside the picture cell exactly this way, one above and one below,
-    // and this is that sheet turned on its side.
+    // and this is that sheet turned on its side — with each panel's name
+    // and length beside them.
     final bandGround = _bandGround(block);
     canvas.save();
     canvas.clipRect(block.topBand);
-    _paintBandText(
+    final title = _paintBandText(
       canvas,
       text: block.title,
       style: _titleStyle,
@@ -932,6 +782,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       alignRight: false,
       ground: bandGround,
     );
+    _paintPanelHeads(canvas, block, after: title?.right, ground: bandGround);
     canvas.restore();
 
     canvas.save();
@@ -941,26 +792,170 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // layer never printed anything there either; the band and its total
     // stay, the reserved slot the create affordance swaps into).
     final total = block.total;
-    if (total != null) {
-      _paintBandText(
-        canvas,
-        text: total,
-        style: _totalStyle,
-        band: block.bottomBand,
-        alignRight: true,
-        ground: bandGround,
-      );
-    }
+    final length = total == null
+        ? null
+        : _paintBandText(
+            canvas,
+            text: total,
+            style: _totalStyle,
+            band: block.bottomBand,
+            alignRight: true,
+            ground: bandGround,
+          );
+    _paintPanelCommas(canvas, block, before: length?.left, ground: bandGround);
     canvas.restore();
   }
 
-  /// A band's writing, held to one end of it.
+  /// Each panel's head in the TOP band, over the panel — its cel number, or
+  /// the in-between mark ([drawingHeadOf]) — at the panel's left, and never
+  /// before [after], where the cut's title ends.
+  ///
+  /// 🗣️유저 2026-09-25, to 「패널의 이름·코마 글씨가 썸네일을 가린다」: 「띠로
+  /// 옮긴다 — 이름은 윗 띠, 코마는 아랫 띠」. ↩️D29-2 (유저 2026-08-22: 「받는
+  /// 바탕을 똑같게」) had carried the panel writing over the picture on
+  /// plates of the band's own fill — the ground was right, but the plates
+  /// covered the pictures. In the band the ground IS the band's. The panel's
+  /// LEFT stays its anchor: the cut title's own (유저 2026-07-29).
+  void _paintPanelHeads(
+    Canvas canvas,
+    StoryboardCutBlockVisual block, {
+    required double? after,
+    required Color ground,
+  }) {
+    final band = block.topBand;
+    final heads = block.cellHeads;
+    for (var index = 0; index < heads.length; index += 1) {
+      final span = _panelSpan(block, block.cells[index]);
+      final room = Rect.fromLTRB(
+        after == null ? span.left : math.max(span.left, after),
+        band.top,
+        span.right,
+        band.bottom,
+      );
+      final head = heads[index];
+      final mark = head.mark;
+      if (mark != null) {
+        _paintBandMark(canvas, mark, room, ground);
+      } else {
+        _paintBandText(
+          canvas,
+          text: head.word,
+          style: _titleStyle,
+          band: room,
+          alignRight: false,
+          ground: ground,
+        );
+      }
+    }
+  }
+
+  /// An in-between mark where a band's word would stand at the left of
+  /// [room] — in a square as high as that word — fitted into the room the
+  /// way the timeline's marks are ([timelineInbetweenMarkRadius]). A room
+  /// too narrow for the square keeps the mark at its middle, smaller, as a
+  /// word there would narrow rather than go.
+  void _paintBandMark(
+    Canvas canvas,
+    InbetweenMark mark,
+    Rect room,
+    Color ground,
+  ) {
+    if (room.width <= 0) {
+      return;
+    }
+    final style = _titleStyle;
+    final side = timelineGlyphPainter('', style).height;
+    paintInbetweenMark(canvas, mark, (
+      center: Offset(
+        math.min(room.left + _padding + side / 2, room.center.dx),
+        room.center.dy,
+      ),
+      radius: timelineInbetweenMarkRadius(
+        style.fontSize ?? 11,
+        cellExtent: room.width,
+        crossExtent: room.height,
+      ),
+    ), timelineTextOnColor(ground));
+  }
+
+  /// Each panel's comma count in the BOTTOM band, under the panel's end —
+  /// and never past [before], where the cut's length begins (the answer
+  /// quoted at [_paintPanelHeads]).
+  ///
+  /// ↩️F-96: centred on the panel's last cell while it fits; a count wider
+  /// than the cell ends at the cell and grows back into the panel, and (B)
+  /// narrows only once it would leave the panel — the run label's law
+  /// ([timelineBlockWordLayout]). Where the cut's length stands over that
+  /// cell, the cell ends where the length begins. D23: a 1-comma panel's
+  /// count is empty and prints nothing.
+  void _paintPanelCommas(
+    Canvas canvas,
+    StoryboardCutBlockVisual block, {
+    required double? before,
+    required Color ground,
+  }) {
+    final band = block.bottomBand;
+    final commas = block.cellCommaLabels;
+    for (var index = 0; index < commas.length; index += 1) {
+      final comma = commas[index];
+      final span = _panelSpan(block, block.cells[index]);
+      final end = before == null
+          ? span.right
+          : math.min(span.right, before - _padding);
+      if (comma.isEmpty || end <= span.left || _cellExtent <= 0) {
+        continue;
+      }
+      final glyph = timelineGlyphPainter(comma, _totalStyle);
+      final layout = timelineBlockWordLayout(glyph.size, (
+        axis: Axis.horizontal,
+        room: Rect.fromLTRB(span.left, band.top, end, band.bottom),
+        cellStart: end - _cellExtent,
+        cellExtent: _cellExtent,
+        growth: TimelineBlockWordGrowth.towardBlockStart,
+        acrossAlignment: 0,
+      ));
+      paintTimelineGlyphOnGround(
+        canvas,
+        layout.origin,
+        comma,
+        _totalStyle,
+        ground: ground,
+        fit: layout.fit,
+      );
+    }
+  }
+
+  /// Panel [cell]'s stretch along [block], in row-local x: measured in
+  /// FRAMES like every other x on this row, and held inside the block (a
+  /// block drawn at [minBlockWidth] is wider than its frames).
+  ({double left, double right}) _panelSpan(
+    StoryboardCutBlockVisual block,
+    StoryboardCoverageCell cell,
+  ) {
+    final rect = block.rect;
+    if (_cellExtent <= 0) {
+      return (left: rect.left, right: rect.right);
+    }
+    return (
+      left: math.max(rect.left, rect.left + cell.startIndex * _cellExtent),
+      right: math.min(
+        rect.right,
+        rect.left + cell.endIndexExclusive * _cellExtent,
+      ),
+    );
+  }
+
+  /// A band's writing, held to one end of [band] — the whole band, or the
+  /// stretch of it a panel's word may use — and the box it was drawn in, or
+  /// null when there was nothing to draw or no stretch at all to draw it in.
   ///
   /// 🚨It keeps its type and narrows into the band (B, 유저 2026-09-24:
-  /// 「컷블록의 텍스트든 se텍스트든 뭐든」). ↩️A title too long for its band
-  /// was cut to an ellipsis — the `Text` + `TextOverflow.ellipsis` it was
-  /// painted in for — so a cut's name lost its end at zoom-out.
-  void _paintBandText(
+  /// 「컷블록의 텍스트든 se텍스트든 뭐든」) — to a sliver if that is all the
+  /// room there is, never to nothing ([wordCondensation]: 「절대 안
+  /// 사라지도록」). ↩️A title too long for its band was cut to an ellipsis —
+  /// the `Text` + `TextOverflow.ellipsis` it was painted in for — so a cut's
+  /// name lost its end at zoom-out.
+  Rect? _paintBandText(
     Canvas canvas, {
     required String text,
     required TextStyle style,
@@ -969,7 +964,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     required Color ground,
   }) {
     if (text.isEmpty || band.width <= 0) {
-      return;
+      return null;
     }
     final glyph = timelineGlyphPainter(text, style);
     final fit = wordFit(
@@ -979,46 +974,16 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     final width = glyph.width * fit.x;
     final height = glyph.height * fit.y;
     final dx = alignRight ? band.right - _padding - width : band.left + _padding;
+    final origin = Offset(dx, band.top + (band.height - height) / 2);
     paintTimelineGlyphOnGround(
       canvas,
-      Offset(dx, band.top + (band.height - height) / 2),
+      origin,
       text,
       style,
       ground: ground,
       fit: fit,
     );
-  }
-
-  /// A corner-anchored ground-law label — the folded block's writing (and
-  /// nothing else's: band text centres itself vertically instead). It
-  /// narrows into its [room] as band text does.
-  void _paintAnchoredLabel(
-    Canvas canvas, {
-    required String text,
-    required TextStyle style,
-    required Size room,
-    required Offset anchor,
-    required bool alignRight,
-    required bool alignBottom,
-    required Color ground,
-  }) {
-    if (text.isEmpty || room.width <= 0) {
-      return;
-    }
-    final glyph = timelineGlyphPainter(text, style);
-    final fit = wordFit(glyph.size, room);
-    final width = glyph.width * fit.x;
-    final height = glyph.height * fit.y;
-    final left = alignRight ? anchor.dx - width : anchor.dx;
-    final top = alignBottom ? anchor.dy - height : anchor.dy;
-    paintTimelineGlyphOnGround(
-      canvas,
-      Offset(left, top),
-      text,
-      style,
-      ground: ground,
-      fit: fit,
-    );
+    return origin & Size(width, height);
   }
 
   /// One picture per PANEL, each in its own slice of the strip.
@@ -1040,19 +1005,8 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       return;
     }
     for (var index = 0; index < block.cells.length; index += 1) {
-      final cell = block.cells[index];
-      final left = _cellExtent <= 0
-          ? inner.left
-          : inner.left + cell.startIndex * _cellExtent;
-      final right = _cellExtent <= 0
-          ? inner.right
-          : inner.left + cell.endIndexExclusive * _cellExtent;
-      final slot = Rect.fromLTRB(
-        math.max(left, inner.left),
-        inner.top,
-        math.min(right, inner.right),
-        inner.bottom,
-      );
+      final span = _panelSpan(block, block.cells[index]);
+      final slot = Rect.fromLTRB(span.left, inner.top, span.right, inner.bottom);
       if (slot.width <= 0) {
         continue;
       }
@@ -1068,17 +1022,11 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       );
       canvas.clipRRect(RRect.fromRectAndRadius(slot, corner));
       _paintPanelPicture(canvas, block.thumbnails[index], slot);
-      if (!block.bandsFolded) {
-        _paintPanelWriting(canvas, block, index, slot);
-      }
       canvas.restore();
-      if (block.hasStoryboardLayer && !block.bandsFolded) {
+      if (block.hasStoryboardLayer) {
         // The panel's SILHOUETTE (#15): each block outlines itself, which
         // is what separates two touching panels — the seam the removed
-        // division rules used to draw, without a rule of its own. Folded
-        // rows omit it with the rest of the panel info: their slots ride
-        // the 4px-deflated inner rect, so a border there would sit off
-        // the true frame edges the grips are mounted on.
+        // division rules used to draw, without a rule of its own.
         canvas.drawRRect(
           RRect.fromRectAndRadius(slot.deflate(0.5), corner),
           Paint()
@@ -1092,104 +1040,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
             ),
         );
       }
-    }
-  }
-
-  /// A panel name's type. One size at every zoom, narrowed into the panel
-  /// instead (B, 유저 2026-09-24). ↩️It shrank with the cell (R26 #38).
-  TextStyle get _panelNameStyle => baseTextStyle.copyWith(
-    color: timelineDrawingInkColor,
-    fontWeight: FontWeight.bold,
-    fontSize: baseTextStyle.fontSize ?? 12,
-  );
-
-  /// A panel's head (#15): its frame's cel number, or — with none — the
-  /// mark, each on its own plate.
-  void _paintPanelHead(
-    Canvas canvas,
-    StoryboardCutBlockVisual block,
-    TimelineCellWriting head,
-    Rect slot,
-  ) {
-    // TOP-LEFT, the cut block title's own anchor (user 2026-07-29):
-    // thumbnail-display writing sits where the sheet's cut number does,
-    // not centred the way block-display glyphs are — the two thumbnail
-    // surfaces read as one.
-    // D29-2: carried on its own plate, so its ground IS the cut title's.
-    final room = Rect.fromLTRB(
-      slot.left + _padding / 2,
-      slot.top + 1,
-      slot.right - _padding / 2,
-      slot.bottom - 1,
-    );
-    final mark = head.mark;
-    if (mark != null) {
-      _paintPlatedMark(canvas, mark, room, _bandGround(block));
-    } else if (head.word.isNotEmpty) {
-      final style = _panelNameStyle;
-      _paintPlatedGlyph(
-        canvas,
-        room.topLeft,
-        head.word,
-        style,
-        ground: _bandGround(block),
-        fit: wordFit(timelineGlyphPainter(head.word, style).size, room.size),
-      );
-    }
-  }
-
-  /// A panel's own writing (#15, the timeline row's conventions carried
-  /// over): the frame NAME centred in the panel's first frame cell, the
-  /// COMMA COUNT bottom-centred in its last — both through the ground law,
-  /// against the strip's plate. Folded bands omit all of it (the caller's
-  /// gate): folding that far means watching the cuts, not the panels.
-  void _paintPanelWriting(
-    Canvas canvas,
-    StoryboardCutBlockVisual block,
-    int index,
-    Rect slot,
-  ) {
-    if (index >= block.cellHeads.length ||
-        index >= block.cellCommaLabels.length ||
-        _cellExtent <= 0) {
-      return;
-    }
-    _paintPanelHead(canvas, block, block.cellHeads[index], slot);
-    final comma = block.cellCommaLabels[index];
-    if (comma.isNotEmpty) {
-      // D29: the CUT-BLOCK text grade — the same 11 the band labels wear
-      // (_labelStyle's base), not a cell-fitted 9 that shrank to ~6px at
-      // storyboard zooms. One law for the two block texts.
-      final commaStyle = _labelStyle.copyWith(
-        fontWeight: FontWeight.w700,
-        color: timelineDrawingInkColor.withValues(alpha: 0.72),
-      );
-      final glyph = timelineGlyphPainter(comma, commaStyle);
-      // The block's LAST cell, bottom-centre, 1px inset — the timeline
-      // run label's anchor, in the panel's own coordinates (the slot's
-      // edges ARE the cell edges: panels tile the strip).
-      // ↩️F-96: centred while it fits; a count wider than the cell ends at
-      // the cell and grows back into the panel — and (B) narrows only once
-      // it would leave the panel: the run label's law
-      // ([timelineBlockWordLayout]).
-      // D29-2: the same carry as the name above — the comma reads against
-      // the band's fill, which is what the cut's own length reads against.
-      final layout = timelineBlockWordLayout(glyph.size, (
-        axis: Axis.horizontal,
-        room: Rect.fromLTRB(slot.left, slot.top, slot.right, slot.bottom - 1),
-        cellStart: slot.right - _cellExtent,
-        cellExtent: _cellExtent,
-        growth: TimelineBlockWordGrowth.towardBlockStart,
-        acrossAlignment: 1,
-      ));
-      _paintPlatedGlyph(
-        canvas,
-        layout.origin,
-        comma,
-        commaStyle,
-        ground: _bandGround(block),
-        fit: layout.fit,
-      );
     }
   }
 

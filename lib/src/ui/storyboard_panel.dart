@@ -601,9 +601,11 @@ class StoryboardPanel extends StatefulWidget {
   /// height stops reading as a rail. The S rows keep their own sizing —
   /// they twirl audio lanes open, so height means something else there.
   ///
-  /// The floor sits below [StoryboardCutBlocksPainter.bandsMinBlockHeight]
-  /// on purpose: shrinking past it FOLDS the bands, which is the compact
-  /// look, not a broken one.
+  /// ⚠️The floor was set below the height where the bands FOLDED, on
+  /// purpose — the compact look. The bands no longer fold (유저 2026-09-25:
+  /// 「띠는 v행 세로 줄어도 고정으로 그 자리에 두자」), so at this floor the
+  /// strip between them keeps 2px of picture; the V-track splitter, the
+  /// height's next writer, is where the floor gets decided again.
   static const double defaultTrackLaneHeight = 64;
   // Min/max are the height's LEGAL RANGE — the bar's steppers died with B7
   // (2026-08-17), but the planned V-track splitter clamps to the same pair.
