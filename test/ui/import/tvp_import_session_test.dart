@@ -2,8 +2,17 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart'
     show FolderPicker;
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -397,4 +406,48 @@ void main() {
       reason: 'the session it refused to replace is still there',
     );
   });
+
+  // 유저 2026-09-26: 「다 통일해줘」 — the timesheet's ink lived in stores
+  // of its own that no reset reached; the conte's and the envelope's
+  // were cleared by name, one line each.
+  test('🚨a .tvpp opened as the project leaves no sheet\'s ink of the '
+      'project it replaced', () async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final caches = session.renderCaches;
+    final cutId = session.requireActiveCut.id;
+    final written = <BrushFrameStore, BrushFrameKey>{
+      caches.conteInkRowStore: conteInkRowKey(cutId, const FrameId('f')),
+      caches.conteInkPageStore: conteInkPageKey(0),
+      caches.envelopeInkStore: envelopeInkBoxKey(cutId, 'memo'),
+      caches.timesheetInkStripStore: timesheetInkStripKey(cutId, 0),
+      caches.timesheetInkPageStore: timesheetInkPageKey(cutId, 0),
+    };
+    for (final MapEntry(key: store, value: key) in written.entries) {
+      store.storeBakedSurface(key, _inkedSurface());
+      expect(store.bakedSurfaceOrNull(key), isNotNull, reason: 'fixture');
+    }
+
+    expect(
+      await session.tvppDoor.openAsProject(tvppPath: writeTvpp()),
+      isNotNull,
+    );
+    for (final MapEntry(key: store, value: key) in written.entries) {
+      expect(store.bakedSurfaceOrNull(key), isNull, reason: '$key');
+    }
+  });
 }
+
+/// A small inked surface — what a landed stroke leaves in a store.
+BitmapSurface _inkedSurface() => BitmapSurface(
+  canvasSize: const CanvasSize(width: 16, height: 16),
+  tileSize: 8,
+  tiles: {
+    TileCoord(x: 0, y: 0): BitmapTile(
+      size: 8,
+      pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 255),
+    ),
+  },
+);
