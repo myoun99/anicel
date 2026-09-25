@@ -34,18 +34,52 @@ void main() {
     frameId: FrameId(frame),
   );
 
-  AnicelCelBlob parkedBlob(BrushFrameKey k) {
+  BitmapSurface inked() {
     final pixels = Uint8List(8 * 8 * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * 31 + 7) & 0xFF;
     }
-    final surface = BitmapSurface(
+    return BitmapSurface(
       canvasSize: canvasSize,
       tileSize: 8,
       tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
     );
-    return AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, surface));
   }
+
+  AnicelCelBlob parkedBlob(BrushFrameKey k) =>
+      AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, inked()));
+
+  Map<String, int> censusRows(EditorSessionManager session) => {
+    for (final item in collectMemoryCensus(session).items) item.id: item.bytes,
+  };
+
+  // The other half of the row: what IS resident counts, in every sheet's
+  // store. The test below parks every byte, so a row that counted
+  // nothing at all passed it.
+  test('every sheet\'s resident ink is counted, the timesheet\'s two '
+      'stores included', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final caches = session.renderCaches;
+    final stores = [
+      caches.conteInkRowStore,
+      caches.conteInkPageStore,
+      caches.envelopeInkStore,
+      caches.timesheetInkStripStore,
+      caches.timesheetInkPageStore,
+    ];
+    for (final (index, store) in stores.indexed) {
+      store.storeBakedSurface(key('ink-$index'), inked());
+      expect(store.hotBakedBytes, greaterThan(0), reason: 'fixture');
+    }
+
+    expect(
+      censusRows(session)['sheetInk'],
+      stores.fold<int>(0, (sum, store) => sum + store.hotBakedBytes),
+    );
+  });
 
   test('🚨cels parked on disk are not RAM — the drawings and sheet-ink '
       'rows count what is resident', () {
@@ -60,10 +94,7 @@ void main() {
     expect(caches.brushFrameStore.coldBakedBytes, greaterThan(0));
     expect(caches.conteInkPageStore.coldBakedBytes, greaterThan(0));
 
-    final rows = {
-      for (final item in collectMemoryCensus(session).items)
-        item.id: item.bytes,
-    };
+    final rows = censusRows(session);
     expect(
       rows['drawings'],
       caches.brushFrameStore.hotBakedBytes +
