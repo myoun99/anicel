@@ -88,6 +88,21 @@ class FrameVerbs {
           );
   }
 
+  /// Where [layerId]'s OWN pose lives on the canvas at the playhead — the
+  /// placement of the folders above it ([layerParentPlacementAt]). Null =
+  /// the canvas itself. What the gizmos that edit that pose stand in.
+  LayerPoseSample? layerParentPlacement(LayerId layerId) {
+    final cut = _project.activeCutOrNull;
+    final layer = cut?.layers.byId(layerId);
+    return cut == null || layer == null
+        ? null
+        : layerParentPlacementAt(
+            cut: cut,
+            layer: layer,
+            frameIndex: _controllers.timelineController.currentFrameIndex,
+          );
+  }
+
   Frame? get selectedFrame {
     final layer = _selection.activeLayer;
     if (layer == null) {

@@ -53,7 +53,10 @@ import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
-import '../services/layer_pose_matrix.dart' show LayerPoseSample;
+import '../services/layer_pose_matrix.dart'
+    show LayerPoseSample, artworkToCanvas, canvasToArtwork;
+import '../models/canvas_point.dart';
+import '../models/transform_track.dart' show TransformPose;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
@@ -664,6 +667,36 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return false;
   }
 
+  /// Where a value of [layer]'s OWN pose shows on the canvas, and back —
+  /// through the placement of the folders above it
+  /// ([FrameVerbs.layerParentPlacement]); an unfoldered row's parent is the
+  /// canvas itself, and its values pass straight through.
+  ///
+  /// 🚨The three gizmos below edit that own pose, so each stands where the
+  /// parent shows its value and each drag comes back through the parent: a
+  /// row in a folder moved right by 200 had its crosshair 200 to the left of
+  /// its picture, and under a 2× folder a drag moved the picture twice as
+  /// far as the pointer (measured 2026-09-25).
+  ({
+    LayerPoseSample? placement,
+    CanvasPoint Function(CanvasPoint point) toCanvas,
+    CanvasPoint Function(CanvasPoint point) fromCanvas,
+  })
+  _parentSpaceOf(EditorSessionManager session, Layer layer) {
+    final placement = session.frameVerbs.layerParentPlacement(layer.id);
+    final cut = session.activeCutOrNull;
+    if (placement == null || cut == null) {
+      return (placement: null, toCanvas: (p) => p, fromCanvas: (p) => p);
+    }
+    final out = artworkToCanvas(placement, cut.canvasSize);
+    final back = canvasToArtwork(placement, cut.canvasSize);
+    return (
+      placement: placement,
+      toCanvas: out.apply,
+      fromCanvas: (p) => back?.apply(p) ?? p,
+    );
+  }
+
   Positioned _anchorGizmo(
     EditorSessionManager session,
     Layer activeLayer,
@@ -675,20 +708,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       activeLayer,
       session.currentFrameIndex,
     );
+    final parent = _parentSpaceOf(session, activeLayer);
     return Positioned.fill(
       // Unwrapped like the position handle, for the same
       // reason.
       child: CanvasPointGizmo(
         glyph: HandleGlyph.anchor,
-        point: session.layerAnchorPointAtFrame(at.layer, at.frame),
+        point: parent.toCanvas(
+          session.layerAnchorPointAtFrame(at.layer, at.frame),
+        ),
         viewport: viewport,
-        onCommitted: (anchorPoint) =>
+        onCommitted: (dropped) =>
             session.laneVerbs.editLayerTransformAtPlayhead(
               activeLayer.id,
               (track, frameIndex) => transformTrackWithAnchorDragged(
                 track,
                 frameIndex: frameIndex,
-                anchorPoint: anchorPoint,
+                anchorPoint: parent.fromCanvas(dropped),
               ),
               description: 'Anchor ${activeLayer.name}',
             ),
@@ -705,14 +741,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       activeLayer,
       session.currentFrameIndex,
     );
+    final parent = _parentSpaceOf(session, activeLayer);
     return Positioned.fill(
-      // No cut-pose wrap: the V row's transform is gone,
-      // so the crosshair sits directly on the layer's own
-      // canvas space and the committed Position needs no
-      // un-posing.
+      // No cut-pose wrap: the V row's transform is gone. The
+      // crosshair stands in the row's PARENT space — the canvas
+      // for an unfoldered row — carried out and back through it.
       child: CanvasPointGizmo(
         glyph: HandleGlyph.crosshair,
-        point: session.layerPoseAtFrame(at.layer, at.frame).center,
+        point: parent.toCanvas(
+          session.layerPoseAtFrame(at.layer, at.frame).center,
+        ),
         viewport: viewport,
         // ONE key at the playhead per drag (AE rule,
         // one undo) — on the row the project holds, at
@@ -720,13 +758,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         // [activeLayer] as found: a track-SE row's is its
         // cut-local clone, and writing that back erased
         // the keys of earlier cuts (F-102).
-        onCommitted: (position) =>
+        onCommitted: (dropped) =>
             session.laneVerbs.editLayerTransformAtPlayhead(
               activeLayer.id,
               (track, frameIndex) => transformTrackWithPositionDragged(
                 track,
                 frameIndex: frameIndex,
-                position: position,
+                position: parent.fromCanvas(dropped),
               ),
               description: 'Move ${activeLayer.name}',
             ),
@@ -745,6 +783,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       activeLayer,
       session.currentFrameIndex,
     );
+    final own = session.layerPoseAtFrame(at.layer, at.frame);
+    final parent = _parentSpaceOf(session, activeLayer);
+    // The box draws the row as the canvas SHOWS it — its own pose under the
+    // folders' — and turns and scales about the row's anchor where that
+    // shows. It hands back the zoom and the turn it shows; the row's own
+    // are those less the parent's.
+    final parentZoom = parent.placement?.pose.zoom ?? 1;
+    final parentTurn = parent.placement?.pose.rotationDegrees ?? 0;
     return Positioned.fill(
       // R5 #10: the box frames the PICTURE, and its
       // corners scale while its rotate handle turns —
@@ -752,7 +798,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // more: the V row's transform is gone.
       child: LayerTransformBox(
         bounds: transformBoxBounds,
-        pose: session.layerPoseAtFrame(at.layer, at.frame),
+        pose: TransformPose(
+          center: parent.toCanvas(own.center),
+          zoom: parentZoom * own.zoom,
+          rotationDegrees: parentTurn + own.rotationDegrees,
+        ),
         anchorPoint: session.layerAnchorPointAtFrame(at.layer, at.frame),
         canvasSize: canvasSize,
         viewport: viewport,
@@ -762,7 +812,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               (track, frameIndex) => transformTrackWithScaleDragged(
                 track,
                 frameIndex: frameIndex,
-                zoom: zoom,
+                zoom: zoom / parentZoom,
               ),
               description: 'Scale ${activeLayer.name}',
             ),
@@ -772,7 +822,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               (track, frameIndex) => transformTrackWithRotationDragged(
                 track,
                 frameIndex: frameIndex,
-                rotationDegrees: degrees,
+                rotationDegrees: degrees - parentTurn,
               ),
               description: 'Rotate ${activeLayer.name}',
             ),

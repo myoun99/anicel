@@ -442,14 +442,48 @@ LayerPoseSample? layerPlacementAt({
       ? (attachedBaseOf(layer, cut.layers) ?? layer)
       : layer;
   return composeFolderAndLayerPose(
-    folderPoses: [
-      for (final folder in cut.layers.ancestryOf(layer.folderId).reversed)
-        ?_folderPoseAt(folder, frameIndex, cut.canvasSize),
-    ],
+    folderPoses: _folderPosesAbove(cut, layer, frameIndex),
     layerSample: _ownPlacementAt(cut, carrier, frameIndex),
     canvasSize: cut.canvasSize,
   );
 }
+
+/// Where [layer]'s OWN pose lives on the canvas at [frameIndex] — its
+/// PARENT's placement: every folder pose above it and nothing of its own.
+/// Null = the canvas itself (no posed folder above the row).
+///
+/// 🚨The gizmos edit the row's own pose, which is stated in THIS space: its
+/// position crosshair, its anchor and its box stand where this placement
+/// shows the value, and a drag comes back through it. Drawn as if the
+/// canvas were the row's parent, the crosshair of a row in a folder moved
+/// right by 200 stood 200 to the left of the picture it moves, and under a
+/// 2× folder a drag moved the picture twice as far as the pointer
+/// (measured 2026-09-25).
+LayerPoseSample? layerParentPlacementAt({
+  required Cut cut,
+  required Layer layer,
+  required int frameIndex,
+}) {
+  final folderPoses = _folderPosesAbove(cut, layer, frameIndex);
+  return folderPoses.isEmpty
+      ? null
+      : composeFolderAndLayerPose(
+          folderPoses: folderPoses,
+          layerSample: null,
+          canvasSize: cut.canvasSize,
+        );
+}
+
+/// The posed folders above [layer] at [frameIndex], outermost first — the
+/// part of [layerPlacementAt] that is the row's parent.
+List<LayerPoseSample> _folderPosesAbove(
+  Cut cut,
+  Layer layer,
+  int frameIndex,
+) => [
+  for (final folder in cut.layers.ancestryOf(layer.folderId).reversed)
+    ?_folderPoseAt(folder, frameIndex, cut.canvasSize),
+];
 
 /// [layerSample] with the folder chain's poses composed OUTSIDE it via
 /// [composeLayerPoseSamples] — ONE pose per entry, so every consumer
