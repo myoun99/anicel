@@ -206,7 +206,7 @@ typedef _CutRun = ({
 /// One task per numbered cel of every bundle the selection touches.
 ///
 /// A bundle exists for every base whose stack holds a selected picture —
-/// the base itself, or an attach row riding it (부속 preset: the base is
+/// the base itself, or an attach row riding it (어태치 preset: the base is
 /// OFF and its parts are ON). A cel is planned only where some picture
 /// member has a frame: 「그림이 존재하는 영역만 출력」 — paper alone is not a
 /// picture. Bundles the user unticked in the cel list ([skipped]) are

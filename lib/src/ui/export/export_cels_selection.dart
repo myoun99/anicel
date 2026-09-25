@@ -52,7 +52,7 @@ bool markWearsLabel(LayerMark mark, LayerMark label) =>
 ///    pictures); paper rows never (they are APPLIED, see
 ///    [ExportCelsSelection.paperLayers]); instruction rows iff 디렉션 is
 ///    ADDED ([CelsExportSpec.addDirection]).
-/// 2. 기준 / 부속 — a base row stays while [CelsExportSpec.base], an attach
+/// 2. 기준 / 어태치 — a base row stays while [CelsExportSpec.base], an attach
 ///    row while [CelsExportSpec.attach]. Attach alone is the parts without
 ///    their base (the base still numbers the cels — the planner's axis).
 /// 3. 시트 — with [CelsExportSpec.sheetOnly], only the rows on the timesheet
@@ -137,7 +137,7 @@ bool _exportsByRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
 }
 
 /// The FILTER STACK on a drawing row, in the order the window shows it:
-/// 기준/부속 · 시트 · 색라벨(+미술) · 테이크. Every one of them only takes
+/// 기준/어태치 · 시트 · 색라벨(+미술) · 테이크. Every one of them only takes
 /// rows away — 유저 2026-09-09: 「진짜 여러 항목이 필터로 작동하는거지」.
 ///
 /// A paper row is not one of the exported cels at all: it is the sheet the

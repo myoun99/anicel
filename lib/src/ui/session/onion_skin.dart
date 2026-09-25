@@ -186,8 +186,10 @@ class OnionSkin {
         if (enabledIds.contains(layer.id) &&
             cut.layers.rowVisible(layer) &&
             layer.kind.takesOnionSkin)
+          // The row as the rows show it: a SYNCED attach row plans from its
+          // mirror of the base, whose cels are its own (F-183 ①).
           for (final plan in planOnionSkin(
-            layer: layer,
+            layer: attachedRowAsShown(layer, cut.layers),
             frameIndex: _controllers.timelineController.currentFrameIndex,
             settings: pegs,
           ))

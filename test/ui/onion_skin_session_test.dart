@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart'
+    show attachedMirrorCelId, isSyncedAttachedLayer;
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -32,6 +35,30 @@ void main() {
       mode: OnionSkinMode.images,
     );
     expect(s.onionSkin.onionSkinCanvasRequests().single.tint, isNull);
+  });
+
+  test('F-183 ①: a SYNCED attach row ghosts its own mirror cels — the row '
+      'as the rows show it, not its empty stored timeline', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame();
+    final baseCel = s.activeLayer!.timeline[0]!.frameId!;
+    s.selectFrameIndex(1);
+    s.createDrawingAtCurrentFrame();
+    s.folders.addAttachedLayer(AttachedPlacement.above);
+    final attach = s.activeLayer!;
+    expect(isSyncedAttachedLayer(attach), isTrue, reason: 'the premise');
+
+    s.onionSkin.toggleOnionSkin();
+
+    final requests = s.onionSkin.onionSkinCanvasRequests();
+    expect(requests, hasLength(1), reason: 'the drawing before the playhead');
+    expect(requests.single.frameKey.layerId, attach.id);
+    expect(
+      requests.single.frameKey.frameId,
+      attachedMirrorCelId(attach.id, baseCel),
+      reason: 'its own cel mirroring the base\'s — what the canvas draws there',
+    );
   });
 
   testWidgets('O toggles the ACTIVE layer onion (UI-R17 #5 — the master '

@@ -342,8 +342,8 @@ String exportCelLabelText(LayerMark label) {
   return [chip.process, chip.revise].where((t) => t.isNotEmpty).join(' ');
 }
 
-/// The 선택 filters that are on, read as one line — 「기준 · 부속」,
-/// 「부속 · 시트」 — for a preset's summary. A dash when none is on (the
+/// The 선택 filters that are on, read as one line — 「기준 · 어태치」,
+/// 「어태치 · 시트」 — for a preset's summary. A dash when none is on (the
 /// export then writes only what 추가 adds).
 String exportCelFilterSummary(CelsExportSpec spec) {
   final strings = AppText.strings;

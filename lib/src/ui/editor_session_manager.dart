@@ -2813,6 +2813,15 @@ class EditorSessionManager extends ChangeNotifier
   @override
   void notifyChanged() => notifyListeners();
 
+  /// Every announcement first lets the verbs' row follow an active layer the
+  /// program moved ([Standing.followActiveLayer], F-183 ③) — the one point
+  /// every door that moves it passes, collaborators' and this class's own.
+  @override
+  void notifyListeners() {
+    standing.followActiveLayer();
+    super.notifyListeners();
+  }
+
   // --- Run-edge NEW FRAMES drag (UI-R8 [+] handle) --------------------------
 
   // ── the run frames add drag: its own object ─────────────────────────

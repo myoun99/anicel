@@ -74,14 +74,7 @@ class LayerController {
     // commands. FREE attach rows (UI-R21 #3) pass through untouched —
     // they own their timeline like any drawing layer.
     final displayed = [
-      for (final layer in cutLayers)
-        if (isSyncedAttachedLayer(layer))
-          switch (attachedBaseOf(layer, cutLayers)) {
-            null => layer,
-            final base => attachedDisplayLayer(attached: layer, base: base),
-          }
-        else
-          layer,
+      for (final layer in cutLayers) attachedRowAsShown(layer, cutLayers),
     ];
     final trackSe = _trackSeDisplayLayers?.call() ?? const <Layer>[];
     // The TRANSITION row joins on the same terms as the SE rows: track
