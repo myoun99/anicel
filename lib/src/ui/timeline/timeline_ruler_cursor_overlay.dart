@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 import 'timeline_cell_style.dart' show timelineSelectedFrameBorderColor;
@@ -21,9 +21,10 @@ import 'memo_token.dart';
 ///   playback composite self-validates against a signature, so nothing
 ///   raises an "invalidated" event when a cel is edited. There is no token
 ///   a gated painter could compare. The only honest answer is to keep the
-///   read cheap and repaint it on every signal that can change it, which is
+///   read cheap and re-read it on every signal that can change it, which is
 ///   what [repaintSignal] carries (warm progress + pixel edits) alongside
-///   the playhead.
+///   the playhead — and to REPAINT only when what it read differs from what
+///   it drew ([TimelineRulerCursorOverlay]'s gate, F-166).
 ///
 /// Shared by the storyboard ruler and the timeline ruler (it was the
 /// storyboard's private painter first).
@@ -38,9 +39,15 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     required this.cellWidth,
     required this.isFrameReady,
     this.axis = Axis.horizontal,
+    this.onPaintedRuns,
   }) : super(
          repaint: Listenable.merge([?playhead, ?repaintSignal, windowBucket]),
        );
+
+  /// Told the ready runs each paint drew — what the overlay's gate compares
+  /// a signal's answer against.
+  final void Function(List<({int startIndex, int endIndexExclusive})> runs)?
+  onPaintedRuns;
 
   /// The FRAME axis. Horizontal rulers (timeline, storyboard) run frames
   /// left-to-right and hug the bar to the bottom edge; the X-sheet rail runs
@@ -121,7 +128,9 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   void paint(Canvas canvas, Size size) {
     final horizontal = axis == Axis.horizontal;
     final barPaint = Paint()..color = readyBarColor;
-    for (final run in readyRuns()) {
+    final runs = readyRuns();
+    onPaintedRuns?.call(runs);
+    for (final run in runs) {
       final start = run.startIndex * cellWidth;
       final extent = (run.endIndexExclusive - run.startIndex) * cellWidth;
       canvas.drawRect(
@@ -175,7 +184,19 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
 /// The overlay, mounted the way both rulers want it: pointer-transparent
 /// and on its own raster layer, so its repaints never touch the static
 /// strip underneath.
-class TimelineRulerCursorOverlay extends StatelessWidget {
+///
+/// 🚨ITS [repaintSignal] IS GATED (F-166, 2026-09-26). Warm progress
+/// fires once per frame the prerender finishes, and between two strokes it
+/// walks the whole cut, nearly every frame of it already green — yet every
+/// tick repainted this strip, and a repaint anywhere in the timeline dock
+/// throws the dock's still image away. Measured on the real app (cut 301):
+/// the overlay repainted every ~0.1 s between strokes, the dock's wait for
+/// stillness backed off to its ceiling, and the next stroke then painted
+/// the whole timeline on every frame (17–21 ms of raster against 4–5).
+/// Each tick now re-reads the runs and asks for a paint only when they
+/// differ from the runs last DRAWN — not the runs last read, or a read
+/// that no paint followed would leave the screen stale.
+class TimelineRulerCursorOverlay extends StatefulWidget {
   const TimelineRulerCursorOverlay({
     super.key,
     required this.keyValue,
@@ -200,23 +221,78 @@ class TimelineRulerCursorOverlay extends StatelessWidget {
   final bool Function(int globalFrame)? isFrameReady;
 
   @override
+  State<TimelineRulerCursorOverlay> createState() =>
+      _TimelineRulerCursorOverlayState();
+}
+
+class _TimelineRulerCursorOverlayState
+    extends State<TimelineRulerCursorOverlay> {
+  late final _ReadyRunsGate _gate = _ReadyRunsGate(() => _painter);
+  late TimelineRulerCursorOverlayPainter _painter;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.repaintSignal?.addListener(_gate.recheck);
+  }
+
+  @override
+  void didUpdateWidget(covariant TimelineRulerCursorOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repaintSignal != widget.repaintSignal) {
+      oldWidget.repaintSignal?.removeListener(_gate.recheck);
+      widget.repaintSignal?.addListener(_gate.recheck);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.repaintSignal?.removeListener(_gate.recheck);
+    _gate.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    _painter = TimelineRulerCursorOverlayPainter(
+      playhead: widget.playhead,
+      repaintSignal: _gate,
+      windowBucket: widget.windowBucket,
+      viewportMainExtent: widget.viewportMainExtent,
+      renderedFrames: widget.renderedFrames,
+      cellWidth: widget.cellWidth,
+      isFrameReady: widget.isFrameReady,
+      axis: widget.axis,
+      onPaintedRuns: _gate.drew,
+    );
     return IgnorePointer(
       child: RepaintBoundary(
         child: CustomPaint(
-          key: ValueKey<String>(keyValue),
-          painter: TimelineRulerCursorOverlayPainter(
-            playhead: playhead,
-            repaintSignal: repaintSignal,
-            windowBucket: windowBucket,
-            viewportMainExtent: viewportMainExtent,
-            renderedFrames: renderedFrames,
-            cellWidth: cellWidth,
-            isFrameReady: isFrameReady,
-            axis: axis,
-          ),
+          key: ValueKey<String>(widget.keyValue),
+          painter: _painter,
         ),
       ),
     );
+  }
+}
+
+/// The overlay's [TimelineRulerCursorOverlay.repaintSignal], passed on
+/// only when the ready runs the current painter reads differ from the runs
+/// it last drew.
+class _ReadyRunsGate extends ChangeNotifier {
+  _ReadyRunsGate(this._painter);
+
+  final TimelineRulerCursorOverlayPainter Function() _painter;
+  List<({int startIndex, int endIndexExclusive})>? _drawn;
+
+  void drew(List<({int startIndex, int endIndexExclusive})> runs) =>
+      _drawn = runs;
+
+  void recheck() {
+    final drawn = _drawn;
+    if (drawn != null && listEquals(drawn, _painter().readyRuns())) {
+      return;
+    }
+    notifyListeners();
   }
 }
