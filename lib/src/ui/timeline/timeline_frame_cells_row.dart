@@ -535,7 +535,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       layer: layer,
       frameStartIndex: frames.frameStartIndex,
       frameEndIndexExclusive: frames.frameEndIndexExclusive,
-      resolveFrameCellExtent: () => geometry.value.frameCellExtent,
+      geometry: geometry,
       commaDrag: drag,
       axis: axis,
       crossAxisExtent: crossAxisExtent,

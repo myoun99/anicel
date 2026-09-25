@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
@@ -14,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
     show
         TimelineRowChromeResolver,
         TimelineRowEditChromePainter,
+        TimelineRowGripTarget,
         timelineRowEditChromeModel;
 
 /// 🚨I-43 (유저 2026-09-23): the edge is a triangle in the block's corner —
@@ -58,24 +60,46 @@ void main() {
     axis: axis,
   );
 
+  // 🚨유저 2026-09-26: 「블록 이름 텍스트가 칸 넘어서 크기 지키는거마냥 크기
+  // 최대한 지키게 … 1코마처럼 공간 부족하면 … 그냥 가로 1칸」 — the length
+  // along the frame axis is 100%'s third of a cell (24px / 3) at every zoom,
+  // and ONE CELL in a block too short for it.
+  const grip = 8.0;
+  double alongFor(double cell, int length) =>
+      length * cell >= grip ? grip : cell;
+
   Path triangle(
     TimelineBlockEdge edge,
     Rect box, {
     Axis axis = Axis.horizontal,
-  }) => blockEdgeGripPath(box, edge: edge, axis: axis);
+    required double cell,
+  }) => blockEdgeGripPath(
+    box,
+    edge: edge,
+    axis: axis,
+    round: (
+      paperCorner: blockEdgeGripCornerRadius(
+        box,
+        axis: axis,
+        frameCellExtent: cell,
+      ),
+      bleed: 0,
+    ),
+  );
 
   bool apart(Rect a, Rect b) {
     final overlap = a.intersect(b);
     return overlap.width <= 0 || overlap.height <= 0;
   }
 
-  test('the box is a third of a cell along and half the row across, in the '
-      'block corner — the start edge far, the end edge near, on both '
-      'axes', () {
+  test('the box is 100%\'s size along — one cell in a block too short for '
+      'it — and half the row across, in the block corner — the start edge '
+      'far, the end edge near, on both axes', () {
     for (final cell in cells) {
       for (final length in blockLengths) {
         final blockStart = start * cell;
         final blockEnd = (start + length) * cell;
+        final along = alongFor(cell, length);
         final why = 'cell $cell × $length frames';
         final lead = gripBox(
           TimelineBlockEdge.start,
@@ -87,11 +111,11 @@ void main() {
           length: length,
           cell: cell,
         );
-        expect(lead.width, moreOrLessEquals(cell / 3), reason: why);
+        expect(lead.width, moreOrLessEquals(along), reason: why);
         expect(lead.height, moreOrLessEquals(paper / 2), reason: why);
         expect(lead.left, moreOrLessEquals(blockStart), reason: why);
         expect(lead.bottom, moreOrLessEquals(paper), reason: why);
-        expect(tail.width, moreOrLessEquals(cell / 3), reason: why);
+        expect(tail.width, moreOrLessEquals(along), reason: why);
         expect(tail.height, moreOrLessEquals(paper / 2), reason: why);
         expect(tail.right, moreOrLessEquals(blockEnd), reason: why);
         expect(tail.top, 0, reason: why);
@@ -114,7 +138,7 @@ void main() {
         expect(leadV.top, moreOrLessEquals(blockStart), reason: why);
         expect(leadV.right, moreOrLessEquals(paper), reason: why);
         expect(leadV.width, moreOrLessEquals(paper / 2), reason: why);
-        expect(leadV.height, moreOrLessEquals(cell / 3), reason: why);
+        expect(leadV.height, moreOrLessEquals(along), reason: why);
         expect(tailV.bottom, moreOrLessEquals(blockEnd), reason: why);
         expect(tailV.left, 0, reason: why);
       }
@@ -127,7 +151,7 @@ void main() {
       for (final axis in Axis.values) {
         for (final edge in TimelineBlockEdge.values) {
           final box = gripBox(edge, length: 5, cell: cell, axis: axis);
-          final path = triangle(edge, box, axis: axis);
+          final path = triangle(edge, box, axis: axis, cell: cell);
           final why = 'cell $cell, $axis, ${edge.name}';
           // A path keeps single-precision points, hence the tolerance.
           final bounds = path.getBounds();
@@ -173,7 +197,7 @@ void main() {
     for (final cell in cells) {
       for (final edge in TimelineBlockEdge.values) {
         final box = gripBox(edge, length: 5, cell: cell);
-        final path = triangle(edge, box);
+        final path = triangle(edge, box, cell: cell);
         // The block's paper, drawn the way the cells painter draws it: the
         // block corner law on the paper box (I-44: the row short of its seam).
         final block = Rect.fromLTWH(start * cell, 0, 5 * cell, paper);
@@ -234,12 +258,19 @@ void main() {
     const bleed = 1.0;
     for (final edge in TimelineBlockEdge.values) {
       final box = gripBox(edge, length: 5, cell: cell);
-      final plain = triangle(edge, box);
+      final plain = triangle(edge, box, cell: cell);
       final grown = blockEdgeGripPath(
         box,
         edge: edge,
         axis: Axis.horizontal,
-        round: (paperCorner: null, bleed: bleed),
+        round: (
+          paperCorner: blockEdgeGripCornerRadius(
+            box,
+            axis: Axis.horizontal,
+            frameCellExtent: cell,
+          ),
+          bleed: bleed,
+        ),
       );
       final bounds = grown.getBounds();
       expect(bounds.left, greaterThanOrEqualTo(box.left - 1e-4));
@@ -307,11 +338,11 @@ void main() {
     for (final point in [
       Offset(blockStart + 1, paper / 2 - 1),
       const Offset(blockStart + 1, 1),
-      Offset(blockStart + cell / 3 + 1, paper - 1),
-      Offset(blockStart + cell / 6, paper + 0.5),
+      Offset(blockStart + grip + 1, paper - 1),
+      Offset(blockStart + grip / 2, paper + 0.5),
       Offset(blockEnd - 1, paper / 2 + 1),
       Offset(blockEnd - 1, paper - 1),
-      const Offset(blockEnd - cell / 3 - 1, 1),
+      const Offset(blockEnd - grip - 1, 1),
     ]) {
       expect(hit(point), isNull, reason: 'a press at $point is the cell\'s');
     }
@@ -366,9 +397,9 @@ void main() {
         size,
       );
 
-  test('the name stays off the start triangle and the 코마 number off the '
-      'end triangle, at every zoom — 「프레임이름이랑 엣지 · 코마텍스트랑 '
-      '엣지」', () {
+  test('the name stays off the start triangle from 100% up, and the 코마 '
+      'number off the end triangle at every zoom — 「프레임이름이랑 엣지 · '
+      '코마텍스트랑 엣지」', () {
     for (final cell in cells) {
       final lead = gripBox(TimelineBlockEdge.start, length: 4, cell: cell);
       final tail = gripBox(TimelineBlockEdge.end, length: 4, cell: cell);
@@ -378,12 +409,12 @@ void main() {
         cell,
         crossExtent: cross,
       );
-      // A one-digit name — the common case — at a digit's advance. ⚠️The
-      // smallest rung is the open question's (below), not this one's.
-      if (cell >= 3) {
+      // A one-digit name — the common case — at a digit's advance. ⚠️Under
+      // 100% it is the open question's (below), not this one's.
+      if (cell >= 24) {
         final digit = name(firstCell, cell, nameSize, nameSize * 0.6);
         expect(
-          touches(triangle(TimelineBlockEdge.start, lead), digit),
+          touches(triangle(TimelineBlockEdge.start, lead, cell: cell), digit),
           isFalse,
           reason: 'cell $cell: the name $digit meets the start triangle',
         );
@@ -403,36 +434,39 @@ void main() {
         komaHeight,
       );
       expect(
-        touches(triangle(TimelineBlockEdge.end, tail), koma),
+        touches(triangle(TimelineBlockEdge.end, tail, cell: cell), koma),
         isFalse,
         reason: 'cell $cell: the 코마 number $koma meets the end triangle',
       );
     }
   });
 
-  test('⚠️OPEN (I-43-Q1): with the half-row triangle a name wider than its '
-      'cell reaches the start triangle when zoomed out — the proportion 유저 '
-      'asked for (09-23) against the clearance I-43 was for, until they '
-      'choose', () {
-    for (final cell in cells.where((cell) => cell < 12)) {
-      final lead = gripBox(TimelineBlockEdge.start, length: 4, cell: cell);
-      final size = timelineFittedGlyphFontSize(14, cell, crossExtent: cross);
-      final wide = name(start * cell, cell, size, cell * 3);
-      expect(
-        touches(triangle(TimelineBlockEdge.start, lead), wide),
-        isTrue,
-        reason: 'cell $cell: I-43-Q1 is answered — rewrite this pin',
-      );
-    }
-    // …and at the smallest rung even a one-digit name grazes its apex.
-    final lead = gripBox(TimelineBlockEdge.start, length: 4, cell: 2.4);
-    final size = timelineFittedGlyphFontSize(14, 2.4, crossExtent: cross);
+  test('⚠️OPEN (grip-keeps-its-size-Q1): under 100% the start triangle keeps '
+      'its 8px and reaches a one-digit name at most rungs — the size 유저 '
+      'asked for (09-26: 「크기 최대한 지키게」) against the clearance I-43 '
+      'was for, until they choose', () {
+    final reached = [
+      for (final cell in cells.where((cell) => cell < 24))
+        if (touches(
+          triangle(
+            TimelineBlockEdge.start,
+            gripBox(TimelineBlockEdge.start, length: 4, cell: cell),
+            cell: cell,
+          ),
+          name(
+            start * cell,
+            cell,
+            timelineFittedGlyphFontSize(14, cell, crossExtent: cross),
+            timelineFittedGlyphFontSize(14, cell, crossExtent: cross) * 0.6,
+          ),
+        ))
+          cell,
+    ];
+    // 12px escapes only because the fitted name is smaller there.
     expect(
-      touches(
-        triangle(TimelineBlockEdge.start, lead),
-        name(start * 2.4, 2.4, size, size * 0.6),
-      ),
-      isTrue,
+      reached,
+      [2.4, 3.0, 4.0, 8.0, 14.0],
+      reason: 'grip-keeps-its-size-Q1 is answered — rewrite this pin',
     );
   });
 
@@ -459,6 +493,7 @@ void main() {
         axis: Axis.horizontal,
         ink: BlockEdgeGripInk.hovered,
         devicePixelRatio: ratio,
+        geometry: ValueNotifier(frames(cell)),
       ).paint(widgetSpy, widgetBox.size);
       expect(
         widgetSpy.paths.single.contains(probe(Offset.zero & widgetBox.size)),
@@ -515,6 +550,70 @@ void main() {
             'block\'s round (r $r), not a square corner — ${ratio}x',
       );
     }
+  });
+
+  test('the dense rows hand every triangle its own block\'s corner AT THIS '
+      'ZOOM — the box no longer says what the cell is', () {
+    for (final cell in cells) {
+      final model = timelineRowEditChromeModel(
+        gripBlocks: const [
+          (
+            ordinal: 0,
+            startIndex: start,
+            endIndexExclusive: start + 5,
+            startGrip: true,
+            endGrip: true,
+          ),
+        ],
+        gripIdScope: 'probe',
+        geometry: frames(cell),
+        crossAxisExtent: paper,
+        axis: Axis.horizontal,
+        includeRunEdges: false,
+      );
+      final corner = timelineBlockCornerRadiusAt(
+        cellExtent: cell,
+        crossExtent: paper,
+      ).x;
+      for (final target in model.targets.whereType<TimelineRowGripTarget>()) {
+        expect(target.paperCorner, corner, reason: 'cell $cell, ${target.id}');
+      }
+    }
+  });
+
+  testWidgets('the widget grip repaints its round end on a zoom step that '
+      'leaves its box as it was — the box is 100%\'s size, the corner is the '
+      'cell\'s', (tester) async {
+    final geometry = ValueNotifier(frames(24));
+    addTearDown(geometry.dispose);
+    await tester.pumpWidget(
+      Center(
+        child: SizedBox(
+          width: grip,
+          height: 13,
+          child: CustomPaint(
+            painter: BlockEdgeGripPainter(
+              edge: TimelineBlockEdge.end,
+              axis: Axis.horizontal,
+              ink: BlockEdgeGripInk.rest,
+              devicePixelRatio: 1,
+              geometry: geometry,
+            ),
+          ),
+        ),
+      ),
+    );
+    final mark = tester.renderObject<RenderCustomPaint>(
+      find.byType(CustomPaint),
+    );
+    expect(mark.debugNeedsPaint, isFalse);
+    // 100% → 25%: the block keeps its 8px box, its corner goes from 6 to 3.
+    geometry.value = frames(6);
+    expect(
+      mark.debugNeedsPaint,
+      isTrue,
+      reason: 'a zoom step must repaint the round end without a rebuild',
+    );
   });
 }
 

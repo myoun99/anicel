@@ -3318,7 +3318,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
         layer: layer,
         frameStartIndex: 0,
         frameEndIndexExclusive: _frameEndExclusive,
-        resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
+        geometry: TimelineFrameGeometryHandle(_geometry),
         commaDrag: commaDrag,
         axis: Axis.horizontal,
         crossAxisExtent: height,
@@ -3597,13 +3597,23 @@ class _StoryboardSeRow extends StatelessWidget {
     final seCommaDrag = this.seCommaDrag;
     if (seCommaDrag != null) {
       final grips = <Widget>[];
+      // One handle for the row's grips: the round end of each mark reads
+      // the cell off it ([BlockEdgeGrip.geometry]).
+      final gripGeometry = TimelineFrameGeometryHandle(_rowFrames);
       var ordinal = 0;
       for (final block in blocks) {
         final blockOrdinal = ordinal;
         ordinal += 1;
         for (final edge in TimelineBlockEdge.values) {
           grips.add(
-            _edgeGrip(edge, block, layer, blockOrdinal, seCommaDrag),
+            _edgeGrip(
+              edge,
+              block,
+              layer,
+              blockOrdinal,
+              seCommaDrag,
+              gripGeometry,
+            ),
           );
         }
       }
@@ -3706,7 +3716,14 @@ class _StoryboardSeRow extends StatelessWidget {
     );
   }
 
-  TimelineFrameSpan _edgeGrip(TimelineBlockEdge edge, TimelineDrawingBlock block, Layer layer, int blockOrdinal, TimelineCommaDragCallbacks seCommaDrag) {
+  TimelineFrameSpan _edgeGrip(
+    TimelineBlockEdge edge,
+    TimelineDrawingBlock block,
+    Layer layer,
+    int blockOrdinal,
+    TimelineCommaDragCallbacks seCommaDrag,
+    TimelineFrameGeometryHandle gripGeometry,
+  ) {
     return TimelineFrameSpan(
       placement: timelineBlockEdgeGripPlacement(
         edge: edge,
@@ -3724,7 +3741,7 @@ class _StoryboardSeRow extends StatelessWidget {
         blockStartIndex: block.startIndex,
         blockOrdinal: blockOrdinal,
         edge: edge,
-        resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
+        geometry: gripGeometry,
         callbacks: seCommaDrag,
       ),
     );

@@ -55,16 +55,17 @@ class TimelineRowGripTarget extends TimelineRowChromeTarget {
     required this.edge,
     required this.blockStartIndex,
     required this.blockOrdinal,
-    this.paperCorner,
+    required this.paperCorner,
   });
 
   final TimelineBlockEdge edge;
   final int blockStartIndex;
   final int blockOrdinal;
 
-  /// The corner of the paper the grip sits in, when a row's grips sit on a
-  /// paper of its own ([TimelineGripPaper]); null — the block's.
-  final double? paperCorner;
+  /// The corner of the paper the grip sits in — the block's own at this
+  /// zoom ([blockEdgeGripCornerRadius]), or, when a row's grips sit on a
+  /// paper of its own, that paper's ([TimelineGripPaper]).
+  final double paperCorner;
 
   @override
   bool operator ==(Object other) =>
@@ -270,27 +271,32 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       if (edge == TimelineBlockEdge.end && !block.endGrip) {
         continue;
       }
+      // The SAME placement the sparse rows lay their grip widgets out by,
+      // resolved the same way — one law, not a parity between two.
+      final rect = timelineFrameSpanRect(
+        timelineBlockEdgeGripPlacement(
+          edge: edge,
+          startIndex: block.startIndex,
+          endIndexExclusive: block.endIndexExclusive,
+          crossAxisExtent: crossAxisExtent,
+        ),
+        geometry,
+        crossAxisExtent: crossAxisExtent,
+        axis: axis,
+      );
       targets.add(
         TimelineRowGripTarget(
           id: 'block-edge-grip-${edge.name}-$gripIdScope-${block.ordinal}',
-          // The SAME placement the sparse rows lay their grip widgets out
-          // by, resolved the same way — one law, not a parity between two.
-          rect: timelineFrameSpanRect(
-            timelineBlockEdgeGripPlacement(
-              edge: edge,
-              startIndex: block.startIndex,
-              endIndexExclusive: block.endIndexExclusive,
-              crossAxisExtent: crossAxisExtent,
-            ),
-            geometry,
-            crossAxisExtent: crossAxisExtent,
-            axis: axis,
-          ),
+          rect: rect,
           edge: edge,
           blockStartIndex: block.startIndex,
           blockOrdinal: block.ordinal,
           paperCorner: switch (gripPaper) {
-            null => null,
+            null => blockEdgeGripCornerRadius(
+              rect,
+              axis: axis,
+              frameCellExtent: frameCellExtent,
+            ),
             final paper =>
               (edge == TimelineBlockEdge.start
                       ? paper.cornerStarts.contains(block.startIndex)

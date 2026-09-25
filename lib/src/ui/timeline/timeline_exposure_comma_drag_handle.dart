@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
@@ -10,6 +11,8 @@ import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
+import 'timeline_frame_geometry.dart';
+import 'timeline_zoom_limits.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../widgets/owning_axis_grip.dart';
 import '../repaint_props.dart';
@@ -39,12 +42,23 @@ enum BlockEdgeGripInk { rest, hovered, dragging }
 /// ↩️Before that it was a 3.5px bar 2.5px inside each edge, 55% of the row
 /// tall: constant pixels, so at a third-scale zoom one bar covered the name,
 /// the number and the other bar of a one-frame block.
-const double _gripMainCells = 1 / 3;
+///
+/// 🚨★★★100%'S SIZE AT EVERY ZOOM (유저 2026-09-26): 「지금 가로길이를
+/// 1칸기준으로 했는데, 100%일땐 좋은데 10%등 줄일수록 1칸기준으로 하니까 너무
+/// 가로가 작거든? 그래서 블록 이름 텍스트가 칸 넘어서 크기 지키는거마냥 크기
+/// 최대한 지키게하고싶어 … 정해진 크기대로 유지하다가, 1코마처럼 공간
+/// 부족하면 … 그냥 가로 1칸 차지하도록 해도되고」 — the length along the
+/// frame axis is the third of a cell it had at 100%, kept at every zoom the
+/// way a block's name keeps its type; a block too short for it gives the
+/// grip one cell ([TimelineFrameSpanPlacement.fitsIn]). ↩️The third was of
+/// the CURRENT cell until then, so at 10% the wedge was under a pixel wide.
+/// Across it is still half the paper.
+const double _gripMainExtent = TimelineZoomLimits.defaultPixelsPerFrame / 3;
 const double _gripCrossShare = 1 / 2;
 
-/// Where a block-edge grip sits, as a frame-span placement: a box a third of
-/// a cell along the frame axis and half the block's PAPER across it, in the
-/// paper's corner.
+/// Where a block-edge grip sits, as a frame-span placement: a box 100%'s
+/// third of a cell along the frame axis — one cell in a block shorter than
+/// that — and half the block's PAPER across it, in the paper's corner.
 ///
 /// ★THE BOX IS THE GRIP (유저 답 2026-09-23: 「(가) 삼각형 상자 — 보이는 것 =
 /// 잡는 것」): the triangle fills half of it, and a press anywhere in it takes
@@ -52,7 +66,8 @@ const double _gripCrossShare = 1 / 2;
 /// third of a cell, at least 6px, at most 12px) because its bar was narrower
 /// than the strip it answered in, and B5②/B6 (2026-08-17) was that bar
 /// overhanging its strip at the storyboard's zoom. A mark that IS its box
-/// cannot overhang it.
+/// cannot overhang it. (The 09-26 size is not a floor under a proportion —
+/// it IS the size, and the one-cell answer is the block's, not a cap's.)
 ///
 /// 🚨I-44: [crossAxisExtent] is the PAPER's — the box the block's paper
 /// fills across its host. A timeline row's paper stops short of the row
@@ -78,7 +93,8 @@ TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
   final across = crossAxisExtent * _gripCrossShare;
   return TimelineFrameSpanPlacement(
     startIndex: start ? startIndex : endIndexExclusive,
-    mainExtentCells: _gripMainCells,
+    mainExtent: _gripMainExtent,
+    fitsIn: (startIndex: startIndex, endIndexExclusive: endIndexExclusive),
     anchorAtTrailingEdge: !start,
     crossInset: start ? crossAxisExtent - across : 0,
     crossExtent: across,
@@ -86,22 +102,29 @@ TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
 }
 
 /// The corner radius of the block a grip [box] sits in — THE block corner
-/// ([timelineBlockCornerRadiusAt]), read back from the box the placement made:
-/// a third of a cell along the frame axis, half the paper across it.
-double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) =>
-    timelineBlockCornerRadiusAt(
-      cellExtent: extentAlong(axis, box.size) / _gripMainCells,
-      crossExtent: extentAcross(axis, box.size) / _gripCrossShare,
-    ).x;
+/// ([timelineBlockCornerRadiusAt]) over cells of [frameCellExtent], on the
+/// paper the box takes half of.
+///
+/// ↩️It read the cell back off the box (a third of a cell along) until the
+/// box stopped following the cell (유저 2026-09-26, above): a box of 100%'s
+/// size says nothing about the zoom, so the cell is handed in.
+double blockEdgeGripCornerRadius(
+  Rect box, {
+  required Axis axis,
+  required double frameCellExtent,
+}) => timelineBlockCornerRadiusAt(
+  cellExtent: frameCellExtent,
+  crossExtent: extentAcross(axis, box.size) / _gripCrossShare,
+).x;
 
 /// A grip triangle's ROUND END: the corner of the paper under it, and how
 /// far past that circle its ink reaches ([blockEdgeGripPath]).
 ///
-/// [paperCorner] is that paper's radius when the paper is not the block the
-/// box was laid out for — the storyboard's cut plate, round at the cut's
-/// ends and straight between its panels ([TimelineGripPaper]). Null asks
-/// the block's own ([blockEdgeGripCornerRadius]).
-typedef BlockEdgeGripRound = ({double? paperCorner, double bleed});
+/// [paperCorner] is that paper's radius — the block's own
+/// ([blockEdgeGripCornerRadius]), or, where the paper is not the block the
+/// box was laid out for, that paper's: the storyboard's cut plate, round at
+/// the cut's ends and straight between its panels ([TimelineGripPaper]).
+typedef BlockEdgeGripRound = ({double paperCorner, double bleed});
 
 /// The grip's triangle inside its [box]: the right angle in the block's
 /// corner, the two legs along the block's own edges, and the corner cut by
@@ -139,7 +162,7 @@ Path blockEdgeGripPath(
   Rect box, {
   required TimelineBlockEdge edge,
   required Axis axis,
-  BlockEdgeGripRound round = (paperCorner: null, bleed: 0),
+  required BlockEdgeGripRound round,
 }) {
   final horizontal = axis == Axis.horizontal;
   final a0 = horizontal ? box.left : box.top;
@@ -165,8 +188,7 @@ Path blockEdgeGripPath(
   final alongEnd = Offset(legAlong, 0);
   final acrossEnd = Offset(0, legAcross);
 
-  final radius =
-      round.paperCorner ?? blockEdgeGripCornerRadius(box, axis: axis);
+  final radius = round.paperCorner;
   final reach = radius + round.bleed;
   if (radius <= 0 || reach >= radius * math.sqrt2) {
     // No paper corner to follow — or a bleed wide enough to swallow it.
@@ -294,12 +316,13 @@ void paintBlockEdgeGrip(
 /// mount a widget per grip, and this keeps their pixels identical to the
 /// painted rows'.
 class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
-  const BlockEdgeGripPainter({
+  BlockEdgeGripPainter({
     required this.edge,
     required this.axis,
     required this.ink,
     required this.devicePixelRatio,
-  });
+    required this.geometry,
+  }) : super(repaint: geometry);
 
   final TimelineBlockEdge edge;
   final Axis axis;
@@ -308,24 +331,49 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
   /// For the round end's one-device-pixel bleed ([blockEdgeGripPath]).
   final double devicePixelRatio;
 
-  /// The grip's own BOX is the geometry — it is laid out by the placement,
-  /// so nothing needs the cell width passed in (that is what used to drag
-  /// every grip through a rebuild on each zoom step), and a zoom step that
-  /// resizes the box repaints it.
-  @override
-  void paint(Canvas canvas, Size size) => paintBlockEdgeGrip(
-    canvas,
-    blockEdgeGripPath(
-      Offset.zero & size,
-      edge: edge,
-      axis: axis,
-      round: (paperCorner: null, bleed: 1 / devicePixelRatio),
-    ),
-    ink,
-  );
+  /// The LIVE frame-axis geometry, for the round end: the block's corner
+  /// follows the cell, and the box — 100%'s size since 2026-09-26 — no
+  /// longer does, so a zoom step may leave the box as it was and still
+  /// owe the corner a repaint.
+  ///
+  /// ↩️The box WAS the geometry — a third of a cell along — so nothing
+  /// needed the cell passed in (that is what used to drag every grip
+  /// through a rebuild on each zoom step), and a zoom step that resized the
+  /// box repainted it. Listening keeps that: no rebuild, only a repaint.
+  final ValueListenable<TimelineFrameGeometry> geometry;
 
   @override
-  Object get props => (edge, axis, ink, devicePixelRatio);
+  void paint(Canvas canvas, Size size) {
+    final box = Offset.zero & size;
+    paintBlockEdgeGrip(
+      canvas,
+      blockEdgeGripPath(
+        box,
+        edge: edge,
+        axis: axis,
+        round: (
+          paperCorner: blockEdgeGripCornerRadius(
+            box,
+            axis: axis,
+            frameCellExtent: geometry.value.frameCellExtent,
+          ),
+          bleed: 1 / devicePixelRatio,
+        ),
+      ),
+      ink,
+    );
+  }
+
+  @override
+  // The cell by VALUE: a host that rebuilds on a zoom hands in a fresh
+  // handle, and the new cell is what must repaint — not the new object.
+  Object get props => (
+    edge,
+    axis,
+    ink,
+    devicePixelRatio,
+    geometry.value.frameCellExtent,
+  );
 }
 
 /// The drag hooks a grip needs once its identity is already bound by the
@@ -364,18 +412,23 @@ class BlockEdgeGrip extends StatefulWidget {
   const BlockEdgeGrip({
     super.key,
     required this.edge,
-    required this.resolveFrameCellExtent,
+    required this.geometry,
     required this.hooks,
     this.axis = Axis.horizontal,
   });
 
   final TimelineBlockEdge edge;
 
-  /// The cell extent, READ AT DRAG TIME rather than captured: the grip fills
-  /// whatever box its mount hands it, and a mount that positions by frame
-  /// span (the sparse rows) does not rebuild it on a zoom step — so a value
-  /// frozen at build time would convert pixels to frames at the wrong scale.
-  final double Function() resolveFrameCellExtent;
+  /// The LIVE frame-axis geometry — its cell READ AT DRAG TIME rather than
+  /// captured: the grip fills whatever box its mount hands it, and a mount
+  /// that positions by frame span (the sparse rows) does not rebuild it on a
+  /// zoom step — so a value frozen at build time would convert pixels to
+  /// frames at the wrong scale. The mark's round end reads the same cell
+  /// ([BlockEdgeGripPainter.geometry]).
+  ///
+  /// ↩️A `double Function()` for the cell until 2026-09-26, when the mark
+  /// started needing it too — and a function cannot say when it changed.
+  final ValueListenable<TimelineFrameGeometry> geometry;
 
   final BlockEdgeGripHooks hooks;
 
@@ -402,7 +455,7 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
     required this.blockStartIndex,
     required this.blockOrdinal,
     required this.edge,
-    required this.resolveFrameCellExtent,
+    required this.geometry,
     required this.callbacks,
     this.axis = Axis.horizontal,
   });
@@ -420,8 +473,8 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
   final int blockOrdinal;
   final TimelineBlockEdge edge;
 
-  /// See [BlockEdgeGrip.resolveFrameCellExtent].
-  final double Function() resolveFrameCellExtent;
+  /// See [BlockEdgeGrip.geometry].
+  final ValueListenable<TimelineFrameGeometry> geometry;
 
   final TimelineCommaDragCallbacks callbacks;
 
@@ -442,7 +495,7 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
       key: subtreeKey,
       child: BlockEdgeGrip(
         edge: edge,
-        resolveFrameCellExtent: resolveFrameCellExtent,
+        geometry: geometry,
         axis: axis,
         hooks: BlockEdgeGripHooks(
           onBegin: () => callbacks.onBegin(layerId, blockStartIndex, edge),
@@ -490,7 +543,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
     _accumulatedDelta += delta;
     final frames = commaDragFrameDelta(
       accumulatedDelta: _accumulatedDelta,
-      frameCellExtent: widget.resolveFrameCellExtent(),
+      frameCellExtent: widget.geometry.value.frameCellExtent,
     );
     if (frames == _lastReportedFrames) {
       return;
@@ -549,6 +602,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
             ? BlockEdgeGripInk.hovered
             : BlockEdgeGripInk.rest,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+        geometry: widget.geometry,
       ),
       child: const SizedBox.expand(),
     );

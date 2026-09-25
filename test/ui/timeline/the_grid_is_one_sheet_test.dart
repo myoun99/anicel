@@ -319,7 +319,14 @@ void main() {
         crossAxisExtent: row,
         axis: Axis.horizontal,
       );
-      expect(blockEdgeGripCornerRadius(box, axis: Axis.horizontal), corner.x);
+      expect(
+        blockEdgeGripCornerRadius(
+          box,
+          axis: Axis.horizontal,
+          frameCellExtent: 24,
+        ),
+        corner.x,
+      );
     });
 
     /// 🚨F-3 (유저 2026-08-24): 「프레임 그리드가 아예 안 그려지는 레이어가

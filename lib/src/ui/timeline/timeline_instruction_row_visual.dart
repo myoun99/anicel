@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -12,6 +13,7 @@ import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_block_word.dart';
+import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart';
 import 'timeline_se_row_visual.dart' show timelineBlockWarningBar;
 import '../repaint_props.dart';
@@ -205,7 +207,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
-  required double Function() resolveFrameCellExtent,
+  required ValueListenable<TimelineFrameGeometry> geometry,
   required TimelineCommaDragCallbacks commaDrag,
   required Axis axis,
   required double crossAxisExtent,
@@ -242,7 +244,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
               blockStartIndex: start,
               blockOrdinal: ordinal,
               edge: edge,
-              resolveFrameCellExtent: resolveFrameCellExtent,
+              geometry: geometry,
               callbacks: commaDrag,
               axis: axis,
             ),

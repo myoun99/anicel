@@ -310,11 +310,11 @@ void main() {
       // I-44: the SE paper stops a seam short of the row (the grid sheet
       // draws that seam under the row), and the grips stand on the paper.
       final paper = timelineRowPaperExtent(rowHeight);
-      // I-43: a third of a cell along, half the paper across — the dense
-      // rows' one placement.
+      // I-43: 100%'s third of a cell along (8px — one frame at this zoom),
+      // half the paper across — the dense rows' one placement.
       for (final grip in [startGrip, endGrip]) {
         final size = tester.getSize(grip);
-        expect(size.width, moreOrLessEquals(_ppf / 3));
+        expect(size.width, 8);
         expect(size.height, moreOrLessEquals(paper / 2));
       }
       // In the corners: the start grip in the block's first cell on the

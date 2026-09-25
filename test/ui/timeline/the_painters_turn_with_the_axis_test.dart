@@ -372,6 +372,14 @@ void main() {
         axis: axis,
         ink: BlockEdgeGripInk.rest,
         devicePixelRatio: 1,
+        // A 24px cell: the mark's round end is the block's corner there.
+        geometry: ValueNotifier(
+          const TimelineFrameGeometry(
+            frameCellExtent: 24,
+            frameStartIndex: 0,
+            frameEndIndexExclusive: 10,
+          ),
+        ),
       ).paint(spy, size);
       return spy.paths.single;
     }
