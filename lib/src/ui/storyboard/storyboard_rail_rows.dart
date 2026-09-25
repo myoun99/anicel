@@ -603,81 +603,113 @@ class _StoryboardRailRows {
     );
   }
 
+  /// A V row's label [row] with the V rows' splitter along its bottom edge
+  /// ([StoryboardPanel.onResizeTrackLanes]) — the row's own edge, lit when
+  /// the pointer comes to it — or the row alone when the host takes no
+  /// resize. Every V row carries one, and each moves the height they share.
+  Widget _withTrackLaneSplitter(Track track, Widget row) {
+    final resize = _state.widget.onResizeTrackLanes;
+    if (resize == null) {
+      return row;
+    }
+    return Stack(
+      children: [
+        row,
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: DockEdgeSplitter.thickness,
+          child: DockEdgeSplitter(
+            key: ValueKey<String>(
+              'storyboard-track-lane-splitter-${track.id.value}',
+            ),
+            axis: Axis.horizontal,
+            onDragDelta: resize,
+          ),
+        ),
+      ],
+    );
+  }
+
   /// The V section's rail rows for [track]: the draggable track label
   /// row (following the playhead), and the track's effect lane rows while
   /// its transform group is expanded.
   List<Widget> _vRowsFor(Track track, int index, Cut? activeCut) {
     final vRows = <Widget>[
-      _state._rows.trackDraggable(
+      _withTrackLaneSplitter(
         track,
-        index,
-        // 🚨F-19 (유저 2026-08-24): 「스토리보드패널의 버튼, **룰러 스크럽시
-        // 현재 인덱스의 컷에 따라 버튼이 갱신 안되고** … **손 떼야 갱신**되서
-        // 활성화되거나 하는데 어떻게 가능한가?」
-        //
-        // Because of the cursor-layer split, and it was working as built:
-        // [_playheadGlobalFrame] moves per scrub move, and only the playhead
-        // overlay and the ruler subscribe to it — the panel deliberately does
-        // NOT rebuild on a tick (W4). So [_cutAtPlayheadOn] read whatever the
-        // frame had been at the last panel rebuild, which during a drag is
-        // where the drag STARTED.
-        //
-        // ★So this row subscribes, the way the overlay does. One row per
-        // track rebuilds per move — the cost the ruler beside it already
-        // pays — and the alternative (rebuilding the panel) is the very
-        // thing the split exists to avoid.
-        //
-        // ⛔NOT by making the ruler switch the active cut, which is what the
-        // report wondered aloud about (「애초에 룰러에 따라 액티브컷 전환하도록
-        // 하는게 구조적 해결일까」). The scrub PARKS on purpose — the whole
-        // preview machinery (D6's no-flash rules, the territory flag) exists
-        // because the active cut does not follow a drag — and switching it
-        // per move would put a cut activation on every pointer move.
-        _playheadFollowing(
-          (_) => StoryboardTrackLabelRow(
-            track: track,
-            trackLabel: _vRowName(index),
-            laneHeight: _state.widget.trackLaneHeight,
-            laneExpanded: _state.widget.expandedTransformTracks.contains(
-              track.id.value,
+        _state._rows.trackDraggable(
+          track,
+          index,
+          // 🚨F-19 (유저 2026-08-24): 「스토리보드패널의 버튼, **룰러 스크럽시
+          // 현재 인덱스의 컷에 따라 버튼이 갱신 안되고** … **손 떼야 갱신**되서
+          // 활성화되거나 하는데 어떻게 가능한가?」
+          //
+          // Because of the cursor-layer split, and it was working as built:
+          // [_playheadGlobalFrame] moves per scrub move, and only the playhead
+          // overlay and the ruler subscribe to it — the panel deliberately does
+          // NOT rebuild on a tick (W4). So [_cutAtPlayheadOn] read whatever the
+          // frame had been at the last panel rebuild, which during a drag is
+          // where the drag STARTED.
+          //
+          // ★So this row subscribes, the way the overlay does. One row per
+          // track rebuilds per move — the cost the ruler beside it already
+          // pays — and the alternative (rebuilding the panel) is the very
+          // thing the split exists to avoid.
+          //
+          // ⛔NOT by making the ruler switch the active cut, which is what the
+          // report wondered aloud about (「애초에 룰러에 따라 액티브컷 전환하도록
+          // 하는게 구조적 해결일까」). The scrub PARKS on purpose — the whole
+          // preview machinery (D6's no-flash rules, the territory flag) exists
+          // because the active cut does not follow a drag — and switching it
+          // per move would put a cut activation on every pointer move.
+          _playheadFollowing(
+            (_) => StoryboardTrackLabelRow(
+              track: track,
+              trackLabel: _vRowName(index),
+              laneHeight: _state.widget.trackLaneHeight,
+              laneExpanded: _state.widget.expandedTransformTracks.contains(
+                track.id.value,
+              ),
+              onToggleLane: _state.widget.onToggleTrackLane == null
+                  ? null
+                  : () => _state.widget.onToggleTrackLane!(track),
+              // V-track selection (UI-R18 #6): tapping selects the track (its
+              // playhead-index cut becomes active). The highlight says THIS ROW
+              // IS SELECTED — not "the active cut lives here", which is what the
+              // cut block's own active border already says, and which could light
+              // at the same time as an S row.
+              active: _state.widget.selectedRow == TrackRowAddress(track.id),
+              onSelectTrack: _state.widget.onSelectTrack == null
+                  ? null
+                  : () => _state.widget.onSelectTrack!(track.id),
+              activeCut: activeCut,
+              // UI-R13 #2: the fx/eye act on THIS track's cut at the current
+              // global index (each track independently) — no stand-down, no
+              // parked look. A gap simply means no cut exists there: the
+              // buttons stay normal and a press is a no-op.
+              subjectCut: _state._standing.cutAtPlayheadOn(index) ?? activeCut,
+              cutPictureVisibleOf: _state.widget.cutPictureVisibleOf,
+              onToggleCutPictureVisibility:
+                  _state.widget.onToggleCutPictureVisibility,
+              // R9 #21: the track's own display columns.
+              trackFxState:
+                  _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
+              onToggleTrackFx: _state.widget.onToggleTrackFx == null
+                  ? null
+                  : () => _state.widget.onToggleTrackFx!(track),
+              trackOpacity: _state.widget.trackOpacityOf?.call(track) ?? 1.0,
+              onTrackOpacityChanged: _state.widget.onTrackOpacityChanged == null
+                  ? null
+                  : (opacity) =>
+                        _state.widget.onTrackOpacityChanged!(track, opacity),
+              onTrackOpacityChangeEnd:
+                  _state.widget.onTrackOpacityChangeEnd == null
+                  ? null
+                  : (opacity) =>
+                        _state.widget.onTrackOpacityChangeEnd!(track, opacity),
             ),
-            onToggleLane: _state.widget.onToggleTrackLane == null
-                ? null
-                : () => _state.widget.onToggleTrackLane!(track),
-            // V-track selection (UI-R18 #6): tapping selects the track (its
-            // playhead-index cut becomes active). The highlight says THIS ROW
-            // IS SELECTED — not "the active cut lives here", which is what the
-            // cut block's own active border already says, and which could light
-            // at the same time as an S row.
-            active: _state.widget.selectedRow == TrackRowAddress(track.id),
-            onSelectTrack: _state.widget.onSelectTrack == null
-                ? null
-                : () => _state.widget.onSelectTrack!(track.id),
-            activeCut: activeCut,
-            // UI-R13 #2: the fx/eye act on THIS track's cut at the current
-            // global index (each track independently) — no stand-down, no
-            // parked look. A gap simply means no cut exists there: the
-            // buttons stay normal and a press is a no-op.
-            subjectCut: _state._standing.cutAtPlayheadOn(index) ?? activeCut,
-            cutPictureVisibleOf: _state.widget.cutPictureVisibleOf,
-            onToggleCutPictureVisibility:
-                _state.widget.onToggleCutPictureVisibility,
-            // R9 #21: the track's own display columns.
-            trackFxState:
-                _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
-            onToggleTrackFx: _state.widget.onToggleTrackFx == null
-                ? null
-                : () => _state.widget.onToggleTrackFx!(track),
-            trackOpacity: _state.widget.trackOpacityOf?.call(track) ?? 1.0,
-            onTrackOpacityChanged: _state.widget.onTrackOpacityChanged == null
-                ? null
-                : (opacity) =>
-                      _state.widget.onTrackOpacityChanged!(track, opacity),
-            onTrackOpacityChangeEnd:
-                _state.widget.onTrackOpacityChangeEnd == null
-                ? null
-                : (opacity) =>
-                      _state.widget.onTrackOpacityChangeEnd!(track, opacity),
           ),
         ),
       ),

@@ -55,6 +55,8 @@ class _WorkspaceLayoutPersistence {
     for (final extent in _state._railExtents.values) {
       extent.reset();
     }
+    _state._storyboardTrackLaneHeight.value =
+        StoryboardPanel.defaultTrackLaneHeight;
     _state._rebuild(() {
       _state._lockedTabIds = {EditorWorkspace.canvasTabId};
       _state._openRails = defaultOpenRails();
@@ -125,6 +127,18 @@ class _WorkspaceLayoutPersistence {
     for (final entry in _state._railExtents.entries) {
       entry.value.value = restored.railExtents[entry.key];
     }
+    _restoreTrackLaneHeight(payload[_storyboardTrackLaneHeightKey]);
+  }
+
+  /// The layout file's key for the V rows' height.
+  static const _storyboardTrackLaneHeightKey = 'storyboardTrackLaneHeight';
+
+  /// The V rows' height as the file kept it — the splitter's: absent is the
+  /// default, and a file's number is held to the legal range like a drag's.
+  void _restoreTrackLaneHeight(Object? saved) {
+    _state._storyboardTrackLaneHeight.value = saved is num && saved.isFinite
+        ? StoryboardPanel.clampTrackLaneHeight(saved.toDouble())
+        : StoryboardPanel.defaultTrackLaneHeight;
   }
 
   /// The tool library's view toggles as the file kept them (F-73 ①). A file
@@ -147,43 +161,59 @@ class _WorkspaceLayoutPersistence {
     }
     _layoutSaveTimer?.cancel();
     _layoutSaveTimer = Timer(const Duration(milliseconds: 800), () {
-      unawaited(
-        store
-            .save({
-              'layout': _state._layout.toJson(),
-              'lockedTabs': _state._lockedTabIds.toList(),
-              // Closed panels stay closed across restarts (restore only
-              // returns tabs missing WITHOUT this marker to their docks —
-              // i.e. panels added by an update).
-              'hiddenTabs': [
-                for (final entry in _state._panelMenuEntries())
-                  if (!entry.visible) entry.tabId,
-              ],
-              // A rail the user never dragged stays ABSENT rather than
-              // saving its current natural size — otherwise a later
-              // column change would be pinned to yesterday's geometry.
-              'railExtents': {
-                for (final entry in _state._railExtents.entries)
-                  if (entry.value.value != null) entry.key: entry.value.value,
-              },
-              // NEW keys rather than a new layout version: an older build
-              // reading this file simply does not see them, whereas bumping
-              // the version makes that build throw the whole arrangement
-              // away (there is no migration code, only a version check).
-              'bottomCollapsed': _state._bottomDockCollapsed,
-              // ABSENT while the default is in force, the same rule the
-              // rail extents follow: writing today's resolved pixels would
-              // pin tomorrow's window to this one's width.
-              if (_state._bottomInsetOverride.value != null)
-                'bottomInset': _state._bottomInsetOverride.value,
-              'openRails': _state._openRails.toList(),
-              'regionOnTop': _state._regionOnTop,
-              'brushPresetView': _state._brushPresetView.value.toJson(),
-            })
-            .catchError((Object _) {}),
+      final payload = _layoutPayload();
+      _layoutWrite = _layoutWrite.then(
+        (_) => store.save(payload).catchError((Object _) {}),
       );
     });
   }
+
+  /// The write in flight — the next one waits for it. `writeAsString`
+  /// truncates and then writes, so two writes into one file at once
+  /// interleave, and the longer one's tail outlives the shorter: a file no
+  /// restore can read, and the whole arrangement lost at the next launch.
+  /// (Found by the V rows' splitter test: a save scheduled at launch and the
+  /// reset's own save were in flight together.)
+  Future<void> _layoutWrite = Future<void>.value();
+
+  /// Everything the layout file keeps, as it stands now.
+  Map<String, Object?> _layoutPayload() => {
+    'layout': _state._layout.toJson(),
+    'lockedTabs': _state._lockedTabIds.toList(),
+    // Closed panels stay closed across restarts (restore only
+    // returns tabs missing WITHOUT this marker to their docks —
+    // i.e. panels added by an update).
+    'hiddenTabs': [
+      for (final entry in _state._panelMenuEntries())
+        if (!entry.visible) entry.tabId,
+    ],
+    // A rail the user never dragged stays ABSENT rather than
+    // saving its current natural size — otherwise a later
+    // column change would be pinned to yesterday's geometry.
+    'railExtents': {
+      for (final entry in _state._railExtents.entries)
+        if (entry.value.value != null) entry.key: entry.value.value,
+    },
+    // NEW keys rather than a new layout version: an older build
+    // reading this file simply does not see them, whereas bumping
+    // the version makes that build throw the whole arrangement
+    // away (there is no migration code, only a version check).
+    'bottomCollapsed': _state._bottomDockCollapsed,
+    // ABSENT while the default is in force, the same rule the
+    // rail extents follow: writing today's resolved pixels would
+    // pin tomorrow's window to this one's width.
+    if (_state._bottomInsetOverride.value != null)
+      'bottomInset': _state._bottomInsetOverride.value,
+    // The V rows' height (the splitter's), absent at the default
+    // by the same rule.
+    if (_state._storyboardTrackLaneHeight.value !=
+        StoryboardPanel.defaultTrackLaneHeight)
+      _storyboardTrackLaneHeightKey:
+          _state._storyboardTrackLaneHeight.value,
+    'openRails': _state._openRails.toList(),
+    'regionOnTop': _state._regionOnTop,
+    'brushPresetView': _state._brushPresetView.value.toJson(),
+  };
 
   /// Whether the storyboard tab is the active tab of any section (visible
   /// on screen).

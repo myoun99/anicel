@@ -60,6 +60,7 @@ class StoryboardTabHost extends StatefulWidget {
     this.railExtent,
     this.frameAxisOffset,
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
+    this.onResizeTrackLanes,
     required this.thumbnailFor,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
@@ -112,10 +113,13 @@ class StoryboardTabHost extends StatefulWidget {
   final ValueNotifier<double>? frameAxisOffset;
 
   /// The V rows' shared height, owned above the tabs so it survives a tab
-  /// switch like the zoom does. ⛔No setter and no steppers any more (B7,
-  /// 유저 2026-08-17): the bar's push/pull height pair is deleted, and the
-  /// height's next writer is the planned V-track splitter.
+  /// switch like the zoom does. ⛔No steppers any more (B7, 유저 2026-08-17):
+  /// the bar's push/pull height pair is deleted, and its one writer is the
+  /// V rows' splitter ([onResizeTrackLanes]).
   final double trackLaneHeight;
+
+  /// The V rows' splitter ([StoryboardPanel.onResizeTrackLanes]).
+  final double Function(double delta)? onResizeTrackLanes;
 
   /// Build-time thumbnail resolver, owned above the tabs so the cache
   /// survives tab switches.
@@ -625,6 +629,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         _session.standOnRow(TrackRowAddress(trackId)),
                     pixelsPerFrame: widget.pixelsPerFrame,
                     trackLaneHeight: widget.trackLaneHeight,
+                    onResizeTrackLanes: widget.onResizeTrackLanes,
                     showSeconds: widget.showSeconds,
                     onShowSecondsChanged: widget.onShowSecondsChanged,
                     railExtent: widget.railExtent,

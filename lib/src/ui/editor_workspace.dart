@@ -1087,6 +1087,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     for (final extent in _railExtents.values) {
       extent.addListener(_layoutPersistence.scheduleLayoutSave);
     }
+    // The V rows' height is saved like the rail widths: its splitter moves
+    // it, and the layout file keeps it.
+    _storyboardTrackLaneHeight.addListener(
+      _layoutPersistence.scheduleLayoutSave,
+    );
     widget.panelsMenu?.attach(
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,

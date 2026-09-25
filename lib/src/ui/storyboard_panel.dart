@@ -44,6 +44,7 @@ import 'timeline/timeline_cut_end_handle.dart'
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
+import 'widgets/dock_edge_splitter.dart';
 import 'widgets/field_slider.dart';
 import 'timeline/property_lane_model.dart'
     show
@@ -459,6 +460,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onCreateStoryboardLayer,
     this.movieEnd,
     this.trackLaneHeight = defaultTrackLaneHeight,
+    this.onResizeTrackLanes,
     this.pixelsPerFrame = 8,
     this.showSeconds = false,
     this.onShowSecondsChanged,
@@ -604,13 +606,19 @@ class StoryboardPanel extends StatefulWidget {
   /// ⚠️The floor was set below the height where the bands FOLDED, on
   /// purpose — the compact look. The bands no longer fold (유저 2026-09-25:
   /// 「띠는 v행 세로 줄어도 고정으로 그 자리에 두자」), so at this floor the
-  /// strip between them keeps 2px of picture; the V-track splitter, the
-  /// height's next writer, is where the floor gets decided again.
+  /// strip between them keeps 2px of picture while every word of the bands
+  /// stays whole — the compact look is now a row of writing.
   static const double defaultTrackLaneHeight = 64;
   // Min/max are the height's LEGAL RANGE — the bar's steppers died with B7
-  // (2026-08-17), but the planned V-track splitter clamps to the same pair.
+  // (2026-08-17), and the V-track splitter (2026-09-26) clamps to the same
+  // pair ([onResizeTrackLanes]).
   static const double minTrackLaneHeight = 28;
   static const double maxTrackLaneHeight = 160;
+
+  /// [height] held to the legal range — what the splitter's drag and a
+  /// saved layout alike may set.
+  static double clampTrackLaneHeight(double height) =>
+      height.clamp(minTrackLaneHeight, maxTrackLaneHeight).toDouble();
 
   /// The vertical scrollbar's lane width — the TIMELINE's
   /// [TimelineGridMetrics.verticalScrollbarWidth] by value (UI-R10 #15/#21
@@ -723,6 +731,14 @@ class StoryboardPanel extends StatefulWidget {
   /// Every V row's height — the rail's label row and the strip row read
   /// the same number, because they are two columns of one row.
   final double trackLaneHeight;
+
+  /// The V rows' splitter (유저 2026-09-25: 「슬슬 V트랙 위아래 스플리터
+  /// 조절기능 넣자. 썸네일 크게보고싶을때용」): the drag's travel down the
+  /// bottom edge of a V row's label, answered with how much of it the height
+  /// took ([DockEdgeSplitter.onDragDelta]'s contract — the owner clamps, and
+  /// the hand pays back what ran past the edge). The owner holds the ONE
+  /// height every V row shares. Null: no splitter.
+  final double Function(double delta)? onResizeTrackLanes;
 
   /// Whole-block move hooks (R10-④): a horizontal drag on a block's body
   /// slides the cut (gap authoring + edge-style pushes). Null disables

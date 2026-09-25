@@ -930,9 +930,18 @@ class _WorkspaceTabs {
               },
               railExtent: _state._railExtents[LayerRailId.storyboard],
               frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
-              // ⛔No height setter any more (B7): the steppers left the bar,
-              // and the planned V-track splitter is the next writer.
+              // ⛔No steppers any more (B7): the V rows' splitter is the
+              // height's one writer, and it asks the NOTIFIER, not the value
+              // this build took — a drag's steps outrun the rebuilds.
               trackLaneHeight: _state._storyboardTrackLaneHeight.value,
+              onResizeTrackLanes: (delta) {
+                final height = _state._storyboardTrackLaneHeight;
+                final before = height.value;
+                height.value = StoryboardPanel.clampTrackLaneHeight(
+                  before + delta,
+                );
+                return height.value - before;
+              },
               thumbnailFor: _state._storyboardThumbnails.thumbnailFor,
               // The rows the ↑/↓ walk and the flip window read while the
               // storyboard is the panel being worked in.
