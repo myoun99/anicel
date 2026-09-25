@@ -48,8 +48,8 @@ class CanvasViewportGestureLayer extends StatefulWidget {
     super.key,
     required this.viewport,
     required this.onViewportChanged,
-    this.strokeActive = false,
-    this.touchLocked = false,
+    this.strokeActive = _never,
+    this.touchLocked = _never,
     this.rotationEnabled = true,
     this.oneFingerAction,
     this.primaryPressPans = false,
@@ -84,17 +84,29 @@ class CanvasViewportGestureLayer extends StatefulWidget {
   /// second movement rule.
   final FlipHudController? flipHud;
 
-  /// True while the user is drawing; blocks new viewport gestures.
-  final bool strokeActive;
+  /// Whether the user is drawing right now; blocks new viewport gestures.
+  ///
+  /// 🚨ASKED WHEN AN EVENT ARRIVES, not handed in at build (2026-09-26).
+  /// Nothing this layer draws depends on it — only whether a wheel notch or
+  /// a new pan is taken — yet as a `bool` it had to be rebuilt into place:
+  /// the canvas panel rebuilt itself whole on every pen-down and pen-up
+  /// just to pass it, the gesture layer and the artwork under it with it
+  /// (debug census, FU cut 301: the panel shell, the floating controls,
+  /// the stage and the HUD re-built and three layout builders laid out
+  /// again, at the moment the stroke needs the thread most).
+  final bool Function() strokeActive;
 
-  /// True while a transform handle is being dragged: touch is inert, so a
-  /// palm landing mid-transform neither pans nor pinches.
+  /// Whether a transform handle is being dragged: touch is inert, so a
+  /// palm landing mid-transform neither pans nor pinches. Asked when an
+  /// event arrives, for [strokeActive]'s reason.
   ///
   /// Separate from [strokeActive] because touch deliberately bypasses that
   /// one — the second finger IS the cancel-and-navigate signal for a
   /// stroke. A transform is the exception, and an exception needs its own
   /// name or the next reader will delete it as a duplicate.
-  final bool touchLocked;
+  final bool Function() touchLocked;
+
+  static bool _never() => false;
 
   /// False disables the two-finger/trackpad ROTATION gestures (P8) while
   /// pan/zoom keep working — for hosts whose content cannot rotate (the
@@ -244,7 +256,7 @@ class _CanvasViewportGestureLayerState
       // not cancel a transform, so the finger has to stop short of
       // navigating too — otherwise the box would sit still while the view
       // slid out from under it.
-      if (widget.touchLocked) {
+      if (widget.touchLocked()) {
         return;
       }
       _touchPositions[event.pointer] = event.localPosition;
@@ -257,7 +269,7 @@ class _CanvasViewportGestureLayerState
 
     if (!(canvasPressPans(event.buttons) || _primaryPressPans(event)) ||
         _panPointer != null ||
-        widget.strokeActive) {
+        widget.strokeActive()) {
       return;
     }
     _panPointer = event.pointer;
@@ -858,7 +870,7 @@ class _CanvasViewportGestureLayerState
       handleWheelExclusively(event, _zoomByWheel);
 
   void _zoomByWheel(PointerScrollEvent event) {
-    if (event.scrollDelta.dy == 0 || widget.strokeActive) {
+    if (event.scrollDelta.dy == 0 || widget.strokeActive()) {
       return;
     }
     final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
@@ -875,7 +887,7 @@ class _CanvasViewportGestureLayerState
   }
 
   void _handlePanZoomStart(PointerPanZoomStartEvent event) {
-    if (widget.strokeActive) {
+    if (widget.strokeActive()) {
       return;
     }
     _panZoomStartViewport = _liveViewport;

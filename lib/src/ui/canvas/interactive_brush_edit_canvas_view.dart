@@ -381,9 +381,11 @@ class _InteractiveBrushEditCanvasViewState
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
       // R13-4: this runs inside the build/update phase. The stroke-end
-      // callback reaches ancestor setState (the panel's _strokeActive) —
-      // firing it synchronously here threw "setState during build" (the
-      // mid-stroke flip red screen). Reset silently, notify post-frame.
+      // callback reached ancestor setState (the panel's _strokeActive then;
+      // since 2026-09-26 the session's input flag, whose listeners still
+      // rebuild widgets) — firing it synchronously here threw "setState
+      // during build" (the mid-stroke flip red screen). Reset silently,
+      // notify post-frame.
       final hadActiveStroke = _activeDrawingPointer != null;
       _stroke.clearStrokeInputState();
       _overlay.resetOverlay();

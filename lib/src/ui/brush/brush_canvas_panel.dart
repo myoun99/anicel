@@ -1644,16 +1644,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               selectionCommands:
                   widget
                       .selectionCommands,
+              // No setState for either: the gesture layer asks both
+              // when an event arrives (see its `strokeActive`).
               onTransformDragActiveChanged:
-                  (active) {
-                    if (_transformDragActive !=
-                        active) {
-                      setState(
-                        () => _transformDragActive =
-                            active,
-                      );
-                    }
-                  },
+                  (active) => _transformDragActive = active,
               onDragActiveChanged: (active) {
                 if (_selectionDragActive !=
                     active) {
@@ -1662,11 +1656,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                       ?.call(
                         active,
                       );
-                  setState(
-                    () =>
-                        _selectionDragActive =
-                            active,
-                  );
+                  _selectionDragActive = active;
                 }
               },
               // R14-④: the Move tool lifts the
@@ -1903,7 +1893,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
-          setState(() => _strokeActive = active);
+          // ⛔NOT a setState (2026-09-26): nothing the panel draws reads
+          // this — the gesture layer asks for it when an event arrives —
+          // and the rebuild it forced rebuilt the whole canvas panel on
+          // every pen-down and pen-up.
+          _strokeActive = active;
         }
       },
       // The underlay paints the paper (and the layers below); an opaque

@@ -85,18 +85,12 @@ class _PanelBuild {
     // is not mounted, but the selection still exists).
     _idleSelection = _state._selectionSeat.idleSelectionRegion;
 
-    final contentStrokeActive = _contentStrokeActive;
     return SizedBox.expand(
       key: const ValueKey<String>('brush-canvas-editor-viewport'),
       // Pan/zoom input lives on the panel — not the interactive
       // canvas — so navigation keeps working when the viewport
       // shows the blank paper or playback instead of a frame.
-      child: contentStrokeActive == null
-          ? _gestureLayer(context, false)
-          : ValueListenableBuilder<bool>(
-              valueListenable: contentStrokeActive,
-              builder: (context, active, _) => _gestureLayer(context, active),
-            ),
+      child: _gestureLayer(context),
     );
   }
 
@@ -248,7 +242,7 @@ class _PanelBuild {
     );
   }
 
-  Widget _gestureLayer(BuildContext context, bool contentStrokeIsActive) {
+  Widget _gestureLayer(BuildContext context) {
     final hud = _state.widget.flipHud;
     final layer = CanvasViewportGestureLayer(
       viewport: _state._viewportState._viewport,
@@ -264,11 +258,15 @@ class _PanelBuild {
       onBrushSizeDragStart: _state.widget.onBrushSizeDragStart,
       onBrushSizeDragUpdate: _state.widget.onBrushSizeDragUpdate,
       onBrushSizeDragEnd: _state.widget.onBrushSizeDragEnd,
-      strokeActive:
+      // Asked when an event arrives: a content stroke (a sheet or conte
+      // window's) used to rebuild this layer and the artwork under it
+      // through a listenable builder, and a canvas stroke the whole panel,
+      // for a value nothing here draws.
+      strokeActive: () =>
           _state._strokeActive ||
           _state._selectionDragActive ||
-          contentStrokeIsActive,
-      touchLocked: _state._transformDragActive,
+          (_contentStrokeActive?.value ?? false),
+      touchLocked: () => _state._transformDragActive,
       // Nothing drawn in the viewport (canvas, playback
       // frames, camera overlay) may paint outside the panel.
       child: ClipRect(
