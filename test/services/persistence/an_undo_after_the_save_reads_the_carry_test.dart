@@ -190,7 +190,11 @@ void main() {
 
     await save(onProgress: heard.add);
 
-    expect(heard.first, lessThan(1), reason: 'the premise: it was heard');
+    expect(
+      heard.first,
+      allOf(greaterThan(0), lessThan(1)),
+      reason: 'the copy moves the bar — a carried movie is gigabytes',
+    );
     for (var i = 1; i < heard.length; i += 1) {
       expect(heard[i], greaterThanOrEqualTo(heard[i - 1]));
     }

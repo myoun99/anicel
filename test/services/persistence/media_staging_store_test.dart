@@ -553,6 +553,17 @@ void main() {
       expect(inTheRoom(), hasLength(1), reason: 'kept, not copied again');
     });
 
+    test('a file that will not read keeps nothing, and leaves no '
+        'neighbour', () async {
+      final minted = mintMediaCarry('${root.path}/take.wav');
+
+      await store.keepLeftBehind('${root.path}/gone.anicel', [
+        (name: minted, offset: 0, length: 4096),
+      ]);
+
+      expect(inTheRoom(), isEmpty);
+    });
+
     test('a copy already in the room is not made again — a carried movie is '
         'gigabytes', () async {
       final source = sourceFile('take.wav');
@@ -593,6 +604,7 @@ void main() {
       );
 
       expect(heard.length, greaterThan(2), reason: 'a block at a time');
+      expect(heard.first, lessThan(1));
       for (var i = 1; i < heard.length; i += 1) {
         expect(heard[i], greaterThanOrEqualTo(heard[i - 1]));
       }
