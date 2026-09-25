@@ -2,6 +2,7 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
+import '../../models/cut.dart' show Cut;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -76,27 +77,31 @@ class FrameVerbs {
   ///
   /// It is [layerPlacementAt] — the one the stack paints the row with — so a
   /// row inside a posed folder takes the pen where it shows.
-  LayerPoseSample? layerCanvasPoseSample(LayerId layerId) {
-    final cut = _project.activeCutOrNull;
-    final layer = cut?.layers.byId(layerId);
-    return cut == null || layer == null
-        ? null
-        : layerPlacementAt(
-            cut: cut,
-            layer: layer,
-            frameIndex: _controllers.timelineController.currentFrameIndex,
-          );
-  }
+  LayerPoseSample? layerCanvasPoseSample(LayerId layerId) =>
+      _atThePlayhead(layerId, layerPlacementAt);
 
   /// Where [layerId]'s OWN pose lives on the canvas at the playhead — the
   /// placement of the folders above it ([layerParentPlacementAt]). Null =
   /// the canvas itself. What the gizmos that edit that pose stand in.
-  LayerPoseSample? layerParentPlacement(LayerId layerId) {
+  LayerPoseSample? layerParentPlacement(LayerId layerId) =>
+      _atThePlayhead(layerId, layerParentPlacementAt);
+
+  /// [placement] asked of [layerId]'s row in the open cut at the playhead —
+  /// null with no cut open or no such row.
+  LayerPoseSample? _atThePlayhead(
+    LayerId layerId,
+    LayerPoseSample? Function({
+      required Cut cut,
+      required Layer layer,
+      required int frameIndex,
+    })
+    placement,
+  ) {
     final cut = _project.activeCutOrNull;
     final layer = cut?.layers.byId(layerId);
     return cut == null || layer == null
         ? null
-        : layerParentPlacementAt(
+        : placement(
             cut: cut,
             layer: layer,
             frameIndex: _controllers.timelineController.currentFrameIndex,
