@@ -225,12 +225,12 @@ void main() {
       (painter) => (painter as TimesheetDocumentPainter).face,
     );
     expectHanded(
-      'timesheet-document-paint',
+      'timesheet-content-paint',
       (painter) => (painter as TimesheetDocumentPainter).face,
     );
     await open(EditorWorkspace.envelopeTabId);
     expectHanded(
-      'cut-envelope-page',
+      'envelope-content-paint',
       (painter) => (painter as CutEnvelopePainter).face,
     );
   });

@@ -26,6 +26,21 @@ sealed class SheetMark {
   const SheetMark(this.layer);
 
   final SheetPaintLayer layer;
+
+  /// Everything this mark prints besides its [layer], as one value: two
+  /// marks that print alike are equal, so a baked stratum can tell whether
+  /// what it prints changed without printing it ([SheetStratum]).
+  Object get _prints;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SheetMark &&
+      other.runtimeType == runtimeType &&
+      other.layer == layer &&
+      other._prints == _prints;
+
+  @override
+  int get hashCode => Object.hash(runtimeType, layer, _prints);
 }
 
 /// A filled rectangle: the paper, a picture's frame, a window's tone.
@@ -49,6 +64,9 @@ final class SheetFill extends SheetMark {
   final Rect rect;
   final int argb;
   final double cornerRadius;
+
+  @override
+  Object get _prints => (rect, argb, cornerRadius);
 }
 
 /// Which long edge of a rule holds its place when the rule is widened to
@@ -87,6 +105,9 @@ final class SheetRule extends SheetMark {
   final Rect rect;
   final int argb;
   final SheetRuleHold hold;
+
+  @override
+  Object get _prints => (rect, argb, hold);
 
   /// Upright — thinner across than along.
   bool get isUpright => rect.width < rect.height;
@@ -148,6 +169,9 @@ final class SheetWords extends SheetMark {
   final SheetAlign v;
   final SheetWordsFit fit;
 
+  @override
+  Object get _prints => (text, slot, size, argb, bold, h, v, fit);
+
   /// Nothing to set, or nowhere to set it: every printer skips these words.
   bool get printsNothing =>
       text.isEmpty || slot.width <= 0 || slot.height <= 0;
@@ -172,6 +196,9 @@ final class SheetPicture extends SheetMark {
   final int pictureFrame;
   final Rect slot;
   final double cornerRadius;
+
+  @override
+  Object get _prints => (cutId, pictureFrame, slot, cornerRadius);
 }
 
 /// A media image — the company logo — contained in [slot].
@@ -180,6 +207,9 @@ final class SheetImage extends SheetMark {
 
   final String assetPath;
   final Rect slot;
+
+  @override
+  Object get _prints => (assetPath, slot);
 }
 
 /// Saved handwriting, from the ink's own raster, where its window shows it
@@ -189,6 +219,9 @@ final class SheetInk extends SheetMark {
 
   final BrushFrameKey key;
   final SheetInkPlacement placement;
+
+  @override
+  Object get _prints => (key, placement);
 }
 
 /// Where a window shows its ink surface: the [window] on the paper, the

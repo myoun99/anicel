@@ -149,17 +149,24 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   @override
   // pictureFor/imageFor/inkImageFor are deliberately absent: fresh closures
   // every build, and comparing them made every rebuild a full-page
-  // repaint. Ink content changes repaint through `repaint` (the ink
-  // controller notifies per stroke/undo).
-  Object get props => (
-    page,
-    source,
-    words,
-    viewport,
-    effectiveRatio,
-    BySet(liveInkKeys),
-    dragPreview,
-  );
+  // repaint. What they answer arrives through `repaint` — a landed
+  // thumbnail or logo, a stroke or its undo.
+  //
+  // ⛔Compared by what it PRINTS, not by what it was built from: the page
+  // and the source are new objects after any change to the project, and
+  // comparing them re-recorded every stratum for one typed letter (유저
+  // 2026-09-25: 「텍스트 바뀌거나 하는데 용지 리빌드하면 너무
+  // 비효율적이잖아」).
+  Object get props => (ByList(_printed()), viewport, effectiveRatio);
+
+  /// What this painter puts on the page: its strata's marks, less the ink a
+  /// live window is showing.
+  List<SheetMark> _printed() => [
+    for (final mark in marks())
+      if ((layers?.contains(mark.layer) ?? true) &&
+          !(mark is SheetInk && liveInkKeys.contains(mark.key)))
+        mark,
+  ];
 }
 
 /// The conte's text measurement, shared by the painter and the PDF writer.

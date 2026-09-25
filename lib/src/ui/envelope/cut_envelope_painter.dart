@@ -153,14 +153,8 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
 
   void _paintContent(Canvas canvas) {
     for (final placed in layout.placedBoxes) {
-      switch (placed.box.contentKind) {
-        case EnvelopeContentKind.blank:
-          continue;
-        case EnvelopeContentKind.text:
-          final text = resolveEnvelopeText(placed.box.binding!, source);
-          if (text == null || text.isEmpty) {
-            continue;
-          }
+      switch (_valueOf(placed)) {
+        case (text: final text?, image: _) when text.isNotEmpty:
           _paintText(
             canvas,
             text,
@@ -169,9 +163,8 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
             align: placed.box.contentAlign,
             color: const Color(0xFF1A1A18),
           );
-        case EnvelopeContentKind.image:
-          final path = resolveEnvelopeImage(placed.box.binding!, source);
-          final image = path == null ? null : imageFor?.call(path);
+        case (text: _, image: final path?):
+          final image = imageFor?.call(path);
           if (image != null) {
             paintSheetImageContained(
               canvas,
@@ -180,9 +173,27 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
               FilterQuality.high,
             );
           }
+        default:
+          continue;
       }
     }
   }
+
+  /// What [placed] prints as a value — its words, or the path of its
+  /// picture — read by the content stratum's paint and by its repaint
+  /// question alike.
+  ({String? text, String? image}) _valueOf(PlacedEnvelopeBox placed) =>
+      switch (placed.box.contentKind) {
+        EnvelopeContentKind.blank => (text: null, image: null),
+        EnvelopeContentKind.text => (
+          text: resolveEnvelopeText(placed.box.binding!, source),
+          image: null,
+        ),
+        EnvelopeContentKind.image => (
+          text: null,
+          image: resolveEnvelopeImage(placed.box.binding!, source),
+        ),
+      };
 
   /// The handwriting, above everything the form prints (it was written on
   /// the finished sheet — pen over paper).
@@ -251,15 +262,20 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
     layout.form,
     layout.paperWidth,
     layout.paperHeight,
-    source,
     face,
-    ByIdentity(layers),
+    layers == null ? null : BySet(layers!),
     viewport,
     effectiveRatio,
+    // Each stratum compares what IT prints (유저 2026-09-25: 「텍스트
+    // 바뀌거나 하는데 용지 리빌드하면 너무 비효율적이잖아」): the values
+    // by what each box resolves to — the source is a new object every
+    // build — so a typed value leaves the form and a stroke the values.
+    _draws(SheetPaintLayer.content)
+        ? ByList([for (final placed in layout.placedBoxes) _valueOf(placed)])
+        : null,
     // Mounting a window HIDES that box's baked ink here; unmounting shows
     // it again. Miss this and a stroke stays doubled (or missing) until
     // something else happens to repaint.
-    BySet(liveInkKeys),
-    inkOwner,
+    _draws(SheetPaintLayer.ink) ? (inkOwner, BySet(liveInkKeys)) : null,
   );
 }

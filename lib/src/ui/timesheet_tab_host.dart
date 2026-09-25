@@ -10,7 +10,6 @@ import '../models/timesheet_info.dart';
 import 'brush/brush_canvas_panel.dart'
     show BrushCanvasPanel, CanvasAutoFrameRequest;
 import 'brush/sheet_canvas_panel.dart';
-import 'text/app_face.dart';
 import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
 import 'brush/brush_tool_state.dart';
@@ -22,10 +21,10 @@ import 'widgets/page_turn_strip.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
 import 'effective_device_pixel_ratio.dart';
-import 'widgets/static_raster.dart';
 import 'timesheet/timesheet_notation.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet/timesheet_ink_layer.dart';
+import 'timesheet/timesheet_strata.dart';
 
 /// The Timesheet tab's content: the active cut rendered as a paper
 /// timesheet DOCUMENT (not an editing grid) inside the canvas panel shell,
@@ -503,11 +502,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     content: (context, viewport) {
                       return Stack(
                         children: [
-                          // The sheet paints in TWO strata (UI-R10 #9, the
-                          // PSD layering live): the printed FORM (paper,
-                          // grid, labels) below, the CONTENT (cell texts,
-                          // values) above — timeline drags re-print just
-                          // the content stratum through the drag channel.
+                          // The sheet paints in strata (UI-R10 #9, the PSD
+                          // layering live): the printed FORM below, the
+                          // CONTENT above, the saved INK over both — each
+                          // re-recorded only when what it prints changes.
                           //
                           // Each stratum is baked rather than merely
                           // boundaried. This panel measured 13.1 ms/frame
@@ -518,91 +516,23 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                           // alone is ~334 lines and ~111 text paragraphs
                           // of B4 sheet at every frame the app happens to
                           // produce.
-                          //
-                          // Two wrappers and not one, deliberately: the
-                          // split above is what keeps a content-only
-                          // change off the form, and merging them would
-                          // hand the drag channel a re-record of the
-                          // whole grid.
                           Positioned.fill(
-                            child: StaticRaster(
-                              debugLabel: 'timesheet-form',
-                              child: CustomPaint(
-                                key: const ValueKey<String>(
-                                  'timesheet-form-paint',
-                                ),
-                                painter: TimesheetDocumentPainter(
-                                  document: document,
-                                  layout: layout,
-                                  face: appFaceOf(
-                                    DefaultTextStyle.of(context).style,
-                                  ),
-                                  viewport: viewport,
-                                  // The per-cell text cutoff is a legibility
-                                  // question, so it counts DEVICE pixels.
-                                  // Raising the interface scale used to erase
-                                  // every text while the sheet stayed exactly
-                                  // the same size on screen.
-                                  effectiveRatio: EffectiveDevicePixelRatio.of(
-                                    context,
-                                  ),
-                                  layers: const {
-                                    SheetPaintLayer.paper,
-                                    SheetPaintLayer.form,
-                                  },
-                                  // The sheet prints in the NOTATION
-                                  // language (UI-R10 #7).
-                                  notation: TimesheetNotation.of(
-                                    session
-                                        .languageSettings
-                                        .value
-                                        .notationLanguage,
-                                  ),
-                                ),
-                                child: const SizedBox.expand(),
+                            child: TimesheetStrata(
+                              layout: layout,
+                              pagedLayout: pagedLayout,
+                              viewport: viewport,
+                              notation: TimesheetNotation.of(
+                                session.languageSettings.value.notationLanguage,
                               ),
-                            ),
-                          ),
-                          Positioned.fill(
-                            child: StaticRaster(
-                              debugLabel: 'timesheet-content',
-                              child: CustomPaint(
-                                key: const ValueKey<String>(
-                                  'timesheet-document-paint',
-                                ),
-                                painter: TimesheetDocumentPainter(
-                                  document: document,
-                                  layout: layout,
-                                  face: appFaceOf(
-                                    DefaultTextStyle.of(context).style,
-                                  ),
-                                  viewport: viewport,
-                                  // The per-cell text cutoff is a legibility
-                                  // question, so it counts DEVICE pixels.
-                                  // Raising the interface scale used to erase
-                                  // every text while the sheet stayed exactly
-                                  // the same size on screen.
-                                  effectiveRatio: EffectiveDevicePixelRatio.of(
-                                    context,
-                                  ),
-                                  layers: const {SheetPaintLayer.content},
-                                  dragPreview: session.dragPreview,
-                                  // Which cut the sheet is printing, so a
-                                  // cut-length drag on it can be read off the
-                                  // channel: the red cut-end line is DATA, and
-                                  // it was the one data line still printing the
-                                  // committed length while the cells beside it
-                                  // already previewed.
-                                  cutId: _documentCut?.id,
-                                  notation: TimesheetNotation.of(
-                                    session
-                                        .languageSettings
-                                        .value
-                                        .notationLanguage,
-                                  ),
-                                ),
-                                child: const SizedBox.expand(),
-                              ),
+                              dragPreview: session.dragPreview,
+                              cutId: _documentCut!.id,
+                              stroking: _strokeHold,
+                              ink: inkController == null
+                                  ? null
+                                  : (
+                                      controller: inkController,
+                                      live: ink != null,
+                                    ),
                             ),
                           ),
                           // The playhead row highlight repaints ALONE (R13-2):
@@ -654,22 +584,27 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                   session.cutVerbs.updateActiveCutNote,
                             ),
                           ),
-                          if (inkController != null)
+                          if (ink != null)
                             Positioned.fill(
-                              child: TimesheetInk(
-                                controller: inkController,
+                              // The tool-state boundary (R18 UI-3): the brush
+                              // reaches only this small overlay — the sheet
+                              // document above never rebuilds for it — and
+                              // since H40 ② (2026-09-24) not even the overlay
+                              // does: its windows read the brush when a
+                              // stroke starts.
+                              child: TimesheetInkLayer(
+                                key: const ValueKey<String>(
+                                  'timesheet-ink-layer',
+                                ),
+                                controller: ink.controller,
                                 layout: layout,
                                 pagedLayout: pagedLayout,
                                 cutId: _documentCut!.id,
+                                brushToolState: ink.tool,
+                                historyManager: session.historyManager,
                                 viewport: viewport,
-                                brush: ink == null
-                                    ? null
-                                    : (
-                                        tool: ink.tool,
-                                        history: session.historyManager,
-                                        strokeActive: _strokeHold,
-                                        sink: _cacheInvalidationSink,
-                                      ),
+                                strokeActive: _strokeHold,
+                                cacheInvalidationSink: _cacheInvalidationSink,
                               ),
                             ),
                         ],

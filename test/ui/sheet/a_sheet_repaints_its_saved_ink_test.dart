@@ -77,7 +77,7 @@ void main() {
         ),
         (
           name: 'the conte',
-          paint: 'conte-page',
+          paint: 'conte-ink-paint',
           mount: (session) {
             final ink = ConteInkController();
             addTearDown(ink.dispose);
@@ -98,7 +98,7 @@ void main() {
         ),
         (
           name: 'the envelope',
-          paint: 'cut-envelope-page',
+          paint: 'envelope-ink-paint',
           mount: (session) {
             final ink = CutEnvelopeInkController();
             addTearDown(ink.dispose);

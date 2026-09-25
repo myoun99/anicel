@@ -196,7 +196,7 @@ void main() {
 
       // Tap the document margin — covered only by the tap-away barrier.
       final paperOrigin = tester.getTopLeft(
-        find.byKey(const ValueKey<String>('timesheet-document-paint')),
+        find.byKey(const ValueKey<String>('timesheet-content-paint')),
       );
       await tester.tapAt(paperOrigin + const Offset(5, 5));
       await tester.pumpAndSettle();

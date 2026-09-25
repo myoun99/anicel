@@ -1066,7 +1066,7 @@ void main() {
       await openTimesheet(tester);
 
       expect(
-        find.byKey(const ValueKey<String>('timesheet-document-paint')),
+        find.byKey(const ValueKey<String>('timesheet-content-paint')),
         findsOneWidget,
       );
       expect(find.byKey(_timesheetTabKey), findsOneWidget);

@@ -16,7 +16,7 @@ import '../editor_session_manager.dart';
 import '../text/app_face.dart';
 import '../widgets/app_icon_button.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../widgets/static_raster.dart';
+import '../sheet/sheet_strata.dart';
 import 'cut_envelope_builder.dart';
 import '../sheet/sheet_ink_layer.dart';
 import 'cut_envelope_ink.dart';
@@ -185,43 +185,49 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                   constraints.biggest,
                 )
               : const <SheetInkWindow>[];
+          CutEnvelopePainter painterOf(
+            SheetStratum stratum, {
+            Listenable? repaint,
+          }) => CutEnvelopePainter(
+            layout: layout,
+            source: source,
+            face: appFaceOf(DefaultTextStyle.of(context).style),
+            viewport: viewport,
+            effectiveRatio: EffectiveDevicePixelRatio.of(context),
+            layers: stratum.layers,
+            imageFor: widget.imageFor,
+            inkOwner: owner,
+            inkImageFor: inkController == null
+                ? null
+                : (key) => inkController.displayImageFor(null, key),
+            liveInkKeys: {for (final window in mounted) window.key},
+            repaint: repaint,
+          );
           return Stack(
             children: [
               Positioned.fill(
                 // Baked, not merely isolated — see the note on the conte
-                // page. `StaticRaster` is a repaint boundary itself, so
-                // this keeps what the `RepaintBoundary` bought and stops
-                // the raster thread replaying the page every frame the
-                // app happens to produce. It stands down while the pen is
-                // down, when the page changes on every sample.
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _strokeHold,
-                  builder: (context, stroking, child) => StaticRaster(
-                    debugLabel: 'envelope-page',
-                    enabled: !stroking,
-                    child: child!,
-                  ),
-                  child: CustomPaint(
-                    key: const ValueKey<String>('cut-envelope-page'),
-                    painter: CutEnvelopePainter(
-                      layout: layout,
-                      source: source,
-                      face: appFaceOf(DefaultTextStyle.of(context).style),
-                      viewport: viewport,
-                      effectiveRatio: EffectiveDevicePixelRatio.of(context),
-                      imageFor: widget.imageFor,
-                      inkOwner: owner,
-                      inkImageFor: inkController == null
-                          ? null
-                          : (key) => inkController.displayImageFor(null, key),
-                      liveInkKeys: {for (final window in mounted) window.key},
-                      repaint: Listenable.merge([
-                        inkController,
-                        widget.imageRepaint,
-                      ]),
+                // page. The ink stands down while the pen is down, when it
+                // changes on every sample.
+                child: SheetStrata(
+                  sheet: 'envelope',
+                  painters: {
+                    SheetStratum.form: painterOf(SheetStratum.form),
+                    // A landed logo or 도장 — nothing the painter compares
+                    // changes for it.
+                    SheetStratum.content: painterOf(
+                      SheetStratum.content,
+                      repaint: widget.imageRepaint,
                     ),
-                    child: const SizedBox.expand(),
-                  ),
+                    if (inkController != null)
+                      SheetStratum.ink: painterOf(
+                        SheetStratum.ink,
+                        repaint: inkController,
+                      ),
+                  },
+                  liveNow: (stratum) =>
+                      stratum == SheetStratum.ink && _strokeHold.value,
+                  liveChanges: _strokeHold,
                 ),
               ),
               if (inking)

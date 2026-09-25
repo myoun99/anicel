@@ -799,32 +799,65 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
 
   @override
   Object get props => (
-    ByIdentity(document),
     layout.continuous,
     layout.resolvedSinglePage,
     viewport,
-    ByIdentity(notation),
     face,
     // Null means ALL strata, which is a different input from an empty set,
     // so the null is carried instead of folded into one.
     layers == null ? null : BySet(layers!),
-    // Everything `paint` reads has to be compared here or the sheet
-    // keeps printing the old value. `accent` tints the SE name boxes
-    // and `cutId` decides which cut's end line is data — the latter
-    // was masked only because `document` identity happens to change
-    // with the active cut, which is a coincidence and not a contract.
-    accent,
-    cutId,
     // 🐛SAME LAW, AND IT WAS ALREADY BROKEN before this line existed:
     // `paint` reads this for the text-zoom threshold (and now for the
     // transform), so a monitor or UI-scale change has to reach the
     // sheet. It did not — the threshold kept the old value until
     // something else happened to repaint.
     effectiveRatio,
+    // Each stratum compares what IT reads, and nothing another stratum
+    // reads (유저 2026-09-25: 「그림 수정하거나 텍스트 바뀌거나 하는데
+    // 용지 리빌드하면 너무 비효율적이잖아」): the paper and the form the
+    // sheet's shape, the values the document, the ink its windows — so a
+    // typed value re-records the values alone.
+    _drawPaper || _drawForm ? _formShape : null,
+    _drawContent ? _contentInputs : null,
+    _draws(SheetPaintLayer.ink) ? _inkInputs : null,
+  );
+
+  /// What the paper and the form print from — the sheet's SHAPE: the
+  /// columns and the letter over each, the pages, the header boxes, the
+  /// frame rate and the notation. A value typed on the sheet is not in it.
+  Object get _formShape => (
+    ByList([
+      for (final column in document.columns) (column.kind, column.label),
+    ]),
+    ByList([
+      for (final page in document.pages)
+        (page.index, page.startFrame, page.frameCount),
+    ]),
+    document.pageFrameCount,
+    document.fps,
+    ByList(document.visibleHeaderFields),
+    ByIdentity(notation),
+  );
+
+  /// What the values print from.
+  ///
+  /// Everything `paint` reads has to be compared here or the sheet keeps
+  /// printing the old value. `accent` tints the SE name boxes and `cutId`
+  /// decides which cut's end line is data — the latter was masked only
+  /// because `document` identity happens to change with the active cut,
+  /// which is a coincidence and not a contract.
+  Object get _contentInputs => (
+    ByIdentity(document),
+    ByIdentity(notation),
+    accent,
+    cutId,
     ByIdentity(dragPreview),
-    // The ink's windows by value — the walk is rebuilt every build — and
-    // which of them a live brush view shows: mounting a window HIDES that
-    // key's baked ink here, unmounting shows it again.
+  );
+
+  /// The ink's windows by value — the walk is rebuilt every build — and
+  /// which of them a live brush view shows: mounting a window HIDES that
+  /// key's baked ink here, unmounting shows it again.
+  Object get _inkInputs => (
     ByList([for (final window in ink) (window.key, window.placement)]),
     BySet(liveInkKeys),
   );

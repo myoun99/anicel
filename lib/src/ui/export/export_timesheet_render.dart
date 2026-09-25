@@ -6,6 +6,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/sheet_marks.dart';
+import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../timesheet/timesheet_document_painter.dart';
 import '../timesheet/timesheet_notation.dart';
@@ -62,13 +63,14 @@ Future<ui.Image> renderTimesheetPageImage({
     scale: scale,
     outputSize: outputSize,
   );
-  // The panel's strata, which differ in nothing but the strata.
-  TimesheetDocumentPainter strata(Set<SheetPaintLayer> layers) =>
+  // The panel's strata, in the panel's order ([SheetStratum]), which
+  // differ in nothing but the strata.
+  TimesheetDocumentPainter painterOf(SheetStratum stratum) =>
       TimesheetDocumentPainter(
         document: document,
         layout: layout,
         face: face,
-        layers: layers,
+        layers: stratum.layers,
         notation: notation,
         ink: ink?.windows ?? const [],
         inkImageFor: ink?.imageFor,
@@ -80,12 +82,8 @@ Future<ui.Image> renderTimesheetPageImage({
       canvas.scale(width / page.width, height / page.height);
       canvas.translate(-page.left, -page.top);
       canvas.clipRect(page);
-      for (final layers in const [
-        {SheetPaintLayer.paper, SheetPaintLayer.form},
-        {SheetPaintLayer.content},
-        {SheetPaintLayer.ink},
-      ]) {
-        strata(layers).paint(canvas, layout.documentSize);
+      for (final stratum in SheetStratum.values) {
+        painterOf(stratum).paint(canvas, layout.documentSize);
       }
     },
   );

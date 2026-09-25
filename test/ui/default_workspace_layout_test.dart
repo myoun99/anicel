@@ -47,7 +47,7 @@ void main() {
     );
     // Really rendering, not just mounted behind a tab.
     expect(
-      find.byKey(const ValueKey<String>('timesheet-document-paint')),
+      find.byKey(const ValueKey<String>('timesheet-content-paint')),
       findsOneWidget,
     );
   });
@@ -98,7 +98,7 @@ void main() {
 
     expect(find.byType(CutEnvelopeTabHost), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('cut-envelope-page')),
+      find.byKey(const ValueKey<String>('envelope-form-paint')),
       findsOneWidget,
       reason: 'really drawing the sheet, not just mounted',
     );

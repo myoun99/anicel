@@ -246,7 +246,7 @@ void main() {
       await pumpEnvelope(tester);
 
       expect(
-        find.byKey(const ValueKey<String>('cut-envelope-page')),
+        find.byKey(const ValueKey<String>('envelope-form-paint')),
         findsOneWidget,
       );
       expect(
@@ -329,7 +329,7 @@ void main() {
       final painter =
           tester
                   .widget<CustomPaint>(
-                    find.byKey(const ValueKey<String>('cut-envelope-page')),
+                    find.byKey(const ValueKey<String>('envelope-form-paint')),
                   )
                   .painter!
               as CutEnvelopePainter;

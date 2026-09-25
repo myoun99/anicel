@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/identity_memo.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -29,7 +30,7 @@ import '../text/app_strings.dart';
 import '../timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview, TimelineDragPreview;
 import '../widgets/page_turn_strip.dart';
-import '../widgets/static_raster.dart';
+import '../sheet/sheet_strata.dart';
 import 'conte_fonts.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -470,81 +471,82 @@ class _ConteTabHostState extends State<ConteTabHost> {
     BuildContext context,
     ConteInkController? inkController,
   ) {
+    ContePagePainter painterOf(
+      SheetStratum stratum, {
+      ValueListenable<TimelineDragPreview?>? dragPreview,
+      Set<BrushFrameKey> liveInkKeys = const {},
+      List<Listenable?> repaint = const [],
+    }) => ContePagePainter(
+      page: page,
+      source: source,
+      // The printed words follow the notation language, as the timesheet's
+      // do.
+      words: conteWordsIn(_session.languageSettings.value.notationLanguage),
+      // No outline marks the cell being worked on (유저 2026-09-25:
+      // 「포커스기능 없애자 … 해당 칸 강조색 실루엣한다던가」) — the sheet
+      // is paper, and paper shows no focus.
+      pictureFor: _pictureFor,
+      imageFor: widget.imageFor,
+      viewport: viewport,
+      effectiveRatio: EffectiveDevicePixelRatio.of(context),
+      layers: stratum.layers,
+      // Saved sheet ink shows whatever the ink mode says (R5); a live input
+      // window's key stands down so translucent ink never composites twice.
+      inkImageFor: inkController == null
+          ? null
+          : (key) =>
+                inkController.displayImageFor(ConteInkPlane.of(key), key),
+      liveInkKeys: liveInkKeys,
+      dragPreview: dragPreview,
+      repaint: repaint.isEmpty ? null : Listenable.merge(repaint),
+    );
     return Positioned.fill(
-      // The sheet page is the timesheet's answer applied to its
-      // sibling. A `RepaintBoundary` here stopped the page being
-      // re-RECORDED, which was never the cost — the raster thread
-      // still replayed the whole display list every frame the app
-      // produced, for any reason, including the pen moving over
-      // the canvas in another panel.
+      // The sheet page is the timesheet's answer applied to its sibling. A
+      // `RepaintBoundary` here stopped the page being re-RECORDED, which was
+      // never the cost — the raster thread still replayed the whole display
+      // list every frame the app produced, for any reason, including the pen
+      // moving over the canvas in another panel.
       //
-      // `StaticRaster` is itself a repaint boundary, so the
-      // isolation this had is kept and the bake is added on top.
-      // The surrounding `Stack` already clips `Clip.hardEdge`, so
-      // the bake's own clip is a no-op and the pixels do not move.
-      //
-      // ⚠️ It stands down while the pen is down: capturing costs a
-      // full paint PLUS a full-page copy, and a stroke dirties the
-      // page on every sample.
-      child: ValueListenableBuilder<bool>(
-        valueListenable: _strokeHold,
-        builder: (context, stroking, child) =>
-            ValueListenableBuilder<TimelineDragPreview?>(
-              valueListenable: _session.dragPreview,
-              // F-88: a cut-length drag re-prints the page's numbers on
-              // every step, so the bake stands down for it exactly as it
-              // does for a pen — capturing costs a full page copy a step.
-              builder: (context, preview, baked) => StaticRaster(
-                debugLabel: 'conte-page',
-                enabled: !stroking && preview is! CutTrimDragPreview,
-                child: baked!,
-              ),
-              child: child,
-            ),
-        child: CustomPaint(
-          key: const ValueKey<String>('conte-page'),
-          painter: ContePagePainter(
-            page: page,
-            source: source,
-            // The printed words follow the notation language, as the
-            // timesheet's do.
-            words: conteWordsIn(
-              _session.languageSettings.value.notationLanguage,
-            ),
-            // No outline marks the cell being worked on (유저 2026-09-25:
-            // 「포커스기능 없애자 … 해당 칸 강조색 실루엣한다던가」) — the
-            // sheet is paper, and paper shows no focus.
-            pictureFor: _pictureFor,
-            imageFor: widget.imageFor,
-            viewport: viewport,
-            effectiveRatio: EffectiveDevicePixelRatio.of(context),
-            // Saved sheet ink shows whatever the ink mode says
-            // (R5); a live input window's key stands down so
-            // translucent ink never composites twice.
-            inkImageFor: inkController == null
-                ? null
-                : (key) => inkController.displayImageFor(
-                    ConteInkPlane.of(key),
-                    key,
-                  ),
-            liveInkKeys: _inkMount(page) == null
-                ? const {}
-                : {for (final window in conteInkWindows(page)) window.key},
-            // F-88: the numbers this page prints follow a cut-length drag,
-            // so the channel is both a VALUE the paint reads and a reason
-            // to repaint.
+      // The surrounding `Stack` already clips `Clip.hardEdge`, so each bake's
+      // own clip is a no-op and the pixels do not move.
+      child: SheetStrata(
+        sheet: 'conte',
+        painters: {
+          SheetStratum.form: painterOf(SheetStratum.form),
+          // F-88: the numbers this page prints follow a cut-length drag, so
+          // the channel is both a VALUE the paint reads and a reason to
+          // repaint. A landed logo — nothing the painter compares changes
+          // for it.
+          SheetStratum.content: painterOf(
+            SheetStratum.content,
             dragPreview: _session.dragPreview,
-            repaint: Listenable.merge([
-              if (widget.thumbnailRepaint != null) widget.thumbnailRepaint!,
-              ?inkController,
-              _session.dragPreview,
-              // A landed logo or cover picture — nothing the painter
-              // compares changes for it.
-              ?widget.imageRepaint,
-            ]),
+            repaint: [_session.dragPreview, widget.imageRepaint],
           ),
-          child: const SizedBox.expand(),
-        ),
+          // A landed thumbnail or cover picture, likewise.
+          SheetStratum.picture: painterOf(
+            SheetStratum.picture,
+            repaint: [widget.thumbnailRepaint, widget.imageRepaint],
+          ),
+          if (inkController != null)
+            SheetStratum.ink: painterOf(
+              SheetStratum.ink,
+              liveInkKeys: _inkMount(page) == null
+                  ? const {}
+                  : {for (final window in conteInkWindows(page)) window.key},
+              repaint: [inkController],
+            ),
+        },
+        // ⚠️A stratum stands down while it changes on every step — the ink
+        // while the pen is down, the numbers while a cut-length drag
+        // re-prints them (F-88): capturing costs a full paint PLUS a full
+        // copy a step.
+        liveNow: (stratum) => switch (stratum) {
+          SheetStratum.ink => _strokeHold.value,
+          SheetStratum.content =>
+            _session.dragPreview.value is CutTrimDragPreview,
+          SheetStratum.form || SheetStratum.picture => false,
+        },
+        liveChanges: Listenable.merge([_strokeHold, _session.dragPreview]),
       ),
     );
   }

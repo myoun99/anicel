@@ -479,7 +479,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final paintFinder = find.byKey(
-      const ValueKey<String>('timesheet-document-paint'),
+      const ValueKey<String>('timesheet-content-paint'),
     );
     expect(paintFinder, findsOneWidget);
     expect(

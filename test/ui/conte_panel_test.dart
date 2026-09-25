@@ -185,7 +185,7 @@ void main() {
     ContePagePainter painter() =>
         tester
                 .widget<CustomPaint>(
-                  find.byKey(const ValueKey<String>('conte-page')),
+                  find.byKey(const ValueKey<String>('conte-form-paint')),
                 )
                 .painter!
             as ContePagePainter;
@@ -212,7 +212,7 @@ void main() {
       'blank back a turn away, each read for what it is', (tester) async {
     await _pumpConte(tester);
 
-    expect(find.byKey(const ValueKey<String>('conte-page')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('conte-form-paint')), findsOneWidget);
     // Three cells over two cuts: ONE body page, and the book around it
     // (유저 2026-09-25: 「1페이지는 표지, 2페이지는 … 빈용지, 3페이지부터 콘티
     // 본 페이지」).
@@ -269,7 +269,7 @@ void main() {
       (cell) => cell.cutId == '39' && cell.cellIndex == 1,
     );
     final pageTopLeft = tester.getTopLeft(
-      find.byKey(const ValueKey<String>('conte-page')),
+      find.byKey(const ValueKey<String>('conte-form-paint')),
     );
     await tester.tapAt(pageTopLeft + cell.pictureRect.center);
     await tester.pumpAndSettle();

@@ -48,3 +48,21 @@ enum SheetPaintLayer {
     return null;
   }
 }
+
+/// The strata a sheet is BAKED in, bottom to top — each re-recorded only
+/// when what it prints changes (유저 2026-09-25: 「그림 수정하거나 텍스트
+/// 바뀌거나 하는데 용지 리빌드하면 너무 비효율적이잖아」 · 「캔버스베이스
+/// 패널은 다 통일해줘」). The paper rides with the form: both change only
+/// with the sheet's shape. An export that paints a page whole paints it in
+/// the same order.
+enum SheetStratum {
+  form({SheetPaintLayer.paper, SheetPaintLayer.form}),
+  content({SheetPaintLayer.content}),
+  picture({SheetPaintLayer.picture}),
+  ink({SheetPaintLayer.ink});
+
+  const SheetStratum(this.layers);
+
+  /// The layers this stratum prints.
+  final Set<SheetPaintLayer> layers;
+}
