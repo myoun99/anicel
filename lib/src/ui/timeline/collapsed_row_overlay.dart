@@ -580,7 +580,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
       final mark = head.mark;
       if (mark != null) {
         _headMark(canvas, rect, mark);
-      } else {
+      } else if (head.word.isNotEmpty) {
         _label(canvas, rect, head.word);
       }
     }

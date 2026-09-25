@@ -774,6 +774,10 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
       ), timelineDrawingInkColor);
       return;
     }
+    // An image row's unnamed cel writes nothing at all — not an empty word.
+    if (head.word.isEmpty) {
+      return;
+    }
     _paintGlyph(
       canvas,
       rect,

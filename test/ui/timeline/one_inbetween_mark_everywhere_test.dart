@@ -426,6 +426,11 @@ void main() {
     testWidgets('on the folded row\'s strip', (tester) async {
       final unnamed = await foldedStrip(tester, '', kind: LayerKind.image);
       expect(unnamed.circles, isEmpty);
+      // The block holds frames 0-1 at 12px: no word of any width there.
+      expect(
+        unnamed.paragraphs.where((box) => box.center.dx < 24),
+        isEmpty,
+      );
     });
   });
 
