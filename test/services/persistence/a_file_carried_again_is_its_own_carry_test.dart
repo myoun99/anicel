@@ -279,6 +279,25 @@ void main() {
     expect(read(), second);
   });
 
+  test('the size shown asks the readers\' own gate — the file\'s record, not '
+      'the directory beside it', () async {
+    await pool.addMediaAssets([path], carried: true);
+    await save();
+    expect(file.mediaStoredBytesFor(path), isNotNull, reason: 'the premise');
+    // A record that does not list the entry the file holds: the readers
+    // then go to the carry's staged copy or its original, never that entry.
+    file.bindToOpenedFile(projectPath, mediaInFile: const {}, unsaved: false);
+
+    expect(
+      file.mediaStoredBytesFor(path),
+      isNull,
+      reason:
+          'only the file on disk knows — it is what is read (🪦the column '
+          'asked the directory while every reader asked the record, audit '
+          '09-25)',
+    );
+  });
+
   test('🚨a project opened after another reports ITS media\'s sizes', () async {
     await pool.addMediaAssets([path], carried: true);
     await save();
