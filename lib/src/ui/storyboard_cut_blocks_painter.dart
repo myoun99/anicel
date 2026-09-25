@@ -312,7 +312,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   static const double _padding = 4;
   /// The CUT PLATE's corner — the V row's block, the one the standing
   /// outline wraps when you stand on a cut. Not the frame-block law: the
-  /// plate is a container with bands, and the panels inside it wear the law.
+  /// plate is a container with bands, and it is the ONE rounded thing in it —
+  /// what sits inside is square and clipped by this corner (유저 2026-09-26:
+  /// 「블록이 모서리 둥근건 블록 자체」). ↩️The panels inside it wore the
+  /// frame-block law until then.
   static const double plateCornerRadius = 8;
 
   /// The narrowest block that still prints its total (the widget rule).
@@ -551,7 +554,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// eligibility AND geometry for the painter and the press layer (this
   /// row's rule: where it is drawn is where it is hit, and only what is
   /// drawn is pressable). EVERY layerless block wears it. A small
-  /// block-cornered square centred in the strip.
+  /// square centred in the strip.
   ///
   /// 🚨H13 (유저 2026-08-22) — **NO ACTIVE-CUT RULE.**
   ///
@@ -705,15 +708,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // Eligibility and rect are [createAffordanceRectOf]'s, shared with
     // the press layer.
     if (createAffordanceRectOf(block) case final affordance?) {
-      canvas.drawRRect(
-        // The slot a panel would fill, so it wears a panel's corner.
-        RRect.fromRectAndRadius(
-          affordance,
-          timelineBlockCornerRadiusAt(
-            cellExtent: _cellExtent,
-            crossExtent: affordance.height,
-          ),
-        ),
+      canvas.drawRect(
+        // The slot a panel would fill, so it is as square as a panel's
+        // picture (유저 2026-09-26 — the rounding is the plate's).
+        affordance,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
@@ -1014,24 +1012,27 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         continue;
       }
       canvas.save();
-      // D30: a panel is a frame block in thumbnail mode — it wears the
-      // timeline's rounded block corners. ⛔THE corner, not the 6px it is
-      // capped from: F-79 made one function answer what a block wears at a
-      // zoom, and a panel that kept the raw 6 was rounder than its blocks'
-      // own edge triangles once the cell dropped under 12px (I-43).
-      final corner = timelineBlockCornerRadiusAt(
-        cellExtent: _cellExtent,
-        crossExtent: slot.height,
-      );
-      canvas.clipRRect(RRect.fromRectAndRadius(slot, corner));
+      // 🚨THE ROUNDING IS THE PLATE'S (유저 2026-09-26): 「블록이 모서리
+      // 둥근건 블록 자체잖아 … 지금 컷블록이나 콘티블록은 둥근 모서리의
+      // 안쪽에 있는것이잖아. 띠가 있으니까. 그래서 모서리가 둥글 이유가
+      // 없을거같거든? 관련 로직 삭제. 만약 나중에 띠부분까지 전면 썸네일로
+      // 표시한다면 자연스럽게 모서리 잘리도록 낡지않는구조로」 — a picture is
+      // clipped to its own panel and nothing rounder. Every picture is drawn
+      // inside the plate's clip ([_paintBlock]), so the one round corner a
+      // picture can meet is the plate's: a picture that some day fills the
+      // bands too is cut by it with no change here.
+      // ↩️D30 / I-43 gave each picture the timeline's block corner (「a panel
+      // is a frame block in thumbnail mode」), which rounded it INSIDE the
+      // plate, between the bands.
+      canvas.clipRect(slot);
       _paintPanelPicture(canvas, block.thumbnails[index], slot);
       canvas.restore();
       if (block.hasStoryboardLayer) {
         // The panel's SILHOUETTE (#15): each block outlines itself, which
         // is what separates two touching panels — the seam the removed
         // division rules used to draw, without a rule of its own.
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(slot.deflate(0.5), corner),
+        canvas.drawRect(
+          slot.deflate(0.5),
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1
