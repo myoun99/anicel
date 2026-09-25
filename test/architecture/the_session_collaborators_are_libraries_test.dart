@@ -88,7 +88,12 @@ const _mayNameTheSession = <String, String>{
 /// to; and the SE solo set moved into `VisibilitySolo`, whose toggle is its
 /// one writer — `VisibilitySolo`, whose only read of the role this was, no
 /// longer takes it, and the playback rig takes the set by constructor.
-const _sessionInternalsMembers = 39;
+/// 39 → 38 (2026-09-25, other-track-s-row-fx-and-mixer): the transform
+/// switch's writer moved into `EffectsAndFx`, its one caller, which finds a
+/// row the way every fx switch does — the host's copy asked the active
+/// track alone, so another track's S row could not be switched. It was
+/// `EffectsAndFx`'s only read of the role, so it no longer takes it.
+const _sessionInternalsMembers = 38;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

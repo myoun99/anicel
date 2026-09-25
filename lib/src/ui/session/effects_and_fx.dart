@@ -1,4 +1,5 @@
-import '../../services/project_lookup.dart' show cutIdOfLayer;
+import '../../services/project_lookup.dart'
+    show cutIdOfLayer, layerAnywhereOrNull;
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
@@ -26,12 +27,10 @@ class EffectsAndFx {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required SessionInternals internals,
     required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _internals = internals,
        _activeCut = activeCut;
 
   final ActiveCutEdits _activeCut;
@@ -39,7 +38,6 @@ class EffectsAndFx {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final SessionInternals _internals;
 
   /// [cutId]'s owning track's EFFECT chain — the V row's fx, which every
   /// route that draws this cut filters its finished picture through. Empty
@@ -130,7 +128,7 @@ class EffectsAndFx {
   /// independent bypass: some groups on, some off, and tapping resolves the
   /// whole row one way.
   LayerFxState layerFxState(LayerId layerId) {
-    final layer = _project.commitLayerById(layerId);
+    final layer = _fxRow(layerId);
     if (layer == null) {
       return LayerFxState.on;
     }
@@ -161,12 +159,12 @@ class EffectsAndFx {
   /// can have its transform bypassed while a colour effect still runs —
   /// the master's [LayerFxState.mixed] answer cannot decide the pose.
   bool isLayerTransformFxEnabled(LayerId layerId) =>
-      _project.commitLayerById(layerId)?.transformEnabled ?? true;
+      _fxRow(layerId)?.transformEnabled ?? true;
 
   /// The MASTER toggle: off unless the row is already fully off, in which
   /// case it turns everything back on. ONE undo step for the whole row.
   void toggleLayerFx(LayerId layerId) {
-    final layer = _project.commitLayerById(layerId);
+    final layer = _fxRow(layerId);
     if (layer == null) {
       return;
     }
@@ -176,11 +174,11 @@ class EffectsAndFx {
 
   /// The TRANSFORM group header's own switch (R8).
   void toggleLayerTransformFx(LayerId layerId) {
-    final layer = _project.commitLayerById(layerId);
+    final layer = _fxRow(layerId);
     if (layer == null) {
       return;
     }
-    _internals.updateLayerTransformEnabled(
+    setLayerTransformFx(
       layerId,
       enabled: !layer.transformEnabled,
       description: layer.transformEnabled
@@ -189,12 +187,57 @@ class EffectsAndFx {
     );
   }
 
+  /// Sets [layerId]'s TRANSFORM switch — one undo step, and none at all
+  /// when it already reads [enabled].
+  void setLayerTransformFx(
+    LayerId layerId, {
+    required bool enabled,
+    String description = 'Toggle transform FX',
+  }) {
+    final layer = _fxRow(layerId);
+    final command = layer == null
+        ? null
+        : _transformSwitch(layer, enabled: enabled, description: description);
+    if (command == null) {
+      return;
+    }
+    _project.historyManager.execute(command);
+    // Not a structural cut edit — see [_setLayerFxSwitches].
+    _changes.notifyChanged();
+  }
+
   // ⛔The row an FX edit addresses is [ProjectAccess.commitLayerById] — the
   // row every layer op commits against, a track-owned SE row's GLOBAL form
   // and not its cut's projection. A private `fxSwitchLayerById` restated it
   // as 「cut layer, else the SE row」 and asked the cut FIRST, which hands
   // back the projection: a chain built from it lands on the track at the
   // cut's frames (se-row-fx-write-path's third pin).
+  //
+  // 🚨AND WHERE THAT KNOWS NOTHING, THE ROW WHEREVER IT LIVES
+  // (other-track-s-row-fx-and-mixer, measured 2026-09-25): the storyboard
+  // rail carries every track's S rows, and `commitLayerById` answers a
+  // track row from the ACTIVE track alone — another track's fx read
+  // 「on」 forever and its press did nothing. The model walk returns the
+  // global form too, never a projection. `commitLayerById` itself stays
+  // as it is: its timing callers work inside the active cut's window.
+  Layer? _fxRow(LayerId layerId) =>
+      _project.commitLayerById(layerId) ??
+      layerAnywhereOrNull(_project.repository.requireProject(), layerId);
+
+  /// The command that sets [layer]'s transform switch, or null when the
+  /// row has none or it already reads [enabled].
+  UpdateLayerTransformEnabledCommand? _transformSwitch(
+    Layer layer, {
+    required bool enabled,
+    String description = 'Toggle transform FX',
+  }) => layer.kind.hasTransformFxSwitch && layer.transformEnabled != enabled
+      ? UpdateLayerTransformEnabledCommand(
+          repository: _project.repository,
+          layerId: layer.id,
+          transformEnabled: enabled,
+          description: description,
+        )
+      : null;
 
   /// Writes every FX switch of [targets] to [enabled] as ONE undo step.
   void _setLayerFxSwitches(List<Layer> targets, {required bool enabled}) {
@@ -202,15 +245,9 @@ class EffectsAndFx {
     for (final layer in targets) {
       // The camera row is IN: it carries no effects, but its own switch —
       // the one that bypasses the cut camera's work — is this flag.
-      if (layer.kind.hasTransformFxSwitch &&
-          layer.transformEnabled != enabled) {
-        commands.add(
-          UpdateLayerTransformEnabledCommand(
-            repository: _project.repository,
-            layerId: layer.id,
-            transformEnabled: enabled,
-          ),
-        );
+      final transform = _transformSwitch(layer, enabled: enabled);
+      if (transform != null) {
+        commands.add(transform);
       }
       if (layer.effects.isEmpty) {
         continue;
@@ -345,8 +382,8 @@ class EffectsAndFx {
   }
 
   /// A V-track effect group's RESET (R5) — the track twin of
-  /// [_internals.resetLaneGroup]. Track effects have no lane-range selection of their
-  /// own, so the scope is always the playhead.
+  /// [SessionInternals.resetLaneGroup]. Track effects have no lane-range
+  /// selection of their own, so the scope is always the playhead.
   bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) =>
       _editTrackEffects(
         trackId,

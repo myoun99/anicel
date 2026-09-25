@@ -225,7 +225,7 @@ void main() {
     final row = session.activeLayer!;
     expect(row.transformEnabled, isTrue);
 
-    session.updateLayerTransformEnabled(row.id, enabled: false);
+    session.effectsAndFx.setLayerTransformFx(row.id, enabled: false);
 
     expect(counterpartIn(pair.source, row).transformEnabled, isFalse);
 

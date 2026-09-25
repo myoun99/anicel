@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_session_manager.dart';
 import '../session/session_row_button_presses.dart';
 import '../theme/app_theme.dart';
@@ -62,16 +63,15 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
   SessionRowButtonPresses get _presses =>
       SessionRowButtonPresses(widget.session);
 
-  /// The subject row. `session.layers` is EMPTY in a gap (no active cut),
-  /// and the storyboard rail deliberately keeps its SE controls mounted
-  /// there — a track-owned SE row is not a cut's layer. Falling back to
-  /// the track resolver is what keeps the mixer from opening blank on the
-  /// one surface that can be standing in a gap.
-  Layer? get _layer =>
-      widget.session.layers
-          .where((layer) => layer.id == widget.layerId)
-          .firstOrNull ??
-      widget.session.trackSeGlobalLayerById(widget.layerId);
+  /// The subject row, found wherever it lives. `session.layers` is EMPTY in
+  /// a gap (no active cut), where the storyboard rail keeps its SE controls
+  /// mounted — and the track resolver answers the ACTIVE track alone, while
+  /// the storyboard carries every track's S rows: the mixer opened blank on
+  /// another track's speaker (other-track-s-row-fx-and-mixer, 2026-09-25).
+  Layer? get _layer => layerAnywhereOrNull(
+    widget.session.repository.requireProject(),
+    widget.layerId,
+  );
 
   @override
   Widget build(BuildContext context) {

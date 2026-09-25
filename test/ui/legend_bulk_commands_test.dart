@@ -162,7 +162,10 @@ void main() {
     switches(s).toggleLayerVisibility(drawing);
     expect(switches(s).isLayerEyeOn(drawing), !captured.isVisible);
 
-    s.updateLayerTransformEnabled(drawing, enabled: !captured.transformEnabled);
+    s.effectsAndFx.setLayerTransformFx(
+      drawing,
+      enabled: !captured.transformEnabled,
+    );
     expect(switches(s).isLayerTransformOn(drawing), !captured.transformEnabled);
   });
 

@@ -83,7 +83,6 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
@@ -1577,7 +1576,6 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    internals: this,
     activeCut: _activeCutEdits,
   );
 
@@ -1727,30 +1725,6 @@ class EditorSessionManager extends ChangeNotifier
   @override
   double layerOpacityAtFrame(Layer layer, int frameIndex) {
     return resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex);
-  }
-
-  // --- Layer FX switches (PERSISTED layer state, R8) -----------------------
-
-  /// Writes one row's TRANSFORM switch; one undo step, no-op when unchanged.
-  @override
-  void updateLayerTransformEnabled(
-    LayerId layerId, {
-    required bool enabled,
-    String description = 'Toggle transform FX',
-  }) {
-    final layer = commitLayerById(layerId);
-    if (layer == null || layer.transformEnabled == enabled) {
-      return;
-    }
-    historyManager.execute(
-      UpdateLayerTransformEnabledCommand(
-        repository: repository,
-        layerId: layerId,
-        transformEnabled: enabled,
-        description: description,
-      ),
-    );
-    notifyListeners(); // Not a structural cut edit — see [_setLayerFxSwitches].
   }
 
   // --- Visibility solo mode (session view state, not persisted) ------------

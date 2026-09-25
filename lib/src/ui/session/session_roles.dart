@@ -201,11 +201,6 @@ abstract interface class SessionInternals {
     TransformTrack track, {
     String description = 'Edit camera keyframes',
   });
-  void updateLayerTransformEnabled(
-    LayerId layerId, {
-    required bool enabled,
-    String description = 'Toggle transform FX',
-  });
   void updateLayerTransformTrack(
     LayerId layerId,
     TransformTrack track, {
