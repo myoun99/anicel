@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/envelope/cut_envelope_form.dart';
@@ -171,7 +170,12 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
           final path = resolveEnvelopeImage(placed.box.binding!, source);
           final image = path == null ? null : imageFor?.call(path);
           if (image != null) {
-            _paintImage(canvas, image, placed);
+            paintSheetImageContained(
+              canvas,
+              image,
+              Rect.fromLTWH(placed.x, placed.y, placed.width, placed.height),
+              FilterQuality.high,
+            );
           }
       }
     }
@@ -210,19 +214,6 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
       );
       paintSheetInkWindow(canvas, image, boxRect, surfaceScale);
     }
-  }
-
-  void _paintImage(Canvas canvas, ui.Image image, PlacedEnvelopeBox placed) {
-    final source = Size(image.width.toDouble(), image.height.toDouble());
-    canvas.drawImageRect(
-      image,
-      Offset.zero & source,
-      containRect(
-        source,
-        Rect.fromLTWH(placed.x, placed.y, placed.width, placed.height),
-      ),
-      Paint()..filterQuality = FilterQuality.high,
-    );
   }
 
   void _paintText(

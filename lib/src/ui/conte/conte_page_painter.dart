@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
@@ -90,9 +91,6 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   /// Keys whose ink a LIVE input window is already showing: skipped, so
   /// translucent ink never composites twice.
   final Set<BrushFrameKey> liveInkKeys;
-
-  /// [ConteInkController.inkScale] without importing the UI controller.
-  static const int conteInkScale = 4;
 
   ConteSheetMetrics get metrics => page.metrics;
 

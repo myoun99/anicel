@@ -7,7 +7,6 @@ import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/export/conte_pdf_writer.dart';
 import '../../helpers/pdf_content.dart';
@@ -43,7 +42,7 @@ void main() {
     );
     final page = layoutConteSheet(source).single;
     final m = page.metrics;
-    const scale = ContePagePainter.conteInkScale;
+    const scale = conteInkScale;
     // The row plane's surface: the body, at the ink's scale.
     final width = (m.bodyWidth * scale).ceil();
     final height = (m.bodyHeight * scale).ceil();

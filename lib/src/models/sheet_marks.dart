@@ -189,3 +189,19 @@ final class SheetInk extends SheetMark {
   final BrushFrameKey key;
   final Rect rect;
 }
+
+/// Where an ink raster [width]×[height] lands over its [window]: at the
+/// ink's own [scale] from the window's corner, the window clipping it — the
+/// one placement every sheet printer lays handwriting by.
+///
+/// ⛔Not stretched to the window: a window may show only part of its
+/// surface — a conte cell's surface is the whole body's (a cell that grows
+/// over more rows reveals more of the same ink), and its band shows the top
+/// of it. Stretched whole into a one-row band, the PDF printed the
+/// handwriting five times squeezed.
+Rect sheetInkRasterRect(
+  Rect window, {
+  required int width,
+  required int height,
+  required double scale,
+}) => Rect.fromLTWH(window.left, window.top, width / scale, height / scale);

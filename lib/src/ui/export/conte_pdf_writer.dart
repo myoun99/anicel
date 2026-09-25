@@ -6,14 +6,14 @@ import 'package:pdf/pdf.dart';
 
 import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../conte/conte_fonts.dart';
-import '../conte/conte_page_painter.dart'
-    show ContePagePainter, conteWrappedLines;
+import '../conte/conte_page_painter.dart' show conteWrappedLines;
 import '../sheet_painting.dart' show sheetWordsSize;
 import '../theme/app_theme.dart' show AppTypography;
 
@@ -278,26 +278,19 @@ class _ContePdfPageWriter {
     _g.drawImage(image, drawn.left, _y(drawn.bottom), drawn.width, drawn.height);
   }
 
-  /// An ink raster laid at the ink's own scale from its window's corner and
-  /// clipped to the window — the screen's `paintSheetInkWindow`.
-  ///
-  /// ⛔Not stretched to the window: a cell's surface is the whole BODY's (a
-  /// cell that grows over more rows reveals more of the same ink), and its
-  /// band shows only the top of it. Stretched whole into a one-row band,
-  /// the handwriting printed five times squeezed, on paper only.
+  /// An ink raster where every printer lays it ([sheetInkRasterRect]),
+  /// clipped to its window — the screen's `paintSheetInkWindow`, in PDF.
   void _clippedTo(PdfImage image, ui.Rect rect) {
-    const scale = ContePagePainter.conteInkScale;
-    final height = image.height / scale;
+    final laid = sheetInkRasterRect(
+      rect,
+      width: image.width,
+      height: image.height,
+      scale: conteInkScale.toDouble(),
+    );
     _g.saveContext();
     _g.drawRect(rect.left, _y(rect.bottom), rect.width, rect.height);
     _g.clipPath();
-    _g.drawImage(
-      image,
-      rect.left,
-      _y(rect.top + height),
-      image.width / scale,
-      height,
-    );
+    _g.drawImage(image, laid.left, _y(laid.bottom), laid.width, laid.height);
     _g.restoreContext();
   }
 

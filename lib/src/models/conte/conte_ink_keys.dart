@@ -18,6 +18,14 @@ const CutId conteInkCutId = CutId('conte-ink');
 const LayerId conteInkPageLayerId = LayerId('conte-page');
 const LayerId conteInkRowLayerId = LayerId('conte-row');
 
+/// The conte ink's resolution: its surfaces' pixels per page point — what
+/// the ink is drawn at and what every printer lays it back at.
+///
+/// ↩️The page painter kept a copy of the controller's number so as not to
+/// import the input side; two numbers that must agree are two chances to
+/// print ink at a scale it was not drawn at.
+const int conteInkScale = 4;
+
 /// The paper plane's frame id is this plus the page — minted by
 /// [conteInkPageKey] and read back by [conteInkPageIndexOf], one spelling.
 const String _conteInkPagePrefix = 'conte-page-p';

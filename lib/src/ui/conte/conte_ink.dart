@@ -67,9 +67,6 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
     frameId: FrameId('conte-ink-init'),
   );
 
-  /// Ink resolution multiplier over document space (the timesheet's 4×).
-  static const int inkScale = 4;
-
   /// The key contract lives in models/conte/conte_ink_keys.dart (R5): the
   /// session's archive routing and the exporters read the same namespace.
   static BrushFrameKey pageKey(int page) => conteInkPageKey(page);
@@ -80,10 +77,10 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
   final InkPlaneSlot _row;
   final InkPlaneSlot _page;
 
-  /// One conte page of paper, at [inkScale].
+  /// One conte page of paper, at [conteInkScale].
   CanvasSize? get pageSurfaceSize => _page.size;
 
-  /// One row-plane surface, at [inkScale]: the page BODY's size for every
+  /// One row-plane surface, at [conteInkScale]: the page BODY's size for every
   /// cell (the coordinator shares one geometry per plane). A cell's window
   /// exposes only its own band's slice — the tile-sparse store makes the
   /// unused remainder free, and a cell that GROWS (rowSpan) simply reveals
@@ -95,14 +92,14 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
   void syncGeometry(ConteSheetMetrics metrics) {
     _page.syncTo(
       CanvasSize(
-        width: (metrics.pageWidth * inkScale).ceil(),
-        height: (metrics.pageHeight * inkScale).ceil(),
+        width: (metrics.pageWidth * conteInkScale).ceil(),
+        height: (metrics.pageHeight * conteInkScale).ceil(),
       ),
     );
     _row.syncTo(
       CanvasSize(
-        width: (metrics.bodyWidth * inkScale).ceil(),
-        height: (metrics.bodyHeight * inkScale).ceil(),
+        width: (metrics.bodyWidth * conteInkScale).ceil(),
+        height: (metrics.bodyHeight * conteInkScale).ceil(),
       ),
     );
   }
@@ -120,7 +117,7 @@ List<SheetInkWindow> conteInkWindows(ContePageLayout page) {
   return [
     SheetInkWindow(
       id: 'page-${page.pageIndex}',
-      surfaceScale: ConteInkController.inkScale.toDouble(),
+      surfaceScale: conteInkScale.toDouble(),
       plane: ConteInkPlane.page,
       key: ConteInkController.pageKey(page.pageIndex),
       documentRect: Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
@@ -129,7 +126,7 @@ List<SheetInkWindow> conteInkWindows(ContePageLayout page) {
       if (cell.source.frameId != null)
         SheetInkWindow(
           id: 'row-${cell.cutId}-${cell.source.frameId!.value}',
-          surfaceScale: ConteInkController.inkScale.toDouble(),
+          surfaceScale: conteInkScale.toDouble(),
           plane: ConteInkPlane.row,
           key: ConteInkController.rowKey(
             CutId(cell.cutId),

@@ -9,15 +9,17 @@ import '../models/sheet_marks.dart';
 import '../models/sheet_paint_layer.dart';
 import 'canvas/viewport_canvas_transform.dart';
 
-/// Draws one baked ink window into [rect]: the raster is [scale]× the
-/// window in each axis, clipped to the window so a stroke that ran past
-/// the box does not bleed into its neighbour.
+/// Draws one baked ink window into [rect]: the raster laid at the ink's
+/// [scale] from the window's corner ([sheetInkRasterRect]), clipped to the
+/// window so a stroke that ran past the box does not bleed into its
+/// neighbour.
 ///
-/// ⛔BOTH SHEETS DRAW INK THIS WAY. The conte page and the cut envelope
+/// ⛔EVERY SHEET DRAWS INK THIS WAY. The conte page and the cut envelope
 /// each wrote out the save / clip / drawImageRect / restore with the same
-/// medium filter. The SOURCE rect is the part that has to agree with
-/// whatever rendered the ink, so two copies of it is two chances to scale
-/// a sheet's ink differently from the sheet it was drawn on.
+/// medium filter, and the PDF laid its own; where the raster lands is the
+/// part that has to agree with whatever rendered the ink, so two copies of
+/// it is two chances to scale a sheet's ink differently from the sheet it
+/// was drawn on.
 void paintSheetInkWindow(
   Canvas canvas,
   ui.Image image,
@@ -28,11 +30,36 @@ void paintSheetInkWindow(
   canvas.clipRect(rect);
   canvas.drawImageRect(
     image,
-    Rect.fromLTWH(0, 0, rect.width * scale, rect.height * scale),
-    rect,
+    Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+    sheetInkRasterRect(
+      rect,
+      width: image.width,
+      height: image.height,
+      scale: scale,
+    ),
     Paint()..filterQuality = FilterQuality.medium,
   );
   canvas.restore();
+}
+
+/// Draws [image] contained in [slot] — as large as fits, centred, its own
+/// shape kept — the way every sheet prints a picture or a media image.
+void paintSheetImageContained(
+  Canvas canvas,
+  ui.Image image,
+  Rect slot,
+  FilterQuality quality,
+) {
+  if (slot.width <= 0 || slot.height <= 0) {
+    return;
+  }
+  final source = Size(image.width.toDouble(), image.height.toDouble());
+  canvas.drawImageRect(
+    image,
+    Offset.zero & source,
+    containRect(source, slot),
+    Paint()..filterQuality = quality,
+  );
 }
 
 /// Lays down a sheet's PAPER — the one way the timesheet, the conte and the
@@ -329,7 +356,14 @@ class _SheetCanvas {
       case SheetImage(:final assetPath, :final slot):
         final image = images.imageFor?.call(assetPath);
         if (image != null) {
-          _inPaperSpace(() => _contained(image, slot, FilterQuality.high));
+          _inPaperSpace(
+            () => paintSheetImageContained(
+              canvas,
+              image,
+              slot,
+              FilterQuality.high,
+            ),
+          );
         }
       case SheetInk(:final key, :final rect):
         final image = images.liveInkKeys.contains(key)
@@ -387,7 +421,12 @@ class _SheetCanvas {
           ),
         );
       }
-      _contained(image, picture.slot, FilterQuality.medium);
+      paintSheetImageContained(
+        canvas,
+        image,
+        picture.slot,
+        FilterQuality.medium,
+      );
       canvas.restore();
     });
   }
@@ -397,19 +436,6 @@ class _SheetCanvas {
     grid.enterPaperSpace(canvas);
     draw();
     canvas.restore();
-  }
-
-  void _contained(ui.Image image, Rect slot, FilterQuality quality) {
-    if (slot.width <= 0 || slot.height <= 0) {
-      return;
-    }
-    final source = Size(image.width.toDouble(), image.height.toDouble());
-    canvas.drawImageRect(
-      image,
-      Offset.zero & source,
-      containRect(source, slot),
-      Paint()..filterQuality = quality,
-    );
   }
 
   /// Words wrapped to their slot's width, clipped to it, set where they are
