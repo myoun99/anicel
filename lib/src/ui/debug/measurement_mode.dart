@@ -1,3 +1,5 @@
+import 'dart:ui' show Color;
+
 import 'package:flutter/foundation.dart';
 
 /// The app's MEASUREMENT switches — the diagnosis overlays, in one place.
@@ -110,6 +112,18 @@ abstract final class MeasurementMode {
   static final ValueNotifier<bool> showRepaints = ValueNotifier<bool>(
     startWithShowRepaints,
   );
+
+  /// The tint a surface drawn from an image wears under [showRepaints],
+  /// picked by how many images it has had — the cycle above.
+  static Color repaintTint(int imagesTaken) =>
+      _repaintTints[imagesTaken % _repaintTints.length];
+
+  static const List<Color> _repaintTints = <Color>[
+    Color(0x3300E5FF),
+    Color(0x33FF4081),
+    Color(0x33FFEA00),
+    Color(0x3300E676),
+  ];
 
   /// Seeds [showRepaints]:
   ///
