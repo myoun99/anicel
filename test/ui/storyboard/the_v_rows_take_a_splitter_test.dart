@@ -119,6 +119,10 @@ void main() {
     final label = tester.getRect(find.byType(StoryboardTrackLabelRow).first);
     final splitter = tester.getRect(_splitters().first);
     expect(splitter.bottom, closeTo(label.bottom, 0.01), reason: 'its edge');
+    // Let the save the tab switch scheduled land first — else it writes the
+    // drag's height too, and the drag's own save is never asked for.
+    final opened = await _saved(tester, store, (file) => true);
+    expect(opened?[_key], isNull, reason: '⛔전제: the default is not written');
 
     await _dragSplitter(tester, 40);
 
