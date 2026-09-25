@@ -409,8 +409,10 @@ void main() {
         cell,
         crossExtent: cross,
       );
-      // A one-digit name — the common case — at a digit's advance. ⚠️Under
-      // 100% it is the open question's (below), not this one's.
+      // A one-digit name — the common case — at a digit's advance. Under
+      // 100% the 8px triangle reaches it at most rungs, and that is decided
+      // (grip-keeps-its-size-Q1, 유저 2026-09-26: 「겹쳐도 전혀 문제없어」):
+      // the size holds (the first test), and the clearance is 100%'s and up.
       if (cell >= 24) {
         final digit = name(firstCell, cell, nameSize, nameSize * 0.6);
         expect(
@@ -439,35 +441,6 @@ void main() {
         reason: 'cell $cell: the 코마 number $koma meets the end triangle',
       );
     }
-  });
-
-  test('⚠️OPEN (grip-keeps-its-size-Q1): under 100% the start triangle keeps '
-      'its 8px and reaches a one-digit name at most rungs — the size 유저 '
-      'asked for (09-26: 「크기 최대한 지키게」) against the clearance I-43 '
-      'was for, until they choose', () {
-    final reached = [
-      for (final cell in cells.where((cell) => cell < 24))
-        if (touches(
-          triangle(
-            TimelineBlockEdge.start,
-            gripBox(TimelineBlockEdge.start, length: 4, cell: cell),
-            cell: cell,
-          ),
-          name(
-            start * cell,
-            cell,
-            timelineFittedGlyphFontSize(14, cell, crossExtent: cross),
-            timelineFittedGlyphFontSize(14, cell, crossExtent: cross) * 0.6,
-          ),
-        ))
-          cell,
-    ];
-    // 12px escapes only because the fitted name is smaller there.
-    expect(
-      reached,
-      [2.4, 3.0, 4.0, 8.0, 14.0],
-      reason: 'grip-keeps-its-size-Q1 is answered — rewrite this pin',
-    );
   });
 
   test('both painters draw the round end grown by ONE DEVICE PIXEL — the dense '
@@ -579,6 +552,37 @@ void main() {
         expect(target.paperCorner, corner, reason: 'cell $cell, ${target.id}');
       }
     }
+  });
+
+  test('the widget grip rounds its end by THIS zoom\'s block corner — at 25% '
+      'half a cell, not 100%\'s 6', () {
+    const cell = 6.0;
+    final r = timelineBlockCornerRadiusAt(
+      cellExtent: cell,
+      crossExtent: paper,
+    ).x;
+    expect(r, lessThan(6), reason: 'the rung must round less than 100%');
+    final box = gripBox(TimelineBlockEdge.end, length: 5, cell: cell);
+    final geometry = ValueNotifier(frames(cell));
+    addTearDown(geometry.dispose);
+    final spy = _PathSpy();
+    BlockEdgeGripPainter(
+      edge: TimelineBlockEdge.end,
+      axis: Axis.horizontal,
+      ink: BlockEdgeGripInk.rest,
+      devicePixelRatio: 1,
+      geometry: geometry,
+    ).paint(spy, box.size);
+    // Half a pixel past this corner's circle, toward the box's corner: ink
+    // under the bleed of an r-round end, and outside a 6-round one.
+    final center = (Offset.zero & box.size).topRight + Offset(-r, r);
+    const outward = Offset(1, -1);
+    final probe = center + outward / outward.distance * (r + 0.5);
+    expect(
+      spy.paths.single.contains(probe),
+      isTrue,
+      reason: 'the round end is the block\'s at this zoom (r $r)',
+    );
   });
 
   testWidgets('the widget grip repaints its round end on a zoom step that '
