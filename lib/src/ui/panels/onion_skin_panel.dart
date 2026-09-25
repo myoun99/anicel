@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -438,7 +439,7 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
     final target = _pegForColumn(column);
     if (target == null) {
       return Expanded(
-        child: Tooltip(
+        child: AppTooltip(
           key: const ValueKey<String>('onion-peg-current'),
           message: AppText.strings.onionCurrentDrawing,
           child: _graphColumn(
@@ -458,7 +459,7 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
     final tint = Color(before ? settings.tintBefore : settings.tintAfter);
     final percent = (peg.opacity * 100).round();
     return Expanded(
-      child: Tooltip(
+      child: AppTooltip(
         key: ValueKey<String>(
           'onion-peg-${before ? 'before' : 'after'}-${index + 1}',
         ),

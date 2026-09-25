@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -1109,7 +1110,7 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
       );
     }
 
-    return Tooltip(
+    return AppTooltip(
       message: widget.label,
       // Manual trigger: hover tooltips still work, but no long-press
       // recognizer competes with drag lifts.

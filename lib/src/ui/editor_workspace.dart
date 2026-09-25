@@ -1,3 +1,4 @@
+import 'widgets/app_tooltip.dart';
 import 'widgets/app_icon_button.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -2530,7 +2531,7 @@ class _RailGroupButton extends StatelessWidget {
             selected: open,
             onPressed: onPressed,
           )
-        : Tooltip(
+        : AppTooltip(
             message: tooltip,
             child: Material(
               key: ValueKey<String>('rail-group-$railId'),

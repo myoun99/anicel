@@ -1,3 +1,4 @@
+import 'app_tooltip.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -249,6 +250,6 @@ class _DragValueLabelState extends State<DragValueLabel> {
       ),
     );
     final tooltip = widget.tooltip;
-    return tooltip == null ? label : Tooltip(message: tooltip, child: label);
+    return tooltip == null ? label : AppTooltip(message: tooltip, child: label);
   }
 }

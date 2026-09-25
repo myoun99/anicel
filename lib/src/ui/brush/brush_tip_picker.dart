@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
@@ -160,7 +161,7 @@ class _TipSwatch extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final current = mask;
-    return Tooltip(
+    return AppTooltip(
       message: tooltip,
       child: ControlPressClaim(
         onPressed: onTap,
@@ -377,7 +378,7 @@ class _PickerCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Tooltip(
+    return AppTooltip(
       message: tooltip,
       child: Material(
         color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,

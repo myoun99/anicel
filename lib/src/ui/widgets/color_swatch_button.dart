@@ -1,3 +1,4 @@
+import 'app_tooltip.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -110,7 +111,7 @@ class ColorSwatchButton extends StatelessWidget {
     if (message == null) {
       return swatch;
     }
-    return Tooltip(message: message, child: swatch);
+    return AppTooltip(message: message, child: swatch);
   }
 
   void _open(BuildContext anchorContext) => showColorPickerPopup(

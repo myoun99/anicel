@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -356,7 +357,7 @@ class _StaffStampCell extends StatelessWidget {
     );
     final strings = AppText.strings;
     final path = assetPath;
-    return Tooltip(
+    return AppTooltip(
       message: strings.sheetStampPick,
       child: ControlPressClaim(
         onPressed: () => showPanelFlyout(

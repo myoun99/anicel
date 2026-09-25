@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:typed_data';
@@ -203,7 +204,7 @@ void main() {
       findsNothing,
       reason: 'the clean take shows no red corner',
     );
-    final tooltip = tester.widget<Tooltip>(find.byType(Tooltip));
+    final tooltip = tester.widget<Tooltip>(find.byType(AppTooltip));
     expect(tooltip.message, 'clipped take');
   });
 }

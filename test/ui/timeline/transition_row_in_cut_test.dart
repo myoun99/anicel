@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
@@ -165,7 +166,7 @@ void main() {
           .widget<Tooltip>(
             find.descendant(
               of: crossingMarker,
-              matching: find.byType(Tooltip),
+              matching: find.byType(AppTooltip),
             ),
           )
           .message,

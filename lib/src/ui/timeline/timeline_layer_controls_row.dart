@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -677,7 +678,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (!isLinked) return null;
     return Padding(
       padding: const EdgeInsets.only(left: 4),
-      child: Tooltip(
+      child: AppTooltip(
         message: AppText.strings.tlLinkedLayerTooltip,
         child: Icon(
           Icons.link,

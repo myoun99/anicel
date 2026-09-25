@@ -1,3 +1,4 @@
+import 'app_tooltip.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -265,7 +266,7 @@ class PillNameCell extends StatelessWidget {
     final tooltip = this.tooltip;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: _outerInset),
-      child: tooltip == null ? cell : Tooltip(message: tooltip, child: cell),
+      child: tooltip == null ? cell : AppTooltip(message: tooltip, child: cell),
     );
   }
 }

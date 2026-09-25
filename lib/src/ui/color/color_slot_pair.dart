@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart' show AppText;
@@ -67,7 +68,7 @@ class ColorSlotPair extends StatelessWidget {
           Positioned(
             right: 0,
             bottom: 0,
-            child: Tooltip(
+            child: AppTooltip(
               message: AppText.strings.colorBackgroundSwap,
               child: ControlPressClaim(
                 onPressed: onBackgroundTap,

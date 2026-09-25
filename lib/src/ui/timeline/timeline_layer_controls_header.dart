@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
@@ -230,14 +231,14 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     // The key stays on the cell whether or not it can open a flyout —
     // it's the column's stable address (legend alignment tests).
     if (entriesBuilder == null) {
-      return Tooltip(
+      return AppTooltip(
         key: ValueKey<String>(keyValue),
         message: tooltip,
         child: content,
       );
     }
     return Builder(
-      builder: (anchorContext) => Tooltip(
+      builder: (anchorContext) => AppTooltip(
         message: tooltip,
         child: ControlPressClaim(
           onPressed: () =>
@@ -275,7 +276,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     // (R3 feedback #5). The toggle has ONE handler, named once.
     final onToggle = anyLanesExpanded ? onCollapseAllLanes : onExpandAllLanes;
     return onExpandAllLanes != null && onCollapseAllLanes != null
-        ? Tooltip(
+        ? AppTooltip(
             message: anyLanesExpanded
                 ? 'Collapse all layers'
                 : 'Expand all layers',
@@ -596,7 +597,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     final toggle = legend == null
         ? null
         : (allSeMuted ? legend.onUnmuteAllSe : legend.onMuteAllSe);
-    return Tooltip(
+    return AppTooltip(
       message: allSeMuted ? 'Unmute all SE' : 'Mute all SE',
       child: ControlPressClaim(
         onPressed: toggle,
@@ -622,7 +623,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     ColorScheme colorScheme,
   ) {
     return legend != null && displayedLayerIds != null && !isVertical
-        ? Tooltip(
+        ? AppTooltip(
             message: AppText.strings.tlAllDisplayedOpacity,
             child: FieldSlider.opacity(
               key: const ValueKey<String>('legend-opacity'),

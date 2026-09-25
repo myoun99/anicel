@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -290,7 +291,7 @@ Widget timelineBlockWarningBar({
     ),
     child: KeyedSubtree(
       key: markerKey,
-      child: Tooltip(
+      child: AppTooltip(
         message: tooltip,
         child: CustomPaint(
           painter: _WarningBarPainter(

@@ -1,3 +1,4 @@
+import 'app_tooltip.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -279,7 +280,7 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     );
     final tooltip = widget.tooltip;
     if (tooltip != null) {
-      grip = Tooltip(message: tooltip, child: grip);
+      grip = AppTooltip(message: tooltip, child: grip);
     }
     return grip;
   }

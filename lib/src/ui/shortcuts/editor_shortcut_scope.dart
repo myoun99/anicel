@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 
 import '../brush/tool_press.dart';
@@ -98,7 +99,7 @@ class ShortcutTooltip extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
+  Widget build(BuildContext context) => AppTooltip(
     message: shortcutTooltip(context, label, shortcuts),
     child: child,
   );

@@ -1,3 +1,4 @@
+import 'app_tooltip.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -573,7 +574,7 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
       focusable: enabled,
       focused: _hasFocus,
       onTap: widget.onSemanticTap,
-      child: Tooltip(
+      child: AppTooltip(
         message: widget.tooltip,
         child: Actions(
           actions: <Type, Action<Intent>>{

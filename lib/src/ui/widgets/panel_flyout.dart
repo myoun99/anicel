@@ -1,3 +1,4 @@
+import 'app_tooltip.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -840,7 +841,7 @@ class PanelFlyoutTrigger extends StatelessWidget {
     if (message == null) {
       return button;
     }
-    return Tooltip(message: message, child: button);
+    return AppTooltip(message: message, child: button);
   }
 }
 
@@ -967,7 +968,7 @@ class PanelFlyoutButton extends StatelessWidget {
     if (tooltip == null) {
       return chip;
     }
-    return Tooltip(message: tooltip, child: chip);
+    return AppTooltip(message: tooltip, child: chip);
   }
 }
 

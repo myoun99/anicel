@@ -1,3 +1,4 @@
+import '../widgets/app_tooltip.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/app_icon_button.dart';
 import 'dart:async' show unawaited;
@@ -547,7 +548,7 @@ class MediaPoolPanel extends StatelessWidget {
                   mediaAssetKindIcon(asset.kind),
                   size: 16,
                   color: colorScheme.onSurfaceVariant,
-                ) else Tooltip(
+                ) else AppTooltip(
                   message: AppText.strings.mpFileMissing,
                   child: Icon(
                     key: ValueKey<String>('media-asset-missing-${asset.path}'),
@@ -597,7 +598,7 @@ class MediaPoolPanel extends StatelessWidget {
                   // pool actually asks is how big a file is and whether it
                   // is the one they exported an hour ago. The path is one
                   // hover away and no longer the only thing on offer.
-                  Tooltip(
+                  AppTooltip(
                     message: asset.path,
                     child: Text(
                       _subtitleFor(asset),
