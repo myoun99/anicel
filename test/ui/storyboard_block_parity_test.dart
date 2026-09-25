@@ -30,7 +30,7 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_cell_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
-    show BlockEdgeGripInk, BlockEdgeGripPainter;
+    show BlockEdgeGripInk, BlockEdgeGripPainter, TimelineBlockEdgeGrip;
 
 /// B5/B6 (2026-08-17): the storyboard's TRANSITION and SE blocks behave
 /// like FRAME BLOCKS — the same double-tap gate (same cell twice, or it is
@@ -325,6 +325,21 @@ void main() {
       expect(tester.getBottomLeft(startGrip).dy - rowTop, paper);
       expect(tester.getTopRight(endGrip).dx - rowLeft, 6 * _ppf);
       expect(tester.getTopRight(endGrip).dy - rowTop, 0);
+    });
+
+    testWidgets('the SE grips read THIS row\'s cells — their round end and '
+        'their drag go by the zoom, not by 100%\'s (the box no longer says '
+        'which zoom it is, 유저 2026-09-26)', (tester) async {
+      await _openStoryboard(tester);
+
+      for (final edge in ['start', 'end']) {
+        final grip = tester.widget<TimelineBlockEdgeGrip>(
+          find.byKey(
+            ValueKey<String>('storyboard-se-grip-$_seLayerId-0-$edge'),
+          ),
+        );
+        expect(grip.geometry.value.frameCellExtent, _ppf, reason: edge);
+      }
     });
 
     testWidgets('a REAL mouse hover on the end edge engages the grip — and '

@@ -585,6 +585,35 @@ void main() {
     );
   });
 
+  test('a rebuild that hands the widget grip a fresh handle repaints it at '
+      'ANOTHER zoom and not at the same one — the cell is compared by value',
+      () {
+    BlockEdgeGripPainter at(double cell) {
+      final geometry = ValueNotifier(frames(cell));
+      addTearDown(geometry.dispose);
+      return BlockEdgeGripPainter(
+        edge: TimelineBlockEdge.end,
+        axis: Axis.horizontal,
+        ink: BlockEdgeGripInk.rest,
+        devicePixelRatio: 1,
+        geometry: geometry,
+      );
+    }
+
+    final at100 = at(24);
+    expect(
+      at(6).shouldRepaint(at100),
+      isTrue,
+      reason: 'the box is 100%\'s size at both — only the cell says the '
+          'round end changed',
+    );
+    expect(
+      at(24).shouldRepaint(at100),
+      isFalse,
+      reason: 'a fresh handle at the same zoom is the same picture',
+    );
+  });
+
   testWidgets('the widget grip repaints its round end on a zoom step that '
       'leaves its box as it was — the box is 100%\'s size, the corner is the '
       'cell\'s', (tester) async {
