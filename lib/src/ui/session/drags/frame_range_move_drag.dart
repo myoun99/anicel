@@ -104,12 +104,20 @@ const FrameAxisRiders noRiders = (
   directions: {},
 );
 
+/// A TRANSITION row riding a frame-range move: the GLOBAL row as it stood
+/// at begin, and the starts of the spans that move — the ones the
+/// selection holds ([Transitions.transitionStartsHeldInCut] /
+/// [Transitions.transitionStartsHeldOnTrack]), which on a cut's rail are
+/// not the frames the selection covers.
+typedef TransitionRider = ({Layer row, Set<int> starts});
+
 /// The KEY sources a frame-range move carries (P3b-2): the camera keys
-/// (with the camera row's id) and the instruction rows that own spans in
-/// the range.
+/// (with the camera row's id), the DIRECTION rows that own spans in the
+/// range, and the transition rows.
 typedef KeySources = ({
   ({Map<int, CameraPose> before, LayerId layerId})? camera,
   List<Layer> instructionSources,
+  List<TransitionRider> transitionRiders,
 });
 
 /// Whether [block] is a real (non-ghost) block lying WHOLE inside
@@ -164,20 +172,17 @@ TimelineFrameRangeSelection? _spanOfTrackSelection(
 
 /// The rows of [live] that source a move on the track axis — one COMMIT
 /// form per owning layer that carries a whole block inside the range —
-/// and the transition row's spans as instruction sources.
-({List<({Layer commit, int offset})> sources, List<Layer> instructionSources})
+/// and the transition rows' spans.
+({
+  List<({Layer commit, int offset})> sources,
+  List<TransitionRider> transitionRiders,
+})
 _castTrackSources(
   TrackFrameRangeSelection live, {
   required ProjectAccess project,
   required Transitions transitions,
 }) {
   final sources = <({Layer commit, int offset})>[];
-  // C1 (2026-08-17): the TRANSITION row is a movable subject on THIS
-  // axis — its spans live global, and this rail is their one author
-  // (the cut timeline's clone stays the read-only projection). It rides
-  // the move machine's existing INSTRUCTION-source arm, exactly as the
-  // cut-local instruction rows do in [FrameRangeMoveDrag.begin].
-  final instructionSources = <Layer>[];
   // 🚨C3-lane-move: keyed by the row's OWNING layer, not by the row's
   // TYPE. A lane row is one of its layer's rows — skipping it here is
   // what made a band anchored on an fx row refuse to move and fall
@@ -188,18 +193,6 @@ _castTrackSources(
   for (final row in live.spanRows) {
     final rowLayerId = row.owningLayerId;
     if (rowLayerId == null || !seen.add(rowLayerId)) {
-      continue;
-    }
-    final transition = transitions
-        .trackTransitionOwner(rowLayerId)
-        ?.transitionLayer;
-    if (transition != null) {
-      final hasSpan = transition.instructions.keys.any(
-        (key) => key >= live.startFrame && key < live.endFrameExclusive,
-      );
-      if (hasSpan) {
-        instructionSources.add(transition);
-      }
       continue;
     }
     final commit = project.trackSeGlobalLayerById(rowLayerId);
@@ -215,8 +208,29 @@ _castTrackSources(
       sources.add((commit: commit, offset: 0));
     }
   }
-  return (sources: sources, instructionSources: instructionSources);
+  // C1 (2026-08-17): the TRANSITION row is a movable subject on THIS
+  // axis — its spans live global, and this rail is where they are
+  // authored. It rides beside the blocks as a cut's direction rows do.
+  return (
+    sources: sources,
+    transitionRiders: _transitionRidersOf(
+      transitions.transitionStartsHeldOnTrack(live),
+      transitions,
+    ),
+  );
 }
+
+/// The transition rows riding a move, from the spans the selection holds
+/// on each — the same hold the range delete takes
+/// ([Transitions.selectionTransitionStartsByRow]).
+List<TransitionRider> _transitionRidersOf(
+  Map<LayerId, Set<int>> held,
+  Transitions transitions,
+) => [
+  for (final MapEntry(key: id, value: starts) in held.entries)
+    if (transitions.trackTransitionOwner(id) case final owner?)
+      (row: owner.transitionLayer, starts: starts),
+];
 
 /// KEY sources (P3b-2, #2 second half): camera keys, instruction
 /// spans AND the layers' own transform-track keys (P3c, #13) inside
@@ -226,6 +240,7 @@ _castTrackSources(
 KeySources _castKeySources(
   TimelineFrameRangeSelection selection, {
   required ProjectAccess project,
+  required Transitions transitions,
 }) {
   ({Map<int, CameraPose> before, LayerId layerId})? camera;
   final instructionSources = <Layer>[];
@@ -254,7 +269,35 @@ KeySources _castKeySources(
     // selection domain; camera keys and instruction spans (a camera /
     // instruction row's OWN content) still ride below.
   }
-  return (camera: camera, instructionSources: instructionSources);
+  // The TRANSITION row rides as the storyboard's does (C1), on the global
+  // row, with the spans the selection holds — its marks here are a
+  // projection, mapped back to the spans they show, an O.L's left out
+  // (transition-row-range-in-the-cut, 유저 2026-09-26).
+  //
+  // ⚠️A span that began in an EARLIER cut stays where it is: its head is
+  // in that cut, which is why its start grip stands down here too
+  // ([Transitions.transitionSpillInLeadFrames] — 유저 2026-09-26: 「애초에
+  // 넘어온쪽 표시엔 머리그립이 없을텐데」). Its mark is pinned to frame 0,
+  // so moving it here would move a head nobody sees move. The storyboard
+  // moves it; a range DELETE still takes it, as a press on its mark does.
+  final cutStart = project.activeCutGlobalStartFrame;
+  final transitionRiders = [
+    for (final (:row, :starts) in _transitionRidersOf(
+      transitions.transitionStartsHeldInCut(selection),
+      transitions,
+    ))
+      if ({
+            for (final start in starts)
+              if (start >= cutStart) start,
+          }
+          case final heads when heads.isNotEmpty)
+        (row: row, starts: heads),
+  ];
+  return (
+    camera: camera,
+    instructionSources: instructionSources,
+    transitionRiders: transitionRiders,
+  );
 }
 
 /// What one cut-local begin picked up — EXACTLY one of the two arms is
@@ -316,6 +359,7 @@ class FrameRangeMoveDrag {
     required List<({Layer commit, int offset})>? multiSources,
     required ({Map<int, CameraPose> before, LayerId layerId})? cameraKeys,
     required List<Layer>? instructionSources,
+    required List<TransitionRider> transitionRiders,
   }) : _project = roles.project,
        _selection = roles.selection,
        _changes = roles.changes,
@@ -332,7 +376,8 @@ class FrameRangeMoveDrag {
        _singleRow = singleRow,
        _multiSources = multiSources,
        _cameraKeys = cameraKeys,
-       _instructionSources = instructionSources;
+       _instructionSources = instructionSources,
+       _transitionRiders = transitionRiders;
 
   /// A range-move drag on the TRACK axis — the storyboard's S rows. Null
   /// when the track selection is gone, names no owning layer, or covers
@@ -355,12 +400,12 @@ class FrameRangeMoveDrag {
     if (live == null) {
       return null;
     }
-    final (:sources, :instructionSources) = _castTrackSources(
+    final (:sources, :transitionRiders) = _castTrackSources(
       live,
       project: roles.project,
       transitions: roles.transitions,
     );
-    if (sources.isEmpty && instructionSources.isEmpty) {
+    if (sources.isEmpty && transitionRiders.isEmpty) {
       return null;
     }
     final span = _spanOfTrackSelection(live);
@@ -375,9 +420,8 @@ class FrameRangeMoveDrag {
       singleRow: null,
       multiSources: sources,
       cameraKeys: null,
-      instructionSources: instructionSources.isEmpty
-          ? null
-          : instructionSources,
+      instructionSources: null,
+      transitionRiders: transitionRiders,
     );
   }
 
@@ -403,7 +447,11 @@ class FrameRangeMoveDrag {
     if (span == null || !rangeSelections.rangeSelectionEligible(span.layerId)) {
       return null;
     }
-    final keys = _castKeySources(span, project: roles.project);
+    final keys = _castKeySources(
+      span,
+      project: roles.project,
+      transitions: roles.transitions,
+    );
     // Multi-layer spans, SE rows and KEY sources route through the
     // frame-axis slide (UI-R18 #1): per-layer plans on the COMMIT forms;
     // row-change drops stay the single-anim path below.
@@ -411,7 +459,8 @@ class FrameRangeMoveDrag {
         span.spanLayerIds.length > 1 ||
         roles.project.isTrackSeLayerId(span.layerId) ||
         keys.camera != null ||
-        keys.instructionSources.isNotEmpty;
+        keys.instructionSources.isNotEmpty ||
+        keys.transitionRiders.isNotEmpty;
     final subjects = multiSource
         ? _multiSourceSubjects(
             span,
@@ -440,6 +489,7 @@ class FrameRangeMoveDrag {
       instructionSources: multiSource && keys.instructionSources.isNotEmpty
           ? keys.instructionSources
           : null,
+      transitionRiders: keys.transitionRiders,
     );
   }
 
@@ -480,7 +530,8 @@ class FrameRangeMoveDrag {
     }
     if (sources.isEmpty &&
         keys.camera == null &&
-        keys.instructionSources.isEmpty) {
+        keys.instructionSources.isEmpty &&
+        keys.transitionRiders.isEmpty) {
       // An all-synced span dies here — say why at the cursor, like the
       // single-row path does.
       folders.noticeSyncedAttachRefusal(span.layerId);
@@ -593,6 +644,8 @@ class FrameRangeMoveDrag {
   final ({Map<int, CameraPose> before, LayerId layerId})? _cameraKeys;
 
   final List<Layer>? _instructionSources;
+
+  final List<TransitionRider> _transitionRiders;
 
   DrawingBlockMovePlan? _plan;
 
@@ -1035,11 +1088,11 @@ class FrameRangeMoveDrag {
     }
     // The camera and instruction rows (the transition included, via its
     // display clone) are frame-axis riders — WHO rides was decided at
-    // begin ([_cameraKeys] and [_instructionSources], the same answers
-    // the plain slide consumes). Re-deriving them here is the copy that
-    // silently dropped the TRANSITION on rigid steps (C④): its clone's
-    // kind matched no arm, so the spans snapped home the moment the
-    // pointer crossed a row.
+    // begin ([_cameraKeys], [_instructionSources] and [_transitionRiders],
+    // the same answers the plain slide consumes). Re-deriving them here is
+    // the copy that silently dropped the TRANSITION on rigid steps (C④):
+    // its clone's kind matched no arm, so the spans snapped home the
+    // moment the pointer crossed a row.
     if (layer.kind == LayerKind.camera ||
         layer.kind == LayerKind.instruction ||
         layer.kind == LayerKind.transition) {
@@ -1179,34 +1232,32 @@ class FrameRangeMoveDrag {
     final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
     final directionShifted = <LayerId, Layer>{};
     for (final layer in _instructionSources ?? const <Layer>[]) {
-      if (layer.kind.spansRideBlocks) {
-        // A direction row's spans are its blocks (R27): they ride as the
-        // drawing rows' own slide, drawings and all.
-        final plan = planDrawingRangeMove(
-          source: layer,
-          target: layer,
-          rangeStartIndex: selection.startIndex,
-          rangeEndIndexExclusive: selection.endIndexExclusive,
-          frameDelta: frameDelta,
-          sourceBank: _controllers.timelineController.bankLanesOf(layer.id),
-          cutFrameCount: _project.activeCutFrameCount,
-        );
-        if (plan == null) {
-          return null;
-        }
-        directionShifted[layer.id] = plan.sourceAfter;
-        continue;
-      }
-      final shifted = shiftInstructionEventsInRange(
-        events: layer.instructions,
+      // A direction row's spans are its blocks (R27): they ride as the
+      // drawing rows' own slide, drawings and all.
+      final plan = planDrawingRangeMove(
+        source: layer,
+        target: layer,
         rangeStartIndex: selection.startIndex,
         rangeEndIndexExclusive: selection.endIndexExclusive,
+        frameDelta: frameDelta,
+        sourceBank: _controllers.timelineController.bankLanesOf(layer.id),
+        cutFrameCount: _project.activeCutFrameCount,
+      );
+      if (plan == null) {
+        return null;
+      }
+      directionShifted[layer.id] = plan.sourceAfter;
+    }
+    for (final (:row, :starts) in _transitionRiders) {
+      final shifted = shiftInstructionEventsAt(
+        events: row.instructions,
+        starts: starts,
         frameDelta: frameDelta,
       );
       if (shifted == null) {
         return null;
       }
-      instructionShifted[layer.id] = shifted;
+      instructionShifted[row.id] = shifted;
     }
     return (
       camera: cameraShifted,

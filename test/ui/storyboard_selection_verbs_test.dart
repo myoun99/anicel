@@ -12,6 +12,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart'
     show transitionLayerIdForTrack;
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -20,6 +21,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cut_move_drag.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
+    show StoryboardToolbarPanelContext;
 
 /// What the storyboard's selection can DO. Every verb here is the
 /// timeline's, aimed at the other axis: the rows differ, the grammar does
@@ -151,6 +154,28 @@ void main() {
       session.undo();
 
       expect(seLayerOf(session).timeline.keys, [2, 9]);
+    });
+
+    test('the panel\'s Delete on an S-row range takes the sounds — a range '
+        'that names no cut deletes none', () {
+      final session = sessionFor();
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+      final panel = StoryboardToolbarPanelContext(session);
+      expect(panel.deleteSubject, PillSubject.cells);
+
+      panel.deleteSelectionSubject();
+
+      expect(seLayerOf(session).timeline.keys, [9]);
+      expect(
+        session.repository.requireProject().tracks.single.cuts.map(
+          (cut) => cut.id,
+        ),
+        [const CutId('cut-1'), const CutId('cut-2')],
+      );
     });
 
     test('the CUT row keeps its verb: a cut selection deletes cuts', () {

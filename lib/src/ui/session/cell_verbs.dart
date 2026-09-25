@@ -281,8 +281,10 @@ class CellVerbs {
       // effect).
       _laneVerbs.laneVerbRangeHasSomethingToDelete ||
       // A live selection is deletable wherever the playhead stands (UI-R17
-      // #2).
-      _rangeSelections.selectionBlockStartsByLayer() != null;
+      // #2) — its blocks, and the transition spans it holds
+      // (transition-row-range-in-the-cut).
+      _rangeSelections.selectionBlockStartsByLayer() != null ||
+      _transitions.selectionTransitionStartsByRow() != null;
 
   /// Whether a live CELL band owns the next cell-verb press.
   ///
@@ -359,11 +361,22 @@ class CellVerbs {
       return;
     }
     // A live selection routes the delete to EVERY selected block on
-    // EVERY spanned layer (UI-R17 #2/#8, one composite undo); the
-    // leftover selection covers empty cells so it clears with the delete.
+    // EVERY spanned layer (UI-R17 #2/#8) and to the transition spans it
+    // holds, in one composite undo; the leftover selection covers empty
+    // cells so it clears with the delete.
     final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
-    if (selectionTargets != null) {
-      _controllers.timelineController.deleteBlocksForLayers(selectionTargets);
+    final transitionTargets = _transitions.selectionTransitionStartsByRow();
+    if (selectionTargets != null || transitionTargets != null) {
+      _project.historyManager.runAsOneStep('Delete selected cells', () {
+        if (selectionTargets != null) {
+          _controllers.timelineController.deleteBlocksForLayers(
+            selectionTargets,
+          );
+        }
+        if (transitionTargets != null) {
+          _transitions.removeTransitionSpans(transitionTargets);
+        }
+      });
       // Whichever axis answered: the leftover span covers empty cells now.
       _selection.clearFrameRangeSelection();
       _selection.clearStoryboardCutSelection();

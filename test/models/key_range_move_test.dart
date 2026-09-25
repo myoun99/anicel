@@ -3,6 +3,7 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/key_range_move.dart';
+import 'package:anicel/src/models/key_range_shift.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
@@ -97,29 +98,23 @@ void main() {
     });
   });
 
-  group('shiftInstructionEventsInRange', () {
+  group('shiftInstructionEventsAt', () {
     const pan = InstructionEvent(instructionId: 'pan', length: 3);
     const zoom = InstructionEvent(instructionId: 'zoom', length: 2);
 
-    test('shifts events STARTING in range; overlap with an unmoved event '
-        'voids', () {
+    test('shifts the events STARTING at the named keys; overlap with an '
+        'unmoved event voids', () {
       final events = {1: pan, 8: zoom};
-      final shifted = shiftInstructionEventsInRange(
+      final shifted = shiftInstructionEventsAt(
         events: events,
-        rangeStartIndex: 0,
-        rangeEndIndexExclusive: 4,
+        starts: {1},
         frameDelta: 3,
       );
       expect(shifted!.keys.toSet(), {4, 8});
       expect(shifted[4], same(pan));
 
       expect(
-        shiftInstructionEventsInRange(
-          events: events,
-          rangeStartIndex: 0,
-          rangeEndIndexExclusive: 4,
-          frameDelta: 6,
-        ),
+        shiftInstructionEventsAt(events: events, starts: {1}, frameDelta: 6),
         isNull,
         reason: 'pan at [7,10) would overlap zoom at [8,10)',
       );
@@ -127,15 +122,18 @@ void main() {
 
     test('negative landings void', () {
       expect(
-        shiftInstructionEventsInRange(
+        shiftInstructionEventsAt(
           events: const {1: pan},
-          rangeStartIndex: 0,
-          rangeEndIndexExclusive: 4,
+          starts: {1},
           frameDelta: -2,
         ),
         isNull,
       );
     });
+  });
+
+  test('a range holds the keys STARTING in it', () {
+    expect(keysStartingIn(const [1, 3, 4, 8], 1, 4), {1, 3});
   });
 
   // ㉚ (user, 2026-08-12): 「유니언 그룹 이름 규칙 — 해당 인덱스 멤버들

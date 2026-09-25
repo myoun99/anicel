@@ -580,19 +580,27 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   /// own cuts rung), the selection-borne cell rungs (lane keys, selected
   /// blocks — this panel's lanes and strips write those), then THE BLOCK
   /// UNDER THE CURSOR, whatever its kind.
+  ///
+  /// 🚨The cuts rung is a band that NAMES cuts — one over the V row
+  /// ([StoryboardRows.storyboardSelectedCutIds]). It used to ask whether
+  /// any band was up at all, from when the V row's was the only band this
+  /// rail could sweep; once the S rows and the transition row swept bands
+  /// of their own, a band over them deleted the cut the session stood in —
+  /// a cut the band did not even cover (transition-row-range-in-the-cut,
+  /// 2026-09-26).
   @override
   PillSubject get deleteSubject {
-    if (session.trackFrameRangeSelection.value != null) {
+    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       return PillSubject.cuts;
     }
     if (session.cells.canDeleteCellForSelection) {
       return PillSubject.cells;
     }
-    // A live CELL band claims the press even when it holds nothing this
-    // panel may delete — the same guard the strip's comma verb already
-    // states. Without it a band the collector refuses fell through to the
-    // cursor rung, where a TRACK-ROW cursor means "delete the cut".
-    if (session.cells.cellSelectionClaimsSubject) {
+    // A live band claims the press even when it holds nothing this panel
+    // may delete — the same guard the strip's comma verb already states.
+    // Without it a band the collector refuses fell through to the cursor
+    // rung, where a TRACK-ROW cursor means "delete the cut".
+    if (_bandClaimsThePress) {
       return PillSubject.nothing;
     }
     return session.storyboardCursor.canDeleteBlockAtStoryboardCursor
@@ -602,7 +610,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
 
   @override
   void deleteSelectionSubject() {
-    if (session.trackFrameRangeSelection.value != null) {
+    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       session.deleteSelectionSubject();
       return;
     }
@@ -610,11 +618,16 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
       session.cells.deleteCellAtCurrentFrame();
       return;
     }
-    if (session.cells.cellSelectionClaimsSubject) {
+    if (_bandClaimsThePress) {
       return;
     }
     session.storyboardCursor.deleteBlockAtStoryboardCursor();
   }
+
+  /// A cell band, or one of this rail's own.
+  bool get _bandClaimsThePress =>
+      session.cells.cellSelectionClaimsSubject ||
+      session.trackFrameRangeSelection.value != null;
 
   /// The cuts this panel's 링크 독립 means: its EDIT TARGET's cuts rung —
   /// the selected cut range, else the cut under the cursor on a track row.

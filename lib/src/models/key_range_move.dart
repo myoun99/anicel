@@ -190,18 +190,18 @@ const String unionMixedKeyName = '...';
   );
 }
 
-/// The instruction map with every event STARTING in the range shifted by
+/// The instruction map with the events STARTING at [starts] shifted by
 /// [frameDelta]; null when any landing dips below 0 or overlaps an
-/// unmoved event's span.
-Map<int, InstructionEvent>? shiftInstructionEventsInRange({
+/// unmoved event's span ([shiftKeysAt]). The starts are the ones a range
+/// selection holds — on a cut's rail, the spans its transition marks show,
+/// mapped back to the global row.
+Map<int, InstructionEvent>? shiftInstructionEventsAt({
   required Map<int, InstructionEvent> events,
-  required int rangeStartIndex,
-  required int rangeEndIndexExclusive,
+  required Set<int> starts,
   required int frameDelta,
-}) => shiftKeysInRange(
+}) => shiftKeysAt(
   entries: events,
-  rangeStartIndex: rangeStartIndex,
-  rangeEndIndexExclusive: rangeEndIndexExclusive,
+  moved: starts,
   frameDelta: frameDelta,
   extentOf: (event) => event.length,
 );

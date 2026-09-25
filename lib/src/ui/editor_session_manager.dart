@@ -2933,7 +2933,11 @@ class EditorSessionManager extends ChangeNotifier
   /// why the cuts rung is a question and not a given (R5q1).
   PillSubject deleteSubjectFor({required bool cutsAreThisPanels}) =>
       pillSubjectOn(
-        cuts: cutsAreThisPanels && trackFrameRangeSelection.value != null,
+        // A band that NAMES cuts — see
+        // [StoryboardToolbarPanelContext.deleteSubject].
+        cuts:
+            cutsAreThisPanels &&
+            storyboardRows.storyboardSelectedCutIds.isNotEmpty,
         layers: () => layerVerbs.deletableSelectedLayerIds().isNotEmpty,
         cells: () => cells.canDeleteCellAtCurrentFrame,
       );
