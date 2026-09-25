@@ -1,14 +1,18 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_pcm_scale.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
-import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -29,6 +33,7 @@ void main() {
 
   setUp(() async {
     QaVideoEncoder.debugResetForTests();
+    QaAudioDecoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-video-enc-test');
   });
@@ -36,6 +41,7 @@ void main() {
   tearDown(() async {
     QaVideoEncoder.instance?.abort();
     QaVideoEncoder.debugResetForTests();
+    QaAudioDecoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = null;
     deleteTempQuietly(directory);
   });
@@ -210,14 +216,20 @@ void main() {
       return;
     }
     TestWidgetsFlutterBinding.ensureInitialized();
-    // The mixed master, as the export dialog writes it.
+    // The mixed master, as the export dialog writes it — a WAV
+    // (`writeExportAudioMixWav`). 🪦It was written here with the conform
+    // encoder, which is exactly what the service's reader wanted and the
+    // dialog never wrote: from 08-30 every movie the OS encoder made from
+    // the dialog's mix had no sound, and this stayed green (09-25). A tone,
+    // so the AAC that comes back is not a DC offset its encoder may drop.
     final mixSamples = Float32List(48000);
     for (var index = 0; index < mixSamples.length; index += 1) {
-      mixSamples[index] = 0.2;
+      mixSamples[index] =
+          0.2 * math.sin(2 * math.pi * 440 * (index ~/ 2) / 48000);
     }
     final mixPath = '${directory.path}/mix.wav';
     File(mixPath).writeAsBytesSync(
-      encodeConform(samples: mixSamples, channels: 2, sampleRate: 48000),
+      wav16Bytes(int16PcmOf(mixSamples), sampleRate: 48000, channels: 2),
     );
 
     Future<ui.Image?> render(int index) async {
@@ -244,5 +256,12 @@ void main() {
     expect(summary.written, 12);
     expect(summary.processed, 12);
     expect(looksLikeMp4(outputPath), isTrue);
+    final sound = decodeAudioFile(outputPath);
+    expect(sound, isNotNull, reason: 'the movie went out without its sound');
+    expect(
+      sound!.samples.any((sample) => sample.abs() > 0.1),
+      isTrue,
+      reason: 'the mix\'s tone, not silence',
+    );
   }, skip: skip);
 }

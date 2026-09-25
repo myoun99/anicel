@@ -10,6 +10,7 @@ import '../../models/export_format_selection.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_encoder.dart';
 import '../../services/audio/conform_pcm_stream.dart';
+import '../../services/media/media_byte_source.dart' show MediaFileBytes;
 import 'png_sequence_export_service.dart' show ExportWriteSummary;
 import '../../models/audio_pcm_scale.dart';
 
@@ -332,9 +333,10 @@ class VideoExportService {
       throw const VideoExportException('video export: nothing rendered');
     }
 
+    // The mix is the WAV the dialog wrote ([ConformPcmStreamReader.overWav16]).
     final audio = audioMixPath == null
         ? null
-        : ConformPcmStreamReader.open(audioMixPath);
+        : ConformPcmStreamReader.overWav16(MediaFileBytes(audioMixPath));
     if (!encoder.open(
       path: outputFilePath,
       width: first.width,

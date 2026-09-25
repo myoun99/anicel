@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../media/media_byte_source.dart';
 import 'conform_pcm_codec.dart';
+import 'wav16_header.dart';
 
 /// Windowed access to a conform (AUDIO-PRO R6).
 ///
@@ -53,16 +54,25 @@ import 'conform_pcm_codec.dart';
 /// ⛔The window size is the deadline. Halving `aheadSeconds` would halve
 /// the margin this stands on.
 class ConformPcmStreamReader {
-  ConformPcmStreamReader._(this._source, this._header);
+  ConformPcmStreamReader._(
+    this._source, {
+    required ({int channels, int sampleRate, int frames}) layout,
+    required int dataOffset,
+  }) : channels = layout.channels,
+       sampleRate = layout.sampleRate,
+       length = layout.frames,
+       _dataOffset = dataOffset;
 
   final MediaByteSource _source;
-  final ConformHeader _header;
 
-  int get channels => _header.channels;
-  int get sampleRate => _header.sampleRate;
+  /// Where the samples start — after whichever header the file wears.
+  final int _dataOffset;
+
+  final int channels;
+  final int sampleRate;
 
   /// Samples per channel.
-  int get length => _header.frames;
+  final int length;
 
   /// Opens the conform at [path] — framed or not, decided by its name.
   ///
@@ -74,22 +84,65 @@ class ConformPcmStreamReader {
   /// Parses [source]'s header, or returns null when it is not a conform
   /// this project wrote — a caller falling back to the resident path,
   /// never a crash.
-  static ConformPcmStreamReader? over(MediaByteSource source) {
+  static ConformPcmStreamReader? over(MediaByteSource source) =>
+      _over(source, ConformHeader.length, (head) {
+        final header = ConformHeader.parse(head);
+        return (
+          channels: header.channels,
+          sampleRate: header.sampleRate,
+          frames: header.frames,
+        );
+      });
+
+  /// A WAV this app wrote ([readWav16Header]) — the export's mix, which the
+  /// OS encoder streams into the movie: the same interleaved 16-bit samples
+  /// a conform holds, after another header.
+  ///
+  /// 🪦The mix was opened with [open] from 08-30, when a conform stopped
+  /// being a WAV — so it came back null, and every movie the OS encoder
+  /// made went out without its sound (09-25).
+  static ConformPcmStreamReader? overWav16(MediaByteSource source) =>
+      _over(source, wav16HeaderLength, (head) {
+        final wav = readWav16Header(head);
+        if (wav == null || wav.channels <= 0) {
+          return null;
+        }
+        return (
+          channels: wav.channels,
+          sampleRate: wav.sampleRate,
+          frames: wav.dataBytes ~/ (2 * wav.channels),
+        );
+      });
+
+  /// A reader over [source] once its first [headLength] bytes say what it
+  /// holds ([layoutOf], null for 「not this kind of file」), or null.
+  static ConformPcmStreamReader? _over(
+    MediaByteSource source,
+    int headLength,
+    ({int channels, int sampleRate, int frames})? Function(Uint8List head)
+    layoutOf,
+  ) {
     try {
-      final head = Uint8List(ConformHeader.length);
+      final head = Uint8List(headLength);
       if (source.readIntoSync(head, 0, head.length) < head.length) {
         return null;
       }
-      final header = ConformHeader.parse(head);
+      final layout = layoutOf(head);
       // ⛔The file has to actually HOLD what the header claims. A restore
       // killed mid-write leaves a short file, and reading windows out of
       // one would serve silence from beyond the end rather than saying the
       // conform is unusable — which is what makes rebuilding it the
       // caller's automatic answer.
-      if (source.lengthSync() < header.totalBytes) {
+      if (layout == null ||
+          source.lengthSync() <
+              headLength + layout.frames * 2 * layout.channels) {
         return null;
       }
-      return ConformPcmStreamReader._(source, header);
+      return ConformPcmStreamReader._(
+        source,
+        layout: layout,
+        dataOffset: headLength,
+      );
     } on Object {
       // A source that will not read, or a framed entry no engine here can
       // decompress: the caller falls back exactly as for a foreign file.
@@ -127,7 +180,7 @@ class ConformPcmStreamReader {
       final bytes = Uint8List(wanted);
       final read = _source.readIntoSync(
         bytes,
-        ConformHeader.length + start * 2 * channels,
+        _dataOffset + start * 2 * channels,
         wanted,
       );
       final got = read ~/ (2 * channels);

@@ -2,8 +2,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_pcm_scale.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
+import 'package:anicel/src/services/audio/wav16_header.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart'
+    show MediaFileBytes;
 import '../../helpers/temp_dir.dart';
 
 /// The disk half of streaming (AUDIO-PRO R6): windowed reads out of a
@@ -105,5 +109,80 @@ void main() {
       ConformPcmStreamReader.open('${directory.path}/missing.wav'),
       isNull,
     );
+  });
+
+  /// 🚨The export's mix is a WAV, and the OS encoder streams it into the
+  /// movie through this reader — which opened it as a conform from 08-30,
+  /// came back null, and sent every such movie out without its sound
+  /// (09-25).
+  group('the mix — a WAV this app wrote', () {
+    /// The same stereo ramp as [writeRamp], as the export writes a mix.
+    String writeMix(int lengthSamples) {
+      final samples = Float32List(lengthSamples * 2);
+      for (var index = 0; index < lengthSamples; index += 1) {
+        samples[index * 2] = (index % 1000) / 1000.0;
+        samples[index * 2 + 1] = -((index % 1000) / 1000.0);
+      }
+      final path = '${directory.path}/mix.wav';
+      File(path).writeAsBytesSync(
+        wav16Bytes(int16PcmOf(samples), sampleRate: 48000, channels: 2),
+      );
+      return path;
+    }
+
+    test('🚨it opens, and a middle window is the samples the mix holds', () {
+      final reader = ConformPcmStreamReader.overWav16(
+        MediaFileBytes(writeMix(4000)),
+      );
+      expect(reader, isNotNull, reason: 'opened as a conform, it was null');
+      expect(reader!.channels, 2);
+      expect(reader.sampleRate, 48000);
+      expect(reader.length, 4000);
+
+      final window = reader.readWindow(1234, 500);
+      expect(window.startSample, 1234);
+      expect(window.samples, hasLength(500 * 2));
+      for (var frame = 0; frame < 500; frame += 1) {
+        final value = ((1234 + frame) % 1000) / 1000.0;
+        expect(window.samples[frame * 2], int16FromUnitSample(value) / 32768);
+        expect(
+          window.samples[frame * 2 + 1],
+          int16FromUnitSample(-value) / 32768,
+        );
+      }
+    });
+
+    test('a conform is not the mix, and the mix is not a conform', () {
+      expect(
+        ConformPcmStreamReader.overWav16(MediaFileBytes(writeRamp(100))),
+        isNull,
+      );
+      expect(ConformPcmStreamReader.open(writeMix(100)), isNull);
+    });
+
+    test('a mix shorter than its header claims is not streamed', () {
+      final path = writeMix(1000);
+      final bytes = File(path).readAsBytesSync();
+      File(path).writeAsBytesSync(bytes.sublist(0, bytes.length - 10));
+
+      expect(ConformPcmStreamReader.overWav16(MediaFileBytes(path)), isNull);
+    });
+
+    test('another program\'s WAV is the decoders\' — a chunk before the '
+        'samples, or eight-bit ones, is not ours to stream', () {
+      final ours = wav16HeaderBytes(
+        dataBytes: 4,
+        sampleRate: 48000,
+        channels: 1,
+      );
+      expect(readWav16Header(ours), isNotNull, reason: 'the premise');
+      final listed = Uint8List.fromList(ours)
+        ..setRange(36, 40, 'LIST'.codeUnits);
+      final eightBit = Uint8List.fromList(ours);
+      ByteData.sublistView(eightBit).setUint16(34, 8, Endian.little);
+
+      expect(readWav16Header(listed), isNull);
+      expect(readWav16Header(eightBit), isNull);
+    });
   });
 }

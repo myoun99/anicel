@@ -6,6 +6,7 @@ import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_wav_export.dart';
+import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import '../../helpers/temp_dir.dart';
@@ -57,18 +58,13 @@ void main() {
     String path,
   ) {
     final bytes = File(path).readAsBytesSync();
-    final view = ByteData.sublistView(bytes);
-    expect(
-      String.fromCharCodes(bytes.sublist(0, 4)),
-      'RIFF',
-      reason: 'any audio tool starts here',
-    );
-    expect(String.fromCharCodes(bytes.sublist(8, 12)), 'WAVE');
+    final wav = readWav16Header(bytes);
+    expect(wav, isNotNull, reason: 'any audio tool starts here');
     return (
-      sampleRate: view.getUint32(24, Endian.little),
-      channels: view.getUint16(22, Endian.little),
-      dataBytes: view.getUint32(40, Endian.little),
-      pcm: Uint8List.sublistView(bytes, 44),
+      sampleRate: wav!.sampleRate,
+      channels: wav.channels,
+      dataBytes: wav.dataBytes,
+      pcm: Uint8List.sublistView(bytes, wav16HeaderLength),
     );
   }
 
