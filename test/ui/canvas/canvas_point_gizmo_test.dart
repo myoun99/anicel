@@ -378,7 +378,7 @@ void main() {
       // Stepping back onto the LAYER row takes it away — the layer is what
       // you draw on, and nothing there declares a manipulator.
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-layer-row-gizmo-draw')),
+        find.byKey(const ValueKey<String>('timeline-layer-name-gizmo-draw')),
       );
       await tester.pumpAndSettle();
       expect(find.byKey(_gizmoKey), findsNothing);

@@ -161,7 +161,7 @@ void main() {
     // this the fix could be "rows never select" and the two tests above
     // would still pass.
     await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-layer-row-a')),
+      find.byKey(const ValueKey<String>('timeline-layer-name-a')),
       const Offset(30, 0),
       kind: PointerDeviceKind.mouse,
     );

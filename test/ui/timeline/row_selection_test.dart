@@ -178,7 +178,7 @@ void main() {
         (layer) => layer.kind == LayerKind.animation,
       );
       final row = find.byKey(
-        ValueKey<String>('timeline-layer-row-${drawing.id}'),
+        ValueKey<String>('timeline-layer-name-${drawing.id}'),
       );
       await tester.ensureVisible(row);
       await tester.pumpAndSettle();
@@ -490,6 +490,11 @@ void main() {
       final row = find.byKey(
         ValueKey<String>('timeline-layer-row-${target.id}'),
       );
+      // Taken by its name — a drawing row's centre is its fill-reference
+      // button since the opacity column widened (text-scale-rail-opac).
+      final grip = find.byKey(
+        ValueKey<String>('timeline-layer-name-${target.id}'),
+      );
       await tester.ensureVisible(row);
       await tester.pumpAndSettle();
       // ⚠️CONTRACT CHANGED (T1, 2026-08-13): the ring per row became ONE band
@@ -505,7 +510,7 @@ void main() {
 
       // The sideways nudge is the SELECT drag (only the rail's axis counts
       // as travel), exactly as the click-clears test above drives it.
-      await tester.drag(row, const Offset(30, 0));
+      await tester.drag(grip, const Offset(30, 0));
       await tester.pumpAndSettle();
       expect(s.rowSelection.value, isNotEmpty);
 

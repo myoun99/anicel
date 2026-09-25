@@ -90,8 +90,12 @@ void main() {
     return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
   }
 
+  /// A rail row where a hand takes it: its name. ⛔Not the row's centre — a
+  /// drawing row's centre is its fill-reference button since the opacity
+  /// column widened (text-scale-rail-opac, 유저 2026-09-25), and a drag that
+  /// starts on a control is the control's.
   Finder railRow(String id) =>
-      find.byKey(ValueKey<String>('timeline-layer-row-$id'));
+      find.byKey(ValueKey<String>('timeline-layer-name-$id'));
 
   List<String> chipLabels(WidgetTester tester) => [
     for (final item in tester.widget<DragChip>(find.byType(DragChip)).items)
@@ -378,9 +382,19 @@ void main() {
 
     final header = await pickUp(
       tester,
-      find.byKey(
-        ValueKey<String>('timeline-lane-label-b-fx-group:${effectId.value}'),
-      ),
+      // By its label, like a layer row by its name ([railRow]): the header
+      // wears the layer row's trailing skeleton, and its centre is the
+      // group's Reset since the opacity column widened.
+      find
+          .descendant(
+            of: find.byKey(
+              ValueKey<String>(
+                'timeline-lane-label-b-fx-group:${effectId.value}',
+              ),
+            ),
+            matching: find.byType(Text),
+          )
+          .first,
       select: const Offset(30, 0),
       nudge: const Offset(0, 12),
     );
@@ -396,7 +410,7 @@ void main() {
     await tester.pumpAndSettle();
     final column = await pickUp(
       tester,
-      find.byKey(const ValueKey<String>('xsheet-layer-row-a')),
+      find.byKey(const ValueKey<String>('xsheet-layer-name-a')),
       // The sheet runs the other way, so its select nudge does too.
       select: const Offset(0, 30),
       nudge: const Offset(12, 0),

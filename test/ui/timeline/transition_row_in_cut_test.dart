@@ -47,7 +47,11 @@ void main() {
   Future<EditorSessionManager> pumpTwoCutsWithOverlap(
     WidgetTester tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    // ⚠️1409, not a round number: ⑧'s range stops at the edge of the frame
+    // WINDOW, not at the cut's end (span-range-stops-at-the-window, measured
+    // 2026-09-25: 3 at 1400, 4 at 1409, 5 at 1600, 8 at 2400). 1409 is the
+    // window ⑧ measured before the OPAC column took 9 (text-scale-rail-opac).
+    await tester.binding.setSurfaceSize(const Size(1409, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: createDefaultProject())),

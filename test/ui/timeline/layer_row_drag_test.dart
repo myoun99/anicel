@@ -136,6 +136,14 @@ Future<void> _pump(WidgetTester tester, {Project? project}) async {
 Finder _railRow(String id) =>
     find.byKey(ValueKey<String>('timeline-layer-row-$id'));
 
+/// Where a rail row is GRABBED: its name — the part of the row that only
+/// ever means the row. ⛔Not the row's centre: the rail's columns decide
+/// what sits there, and when the opacity column widened to hold OPAC
+/// (text-scale-rail-opac, 유저 2026-09-25) a drawing row's centre became its
+/// fill-reference button, which owns the press.
+Finder _railRowGrip(String id) =>
+    find.byKey(ValueKey<String>('timeline-layer-name-$id'));
+
 /// ⑨ (user, 2026-08-12): 「첫 드래그가 선택(1개/여러 개), 그 다음이 드래그」.
 ///
 /// So every MOVE below selects its row first. The nudge goes SIDEWAYS: the
@@ -228,7 +236,7 @@ void main() {
     // rows from a grab in this row's middle. (It also has to clear the
     // middle band, which belongs to the on-row drop; landing exactly on the
     // boundary does both.)
-    final row = _railRow('a');
+    final row = _railRowGrip('a');
     await tester.ensureVisible(row);
     await _selectRow(tester, row);
     await tester.pumpAndSettle();
@@ -242,7 +250,7 @@ void main() {
       'any legal slot leaves the stack alone', (tester) async {
     await _pump(tester);
     final session = _sessionOf(tester);
-    final row = _railRow('a');
+    final row = _railRowGrip('a');
     await tester.ensureVisible(row);
     await _selectRow(tester, row);
     await tester.pumpAndSettle();
@@ -287,7 +295,7 @@ void main() {
   testWidgets('F-31①: the caret sits ON the row boundary, not inside a row '
       '— 유저 2026-08-28: 「가로선이 이상한 위치에 있다」', (tester) async {
     await _pump(tester);
-    final row = _railRow('a');
+    final row = _railRowGrip('a');
     await tester.ensureVisible(row);
     await _selectRow(tester, row);
     await tester.pumpAndSettle();
@@ -333,7 +341,7 @@ void main() {
     // 'c' is the TOP row of the rail. ④ made the two directions the same
     // question — "which gap is the pointer nearest" — so this reads exactly
     // like the upward case, same distance, opposite sign.
-    final row = _railRow('c');
+    final row = _railRowGrip('c');
     await tester.ensureVisible(row);
     await _selectRow(tester, row);
     await tester.pumpAndSettle();
@@ -376,6 +384,12 @@ void main() {
     final header = find.byKey(
       ValueKey<String>('timeline-lane-label-b-fx-group:${firstId.value}'),
     );
+    // Taken by its label, as a layer row by its name ([_railRowGrip]): the
+    // header wears the layer row's trailing skeleton, and its centre is the
+    // group's Reset since the opacity column widened.
+    final grip = find
+        .descendant(of: header, matching: find.byType(Text))
+        .first;
     await tester.ensureVisible(header);
     await tester.pumpAndSettle();
 
@@ -385,7 +399,7 @@ void main() {
     // left it the one row kind with a grammar of its own. It follows the
     // cells' now: the FIRST drag selects and the second moves, exactly as a
     // layer row does (which is what `_selectRow` is doing for those above).
-    await _selectRow(tester, header);
+    await _selectRow(tester, grip);
     expect(
       chain(),
       before,
@@ -399,7 +413,7 @@ void main() {
           'be named — the one thing ③ and ⑨ removed everywhere else',
     );
 
-    await tester.drag(header, const Offset(0, 28));
+    await tester.drag(grip, const Offset(0, 28));
     await tester.pumpAndSettle();
 
     expect(
@@ -425,13 +439,15 @@ void main() {
     // half columns to stand on the next one — the rail's rule transposed,
     // which is the whole point of the two surfaces sharing this drag.
     final header = find.byKey(const ValueKey<String>('xsheet-layer-row-a'));
-    await tester.ensureVisible(header);
+    // Grabbed by its name, like the rail's rows ([_railRowGrip]).
+    final grip = find.byKey(const ValueKey<String>('xsheet-layer-name-a'));
+    await tester.ensureVisible(grip);
     await tester.pumpAndSettle();
     // ⑨: the sheet runs the other way, so its select nudge does too.
-    await tester.drag(header, const Offset(0, 30));
+    await tester.drag(grip, const Offset(0, 30));
     await tester.pumpAndSettle();
     final width = tester.getSize(header).width;
-    await tester.drag(header, Offset(width * 1.5, 0));
+    await tester.drag(grip, Offset(width * 1.5, 0));
     await tester.pumpAndSettle();
 
     expect(_order(session), ['b', 'a', 'c']);
@@ -445,11 +461,17 @@ void main() {
 
     // The rail runs top-down C, B+1, B, A — one row of downward travel puts
     // C's caret between B and B+1, which is the group's inside.
-    final row = _railRow('c');
+    final row = _railRowGrip('c');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
     await _selectRow(tester, row);
-    final gesture = await tester.startGesture(tester.getCenter(row));
+    // Across the rail at the name, along it at the ROW's middle: one row of
+    // travel from there lands exactly on B+1's middle, and the name's own
+    // middle sits half a pixel higher (the row's bottom hairline), which is
+    // nearer the boundary C already stands on.
+    final gesture = await tester.startGesture(
+      Offset(tester.getCenter(row).dx, tester.getCenter(_railRow('c')).dy),
+    );
     await tester.pump(const Duration(milliseconds: 16));
     await gesture.moveBy(const Offset(0, 28));
     await tester.pump();
@@ -485,7 +507,7 @@ void main() {
     // The rail renders the stack reversed: F, C, B, A top-down. Three rows
     // of upward travel from A's centre lands the POINTER in the middle of
     // F's row — which is the on-row band, not the gaps either side of it.
-    final row = _railRow('a');
+    final row = _railRowGrip('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
     await _selectRow(tester, row);
@@ -533,7 +555,7 @@ void main() {
     // pointer in the middle of B's row, and a row's middle is the
     // structural drop. B carries no riders, so there is no inside for a
     // caret to aim at — this is the only way to make the first one.
-    final row = _railRow('a');
+    final row = _railRowGrip('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
     await _selectRow(tester, row);
@@ -576,7 +598,7 @@ void main() {
 
     // Rail top-down: Camera, C, B, A. 'c' is above 'b' in the model, so
     // dragging its row DOWN onto B's is the descent.
-    final row = _railRow('c');
+    final row = _railRowGrip('c');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
     await _selectRow(tester, row);
@@ -608,7 +630,7 @@ void main() {
     // the drawing section (the camera row is the next boundary, and no
     // drawing row may cross it). Aimed at the BOUNDARY: a row's middle is
     // the structural drop now (R5 #15), and detaching is a move.
-    final row = _railRow('over');
+    final row = _railRowGrip('over');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
     await _selectRow(tester, row);
@@ -636,7 +658,7 @@ void main() {
   testWidgets('the drag is one undo', (tester) async {
     await _pump(tester);
     final session = _sessionOf(tester);
-    final row = _railRow('a');
+    final row = _railRowGrip('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
     await _selectRow(tester, row);

@@ -252,7 +252,7 @@ void main() {
 
       // And back: pressing the layer's own row takes it home.
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-layer-row-$_cameraId')),
+        find.byKey(const ValueKey<String>('timeline-layer-name-$_cameraId')),
       );
       await tester.pumpAndSettle();
       expect(find.byKey(cellRing), findsOneWidget);
@@ -377,7 +377,7 @@ void main() {
       await _openLanes(tester);
       final session = _sessionOf(tester);
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-layer-row-$_drawId')),
+        find.byKey(const ValueKey<String>('timeline-layer-name-$_drawId')),
       );
       await tester.pumpAndSettle();
 
@@ -600,7 +600,7 @@ void main() {
 
       // And back: the layer row takes strokes again.
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-layer-row-$_drawId')),
+        find.byKey(const ValueKey<String>('timeline-layer-name-$_drawId')),
       );
       await tester.pumpAndSettle();
       expect(canvasTakesStrokes(), isTrue);

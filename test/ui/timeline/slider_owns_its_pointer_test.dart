@@ -96,7 +96,7 @@ void main() {
       'about WHOSE pointer it is, not about direction', (tester) async {
     final session = await pump(tester);
     final layerId = session.activeLayer!.id;
-    final row = find.byKey(ValueKey<String>('timeline-layer-row-$layerId'));
+    final row = find.byKey(ValueKey<String>('timeline-layer-name-$layerId'));
     expect(row, findsOneWidget);
 
     // The sideways nudge: the rail counts only its own axis as travel, so

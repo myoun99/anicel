@@ -83,6 +83,13 @@ void main() {
   Finder railRow(String id) =>
       find.byKey(ValueKey<String>('timeline-layer-row-$id'));
 
+  /// Where a finger lands ON a row: its name. ⛔Not the row's centre — a
+  /// drawing row's centre is its fill-reference button since the opacity
+  /// column widened (text-scale-rail-opac, 유저 2026-09-25), and a finger
+  /// on a control is the control's.
+  Finder railRowGrip(String id) =>
+      find.byKey(ValueKey<String>('timeline-layer-name-$id'));
+
   Future<void> fingerDrag(WidgetTester tester, Finder at, Offset by) async {
     final gesture = await tester.startGesture(
       tester.getCenter(at),
@@ -107,7 +114,7 @@ void main() {
       reason: 'fixture premise: there is somewhere to scroll to',
     );
 
-    await fingerDrag(tester, railRow('l13'), const Offset(0, -120));
+    await fingerDrag(tester, railRowGrip('l13'), const Offset(0, -120));
 
     expect(
       controller.offset,
@@ -159,7 +166,7 @@ void main() {
       reason: 'nothing selected yet',
     );
 
-    await fingerDrag(tester, railRow('l13'), const Offset(0, -120));
+    await fingerDrag(tester, railRowGrip('l13'), const Offset(0, -120));
 
     expect(
       session.rowSelection.value.length,
