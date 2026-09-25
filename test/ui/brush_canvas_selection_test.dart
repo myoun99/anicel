@@ -1046,6 +1046,35 @@ void main() {
       expect(inkAt(env.coordinator, 40, 35), isNonZero, reason: '+10,+5');
       expect(inkAt(env.coordinator, 30, 30), 0);
     });
+
+    // The shape fill paints the outline it was handed (R26 #10) — drawn on
+    // the canvas, so on a posed row the fill goes where the row SHOWS it.
+    testWidgets('a shape fill paints the artwork its outline shows', (
+      tester,
+    ) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.fillShape,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+      expect(inkAt(env.coordinator, 70, 70), 0, reason: 'blank to begin with');
+
+      await dragOnLayer(tester, const Offset(160, 60), const Offset(190, 90));
+      await tester.pump();
+
+      expect(
+        inkAt(env.coordinator, 70, 70),
+        isNonZero,
+        reason: 'the canvas outline (160..190) shows artwork (60..90)',
+      );
+      expect(inkAt(env.coordinator, 170, 70), 0);
+    });
   });
 
   /// 🚨★★★**F-164 — 유저 2026-09-18 실기**: 「변형중에 다른프레임가면 변형

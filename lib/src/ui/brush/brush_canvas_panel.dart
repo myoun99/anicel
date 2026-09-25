@@ -1871,8 +1871,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           ? widget.fillDabAt
           : null,
       // R26 #18: the live stroke shows clipped to the selection, exactly
-      // as the commit will clip it.
-      selectionRegion: widget.selectionCommands?.region,
+      // as the commit will clip it — in the row's own artwork, where this
+      // view draws (a-marquee-on-a-posed-row).
+      selectionRegion: switch (widget.selectionCommands?.region) {
+        null => null,
+        final selection => _selectionSeat.regionOnTheRow(selection),
+      },
       onStrokeLanderChanged: widget.onStrokeLanderChanged,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
@@ -2011,11 +2015,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   void _cutPieceFromShape(CanvasSelectionShape shape) {
     final slot = widget.cutPieceSlot;
     final coordinator = widget._editableCoordinator;
-    if (slot == null || coordinator == null) {
+    // The outline is drawn on the canvas; the pixels are the row's own
+    // (a-marquee-on-a-posed-row) — and the PIECE stays those pure pixels in
+    // the row's own coordinates, as confirmed above.
+    final onTheRow = _selectionSeat.regionOnTheRow(
+      CanvasSelectionRegion.shape(shape),
+    );
+    if (slot == null || coordinator == null || onTheRow == null) {
       return;
     }
     final piece = buildCutPiece(
-      region: CanvasSelectionRegion.shape(shape),
+      region: onTheRow,
       surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
     );
     // Null = the outline covered no paint. Leave the slot alone rather
@@ -2056,10 +2066,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// dab from a different source.
   void _fillDrawnShape(CanvasSelectionShape shape) {
     final build = widget.shapeFillDabFor;
-    if (build == null || widget._editableCoordinator == null) {
+    // Drawn on the canvas, painted into the row's own artwork where the row
+    // shows it (a-marquee-on-a-posed-row).
+    final onTheRow = _selectionSeat.shapeOnTheRow(shape);
+    if (build == null ||
+        widget._editableCoordinator == null ||
+        onTheRow == null) {
       return;
     }
-    final dab = build(shape, _brush.color);
+    final dab = build(onTheRow, _brush.color);
     if (dab == null) {
       return;
     }

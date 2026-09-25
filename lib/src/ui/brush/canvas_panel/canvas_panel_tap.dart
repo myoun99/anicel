@@ -246,19 +246,23 @@ class _CanvasPanelTap {
         }
         return (point) {
           final piece = slot.piece;
-          if (piece == null) {
+          // Pressed on the canvas, landed on the row's own artwork where the
+          // row shows the press (a-marquee-on-a-posed-row) — the piece is the
+          // row's pure pixels, so it lands in the row's own coordinates.
+          final onTheRow = _state._selectionSeat.pointOnTheRow(point);
+          if (piece == null || onTheRow == null) {
             return;
           }
           _state._commitStampDabs([
             buildCutStampDab(
               piece: piece,
-              center: point,
+              center: onTheRow,
               opacity: _state._brush.cutStampOpacity,
             ),
           ]);
           // A press is also the start of a possible drag, and the drag
           // measures its spacing from the stamp that just landed.
-          _lastStampCenter = point;
+          _lastStampCenter = onTheRow;
         };
       case CanvasTool.eyedropper:
         final sample = _state.widget.sampleColorAt;
@@ -357,10 +361,13 @@ class _CanvasPanelTap {
     }
     final piece = _state.widget.cutPieceSlot?.piece;
     final from = _lastStampCenter;
-    if (piece == null || from == null) {
+    // The trail is laid on the row's own artwork, as the press was, so the
+    // spacing is the piece's own size in its own pixels.
+    final to = _state._selectionSeat.pointOnTheRow(point);
+    if (piece == null || from == null || to == null) {
       return;
     }
-    final centers = cutStampCentersAlong(piece: piece, from: from, to: point);
+    final centers = cutStampCentersAlong(piece: piece, from: from, to: to);
     if (centers.isEmpty) {
       return;
     }

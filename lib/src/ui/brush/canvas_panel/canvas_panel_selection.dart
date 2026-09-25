@@ -73,6 +73,45 @@ class _CanvasPanelSelection {
 
   int _liftTokenSeq = 0;
 
+  /// [region] — drawn on the CANVAS — stated in the active row's own
+  /// artwork: the pixels a canvas outline means on a posed row, through the
+  /// placement the row is shown with. The pixel verbs' own restatement
+  /// ([regionInArtworkSpace]); an unplaced row gets [region] back as it is.
+  ///
+  /// 🚨★★★**EVERY OUTLINE THAT REACHES THE ROW'S PIXELS CROSSES HERE**
+  /// (a-marquee-on-a-posed-row, 2026-09-25) — the lift, the cut, the shape
+  /// fill and the clip a stroke lands through. Each took the canvas outline
+  /// as the row's own coordinates, so on a row placed 100 to the right they
+  /// all acted 100 to the left of what the user drew around.
+  ///
+  /// Null when the placement is singular — a backstop, since no pose the
+  /// model can hold collapses a row.
+  CanvasSelectionRegion? regionOnTheRow(CanvasSelectionRegion region) {
+    final placement = _state.widget.interactiveContentPose;
+    return regionInArtworkSpace(
+      region: region,
+      pose: placement?.pose,
+      anchorPoint: placement?.anchorPoint,
+      canvasSize: _state.widget.canvasSize,
+    );
+  }
+
+  /// [shape] on the active row's artwork — [regionOnTheRow] for one outline.
+  CanvasSelectionShape? shapeOnTheRow(CanvasSelectionShape shape) =>
+      regionOnTheRow(CanvasSelectionRegion.shape(shape))?.steps.single.shapes
+          .single;
+
+  /// A canvas point on the active row's artwork — where a press on the
+  /// canvas lands on a posed row (a stamp's), the same inverse the eyedropper
+  /// and the guides ask ([canvasToArtwork]).
+  CanvasPoint? pointOnTheRow(CanvasPoint point) {
+    final placement = _state.widget.interactiveContentPose;
+    if (placement == null) {
+      return point;
+    }
+    return canvasToArtwork(placement, _state.widget.canvasSize)?.apply(point);
+  }
+
   /// Lifts [region]'s pixels out of the cel (R19 pixel model): the stamp
   /// comes back to float and the cel it came from shows the hole — **while
   /// the document keeps every byte it had**.
@@ -122,18 +161,12 @@ class _CanvasPanelSelection {
       return null;
     }
     // 🚨THE SHAPE IS THE CANVAS'S, THE PIXELS ARE THE ROW'S OWN
-    // (a-marquee-on-a-posed-row): the marquee is taken back through the
-    // row's placement to the artwork it shows — the pixel verbs' own
-    // restatement ([regionInArtworkSpace]) — and the lifted stamp comes out
-    // on the canvas, where the box that moves it lives ([stampOnCanvas]).
+    // (a-marquee-on-a-posed-row): the marquee is taken back to the artwork
+    // it shows ([regionOnTheRow]), and the lifted stamp comes out on the
+    // canvas, where the box that moves it lives ([stampOnCanvas]).
     final placement = _state.widget.interactiveContentPose;
     final canvasSize = _state.widget.canvasSize;
-    final inArtwork = regionInArtworkSpace(
-      region: region,
-      pose: placement?.pose,
-      anchorPoint: placement?.anchorPoint,
-      canvasSize: canvasSize,
-    );
+    final inArtwork = regionOnTheRow(region);
     if (inArtwork == null) {
       return null;
     }
@@ -183,9 +216,16 @@ class _CanvasPanelSelection {
   /// no per-mode branches. Null return = the whole stroke fell outside
   /// the selection and there is nothing to commit.
   BrushStrokeCommitData? clipStrokeToSelection(BrushStrokeCommitData data) {
-    final region = _state.widget.selectionCommands?.region;
-    if (region == null) {
+    final selection = _state.widget.selectionCommands?.region;
+    if (selection == null) {
       return data;
+    }
+    // The stroke is the row's own artwork (the draw-through wrap); the
+    // selection is the canvas's — on a posed row they meet only once the
+    // selection is taken back to the artwork it shows.
+    final region = regionOnTheRow(selection);
+    if (region == null) {
+      return null;
     }
     if (data.promotedTiles != null) {
       // The stroke was pre-blended THROUGH the selection mask (R28): the

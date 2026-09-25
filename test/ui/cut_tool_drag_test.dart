@@ -17,6 +17,9 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/cut_piece_stamp.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart'
+    show LayerPoseSample;
+import 'package:anicel/src/models/transform_track.dart' show TransformPose;
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -63,6 +66,9 @@ void main() {
     WidgetTester tester, {
     required CanvasTool tool,
     CanvasShapeKind shapeKind = CanvasShapeKind.rect,
+    // a-marquee-on-a-posed-row: where the row stands on the canvas. Null =
+    // unposed.
+    LayerPoseSample? placement,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -98,6 +104,7 @@ void main() {
               )),
               selectionCommands: commands,
               cutPieceSlot: slot,
+              interactiveContentPose: placement,
               // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to
               // canvas coordinates one for one, and an uncontrolled panel
               // now opens at the IDENTITY — one artwork pixel per DEVICE
@@ -804,5 +811,67 @@ void main() {
       isNot(first),
       reason: 'the stamp and the settings preview read a new id as new pixels',
     );
+  });
+
+  // 🚨a-marquee-on-a-posed-row (2026-09-25): the cut outline and the stamp's
+  // press are drawn on the CANVAS, around and onto the picture the user
+  // sees; a posed row's pixels are its own artwork, placed elsewhere. Both
+  // cross through the row's placement, as the lift does — the piece itself
+  // stays the row's pure pixels in its own coordinates (유저 확정: 「트랜스폼
+  // 이나 이런거 반영 안 한 진짜 순수 픽셀」).
+  group('a POSED row (placed 100 to the right)', () {
+    final placedRight = (
+      pose: TransformPose(center: CanvasPoint(x: 100, y: 0)),
+      anchorPoint: CanvasPoint(x: 0, y: 0),
+    );
+
+    testWidgets('a cut around the picture it shows takes that picture', (
+      tester,
+    ) async {
+      final env = await pumpPanel(
+        tester,
+        tool: CanvasTool.cut,
+        placement: placedRight,
+      );
+      // The bar (artwork 10..90 at y 40) shows at canvas 110..190.
+      await dragOnLayer(tester, const Offset(106, 30), const Offset(194, 50));
+      expect(env.slot.isNotEmpty, isTrue, reason: 'the outline held ink');
+      expect(
+        env.slot.piece!.originLeft,
+        lessThan(20),
+        reason: 'the piece is the row\'s own pixels, in its own coordinates',
+      );
+    });
+
+    testWidgets('a stamp lands where it is pressed on the canvas', (
+      tester,
+    ) async {
+      final env = await pumpPanel(
+        tester,
+        tool: CanvasTool.cut,
+        placement: placedRight,
+      );
+      await dragOnLayer(tester, const Offset(106, 30), const Offset(194, 50));
+      expect(env.slot.isNotEmpty, isTrue);
+
+      await env.setTool(CanvasTool.cutStamp);
+      final canvas = find.byType(BrushCanvasPanel);
+      await tester.tapAt(tester.getTopLeft(canvas) + const Offset(130, 140));
+      await tester.pump();
+
+      int inkAt(int x, int y) =>
+          surfacePixelRgba(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            x,
+            y,
+          ) ??
+          0;
+      expect(
+        inkAt(30, 140),
+        isNot(0),
+        reason: 'pressed at canvas (130,140), which the row shows (30,140) at',
+      );
+      expect(inkAt(130, 140), 0);
+    });
   });
 }
