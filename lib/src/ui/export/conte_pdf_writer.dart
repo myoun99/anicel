@@ -12,7 +12,8 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../conte/conte_fonts.dart';
-import '../conte/conte_page_painter.dart' show conteWrappedLines;
+import '../conte/conte_page_painter.dart'
+    show ContePagePainter, conteWrappedLines;
 import '../sheet_painting.dart' show sheetWordsSize;
 import '../theme/app_theme.dart' show AppTypography;
 
@@ -277,13 +278,26 @@ class _ContePdfPageWriter {
     _g.drawImage(image, drawn.left, _y(drawn.bottom), drawn.width, drawn.height);
   }
 
-  /// The ink rasters cover their window at the ink's scale, so they draw
-  /// 1:1 onto the rect, clipped to it.
+  /// An ink raster laid at the ink's own scale from its window's corner and
+  /// clipped to the window — the screen's `paintSheetInkWindow`.
+  ///
+  /// ⛔Not stretched to the window: a cell's surface is the whole BODY's (a
+  /// cell that grows over more rows reveals more of the same ink), and its
+  /// band shows only the top of it. Stretched whole into a one-row band,
+  /// the handwriting printed five times squeezed, on paper only.
   void _clippedTo(PdfImage image, ui.Rect rect) {
+    const scale = ContePagePainter.conteInkScale;
+    final height = image.height / scale;
     _g.saveContext();
     _g.drawRect(rect.left, _y(rect.bottom), rect.width, rect.height);
     _g.clipPath();
-    _g.drawImage(image, rect.left, _y(rect.bottom), rect.width, rect.height);
+    _g.drawImage(
+      image,
+      rect.left,
+      _y(rect.top + height),
+      image.width / scale,
+      height,
+    );
     _g.restoreContext();
   }
 

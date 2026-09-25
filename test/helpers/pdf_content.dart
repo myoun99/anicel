@@ -1,7 +1,7 @@
 import 'dart:convert' show latin1;
 import 'dart:io' show ZLibDecoder;
 import 'dart:typed_data';
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Rect;
 
 /// What a PDF's pages draw, read back out of the file — the writer's own
 /// operators, in PDF points (y up).
@@ -59,4 +59,25 @@ List<Offset> pdfTextOrigins(Uint8List pdf) => [
         if ((double.tryParse(tokens[i - 2]), double.tryParse(tokens[i - 1]))
             case (final double x, final double y))
           Offset(x, y),
+];
+
+/// Where each image is laid: the `w 0 0 h x y cm` before every `Do`, as the
+/// rect it spans.
+List<Rect> pdfImagePlacements(Uint8List pdf) => [
+  for (final tokens in _streamTokens(pdf))
+    for (var i = 6; i + 2 < tokens.length; i += 1)
+      if (tokens[i] == 'cm' && tokens[i + 2] == 'Do')
+        if ((
+              double.tryParse(tokens[i - 6]),
+              double.tryParse(tokens[i - 3]),
+              double.tryParse(tokens[i - 2]),
+              double.tryParse(tokens[i - 1]),
+            )
+            case (
+              final double w,
+              final double h,
+              final double x,
+              final double y,
+            ))
+          Rect.fromLTWH(x, y, w, h),
 ];
