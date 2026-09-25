@@ -1,8 +1,11 @@
+import 'dart:ui' show ClipOp;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -55,6 +58,10 @@ Project _project() => Project(
           name: 'cut-1',
           duration: 10,
           canvasSize: const CanvasSize(width: 640, height: 360),
+          // Labelled, so the cut's bands and the conte blocks' differ.
+          metadata: const CutMetadata(
+            mark: LayerMark(process: LayerProcess.art),
+          ),
           layers: [
             Layer(
               id: const LayerId('cut-1-sb'),
@@ -221,18 +228,21 @@ void main() {
       ),
     );
     // As ARGB: a Paint keeps its colour in 32 bits.
+    int ink(Color ground) =>
+        blockEdgeGripColor(BlockEdgeGripInk.rest, ground: ground).toARGB32();
+    bool drawn(int ink, ClipOp op) => spy.draws.any(
+      (draw) => draw.ink == ink && draw.clips.contains((band.rect, op)),
+    );
     expect(
-      spy.inks.map((ink) => ink.toARGB32()),
-      containsAll([
-        blockEdgeGripColor(
-          BlockEdgeGripInk.rest,
-          ground: band.color,
-        ).toARGB32(),
-        blockEdgeGripColor(
-          BlockEdgeGripInk.rest,
-          ground: conteSheetInk,
-        ).toARGB32(),
-      ]),
+      drawn(ink(band.color), ClipOp.intersect),
+      isTrue,
+      reason: 'the band\'s ink, inside the band',
+    );
+    expect(
+      drawn(ink(conteSheetInk), ClipOp.difference),
+      isTrue,
+      reason: 'the plate\'s ink everywhere but the band — ↩️one ink on both '
+          'would lay a light triangle under the band\'s dark one',
     );
   });
 
@@ -279,12 +289,28 @@ void main() {
   });
 }
 
-/// The ink of every mark laid down.
+/// The ink of every mark laid down (ARGB), with the clips it was laid in.
 class _InkSpy implements Canvas {
-  final inks = <Color>[];
+  final draws = <({int ink, List<(Rect, ClipOp)> clips})>[];
+  var _clips = <(Rect, ClipOp)>[];
+  final _saved = <List<(Rect, ClipOp)>>[];
 
   @override
-  void drawPath(Path path, Paint paint) => inks.add(paint.color);
+  void save() => _saved.add(_clips);
+
+  @override
+  void restore() => _clips = _saved.removeLast();
+
+  @override
+  void clipRect(
+    Rect rect, {
+    ClipOp clipOp = ClipOp.intersect,
+    bool doAntiAlias = true,
+  }) => _clips = [..._clips, (rect, clipOp)];
+
+  @override
+  void drawPath(Path path, Paint paint) =>
+      draws.add((ink: paint.color.toARGB32(), clips: _clips));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

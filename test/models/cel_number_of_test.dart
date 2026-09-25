@@ -64,14 +64,21 @@ void main() {
       (word: 'BOOK1', mark: null),
       reason: 'a NAMED cel prints its name on every kind',
     );
+  });
+
+  test('🗣️and so does every kind but ANIMATION — the one whose unnamed '
+      'drawing is an in-between (유저 2026-09-26: 「애니메이션 이외 레이어는 '
+      '이름없으면 진짜 이름없도록 통일」)', () {
     for (final kind in LayerKind.values) {
-      if (kind != image) {
-        expect(
-          drawingHeadOf(null, kind: kind).mark,
-          unnamedDrawingMark,
-          reason: '${kind.name} keeps the mark',
-        );
-      }
+      expect(
+        drawingHeadOf(null, kind: kind),
+        kind == LayerKind.animation
+            ? (word: '', mark: unnamedDrawingMark)
+            : (word: '', mark: null),
+        reason: kind.name,
+      );
     }
+    // ↩️Every kind but the image one kept the mark until then — the
+    // storyboard's panels wore it on their bands.
   });
 }

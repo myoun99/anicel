@@ -19,17 +19,22 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart'
+    show defaultCutCanvasSize;
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/conte_ink.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_cell_marker.dart'
     show timelineCellWritesNothing;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show storyboardCutBlockBackgroundColor;
+    show
+        storyboardCutBlockBackgroundColor,
+        storyboardPanelPictureGroundColor;
 import 'storyboard_cut_block_probe.dart';
 
 /// The cut block is FIVE BANDS, top to bottom: the CUT's, the CONTE
@@ -795,5 +800,183 @@ void main() {
     expect(asked, {StoryboardThumbnailTier.strip});
     await pumpAt(StoryboardPanel.maxTrackLaneHeight);
     expect(asked, {StoryboardThumbnailTier.sheet});
+  });
+
+  test('🗣️the V row\'s heights are the user\'s: 96 by default, the four '
+      'bands at the floor, and at the ceiling the born cut\'s sheet-sized '
+      'picture is not stretched (유저 2026-09-26: 「기본높이는 96으로 가자. '
+      '최솟값 ok. 최대값은 최대한 키울수있으면 좋아」)', () {
+    expect(StoryboardPanel.defaultTrackLaneHeight, 96);
+    expect(
+      StoryboardPanel.minTrackLaneHeight,
+      StoryboardCutBlocksPainter.bandHeight * 4,
+    );
+    final bornPicture =
+        StoryboardThumbnailTier.sheet.width *
+        defaultCutCanvasSize.height /
+        defaultCutCanvasSize.width;
+    final strip = StoryboardCutBlocksPainter.stripBandOf(
+      StoryboardPanel.maxTrackLaneHeight,
+    ).height;
+    expect(strip, lessThanOrEqualTo(bornPicture), reason: 'sharp at the top');
+    expect(
+      strip,
+      greaterThan(bornPicture - 1),
+      reason: 'and as tall as that allows',
+    );
+  });
+
+  testWidgets('🗣️what an edge stands on is read off the block — its four '
+      'bands in their fills, and each picture where it is drawn, on its '
+      'paper (유저 2026-09-26: 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게 '
+      '가능하지?」)', (tester) async {
+    final picture = (await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        const Rect.fromLTWH(0, 0, 160, 90),
+        Paint()..color = const Color(0xFFFFFFFF),
+      );
+      return recorder.endRecording().toImage(160, 90);
+    }))!;
+    const cell = 24.0;
+    await _pump(
+      tester,
+      storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
+      cutMark: _art,
+      pixelsPerFrame: cell,
+      // Panel a's picture is there; b's and c's are still being made.
+      thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
+          frame == 0 ? picture : null,
+    );
+    final block = requireCutBlock(tester, 'cut-1');
+    final grounds = cutBlocksPainter(tester).groundsOf(block);
+
+    expect(grounds.take(4).map((ground) => ground.rect), [
+      block.topBand,
+      block.innerTopBand,
+      block.innerBottomBand,
+      block.bottomBand,
+    ]);
+    expect(grounds.take(4).map((ground) => ground.color), [
+      layerMarkColor(_art),
+      layerMarkColor(_conte),
+      layerMarkColor(_conte),
+      layerMarkColor(_art),
+    ]);
+    // Panel a (4 frames) is wider than its picture, which is drawn the
+    // strip's height tall from the panel's left: past it, the plate.
+    final strip = block.strip;
+    final drawnWidth = 160 * strip.height / 90;
+    expect(drawnWidth, lessThan(4 * cell), reason: '⛔전제');
+    expect(
+      grounds[4].rect,
+      Rect.fromLTWH(block.rect.left, strip.top, drawnWidth, strip.height),
+    );
+    expect(grounds[4].color, storyboardPanelPictureGroundColor);
+    expect(
+      grounds.skip(5).map((ground) => (ground.rect, ground.color)),
+      [
+        (
+          Rect.fromLTRB(
+            block.rect.left + 4 * cell,
+            strip.top,
+            block.rect.left + 9 * cell,
+            strip.bottom,
+          ),
+          AppColors.washUp,
+        ),
+        (
+          Rect.fromLTRB(
+            block.rect.left + 9 * cell,
+            strip.top,
+            block.rect.left + 12 * cell,
+            strip.bottom,
+          ),
+          AppColors.washUp,
+        ),
+      ],
+      reason: 'a picture still being made is its placeholder\'s shade',
+    );
+  });
+
+  testWidgets('each edge reads the grounds of the block it stands in, moved '
+      'into its own chrome layer', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StoryboardPanel(
+            project: Project(
+              id: const ProjectId('band-project'),
+              name: 'Bands',
+              createdAt: DateTime.utc(2026, 7, 27),
+              tracks: [
+                Track(
+                  id: _trackId,
+                  name: 'Video',
+                  cuts: [
+                    _cut(
+                      'cut-1',
+                      12,
+                      storyboardLayer: _dividedStoryboardLayer(
+                        'cut-1',
+                        mark: _conte,
+                      ),
+                      mark: _art,
+                    ),
+                    _cut(
+                      'cut-2',
+                      8,
+                      mark: const LayerMark(process: LayerProcess.key),
+                    ),
+                    _cut(
+                      'cut-3',
+                      10,
+                      storyboardLayer: _dividedStoryboardLayer('cut-3'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            activeCutId: const CutId('cut-1'),
+            pixelsPerFrame: 12,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final painter = cutBlocksPainter(tester);
+    const band = StoryboardCutBlocksPainter.bandHeight;
+    final grounds = StoryboardPlateGrounds(painter, crossOffset: band);
+    final blocks = painter.blocks();
+    expect(blocks, hasLength(3), reason: '⛔전제');
+
+    // A triangle hanging from each block's conte top band, as a chrome
+    // layer mounted a band down the row sees it.
+    for (final (index, block) in blocks.indexed) {
+      final box = Rect.fromLTWH(block.rect.right - 8, 0, 8, 20);
+      final under = grounds.under(box);
+      expect(
+        under.map((ground) => ground.rect),
+        [block.innerTopBand.shift(const Offset(0, -band))],
+        reason: 'block $index',
+      );
+      expect(
+        under.single.color,
+        [
+          layerMarkColor(_conte),
+          // No storyboard layer: the plate, at rest.
+          conteSheetInk,
+          layerMarkColor(LayerMark.none),
+        ][index],
+        reason: 'block $index',
+      );
+    }
+    expect(
+      grounds.under(const Rect.fromLTWH(-40, 0, 8, 20)),
+      isEmpty,
+      reason: 'nothing under a box before the first block',
+    );
   });
 }
