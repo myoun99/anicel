@@ -395,7 +395,13 @@ cmd_land() {
   git -C "$ROOT" worktree prune
   git -C "$ROOT" branch -d "work/$name" 2>/dev/null
   echo "lane: $TRUNK is now $(git -C "$ROOT" rev-parse --short HEAD)"
-  mirror_trunk
+  # ⛔NOBODY IS THERE TO ANSWER A LOGIN. A land runs unattended, and with no
+  # saved login git-credential-manager waited for one: the land never
+  # returned, the trunk's engine below was never rebuilt, and the copy was
+  # never made (lane-land-hangs-on-mirror-login, 2026-09-24). Here the push
+  # fails at once and says to run `backup`, which still asks — a person can
+  # log in there.
+  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never mirror_trunk
   # Refusal 6: the merge moved the trunk's C whenever this lane carried any,
   # and the trunk's engine follows it HERE, in the trunk's own directory and
   # cache — ⛔never the lane's build copied over, whose cache names the
