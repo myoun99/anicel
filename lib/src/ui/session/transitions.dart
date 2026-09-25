@@ -49,7 +49,7 @@ class Transitions {
   /// ↩️The row had a channel of its own, global form only, and the cut's
   /// row stayed off the shared one because a global-keyed entry there
   /// would have leaked into its projection. The SE rows had already
-  /// answered that with the second form (유저 2026-09-25: 「se블록이랑
+  /// answered that with the second form (유저 2026-09-26: 「se블록이랑
   /// 똑같이 글로벌이 주인인 상태랑 똑같지않나? 그거 그대로 법 통일해서
   /// 적용해도 문제되나?」).
   ({Layer shown, Layer? global}) previewFormsOf(Layer row) => (
@@ -185,9 +185,10 @@ class Transitions {
   ///
   /// UI-R7 #6 is the SE rows' law for that block, and it is this mark's
   /// too: its head lives in the earlier cut, so its start grip stands down
-  /// here (유저 2026-09-25: 「애초에 넘어온쪽 표시엔 머리그립이 없을텐데.
-  /// se행이 그럴텐데」). The head is edited where it is — the earlier cut,
-  /// or the storyboard.
+  /// here (유저 2026-09-26: 「애초에 넘어온쪽 표시엔 머리그립이 없을텐데.
+  /// se행이 그럴텐데」). The head is edited on the storyboard, the axis the
+  /// span lives on — the earlier cut does not draw a fade that is not its
+  /// own.
   Map<LayerId, int> get transitionSpillInLeadFrames {
     final row = trackTransitionDisplayLayer;
     final start = _transitionDisplayClone?.origins[0];

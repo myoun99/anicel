@@ -235,7 +235,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// row draws the `~` continuation at the cut start. F-113: an SE block's
   /// waveform is drawn from this far into the file.
   ///
-  /// The transition row answers too (유저 2026-09-25: 「애초에 넘어온쪽
+  /// The transition row answers too (유저 2026-09-26: 「애초에 넘어온쪽
   /// 표시엔 머리그립이 없을텐데. se행이 그럴텐데」) — a fade that began in
   /// the cut before is drawn from this cut's frame 0.
   final int? spillInLeadFrames;

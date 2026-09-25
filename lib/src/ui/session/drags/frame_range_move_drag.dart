@@ -1402,7 +1402,7 @@ class FrameRangeMoveDrag {
   /// ↩️C1 (2026-08-17) gave it a channel of its own ("one preview channel
   /// per row family"), off this one because a global-keyed entry here would
   /// have leaked into the cut's projection. The cut form answers that the
-  /// way it answers it for the SE rows (유저 2026-09-25: 「se블록이랑 똑같이
+  /// way it answers it for the SE rows (유저 2026-09-26: 「se블록이랑 똑같이
   /// 글로벌이 주인인 상태랑 똑같지않나? 그거 그대로 법 통일해서 적용해도
   /// 문제되나?」).
   Map<LayerId, ({Layer shown, Layer? global})> _transitionPreviewForms(
