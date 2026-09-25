@@ -94,6 +94,34 @@ void main() {
       }
     });
 
+    // ⛔없다가 생기는 UI 금지: the gap panel (no cut under the playhead)
+    // carries the switch too, in the same place.
+    testWidgets('the switch keeps its place when the playhead stands in a '
+        'gap and the sheet empties', (tester) async {
+      await pumpHost(tester, brushAllowed: false);
+      session.cutVerbs.createCut();
+      final track = session.repository.requireProject().tracks.first;
+      final firstEnd = track.cuts[0].duration;
+      session.repository.updateCutLeadingGap(
+        cutId: track.cuts[1].id,
+        leadingGapFrames: 4,
+      );
+      session.selectCut(track.cuts[0].id);
+      await tester.pumpAndSettle();
+      final withCut = tester.getCenter(find.byKey(_inkToggleKey));
+
+      session.selectGlobalFrame(firstEnd + 1);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('timesheet-empty-no-cut')),
+        findsOneWidget,
+        reason: 'fixture: the gap panel is up',
+      );
+      expect(find.byKey(_inkToggleKey), findsOneWidget);
+      expect(tester.getCenter(find.byKey(_inkToggleKey)), withCut);
+    });
+
     testWidgets('with the brush on, a tap on a header box draws instead of '
         'opening the editor (pen-on-paper rule)', (tester) async {
       await pumpHost(tester);

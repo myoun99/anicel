@@ -13,9 +13,9 @@ import '../input/control_press_claim.dart';
 /// over the box under the panel viewport transform — editing in place on
 /// the paper.
 ///
-/// The layer sits UNDER the ink layer in the sheet stack, so the sheet-ink
-/// toggle is the mode switch: ink allowed → the pen draws (taps included,
-/// like a pen on paper); ink blocked → taps edit text. Derived boxes
+/// The layer sits UNDER the ink layer in the sheet stack, so the sheet's
+/// brush switch is the mode switch: brush on → the pen draws (taps included,
+/// like a pen on paper); brush off → taps edit text. Derived boxes
 /// (CUT / TIME / SHEET) stay read-only.
 class TimesheetHeaderEditLayer extends StatefulWidget {
   const TimesheetHeaderEditLayer({

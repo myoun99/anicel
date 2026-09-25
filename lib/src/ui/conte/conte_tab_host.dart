@@ -289,8 +289,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
     if (inkController != null && metrics != null) {
       inkController.syncGeometry(metrics);
     }
-    // The ink windows go with the last page too — the panel lets go of a
-    // stroke left on them, as it does when the brush goes off.
     final ink = _inkMount(page);
 
     final panel = SheetCanvasPanel(

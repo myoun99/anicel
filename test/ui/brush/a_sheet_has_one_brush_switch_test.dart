@@ -1,9 +1,14 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart'
+    show CanvasStageColors;
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
@@ -123,15 +128,54 @@ void main() {
     });
   });
 
-  testWidgets('a sheet lays its paper on the backdrop — no pasteboard', (
-    tester,
-  ) async {
-    await pump(tester, sheet(allowed: false, onChanged: (_) {}));
+  testWidgets('a sheet lays its paper on the backdrop — no pasteboard is '
+      'painted anywhere on its stage', (tester) async {
+    // Two colours nothing else on the stage uses, so one pixel of the
+    // pasteboard anywhere is an answer.
+    const backdrop = 0xFFFF0000;
+    const pasteboard = 0xFF0000FF;
+    const boundaryKey = ValueKey<String>('stage');
+    await pump(
+      tester,
+      RepaintBoundary(
+        key: boundaryKey,
+        child: CanvasStageColors(
+          backdropArgb: backdrop,
+          pasteboardArgb: pasteboard,
+          child: sheet(allowed: false, onChanged: (_) {}),
+        ),
+      ),
+    );
     expect(
       tester.widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
           .hasPasteboard,
       isFalse,
     );
+
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(boundaryKey),
+    );
+    final rgba = await tester.runAsync(() async {
+      final image = await boundary.toImage();
+      final data = await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
+      image.dispose();
+      return data!.buffer.asUint8List();
+    });
+    var backdropPixels = 0;
+    var pasteboardPixels = 0;
+    for (var i = 0; i + 3 < rgba!.length; i += 4) {
+      final argb =
+          rgba[i + 3] << 24 | rgba[i] << 16 | rgba[i + 1] << 8 | rgba[i + 2];
+      if (argb == backdrop) {
+        backdropPixels += 1;
+      } else if (argb == pasteboard) {
+        pasteboardPixels += 1;
+      }
+    }
+    expect(backdropPixels, greaterThan(0), reason: 'the backdrop shows');
+    expect(pasteboardPixels, 0, reason: 'no pasteboard plane under a sheet');
   });
 
   group('the stroke hold', () {
