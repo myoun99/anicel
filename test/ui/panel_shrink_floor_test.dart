@@ -356,6 +356,79 @@ void main() {
     });
   });
 
+  // text-scale-rail-rows / text-scale-storyboard-rows (유저 2026-09-24,
+  // 「행도 글자 크기를 따라 자란다」): a floor is counted in ROWS, and a row
+  // grows with its words — so where the panel is shown each floor grows by
+  // the rows it keeps, and both panels still stop on the same budget. The
+  // storyboard's grew by its band alone until its body rows grew too.
+  group('at a bigger text size, the floors keep the same two rows', () {
+    Future<({double floor, double row})> floorAt2x(
+      WidgetTester tester,
+      Widget Function(EditorSessionManager session) build,
+      double Function(BuildContext context) floorIn,
+      Type host,
+    ) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await pumpAt(tester, build, height: 600);
+      final context = tester.element(find.byType(host));
+      final shown = (
+        floor: floorIn(context),
+        row: timelineLayerRowHeightIn(context),
+      );
+      expect(
+        shown.row,
+        greaterThan(timelineLayerRowHeight),
+        reason: 'LIVENESS — at 2× the row really grew',
+      );
+      return shown;
+    }
+
+    testWidgets('timeline — two grown rows', (tester) async {
+      final shown = await floorAt2x(
+        tester,
+        timeline,
+        TimelinePanel.minPanelHeightIn,
+        TimelineTabHost,
+      );
+      await pumpAt(tester, timeline, height: shown.floor);
+
+      expect(tester.takeException(), isNull);
+      final host = tester.getRect(find.byType(TimelineTabHost));
+      expect(
+        rectOf(tester, 'timeline-vertical-scrollbar').height,
+        closeTo(2 * shown.row, 0.5),
+      );
+      expect(
+        rectOf(tester, 'timeline-bottom-scrollbar-rail').bottom,
+        host.bottom,
+      );
+    });
+
+    testWidgets('storyboard — two grown rows, the timeline\'s budget', (
+      tester,
+    ) async {
+      final shown = await floorAt2x(
+        tester,
+        storyboard,
+        StoryboardTabHost.minPanelHeightIn,
+        StoryboardTabHost,
+      );
+      await pumpAt(tester, storyboard, height: shown.floor);
+
+      expect(tester.takeException(), isNull);
+      final host = tester.getRect(find.byType(StoryboardTabHost));
+      expect(
+        rectOf(tester, 'storyboard-vertical-scrollbar').height,
+        closeTo(2 * shown.row, 0.5),
+      );
+      expect(
+        rectOf(tester, 'storyboard-horizontal-scrollbar').bottom,
+        host.bottom,
+      );
+    });
+  });
+
   group('no height from the floor up overflows or clips', () {
     const heights = [200.0, 240.0, 280.0, 350.0, 500.0];
 
