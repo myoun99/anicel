@@ -475,7 +475,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onSeekGlobalFrame,
     this.onScrubGlobalFrame,
     this.onScrubEnd,
-    this.isFrameReady,
+    this.readyRunsIn,
     this.thumbnailFor,
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
@@ -835,7 +835,7 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Cached-range resolver in track-global frames for the ruler's green
   /// strip (same look as the timeline header's).
-  final bool Function(int globalFrame)? isFrameReady;
+  final ReadyRunsIn? readyRunsIn;
 
   /// Build-time resolver for the cut blocks' first-frame thumbnails (the
   /// store behind it kicks async renders and re-notifies). The image stays
@@ -2228,7 +2228,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         onSeekGlobalFrame: widget.onSeekGlobalFrame,
                         onScrubGlobalFrame: widget.onScrubGlobalFrame,
                         onScrubEnd: widget.onScrubEnd,
-                        isFrameReady: widget.isFrameReady,
+                        readyRunsIn: widget.readyRunsIn,
                         onEdgeAutoPan: _scroll.autoPanRulerEdge,
                         framesPerSecond: _countingFps,
                         showSeconds: widget.showSeconds,
@@ -2273,7 +2273,7 @@ class _StoryboardRuler extends StatefulWidget {
     required this.onSeekGlobalFrame,
     required this.onScrubGlobalFrame,
     required this.onScrubEnd,
-    required this.isFrameReady,
+    required this.readyRunsIn,
     this.onEdgeAutoPan,
     this.framesPerSecond = 24,
     this.showSeconds = false,
@@ -2319,7 +2319,7 @@ class _StoryboardRuler extends StatefulWidget {
   final ValueChanged<int>? onScrubGlobalFrame;
   final VoidCallback? onScrubEnd;
 
-  final bool Function(int globalFrame)? isFrameReady;
+  final ReadyRunsIn? readyRunsIn;
 
   /// Edge auto-pan sink (UI-R12 #16, unified with the timeline ruler): a
   /// scrub within 24px of the viewport edge reports a pan delta; the
@@ -2483,7 +2483,7 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                   viewportMainExtent: widget.viewportWidth,
                   renderedFrames: widget.renderedFrames,
                   cellWidth: cellWidth,
-                  isFrameReady: widget.isFrameReady,
+                  readyRunsIn: widget.readyRunsIn,
                 ),
               ),
             ],

@@ -8,6 +8,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_quality.dart';
 import '../../services/brush_frame_store.dart';
+import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../core/draw_space.dart';
@@ -88,6 +89,18 @@ class CutFrameCompositeCache {
       {};
   final Map<CutFrameCompositeSignature, _CompositeEntry> _images = {};
   int _useCounter = 0;
+
+  /// [readyRunsIn]'s memo: per cut instance, each structure's full
+  /// signature at one quality and one pixel revision.
+  final Expando<
+    ({
+      PlaybackQuality quality,
+      int pixelRevision,
+      Map<CutFrameCompositeSignature, CutFrameCompositeSignature> byStructure,
+    })
+  >
+  _signedStructures = Expando('signedCompositeStructures');
+
   bool _disposed = false;
 
   /// Running byte total, adjusted where images enter and leave — the
@@ -144,10 +157,10 @@ class CutFrameCompositeCache {
   ///
   /// ⚠️Cost shape: a MISS now computes one signature where the bare index
   /// miss used to return free — but every miss path that matters was
-  /// already paying it (prepare computes the signature to build; the
-  /// readiness bar resolves the same shared visit for its empty-frame
-  /// answer). The hit path pays exactly what it always did: one
-  /// signature, one compare.
+  /// already paying it (prepare computes the signature to build). The hit
+  /// path pays exactly what it always did: one signature, one compare.
+  /// The readiness bar does not come through here: it asks per span
+  /// ([readyRunsIn]).
   ui.Image? validCompositeOrNull({
     required Cut cut,
     required int frameIndex,
@@ -164,6 +177,83 @@ class CutFrameCompositeCache {
     }
     entry.lastUsed = ++_useCounter;
     return entry.image;
+  }
+
+  /// The stretches of [cut]'s frames in `[start, end)` that are READY to
+  /// play at [quality] — the rulers' green bar.
+  ///
+  /// TWO kinds of frame, one answer (B1): a frame with something to
+  /// compose is ready when its composite is held; a frame that composes
+  /// to NOTHING is ready by definition. Both read off the SAME signature,
+  /// so the bar cannot disagree with what the compose loop would paint.
+  ///
+  /// ★Asked once per span of one picture, never per frame (I-22): the
+  /// spans come from [compositeStructureSpansIn], and each structure's
+  /// full signature is computed once per pixel revision. Zoomed out to
+  /// ten minutes, the per-frame read was 94% of a playback tick.
+  ///
+  /// A pure read: unlike [validCompositeOrNull] it neither files index
+  /// keys nor touches entries as used — a ruler showing a frame is not
+  /// the frame being played, and the old per-frame read marked every
+  /// visible frame as just used, which flattened the LRU to "on screen".
+  List<({int startIndex, int endIndexExclusive})> readyRunsIn({
+    required Cut cut,
+    required PlaybackQuality quality,
+    required int start,
+    required int end,
+  }) {
+    final signed = _signedStructuresOf(cut, quality);
+    final runs = <({int startIndex, int endIndexExclusive})>[];
+    for (final span in compositeStructureSpansIn(
+      cut,
+      start: start,
+      end: end,
+    )) {
+      final structure = span.signature;
+      final ready =
+          structure.nodes.isEmpty ||
+          _images.containsKey(
+            signed[structure] ??= _signatureFor(cut, span.start, quality),
+          );
+      if (!ready) {
+        continue;
+      }
+      final last = runs.isEmpty ? null : runs.last;
+      if (last != null && last.endIndexExclusive == span.start) {
+        runs.last = (
+          startIndex: last.startIndex,
+          endIndexExclusive: span.endExclusive,
+        );
+      } else {
+        runs.add((
+          startIndex: span.start,
+          endIndexExclusive: span.endExclusive,
+        ));
+      }
+    }
+    return runs;
+  }
+
+  /// Each structure's full signature for [cut] at [quality], good until a
+  /// pixel moves: [BrushFrameStore.celPixelRevision] is the store's one
+  /// signal that a source revision may have changed (a whole-store swap
+  /// opens a new project, so its cuts are new instances and miss here).
+  Map<CutFrameCompositeSignature, CutFrameCompositeSignature>
+  _signedStructuresOf(Cut cut, PlaybackQuality quality) {
+    final revision = frameStore.celPixelRevision.value;
+    final held = _signedStructures[cut];
+    if (held != null &&
+        held.quality == quality &&
+        held.pixelRevision == revision) {
+      return held.byStructure;
+    }
+    final fresh = (
+      quality: quality,
+      pixelRevision: revision,
+      byStructure: <CutFrameCompositeSignature, CutFrameCompositeSignature>{},
+    );
+    _signedStructures[cut] = fresh;
+    return fresh.byStructure;
   }
 
   /// The lookup both prepare paths share: the signature this (cut, frame,

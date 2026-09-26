@@ -741,9 +741,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onScrubGlobalFrame: (frame) =>
                         scrubStoryboardGlobalFrame(_session, frame),
                     onScrubEnd: () => commitStoryboardScrub(_session),
-                    isFrameReady: (frame) => storyboardFrameReady(
+                    readyRunsIn: (start, end) => storyboardReadyRuns(
                       _session,
-                      frame,
+                      start,
+                      end,
                       layout: _activeTrackLayout(),
                     ),
                     thumbnailFor: widget.thumbnailFor,

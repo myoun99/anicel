@@ -10,6 +10,28 @@ import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 /// away; on the real app the next stroke then painted the whole timeline on
 /// every frame. The overlay repaints for a tick only when the runs it would
 /// draw differ from the runs it drew.
+/// [ready]'s frames in `[start, end)` as stretches — the answer a cache
+/// gives the overlay.
+List<({int startIndex, int endIndexExclusive})> runsOf(
+  Set<int> ready,
+  int start,
+  int end,
+) {
+  final runs = <({int startIndex, int endIndexExclusive})>[];
+  for (var frame = start; frame < end; frame += 1) {
+    if (!ready.contains(frame)) {
+      continue;
+    }
+    final last = runs.isEmpty ? null : runs.last;
+    if (last != null && last.endIndexExclusive == frame) {
+      runs.last = (startIndex: last.startIndex, endIndexExclusive: frame + 1);
+    } else {
+      runs.add((startIndex: frame, endIndexExclusive: frame + 1));
+    }
+  }
+  return runs;
+}
+
 void main() {
   Future<RenderCustomPaint> mount(
     WidgetTester tester, {
@@ -31,7 +53,7 @@ void main() {
               viewportMainExtent: 0,
               renderedFrames: 10,
               cellWidth: 8,
-              isFrameReady: ready.contains,
+              readyRunsIn: (start, end) => runsOf(ready, start, end),
             ),
           ),
         ),

@@ -1236,9 +1236,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 _renderedFrameCount,
                                                             cellWidth: _metrics
                                                                 .frameCellWidth,
-                                                            isFrameReady: widget
+                                                            readyRunsIn: widget
                                                                 .hooks
-                                                                .isFrameReady,
+                                                                .readyRunsIn,
                                                           ),
                                                         ),
                                                       ],

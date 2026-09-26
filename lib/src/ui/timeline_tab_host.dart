@@ -533,8 +533,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // plays, which is what keeps a keyboard walk on the walk law.
             playbackFrame:
                 _session.playbackRig.playback.globalFrameIndexListenable,
-            isFrameReady:
-                _session.playbackRig.playbackCache.isPlaybackFrameReady,
+            readyRunsIn:
+                _session.playbackRig.playbackCache.playbackReadyRuns,
             playbackFrameCount:
                 _session.activeCutSpan.activeCutPlaybackFrameCount,
             // The のりしろ: how far past the cut's end line it is DRAWN, and

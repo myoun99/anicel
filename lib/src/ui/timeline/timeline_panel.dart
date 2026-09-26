@@ -40,6 +40,7 @@ import 'timeline_row_filter.dart';
 import 'timeline_view_cluster.dart';
 import 'timeline_zoom_limits.dart';
 import 'timeline_orientation.dart';
+import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
 import 'xsheet_timeline_grid.dart';
 
@@ -103,7 +104,7 @@ class TimelinePanel extends StatefulWidget {
     this.onRowSelectionSpan,
     this.selectedRows = const {},
     this.runEdit,
-    this.isFrameReady,
+    this.readyRunsIn,
     required this.orientation,
     required this.onOrientationChanged,
     this.timelineActionToolbar,
@@ -360,7 +361,7 @@ class TimelinePanel extends StatefulWidget {
 
   /// Cached-range resolver for the green strip (horizontal ruler and the
   /// X-sheet frame rail).
-  final bool Function(int frameIndex)? isFrameReady;
+  final ReadyRunsIn? readyRunsIn;
 
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
@@ -641,7 +642,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onRowSelectionSpan: widget.onRowSelectionSpan,
       selectedRows: widget.selectedRows,
       runEdit: widget.runEdit,
-      isFrameReady: widget.isFrameReady,
+      readyRunsIn: widget.readyRunsIn,
       expandedLaneLayerIds: widget.expandedLaneLayerIds,
       laneOpenOf: widget.laneOpenOf,
       laneGroupOnOf: widget.laneGroupOnOf,

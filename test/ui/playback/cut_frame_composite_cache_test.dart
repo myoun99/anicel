@@ -351,6 +351,86 @@ void main() {
     });
   });
 
+  testWidgets('the ready runs follow a stroke on the SAME cut instance — a '
+      'pixel edit moves the signature without a new cut', (tester) async {
+    await tester.runAsync(() async {
+      final (store, coordinator) = storeWithStroke();
+      final cache = cacheFor(store);
+      final held = cut();
+      await cache.prepareComposite(
+        cut: held,
+        frameIndex: 0,
+        quality: PlaybackQuality.full,
+      );
+      List<({int startIndex, int endIndexExclusive})> ready() =>
+          cache.readyRunsIn(
+            cut: held,
+            quality: PlaybackQuality.full,
+            start: 0,
+            end: 30,
+          );
+
+      expect(ready(), [
+        (startIndex: 0, endIndexExclusive: 30),
+      ], reason: 'one bake answers the whole hold; past it is nothing');
+
+      coordinator.commitSourceStroke(
+        sourceDabs: [
+          BrushDab(
+            center: CanvasPoint(x: 5, y: 5),
+            color: 0xFF000000,
+            size: 2,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
+      );
+
+      expect(
+        ready(),
+        [(startIndex: 24, endIndexExclusive: 30)],
+        reason: 'the held image is the picture BEFORE the stroke — a '
+            'signature remembered past the pixel revision would still find '
+            'it and call the hold ready',
+      );
+      cache.dispose();
+    });
+  });
+
+  testWidgets('the ready runs answer for the quality asked', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+      final held = cut();
+      await cache.prepareComposite(
+        cut: held,
+        frameIndex: 0,
+        quality: PlaybackQuality.full,
+      );
+      List<({int startIndex, int endIndexExclusive})> ready(
+        PlaybackQuality quality,
+      ) => cache.readyRunsIn(cut: held, quality: quality, start: 0, end: 30);
+
+      expect(ready(PlaybackQuality.full), [
+        (startIndex: 0, endIndexExclusive: 30),
+      ]);
+      expect(
+        ready(PlaybackQuality.half),
+        [(startIndex: 24, endIndexExclusive: 30)],
+        reason: 'nothing was baked at half — the full bake is another '
+            'picture',
+      );
+      expect(ready(PlaybackQuality.full), [
+        (startIndex: 0, endIndexExclusive: 30),
+      ]);
+      cache.dispose();
+    });
+  });
+
   testWidgets('camera keyframe changes do NOT invalidate composites', (
     tester,
   ) async {

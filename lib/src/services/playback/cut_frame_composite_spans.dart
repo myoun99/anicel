@@ -38,8 +38,8 @@ class CutFrameCompositeSpan {
       'CutFrameCompositeSpan([$start, $endExclusive), $signature)';
 }
 
-/// Cuts `[0, frameCount)` into maximal runs of frames that share one
-/// composite signature.
+/// Cuts `[startFrame, frameCount)` into maximal runs of frames that share
+/// one composite signature.
 ///
 /// ★Spans are DISCOVERED by signature comparison, never claimed from
 /// track keyframes: a `PropertyTrack.keys` union would be a second
@@ -60,13 +60,14 @@ class CutFrameCompositeSpan {
 List<CutFrameCompositeSpan> computeCutFrameCompositeSpans({
   required Cut cut,
   required int frameCount,
+  int startFrame = 0,
   required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
 }) {
   final spans = <CutFrameCompositeSpan>[];
   CutFrameCompositeSignature? current;
   var start = 0;
-  for (var frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+  for (var frameIndex = startFrame; frameIndex < frameCount; frameIndex++) {
     final signature = computeCutFrameCompositeSignature(
       cut: cut,
       frameIndex: frameIndex,

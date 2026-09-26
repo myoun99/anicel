@@ -141,7 +141,12 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _grid(frameCount: 3, isFrameReady: (frameIndex) => frameIndex < 2),
+      _grid(
+        frameCount: 3,
+        readyRunsIn: (start, end) => [
+          (startIndex: start, endIndexExclusive: end < 2 ? end : 2),
+        ],
+      ),
     );
 
     // The strip lives on the rail's cursor OVERLAY now (cached-ness is
@@ -158,8 +163,8 @@ void main() {
                 .painter!
             as TimelineRulerCursorOverlayPainter;
 
-    // Frames 0-1 cached, 2 not — and frames past the playback range never
-    // show the strip even when the resolver claims them cached.
+    // Frames 0-1 ready, 2 not: the strip draws what the rail's cache
+    // answers across the window it asks about.
     expect(overlay.readyRuns(), [(startIndex: 0, endIndexExclusive: 2)]);
   });
 
@@ -611,7 +616,7 @@ Widget _grid({
   ValueChanged<LayerId>? onToggleLayerTimesheet,
   void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
-  bool Function(int frameIndex)? isFrameReady,
+  ReadyRunsIn? readyRunsIn,
   TextStyle face = const TextStyle(),
 }) {
   return MaterialApp(
@@ -636,7 +641,7 @@ Widget _grid({
               onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
               onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
               onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
-              isFrameReady: isFrameReady,
+              readyRunsIn: readyRunsIn,
             ),
             layers: _layers,
           ),

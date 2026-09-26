@@ -770,7 +770,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       viewportMainExtent: bodyViewportHeight,
       renderedFrames: _frameScroll.renderedFrameCount,
       cellWidth: _metrics.frameCellWidth,
-      isFrameReady: widget.hooks.isFrameReady,
+      readyRunsIn: widget.hooks.readyRunsIn,
     );
   }
 

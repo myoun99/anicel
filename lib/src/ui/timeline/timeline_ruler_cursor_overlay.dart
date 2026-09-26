@@ -6,6 +6,15 @@ import 'timeline_frame_window.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
 
+/// Which stretches of the frames `[start, endExclusive)` are READY to
+/// play. Answered once per span of one picture, never per frame: zoomed
+/// out to ten minutes a window is ~15,000 frames (I-22).
+typedef ReadyRunsIn =
+    List<({int startIndex, int endIndexExclusive})> Function(
+      int start,
+      int endExclusive,
+    );
+
 /// A frame ruler's MOVING layer: the current-frame tint and the green
 /// cached-range bar, painted OVER the static header cells and driven by
 /// [CustomPainter.repaint] — so a playhead tick, a warming frame or a cel
@@ -37,7 +46,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     required this.viewportMainExtent,
     required this.renderedFrames,
     required this.cellWidth,
-    required this.isFrameReady,
+    required this.readyRunsIn,
     this.axis = Axis.horizontal,
     this.onPaintedRuns,
   }) : super(
@@ -66,7 +75,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   final double viewportMainExtent;
   final int renderedFrames;
   final double cellWidth;
-  final bool Function(int globalFrame)? isFrameReady;
+  final ReadyRunsIn? readyRunsIn;
 
   /// The AE-style ready-range green (the header cells' own strip color).
   static const Color readyBarColor = Color(0xFF54B435);
@@ -93,25 +102,12 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   /// would repaint that answer as "not ready" — the exact lie the
   /// two-kind law retired.
   List<({int startIndex, int endIndexExclusive})> readyRuns() {
-    final ready = isFrameReady;
-    final runs = <({int startIndex, int endIndexExclusive})>[];
-    if (ready == null) {
-      return runs;
+    final runsIn = readyRunsIn;
+    if (runsIn == null) {
+      return const [];
     }
     final window = _visibleWindow();
-    final end = window.endIndexExclusive;
-    var runStart = -1;
-    for (var frame = window.startIndex; frame <= end; frame += 1) {
-      if (frame < end && ready(frame)) {
-        runStart = runStart < 0 ? frame : runStart;
-        continue;
-      }
-      if (runStart >= 0) {
-        runs.add((startIndex: runStart, endIndexExclusive: frame));
-        runStart = -1;
-      }
-    }
-    return runs;
+    return runsIn(window.startIndex, window.endIndexExclusive);
   }
 
   /// The frame the tint marks, or null when it is outside the window (the
@@ -177,7 +173,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     // is a fresh object every build but compares EQUAL, so `identical`
     // here would repaint on every unrelated rebuild — the churn that hid
     // in the ruler painters.
-    isFrameReady,
+    readyRunsIn,
   );
 }
 
@@ -206,7 +202,7 @@ class TimelineRulerCursorOverlay extends StatefulWidget {
     required this.viewportMainExtent,
     required this.renderedFrames,
     required this.cellWidth,
-    required this.isFrameReady,
+    required this.readyRunsIn,
     this.axis = Axis.horizontal,
   });
 
@@ -218,7 +214,7 @@ class TimelineRulerCursorOverlay extends StatefulWidget {
   final double viewportMainExtent;
   final int renderedFrames;
   final double cellWidth;
-  final bool Function(int globalFrame)? isFrameReady;
+  final ReadyRunsIn? readyRunsIn;
 
   @override
   State<TimelineRulerCursorOverlay> createState() =>
@@ -261,7 +257,7 @@ class _TimelineRulerCursorOverlayState
       viewportMainExtent: widget.viewportMainExtent,
       renderedFrames: widget.renderedFrames,
       cellWidth: widget.cellWidth,
-      isFrameReady: widget.isFrameReady,
+      readyRunsIn: widget.readyRunsIn,
       axis: widget.axis,
       onPaintedRuns: _gate.drew,
     );

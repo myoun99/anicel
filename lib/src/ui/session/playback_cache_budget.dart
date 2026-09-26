@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_warm_extent.dart';
-import '../../services/cut_frame_composite_plan.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/playback_cache_budget.dart';
 import '../../models/playback_quality.dart';
@@ -150,17 +149,21 @@ class PlaybackCacheBudget {
   List<PlaybackProtectedRange> debugPlaybackProtectedRanges() =>
       _playbackProtectedRanges();
 
-  /// Whether [frameIndex] is READY to play at the current quality — the
-  /// timeline ruler's green bar.
-  bool isPlaybackFrameReady(int frameIndex) {
+  /// The stretches of the active cut's frames in `[start, end)` that are
+  /// READY to play at the current quality — the timeline ruler's green
+  /// bar. None without an active cut.
+  List<({int startIndex, int endIndexExclusive})> playbackReadyRuns(
+    int start,
+    int end,
+  ) {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
-      return false;
+      return const [];
     }
-    return isPlaybackFrameReadyForCut(cut, frameIndex);
+    return playbackReadyRunsForCut(cut, start, end);
   }
 
-  /// [isPlaybackFrameReady] for an arbitrary cut — the storyboard's green
+  /// [playbackReadyRuns] for an arbitrary cut — the storyboard's green
   /// bar spans every cut of the track.
   ///
   /// TWO kinds of frame, one bar (유저 2026-08-16, 「왜 콘텐츠끝너머가
@@ -173,19 +176,17 @@ class PlaybackCacheBudget {
   ///    that frame draws exactly what its composite would hold: nothing.
   ///
   /// The empty answer reads the same shared visit the signature rides, so
-  /// it cannot disagree with what the compose loop would actually paint.
-  bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) {
-    if (_renderCaches.cutFrameCompositeCache.validCompositeOrNull(
-          cut: cut,
-          frameIndex: frameIndex,
-          quality: _run.playbackQuality,
-        ) !=
-        null) {
-      return true;
-    }
-    return resolveCutFrameCompositeTree(
-      cut: cut,
-      frameIndex: frameIndex,
-    ).isEmpty;
-  }
+  /// it cannot disagree with what the compose loop would actually paint —
+  /// [CutFrameCompositeCache.readyRunsIn] reads both kinds off one
+  /// signature, once per span of one picture.
+  List<({int startIndex, int endIndexExclusive})> playbackReadyRunsForCut(
+    Cut cut,
+    int start,
+    int end,
+  ) => _renderCaches.cutFrameCompositeCache.readyRunsIn(
+    cut: cut,
+    quality: _run.playbackQuality,
+    start: start,
+    end: end,
+  );
 }

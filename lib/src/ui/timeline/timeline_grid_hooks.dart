@@ -22,6 +22,7 @@ import 'timeline_frame_rows_scroll_body.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_filter.dart';
+import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
 import '../../models/project_frame_rate.dart';
 
@@ -101,7 +102,7 @@ class TimelineGridHooks {
     this.onRowSelectionSpan,
     this.selectedRows = const {},
     this.runEdit,
-    this.isFrameReady,
+    this.readyRunsIn,
     this.expandedLaneLayerIds = const {},
     this.laneOpenOf,
     this.laneGroupOnOf,
@@ -363,7 +364,7 @@ class TimelineGridHooks {
   final TimelineRunEditCallbacks? runEdit;
 
   /// Cached-range resolver for the ruler's green strip.
-  final bool Function(int frameIndex)? isFrameReady;
+  final ReadyRunsIn? readyRunsIn;
 
   /// AE-style property lanes: layers whose twirl-down is open, the toggle,
   /// and the lane provider (generic — transform lanes now, FX lanes later).

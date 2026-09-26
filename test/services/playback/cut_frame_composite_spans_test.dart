@@ -144,6 +144,24 @@ void main() {
     }
   });
 
+  test('a table can start at any frame — it is the whole table cut there',
+      () {
+    final whole = spans();
+    final tail = computeCutFrameCompositeSpans(
+      cut: cut(),
+      startFrame: 3,
+      frameCount: 14,
+      quality: PlaybackQuality.half,
+      revisionOf: (_, _) => 7,
+    );
+
+    expect(
+      tail.map((span) => (span.start, span.endExclusive)),
+      [(3, 6), (6, 10), (10, 14)],
+    );
+    expect(tail.first.signature, whole.first.signature);
+  });
+
   test('zero frames is an empty table', () {
     expect(spans(frameCount: 0), isEmpty);
   });
