@@ -16,7 +16,6 @@ class _CutCommands {
 
   void createCut({
     required TrackId trackId,
-    String? name,
     CanvasSize? canvasSize,
     // #18 — an EXPLICIT landing (gap parking, range selection): the index
     // to insert at, the walk-in distance into the gap as the new cut's
@@ -24,29 +23,44 @@ class _CutCommands {
     // length, the way the transition span's selection does). Null keeps
     // the classic anchor: right of the active cut, else the track's end.
     ({int? index, int leadingGapFrames, int? duration})? placement,
+    CutId? cutId,
+  }) => _coordinator.historyManager.execute(
+    createCutCommand(
+      trackId: trackId,
+      canvasSize: canvasSize,
+      placement: placement,
+      cutId: cutId,
+    ),
+  );
+
+  /// The command [createCut] runs, not run: its cut is the cut it makes.
+  /// [cutId] names that cut ahead — the conte's next cut is drawn into
+  /// before it exists (H44).
+  CreateCutCommand createCutCommand({
+    required TrackId trackId,
+    CanvasSize? canvasSize,
+    ({int? index, int leadingGapFrames, int? duration})? placement,
+    CutId? cutId,
   }) {
     final project = _coordinator.repository.requireProject();
-    final plan = planCreateCutCommandInput(project);
+    final plan = planCreateCutCommandInput(project, cutId: cutId);
     final anchor = placement == null
         ? _insertionAnchorFor(project, trackId)
         : (
             index: placement.index,
             referenceName: _referenceNameAt(project, trackId, placement.index),
           );
-
-    _coordinator.historyManager.execute(
-      CreateCutCommand(
-        repository: _coordinator.repository,
-        editingSession: _coordinator.editingSession,
-        trackId: trackId,
-        cutId: plan.cutId,
-        layerId: plan.layerId,
-        name: name ?? nextCutNameAfter(project, anchor.referenceName),
-        index: anchor.index,
-        leadingGapFrames: placement?.leadingGapFrames ?? 0,
-        duration: placement?.duration,
-        canvasSize: canvasSize ?? defaultCutCanvasSize,
-      ),
+    return CreateCutCommand(
+      repository: _coordinator.repository,
+      editingSession: _coordinator.editingSession,
+      trackId: trackId,
+      cutId: plan.cutId,
+      layerId: plan.layerId,
+      name: nextCutNameAfter(project, anchor.referenceName),
+      index: anchor.index,
+      leadingGapFrames: placement?.leadingGapFrames ?? 0,
+      duration: placement?.duration,
+      canvasSize: canvasSize ?? defaultCutCanvasSize,
     );
   }
 

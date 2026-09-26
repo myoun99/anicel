@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
-import '../services/project_lookup.dart' show cutPositionOf;
+import '../services/project_lookup.dart' show brushFrameKeyIn, cutPositionOf;
 import '../models/app_language.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_memory_settings.dart';
@@ -1198,21 +1198,10 @@ class EditorSessionManager extends ChangeNotifier
       cutPositionOf(repository.requireProject(), cutId)?.cut;
 
   /// The brush store key of a layer frame within [cut] — same derivation the
-  /// canvas selection uses (track containing the cut, first track fallback).
+  /// canvas selection uses ([brushFrameKeyIn]).
   @override
-  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId) {
-    final project = repository.requireProject();
-    final trackId =
-        cutPositionOf(project, cut.id)?.trackId ??
-        (project.tracks.isEmpty ? const TrackId('') : project.tracks.first.id);
-    return BrushFrameKey(
-      projectId: project.id,
-      trackId: trackId,
-      cutId: cut.id,
-      layerId: layerId,
-      frameId: frameId,
-    );
-  }
+  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId) =>
+      brushFrameKeyIn(repository.requireProject(), cut, layerId, frameId);
 
   /// Warms the active cut's composites around the playhead ("navigate away
   /// from a frame and it gets pre-rendered") — and the NEXT cut behind it

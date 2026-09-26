@@ -60,10 +60,15 @@ class DuplicateCutCommandInputPlan {
   final Map<FrameId, FrameId> frameIdMap;
 }
 
-CreateCutCommandInputPlan planCreateCutCommandInput(Project project) {
+/// The ids a new cut takes — [cutId] when it was named before it exists
+/// (the conte's next cut, drawn into ahead of its making).
+CreateCutCommandInputPlan planCreateCutCommandInput(
+  Project project, {
+  CutId? cutId,
+}) {
   final ids = _ProjectIdSnapshot.fromProject(project);
   return CreateCutCommandInputPlan(
-    cutId: mintCutId(),
+    cutId: cutId ?? mintCutId(),
     layerId: LayerId(_firstAvailableId(prefix: 'layer', usedIds: ids.layerIds)),
   );
 }

@@ -1,8 +1,10 @@
 import '../models/attached_layer_resolve.dart';
+import '../models/brush_frame_key.dart';
 import '../models/cel_bank_lanes.dart';
 import '../models/cut.dart';
 import '../models/track_id.dart';
 import '../models/cut_id.dart';
+import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/media_asset.dart';
@@ -47,6 +49,27 @@ CutPosition? cutPositionOf(Project project, CutId cutId) {
   }
   return null;
 }
+
+/// The key the brush stores keep [cut]'s cel [frameId] on row [layerId]
+/// under, in [project]: on the track holding the cut — the first track for
+/// a cut no track holds.
+///
+/// A project as it WILL stand keys a cut not made yet where it will be
+/// made: the conte's next cut is drawn into before it exists (H44).
+BrushFrameKey brushFrameKeyIn(
+  Project project,
+  Cut cut,
+  LayerId layerId,
+  FrameId frameId,
+) => BrushFrameKey(
+  projectId: project.id,
+  trackId:
+      cutPositionOf(project, cut.id)?.trackId ??
+      (project.tracks.isEmpty ? const TrackId('') : project.tracks.first.id),
+  cutId: cut.id,
+  layerId: layerId,
+  frameId: frameId,
+);
 
 /// [cutPositionOf], throwing a [StateError] when no cut matches.
 CutPosition requireCutPosition(Project project, CutId cutId) =>

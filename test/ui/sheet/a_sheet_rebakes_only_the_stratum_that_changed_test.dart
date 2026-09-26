@@ -282,11 +282,14 @@ void main() {
           .standDown;
       expect(ink(), StandDownReason.none, reason: 'fixture: baking');
 
-      // The top window's middle, where the pen lands on it.
+      // The middle of the top window that takes the pen, where it lands.
       final layer = tester.widget<SheetInkLayer>(find.byType(SheetInkLayer));
       final at =
           tester.getTopLeft(find.byType(SheetInkLayer)) +
-          layer.windows.last.screenRect(layer.viewport).center;
+          layer.windows
+              .lastWhere((window) => window.refusal == null)
+              .screenRect(layer.viewport)
+              .center;
       final pen = await tester.startGesture(at, pointer: 7);
       await tester.pump();
       await pen.moveTo(at + const Offset(6, 4));

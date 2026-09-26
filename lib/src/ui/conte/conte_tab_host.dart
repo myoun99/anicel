@@ -15,8 +15,13 @@ import '../../models/conte/conte_page_marks.dart'
     show conteCellTextSize, conteInkArgb;
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/project.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_id.dart';
+import '../../services/project_lookup.dart'
+    show brushFrameKeyIn, cutPositionOf;
 import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -125,11 +130,13 @@ class ConteTabHost extends StatefulWidget {
 }
 
 /// What the ink windows are mounted with: the sheet's ink, the brush in
-/// hand, and the page on screen.
+/// hand, the page on screen as the brush draws on it and the project that
+/// page is laid from (`_brushPageOf`).
 typedef _InkMount = ({
   ConteInkController controller,
   ValueListenable<BrushToolState> tool,
   ContePageLayout page,
+  Project project,
 });
 
 class _ConteTabHostState extends State<ConteTabHost> {
@@ -192,16 +199,20 @@ class _ConteTabHostState extends State<ConteTabHost> {
     return _sheet.resolve(
       identity: project,
       key: aspect,
-      build: () {
-        final source = buildConteSheetSource(project);
-        return (
-          source,
-          layoutConteBook(
-            source,
-            metrics: ConteSheetMetrics(cameraAspect: aspect),
-          ),
-        );
-      },
+      build: () => _laidOut(project, aspect),
+    );
+  }
+
+  /// [project] as the conte prints it, cells shaped by the camera's
+  /// [aspect]: the source it reads, and the book it lays.
+  static (ConteSheetSource, List<ContePageLayout>) _laidOut(
+    Project project,
+    double aspect,
+  ) {
+    final source = buildConteSheetSource(project);
+    return (
+      source,
+      layoutConteBook(source, metrics: ConteSheetMetrics(cameraAspect: aspect)),
     );
   }
 
@@ -322,7 +333,54 @@ class _ConteTabHostState extends State<ConteTabHost> {
         !widget.brushAllowed) {
       return null;
     }
-    return (controller: controller, tool: tool, page: page);
+    final drawn = _brushPageOf(page);
+    return (
+      controller: controller,
+      tool: tool,
+      page: drawn.page,
+      project: drawn.project,
+    );
+  }
+
+  // The sheet laid with the conte's next cut in it, memoized as [_sheet]
+  // is — plus what the cut is planned from that the project is not: the
+  // active cut's canvas, which a new cut takes.
+  final _nextSheet =
+      IdentityMemo<({Project project, List<ContePageLayout> pages})?>();
+
+  /// [page] as the brush draws on it, and the project it is laid from: the
+  /// sheet with the cut a stroke past its last cell makes (H44, 유저 09-26:
+  /// 「자동프레임생성 켜져있으면 다음컷이나 다음 열에 그리면 컷 만들도록」) —
+  /// that cut put in the project (`AutoFrameForStroke.nextConteCut`) and laid
+  /// by the engine that lays the sheet. Every cell before it lies where it
+  /// lay, and its own takes the first free row after the last cell: its
+  /// picture and band take the pen as a cell with no block does — a stroke
+  /// there makes the cut, its conte row and block in the stroke's own undo
+  /// step, or, with the canvas's 「프레임 자동 생성」 off, nothing.
+  ///
+  /// ⛔That row and no other: a stroke further down would make a cut whose
+  /// cell is not where it was drawn. With the last page full, the cell falls
+  /// on a page the sheet does not have, and no row takes it.
+  ({ContePageLayout page, Project project}) _brushPageOf(
+    ContePageLayout page,
+  ) {
+    final project = _session.repository.requireProject();
+    final aspect = _session.camera.cameraFrameAspect;
+    final next = _nextSheet.resolve(
+      identity: project,
+      key: (aspect, _session.activeCutOrNull?.canvasSize),
+      build: () {
+        final next = _session.autoFrame.nextConteCut();
+        if (next == null) {
+          return null;
+        }
+        final withNext = _withCutAtTheEnd(project, next.trackId, next.cut);
+        return (project: withNext, pages: _laidOut(withNext, aspect).$2);
+      },
+    );
+    return next == null
+        ? (page: page, project: project)
+        : (page: next.pages[page.pageIndex], project: next.project);
   }
 
   @override
@@ -348,7 +406,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
     final ink = _inkMount(page);
     final pictures = ink == null
         ? const <ContePicture>[]
-        : _picturesOf(ink.page);
+        : _picturesOf(ink);
 
     final panel = SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -440,16 +498,20 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
-  /// The pictures [page]'s brush draws into — none without the cels'
-  /// controller.
-  List<ContePicture> _picturesOf(ContePageLayout page) {
+  /// The pictures the brush draws into on [ink]'s page — none without the
+  /// cels' controller. Their cuts and cel keys are the project's the page
+  /// is laid from: the next cut is drawn into on the track it will be made
+  /// on.
+  List<ContePicture> _picturesOf(_InkMount ink) {
     if (widget.pictures == null) {
       return const [];
     }
     final autoFrame = _session.autoFrame;
-    return contePictures(page, (
-      cutOf: _session.cutById,
-      celKeyOf: _session.brushFrameKeyForCut,
+    final project = ink.project;
+    return contePictures(ink.page, (
+      cutOf: (cutId) => cutPositionOf(project, cutId)?.cut,
+      celKeyOf: (cut, layerId, frameId) =>
+          brushFrameKeyIn(project, cut, layerId, frameId),
       cameraPoseOf: _session.camera.cameraPoseForCut,
       cameraFrameSize: _session.camera.cameraFrameSize,
       conteCelOf: autoFrame.conteCelFor,
@@ -468,19 +530,24 @@ class _ConteTabHostState extends State<ConteTabHost> {
         ).noticeNoFrameHere;
 
   /// A piece of a stroke landing makes what it was drawn into, in the
-  /// stroke's own undo step: a cell with no block the block — its picture
-  /// and its band alike (유저 답 conte-drawing-target-Q3 「그림 칸과 같이
-  /// (토글을 따른다)」) — and a block's first handwriting the block's id.
+  /// stroke's own undo step: the next cut's slot the cut (H44), a cell with
+  /// no block the block — its picture and its band alike (유저 답
+  /// conte-drawing-target-Q3 「그림 칸과 같이 (토글을 따른다)」) — and a
+  /// block's first handwriting the block's id.
   void _makeWhatTheStrokeLandsIn(SheetWindow window) {
     final inkId = conteInkRowIdOf(window.key);
     if (window is! SheetPictureWindow && inkId == null) {
       return;
     }
+    final autoFrame = _session.autoFrame;
+    if (_session.cutById(window.key.cutId) == null) {
+      autoFrame.addConteCut(window.key.cutId);
+    }
     final cut = _session.cutById(window.key.cutId);
     if (cut == null) {
       return;
     }
-    _session.autoFrame.addConteCel(cut);
+    autoFrame.addConteCel(cut);
     if (inkId != null) {
       _session.storyboardCursor.writeConteBlockInk(cut.id, inkId);
     }
@@ -651,3 +718,17 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 }
+
+/// [project] as it stands once [cut] is made after the last cut of
+/// [trackId] — where a new cut at a track's end goes, taking no room from
+/// a cut behind it (there is none).
+Project _withCutAtTheEnd(Project project, TrackId trackId, Cut cut) =>
+    project.copyWith(
+      tracks: [
+        for (final track in project.tracks)
+          if (track.id == trackId)
+            track.copyWith(cuts: [...track.cuts, cut])
+          else
+            track,
+      ],
+    );

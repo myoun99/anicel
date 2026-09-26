@@ -427,12 +427,13 @@ void main() {
       reason: 'the composite paints the pen\'s live stroke in the cel\'s place',
     );
     final stack = tester.widget<CanvasLayerStackView>(live);
+    // This picture's window — the page's free row has the next cut's too.
     final pen = tester
         .widgetList<SheetInkLayer>(find.byType(SheetInkLayer))
         .single
         .windows
         .whereType<SheetPictureWindow>()
-        .single;
+        .singleWhere((window) => window.id == 'picture-39-0');
     expect(
       identical(stack.activeSurfacePainter!.overlayModel, pen.overlay),
       isTrue,
