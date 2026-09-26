@@ -687,15 +687,10 @@ void main() {
                 null)
               edgeOf(frame),
         ];
+        double along(Offset start) =>
+            axis == Axis.horizontal ? start.dx : start.dy;
         expect(ruled.length, greaterThan(2), reason: 'the premise');
-        expect(
-          [
-            for (final start in lines.starts)
-              axis == Axis.horizontal ? start.dx : start.dy,
-          ],
-          ruled,
-          reason: '$axis',
-        );
+        expect(lines.starts.map(along), ruled, reason: '$axis');
       }
     });
   });
