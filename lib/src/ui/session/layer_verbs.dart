@@ -1,5 +1,6 @@
 import '../../services/editing/layer_standing_after_change.dart';
 import '../../models/attached_layer_resolve.dart';
+import '../../models/conte/conte_ink_keys.dart' show conteInkRowKey;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
@@ -10,7 +11,11 @@ import '../../models/timeline_row_address.dart';
 import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
+import 'independent_clip_mint.dart'
+    show carryBakedPictures, carryConteHandwriting;
+import 'render_caches.dart';
 import 'session_roles.dart';
+import '../text/place_lines.dart' show linkPartnerLines;
 
 /// The LAYER VERBS — deleting, duplicating, linking and unlinking,
 /// renaming and copying a layer, and adding a row above the active one —
@@ -28,16 +33,24 @@ class LayerVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required ActiveCutEdits activeCut,
+    required SessionInternals internals,
+    required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _activeCutEdits = activeCut;
+       _activeCutEdits = activeCut,
+       _internals = internals,
+       _renderCaches = renderCaches;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
+
+  /// Where a duplicate's pictures are, and the keys they go under.
+  final SessionInternals _internals;
+  final RenderCaches _renderCaches;
 
   /// The active-row cut-command envelope — the session's one instance,
   /// handed in (see [ActiveCutEdits]).
@@ -67,32 +80,42 @@ class LayerVerbs {
 
   /// The selected rows whose NAME may be edited (⑨).
   ///
-  /// Read-only-in-cut rows are the exception, and they are the same ones
-  /// [canDeleteLayer] refuses for the same reason: a track fixture seen from
-  /// inside a cut is not this cut's to edit.
+  /// A track's fixture row is the exception ([LayerKind.isTrackFixture]),
+  /// and it is the one [canDeleteLayer] refuses for the same reason: it has
+  /// no row verbs of its own on any surface.
   List<LayerId> renameableSelectedLayerIds() =>
-      _selectedLayerIdsWhere((layer) => !layer.kind.isReadOnlyInCut);
+      _selectedLayerIdsWhere(_nameIsEditable);
+
+  /// Of [ids] — the rows a press acted on — the ones whose NAME may be
+  /// edited, by [renameableSelectedLayerIds]'s rule (I-48's double click).
+  List<LayerId> renameableOf(Iterable<LayerId> ids) =>
+      _layerIdsWhere(ids, _nameIsEditable);
+
+  static bool _nameIsEditable(Layer layer) => !layer.kind.isTrackFixture;
 
   /// The selected LAYER rows whose layer passes [keep], in selection order,
   /// once each — the one walk behind [deletableSelectedLayerIds] and
   /// [renameableSelectedLayerIds] (the audit's clone scan, 2026-09-03).
-  List<LayerId> _selectedLayerIdsWhere(bool Function(Layer layer) keep) {
-    final selection = _selection.rowSelection.value;
-    if (selection.isEmpty) {
-      return const [];
-    }
+  List<LayerId> _selectedLayerIdsWhere(bool Function(Layer layer) keep) =>
+      _layerIdsWhere([
+        for (final row in _selection.rowSelection.value)
+          if (row is LayerRowAddress) row.layerId,
+      ], keep);
+
+  /// Of [ids], the layers of the cut that pass [keep], in order, once each.
+  List<LayerId> _layerIdsWhere(
+    Iterable<LayerId> ids,
+    bool Function(Layer layer) keep,
+  ) {
     final byId = {for (final layer in _project.layers) layer.id: layer};
-    final ids = <LayerId>[];
-    for (final row in selection) {
-      if (row is! LayerRowAddress) {
-        continue;
-      }
-      final layer = byId[row.layerId];
-      if (layer != null && !ids.contains(layer.id) && keep(layer)) {
-        ids.add(layer.id);
+    final kept = <LayerId>[];
+    for (final id in ids) {
+      final layer = byId[id];
+      if (layer != null && !kept.contains(id) && keep(layer)) {
+        kept.add(id);
       }
     }
-    return ids;
+    return kept;
   }
 
   bool get canDeleteActiveLayer {
@@ -107,9 +130,9 @@ class LayerVerbs {
   /// was [canDeleteActiveLayer]'s own text, lifted so two askers cannot
   /// drift apart ([[predicates-before-new-kind]]).
   bool canDeleteLayer(Layer activeLayer) {
-    // Read-only where a cut can see it: the transition row is deleted (and
-    // moved) on the global axis, never from inside a cut.
-    if (activeLayer.kind.isReadOnlyInCut) {
+    // A track's fixture (the transition row) goes with its track, from no
+    // surface on its own — its SPANS are what a delete there removes.
+    if (activeLayer.kind.isTrackFixture) {
       return false;
     }
     // Attach rows are accessories: always deletable, never counted toward
@@ -180,11 +203,41 @@ class LayerVerbs {
   void duplicateSelectedLayers() => _eachRowAsOneStep(
     duplicatableSelectedLayerIds(),
     'Duplicate rows',
-    (cutId, layerId) => _project.cutCommandCoordinator.duplicateLayer(
+    _duplicate,
+  );
+
+  /// Duplicates [layerId] in [cutId] and brings its pictures over: the copy
+  /// mints every cel afresh, and a picture lives under its cel's id (F-62's
+  /// law at the layer's scale). ↩️Nothing did until 2026-09-26 — a
+  /// duplicated row came out with no drawing at all (measured; card
+  /// `duplicates-lose-their-pictures`).
+  LayerId _duplicate(CutId cutId, LayerId layerId) {
+    final copy = _project.cutCommandCoordinator.duplicateLayer(
       cutId: cutId,
       sourceLayerId: layerId,
-    ),
-  );
+    );
+    final cut = _project.requireActiveCut;
+    final store = _renderCaches.brushFrameStore;
+    carryBakedPictures(
+      internals: _internals,
+      store: store,
+      cut: cut,
+      to: copy.layerId,
+      minted: copy.minted,
+      pictureOf: (source) => store.bakedSurfaceOrNull(
+        _internals.brushFrameKeyForCut(cut, layerId, source),
+      ),
+    );
+    final ink = _renderCaches.conteInkRowStore;
+    carryConteHandwriting(
+      store: ink,
+      cut: cut.id,
+      copies: copy.handwriting,
+      handwritingOf: (inkId) =>
+          ink.bakedSurfaceOrNull(conteInkRowKey(cut.id, inkId)),
+    );
+    return copy.layerId;
+  }
 
   /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and
   /// falls back to the row you are standing on. Every caller — the pill
@@ -206,11 +259,11 @@ class LayerVerbs {
       return;
     }
 
-    final duplicatedLayerId = _project.cutCommandCoordinator.duplicateLayer(
+    final duplicatedLayerId = _duplicate(
       // A non-null active layer implies an active cut (gap state has no
       // rows at all).
-      cutId: _project.requireActiveCut.id,
-      sourceLayerId: activeLayer.id,
+      _project.requireActiveCut.id,
+      activeLayer.id,
     );
     _changes.refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
     _changes.notifyChanged();
@@ -224,6 +277,21 @@ class LayerVerbs {
       return false;
     }
     return _project.repository.requireProject().linkRegistry.isLinked(
+      cutId: cut.id,
+      layerId: layerId,
+    );
+  }
+
+  /// The rows the layer shares its pictures with, in the ACTIVE cut
+  /// ([linkPartnerLines]) — what the link badge names. Empty when it is not
+  /// linked.
+  List<String> linkPartnersOf(LayerId layerId) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    return linkPartnerLines(
+      _project.repository.requireProject(),
       cutId: cut.id,
       layerId: layerId,
     );
@@ -412,8 +480,14 @@ class LayerVerbs {
   /// One undo step, and the SAME name on every row — the user's words are
   /// "all of them to the same name", not "a numbered series", so nothing
   /// here invents suffixes.
-  void renameSelectedLayers(String name) => _eachRowAsOneStep(
-    renameableSelectedLayerIds(),
+  void renameSelectedLayers(String name) =>
+      renameRows(renameableSelectedLayerIds(), name);
+
+  /// [ids] renamed to [name] as ONE undo step — the selection's rename
+  /// above, and I-48's double click, whose rows are the ones its first
+  /// press acted on.
+  void renameRows(List<LayerId> ids, String name) => _eachRowAsOneStep(
+    ids,
     'Rename rows',
     (cutId, layerId) {
       _project.cutCommandCoordinator.renameLayer(

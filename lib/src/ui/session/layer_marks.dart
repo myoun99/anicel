@@ -2,10 +2,8 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
-import '../../services/commands/update_layer_mark_command.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
-import 'row_sweep.dart';
 import 'session_roles.dart';
 
 /// The LAYER MARKS — the mark a layer carries, the frames a selection can
@@ -41,27 +39,6 @@ class LayerMarks {
           mark: mark,
         ),
       );
-
-  /// Clears every layer mark of the active cut (track-owned SE rows
-  /// included, like the sheet sweep) — one undo.
-  void clearAllLayerMarks() {
-    final swept = sweepActiveCutRows(
-      project: _project,
-      description: 'Clear all layer marks',
-      rows: (cut) => [...cut.layers, ..._selection.activeTrack.seLayers],
-      commandFor: (cut, layer) => layer.mark == LayerMark.none
-          ? null
-          : UpdateLayerMarkCommand(
-              repository: _project.repository,
-              cutId: cut.id,
-              layerId: layer.id,
-              mark: LayerMark.none,
-            ),
-    );
-    if (swept) {
-      _changes.notifyChanged();
-    }
-  }
 
   /// 🚨결정 9 / R8-c (유저 확정 2026-08-22) — **THE MARK LEARNED THE BAND.**
   ///

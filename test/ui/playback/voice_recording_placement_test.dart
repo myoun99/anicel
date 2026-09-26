@@ -11,12 +11,12 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
-import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/written_wav.dart';
 
 /// The landing half of recording (AUDIO-PRO R5 → REC1-B rolling record):
 /// a finished take becomes a WAV named `<lane>_T<n>`, a pool entry and a
@@ -107,7 +107,7 @@ void main() {
     expect(block.length, 24);
     expect(block.frameId, clip.frameId);
     // The WAV round-trips exactly as long as the recording.
-    final decoded = decodeConform(
+    final decoded = readWrittenWav(
       manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
     );
     expect(decoded.sampleRate, 48000);
@@ -137,7 +137,7 @@ void main() {
       );
       expect(placed, isTrue);
       final clip = manager.activeTrack.seLayers.first.audioClips.single;
-      final decoded = decodeConform(
+      final decoded = readWrittenWav(
       manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
     );
       expect(
@@ -234,7 +234,7 @@ void main() {
     final lane = manager.activeTrack.seLayers.first;
     expect(drawingBlocks(lane.timeline).single.length, 6);
     final clip = lane.audioClips.single;
-    final decoded = decodeConform(
+    final decoded = readWrittenWav(
       manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
     );
     // 6 frames @ 24 fps @ 48 kHz = 12000 samples: capture past the

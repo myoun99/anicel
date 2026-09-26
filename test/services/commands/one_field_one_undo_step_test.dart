@@ -11,6 +11,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/layer_field_command.dart';
+import 'package:anicel/src/services/commands/update_layer_kind_command.dart';
 import 'package:anicel/src/services/commands/update_layer_name_command.dart';
 import 'package:anicel/src/services/commands/update_layer_timesheet_command.dart';
 import 'package:anicel/src/services/project_repository.dart';
@@ -258,6 +259,24 @@ void main() {
         'second',
         reason: 'the members had different names before the link wrote one',
       );
+    });
+
+    test('a CUT-addressed field reaches each mirror in its OWN cut — the '
+        'kind, whose setter finds the layer through the cut', () {
+      final repository = repositoryWithLink(links: linked());
+      final command = UpdateLayerKindCommand(
+        repository: repository,
+        cutId: const CutId('c1'),
+        layerId: const LayerId('l1'),
+        kind: LayerKind.animation,
+      );
+
+      command.execute();
+      expect(layerOf(repository, 'c1', 'l1').kind, LayerKind.animation);
+      expect(layerOf(repository, 'c2', 'l2').kind, LayerKind.animation);
+
+      command.undo();
+      expect(layerOf(repository, 'c2', 'l2').kind, LayerKind.image);
     });
 
     test('an UNLINKED layer mirrors to itself alone', () {

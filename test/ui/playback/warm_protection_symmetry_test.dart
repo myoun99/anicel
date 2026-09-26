@@ -170,23 +170,37 @@ void main() {
       addTearDown(s.dispose);
       final activeCut = s.activeCutOrNull!;
       final budget = budgetOf(s);
+      bool ready(int frame) => budget
+          .playbackReadyRunsForCut(activeCut, 0, 12)
+          .any(
+            (run) => frame >= run.startIndex && frame < run.endIndexExclusive,
+          );
 
       expect(
-        budget.isPlaybackFrameReadyForCut(activeCut, 2),
+        ready(2),
         isTrue,
         reason: 'the hole between blocks composes to nothing — ready by '
             'definition, no bake required',
       );
       expect(
-        budget.isPlaybackFrameReadyForCut(activeCut, 8),
+        ready(8),
         isTrue,
         reason: 'past every drawing is the same nothing',
       );
       expect(
-        budget.isPlaybackFrameReadyForCut(activeCut, 5),
+        ready(5),
         isFalse,
         reason: 'the runway cel is REAL content — green must wait for its '
             'bake, or the bar claims readiness playback cannot deliver',
+      );
+      expect(
+        budget.playbackReadyRunsForCut(activeCut, 0, 12),
+        [
+          (startIndex: 2, endIndexExclusive: 5),
+          (startIndex: 7, endIndexExclusive: 12),
+        ],
+        reason: 'the body cel waits for its bake too; everything that '
+            'composes to nothing is one stretch each',
       );
 
       await s.renderCaches.cutFrameCompositeCache.prepareComposite(
@@ -194,7 +208,13 @@ void main() {
         frameIndex: 5,
         quality: s.playbackRig.playbackQuality,
       );
-      expect(budget.isPlaybackFrameReadyForCut(activeCut, 5), isTrue);
+      expect(ready(5), isTrue);
+      expect(
+        budget.playbackReadyRunsForCut(activeCut, 0, 12),
+        [(startIndex: 2, endIndexExclusive: 12)],
+        reason: 'one bake answers the whole held span — frame 6 shows the '
+            'same picture, so it is the same composite',
+      );
     });
   });
 
@@ -204,8 +224,8 @@ void main() {
     addTearDown(s.dispose);
 
     expect(
-      storyboardFrameReady(s, 999, layout: const []),
-      isTrue,
+      storyboardReadyRuns(s, 999, 1000, layout: const []),
+      [(startIndex: 999, endIndexExclusive: 1000)],
       reason: 'no cut owns the frame, so there is nothing to prepare — '
           'the same two-kind law the in-cut answer follows',
     );

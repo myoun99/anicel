@@ -189,7 +189,8 @@ const _notCensused = <String, String>{
   'lib/src/ui/canvas/display_buffer_cache.dart → heldBytes':
       'via:canvasBufferBytes — the census PULLS from holders the session '
       'owns and this lives in a widget State, so the view pushes it onto '
-      'RenderCaches, the way the media viewers already do',
+      'RenderCaches, the way the media viewers already do — a live conte '
+      'picture\'s view onto livePictureBufferBytes, the same census row',
   'lib/src/native/native_upload_cache.dart → residentBytes':
       'via:nativeUploadBytes — the engine keeps two of these (stamp bytes, '
       'mask alphas) and sums them; ALSO ledgered because the bare name is '
@@ -200,13 +201,12 @@ const _notCensused = <String, String>{
       'State the session does not own, so the workspace pushes it onto '
       'RenderCaches, the way the canvas buffer and the viewers are',
   'lib/src/services/cut_piece_slot.dart → pieceBytes':
-      'via:cutPieceBytes — the slot lives in the workspace State the '
-      'session does not own, so the workspace pushes it onto RenderCaches, '
-      'the way the storyboard thumbnails are',
+      'via:allPieceBytes — the slot is the APP\'s, one for every open '
+      'project (I-7), so the census reads the class-level total once '
+      'rather than a number pushed onto one tab\'s session',
   'lib/src/services/last_stroke_slot.dart → strokeBytes':
-      'via:lastStrokeBytes — the slot lives in the shell State the session '
-      'does not own, so the shell pushes it onto RenderCaches, the way the '
-      'cut piece is',
+      'via:allStrokeBytes — the app\'s one slot, read once, for the cut '
+      'piece\'s reason',
   'lib/src/ui/canvas/static_composite_bake.dart → heldBytes':
       'via:canvasBufferBytes — the view that owns the bake reports it '
       'together with its display buffer: both are the view holding a '
@@ -246,8 +246,8 @@ const _imageHolders = <String, String>{
       'for; each is of a picture the display buffer\'s kept image drew and '
       'still pins until its next compose, so nothing is held through them '
       'that the buffer does not hold anyway',
-  'lib/src/ui/envelope/envelope_image_cache.dart → _images':
-      'a handful of decoded logos and stamps, one per role, decoded once '
+  'lib/src/ui/sheet/sheet_image_cache.dart → _images':
+      'a handful of decoded logos, cover pictures and stamps, decoded once '
       'for the life of the workspace; its own doc says it needs an eviction '
       'the day it holds cels',
   'lib/src/ui/export/export_preview_engine.dart → _cache':

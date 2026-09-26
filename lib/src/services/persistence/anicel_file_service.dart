@@ -495,7 +495,7 @@ class AnicelFileService {
       if (adoptRefs) {
         OpenProjectFile.instance.hold(filePath);
       }
-      _retireUnread(stores);
+      _retireUnread();
       return lostKeys;
     }
 
@@ -1565,34 +1565,47 @@ class AnicelFileService {
   /// A no-op when there is nothing to rescue — or when the descriptor died with
   /// the name (a cloud provider evicting its local copy), the one loss left:
   /// the save then reports what it could not reach.
+  ///
+  /// ⚠️The files [stores] read from, each — the saving project's, never
+  /// another open project's (I-7): the one held handle this used to ask
+  /// belonged to whichever project read last.
   static void _rescueAVanishedProjectFile(List<BrushFrameStore> stores) {
     final open = OpenProjectFile.instance;
-    final held = open.heldPath;
-    if (held == null || !open.heldNameVanished) {
-      return;
+    final read = {for (final store in stores) ...store.filesReadFrom};
+    for (final held in read) {
+      if (!open.heldNameVanished(held)) {
+        continue;
+      }
+      final rescued = open.copyOut(
+        held,
+        '${SessionScratch.stagedFolder()}/rescued-'
+        '${DateTime.now().microsecondsSinceEpoch}.anicel',
+      );
+      if (rescued == null) {
+        continue;
+      }
+      for (final store in stores) {
+        store.repointFileRefs(held, rescued);
+      }
+      _retiring[rescued] = stores;
+      // The refs read from the copy now; the vanished file's last
+      // descriptor goes with this.
+      open.releaseFor(held);
+      open.hold(rescued);
     }
-    final rescued = open.copyOut(
-      held,
-      '${SessionScratch.stagedFolder()}/rescued-'
-      '${DateTime.now().microsecondsSinceEpoch}.anicel',
-    );
-    if (rescued == null) {
-      return;
-    }
-    for (final store in stores) {
-      store.repointFileRefs(held, rescued);
-    }
-    _retiring.add(rescued);
-    // The refs read from the copy now; the vanished file's last descriptor
-    // goes with this.
-    open.hold(rescued);
   }
 
   /// Archives a ref may still read from, each to go the moment none does
   /// ([_retireUnread]): a rescue copy, an archive a save wrote and could not
   /// swap in, and a failed copy its project's next save superseded
-  /// ([retireWhenUnread]).
-  static final Set<String> _retiring = {};
+  /// ([retireWhenUnread]) — each WITH the stores whose refs it waits on.
+  ///
+  /// 🚨★★★Those stores are its own project's. The set used to be checked
+  /// against whichever stores were SAVING, so with a project per tab (I-7,
+  /// 유저 2026-09-26) one tab's save found nothing of its own reading
+  /// another tab's rescue copy or superseded failed copy — and deleted it
+  /// under that tab's refs.
+  static final Map<String, List<BrushFrameStore>> _retiring = {};
 
   /// [archive] goes the moment no ref in [stores] reads from it — now, if
   /// none does. For an archive a save wrote and could not swap in once the
@@ -1602,25 +1615,21 @@ class AnicelFileService {
     String archive,
     List<BrushFrameStore> stores,
   ) {
-    _retiring.add(archive);
-    _retireUnread(stores);
+    _retiring[archive] = stores;
+    _retireUnread();
   }
 
-  /// An archive in [_retiring] goes the moment no ref reads from it — the
-  /// staged media's rule (유저 2026-08-27: 「사본 남으면 진짜
+  /// An archive in [_retiring] goes the moment no ref of ITS stores reads
+  /// from it — the staged media's rule (유저 2026-08-27: 「사본 남으면 진짜
   /// 용서안할게」). A cel drawn on while the save ran keeps its old ref and
   /// its dirt, so the archive can outlive the save that made it, but only
   /// until the save that carries that cel.
-  static void _retireUnread(List<BrushFrameStore> stores) {
-    if (_retiring.isEmpty) {
-      return;
-    }
-    final read = <String>{
-      for (final store in stores)
-        for (final ref in store.bakedSnapshotForSave().fileRefs.values)
-          ref.filePath,
-    };
-    _retiring.removeWhere((archive) {
+  static void _retireUnread() {
+    final readBy = <List<BrushFrameStore>, Set<String>>{};
+    _retiring.removeWhere((archive, stores) {
+      final read = readBy[stores] ??= {
+        for (final store in stores) ...store.filesReadFrom,
+      };
       if (read.any((path) => namesTheSameFile(path, archive))) {
         return false;
       }

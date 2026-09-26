@@ -44,18 +44,31 @@ import 'session_scratch.dart';
 class ScratchCelFiles {
   const ScratchCelFiles._();
 
-  /// The file [entryName]'s bytes go in. [entryName] is the cel's archive
-  /// entry name, which is already base64url and already unique per cel.
-  static String pathFor(String entryName) =>
-      '${SessionScratch.stagedFolder()}/$entryName.cel';
+  /// A name no other store's files will wear — one per store that cools.
+  ///
+  /// 🚨★★★The room is the RUN's, and a run holds a store per open project
+  /// (I-7, 유저 2026-09-26) — plus a conte, an envelope and a timesheet ink
+  /// store in each. [entryName] is unique per cel only WITHIN a store: two
+  /// untitled projects share a project id, and the ink stores' keys are
+  /// constants. Without this prefix one tab's cooling overwrote another's
+  /// parked cel, and its drop deleted it — unsaved work, gone.
+  static String newNamespace() => 's${_namespaces++}';
+
+  static int _namespaces = 0;
+
+  /// The file [entryName]'s bytes go in for the store that owns
+  /// [namespace]. [entryName] is the cel's archive entry name, already
+  /// base64url.
+  static String pathFor(String namespace, String entryName) =>
+      '${SessionScratch.stagedFolder()}/$namespace-$entryName.cel';
 
   /// Writes [bytes] and answers the path, or null when the room refused.
   ///
   /// 🚨A refusal is not an error to throw: the caller is the cooling pass,
   /// and a cel that cannot be parked has to STAY HOT rather than be
   /// dropped. Every other outcome here loses a drawing.
-  static String? write(String entryName, Uint8List bytes) =>
-      ScratchFile.write(pathFor(entryName), bytes);
+  static String? write(String namespace, String entryName, Uint8List bytes) =>
+      ScratchFile.write(pathFor(namespace, entryName), bytes);
 
   /// The blob at [path], or null when it will not read — a torn write, a
   /// file somebody removed under us.

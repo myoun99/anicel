@@ -66,11 +66,17 @@ void main() {
           'state this class exists to leave, and the bytes look identical '
           'either way',
     );
-    expect(OpenProjectFile.instance.isHolding, isTrue);
-    expect(OpenProjectFile.instance.heldPath, path);
+    expect(OpenProjectFile.instance.isHolding(path), isTrue);
+    expect(OpenProjectFile.instance.heldPaths, [path]);
   });
 
-  test('a different project takes the handle with it', () {
+  /// ↩️This was 「a different project takes the handle with it」: reading
+  /// another file let the first go, on the grounds that nobody had it open
+  /// any more. With a project per tab (I-7) somebody does — the first tab —
+  /// and its clean cels still read from that file. A project lets go of its
+  /// file when IT closes (`the_opened_project_is_held_test`).
+  test('two open projects hold two files — reading one never lets go of the '
+      'other (I-7)', () {
     final first = write('a.anicel', 1);
     final second = write('b.anicel', 2);
 
@@ -79,10 +85,18 @@ void main() {
 
     expect(OpenProjectFile.debugOpens, 2);
     expect(
-      OpenProjectFile.instance.heldPath,
-      second,
-      reason: 'holding the old project open would keep a file the user has '
-          'moved on from undeletable, for nobody',
+      OpenProjectFile.instance.isHolding(first),
+      isTrue,
+      reason: 'the first project is still open in its tab: letting its file '
+          'go left it deletable under refs that still read it — the '
+          '94-drawings loss this class exists to refuse',
+    );
+    expect(OpenProjectFile.instance.isHolding(second), isTrue);
+    OpenProjectFile.instance.readAt(first, 0, 1);
+    expect(
+      OpenProjectFile.debugOpens,
+      2,
+      reason: 'and going back to it opens nothing',
     );
   });
 
@@ -92,7 +106,7 @@ void main() {
 
     OpenProjectFile.instance.releaseFor('${scratch.path}/somebody-else.anicel');
     expect(
-      OpenProjectFile.instance.isHolding,
+      OpenProjectFile.instance.isHolding(path),
       isTrue,
       reason: 'a blanket release from whoever is about to write SOMETHING '
           'would drop the project file for a sidecar write — the protection '
@@ -100,7 +114,7 @@ void main() {
     );
 
     OpenProjectFile.instance.releaseFor(path);
-    expect(OpenProjectFile.instance.isHolding, isFalse);
+    expect(OpenProjectFile.instance.heldPaths, isEmpty);
   });
 
   test('a save can replace the file the session is holding, and the next '
@@ -148,7 +162,7 @@ void main() {
     expect(OpenProjectFile.instance.readAt(path, 0, 1), orderedEquals([7]));
     expect(OpenProjectFile.debugOpens, 1);
 
-    OpenProjectFile.debugBreakHeldHandle();
+    OpenProjectFile.debugBreakHeldHandle(path);
 
     expect(
       OpenProjectFile.instance.readAt(path, 0, 1),
@@ -169,7 +183,7 @@ void main() {
     // it works would turn a reported loss into a hang.
     final path = write('gone.anicel', 7);
     OpenProjectFile.instance.readAt(path, 0, 1);
-    OpenProjectFile.debugBreakHeldHandle();
+    OpenProjectFile.debugBreakHeldHandle(path);
     File(path).deleteSync();
 
     expect(() => OpenProjectFile.instance.readAt(path, 0, 1), throwsA(anything));
@@ -177,8 +191,8 @@ void main() {
 
   test('releasing what was never held is a no-op, not a throw', () {
     OpenProjectFile.instance.releaseFor('${scratch.path}/never-opened');
-    OpenProjectFile.instance.release();
-    expect(OpenProjectFile.instance.isHolding, isFalse);
+    OpenProjectFile.instance.releaseAll();
+    expect(OpenProjectFile.instance.heldPaths, isEmpty);
   });
 
   test('hold takes the handle before any read, and only once', () {
@@ -187,7 +201,7 @@ void main() {
     OpenProjectFile.instance.hold(path);
     OpenProjectFile.instance.hold(path);
 
-    expect(OpenProjectFile.instance.heldPath, path);
+    expect(OpenProjectFile.instance.heldPaths, [path]);
     expect(OpenProjectFile.debugOpens, 1, reason: 'holding what is held opens nothing');
     expect(OpenProjectFile.instance.readAt(path, 0, 1), orderedEquals([7]));
     expect(
@@ -199,7 +213,7 @@ void main() {
 
   test('holding what is not there is silent', () {
     OpenProjectFile.instance.hold('${scratch.path}/nowhere.anicel');
-    expect(OpenProjectFile.instance.isHolding, isFalse);
+    expect(OpenProjectFile.instance.heldPaths, isEmpty);
   });
 
   test('🚨copyOut copies the held bytes through the descriptor — from the '
@@ -236,13 +250,13 @@ void main() {
       'still reads the bytes', () {
     final path = write('p.anicel', 7);
     OpenProjectFile.instance.hold(path);
-    expect(OpenProjectFile.instance.heldNameVanished, isFalse);
+    expect(OpenProjectFile.instance.heldNameVanished(path), isFalse);
 
     final vault = write('vault.anicel', 9);
     final gone = '${scratch.path}${Platform.pathSeparator}gone.anicel';
     OpenProjectFile.instance.debugHoldAs(vault, gone);
 
-    expect(OpenProjectFile.instance.heldNameVanished, isTrue);
+    expect(OpenProjectFile.instance.heldNameVanished(gone), isTrue);
     expect(
       OpenProjectFile.instance.readAt(gone, 0, 1),
       orderedEquals([9]),

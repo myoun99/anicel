@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../models/canvas_point.dart';
+import '../models/dirty_region.dart';
 import 'canvas_selection_shape.dart';
 
 /// How a freshly drawn marquee/lasso combines with the region already
@@ -226,7 +227,13 @@ class CanvasSelectionRegion {
   /// added, so a subtraction must not shrink the box they work over (the
   /// fold then zeroes what is outside). What the user SEES asks the other
   /// question — [selectedBounds].
-  ({double left, double top, double right, double bottom}) get coverageBounds {
+  ({double left, double top, double right, double bottom}) get coverageBounds =>
+      _coverageBounds ??= _computeCoverageBounds();
+
+  ({double left, double top, double right, double bottom})? _coverageBounds;
+
+  ({double left, double top, double right, double bottom})
+  _computeCoverageBounds() {
     var minX = double.infinity;
     var minY = double.infinity;
     var maxX = double.negativeInfinity;
@@ -248,6 +255,21 @@ class CanvasSelectionRegion {
     // An intersect-only tail cannot happen (the first step replaces), so
     // the loop always saw at least one polygon.
     return (left: minX, top: minY, right: maxX, bottom: maxY);
+  }
+
+  /// Whether any of [pixels] can be selected — false only when they lie
+  /// wholly outside [coverageBounds], so what answers false may be skipped
+  /// without changing one byte the mask lets through.
+  ///
+  /// A pixel is selected by its CENTRE ([maskFor] scans at +0.5); the
+  /// half-pixel slack on every side keeps this a superset at the box's
+  /// edges.
+  bool mayCover(DirtyRegion pixels) {
+    final box = coverageBounds;
+    return pixels.rightExclusive > box.left - 0.5 &&
+        pixels.left < box.right + 0.5 &&
+        pixels.bottomExclusive > box.top - 0.5 &&
+        pixels.top < box.bottom + 0.5;
   }
 
   ({double left, double top, double right, double bottom})? _selectedBounds;

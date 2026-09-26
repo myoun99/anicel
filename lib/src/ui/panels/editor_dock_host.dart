@@ -113,25 +113,36 @@ class EditorDockHost extends StatelessWidget {
     return StillRaster(
       debugLabel: 'dock:$dockId',
       enabled: tabs.every((tab) => tab.id != activeTabId || tab.stillRaster),
-      child: EditorPanelTabs(
-        groupId: dockId,
-        compact: compact,
-        chromeless: chromeless,
-        stripAtBottom: stripAtBottom,
-        trailing: trailing,
-        tabs: tabs,
-        activeTabId: activeTabId,
-        onTabSelected: onTabSelected,
-        canAcceptTab: canAcceptTab,
-        onTabMoved: onTabMoved,
-        onTabDragChanged: onTabDragChanged,
-        // The sill's own controls stand down while anything is in flight, so
-        // the strip goes back to being landing area.
-        draggingTab: draggingTab,
-        collapsed: collapsed,
-        onToggleLock: onToggleLock,
-        onCloseTab: onCloseTab,
-        flash: flash,
+      // 🚨Each dock region is its own SEMANTICS boundary (2026-09-26): a
+      // layout anywhere re-walks the nearest boundary's whole share of the
+      // semantics tree, and without one per dock that was the ROOT's — the
+      // docks, the canvas and the strips together, 738 nodes — for a change
+      // inside one panel. A brush pick walked about 2300 nodes; with the
+      // docks, the canvas panel and the value bars as boundaries, about
+      // 1160. The region reads as one group to a screen reader, which is
+      // what it is.
+      child: Semantics(
+        container: true,
+        child: EditorPanelTabs(
+          groupId: dockId,
+          compact: compact,
+          chromeless: chromeless,
+          stripAtBottom: stripAtBottom,
+          trailing: trailing,
+          tabs: tabs,
+          activeTabId: activeTabId,
+          onTabSelected: onTabSelected,
+          canAcceptTab: canAcceptTab,
+          onTabMoved: onTabMoved,
+          onTabDragChanged: onTabDragChanged,
+          // The sill's own controls stand down while anything is in flight,
+          // so the strip goes back to being landing area.
+          draggingTab: draggingTab,
+          collapsed: collapsed,
+          onToggleLock: onToggleLock,
+          onCloseTab: onCloseTab,
+          flash: flash,
+        ),
       ),
     );
   }

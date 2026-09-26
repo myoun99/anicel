@@ -156,7 +156,9 @@ typedef _RailRowMemoInputs = ({
   bool groupFoldExpanded,
   LayerFxState fxState,
   bool onionSkinEnabled,
-  bool isLinked,
+  // The rows the pictures are shared with — a fresh list every build, so
+  // compared by what it holds ([ByList]).
+  ByList<String> linkPartners,
   bool soloed,
   AttachedPlacement? attachArrow,
   double layerRowHeight,
@@ -723,7 +725,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       unionLaneForLayer: widget.hooks.unionLaneForLayer,
       runEdit: widget.hooks.runEdit,
       laneEdit: widget.hooks.laneEdit,
-      seSpillInLeadFrames: widget.hooks.seSpillInLeadFrames,
+      spillInLeadFrames: widget.hooks.spillInLeadFrames,
       memoAux: widget.memoAux,
       substrateGeneration: widget.hooks.substrateGeneration,
     );
@@ -1234,9 +1236,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 _renderedFrameCount,
                                                             cellWidth: _metrics
                                                                 .frameCellWidth,
-                                                            isFrameReady: widget
+                                                            readyRunsIn: widget
                                                                 .hooks
-                                                                .isFrameReady,
+                                                                .readyRunsIn,
                                                           ),
                                                         ),
                                                       ],

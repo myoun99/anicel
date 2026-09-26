@@ -288,7 +288,7 @@ Future<Map<String, String>> _trackRow(
             onPixelsPerFrameChanged: (_) {},
             showSeconds: false,
             onShowSecondsChanged: (_) {},
-            thumbnailFor: null,
+            thumbnails: null,
           ),
         ),
       ),

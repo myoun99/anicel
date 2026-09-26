@@ -5,6 +5,7 @@ import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -12,6 +13,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/cel_places.dart';
@@ -31,7 +33,22 @@ void main() {
     String name,
     List<Frame> frames, {
     LayerKind kind = LayerKind.animation,
-  }) => Layer(id: LayerId(id), name: name, frames: frames, kind: kind);
+    Map<int, TimelineExposure>? timeline,
+  }) => Layer(
+    id: LayerId(id),
+    name: name,
+    frames: frames,
+    kind: kind,
+    timeline: timeline,
+  );
+
+  /// A block of `sb1`, written on under [inkId] when it has one.
+  TimelineExposure sb1Block(int length, [String inkId = '']) =>
+      TimelineExposure.drawing(
+        const FrameId('sb1'),
+        length: length,
+        memo: ExposureMemo(inkId: inkId),
+      );
 
   Cut cut(String id, String name, List<Layer> layers) => Cut(
     id: CutId(id),
@@ -59,12 +76,23 @@ void main() {
               frame('a2'),
               frame('a3', '   '),
             ]),
-            layer('sb', 'SB', [
-              frame('sb1', ' 2 '),
-            ], kind: LayerKind.storyboard),
+            layer(
+              'sb',
+              'SB',
+              [frame('sb1', ' 2 ')],
+              kind: LayerKind.storyboard,
+              // One drawing exposed three times: two blocks written on,
+              // one not.
+              timeline: {
+                0: sb1Block(8, 'ink-a'),
+                8: sb1Block(8),
+                16: sb1Block(8, 'ink-b'),
+              },
+            ),
           ]),
           cut('c2', '2', [
             layer('b', 'B', [frame('b1', 'x')]),
+            layer('bg', 'BG', [frame('bg1')], kind: LayerKind.image),
           ]),
         ],
       ),
@@ -109,19 +137,40 @@ void main() {
     );
   });
 
+  test('🗣️an IMAGE row\'s unnamed cel prints no mark — the row is the '
+      'picture, so its name is the whole of the place', () {
+    // 유저 2026-09-25: 「이미지레이어는 프레임 이름 없으면 중간나누기
+    // 마크가아니라 이름을 안보이게」.
+    expect(placesOf([drawn('c2', 'bg', 'bg1')]), ['drawing 2/BG/']);
+  });
+
   test('a row the TRACK owns is named by its track', () {
     expect(placesOf([drawn('c2', 's1', 's1-f')]), ['drawing Track 1/S1/hey']);
   });
 
-  test('conte ink: the paper by the page it prints, a row by its cut and '
-      'its storyboard drawing', () {
+  test('conte ink: the paper by the page it prints, a block\'s handwriting '
+      'by its cut and the drawing the block shows', () {
     expect(
       placesOf([
-        conteInkRowKey(const CutId('c1'), const FrameId('sb1')),
+        conteInkRowKey(const CutId('c1'), 'ink-b'),
         conteInkPageKey(2),
         conteInkPageKey(0),
+        conteInkRowKey(const CutId('c1'), 'ink-a'),
       ]),
-      ['conte page 1', 'conte page 3', 'conte row 1/2'],
+      ['conte page 1', 'conte page 3', 'conte row 1/2', 'conte row 1/2'],
+      reason: 'two blocks of one drawing are two handwritings, each a '
+          'place of its own',
+    );
+  });
+
+  test('🚨a row key names a BLOCK, not a drawing — the drawing\'s id and '
+      'another cut\'s block are no place', () {
+    expect(
+      placesOf([
+        conteInkRowKey(const CutId('c1'), 'sb1'),
+        conteInkRowKey(const CutId('c2'), 'ink-a'),
+      ]),
+      ['gone', 'gone'],
     );
   });
 
@@ -142,7 +191,7 @@ void main() {
         drawn('c1', 'a', 'deleted-drawing'),
         drawn('c1', 'deleted-row', 'a1'),
         drawn('deleted-cut', 'deleted-row', 'x'),
-        conteInkRowKey(const CutId('c1'), const FrameId('long-dead-block')),
+        conteInkRowKey(const CutId('c1'), 'long-dead-block'),
         envelopeInkBoxKey(const CutId('deleted-cut'), 'memo'),
         drawn('c1', 'a', 'a1'),
       ]),

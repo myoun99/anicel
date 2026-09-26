@@ -30,15 +30,18 @@ import 'package:anicel/src/models/app_workspace_colors.dart';
 import '../../helpers/library_source.dart';
 import '../../helpers/project_scratch_folder.dart';
 
-/// The EIGHT app-level settings families the session hands to
-/// `EditorAppSettings`: each has to be persisted through ITS OWN injected
-/// store and read back by the next session.
+/// The EIGHT app-level settings families `EditorAppSettings` keeps: each has
+/// to be persisted through ITS OWN injected store and read back by the next
+/// run.
 ///
 /// Written when the settings block moved out of the session manager. A move
 /// refactor passes the existing suite by construction — nothing there
 /// constructs a session with all seven stores — so the thing worth asserting is
 /// the WIRING. Drop one store from the constructor call, or one restore from
 /// `EditorAppSettings.restore()`, and exactly one expectation below dies.
+///
+/// A RUN here is one settings object and a session on it: the app's shell
+/// builds the settings once and every open project shares them (I-7).
 void main() {
   // The live values are app-wide and outlive any one session, so every test
   // starts from the product defaults instead of inheriting the last pick.
@@ -73,23 +76,36 @@ void main() {
     ];
     String path(String name) => '${directory.path}/$name.json';
 
-    EditorSessionManager openSession() => EditorSessionManager(
-      initialProject: createDefaultProject(),
-      languageSettingsStore: AppLanguageSettingsStore(filePath: path('lang')),
-      accentSettingsStore: AppAccentSettingsStore(filePath: path('accent')),
-      workspaceColorsStore: AppWorkspaceColorsStore(filePath: path('colors')),
-      inputSettingsStore: AppInputSettingsStore(filePath: path('input')),
-      saveSettingsStore: AppSaveSettingsStore(filePath: path('save')),
-      memorySettingsStore: AppMemorySettingsStore(filePath: path('memory')),
-      audioSyncSettingsStore: AudioSyncSettingsStore(filePath: path('av')),
-      uiScaleStore: AppUiScaleStore(filePath: path('uiscale')),
-      onionSkinSettingsStore: AppOnionSkinSettingsStore(
-        filePath: path('onion'),
-      ),
-      frameGridSettingsStore: AppFrameGridSettingsStore(filePath: path('grid')),
-    );
+    /// One run: the settings the shell builds and restores once, and a
+    /// session on them. The settings are the run's, not the session's, so
+    /// the run lets both go.
+    EditorSessionManager openRun() {
+      final settings = EditorAppSettings(
+        languageSettingsStore: AppLanguageSettingsStore(filePath: path('lang')),
+        accentSettingsStore: AppAccentSettingsStore(filePath: path('accent')),
+        workspaceColorsStore: AppWorkspaceColorsStore(
+          filePath: path('colors'),
+        ),
+        inputSettingsStore: AppInputSettingsStore(filePath: path('input')),
+        saveSettingsStore: AppSaveSettingsStore(filePath: path('save')),
+        memorySettingsStore: AppMemorySettingsStore(filePath: path('memory')),
+        audioSyncSettingsStore: AudioSyncSettingsStore(filePath: path('av')),
+        uiScaleStore: AppUiScaleStore(filePath: path('uiscale')),
+        onionSkinSettingsStore: AppOnionSkinSettingsStore(
+          filePath: path('onion'),
+        ),
+        frameGridSettingsStore: AppFrameGridSettingsStore(
+          filePath: path('grid'),
+        ),
+      )..restore();
+      addTearDown(settings.dispose);
+      return EditorSessionManager(
+        initialProject: createDefaultProject(),
+        appSettings: settings,
+      );
+    }
 
-    final first = openSession();
+    final first = openRun();
     first.setLanguageSettings(
       const AppLanguageSettings(
         programLanguage: AppLanguage.ko,
@@ -119,11 +135,10 @@ void main() {
     // line existed — the setting could have stopped persisting entirely
     // while the Preferences row went on looking like it worked.
     // 🚨★★★F-150 (유저 2026-09-16): 「어니언 패널에서 세팅한 값이 **세션으로서
-    // 저장안됨. 세션이라기보다 유저설정?**」 — the eighth family, and the only
-    // one whose live value is NOT app-wide: it lives on the session's
-    // `onionSkin` because that is the object that plans with it
-    // (ARCH-session-state). ⇒ no reset is needed below, and the second
-    // session's own notifier is what has to come back carrying it.
+    // 저장안됨. 세션이라기보다 유저설정?**」 — the eighth family. Its live
+    // value sits on the settings object itself rather than an app-wide
+    // notifier (I-7), so the next run's own object is what has to come back
+    // carrying it, and no reset is needed below.
     appSettingsOf(first).setOnionSkinSettings(
       const OnionSkinSettings(
         beforePegs: [
@@ -161,13 +176,14 @@ void main() {
     }
     first.dispose();
 
-    // ⚠️Without this reset the second session "restoring" a value would be
+    // ⚠️Without this reset the second run "restoring" a value would be
     // indistinguishable from the app-wide notifier simply still holding what
     // the first one put there — every assertion below would pass with no
-    // store ever read. The A/V offset needs no reset: it is per-session.
+    // store ever read. The A/V offset and the pegs need no reset: they live
+    // on each run's own settings object.
     resetAppWideDefaults();
 
-    final second = openSession();
+    final second = openRun();
     addTearDown(second.dispose);
     await _settleUntil(
       () =>
@@ -192,9 +208,9 @@ void main() {
     expect(AppFrameGridSettings.settings.value.blockFrameLines, isFalse);
     expect(appSettingsOf(second).audioSyncSettings.value.offset, 42);
     expect(appSettingsOf(second).audioSyncSettings.value.micGainDb, 3);
-    // The onion's live value is the SESSION's, so it is read off the second
-    // session rather than an app-wide notifier — and nothing had to be reset
-    // for that to mean something.
+    // The onion's live value is the run's settings object, read through the
+    // second session's onion skin — and nothing had to be reset for that to
+    // mean something.
     await _settleUntil(
       () => second.onionSkin.settings.value.mode == OnionSkinMode.images,
     );
@@ -207,6 +223,66 @@ void main() {
       OnionSkinSettings.maxPegs,
       reason: '⛔every slot exists — the panel draws all of them',
     );
+  });
+
+  /// I-7 (유저 2026-09-26: 여러 프로젝트를 탭으로) — every open project is a
+  /// session of its own, and they all read the app's ONE settings object.
+  group('open projects share one settings object', () {
+    test('a peg set from one tab is the other tab\'s too, and closing a tab '
+        'leaves the settings alive', () {
+      final settings = EditorAppSettings();
+      addTearDown(settings.dispose);
+      final a = EditorSessionManager(
+        initialProject: createDefaultProject(),
+        appSettings: settings,
+      );
+      final b = EditorSessionManager(
+        initialProject: createDefaultProject(),
+        appSettings: settings,
+      );
+      addTearDown(b.dispose);
+
+      settings.setOnionSkinSettings(
+        const OnionSkinSettings(mode: OnionSkinMode.images),
+      );
+      expect(identical(a.onionSkin.settings, b.onionSkin.settings), isTrue);
+      expect(b.onionSkin.settings.value.mode, OnionSkinMode.images);
+
+      a.dispose();
+      // A released notifier throws on a write in debug — the one the shell
+      // still hands the other tabs has to be alive.
+      settings.setAudioSyncSettings(const AudioSyncSettings(offset: 7));
+      settings.setOnionSkinSettings(const OnionSkinSettings());
+      expect(b.onionSkin.settings.value.mode, isNot(OnionSkinMode.images));
+    });
+
+    test('a session on the app\'s settings reads no file — only the one '
+        'restore the shell made', () async {
+      final directory = await Directory.systemTemp.createTemp('qa-one-read');
+      deleteAfterSessionEnds(directory);
+      final store = _CountingLanguageStore('${directory.path}/lang.json');
+      final settings = EditorAppSettings(languageSettingsStore: store)
+        ..restore();
+      addTearDown(settings.dispose);
+      await settings.languageRestored;
+      expect(store.loads, 1, reason: 'premise: the shell\'s one restore');
+
+      for (var tab = 0; tab < 3; tab += 1) {
+        final session = EditorSessionManager(
+          initialProject: createDefaultProject(),
+          appSettings: settings,
+        );
+        addTearDown(session.dispose);
+      }
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        store.loads,
+        1,
+        reason: 'a restore per tab re-reads every file and writes the '
+            'app-wide values back over a change whose save had not landed',
+      );
+    });
   });
 
   test('a set that changes nothing notifies nobody — the guard the seven '
@@ -309,6 +385,20 @@ Future<void> _settleUntil(
   final clock = Stopwatch()..start();
   while (!done() && clock.elapsed < within) {
     await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
+/// A language store that counts its reads — the witness that a session on
+/// the app's settings restores nothing of its own.
+class _CountingLanguageStore extends AppLanguageSettingsStore {
+  _CountingLanguageStore(String filePath) : super(filePath: filePath);
+
+  int loads = 0;
+
+  @override
+  Future<AppLanguageSettings?> load() {
+    loads += 1;
+    return super.load();
   }
 }
 

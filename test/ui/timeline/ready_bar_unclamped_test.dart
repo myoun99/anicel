@@ -16,7 +16,9 @@ void main() {
       viewportMainExtent: 0, // window falls back to the full rendered span
       renderedFrames: 10,
       cellWidth: 8,
-      isFrameReady: (_) => true,
+      readyRunsIn: (start, end) => [
+        (startIndex: start, endIndexExclusive: end),
+      ],
     );
 
     expect(

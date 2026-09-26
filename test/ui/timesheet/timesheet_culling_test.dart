@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -149,6 +151,7 @@ void main() {
 
   TimesheetDocumentPainter painterAt(CanvasViewport viewport) =>
       TimesheetDocumentPainter(
+        words: timesheetWordsIn(AppLanguage.en),
         face: const TextStyle(),
         document: document,
         layout: TimesheetDocumentLayout(document: document, continuous: true),
@@ -264,6 +267,7 @@ void main() {
     TimesheetDocument sheet,
     CanvasViewport viewport,
   ) => TimesheetDocumentPainter(
+    words: timesheetWordsIn(AppLanguage.en),
     face: const TextStyle(),
     document: sheet,
     layout: TimesheetDocumentLayout(document: sheet),

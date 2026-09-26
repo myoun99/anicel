@@ -39,7 +39,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// short. These pin it on every surface that writes one: the frame block's
 /// name and length, a lane key's name, an SE name, an instruction's
 /// writing, the flip window and the folded row's fallback strip. (The
-/// storyboard's labels are pinned in `storyboard_three_band_test`.)
+/// storyboard's labels are pinned in `storyboard_cut_block_bands_test`.)
 ///
 /// ⚠️`flutter test` sets every glyph a full em wide, so words here are much
 /// wider than on screen — which is what makes them run past their blocks.

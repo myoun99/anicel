@@ -108,6 +108,11 @@ class Standing {
   /// overriding the read put the ring on the wrong row. The two writers say
   /// it instead, each where it moved the layer.
   ///
+  /// ↩️F-183 ③ (09-26): two writers were not all of them — the attach door,
+  /// the duplicate, the paste and a cross-row drag's landing moved the layer
+  /// too and said nothing. [followActiveLayer] now says it for every writer,
+  /// at the session's one announcement, still only when the layer MOVED.
+  ///
   /// The row you just made is the subject OF THE PANEL YOU MADE IT IN: made
   /// while working in the storyboard (whose layer pill makes S rows), it is
   /// that rail's row as well — the rail shows it, so that is where you stand.
@@ -128,6 +133,41 @@ class Standing {
       _storyboardRow = row;
     }
     publishCurrentRow();
+  }
+
+  /// The active layer the session last saw in [followActiveLayer].
+  LayerId? _activeSeen;
+
+  /// The verbs' row FOLLOWS the active layer wherever the program moves it
+  /// — a duplicate, a paste, an import, a block landing on another row, a
+  /// hand-off after a delete, an undo that brings a row back. The session
+  /// calls this with every change it announces, so no door can move the
+  /// layer without moving the row.
+  ///
+  /// 🚨F-183 ③ (유저 2026-09-26): 「어태치 프리 레이어 만들고 난 직후 … 기존의
+  /// 어태치 레이어 그 블록을 따라 플립됨 … 아래버튼 누르니 … 아래의 아래
+  /// 레이어로 이동함. 즉 서있는 레이어 기준이 과거인거같음. 근본/구조적으로
+  /// 해결」. F-20 put the seat in each door that moved the layer, and the
+  /// list of doors was exactly the thing nobody could keep complete: the
+  /// attach door, the duplicate, the paste and the landings of a cross-row
+  /// drag all left the verbs on the row they started from.
+  ///
+  /// ⛔Not a read-side override (F-20 measured that one breaking the
+  /// storyboard): it acts only when the active layer MOVED, and leaves a row
+  /// that is already one of the active layer's own — its lanes — where it
+  /// is. The storyboard rail stands without moving the active layer, so it
+  /// never reaches here.
+  void followActiveLayer() {
+    final active = _selection.activeLayerId;
+    if (active == _activeSeen) {
+      return;
+    }
+    _activeSeen = active;
+    final row = _timelineRow;
+    if (active == null || row == null || row.owningLayerId == active) {
+      return;
+    }
+    seatVerbRowOnActiveLayer();
   }
 
   /// F-20, the DELETE half: a row whose layer no longer exists is not a
@@ -170,12 +210,30 @@ class Standing {
 
   WorkingPanel get workingPanel => _working.value;
 
-  /// Rides beside [_internals.currentRowListenable]: a claim moves the panel
+  /// Rides beside [currentRowListenable]: a claim moves the panel
   /// without a session notify, and the flip's axis has to hear it — the
   /// X-sheet runs its frames down the page, the storyboard never does.
   ValueListenable<WorkingPanel> get workingPanelListenable => _working;
 
-  void dispose() => _working.dispose();
+  /// [currentRow] as a LISTENABLE — R10 #19's other half. The row you are
+  /// standing on is DRAWN now (the active layer's row, an fx header, a
+  /// property lane), and the rails have to learn it moved WITHOUT a
+  /// session notify: the claim that moves it fires on pointer-down, inside
+  /// gestures whose whole contract is silence until release.
+  ///
+  /// A [ValueNotifier] only notifies on a real change, so pressing again
+  /// in the row you are already standing on costs nothing — which is the
+  /// common case, and the reason this can be published eagerly.
+  ///
+  /// Held HERE, beside its one writer ([publishCurrentRow]) — the session
+  /// used to declare it for this object to reach (ARCH-session-state).
+  final ValueNotifier<TimelineRowAddress?> currentRowListenable =
+      ValueNotifier<TimelineRowAddress?>(null);
+
+  void dispose() {
+    _working.dispose();
+    currentRowListenable.dispose();
+  }
 
   /// The TIMELINE's own row, the way [_storyboardRow] is the rail's: the
   /// layer or property lane last engaged there. Kept so that returning to
@@ -286,7 +344,7 @@ class Standing {
   /// A claim never NOTIFIES the session. It fires on pointer-DOWN, and a
   /// ruler drag's whole contract is that it stays silent per move and
   /// commits once on release. What the rails DRAW rides
-  /// [_internals.currentRowListenable] instead, so the row that moved repaints its
+  /// [currentRowListenable] instead, so the row that moved repaints its
   /// own small cells and nothing else.
   void claimTimelineRow() => _engage(WorkingPanel.timeline);
 
@@ -457,7 +515,7 @@ class Standing {
     if (_internals.disposed || !_currentRowAnswers) {
       return;
     }
-    _internals.currentRowListenable.value = currentRow;
+    currentRowListenable.value = currentRow;
   }
 
   /// Whether [currentRow] can answer without a TRACK the film may not have

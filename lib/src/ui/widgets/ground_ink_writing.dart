@@ -65,7 +65,11 @@ class GroundInkWriting extends StatelessWidget {
   final Widget Function(BuildContext context, TextStyle ink) builder;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => _WritingBox(child: _writing(context));
+
+  /// The writing itself: plain while one ink covers it, a layout builder
+  /// over a moved canvas once the ground changes under it.
+  Widget _writing(BuildContext context) {
     if (runs.isEmpty) {
       return builder(context, const TextStyle());
     }
@@ -106,6 +110,32 @@ class GroundInkWriting extends StatelessWidget {
       },
     );
   }
+}
+
+/// Where the writing changes SHAPE — one ink, or a ground that changes under
+/// it — so that the change is laid out here and nowhere above.
+///
+/// 🚨(2026-09-26) The two shapes are two element trees, and switching them
+/// replaces the child, which marks its parent for layout. The bar's own
+/// fixed-height box is not a relayout boundary (its height is fixed; the row
+/// above it is not), so a bar whose fill crossed into or out of its words
+/// laid out everything up to the row's first boundary — on a brush pick,
+/// three bars flipped and laid the whole tool settings column out again,
+/// each object laid out a semantics update too. Every bar hands its writing
+/// tight constraints, and a box laid out under tight constraints IS a
+/// relayout boundary: the switch lays out the writing and stops.
+///
+/// ↩️The first answer (8f2962aa6) gave the writing one shape instead — a
+/// layout builder always — and that made every rebuild of a one-ink bar a
+/// forced relayout, a repaint and a semantics update where there had been
+/// none: a layout builder lays itself out again whenever it is rebuilt, and
+/// a repaint inside a dock throws the dock's still image away. The shapes
+/// are back as they were; this box is what keeps their switch local.
+class _WritingBox extends SingleChildRenderObjectWidget {
+  const _WritingBox({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => RenderProxyBox();
 }
 
 /// Paints its child with the canvas moved to its own top-left, so a shader

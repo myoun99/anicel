@@ -4,12 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/native/qa_audio_decoder.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/ui/playback/recording_streamer_overlay.dart';
+
+import '../../helpers/decode_audio_file.dart';
+import '../../helpers/native_engine_path.dart';
 
 /// ADR cueing (REC1-E): the 3-beep countdown into a punch, the streamer
 /// window, and the stopped-⏺ count-in that delays the roll but not the
@@ -277,6 +282,58 @@ void main() {
     );
     await manager.voiceRecording.stopVoiceRecordingAndPlace();
     await tester.pumpAndSettle();
+  });
+
+  /// 🚨The beep a count-in plays is a WAV the decoders read — it was the
+  /// conform encoder's output, like a take's, and no decoder reads that
+  /// (card `F-178` ⑥).
+  group('with the decoder', () {
+    final libraryPath = nativeEngineLibraryPathOrNull();
+
+    setUp(() {
+      QaAudioDecoder.debugResetForTests();
+      debugQaEngineLibraryPathOverride = libraryPath;
+    });
+
+    tearDown(() {
+      QaAudioDecoder.debugResetForTests();
+      debugQaEngineLibraryPathOverride = null;
+    });
+
+    test('🚨the count-in\'s beep reads back as ninety milliseconds of '
+        'tone', () async {
+      final manager = session();
+      addTearDown(manager.dispose);
+      manager.projectSettings.setProjectFps(4);
+      final laneId = manager.activeTrack.seLayers.first.id;
+      manager.selectLayer(laneId);
+      manager.selectFrameIndex(0);
+      manager.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: laneId,
+        startIndex: 13,
+        endIndexExclusive: 16,
+      );
+      manager.voiceRecording.debugVoiceRecorderFactory = () =>
+          _FakeRecorder(takeOfSeconds(4.0));
+      expect(
+        manager.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+
+      final beep = decodeAudioFile(
+        manager.voiceRecording.voiceRecordCueClips.first.filePath,
+      );
+      await manager.voiceRecording.stopVoiceRecordingAndPlace();
+
+      expect(beep, isNotNull, reason: 'no decoder read the beep');
+      expect(beep!.channels, 1);
+      expect(beep.samples, hasLength(beep.sampleRate * 9 ~/ 100));
+      expect(
+        beep.samples.any((sample) => sample.abs() > 0.4),
+        isTrue,
+        reason: 'a tone at half scale, not silence',
+      );
+    }, skip: libraryPath == null ? nativeEngineMissingSkipReason : false);
   });
 }
 

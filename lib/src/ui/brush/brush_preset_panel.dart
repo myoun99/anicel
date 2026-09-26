@@ -1455,20 +1455,29 @@ class _BrushPresetRow extends StatelessWidget {
                 brushPresetCellGap * 2,
             child: Row(
               children: [
+                // The bar is the same box whether the row is held or not;
+                // only its paint changes. A bar that came and went was a
+                // child added and dropped on every pick, laid out again up
+                // the row, each object a semantics update (2026-09-26).
                 SizedBox(
                   width: _barWidth,
-                  child: selected
-                      ? Center(
-                          child: Container(
-                            width: 2,
-                            height: 22,
-                            decoration: ShapeDecoration(
-                              color: colorScheme.primary,
-                              shape: AppShapes.container(1),
-                            ),
-                          ),
-                        )
-                      : null,
+                  child: Center(
+                    child: SizedBox(
+                      width: 2,
+                      height: 22,
+                      child: DecoratedBox(
+                        key: ValueKey<String>(
+                          'brush-preset-bar-${preset.id.value}',
+                        ),
+                        decoration: selected
+                            ? ShapeDecoration(
+                                color: colorScheme.primary,
+                                shape: AppShapes.container(1),
+                              )
+                            : const BoxDecoration(),
+                      ),
+                    ),
+                  ),
                 ),
                 if (showTipIcon) ...[
                   Container(

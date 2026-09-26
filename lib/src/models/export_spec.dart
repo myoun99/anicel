@@ -608,9 +608,14 @@ class ConteExportSpec extends ExportTabSpec {
 /// The default is the CUT's own pixel size, because the point of the
 /// digital envelope is to drop into the working file as a layer and line
 /// up with the artwork. The real-envelope size is there for printing.
+///
+/// Which FORM prints is not here: it is the work's
+/// (`TimesheetInfo.envelopeFormId`), chosen in the envelope panel — 유저 답
+/// envelope-form-in-export (2026-09-25): 「출력은 작품의 서식을 따른다
+/// (출력 창의 고르기는 뺀다)」. ↩️The spec used to carry its own `formId`
+/// so a studio could read one form on screen and hand over another.
 class EnvelopeExportSpec extends ExportTabSpec {
   const EnvelopeExportSpec({
-    this.formId = defaultFormId,
     this.paperMode = CutEnvelopePaperMode.cut,
     this.scope = ExportScopeKind.cut,
     this.sheetWidth = 2480,
@@ -618,22 +623,17 @@ class EnvelopeExportSpec extends ExportTabSpec {
     this.separateLayerFiles = false,
   });
 
-  /// [CutEnvelopePresets.analogId] without importing the preset table —
-  /// the spec is a value, and the table is a bundle of forms.
-  static const String defaultFormId = 'analog-wit';
-
-  /// Which bundled form prints. The export chooses its own rather than
-  /// following the panel: a studio may read the digital sheet on screen
-  /// and hand over the analog one.
-  final String formId;
-
-  /// Every stratum, which is what a flat PNG of the sheet means.
-  static const Set<SheetPaintLayer> defaultLayers = {
+  /// The strata an envelope HAS, in painting order — it shows no film
+  /// pictures ([SheetPaintLayer.picture] is the conte's).
+  static const List<SheetPaintLayer> strata = [
     SheetPaintLayer.paper,
     SheetPaintLayer.form,
     SheetPaintLayer.content,
     SheetPaintLayer.ink,
-  };
+  ];
+
+  /// Every stratum, which is what a flat PNG of the sheet means.
+  static const Set<SheetPaintLayer> defaultLayers = {...strata};
 
   final CutEnvelopePaperMode paperMode;
   final ExportScopeKind scope;
@@ -662,14 +662,12 @@ class EnvelopeExportSpec extends ExportTabSpec {
   ExportTab get tab => ExportTab.envelope;
 
   EnvelopeExportSpec copyWith({
-    String? formId,
     CutEnvelopePaperMode? paperMode,
     ExportScopeKind? scope,
     int? sheetWidth,
     Set<SheetPaintLayer>? layers,
     bool? separateLayerFiles,
   }) => EnvelopeExportSpec(
-    formId: formId ?? this.formId,
     paperMode: paperMode ?? this.paperMode,
     scope: scope ?? this.scope,
     sheetWidth: (sheetWidth ?? this.sheetWidth).clamp(64, 20000),
@@ -690,7 +688,6 @@ class EnvelopeExportSpec extends ExportTabSpec {
 
   @override
   Map<String, dynamic> toJson() => {
-    if (formId != defaultFormId) 'formId': formId,
     if (paperMode != CutEnvelopePaperMode.cut) 'paperMode': paperMode.toJson(),
     if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
     if (sheetWidth != 2480) 'sheetWidth': sheetWidth,
@@ -705,7 +702,6 @@ class EnvelopeExportSpec extends ExportTabSpec {
         ? {for (final entry in rawLayers) ?SheetPaintLayer.fromJson(entry)}
         : defaultLayers;
     return EnvelopeExportSpec(
-      formId: json['formId'] as String? ?? defaultFormId,
       // Absent means the DEFAULT (cut-fitted), not the enum's own fallback.
       paperMode: json['paperMode'] == null
           ? CutEnvelopePaperMode.cut
@@ -725,7 +721,6 @@ class EnvelopeExportSpec extends ExportTabSpec {
   @override
   bool operator ==(Object other) =>
       other is EnvelopeExportSpec &&
-      other.formId == formId &&
       other.paperMode == paperMode &&
       other.scope == scope &&
       other.sheetWidth == sheetWidth &&
@@ -734,7 +729,6 @@ class EnvelopeExportSpec extends ExportTabSpec {
 
   @override
   int get hashCode => Object.hash(
-    formId,
     paperMode,
     scope,
     sheetWidth,

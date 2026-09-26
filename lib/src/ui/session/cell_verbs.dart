@@ -3,6 +3,8 @@ import '../../models/brush_frame_key.dart';
 import '../../models/frame.dart' show inbetweenMark;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/pixel_verb_subject.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
@@ -18,6 +20,8 @@ import '../../services/canvas_selection_region.dart';
 import 'lane_verbs.dart';
 import 'range_selections.dart';
 import 'frame_clipboard.dart';
+import 'transition_range_hold.dart';
+import 'transitions.dart';
 
 /// The CELL VERBS — deleting the cell under the cursor or the selection,
 /// the status text a cell shows, and the pixel verbs (the keys they act
@@ -37,6 +41,7 @@ class CellVerbs {
     required LaneVerbs laneVerbs,
     required RangeSelections rangeSelections,
     required FrameClipboard clipboard,
+    required Transitions transitions,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -46,9 +51,11 @@ class CellVerbs {
        _renderCaches = renderCaches,
        _laneVerbs = laneVerbs,
        _rangeSelections = rangeSelections,
-       _clipboard = clipboard;
+       _clipboard = clipboard,
+       _transitions = transitions;
 
   final FrameClipboard _clipboard;
+  final Transitions _transitions;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -276,8 +283,17 @@ class CellVerbs {
       // effect).
       _laneVerbs.laneVerbRangeHasSomethingToDelete ||
       // A live selection is deletable wherever the playhead stands (UI-R17
-      // #2).
-      _rangeSelections.selectionBlockStartsByLayer() != null;
+      // #2) — its blocks, and the transition spans it holds
+      // (transition-row-range-in-the-cut).
+      _rangeSelections.selectionBlockStartsByLayer() != null ||
+      _selectionTransitionStarts != null;
+
+  /// The transition spans THE live selection holds, either axis.
+  Map<LayerId, Set<int>>? get _selectionTransitionStarts =>
+      _transitions.transitionStartsHeldBy(
+        inCut: _selection.frameRangeSelection.value,
+        onTrack: _selection.trackFrameRangeSelection.value,
+      );
 
   /// Whether a live CELL band owns the next cell-verb press.
   ///
@@ -311,6 +327,16 @@ class CellVerbs {
       return false;
     }
     final layer = _selection.activeLayer;
+    // The transition row deletes the span its mark SHOWS, on the global row
+    // (transition-row-open-in-the-cut) — its cells are a projection, which
+    // no cut-local cel verb may read as its own. An O.L's mark is not the
+    // cut's to delete (유저 2026-09-26).
+    if (layer?.kind == LayerKind.transition) {
+      return _transitions.transitionSpanStartEditableInCutAt(
+            _controllers.timelineController.currentFrameIndex,
+          ) !=
+          null;
+    }
     // SYNCED attach rows: cel removal is out of v1 scope (delete the row
     // or undo the creation) — cells are display material there. Free
     // attach rows delete cells like normal (UI-R21 #3).
@@ -344,11 +370,22 @@ class CellVerbs {
       return;
     }
     // A live selection routes the delete to EVERY selected block on
-    // EVERY spanned layer (UI-R17 #2/#8, one composite undo); the
-    // leftover selection covers empty cells so it clears with the delete.
+    // EVERY spanned layer (UI-R17 #2/#8) and to the transition spans it
+    // holds, in one composite undo; the leftover selection covers empty
+    // cells so it clears with the delete.
     final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
-    if (selectionTargets != null) {
-      _controllers.timelineController.deleteBlocksForLayers(selectionTargets);
+    final transitionTargets = _selectionTransitionStarts;
+    if (selectionTargets != null || transitionTargets != null) {
+      _project.historyManager.runAsOneStep('Delete selected cells', () {
+        if (selectionTargets != null) {
+          _controllers.timelineController.deleteBlocksForLayers(
+            selectionTargets,
+          );
+        }
+        if (transitionTargets != null) {
+          _transitions.removeTransitionSpans(transitionTargets);
+        }
+      });
       // Whichever axis answered: the leftover span covers empty cells now.
       _selection.clearFrameRangeSelection();
       _selection.clearStoryboardCutSelection();
@@ -362,6 +399,15 @@ class CellVerbs {
     }
     final layer = _selection.activeLayer;
     if (layer == null || !canDeleteCellAtCurrentFrame) {
+      return;
+    }
+    if (layer.kind == LayerKind.transition) {
+      final start = _transitions.transitionSpanStartEditableInCutAt(
+        _controllers.timelineController.currentFrameIndex,
+      );
+      if (start != null) {
+        _transitions.removeTransitionSpanAt(start);
+      }
       return;
     }
 

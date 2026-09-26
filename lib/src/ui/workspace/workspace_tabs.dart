@@ -169,7 +169,19 @@ class _WorkspaceTabs {
     );
   }
 
-  EditorPanelTab tabFor(String tabId) {
+  /// [tabId]'s tab, built for the project on screen.
+  ///
+  /// 🚨★★★EVERY PANEL IS BUILT FOR ONE PROJECT (I-7, a project per tab). A
+  /// panel host takes the session into its State — listeners, stores,
+  /// caches made from it — and a project tab switch hands this window another
+  /// session. Keyed by the session, each panel is made again for the
+  /// project that came on screen instead of carrying the last one's State
+  /// into it: one key here rather than a switch handler in every host,
+  /// which is the shape that forgets one.
+  EditorPanelTab tabFor(String tabId) =>
+      _tabForId(tabId).builtFor(_state.widget.session);
+
+  EditorPanelTab _tabForId(String tabId) {
     final locked = _state._lockedTabIds.contains(tabId);
     switch (tabId) {
       case EditorWorkspace.toolsTabId:
@@ -252,9 +264,11 @@ class _WorkspaceTabs {
                 canvasSelectionCommands: _state.widget.canvasSelectionCommands,
                 cutPieceSlot: _state._cutPieceSlot,
                 lastStroke: _state.widget.lastStroke,
+                toolHold: _state.widget.toolHold,
                 cameraViewEnabled: _state._views._cameraViewEnabled,
                 cameraDimOpacity: _state._views._cameraDimOpacity,
-                expandedLaneLayerIds: _state._expandedLaneLayerIds,
+                expandedLaneLayerIds:
+                    _state.widget.session.railView.expandedLaneLayerIds,
                 fillOptions: _state._views._fillOptions,
                 selectionMaskOptions: _state._views._selectionMaskOptions,
                 transformOptions: _state._transformOptions,
@@ -765,8 +779,8 @@ class _WorkspaceTabs {
               // #4): the host scopes it to the panel subtree, so a zoom
               // step skips this whole tab rebuild.
               _state._showSecondsDisplay,
-              _state._expandedLaneLayerIds,
-              _state._expandedLaneGroupKeys,
+              _state.widget.session.railView.expandedLaneLayerIds,
+              _state.widget.session.railView.expandedLaneGroupKeys,
               _state.widget.session.railView.hiddenSections,
               _state.widget.session.railView.collapsedAttachBaseIds,
               _state.widget.session.railView.rowFilter,
@@ -841,9 +855,11 @@ class _WorkspaceTabs {
               timelineFrameAxisOffset:
                   _state._frameAxisOffsets[LayerRailId.timeline],
               xsheetFrameAxisOffset: _state._frameAxisOffsets[LayerRailId.xsheet],
-              expandedLaneLayerIds: _state._expandedLaneLayerIds.value,
+              expandedLaneLayerIds:
+                  _state.widget.session.railView.expandedLaneLayerIds.value,
               onToggleLayerLanes: _state._toggleLayerLanes,
-              expandedLaneGroupKeys: _state._expandedLaneGroupKeys.value,
+              expandedLaneGroupKeys:
+                  _state.widget.session.railView.expandedLaneGroupKeys.value,
               onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
               hiddenSections:
                   _state.widget.session.railView.hiddenSections.value,
@@ -899,12 +915,15 @@ class _WorkspaceTabs {
             // arrow press — measured at 38ms a step (12 build / 22 layout /
             // 3 paint) with a six-cut project. Panel-aware (R12-①):
             // offstage notifies defer to one catch-up on re-activation.
+            // ↩️The thumbnail store sat here too, so every picture that
+            // landed rebuilt the whole panel — at I-22's ten-minute zoom,
+            // one per cut on the film. The blocks that ask repaint on it
+            // now ([StoryboardThumbnails]).
             listenable: Listenable.merge([
               _state.widget.session,
               _state._storyboardPixelsPerFrame,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
-              _state._storyboardThumbnails,
             ]),
             builder: (context) => StoryboardTabHost(
               session: _state.widget.session,
@@ -930,10 +949,19 @@ class _WorkspaceTabs {
               },
               railExtent: _state._railExtents[LayerRailId.storyboard],
               frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
-              // ⛔No height setter any more (B7): the steppers left the bar,
-              // and the planned V-track splitter is the next writer.
+              // ⛔No steppers any more (B7): the V rows' splitter is the
+              // height's one writer, and it asks the NOTIFIER, not the value
+              // this build took — a drag's steps outrun the rebuilds.
               trackLaneHeight: _state._storyboardTrackLaneHeight.value,
-              thumbnailFor: _state._storyboardThumbnails.thumbnailFor,
+              onResizeTrackLanes: (delta) {
+                final height = _state._storyboardTrackLaneHeight;
+                final before = height.value;
+                height.value = StoryboardPanel.clampTrackLaneHeight(
+                  before + delta,
+                );
+                return height.value - before;
+              },
+              thumbnails: _state._storyboardThumbnails.thumbnails,
               // The rows the ↑/↓ walk and the flip window read while the
               // storyboard is the panel being worked in.
               rowsChannel: _state._storyboardRows,
@@ -961,30 +989,37 @@ class _WorkspaceTabs {
           builder: (context) => PanelAwareListenableBuilder(
             listenable: Listenable.merge([
               _state.widget.session,
-              _state._storyboardThumbnails,
               _state._views._conteViewport,
-              _state._views._conteInkEnabled,
+              _state._views._conteBrushAllowed,
               _state._views._conteInk,
+              // Its pictures' cels, followed through the store: an undo
+              // that moves no row still moves their pixels (F-80 ②).
+              _state._views._contePictures,
               // The locale reprints the sheet chrome (labels/tooltips).
               _state.widget.session.languageSettings,
             ]),
             builder: (context) => ConteTabHost(
               session: _state.widget.session,
-              thumbnailFor: _state._storyboardThumbnails.thumbnailFor,
               // A landed thumbnail render repaints the page painter
               // directly (its compared fields don't change for async
-              // pictures).
-              thumbnailRepaint: _state._storyboardThumbnails,
+              // pictures) — and only it: the store left this tab's merge,
+              // which rebuilt the whole sheet for every picture as well.
+              thumbnails: _state._storyboardThumbnails.thumbnails,
               // The notifier ITSELF — the panel writes into this one, so
               // there is no copy to echo and nothing to go stale while the
               // panel is unmounted.
               viewportController: _state._views._conteViewport,
               inkController: _state._views._conteInk,
+              pictures: _state._views._contePictures,
               brushToolState: _state._brushTool,
-              inkEnabled: _state._views._conteInkEnabled.value,
-              onInkEnabledChanged: (enabled) {
-                _state._views._conteInkEnabled.value = enabled;
+              brushAllowed: _state._views._conteBrushAllowed.value,
+              onBrushAllowedChanged: (enabled) {
+                _state._views._conteBrushAllowed.value = enabled;
               },
+              // The logo and the cover picture, from the decode cache the
+              // envelope prints from — a landed decode repaints the page.
+              imageFor: _state._views._sheetImages.imageFor,
+              imageRepaint: _state._views._sheetImages,
             ),
           ),
         );
@@ -1004,8 +1039,7 @@ class _WorkspaceTabs {
             listenable: Listenable.merge([
               _state.widget.session,
               _state._views._envelopeViewport,
-              _state._views._envelopeInkEnabled,
-              _state._views._envelopeFormId,
+              _state._views._envelopeBrushAllowed,
               _state._views._envelopeInk,
               // F-90: the envelope of the cut under the playhead, turning
               // over at a crossing like the sheet beside it.
@@ -1014,22 +1048,27 @@ class _WorkspaceTabs {
             ]),
             builder: (context) => CutEnvelopeTabHost(
               session: _state.widget.session,
-              formId: _state._views._envelopeFormId.value,
+              // The work's choice, written back to the work — one undo.
+              formId: _state.widget.session.timesheetInfo.envelopeFormId,
               onFormIdChanged: (formId) {
-                _state._views._envelopeFormId.value = formId;
+                final session = _state.widget.session;
+                session.updateTimesheetInfo(
+                  session.timesheetInfo.copyWith(envelopeFormId: formId),
+                );
               },
               viewportController: _state._views._envelopeViewport,
               inkController: _state._views._envelopeInk,
               brushToolState: _state._brushTool,
-              inkEnabled: _state._views._envelopeInkEnabled.value,
-              onInkEnabledChanged: (enabled) {
-                _state._views._envelopeInkEnabled.value = enabled;
+              brushAllowed: _state._views._envelopeBrushAllowed.value,
+              onBrushAllowedChanged: (enabled) {
+                _state._views._envelopeBrushAllowed.value = enabled;
               },
               // 🚨WIRED NOW. The comment that stood here said this waited on
               // the 작품 정보 round because nothing set a logo or a 도장 path
               // yet, so a resolver had no source. The stamp picker in the
               // sheet-info window is that source.
-              imageFor: _state._views._envelopeImages.imageFor,
+              imageFor: _state._views._sheetImages.imageFor,
+              imageRepaint: _state._views._sheetImages,
             ),
           ),
         );
@@ -1058,7 +1097,7 @@ class _WorkspaceTabs {
               _state._views._timesheetContinuous,
               _state._views._timesheetPage,
               _state._views._timesheetViewport,
-              _state._views._timesheetInkEnabled,
+              _state._views._timesheetBrushAllowed,
               // F-90: a crossing, played or dragged over, turns the sheet
               // over to the cut under the playhead.
               _state.widget.session.cutUnderPlayhead.listenable,
@@ -1078,9 +1117,9 @@ class _WorkspaceTabs {
               viewportController: _state._views._timesheetViewport,
               inkController: _state._views._timesheetInk,
               brushToolState: _state._brushTool,
-              inkEnabled: _state._views._timesheetInkEnabled.value,
-              onInkEnabledChanged: (enabled) {
-                _state._views._timesheetInkEnabled.value = enabled;
+              brushAllowed: _state._views._timesheetBrushAllowed.value,
+              onBrushAllowedChanged: (enabled) {
+                _state._views._timesheetBrushAllowed.value = enabled;
               },
             ),
           ),

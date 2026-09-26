@@ -19,16 +19,19 @@ import 'session_roles.dart';
 /// ↩️The settings and the layer set used to stay on the session, on the
 /// reading that "the UI reads them" (the 2026-09-02 cut). Reading them does
 /// not need the session to own them: this object is the one that plans with
-/// them, so it holds them, and the UI reads `session.onionSkin` — the first
-/// family of ARCH-session-state's state move (2026-09-16), which the
-/// session's `SessionInternals` ledger counts down by the two getters it no
-/// longer carries.
+/// them, so it holds the LAYER SET, and the UI reads `session.onionSkin` —
+/// the first family of ARCH-session-state's state move (2026-09-16), which
+/// the session's `SessionInternals` ledger counts down by the two getters it
+/// no longer carries. The peg [settings] are the user's, one value for every
+/// open project, so they are the app's (`EditorAppSettings.onionSkinSettings`,
+/// I-7) and this object plans with that notifier.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: no private field of its own and
 /// eight session members touched. It names the roles it needs in its constructor.
 class OnionSkin {
   OnionSkin({
+    required this.settings,
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
@@ -46,10 +49,10 @@ class OnionSkin {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
-  /// The peg settings — a ValueNotifier so the canvas underlay and the onion
-  /// panel subscribe without whole-session notifies.
-  final ValueNotifier<OnionSkinSettings> settings =
-      ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
+  /// The peg settings — the app's one notifier (see the class doc), so the
+  /// canvas underlay and the onion panel subscribe without whole-session
+  /// notifies. Not this object's to release.
+  final ValueNotifier<OnionSkinSettings> settings;
 
   /// PER-LAYER onion application (UI-R17 #5, TVPaint's light table): the
   /// layers whose ghosts composite. The panel's master switch is GONE —
@@ -58,9 +61,8 @@ class OnionSkin {
     <LayerId>{},
   );
 
-  /// Releases the two values; the session's teardown calls it.
+  /// Releases the layer set; the session's teardown calls it.
   void dispose() {
-    settings.dispose();
     layerIds.dispose();
   }
 
@@ -186,8 +188,10 @@ class OnionSkin {
         if (enabledIds.contains(layer.id) &&
             cut.layers.rowVisible(layer) &&
             layer.kind.takesOnionSkin)
+          // The row as the rows show it: a SYNCED attach row plans from its
+          // mirror of the base, whose cels are its own (F-183 ①).
           for (final plan in planOnionSkin(
-            layer: layer,
+            layer: attachedRowAsShown(layer, cut.layers),
             frameIndex: _controllers.timelineController.currentFrameIndex,
             settings: pegs,
           ))

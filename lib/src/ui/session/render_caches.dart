@@ -23,6 +23,10 @@ import 'dart:async';
 import 'dart:io';
 
 import '../../models/brush_frame_cache_invalidation.dart';
+import '../../models/brush_frame_key.dart';
+import '../../models/conte/conte_ink_keys.dart';
+import '../../models/envelope/cut_envelope_ink_keys.dart';
+import '../../models/timesheet_ink_keys.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/playback/editor_cache_invalidation_hub.dart';
 import '../playback/cut_frame_composite_cache.dart';
@@ -67,6 +71,27 @@ class RenderCaches {
           key,
     );
 
+  /// Sets the cel stores' hot budgets from [budgets]: the drawings' own,
+  /// and the sheet-ink stores' ONE share, split evenly
+  /// ([CacheBudgets.sheetInk]). The session calls it; a store no session
+  /// set keeps the desktop-class default, as an unknown device does.
+  ///
+  /// ...and KEEPS them: each store cools what its new budget no longer
+  /// holds ([BrushFrameStore.coolToBudget]) — the playback cache's
+  /// `enforce` said of the cels. A budget that moved and waited for the
+  /// next cel to arrive was never kept by a project tab sent behind (I-7),
+  /// which gets no next cel.
+  void applyCacheBudgets(CacheBudgets budgets) {
+    brushFrameStore.hotCelByteBudget = budgets.drawings;
+    final stores = sheetInkStores;
+    for (final store in stores) {
+      store.hotCelByteBudget = budgets.sheetInk ~/ stores.length;
+    }
+    for (final store in celStores) {
+      store.coolToBudget();
+    }
+  }
+
   /// Page-raster bytes each mounted media viewer is holding, by viewer id.
   ///
   /// 🚨**PUSHED, where every other census number is PULLED.** The census
@@ -80,21 +105,6 @@ class RenderCaches {
   /// ⛔Without this the panel that answers「어떤항목이 얼만큼」 was silent
   /// about a cache that can hold a quarter of a gigabyte per viewer — the
   /// gap would land in `untrackedBytes` and read as engine overhead.
-  /// Sets the cel stores' hot budgets from [budgets]: the drawings' own,
-  /// and the three sheet-ink stores' ONE share, split evenly
-  /// ([CacheBudgets.sheetInk]). The session calls it; a store no session
-  /// set keeps the desktop-class default, as an unknown device does.
-  void applyCacheBudgets(CacheBudgets budgets) {
-    brushFrameStore.hotCelByteBudget = budgets.drawings;
-    for (final store in [
-      conteInkRowStore,
-      conteInkPageStore,
-      envelopeInkStore,
-    ]) {
-      store.hotCelByteBudget = budgets.sheetInk ~/ 3;
-    }
-  }
-
   final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
 
   /// What the editing canvas's display buffer holds — one canvas-resolution
@@ -105,10 +115,16 @@ class RenderCaches {
   ///
   /// 🚨PUSHED, for the reason above it: the buffer lives in a widget State
   /// the session does not own. ⚠️A plain int rather than the viewers' map
-  /// because `CanvasLayerStackView` has exactly ONE construction site (the
-  /// editing canvas). A second one would need the map — and would silently
-  /// overwrite this until someone noticed, which is why it is written down.
+  /// because it is the EDITING CANVAS's alone; the second
+  /// `CanvasLayerStackView` site keeps its own map below
+  /// ([livePictureBufferBytes]) rather than overwriting this.
   int canvasBufferBytes = 0;
+
+  /// What each LIVE picture's display buffer holds — the conte's pictures,
+  /// composited live while its brush is on (유저 답 conte-picture-display-Q1
+  /// 「실시간 합성」), by picture: several are live at once. The same census
+  /// row as [canvasBufferBytes], pushed for the same reason.
+  final Map<String, int> livePictureBufferBytes = {};
 
   /// What the storyboard's and the conte's thumbnails hold — every panel
   /// picture still inside its budget (one viewer's share of this device).
@@ -118,14 +134,6 @@ class RenderCaches {
   /// counted it at all — no budget and no census row, and a panel looked
   /// at once stayed resident until the workspace closed.
   int storyboardThumbnailBytes = 0;
-
-  /// What the cut tool's held piece costs (`CutPieceSlot.pieceBytes`) —
-  /// PUSHED for the same reason: the slot lives in the workspace's State.
-  int cutPieceBytes = 0;
-
-  /// What 확정's held stroke costs (`LastStrokeSlot.strokeBytes`) — PUSHED
-  /// by the shell, which owns the slot.
-  int lastStrokeBytes = 0;
 
   /// What the media viewers hold between them.
   int get viewerRasterBytes {
@@ -139,10 +147,10 @@ class RenderCaches {
   /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
   /// archive can persist them (the second cel namespace), while the ink
   /// controller (workspace UI) keeps the coordinators. The ROW store's
-  /// keys carry storyboard block [FrameId]s: entries whose block no longer
-  /// exists are pruned at LOAD (never at save — a deleted block's ink must
-  /// survive its own undo), so "ink dies with the drawing" lands at the
-  /// session boundary.
+  /// keys carry each storyboard block's own handwriting id
+  /// (`ExposureMemo.inkId`): entries no block names any more are pruned at
+  /// LOAD (never at save — a deleted block's ink must survive its own
+  /// undo), so "ink dies with the block" lands at the session boundary.
   final BrushFrameStore conteInkRowStore = BrushFrameStore();
   final BrushFrameStore conteInkPageStore = BrushFrameStore();
 
@@ -151,6 +159,47 @@ class RenderCaches {
   /// Its keys carry the OWNER cut's id, so an entry whose cut is gone is
   /// pruned at LOAD exactly like a conte row's.
   final BrushFrameStore envelopeInkStore = BrushFrameStore();
+
+  /// The timesheet's ink stores — SESSION-owned like the conte's and the
+  /// envelope's (유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」):
+  /// the ink was the one sheet's that no save carried. The keys carry the
+  /// cut's id, so an entry whose cut is gone is pruned at LOAD, the
+  /// envelope's unit.
+  final BrushFrameStore timesheetInkStripStore = BrushFrameStore();
+  final BrushFrameStore timesheetInkPageStore = BrushFrameStore();
+
+  /// Every sheet's ink stores — the ONE list a whole-session walk reads:
+  /// the budgets, memory pressure, the census, a save, an open, a reset.
+  ///
+  /// ⛔Six walks each wrote the stores out by hand; a sheet whose ink came
+  /// later would have been saved by some of them and budgeted by others.
+  List<BrushFrameStore> get sheetInkStores => [
+    conteInkRowStore,
+    conteInkPageStore,
+    envelopeInkStore,
+    timesheetInkStripStore,
+    timesheetInkPageStore,
+  ];
+
+  /// Every store a cel ref can live in — the drawings, then
+  /// [sheetInkStores], the order every writer lists them in.
+  List<BrushFrameStore> get celStores => [brushFrameStore, ...sheetInkStores];
+
+  /// The store a sheet-ink [key] lives in — by its namespace and its plane
+  /// — or null for a drawing's key.
+  BrushFrameStore? sheetInkStoreFor(BrushFrameKey key) {
+    if (isConteInkKey(key)) {
+      return key.layerId == conteInkRowLayerId
+          ? conteInkRowStore
+          : conteInkPageStore;
+    }
+    if (isTimesheetInkKey(key)) {
+      return key.layerId == timesheetInkStripLayerId
+          ? timesheetInkStripStore
+          : timesheetInkPageStore;
+    }
+    return isEnvelopeInkKey(key) ? envelopeInkStore : null;
+  }
 
   /// Production sink for brush edit invalidations; playback caches and the
   /// prerender scheduler listen here.

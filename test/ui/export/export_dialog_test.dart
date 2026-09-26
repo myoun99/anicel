@@ -6,6 +6,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -19,6 +21,8 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
@@ -188,6 +192,35 @@ void main() {
   Future<void> switchTab(WidgetTester tester, String tab) async {
     await tester.tap(find.byKey(ValueKey<String>('export-tab-$tab')));
     await tester.pump();
+  }
+
+  /// The preview [tab] shows in the face [family], its bytes.
+  Future<List<int>> previewIn(
+    WidgetTester tester, {
+    required String tab,
+    required String family,
+  }) async {
+    final state = await pumpDialog(
+      tester,
+      exportSession(),
+      face: TextStyle(fontFamily: family),
+      dialogKey: ValueKey<String>(
+        'preview-$tab-$family-'
+        '${AppText.settings.value.notationLanguage.name}',
+      ),
+    );
+    await switchTab(tester, tab);
+    await tester.runAsync(state.debugFlushPreview);
+    await tester.pump();
+    final image = tester
+        .widget<RawImage>(
+          find.byKey(const ValueKey<String>('export-preview-image')),
+        )
+        .image!;
+    final bytes = await tester.runAsync(
+      () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+    );
+    return bytes!.buffer.asUint8List().toList();
   }
 
   bool exportEnabled(WidgetTester tester) {
@@ -718,6 +751,41 @@ void main() {
       expect(statusText(tester), 'Exported 1 sheet page.');
     });
 
+    // 유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」 — the sheet
+    // exported no ink at all, where the conte's and the envelope's rode.
+    testWidgets('what was written on the sheet rides its PNG, where it was '
+        'written', (tester) async {
+      final session = exportSession();
+      addTearDown(session.dispose);
+      session.renderCaches.timesheetInkPageStore.storeBakedSurface(
+        timesheetInkPageKey(const CutId('cut'), 0),
+        _redSurface(),
+      );
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}/CUTCut.png').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      final data = (await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+      ))!;
+      // The page ink's surface pixel (0, 0) sits on the page's corner: the
+      // 16px stroke is 4 sheet units, 8 pixels at the export's 2×.
+      expect(data.getUint8(0), greaterThan(200), reason: 'red, from the store');
+      expect(data.getUint8(1), lessThan(80));
+    });
+
     testWidgets('writes one xdts per cut under the project scope',
         (tester) async {
       final state = await pumpDialog(
@@ -1161,6 +1229,30 @@ void main() {
     });
   });
 
+  group('the sheets export in the notation language (UI-R10 #7)', () {
+    // What prints follows the NOTATION language — the timesheet's words from
+    // the string tables since 2026-09-26, the conte's before them — and a
+    // render handed the program's, or none, comes out the same both times.
+    tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+    for (final tab in ['timesheet', 'conte']) {
+      testWidgets('$tab: the preview', (tester) async {
+        await loadTheAppFaces();
+        Future<List<int>> printedIn(AppLanguage notation) {
+          AppText.settings.value = AppLanguageSettings(
+            notationLanguage: notation,
+          );
+          return previewIn(tester, tab: tab, family: 'BIZ UDPGothic');
+        }
+
+        expect(
+          await printedIn(AppLanguage.ja),
+          isNot(await printedIn(AppLanguage.ko)),
+        );
+      });
+    }
+  });
+
   group('the documents export in the window\'s face '
       '(documents-in-which-face-Q1)', () {
     // 🗣️유저 2026-09-24 「둘다 앱글꼴로 통일」: the export window hands the
@@ -1193,31 +1285,6 @@ void main() {
       };
     }
 
-    Future<List<int>> previewIn(
-      WidgetTester tester, {
-      required String tab,
-      required String family,
-    }) async {
-      final state = await pumpDialog(
-        tester,
-        exportSession(),
-        face: TextStyle(fontFamily: family),
-        dialogKey: ValueKey<String>('preview-$tab-$family'),
-      );
-      await switchTab(tester, tab);
-      await tester.runAsync(state.debugFlushPreview);
-      await tester.pump();
-      final image = tester
-          .widget<RawImage>(
-            find.byKey(const ValueKey<String>('export-preview-image')),
-          )
-          .image!;
-      final bytes = await tester.runAsync(
-        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
-      );
-      return bytes!.buffer.asUint8List().toList();
-    }
-
     for (final tab in ['timesheet', 'envelope']) {
       testWidgets('$tab: the files', (tester) async {
         await loadTheAppFaces();
@@ -1247,4 +1314,22 @@ void main() {
       });
     }
   });
+}
+
+/// A 16px surface inked solid red — what a landed stroke leaves in a store.
+BitmapSurface _redSurface() {
+  final pixels = Uint8List(8 * 8 * 4);
+  for (var i = 0; i < pixels.length; i += 4) {
+    pixels[i] = 0xFF;
+    pixels[i + 3] = 0xFF;
+  }
+  return BitmapSurface(
+    canvasSize: const CanvasSize(width: 16, height: 16),
+    tileSize: 8,
+    tiles: {
+      for (var y = 0; y < 2; y += 1)
+        for (var x = 0; x < 2; x += 1)
+          TileCoord(x: x, y: y): BitmapTile(size: 8, pixels: pixels),
+    },
+  );
 }

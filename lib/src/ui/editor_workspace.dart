@@ -14,7 +14,6 @@ import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
-import '../native/qa_native_engine.dart';
 import '../models/cut.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
@@ -36,6 +35,7 @@ import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/brush_preset_library.dart';
+import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';
 import 'color/color_panels.dart' show ColorPickerKind, ColorPickerPanel;
 import 'color/color_slot_pair.dart';
@@ -94,13 +94,12 @@ import 'widgets/static_raster.dart';
 import 'widgets/superellipse_clip.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
-import 'conte/conte_fonts.dart';
 import 'conte/conte_ink.dart';
+import 'conte/conte_picture_ink.dart';
 import 'conte/conte_tab_host.dart';
-import '../models/envelope/cut_envelope_presets.dart';
 import 'envelope/cut_envelope_ink.dart';
 import 'envelope/cut_envelope_tab_host.dart';
-import 'envelope/envelope_image_cache.dart';
+import 'sheet/sheet_image_cache.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_cut_blocks_painter.dart' show storyboardCutBlocksPainterFor;
 import 'storyboard_panel.dart' show StoryboardPanel, StoryboardTrackLabelRow;
@@ -109,6 +108,7 @@ import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'timeline/collapsed_row_overlay.dart';
+import 'timeline/rail_eyes.dart' show RailEyes;
 import 'timeline/timeline_grid_metrics.dart'
     show TimelineGridMetrics, timelineLayerRowHeightIn;
 import 'timeline/timeline_cel_content_source.dart'
@@ -196,6 +196,7 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasNavigationRegionKey,
     this.canvasSelectionCommands,
     this.lastStroke,
+    this.toolHold,
     this.confirm,
     this.history,
     this.layerNav,
@@ -240,6 +241,10 @@ class EditorWorkspace extends StatefulWidget {
   /// The last drawing action (shell-owned — it outlives a project),
   /// forwarded to the canvas that records and lays it down.
   final LastStrokeSlot? lastStroke;
+
+  /// The tool a hold sprang from (shell-owned — the tool is the app's),
+  /// forwarded to the canvas, which is rebuilt per project mid-hold.
+  final ToolHoldMemory? toolHold;
 
   /// 확정 (shell-owned, Enter's verb): the rail's ↵ and the move tool's 적용
   /// are its other doors. Null keeps both on their old verbs' absence
@@ -511,60 +516,20 @@ class EditorWorkspace extends StatefulWidget {
   State<EditorWorkspace> createState() => _EditorWorkspaceState();
 }
 
-class _EditorWorkspaceState extends State<EditorWorkspace>
-    with WidgetsBindingObserver {
+class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// What the place entrance under a dragged pool file says of it — the
   /// chip's ban (「불가능 = 칩의 금지 표시」). One per workspace, because one
   /// drag is in flight at a time.
   final ValueNotifier<bool?> _mediaDropVerdict = ValueNotifier<bool?>(null);
 
-  /// The OS says memory is tight: the session stands its caches down —
-  /// hot cels halve and cool, playback re-runs its budget. The workspace
-  /// hosts the observer because its lifetime IS the session being on
-  /// screen; nothing else in lib listens to the binding.
-  @override
-  void didHaveMemoryPressure() {
-    widget.session.respondToMemoryPressure();
-    // The storyboard's thumbnails live in THIS State, not the session, so
-    // the warning reaches them here.
-    _storyboardThumbnails.respondToMemoryPressure();
-    // The drawing engine is the process's, not the session's: its parked
-    // tile blocks and scratch buffers hear the warning here too.
-    QaNativeEngine.respondToMemoryPressure();
-  }
-
-  /// 🚨★★★**COMING BACK IS WHEN THE FILE MAY HAVE GONE.**
-  ///
-  /// 유저 2026-08-31, having lost 94 cels: 「이 문제 발생시 **해결법이
-  /// 없기때문**」. A save turns every clean cel into a ref into the project
-  /// file and drops its cold blob, so deleting that file — in Explorer, in
-  /// the Files app, in Drive — takes those pixels with it. The app only
-  /// found out at the next save, by which time the recycle bin had usually
-  /// been emptied and the person had done an hour of work on a project
-  /// that could no longer be written whole.
-  ///
-  /// What CAN be recovered is the FILE, and only while it is still in a
-  /// trash somewhere — which is exactly the window this notice exists to
-  /// open. ⚠️It no longer says the bytes are unrecoverable, because since
-  /// the session started holding the file open that depends on the
-  /// platform: on POSIX an `unlink` leaves our handle readable and a save
-  /// carries those cels into a new file, on Windows the file can only
-  /// vanish while nothing is held and then it does lose them. The app
-  /// reports the MEASURED answer after a save instead, by count.
-  ///
-  /// 🚨This notice is HALF the answer. It opens the restore window; the
-  /// other half is [ensureUnsavedWorkSettled] refusing to let the session
-  /// close in silence, because closing the app is when a POSIX session's
-  /// last descriptor on those bytes goes.
-  ///
-  /// The observer was already here for memory pressure; resuming is the
-  /// moment a person comes back from the file manager they just used.
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      unawaited(_warnIfProjectFileVanished());
-    }
-  }
+  // 🪦The memory warning and the resume used to be heard HERE — 「the
+  // workspace hosts the observer because its lifetime IS the session being
+  // on screen」. With a project per tab (I-7) it is not: this State is the
+  // window's and outlives every project, and a warning is for every open
+  // project, not the one in front. The shell hears both now; what this
+  // State holds for a project (the storyboard's thumbnails) hears the
+  // warning through that project's `memoryPressureTicks`, the door the
+  // media viewers already use.
 
   /// The factory-default arrangement (also the validation baseline when a
   /// saved layout is restored: it names every known tab and its home dock).
@@ -745,8 +710,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   Set<String> _lockedTabIds = {EditorWorkspace.canvasTabId};
 
   /// Keeps the canvas element (and its viewport state) alive when the
-  /// canvas tab re-docks.
-  final GlobalKey _canvasAreaKey = GlobalKey();
+  /// canvas tab re-docks — ONE PER PROJECT (I-7): a key shared by every
+  /// project would carry the canvas State the tab switch is meant to
+  /// replace into the next project, through the keyed rebuild
+  /// ([_WorkspaceTabs.tabFor]), because a global key moves its element.
+  GlobalKey get _canvasAreaKey => _CanvasAreaKey(widget.session);
 
   /// The active-tool notifier. Typed as the SUBCLASS because the rail asks
   /// it which tile to re-enter a tool group on (`railEntry`), and that
@@ -771,11 +739,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// project it was taken from. Only quitting loses it.
   final CutPieceSlot _cutPieceSlot = CutPieceSlot();
 
-  /// The census cannot reach a widget State; the session can be reached —
-  /// the same push the storyboard's thumbnails make.
-  void _reportCutPieceBytes() =>
-      widget.session.renderCaches.cutPieceBytes = _cutPieceSlot.pieceBytes;
-
   // ── the brush presets and tips: their own object ────────────────────
   //
   // A collaborator (workspace/workspace_brush_presets.dart, a part of this library). The
@@ -785,7 +748,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   );
 
   // The document views' state (Round 6): what each panel shows and how.
-  late final _WorkspaceDocumentViews _views = _WorkspaceDocumentViews(this);
+  late final _WorkspaceDocumentViews _views = _WorkspaceDocumentViews();
 
   // The colour state — the background slot, the pinned palette, its file
   // service and the recent-colour recorder — is the SHELL's now, alongside
@@ -848,12 +811,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     for (final railId in LayerRailId.values) railId: ValueNotifier<double>(0),
   };
 
-  /// Layers whose AE-style property-lane twirl-down is open (view state —
-  /// survives tab switches, session-only).
-  final ValueNotifier<Set<LayerId>> _expandedLaneLayerIds = ValueNotifier(
-    const <LayerId>{},
-  );
-
   void _toggleLayerLanes(LayerId layerId) {
     // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). The
     // property-lane twirl — the one the fx lanes live under — is a button
@@ -863,10 +820,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // fold law hands the standing row to the layer when its lanes leave
     // the screen (R5 #11), and that is a selection move, not part of the
     // membership this undoes.
-    final closing = _expandedLaneLayerIds.value.contains(layerId);
+    final expanded = widget.session.railView.expandedLaneLayerIds;
+    final closing = expanded.value.contains(layerId);
     widget.session.historyManager.execute(
       ToggleIdInSetCommand(
-        notifier: _expandedLaneLayerIds,
+        notifier: expanded,
         layerId: layerId,
         debugLabel: 'Toggle layer lanes',
       ),
@@ -876,16 +834,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     }
   }
 
-  /// LANE GROUPS twirled open inside a layer's twirl-down (AE group
-  /// collapse — default collapsed; view state, survives tab switches,
-  /// session-only). Keyed by [laneGroupKey], because a row now carries more
-  /// than one group: Transform, plus one header per R6 effect.
-  final ValueNotifier<Set<String>> _expandedLaneGroupKeys = ValueNotifier(
-    const <String>{},
-  );
-
-  // The hidden sections, the row filter and the folded attach groups are the
-  // SESSION's (`RailView`, F-169): the standing law reads them.
+  // The hidden sections, the row filter, the folded attach groups and the
+  // lane twirls are the SESSION's (`RailView`, F-169 and I-7): the standing
+  // law reads them, and the layer ids they name are the project's.
 
   void _toggleTimelineSection(TimelineSection section) {
     final hiddenSections = widget.session.railView.hiddenSections;
@@ -919,10 +870,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     EditorWorkspace.mediaViewerSubTabId: _subViewer,
   };
 
-  /// Which project the viewers were last filled from. A File ▸ Open
-  /// replaces the project under this widget, and the references belong to
-  /// the FILM — so the panels have to follow it rather than keep showing
-  /// the last one's conte.
+  /// Which project the viewers were last filled from. A project tab coming
+  /// on screen, or a file opened into the project on screen, puts another
+  /// project under this widget, and the references belong to the FILM — so
+  /// the panels have to follow it rather than keep showing the last one's
+  /// conte. Null while nothing is seeded, or while seeding.
   ProjectId? _viewersSeededFrom;
 
   /// Puts each viewer back where the project left it (유저 확정 ⑤㉑).
@@ -931,7 +883,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     if (project == null || project.id == _viewersSeededFrom) {
       return;
     }
-    _viewersSeededFrom = project.id;
+    // Nothing is written back while the two are being filled: restoring the
+    // first viewer writes BOTH back, and the second still holds the last
+    // project's document until its own restore.
+    _viewersSeededFrom = null;
     for (final entry in _viewerSlots.entries) {
       final bookmark = project.mediaViewerBookmarks[entry.key];
       entry.value.restore(
@@ -939,6 +894,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         position: bookmark?.position ?? 0,
       );
     }
+    _viewersSeededFrom = project.id;
   }
 
   /// A remembered reference, or null when the app can no longer reach it.
@@ -998,39 +954,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
   }
 
-  late final StoryboardCutThumbnailStore _storyboardThumbnails;
+  /// The project on screen's storyboard pictures — made again for each
+  /// project that comes on screen ([_bindSession]): its keys are cut ids,
+  /// which the projects share.
+  late StoryboardCutThumbnailStore _storyboardThumbnails;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    // 🚨The session asks, the workspace shows. A row drop that would throw
-    // fx away holds itself until this answers (see [AttachFxConfirmController]).
-    widget.session.attachFxConfirm.pending.addListener(_showAttachFxConfirm);
     _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
-    // 🚨The canvas-side facts the PIXEL verbs need, published where all of
-    // them are in scope. A getter, not a copy: the marquee survives tool
-    // switches and the colour changes under the pointer, so a value captured
-    // here would be the one that was true when the editor opened.
-    //
-    // 🚨★★★**THE SELECTION'S SOFTNESS IS PART OF THE SELECTION.** The verbs
-    // ran on a hard mask whatever the user had set, while a Ctrl+T lift on
-    // the SAME marquee honoured 확장·페더·AA — one outline, two meanings.
-    // The parameter was wired all the way to `celPixelWalkFor`; only this
-    // publisher was missing it. 유저 확정 2026-09-09
-    // (`pixel-verbs-mask-options` = 가): 「선택툴로 선택한채로 사용할때 …
-    // 선택의 aa 따르게」.
-    widget.session.pixelVerbCanvas = () => (
-      region: widget.canvasSelectionCommands?.region,
-      argb: _brushTool.value.color,
-      mask: _views._selectionMaskOptions.value,
-    );
-    // The marquee, as the fifth selection kind — so one 선택 해제 can let go
-    // of everything rather than half of it.
-    widget.session.canvasHasSelection = () =>
-        widget.canvasSelectionCommands?.hasRegion ?? false;
-    widget.session.clearCanvasSelection = () =>
-        widget.canvasSelectionCommands?.deselect();
     // H25: what the hand last set on each brush, from the last session — and
     // H36: a painting tool taken up holding no brush opens on one.
     _brushTool.addListener(_brushPresets.followBrushTool);
@@ -1054,23 +986,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         .then((_) => handSettingsRecalled)
         .then((_) => _brushPresets.selectOpeningPreset());
     unawaited(_brushPresets.libraryLanded);
-    // F-123: what the tools were holding rides with the project — read at
-    // each save, put back on open once the library can name the brushes.
-    widget.session.projectDoor.toolChoice = (
-      read: () => toolChoiceOf(_brushTool).toJson(),
-      resume: (saved) =>
-          _brushPresets.resumeChoice(ToolChoice.fromJson(saved)),
-    );
-    // Warm the conte's embedded faces so the sheet opens with its type
-    // ready (the tab host still awaits, for the cold path).
-    unawaited(ensureConteFontsLoaded());
-    _storyboardThumbnails = StoryboardCutThumbnailStore(
-      render: _renderStoryboardThumbnail,
-      invalidationHub: widget.session.renderCaches.cacheInvalidationHub,
-      // The census cannot reach a widget State; the session can be reached.
-      onHeldBytesChanged: (bytes) =>
-          widget.session.renderCaches.storyboardThumbnailBytes = bytes,
-    );
     _layoutPersistence._layoutStore =
         widget.layoutStore ??
         (Platform.environment['FLUTTER_TEST'] == 'true'
@@ -1078,7 +993,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             : WorkspaceLayoutStore());
     unawaited(_layoutPersistence.restoreLayout());
     _cutPieceSlot.addListener(_brushPresets.armStampOnFreshCut);
-    _cutPieceSlot.addListener(_reportCutPieceBytes);
     _layout.addListener(_layoutPersistence.scheduleLayoutSave);
     // Sizes no longer come through the model's own notifier, but they are
     // still persisted — the save has to hear them separately or a resized
@@ -1087,6 +1001,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     for (final extent in _railExtents.values) {
       extent.addListener(_layoutPersistence.scheduleLayoutSave);
     }
+    // The V rows' height is saved like the rail widths: its splitter moves
+    // it, and the layout file keeps it.
+    _storyboardTrackLaneHeight.addListener(
+      _layoutPersistence.scheduleLayoutSave,
+    );
     widget.panelsMenu?.attach(
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,
@@ -1116,18 +1035,111 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
     widget.layerNav?.bind(this, _stepDisplayedLayer);
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
-    _flipHud.syncFlipAxis();
-    // The axis belongs to the panel being worked in, and a claim moves that
-    // panel without a session notify.
-    widget.session.workingPanelListenable.addListener(_flipHud.syncFlipAxis);
-    // The viewers follow the PROJECT: seed them from it now, and again
-    // whenever a different one is opened under us.
-    _syncViewersWithProject();
-    widget.session.addListener(_syncViewersWithProject);
     for (final slot in _viewerSlots.values) {
       slot.request.addListener(_writeViewerBookmarks);
       slot.position.addListener(_writeViewerBookmarks);
     }
+    _bindSession(widget.session);
+  }
+
+  @override
+  void didUpdateWidget(covariant EditorWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.session, widget.session)) {
+      _unbindSession(oldWidget.session);
+      _bindSession(widget.session);
+    }
+  }
+
+  /// Hangs this window's hooks on [session] — the project coming on screen.
+  ///
+  /// 🚨★★★ONE DOOR IN AND ONE OUT (I-7, a project per tab). This State is
+  /// the WINDOW's — the dock layout, the libraries, the tool — and it
+  /// outlives every project; a tab switch hands it another session. So
+  /// everything it hangs on a session is hung here and taken off in
+  /// [_unbindSession], and a switch is those two in a row. A hook hung
+  /// anywhere else stays on the project that went behind: its drop would
+  /// ask this window, its pixel verbs would read this canvas.
+  ///
+  /// The panels themselves are made again for each project — they are keyed
+  /// by the session ([_sessionPanel]) — so nothing below them needs a door.
+  void _bindSession(EditorSessionManager session) {
+    // 🚨The session asks, the workspace shows. A row drop that would throw
+    // fx away holds itself until this answers (see [AttachFxConfirmController]).
+    session.attachFxConfirm.pending.addListener(_showAttachFxConfirm);
+    // 🚨The canvas-side facts the PIXEL verbs need, published where all of
+    // them are in scope. A getter, not a copy: the marquee survives tool
+    // switches and the colour changes under the pointer, so a value captured
+    // here would be the one that was true when the editor opened.
+    //
+    // 🚨★★★**THE SELECTION'S SOFTNESS IS PART OF THE SELECTION.** The verbs
+    // ran on a hard mask whatever the user had set, while a Ctrl+T lift on
+    // the SAME marquee honoured 확장·페더·AA — one outline, two meanings.
+    // The parameter was wired all the way to `celPixelWalkFor`; only this
+    // publisher was missing it. 유저 확정 2026-09-09
+    // (`pixel-verbs-mask-options` = 가): 「선택툴로 선택한채로 사용할때 …
+    // 선택의 aa 따르게」.
+    session.pixelVerbCanvas = () => (
+      region: widget.canvasSelectionCommands?.region,
+      argb: _brushTool.value.color,
+      mask: _views._selectionMaskOptions.value,
+    );
+    // The marquee, as the fifth selection kind — so one 선택 해제 can let go
+    // of everything rather than half of it.
+    session.canvasHasSelection = () =>
+        widget.canvasSelectionCommands?.hasRegion ?? false;
+    session.clearCanvasSelection = () =>
+        widget.canvasSelectionCommands?.deselect();
+    // F-123: what the tools were holding rides with the project — read at
+    // each save, put back on open once the library can name the brushes.
+    // ⚠️Left on when the project goes behind: the clock saves a tab that is
+    // not in front, and the tools it records are the app's either way.
+    session.projectDoor.toolChoice = (
+      read: () => toolChoiceOf(_brushTool).toJson(),
+      resume: (saved) =>
+          _brushPresets.resumeChoice(ToolChoice.fromJson(saved)),
+    );
+    _storyboardThumbnails = StoryboardCutThumbnailStore(
+      render: (cut, frameIndex, width) =>
+          _renderStoryboardThumbnail(session, cut, frameIndex, width),
+      invalidationHub: session.renderCaches.cacheInvalidationHub,
+      // The census cannot reach a widget State; the session can be reached.
+      onHeldBytesChanged: (bytes) =>
+          session.renderCaches.storyboardThumbnailBytes = bytes,
+    );
+    session.memoryPressureTicks.addListener(
+      _storyboardThumbnails.respondToMemoryPressure,
+    );
+    _views.bindSession(session);
+    _collapsedRows.bindSession(session);
+    _flipHud.syncFlipAxis();
+    // The axis belongs to the panel being worked in, and a claim moves that
+    // panel without a session notify.
+    session.workingPanelListenable.addListener(_flipHud.syncFlipAxis);
+    // The viewers follow the PROJECT: seed them from it now, and again
+    // whenever a different one is opened under us.
+    _viewersSeededFrom = null;
+    _syncViewersWithProject();
+    session.addListener(_syncViewersWithProject);
+  }
+
+  /// Takes off what [_bindSession] hung on [session] — see there.
+  void _unbindSession(EditorSessionManager session) {
+    session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
+    // A project behind the one on screen has no canvas: its marquee is not
+    // this window's to report or to clear.
+    session
+      ..pixelVerbCanvas = null
+      ..canvasHasSelection = null
+      ..clearCanvasSelection = null;
+    session.memoryPressureTicks.removeListener(
+      _storyboardThumbnails.respondToMemoryPressure,
+    );
+    // Its pictures go with it; the store reports the zero to [session].
+    _storyboardThumbnails.dispose();
+    _views.unbindSession();
+    session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
+    session.removeListener(_syncViewersWithProject);
   }
 
   // ── the flip HUD: its own object, in its own file ───────────────────
@@ -1191,11 +1203,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       collapsedAttachBaseIds: session.railView.collapsedAttachBaseIds.value,
       // R10 #19: property rows are stops now, so the walk needs the same
       // lane list the grids draw.
-      expandedLayerIds: _expandedLaneLayerIds.value,
+      expandedLayerIds: session.railView.expandedLaneLayerIds.value,
       lanesForLayer: (layer) => timelineLanesForLayer(
         layer: layer,
         session: session,
-        expandedGroupKeys: _expandedLaneGroupKeys.value,
+        expandedGroupKeys: session.railView.expandedLaneGroupKeys.value,
       ),
       fxEnabledOf: session.effectsAndFx.isLayerFxEnabled,
     );
@@ -1252,42 +1264,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     }
   }
 
-  /// The COMMON "open or locate" entry (UI-R17 #5): hidden panels open
-  /// into their default dock; an already-open panel fronts its tab and
-  /// FLASHES so the user sees where it lives. Every non-Window "open
-  /// panel" affordance should route here.
-  /// A browser "open" — point ONE viewer at the asset and reveal that
-  /// viewer's panel, through the common reveal verb so an already-open
-  /// one fronts and flashes instead of duplicating.
-  ///
-  /// 유저 확정 ①: the DOUBLE-CLICK keeps going to the main viewer even
-  /// though the main viewer is the floor, so a double-click still swaps
-  /// the drawing away. The row menu's second entry is what opens beside
-  /// the drawing instead.
-  /// Said ONCE per disappearance, not once per resume: a person who has
-  /// read it and chosen to carry on must not be asked again every time
-  /// they alt-tab.
-  bool _toldProjectFileVanished = false;
-
-  Future<void> _warnIfProjectFileVanished() async {
-    if (!widget.session.projectFile.hasVanished()) {
-      // Back again — restored from a trash, or re-synced. The next
-      // disappearance is worth saying out loud too.
-      _toldProjectFileVanished = false;
-      return;
-    }
-    if (_toldProjectFileVanished || !mounted) {
-      return;
-    }
-    _toldProjectFileVanished = true;
-    await showAppNotice(
-      context,
-      windowKey: const ValueKey<String>('project-file-vanished-notice'),
-      title: AppText.strings.commonNotice,
-      message: AppText.strings.projectFileVanished,
-    );
-  }
-
   /// The pool's「WAV로 내보내기」: the session says which conform, the flow
   /// says where the file goes, and the writer streams it. False when the
   /// asset has no audio — the panel turns that into words.
@@ -1310,6 +1286,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     return true;
   }
 
+  /// A browser "open" — point ONE viewer at the asset and reveal that
+  /// viewer's panel, through the common reveal verb so an already-open
+  /// one fronts and flashes instead of duplicating.
+  ///
+  /// 유저 확정 ①: the DOUBLE-CLICK keeps going to the main viewer even
+  /// though the main viewer is the floor, so a double-click still swaps
+  /// the drawing away. The row menu's second entry is what opens beside
+  /// the drawing instead.
   void _openAssetInViewer(MediaAsset asset, {required String tabId}) {
     _openInViewer(
       MediaViewerRequest(path: asset.path, kind: asset.kind, name: asset.name),
@@ -1352,6 +1336,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _openAssetInViewer(asset, tabId: tabId);
   }
 
+  /// The COMMON "open or locate" entry (UI-R17 #5): hidden panels open
+  /// into their default dock; an already-open panel fronts its tab and
+  /// FLASHES so the user sees where it lives. Every non-Window "open
+  /// panel" affordance should route here.
   void _revealPanel(String tabId) {
     final location = _layout.locateTab(tabId);
     if (location == null) {
@@ -1412,9 +1400,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    _unbindSession(widget.session);
     _mediaDropVerdict.dispose();
-    widget.session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
     _brushTool.removeListener(_brushPresets.followBrushTool);
     // A pending debounce would write after the tree is gone; the values are
     // in memory, so writing them NOW is both safe and the last chance.
@@ -1422,12 +1409,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       _brushPresets._brushHandSettingsSave!.cancel();
       _brushPresets.saveHandSettings();
     }
-    _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
     _tipLibrary.dispose();
-    _cutPieceSlot.removeListener(_brushPresets.armStampOnFreshCut);
-    _cutPieceSlot.removeListener(_reportCutPieceBytes);
-    widget.session.renderCaches.cutPieceBytes = 0;
+    _cutPieceSlot
+      ..removeListener(_brushPresets.armStampOnFreshCut)
+      // Its bytes are counted while it lives (CutPieceSlot.allPieceBytes),
+      // so it has to stop living with the window.
+      ..dispose();
     _disposeLocalToolNotifiers();
     _views.dispose();
     _timelineOrientation.dispose();
@@ -1435,18 +1423,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _storyboardPixelsPerFrame.dispose();
     _storyboardTrackLaneHeight.dispose();
     _showSecondsDisplay.dispose();
-    _expandedLaneLayerIds.dispose();
-    _expandedLaneGroupKeys.dispose();
     _bottomInsetOverride.dispose();
     _brushPresetView.dispose();
     for (final controller in _railScrollControllers.values) {
       controller.dispose();
     }
     _panelFlash.dispose();
-    widget.session.removeListener(_syncViewersWithProject);
-    widget.session.workingPanelListenable.removeListener(
-      _flipHud.syncFlipAxis,
-    );
     for (final slot in _viewerSlots.values) {
       slot.request.removeListener(_writeViewerBookmarks);
       slot.position.removeListener(_writeViewerBookmarks);
@@ -1480,14 +1462,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// panel resolved which one it is (its own division, or the cut's pin
   /// when that falls inside it). Clamped here so a later trim can never
   /// break a request that was legal when it was made.
+  ///
+  /// [session] is the project the store was made for, not whichever is on
+  /// screen when a render lands — a render in flight across a tab switch
+  /// finishes for the project that asked (I-7).
   Future<ui.Image?> _renderStoryboardThumbnail(
+    EditorSessionManager session,
     Cut cut,
     int frameIndex,
     int thumbnailWidth,
   ) {
-    final cameraSize = widget.session.camera.cameraFrameSize;
+    final cameraSize = session.camera.cameraFrameSize;
     final output = cameraSize.scaledToWidth(thumbnailWidth);
-    return ExportFrameRenderer(session: widget.session).renderComposite(
+    return ExportFrameRenderer(session: session).renderComposite(
       ExportFrameTask(
         cut: cut,
         frameIndex: frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
@@ -1627,12 +1614,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     EditorWorkspace.storyboardTabId => StoryboardTabHost.minPanelHeightIn(
       context,
     ),
-    // The conte has no fixed ROWS — it is a page that scales — but it does
-    // have one conditional chrome row, the action field under a selected
-    // cell, and that row is not flexible.
-    EditorWorkspace.conteTabId => ConteTabHost.minPanelHeight,
-    // The envelope has no case here on purpose: a page that scales, with
-    // no chrome row under the shell, has nothing of its own to protect.
+    // The conte and the envelope have no case here on purpose: a page that
+    // scales, with no chrome row under the shell, has nothing of its own to
+    // protect. (↩️The conte had one — an ACTION field under the page — until
+    // its ACTION was edited on the page itself.)
     _ => null,
   };
 
@@ -1937,34 +1922,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           EditorPanelDockSide.left,
         ),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) =>
-                // EVERY read of an extent lives below this line. It is the
-                // narrowest wrapper that still sees them all, so a splitter
-                // drag rebuilds the rails and the region — and stops there.
-                //
-                // ★THE FLOOR RIDES THROUGH AS A CHILD. Building it inside
-                // this builder is what was left of the drag lag: every
-                // frame of every splitter drag rebuilt the canvas panel,
-                // and the edge trailed the cursor by however long that
-                // took. It does not depend on any extent — the cover it
-                // needs reaches it through an InheritedWidget, which
-                // notifies without rebuilding anything between.
-                ListenableBuilder(
-                  // The region's own INSET rides here too. It used to be
-                  // a plain field behind setState, so pulling the
-                  // floating region's side in rebuilt the entire
-                  // workspace — canvas included — once per drag frame,
-                  // which is why that grip stayed heavy after the
-                  // splitter one was fixed.
-                  listenable: Listenable.merge([
-                    _layout.extentRevision,
-                    _bottomInsetOverride,
-                  ]),
-                  child: _docks.buildCenterDock(),
-                  builder: (context, floor) =>
-                      _floorFor(context, floor, room, constraints),
-                ),
+          // 🚨THE FLOOR IS A RELAYOUT BOUNDARY, which is the one job of this
+          // box (F-166, 2026-09-26). The `LayoutBuilder` below owns the build
+          // scope of everything on the floor, so a `setState` there that
+          // lands OUTSIDE a frame — the canvas panel's at every pen-up, any
+          // pointer handler or timer — lays the builder out again on the
+          // next frame. Given the Row's loose height it was no boundary,
+          // and that relayout climbed every box up to the Scaffold:
+          // measured, 21 layouts on each pen-up, each one a repaint mark and
+          // a semantics update. Tight constraints stop it at the builder.
+          // ⚠️The floor is all `Positioned` children and reads only the
+          // maxima, so it was always exactly this big — nothing moves.
+          child: SizedBox.expand(
+            key: const ValueKey<String>('workspace-floor'),
+            child: LayoutBuilder(
+              builder: (context, constraints) =>
+                  // EVERY read of an extent lives below this line. It is the
+                  // narrowest wrapper that still sees them all, so a splitter
+                  // drag rebuilds the rails and the region — and stops there.
+                  //
+                  // ★THE FLOOR RIDES THROUGH AS A CHILD. Building it inside
+                  // this builder is what was left of the drag lag: every
+                  // frame of every splitter drag rebuilt the canvas panel,
+                  // and the edge trailed the cursor by however long that
+                  // took. It does not depend on any extent — the cover it
+                  // needs reaches it through an InheritedWidget, which
+                  // notifies without rebuilding anything between.
+                  ListenableBuilder(
+                    // The region's own INSET rides here too. It used to be
+                    // a plain field behind setState, so pulling the
+                    // floating region's side in rebuilt the entire
+                    // workspace — canvas included — once per drag frame,
+                    // which is why that grip stayed heavy after the
+                    // splitter one was fixed.
+                    listenable: Listenable.merge([
+                      _layout.extentRevision,
+                      _bottomInsetOverride,
+                    ]),
+                    child: _docks.buildCenterDock(),
+                    builder: (context, floor) =>
+                        _floorFor(context, floor, room, constraints),
+                  ),
+            ),
           ),
         ),
         _docks.buildEdgeDock(
@@ -2649,4 +2648,11 @@ class _WorkspaceRoom {
   final Map<String, Widget> leftRailHosts;
   final Map<String, Widget> rightRailHosts;
   final Widget? bottomContent;
+}
+
+/// The canvas area's key for one project — see
+/// [_EditorWorkspaceState._canvasAreaKey]. Equal for the same session,
+/// distinct from every other key type's.
+class _CanvasAreaKey extends GlobalObjectKey {
+  const _CanvasAreaKey(super.value);
 }

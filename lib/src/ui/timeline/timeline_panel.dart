@@ -11,7 +11,6 @@ import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
-import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'layer_rail_window.dart'
     show
@@ -32,15 +31,17 @@ import 'timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_metrics.dart';
-import 'layer_label_controls.dart' show layerRailColumnWidthsIn;
+import 'layer_label_controls.dart' show LayerMarkEdit, layerRailColumnWidthsIn;
 import '../widgets/app_icon_button.dart';
 import 'timeline_command_bar.dart';
+import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_run_end_handles.dart';
 import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline_row_filter.dart';
 import 'timeline_view_cluster.dart';
 import 'timeline_zoom_limits.dart';
 import 'timeline_orientation.dart';
+import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
 import 'xsheet_timeline_grid.dart';
 
@@ -63,6 +64,7 @@ class TimelinePanel extends StatefulWidget {
     this.frameNameForLayer,
     this.celContent,
     required this.onSelectLayer,
+    this.labelDoubleClick,
     required this.onSelectFrame,
     this.onSettledPress,
     this.onScrubFrame,
@@ -90,7 +92,7 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerFillReference,
     required this.onLayerMarkSelected,
     this.layerFxStateOf,
-    this.layerIsLinkedOf,
+    this.layerLinkPartnersOf,
     this.onToggleLayerCollapsed,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
@@ -104,7 +106,7 @@ class TimelinePanel extends StatefulWidget {
     this.onRowSelectionSpan,
     this.selectedRows = const {},
     this.runEdit,
-    this.isFrameReady,
+    this.readyRunsIn,
     required this.orientation,
     required this.onOrientationChanged,
     this.timelineActionToolbar,
@@ -139,7 +141,7 @@ class TimelinePanel extends StatefulWidget {
     this.opacityDragPreview,
     this.masterOpacityValue = 1.0,
     this.dragPreview,
-    this.seSpillInLeadFrames = const {},
+    this.spillInLeadFrames = const {},
     this.cutEndDrag,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
@@ -174,10 +176,10 @@ class TimelinePanel extends StatefulWidget {
   /// [TimelineRowCellsPainter.substrateGeneration].
   final String substrateGeneration;
 
-  /// Track-SE rows whose display clone starts with a spill-in block, each
-  /// with how far into that block the cut starts (UI-R7 #6: `~` at the cut
-  /// start, start grip stands down; F-113: the waveform starts there).
-  final Map<LayerId, int> seSpillInLeadFrames;
+  /// Track-owned rows whose display clone starts with a block spilling in
+  /// from an earlier cut, each with how far into it the cut starts — see
+  /// [TimelineGridHooks.spillInLeadFrames].
+  final Map<LayerId, int> spillInLeadFrames;
 
   /// The frame cursor (editing playhead / playback position). Only the
   /// cursor-driven widgets subscribe — a tick never rebuilds the panel or
@@ -211,6 +213,9 @@ class TimelinePanel extends StatefulWidget {
   /// R26 #44: the unworked-block tint's fact and its event.
   final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
+
+  /// See [TimelineGridHooks.labelDoubleClick].
+  final TimelineLabelDoubleClick? labelDoubleClick;
   final ValueChanged<int> onSelectFrame;
 
   /// 🚨T10's second half: a press that turned out to be a TAP clears
@@ -298,15 +303,16 @@ class TimelinePanel extends StatefulWidget {
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
   final ValueChanged<LayerId>? onToggleLayerFillReference;
-  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
   /// The AE-style layer fx MASTER (R8: persisted, tri-state), both
   /// orientations;
   /// null hides it.
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
 
-  /// Link badge state (L4); null shows no badges.
-  final bool Function(LayerId layerId)? layerIsLinkedOf;
+  /// Link badge (L4): the rows a layer shares its pictures with; null shows
+  /// no badges.
+  final List<String> Function(LayerId layerId)? layerLinkPartnersOf;
 
   /// A folder is a LAYER: its eye, opacity, blend, fx switch, FX lanes and
   /// selection all arrive through the layer hooks above. R10 R3 took its
@@ -360,21 +366,17 @@ class TimelinePanel extends StatefulWidget {
 
   /// Cached-range resolver for the green strip (horizontal ruler and the
   /// X-sheet frame rail).
-  final bool Function(int frameIndex)? isFrameReady;
+  final ReadyRunsIn? readyRunsIn;
 
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
   final Widget? timelineActionToolbar;
 
   /// Frame-axis zoom, DaVinci/AE-style continuous slider value in pixels
-  /// per frame; the shared range covers the storyboard's overview zooms
-  /// and the timeline's classic cell width alike. The X-sheet's frame row
-  /// height scales proportionally so its classic geometry sits at the
-  /// same default.
-  // 4 → 2.4 (UI-R18 #11): the shared zoom floor drops to 10% of the
-  // default density across all three frame panels.
-  static const double minPixelsPerFrame = TimelineZoomLimits.minPixelsPerFrame;
-  static const double maxPixelsPerFrame = TimelineZoomLimits.maxPixelsPerFrame;
+  /// per frame; the shared range ([TimelineZoomLimits]) covers the
+  /// storyboard's overview zooms and the timeline's classic cell width
+  /// alike. The X-sheet's frame row height scales proportionally so its
+  /// classic geometry sits at the same default.
   // 48 → 24 (R-toolbar slim round): the zoom slider's 100% now reads the
   // CSP/TVPaint-density default.
   static const double defaultPixelsPerFrame =
@@ -598,6 +600,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       frameNameForLayer: widget.frameNameForLayer,
       celContent: widget.celContent,
       onSelectLayer: widget.onSelectLayer,
+      labelDoubleClick: widget.labelDoubleClick,
       onSelectFrame: widget.onSelectFrame,
       onSettledPress: widget.onSettledPress,
       onScrubFrame: widget.onScrubFrame,
@@ -628,7 +631,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       onLayerMarkSelected: widget.onLayerMarkSelected,
       layerFxStateOf: widget.layerFxStateOf,
-      layerIsLinkedOf: widget.layerIsLinkedOf,
+      layerLinkPartnersOf: widget.layerLinkPartnersOf,
       onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
       onToggleLayerFx: widget.onToggleLayerFx,
       layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
@@ -641,7 +644,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onRowSelectionSpan: widget.onRowSelectionSpan,
       selectedRows: widget.selectedRows,
       runEdit: widget.runEdit,
-      isFrameReady: widget.isFrameReady,
+      readyRunsIn: widget.readyRunsIn,
       expandedLaneLayerIds: widget.expandedLaneLayerIds,
       laneOpenOf: widget.laneOpenOf,
       laneGroupOnOf: widget.laneGroupOnOf,
@@ -657,7 +660,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
       onToggleAttachGroup: widget.onToggleAttachGroup,
       opacityDragPreview: widget.opacityDragPreview,
-      seSpillInLeadFrames: widget.seSpillInLeadFrames,
+      spillInLeadFrames: widget.spillInLeadFrames,
       cutEndDrag: widget.cutEndDrag,
       substrateGeneration: widget.substrateGeneration,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,

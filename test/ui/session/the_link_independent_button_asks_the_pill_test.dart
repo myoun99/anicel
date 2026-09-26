@@ -354,6 +354,41 @@ void main() {
       expect(StoryboardToolbarPanelContext(s).canUnlink, isFalse);
     });
 
+    test('a band that NAMES linked cuts unlinks those — not the cut the '
+        'session stands on', () {
+      final s = session();
+      final cuts = cutsOf(s);
+      final first = s.activeCutId!;
+      cuts.createLinkedCutFromActiveCut();
+      final copy = s.activeCutId!;
+      cuts.createCut();
+      final standing = s.activeCutId!;
+      expect(
+        cuts.cutIsLinked(standing),
+        isFalse,
+        reason: '⛔전제: the cut you stand on holds no link',
+      );
+      final firstLength =
+          s.repository.requireProject().tracks.first.cuts.first.duration;
+      s.updateStoryboardCutSelectionByFrame(
+        anchorGlobalFrame: 0,
+        headGlobalFrame: firstLength,
+      );
+      expect(
+        s.storyboardRows.storyboardSelectedCutIds,
+        [first, copy],
+        reason: '⛔전제: the band names the linked pair',
+      );
+      expect(s.activeCutId, standing, reason: '⛔전제: the band moved nobody');
+      final storyboard = StoryboardToolbarPanelContext(s);
+
+      expect(storyboard.canUnlink, isTrue);
+      storyboard.unlink();
+
+      expect(cuts.cutIsLinked(first), isFalse);
+      expect(cuts.cutIsLinked(copy), isFalse);
+    });
+
     test('⛔the TIMELINE does not reach for cuts', () {
       final s = session();
       s.cutVerbs.createLinkedCutFromActiveCut();

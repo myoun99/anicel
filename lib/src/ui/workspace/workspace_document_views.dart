@@ -10,12 +10,9 @@ part of '../editor_workspace.dart';
 ///
 /// 🚨A collaborator carved out of `_EditorWorkspaceState` (the audit's SRP
 /// cut, Round 6, 2026-09-03). Measured before cutting: nineteen fields the
-/// workspace held only to hand to its tabs and dispose. It reaches the
-/// workspace through `_state`.
+/// workspace held only to hand to its tabs and dispose.
 class _WorkspaceDocumentViews {
-  _WorkspaceDocumentViews(this._state);
-
-  final _EditorWorkspaceState _state;
+  _WorkspaceDocumentViews();
 
   /// The fill tool's flood options (Tool Settings knobs).
   final ValueNotifier<FloodFillOptions> _fillOptions = ValueNotifier(
@@ -39,68 +36,86 @@ class _WorkspaceDocumentViews {
 
   /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
   /// on screen in page view (R26 #41), the sheet viewport (zoom/pan) and
-  /// the sheet-ink allow toggle — owned here so they survive tab switches.
+  /// the brush switch — owned here so they survive tab switches.
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
 
   final ValueNotifier<int> _timesheetPage = ValueNotifier(0);
 
   final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
 
-  final ValueNotifier<bool> _timesheetInkEnabled = ValueNotifier(true);
-
-  /// Sheet ink stores (S2 annotations) — owned here so freehand memos
-  /// survive tab switches; separate from the session's cel stroke store.
-  final TimesheetInkController _timesheetInk = TimesheetInkController();
+  /// Every sheet's brush switch starts OFF (유저 2026-09-25: 「브러시
+  /// 허용으로 바꾸고, 버튼 법 통일하고, 기본값 off로」). ↩️The timesheet's
+  /// alone used to start on.
+  final ValueNotifier<bool> _timesheetBrushAllowed = ValueNotifier(false);
 
   /// Conte tab view state (#16 — the conte rides the same canvas shell):
-  /// the sheet viewport and its ink toggle, owned here like the
-  /// timesheet's. Ink starts BLOCKED: the conte's first verb is reading
+  /// the sheet viewport and its brush switch, owned here like the
+  /// timesheet's. The brush starts OFF: the conte's first verb is reading
   /// and selecting cells.
   final ValueNotifier<CanvasViewport?> _conteViewport = ValueNotifier(null);
 
-  final ValueNotifier<bool> _conteInkEnabled = ValueNotifier(false);
+  final ValueNotifier<bool> _conteBrushAllowed = ValueNotifier(false);
 
   /// Cut-envelope tab view state — the conte's pair, said of the 봉투.
-  /// Ink starts BLOCKED here too: the envelope is read (and printed)
+  /// The brush starts OFF here too: the envelope is read (and printed)
   /// before anybody writes on it.
   final ValueNotifier<CanvasViewport?> _envelopeViewport = ValueNotifier(null);
 
-  final ValueNotifier<bool> _envelopeInkEnabled = ValueNotifier(false);
+  final ValueNotifier<bool> _envelopeBrushAllowed = ValueNotifier(false);
 
-  /// The logo and 도장 the envelope prints, decoded once each.
+  /// The media images the sheets print (the logo, the cover picture, the
+  /// 도장), decoded once each for the conte and the envelope alike.
   ///
-  /// A repaint is all a landed decode needs, and the envelope tab is the
-  /// only thing that reads it — but the cache lives HERE because that tab is
-  /// rebuilt on every panel switch and would drop its images each time.
-  late final EnvelopeImageCache _envelopeImages = EnvelopeImageCache(
-    onLoaded: () {
-      if (_state.mounted) {
-        _state._rebuild(() {});
-      }
-    },
-  );
+  /// A repaint is all a landed decode needs — the painters listen to it —
+  /// but the cache lives HERE because the tabs are rebuilt on every panel
+  /// switch and would drop their images each time.
+  final SheetImageCache _sheetImages = SheetImageCache();
 
-  /// Which bundled 봉투 form the panel prints. Session-scoped for now: the
-  /// project-level choice arrives with the form editor, and until there is
-  /// a place to store one, remembering it here beats hard-coding it.
-  final ValueNotifier<String> _envelopeFormId = ValueNotifier(
-    CutEnvelopePresets.analogId,
-  );
-
+  /// The three sheets' ink — each controller over the project on screen's
+  /// stores, made again for each project that comes on screen
+  /// ([bindSession]).
+  ///
   /// The cel stores are the SESSION's (R5): the archive saves and loads
-  /// them with the project; this controller owns only the edit sessions.
-  late final ConteInkController _conteInk = ConteInkController(
-    rowStore: _state.widget.session.renderCaches.conteInkRowStore,
-    pageStore: _state.widget.session.renderCaches.conteInkPageStore,
-  );
+  /// them with the project; a controller owns only the edit sessions. The
+  /// timesheet's joined them with I-7 — its controller made its own, so its
+  /// memos were the window's and showed on every project's sheet.
+  late TimesheetInkController _timesheetInk;
 
-  late final CutEnvelopeInkController _envelopeInk = CutEnvelopeInkController(
-    store: _state.widget.session.renderCaches.envelopeInkStore,
-  );
+  late ConteInkController _conteInk;
 
-  /// Disposes every notifier and controller the views own; the workspace's
-  /// `dispose` calls this once. (`_selectionMaskOptions` was never disposed
-  /// while it lived on the workspace — it is now.)
+  /// The conte's pictures draw into the canvas's own cels — the session's
+  /// cel store, beside the sheet's ink.
+  late ContePictureInkController _contePictures;
+
+  late CutEnvelopeInkController _envelopeInk;
+
+  /// Makes the ink controllers over [session]'s stores — the workspace's
+  /// door for the project coming on screen.
+  void bindSession(EditorSessionManager session) {
+    final caches = session.renderCaches;
+    _timesheetInk = TimesheetInkController(
+      stripStore: caches.timesheetInkStripStore,
+      pageStore: caches.timesheetInkPageStore,
+    );
+    _conteInk = ConteInkController(
+      rowStore: caches.conteInkRowStore,
+      pageStore: caches.conteInkPageStore,
+    );
+    _contePictures = ContePictureInkController(cels: caches.brushFrameStore);
+    _envelopeInk = CutEnvelopeInkController(store: caches.envelopeInkStore);
+  }
+
+  /// Lets the ink controllers go — the stores stay with their project.
+  void unbindSession() {
+    _timesheetInk.dispose();
+    _conteInk.dispose();
+    _contePictures.dispose();
+    _envelopeInk.dispose();
+  }
+
+  /// Disposes every notifier the views own; the workspace's `dispose` calls
+  /// this once, after [unbindSession]. (`_selectionMaskOptions` was never
+  /// disposed while it lived on the workspace — it is now.)
   void dispose() {
     _fillOptions.dispose();
     _selectionMaskOptions.dispose();
@@ -110,15 +125,11 @@ class _WorkspaceDocumentViews {
     _timesheetContinuous.dispose();
     _timesheetPage.dispose();
     _timesheetViewport.dispose();
-    _timesheetInkEnabled.dispose();
-    _timesheetInk.dispose();
+    _timesheetBrushAllowed.dispose();
     _conteViewport.dispose();
-    _conteInkEnabled.dispose();
-    _conteInk.dispose();
+    _conteBrushAllowed.dispose();
     _envelopeViewport.dispose();
-    _envelopeInkEnabled.dispose();
-    _envelopeImages.dispose();
-    _envelopeFormId.dispose();
-    _envelopeInk.dispose();
+    _envelopeBrushAllowed.dispose();
+    _sheetImages.dispose();
   }
 }

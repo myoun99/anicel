@@ -28,14 +28,7 @@ class _InstructionSetEditorDialogState
     extends State<InstructionSetEditorDialog> {
   late List<CameraInstructionDef> _defs = [...widget.initialSet.defs];
 
-  String _nextCustomId() {
-    final used = _defs.map((def) => def.id).toSet();
-    var index = 1;
-    while (used.contains('custom-$index')) {
-      index += 1;
-    }
-    return 'custom-$index';
-  }
+  String _nextCustomId() => CameraInstructionSet(defs: _defs).freeCustomId();
 
   Future<void> _editDef(int index) async {
     final edited = await showDialog<CameraInstructionDef>(

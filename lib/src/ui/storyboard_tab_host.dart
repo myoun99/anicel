@@ -13,16 +13,18 @@ import '../models/track_transform_lane_carrier.dart'
 import '../services/import/import_layer_spot.dart';
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
+import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
+import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
 import 'panels/working_panel_surface.dart';
-import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
+import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
@@ -58,7 +60,8 @@ class StoryboardTabHost extends StatefulWidget {
     this.railExtent,
     this.frameAxisOffset,
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
-    required this.thumbnailFor,
+    this.onResizeTrackLanes,
+    required this.thumbnails,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.rowsChannel,
@@ -110,14 +113,17 @@ class StoryboardTabHost extends StatefulWidget {
   final ValueNotifier<double>? frameAxisOffset;
 
   /// The V rows' shared height, owned above the tabs so it survives a tab
-  /// switch like the zoom does. ⛔No setter and no steppers any more (B7,
-  /// 유저 2026-08-17): the bar's push/pull height pair is deleted, and the
-  /// height's next writer is the planned V-track splitter.
+  /// switch like the zoom does. ⛔No steppers any more (B7, 유저 2026-08-17):
+  /// the bar's push/pull height pair is deleted, and its one writer is the
+  /// V rows' splitter ([onResizeTrackLanes]).
   final double trackLaneHeight;
 
-  /// Build-time thumbnail resolver, owned above the tabs so the cache
-  /// survives tab switches.
-  final StoryboardThumbnailResolver? thumbnailFor;
+  /// The V rows' splitter ([StoryboardPanel.onResizeTrackLanes]).
+  final double Function(double delta)? onResizeTrackLanes;
+
+  /// The panel pictures, owned above the tabs so the cache survives tab
+  /// switches — a landed one repaints the blocks, never this host.
+  final StoryboardThumbnails? thumbnails;
 
   /// A media-browser row let go on the storyboard — the host opens the place
   /// window with the drop's answer: a NEW cut on a track's frames
@@ -138,6 +144,10 @@ class StoryboardTabHost extends StatefulWidget {
 
 class _StoryboardTabHostState extends State<StoryboardTabHost> {
   EditorSessionManager get _session => widget.session;
+
+  /// The S rows' buttons as a press asks them — the timeline rail's own
+  /// wiring, spread over the row selection when the pressed row is in it.
+  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(_session);
 
   /// Rail view state (twirled-down lanes, Transform group collapse).
   /// Session-scoped like the timeline's lane expansion; lost on tab switch
@@ -328,6 +338,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// ↩️The fork moved out of the Edit door into the double tap's own
   /// ([activateTransitionSpanCell]; F-105, 유저 2026-09-15 「통일 — 편집 버튼은
   /// 빈 칸에서 꺼진다」): the button edits, the double tap forks, ＋ creates.
+  /// I-48: a double click on a layer's label renames the rows its first
+  /// press acted on — the timeline rail's door, on this rail's rows.
+  VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
+      renameOnLabelDoubleClick(context, _session, pressed);
+
   Future<void> _editTransitionSpan(int globalFrame) =>
       activateTransitionSpanCell(context, _session, globalFrame: globalFrame);
 
@@ -456,7 +471,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => RailSweepHistory(
+    history: _session.historyManager.gestures,
+    changed: _session.notifyChanged,
+    child: _panel(context),
+  );
+
+  Widget _panel(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     // No per-tick host rebuild (W4 perf pass): playback ticks and scrub
     // moves ride _playheadGlobalFrame into the panel's playhead overlay +
@@ -609,10 +630,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         seekStoryboardGlobalFrame(_session, frame);
                       }
                     },
+                    labelDoubleClick: _renameOnLabelDoubleClick,
                     onSelectTrack: (trackId) =>
                         _session.standOnRow(TrackRowAddress(trackId)),
                     pixelsPerFrame: widget.pixelsPerFrame,
                     trackLaneHeight: widget.trackLaneHeight,
+                    onResizeTrackLanes: widget.onResizeTrackLanes,
                     showSeconds: widget.showSeconds,
                     onShowSecondsChanged: widget.onShowSecondsChanged,
                     railExtent: widget.railExtent,
@@ -714,7 +737,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         .playbackRig
                         .playback
                         .globalFrameIndexListenable,
-                    revealSelectionTick: _session.revealSelectionTick,
+                    revealSelectionTick:
+                        _session.rangeSelections.revealSelectionTick,
                     frameReadySignal: _frameReadySignal,
                     onSeekGlobalFrame: (frame) =>
                         seekStoryboardGlobalFrame(_session, frame),
@@ -724,12 +748,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onScrubGlobalFrame: (frame) =>
                         scrubStoryboardGlobalFrame(_session, frame),
                     onScrubEnd: () => commitStoryboardScrub(_session),
-                    isFrameReady: (frame) => storyboardFrameReady(
+                    readyRunsIn: (start, end) => storyboardReadyRuns(
                       _session,
-                      frame,
+                      start,
+                      end,
                       layout: _activeTrackLayout(),
                     ),
-                    thumbnailFor: widget.thumbnailFor,
+                    thumbnails: widget.thumbnails,
                     audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
                     // The tooltip string doubles as the clip-marker switch
                     // (REC1-D), matching the timeline host: null while the
@@ -844,7 +869,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // (and the active cut) exactly where they were — the
                     // band's press is the one that lands on a frame.
                     currentRowHooks: TimelineCurrentRowHooks(
-                      currentRow: _session.currentRowListenable,
+                      currentRow: _session.standing.currentRowListenable,
                       // T4: standing here clears too — 「어떤 행이든 액티브
                       // 바꾸면 풀리도록」 is not a timeline-only law.
                       onStandOnLane: (layerId, laneId) => _session.standOnRow(
@@ -930,7 +955,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // ("애초에 마음에 안 들었었으니까", 2026-08-10).
                     // Timeline-parity layer controls on the ACTIVE cut's SE
                     // rows — the SAME session hooks the timeline host wires.
-                    onToggleLayerVisibility: _session.layerSwitches.toggleLayerVisibility,
+                    onToggleLayerVisibility: _rowPresses.toggleVisibility,
                     onOpenLayerMixer: (anchorContext, layerId) => unawaited(
                       showSeLayerMixer(
                         anchorContext,
@@ -943,12 +968,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         .soloedSeLayerIds
                         .value
                         .contains(layerId),
-                    onLayerOpacityChanged: _session.opacityVerbs.previewLayerOpacity,
-                    onLayerOpacityChangeEnd: _session.opacityVerbs.commitLayerOpacity,
-                    onLayerMarkSelected: _session.layerMarks.setLayerMark,
+                    onLayerOpacityChanged: _rowPresses.previewOpacity,
+                    onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
+                    onLayerMarkSelected: _rowPresses.pickMark,
                     // B5③ (ordered twice): the timeline rows' sheet toggle on
                     // this rail too — the same session verb.
-                    onToggleLayerTimesheet: _session.layerSwitches.toggleLayerTimesheet,
+                    onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
                     layerOnTimesheetOf: _session.layerSwitches.isLayerOnTimesheet,
                     layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
                     seRowLaneOpenOf: (track, slot) => _expandedSeAudioRows
@@ -956,7 +981,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     trackLaneOpenOf: (track) =>
                         _expandedTransformTracks.contains(track.id.value),
                     layerFxStateOf: _session.effectsAndFx.layerFxState,
-                    onToggleLayerFx: _session.effectsAndFx.toggleLayerFx,
+                    onToggleLayerFx: _rowPresses.toggleFx,
                     // The timeline's rail legend on this panel too (UI-R5): the
                     // same session-backed bulk flyouts + master opacity bar; the
                     // row solos stand down (the storyboard rail is track-global,
@@ -1048,7 +1073,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // のりしろ read.
                     transitionCrossingTooltip:
                         _session.transitions.transitionCrossingWarningAtGlobalKey,
-                    transitionPreview: _session.transitionEdgeDragPreview,
                     transitionCommaDrag: TimelineCommaDragCallbacks(
                       onBegin: (layerId, blockStartIndex, edge) =>
                           _session.edgeDrag.beginTransitionEdgeDrag(
@@ -1184,7 +1208,7 @@ class _CursorGatedStoryboardToolbarState
     // INSIDE the film left the bar answering about the frame the drag
     // began on — a committed seek fires on the release.
     widget.session.playheadMoved,
-    widget.session.currentRowListenable,
+    widget.session.standing.currentRowListenable,
     widget.session.languageSettings,
     // The selections the gates read are notifiers on purpose (they grow
     // per pointer move): the S-row/cut range, the strip's cut-local range,
@@ -1192,6 +1216,16 @@ class _CursorGatedStoryboardToolbarState
     widget.session.trackFrameRangeSelection,
     widget.session.frameRangeSelection,
     widget.session.laneRangeSelection,
+    // F-75: the token carries `canRunPixelVerb`, and a cel emptied in place
+    // (픽셀 비우기) moves that answer with no seek and no session notify —
+    // its one signal is the tint's crossing. Unheard, the token kept the
+    // answer from before the clear, and a seek onto a drawn cel then read
+    // "unchanged" and left the head dim. ↩️The thumbnail store's landing
+    // rebuilt this whole panel and re-derived the token by accident, until
+    // the store left the panel's merge. (The timeline's gate does not list
+    // it: that host rebuilds on the clear itself, measured, and its F-75 pin
+    // holds without it.)
+    widget.session.layerStack.celTintRevision,
   ];
 
   @override

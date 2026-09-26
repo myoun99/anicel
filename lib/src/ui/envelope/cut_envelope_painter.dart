@@ -2,14 +2,15 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_form.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_source.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../canvas/viewport_canvas_transform.dart';
+import 'cut_envelope_ink.dart';
 import '../sheet_painting.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
@@ -28,7 +29,7 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
     this.effectiveRatio = 1.0,
     this.imageFor,
     this.inkImageFor,
-    this.inkKeyFor,
+    this.inkOwner,
     this.liveInkKeys = const {},
     // The ink store: a landed stroke (or an async-composed display image)
     // must repaint the sheet even though none of the compared fields
@@ -66,8 +67,9 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
   /// The ink surface for a box.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
 
-  /// The ink key a box's strokes live under.
-  final BrushFrameKey Function(String boxId)? inkKeyFor;
+  /// The cut this envelope is of — its boxes' ink is keyed to it
+  /// ([envelopeInkWindows]) — or null where no ink prints.
+  final CutId? inkOwner;
 
   /// Keys a LIVE input window is already showing: the painter skips them so
   /// translucent ink never composites twice. Everything else is drawn here
@@ -87,9 +89,10 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
       paper: Size(layout.paperWidth, layout.paperHeight),
     ));
     if (_draws(SheetPaintLayer.paper)) {
-      canvas.drawRect(
+      paintSheetPaper(
+        canvas,
         Rect.fromLTWH(0, 0, layout.paperWidth, layout.paperHeight),
-        Paint()..color = Color(layout.form.paperArgb),
+        Color(layout.form.paperArgb),
       );
     }
 
@@ -150,14 +153,8 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
 
   void _paintContent(Canvas canvas) {
     for (final placed in layout.placedBoxes) {
-      switch (placed.box.contentKind) {
-        case EnvelopeContentKind.blank:
-          continue;
-        case EnvelopeContentKind.text:
-          final text = resolveEnvelopeText(placed.box.binding!, source);
-          if (text == null || text.isEmpty) {
-            continue;
-          }
+      switch (_valueOf(placed)) {
+        case (text: final text?, image: _) when text.isNotEmpty:
           _paintText(
             canvas,
             text,
@@ -166,62 +163,60 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
             align: placed.box.contentAlign,
             color: const Color(0xFF1A1A18),
           );
-        case EnvelopeContentKind.image:
-          final path = resolveEnvelopeImage(placed.box.binding!, source);
-          final image = path == null ? null : imageFor?.call(path);
+        case (text: _, image: final path?):
+          final image = imageFor?.call(path);
           if (image != null) {
-            _paintImage(canvas, image, placed);
+            paintSheetImageContained(
+              canvas,
+              image,
+              Rect.fromLTWH(placed.x, placed.y, placed.width, placed.height),
+              FilterQuality.high,
+            );
           }
+        default:
+          continue;
       }
     }
   }
+
+  /// What [placed] prints as a value — its words, or the path of its
+  /// picture — read by the content stratum's paint and by its repaint
+  /// question alike.
+  ({String? text, String? image}) _valueOf(PlacedEnvelopeBox placed) =>
+      switch (placed.box.contentKind) {
+        EnvelopeContentKind.blank => (text: null, image: null),
+        EnvelopeContentKind.text => (
+          text: resolveEnvelopeText(placed.box.binding!, source),
+          image: null,
+        ),
+        EnvelopeContentKind.image => (
+          text: null,
+          image: resolveEnvelopeImage(placed.box.binding!, source),
+        ),
+      };
 
   /// The handwriting, above everything the form prints (it was written on
   /// the finished sheet — pen over paper).
   ///
-  /// A box shows the TOP-LEFT slice of the shared ink surface, sized by
-  /// [CutEnvelopeLayout.inkSurfaceScale] rather than by the image, and
-  /// clipped to itself so a stroke can never bleed into the next cell.
+  /// ⛔The boxes are the ones the brush writes through
+  /// ([envelopeInkWindows]) — each shows its surface where the window's
+  /// placement lays it, clipped to itself so a stroke can never bleed into
+  /// the next cell. The painter walked the boxes once more for itself.
   void _paintInk(Canvas canvas) {
-    final keyFor = inkKeyFor;
+    final owner = inkOwner;
     final imageFor = inkImageFor;
-    if (keyFor == null || imageFor == null) {
+    if (owner == null || imageFor == null) {
       return;
     }
-    final surfaceScale = layout.inkSurfaceScale;
-    for (final placed in layout.placedBoxes) {
-      if (!placed.box.takesInk) {
+    for (final window in envelopeInkWindows(layout, owner)) {
+      if (liveInkKeys.contains(window.key)) {
         continue;
       }
-      final key = keyFor(placed.box.id);
-      if (liveInkKeys.contains(key)) {
-        continue;
+      final image = imageFor(window.key);
+      if (image != null) {
+        paintSheetInkWindow(canvas, image, window.placement);
       }
-      final image = imageFor(key);
-      if (image == null) {
-        continue;
-      }
-      final boxRect = Rect.fromLTWH(
-        placed.x,
-        placed.y,
-        placed.width,
-        placed.height,
-      );
-      paintSheetInkWindow(canvas, image, boxRect, surfaceScale);
     }
-  }
-
-  void _paintImage(Canvas canvas, ui.Image image, PlacedEnvelopeBox placed) {
-    final source = Size(image.width.toDouble(), image.height.toDouble());
-    canvas.drawImageRect(
-      image,
-      Offset.zero & source,
-      containRect(
-        source,
-        Rect.fromLTWH(placed.x, placed.y, placed.width, placed.height),
-      ),
-      Paint()..filterQuality = FilterQuality.high,
-    );
   }
 
   void _paintText(
@@ -267,14 +262,20 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
     layout.form,
     layout.paperWidth,
     layout.paperHeight,
-    source,
     face,
-    ByIdentity(layers),
+    layers == null ? null : BySet(layers!),
     viewport,
     effectiveRatio,
+    // Each stratum compares what IT prints (유저 2026-09-25: 「텍스트
+    // 바뀌거나 하는데 용지 리빌드하면 너무 비효율적이잖아」): the values
+    // by what each box resolves to — the source is a new object every
+    // build — so a typed value leaves the form and a stroke the values.
+    _draws(SheetPaintLayer.content)
+        ? ByList([for (final placed in layout.placedBoxes) _valueOf(placed)])
+        : null,
     // Mounting a window HIDES that box's baked ink here; unmounting shows
     // it again. Miss this and a stroke stays doubled (or missing) until
     // something else happens to repaint.
-    BySet(liveInkKeys),
+    _draws(SheetPaintLayer.ink) ? (inkOwner, BySet(liveInkKeys)) : null,
   );
 }

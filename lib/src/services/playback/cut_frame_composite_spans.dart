@@ -38,8 +38,8 @@ class CutFrameCompositeSpan {
       'CutFrameCompositeSpan([$start, $endExclusive), $signature)';
 }
 
-/// Cuts `[0, frameCount)` into maximal runs of frames that share one
-/// composite signature.
+/// Cuts [frames] into maximal runs of frames that share one composite
+/// signature.
 ///
 /// ★Spans are DISCOVERED by signature comparison, never claimed from
 /// track keyframes: a `PropertyTrack.keys` union would be a second
@@ -54,19 +54,23 @@ class CutFrameCompositeSpan {
 /// (the storyboard asks across 1500 cuts) MUST memoize the returned
 /// table rather than calling this in a paint path.
 ///
-/// [frameCount] is the caller's law for how many frames the cut spans —
-/// this function deliberately does not derive one from the cut's
+/// [frames] is the caller's law for which frames the cut spans —
+/// this function deliberately does not derive them from the cut's
 /// contents, because cut length is unrelated to what material it holds.
 List<CutFrameCompositeSpan> computeCutFrameCompositeSpans({
   required Cut cut,
-  required int frameCount,
+  required ({int startIndex, int endIndexExclusive}) frames,
   required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
 }) {
   final spans = <CutFrameCompositeSpan>[];
   CutFrameCompositeSignature? current;
   var start = 0;
-  for (var frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+  for (
+    var frameIndex = frames.startIndex;
+    frameIndex < frames.endIndexExclusive;
+    frameIndex++
+  ) {
     final signature = computeCutFrameCompositeSignature(
       cut: cut,
       frameIndex: frameIndex,
@@ -95,7 +99,7 @@ List<CutFrameCompositeSpan> computeCutFrameCompositeSpans({
     spans.add(
       CutFrameCompositeSpan(
         start: start,
-        endExclusive: frameCount,
+        endExclusive: frames.endIndexExclusive,
         signature: current,
       ),
     );

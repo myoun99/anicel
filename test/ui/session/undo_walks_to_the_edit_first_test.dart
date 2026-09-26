@@ -44,13 +44,13 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final made = drawingsOn(s, row);
     s.selectFrameIndex(7);
-    final reveals = s.revealSelectionTick.value;
+    final reveals = s.rangeSelections.revealSelectionTick.value;
 
     s.undo();
     expect(s.currentFrameIndex, 2, reason: '그곳으로 이동만');
     expect(drawingsOn(s, row), made, reason: '⛔되돌리지는 않았다');
     expect(
-      s.revealSelectionTick.value,
+      s.rangeSelections.revealSelectionTick.value,
       greaterThan(reveals),
       reason: 'F-169 ③ 「스크롤밖이면 스크롤 조정」 — the rails are asked to '
           'bring the place into view, a row on screen or not',

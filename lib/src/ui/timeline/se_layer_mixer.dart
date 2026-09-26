@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_session_manager.dart';
+import '../session/session_row_button_presses.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/field_slider.dart';
@@ -50,22 +52,26 @@ class _SeLayerMixer extends StatefulWidget {
 
 class _SeLayerMixerState extends State<_SeLayerMixer> {
   /// The live drag values. Gain and pan write on RELEASE (the commit-on-
-  /// release rule the opacity bars follow): `setLayerAudio` refreshes the
-  /// whole live audio schedule, which is not a per-move price. Mute and
-  /// solo are discrete and land immediately.
+  /// release rule the opacity bars follow): a write is an undo step and
+  /// re-uploads the whole live audio schedule, neither a per-move price.
+  /// Mute and solo are discrete and land immediately.
   double? _gainDrag;
   double? _panDrag;
 
-  /// The subject row. `session.layers` is EMPTY in a gap (no active cut),
-  /// and the storyboard rail deliberately keeps its SE controls mounted
-  /// there — a track-owned SE row is not a cut's layer. Falling back to
-  /// the track resolver is what keeps the mixer from opening blank on the
-  /// one surface that can be standing in a gap.
-  Layer? get _layer =>
-      widget.session.layers
-          .where((layer) => layer.id == widget.layerId)
-          .firstOrNull ??
-      widget.session.trackSeGlobalLayerById(widget.layerId);
+  /// All four controls press as the speaker that opened the window: inside
+  /// a row selection they set every selected SE row.
+  SessionRowButtonPresses get _presses =>
+      SessionRowButtonPresses(widget.session);
+
+  /// The subject row, found wherever it lives. `session.layers` is EMPTY in
+  /// a gap (no active cut), where the storyboard rail keeps its SE controls
+  /// mounted — and the track resolver answers the ACTIVE track alone, while
+  /// the storyboard carries every track's S rows: the mixer opened blank on
+  /// another track's speaker (other-track-s-row-fx-and-mixer, 2026-09-25).
+  Layer? get _layer => layerAnywhereOrNull(
+    widget.session.repository.requireProject(),
+    widget.layerId,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +123,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
                   icon: layer.muted ? Icons.volume_off : Icons.volume_up,
                   on: layer.muted,
                   onPressed: () =>
-                      widget.session.layerSwitches.toggleLayerMuted(widget.layerId),
+                      _presses.toggleMute(widget.layerId),
                 ),
               ),
               const SizedBox(width: 6),
@@ -128,7 +134,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
                   icon: Icons.headphones,
                   on: soloed,
                   onPressed: () =>
-                      widget.session.visibilitySolo.toggleLayerSolo(widget.layerId),
+                      _presses.toggleSolo(widget.layerId),
                 ),
               ),
             ],
@@ -148,10 +154,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
             onChanged: (value) => setState(() => _gainDrag = value),
             onChangeEnd: (value) {
               setState(() => _gainDrag = null);
-              widget.session.layerSwitches.setLayerAudio(
-                layerId: widget.layerId,
-                gain: value,
-              );
+              _presses.setGain(widget.layerId, value);
             },
           ),
           const SizedBox(height: 6),
@@ -187,10 +190,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
               onChanged: (value) => setState(() => _panDrag = value),
               onChangeEnd: (value) {
                 setState(() => _panDrag = null);
-                widget.session.layerSwitches.setLayerAudio(
-                  layerId: widget.layerId,
-                  pan: value,
-                );
+                _presses.setPan(widget.layerId, value);
               },
             ),
           ),

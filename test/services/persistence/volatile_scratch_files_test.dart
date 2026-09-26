@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/persistence/scratch_cel_files.dart';
 import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
@@ -20,7 +21,11 @@ void main() {
   test('an undo payload lands in the VOLATILE room, a cel in the staged '
       'one — the save deletes one and must not reach the other', () {
     final undo = VolatileScratchFiles.write(bytes(16));
-    final cel = ScratchCelFiles.write('cels/abc.celz', bytes(16));
+    final cel = ScratchCelFiles.write(
+      ScratchCelFiles.newNamespace(),
+      'cels/abc.celz',
+      bytes(16),
+    );
 
     expect(undo, isNotNull);
     expect(cel, isNotNull);
@@ -83,5 +88,29 @@ void main() {
       final path = VolatileScratchFiles.write(bytes(32))!;
       expect(File('$path.part').existsSync(), isFalse);
     });
+  });
+
+  test('🚨I-7: the room weighs what EVERY open stack may park — the sum of '
+      'the budgets — and a stack that goes takes its share with it', () {
+    // A room sized for one stack let one tab's parking crowd the others',
+    // and a stack refused by a full room drops entries: one tab's history
+    // spent on another's. 유저 확정 2026-09-10 made the room the undo
+    // budget; with a stack per project that is every stack's budget.
+    final before = VolatileScratchFiles.ceilingBytes;
+    final a = HistoryManager()..byteBudget = 1000;
+    final b = HistoryManager()..byteBudget = 500;
+    expect(VolatileScratchFiles.ceilingBytes, before + 1500);
+
+    b.byteBudget = 700;
+    expect(
+      VolatileScratchFiles.ceilingBytes,
+      before + 1700,
+      reason: 'a budget that moves moves the room',
+    );
+
+    b.dispose();
+    expect(VolatileScratchFiles.ceilingBytes, before + 1000);
+    a.dispose();
+    expect(VolatileScratchFiles.ceilingBytes, before);
   });
 }

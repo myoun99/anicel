@@ -299,7 +299,9 @@ class _LayerStackPaintPass {
         // derived from under budget. `real` is how many snapshots became
         // the base — a promotion that never lands looks exactly like one
         // that works. See [DisplayBufferCache.derivedDepth] and
-        // [DisplayBufferCache.promotedCount].
+        // [DisplayBufferCache.promotedCount]. `drawn` — how many of the
+        // patches rastered no head ([DisplayBufferCache.drawnCount]) — for
+        // the same reason again.
         final cadence =
             'full~${cache.fullCount ~/ 8}'
             ' patched~${cache.patchedCount ~/ 32}'
@@ -309,6 +311,7 @@ class _LayerStackPaintPass {
           InputInspector.note(
             'buf full=${cache.fullCount}'
             ' patched=${cache.patchedCount}'
+            ' drawn=${cache.drawnCount}'
             ' carried=${cache.scrolledCount}'
             ' chain=${cache.derivedDepth}'
             ' real=${cache.promotedCount}',
@@ -408,43 +411,59 @@ class _LayerStackPaintPass {
     // it would cost 9× what is on screen. It is not the canvas rect either:
     // artwork parked on the pasteboard is visible and must composite with
     // the rest (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
-    final buffer = _composeDisplayBuffer(_contentExtent);
-    if (buffer == null) {
-      _paintContent(
-        canvas,
-        // The direct walk draws under the viewport transform, so a group
-        // that rasterises itself has to match the CTM it is drawn into.
-        intoTheBuffer: false,
-        rasterScale: _displayScale,
-      );
-    } else {
-      try {
-        canvas.drawImageRect(
-          buffer.image,
-          Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight),
-          buffer.rect,
-          Paint()
-            // The residual, not the device scale: below 100% the buffer is
-            // a level, and this blit reduces it by (0.5, 1] — `none` where
-            // the level lands 1:1 (안 1, 2026-09-16).
-            ..filterQuality = _bufferQuality
-            // The buffer's edge IS the canvas's edge on screen, cut by the
-            // same law as the paper's (F-67-paper-edge): under nearest on
-            // an axis-aligned view it is one more texel boundary, decided
-            // by pixel centres, not a blended line.
-            ..isAntiAlias = _bufferEdgeAntiAliased,
+    switch (_composeDisplayBuffer(_contentExtent)) {
+      case null:
+        _paintContent(
+          canvas,
+          // The direct walk draws under the viewport transform, so a group
+          // that rasterises itself has to match the CTM it is drawn into.
+          intoTheBuffer: false,
+          rasterScale: _displayScale,
         );
-      } finally {
-        // ⚠️Safe HERE and nowhere earlier: the draw above put the image into
-        // this frame's display list, and the engine holds its own reference
-        // to it from that moment. What `dispose` releases is this handle's
-        // claim, not the pixels the list is going to replay.
-        if (buffer.owned) {
-          buffer.image.dispose();
+      case final _BufferImage buffer:
+        _blitBuffer(canvas, buffer);
+      case _BufferPicture(:final picture, :final rect):
+        try {
+          // Recorded in the buffer's own pixels, which at level 0 are canvas
+          // pixels less the rect's corner.
+          canvas.save();
+          canvas.translate(rect.left, rect.top);
+          canvas.drawPicture(picture);
+          canvas.restore();
+        } finally {
+          // Safe once drawn, for the reason the image's disposal below is.
+          picture.dispose();
         }
-      }
     }
     canvas.restore();
+  }
+
+  void _blitBuffer(Canvas canvas, _BufferImage buffer) {
+    try {
+      canvas.drawImageRect(
+        buffer.image,
+        Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight),
+        buffer.rect,
+        Paint()
+          // The residual, not the device scale: below 100% the buffer is
+          // a level, and this blit reduces it by (0.5, 1] — `none` where
+          // the level lands 1:1 (안 1, 2026-09-16).
+          ..filterQuality = _bufferQuality
+          // The buffer's edge IS the canvas's edge on screen, cut by the
+          // same law as the paper's (F-67-paper-edge): under nearest on
+          // an axis-aligned view it is one more texel boundary, decided
+          // by pixel centres, not a blended line.
+          ..isAntiAlias = _bufferEdgeAntiAliased,
+      );
+    } finally {
+      // ⚠️Safe HERE and nowhere earlier: the draw above put the image into
+      // this frame's display list, and the engine holds its own reference
+      // to it from that moment. What `dispose` releases is this handle's
+      // claim, not the pixels the list is going to replay.
+      if (buffer.owned) {
+        buffer.image.dispose();
+      }
+    }
   }
 
   /// 🚨★★★WHAT THE ACTIVE SLOT DRAWS, not what its surface holds (F-85,
@@ -1226,7 +1245,7 @@ class _LayerStackPaintPass {
   /// `toImageSync(rect.width.round(), …)` — the same number, by
   /// construction.
   _DisplayBuffer _bufferOf(ui.Image image, Rect rect, {required bool owned}) =>
-      _DisplayBuffer(
+      _BufferImage(
         image: image,
         rect: rect,
         pixelWidth: image.width.toDouble(),
@@ -1277,9 +1296,11 @@ class _LayerStackPaintPass {
     // Re-deriving the answer next to `store` is how the scrolled carry
     // came to be counted as a fresh compose in the first place.
     final bool derived;
+    var drawn = false;
     if (base != null && dirty != null) {
       _blitPatched(into, base.image, rect, dirty);
       derived = base.deferred;
+      drawn = !derived && _pictureDrawsTheSame(dirty);
     } else if (scroll != null && canScroll) {
       cache!.lastComposedArea = _blitScrolled(into, scroll, rect, dirty);
       derived = scroll.deferred;
@@ -1303,7 +1324,93 @@ class _LayerStackPaintPass {
       derived: derived,
       carried: canScroll,
       tokens: miss.tokens,
+      drawn: drawn,
     );
+  }
+
+  /// Whether a patch's picture drawn straight onto the screen lands the
+  /// bytes its rastered head, blitted there, would — so the head need not
+  /// be rastered at all: one render pass fewer a stroke step, and a
+  /// snapshot costs the same whatever its size (measured 2026-09-25 on the
+  /// real Windows app, 1.6–2.0 ms from 32×32 to a whole window).
+  ///
+  /// The picture blits the real base 1:1 and recomposes [dirty] over it;
+  /// on the screen those are the same draws under the viewport transform,
+  /// and they land the same bytes exactly when —
+  /// · the display scale is a WHOLE number and the view is not rotated:
+  ///   every canvas pixel is then a whole block of device pixels
+  ///   ([renderSnappedViewport] puts the translation on whole pixels), so
+  ///   no sample falls on a texel boundary and no tile or raster edge cuts
+  ///   a device pixel. ⛔Between whole scales a tile edge splits a pixel,
+  ///   and on a multisampled screen (Impeller Vulkan) that pixel averages
+  ///   two tiles' samples where the head had one texel;
+  /// · [dirty] lies on opaque paper: the recompose CLEARS first, which on
+  ///   the screen clears the pasteboard under it too, and only an opaque
+  ///   draw over it puts back exactly what the head was blitted over;
+  /// · every draw the recompose makes is a texel copy blended pixel by
+  ///   pixel ([_drawsTexelForTexel]), and no stamp ghost is drawn — it
+  ///   lands where the pointer is, not on the texel grid;
+  /// · the screen is 8-bit. iOS draws to a wide-gamut surface by default,
+  ///   where blending rounds differently from the 8-bit head.
+  bool _pictureDrawsTheSame(Rect dirty) {
+    // A whole scale is never below 100%, so the buffer is at level 0.
+    if (!debugDrawBufferPictures ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        _painter.viewport.rotationDegrees != 0 ||
+        _displayScale != _displayScale.roundToDouble()) {
+      return false;
+    }
+    final region = _wholeBufferPixelsOutward(dirty);
+    final onPaper =
+        _painter.paintPaper &&
+        _painter.paperBackground.paintedArgb >>> 24 == 0xFF &&
+        region.left >= _canvasRect.left &&
+        region.top >= _canvasRect.top &&
+        region.right <= _canvasRect.right &&
+        region.bottom <= _canvasRect.bottom;
+    return onPaper &&
+        _painter.activeSurfacePainter?.stampPreview?.value?.image == null &&
+        _drawsTexelForTexel(_painter.nodes);
+  }
+
+  /// Whether every draw [nodes] make is a texel copy blended pixel by pixel
+  /// — then laying them down at canvas resolution and magnifying the result
+  /// by a whole number is the same as laying them down magnified. A draw
+  /// that does not qualify: a pose (it resamples), a blend that does not
+  /// work in place or an effect that spreads ([inkCropDrawsTheSame], which
+  /// has the measurements — an advanced blend rounds by the area drawn), a
+  /// layer image that is not a texel copy, and an adjustment scope — its
+  /// crossfade goes through `saveLayer`s nobody has measured this way yet.
+  bool _drawsTexelForTexel(List<CompositeNode<_PaintRow>> nodes) {
+    for (final node in nodes) {
+      final inPlace = switch (node) {
+        CompositeLeaf(payload: final _PaintImage row) =>
+          inkCropDrawsTheSame(
+                pose: row.pose,
+                blendMode: row.blendMode,
+                effects: row.effects,
+              ) &&
+              drawsAsTexelCopy(row.image, row.worldRect),
+        CompositeLeaf(payload: final _PaintActiveSurface row) =>
+          inkCropDrawsTheSame(
+            pose: row.pose,
+            blendMode: row.blendMode,
+            effects: row.effects,
+          ),
+        CompositeGroup(:final blendMode, :final effects, :final children) =>
+          inkCropDrawsTheSame(
+                pose: null,
+                blendMode: blendMode,
+                effects: effects,
+              ) &&
+              _drawsTexelForTexel(children),
+        CompositeAdjustment() => false,
+      };
+      if (!inPlace) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Rasters the recorded miss and, when the cache can keep it, stores the
@@ -1313,6 +1420,9 @@ class _LayerStackPaintPass {
   /// more as a plain image, becomes the base the NEXT paint derives from —
   /// so the deferred image made here is only ever drawn, never drawn from.
   /// Asked of the cache, which knows whether one is still in flight.
+  ///
+  /// [drawn]: the picture goes to the screen as it is and no head is
+  /// rastered ([_pictureDrawsTheSame]); only the snapshot, when asked for.
   _DisplayBuffer _keepMiss(
     ui.PictureRecorder recorder,
     Rect rect,
@@ -1322,14 +1432,38 @@ class _LayerStackPaintPass {
     required bool derived,
     required bool carried,
     required LiveSurfaceTokens? tokens,
+    required bool drawn,
   }) {
+    final width = (rect.width / _levelStep).round();
+    final height = (rect.height / _levelStep).round();
+    final snapshot =
+        cache != null &&
+        key != null &&
+        cache.wantsPromotionFor(patchedOverRealBase: patched && !derived);
+    if (drawn) {
+      // Only a patch over the cache's own real base is drawn, so the cache
+      // and its key are there.
+      final picture = recorder.endRecording();
+      cache!.store(
+        key!,
+        _painter.compositeKey,
+        rect,
+        null,
+        patched: true,
+        tokens: tokens,
+      );
+      if (snapshot) {
+        cache.promote(picture.toImage(width, height));
+      }
+      return _BufferPicture(picture: picture, rect: rect);
+    }
     final made = labProbe(
       'displayBuffer.raster',
       () => rasterPictureAndSnapshot(
         recorder,
-        (rect.width / _levelStep).round(),
-        (rect.height / _levelStep).round(),
-        snapshot: cache != null && key != null && cache.wantsPromotion,
+        width,
+        height,
+        snapshot: snapshot,
       ),
     );
     final image = made.deferred;

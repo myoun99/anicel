@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/envelope/cut_envelope_source.dart';
@@ -17,7 +16,7 @@ import '../editor_session_manager.dart';
 import '../text/app_face.dart';
 import '../widgets/app_icon_button.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../widgets/static_raster.dart';
+import '../sheet/sheet_strata.dart';
 import 'cut_envelope_builder.dart';
 import '../sheet/sheet_ink_layer.dart';
 import 'cut_envelope_ink.dart';
@@ -42,16 +41,16 @@ class CutEnvelopeTabHost extends StatefulWidget {
     this.onViewportChanged,
     this.inkController,
     this.brushToolState,
-    this.inkEnabled = false,
-    this.onInkEnabledChanged,
+    this.brushAllowed = false,
+    this.onBrushAllowedChanged,
     this.imageFor,
+    this.imageRepaint,
   });
 
   final EditorSessionManager session;
 
-  /// Which bundled form to print. Owned above the tab group, like the
-  /// viewport; a project-level choice (and a form EDITOR) come with the
-  /// preset round.
+  /// Which bundled form to print — the work's choice
+  /// (`TimesheetInfo.envelopeFormId`), chosen here and kept with the work.
   final String formId;
   final ValueChanged<String>? onFormIdChanged;
 
@@ -71,17 +70,22 @@ class CutEnvelopeTabHost extends StatefulWidget {
   /// so tool switches never rebuild the sheet.
   final ValueListenable<BrushToolState>? brushToolState;
 
-  /// The ink allow toggle. Off by default — an envelope is read before it
-  /// is written on, and blocked ink protects it from stray pen marks.
-  final bool inkEnabled;
-  final ValueChanged<bool>? onInkEnabledChanged;
+  /// The sheet's brush switch (브러시 허용). Off by default — an envelope is
+  /// read before it is written on, and the brush off protects it from stray
+  /// pen marks.
+  final bool brushAllowed;
+  final ValueChanged<bool>? onBrushAllowedChanged;
 
   /// Resolves a media asset path (logo, 도장) to a decoded image.
   final ui.Image? Function(String assetPath)? imageFor;
 
+  /// Notifies when an image [imageFor] answered null for has landed — the
+  /// page's inputs do not change for it, so this is what repaints it.
+  final Listenable? imageRepaint;
+
   // No shrink floor of its own: the envelope is a PAGE that scales into
-  // whatever it is given, and unlike the conte it mounts no chrome row
-  // under the shell — so the panel's own floor is the whole story. Stating
+  // whatever it is given and mounts no chrome row under the shell — the
+  // conte's case too — so the panel's own floor is the whole story. Stating
   // a larger number here would only raise the bottom dock's minimum for
   // every tab beside it.
 
@@ -90,7 +94,9 @@ class CutEnvelopeTabHost extends StatefulWidget {
 }
 
 class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
-  final ValueNotifier<bool> _strokeActive = ValueNotifier<bool>(false);
+  late final SheetStrokeHold _strokeHold = SheetStrokeHold(
+    brushInput: (live) => widget.session.setBrushInputActive(live),
+  );
 
   /// Commit sink required by the panel API; envelope ink invalidations stay
   /// local (its synthetic keys never reach the playback caches).
@@ -99,7 +105,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
 
   @override
   void dispose() {
-    _strokeActive.dispose();
+    _strokeHold.dispose();
     super.dispose();
   }
 
@@ -142,7 +148,8 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
         : envelopeInkWindows(layout, owner);
     final brushToolState = widget.brushToolState;
     final inking =
-        inkController != null && brushToolState != null && widget.inkEnabled;
+        inkController != null && brushToolState != null && widget.brushAllowed;
+    final onBrushAllowedChanged = widget.onBrushAllowedChanged;
 
     return SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -150,6 +157,13 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
+      brushSwitch: onBrushAllowedChanged == null
+          ? null
+          : (
+              allowed: widget.brushAllowed,
+              onChanged: onBrushAllowedChanged,
+              keyPrefix: 'envelope',
+            ),
       bottomBarLeading: _panelActions(),
       fitFocusRect: Rect.fromLTWH(
         0,
@@ -158,7 +172,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
         paper.height.toDouble(),
       ),
       drawingOn: inking,
-      contentStrokeActive: inking ? _strokeActive : null,
+      strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(
         builder: (context, constraints) {
           // ONE gate, read by both the input layer and the painter: a box
@@ -171,42 +185,49 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                   constraints.biggest,
                 )
               : const <SheetInkWindow>[];
+          CutEnvelopePainter painterOf(
+            SheetStratum stratum, {
+            Listenable? repaint,
+          }) => CutEnvelopePainter(
+            layout: layout,
+            source: source,
+            face: appFaceOf(DefaultTextStyle.of(context).style),
+            viewport: viewport,
+            effectiveRatio: EffectiveDevicePixelRatio.of(context),
+            layers: stratum.layers,
+            imageFor: widget.imageFor,
+            inkOwner: owner,
+            inkImageFor: inkController == null
+                ? null
+                : (key) => inkController.displayImageFor(null, key),
+            liveInkKeys: {for (final window in mounted) window.key},
+            repaint: repaint,
+          );
           return Stack(
             children: [
               Positioned.fill(
                 // Baked, not merely isolated — see the note on the conte
-                // page. `StaticRaster` is a repaint boundary itself, so
-                // this keeps what the `RepaintBoundary` bought and stops
-                // the raster thread replaying the page every frame the
-                // app happens to produce. It stands down while the pen is
-                // down, when the page changes on every sample.
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _strokeActive,
-                  builder: (context, stroking, child) => StaticRaster(
-                    debugLabel: 'envelope-page',
-                    enabled: !stroking,
-                    child: child!,
-                  ),
-                  child: CustomPaint(
-                    key: const ValueKey<String>('cut-envelope-page'),
-                    painter: CutEnvelopePainter(
-                      layout: layout,
-                      source: source,
-                      face: appFaceOf(DefaultTextStyle.of(context).style),
-                      viewport: viewport,
-                      effectiveRatio: EffectiveDevicePixelRatio.of(context),
-                      imageFor: widget.imageFor,
-                      inkKeyFor: owner == null
-                          ? null
-                          : (boxId) => envelopeInkBoxKey(owner, boxId),
-                      inkImageFor: inkController == null
-                          ? null
-                          : (key) => inkController.displayImageFor(null, key),
-                      liveInkKeys: {for (final window in mounted) window.key},
-                      repaint: inkController,
+                // page. The ink stands down while the pen is down, when it
+                // changes on every sample.
+                child: SheetStrata(
+                  sheet: 'envelope',
+                  painters: {
+                    SheetStratum.form: painterOf(SheetStratum.form),
+                    // A landed logo or 도장 — nothing the painter compares
+                    // changes for it.
+                    SheetStratum.content: painterOf(
+                      SheetStratum.content,
+                      repaint: widget.imageRepaint,
                     ),
-                    child: const SizedBox.expand(),
-                  ),
+                    if (inkController != null)
+                      SheetStratum.ink: painterOf(
+                        SheetStratum.ink,
+                        repaint: inkController,
+                      ),
+                  },
+                  liveNow: (stratum) =>
+                      stratum == SheetStratum.ink && _strokeHold.value,
+                  liveChanges: _strokeHold,
                 ),
               ),
               if (inking)
@@ -222,7 +243,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                     brushToolState: brushToolState,
                     historyManager: session.historyManager,
                     viewport: viewport,
-                    strokeActive: _strokeActive,
+                    strokeActive: _strokeHold,
                     cacheInvalidationSink: _cacheInvalidationSink,
                   ),
                 ),
@@ -236,7 +257,6 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
   /// The envelope's own commands, at the head of the panel's pill (R2 #13
   /// — the status strip they lived in is gone with the rest of the frame).
   List<Widget> _panelActions() {
-    final onChanged = widget.onInkEnabledChanged;
     final onFormChanged = widget.onFormIdChanged;
     return [
       // Which 봉투 this is. Two bundled forms today, so the toggle is the
@@ -256,15 +276,6 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
             size: AppIconButtonSize.strip,
             onPressed: () => onFormChanged(form.id),
           ),
-      if (onChanged != null && widget.inkController != null)
-        AppIconButton(
-          keyValue: 'envelope-ink-toggle-button',
-          tooltip: widget.inkEnabled ? 'Block Sheet Ink' : 'Allow Sheet Ink',
-          icon: Icon(widget.inkEnabled ? Icons.draw : Icons.edit_off),
-          isSelected: widget.inkEnabled,
-          size: AppIconButtonSize.strip,
-          onPressed: () => onChanged(!widget.inkEnabled),
-        ),
     ];
   }
 }

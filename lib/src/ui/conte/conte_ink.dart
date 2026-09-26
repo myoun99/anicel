@@ -5,6 +5,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart';
+import '../../models/conte/conte_ink_windows.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
@@ -15,19 +16,25 @@ import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
 import '../sheet/sheet_ink_layer.dart';
 import '../sheet/sheet_ink_controller.dart';
+import 'conte_picture_ink.dart';
 
 /// Which conte ink plane a stroke lands on.
 enum ConteInkPlane {
   /// CELL-anchored ink over a cell's whole ROW BAND (cut column through
-  /// the TIME column) — one surface per storyboard drawing block, keyed by
-  /// the block's [FrameId] exactly like the cell memo (R5): the ink rides
-  /// its cell through splits, moves and repagination, saves with the
-  /// project, and dies with the drawing.
+  /// the TIME column) — one surface per storyboard BLOCK, keyed by the
+  /// block's own handwriting id, which rides on its memo beside its ACTION
+  /// (`ExposureMemo.inkId`): the ink rides its block through moves and
+  /// repagination, saves with the project, and dies with the block.
   row,
 
   /// Paper-anchored ink over the whole page (header, margins, the hole's
   /// X) — one surface per page (`conte-page-p<n>`), the original plane.
-  page,
+  page;
+
+  /// The plane [key]'s ink lives on — its layer says; the ink walk and the
+  /// page's printing both ask here.
+  static ConteInkPlane of(BrushFrameKey key) =>
+      key.layerId == conteInkRowLayerId ? row : page;
 }
 
 /// Owns the conte's sheet ink (#16 — the conte panel is the timesheet's
@@ -38,9 +45,11 @@ enum ConteInkPlane {
 /// [BrushStrokeHistoryCommand] the drawing canvas uses.
 ///
 /// TWO planes (R5 — the timesheet's page/strip pair, said in conte): the
-/// row plane binds ink to its CELL (the user's contract: strokes belong to
-/// the cell they start on, clipped to its band), the page plane keeps the
-/// margins. The row/page stores may be handed in by the session so the
+/// row plane binds ink to its CELL, the page plane keeps the margins, and
+/// a stroke over both leaves each its own piece (유저 2026-09-25: 「진짜
+/// 하나의 용지처럼. 데이터는 나누더라도」). ↩️R5's contract was 「strokes
+/// belong to the cell they start on, clipped to its band」 — one paper
+/// replaced it. The row/page stores may be handed in by the session so the
 /// project archive can persist them ([BrushFrameStore] cels, the second
 /// namespace).
 class ConteInkController extends SheetInkController<ConteInkPlane> {
@@ -67,23 +76,13 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
     frameId: FrameId('conte-ink-init'),
   );
 
-  /// Ink resolution multiplier over document space (the timesheet's 4×).
-  static const int inkScale = 4;
-
-  /// The key contract lives in models/conte/conte_ink_keys.dart (R5): the
-  /// session's archive routing and the exporters read the same namespace.
-  static BrushFrameKey pageKey(int page) => conteInkPageKey(page);
-
-  static BrushFrameKey rowKey(CutId cutId, FrameId frameId) =>
-      conteInkRowKey(cutId, frameId);
-
   final InkPlaneSlot _row;
   final InkPlaneSlot _page;
 
-  /// One conte page of paper, at [inkScale].
+  /// One conte page of paper, at [conteInkScale].
   CanvasSize? get pageSurfaceSize => _page.size;
 
-  /// One row-plane surface, at [inkScale]: the page BODY's size for every
+  /// One row-plane surface, at [conteInkScale]: the page BODY's size for every
   /// cell (the coordinator shares one geometry per plane). A cell's window
   /// exposes only its own band's slice — the tile-sparse store makes the
   /// unused remainder free, and a cell that GROWS (rowSpan) simply reveals
@@ -95,55 +94,54 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
   void syncGeometry(ConteSheetMetrics metrics) {
     _page.syncTo(
       CanvasSize(
-        width: (metrics.pageWidth * inkScale).ceil(),
-        height: (metrics.pageHeight * inkScale).ceil(),
+        width: (metrics.pageWidth * conteInkScale).ceil(),
+        height: (metrics.pageHeight * conteInkScale).ceil(),
       ),
     );
     _row.syncTo(
       CanvasSize(
-        width: (metrics.bodyWidth * inkScale).ceil(),
-        height: (metrics.bodyHeight * inkScale).ceil(),
+        width: (metrics.bodyWidth * conteInkScale).ceil(),
+        height: (metrics.bodyHeight * conteInkScale).ceil(),
       ),
     );
   }
 }
 
 /// The ink windows for one page, bottom-of-stack first: page ink lies
-/// under the row bands, so a stroke STARTING on a cell's band goes to that
-/// cell and everything else (header, margins, the hole) goes to the paper.
-/// A stroke keeps its start plane for its whole duration (pointer capture).
+/// under the row bands, so what a stroke draws on a cell's band goes to
+/// that cell and everything else (header, margins, the hole) goes to the
+/// paper — one stroke, split where it crosses ([sheetInkRegions]).
 /// A cell with no drawing block carries no band window — ink belongs to
-/// drawings ("그림 삭제 시 잉크 동반 삭제"), so a block-less cell offers
-/// only the paper behind it.
-List<SheetInkWindow> conteInkWindows(ContePageLayout page) {
-  final metrics = page.metrics;
-  return [
-    SheetInkWindow(
-      id: 'page-${page.pageIndex}',
-      surfaceScale: ConteInkController.inkScale.toDouble(),
-      plane: ConteInkPlane.page,
-      key: ConteInkController.pageKey(page.pageIndex),
-      documentRect: Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
+/// blocks ("그림 삭제 시 잉크 동반 삭제"), so a block-less cell offers
+/// only the paper behind it. A block not yet written on writes under the
+/// name [unwrittenInkIdOf] gives it ahead.
+///
+/// ⛔Made from the walk the page's printers read ([conteInkMarks]) — the
+/// brush writes through exactly the windows the paper shows.
+List<SheetInkWindow> conteInkWindows(
+  ContePageLayout page, {
+  String Function(ContePlacedCell cell)? unwrittenInkIdOf,
+}) => [
+  for (final ink in conteInkMarks(
+    page,
+    page.metrics,
+    unwrittenInkIdOf: unwrittenInkIdOf,
+  ))
+    SheetInkWindow.of(
+      ink,
+      id: switch (ConteInkPlane.of(ink.key)) {
+        ConteInkPlane.row =>
+          'row-${ink.key.cutId.value}-${ink.key.frameId.value}',
+        ConteInkPlane.page => 'page-${page.pageIndex}',
+      },
+      plane: ConteInkPlane.of(ink.key),
     ),
-    for (final cell in page.cells)
-      if (cell.source.frameId != null)
-        SheetInkWindow(
-          id: 'row-${cell.cutId}-${cell.source.frameId!.value}',
-          surfaceScale: ConteInkController.inkScale.toDouble(),
-          plane: ConteInkPlane.row,
-          key: ConteInkController.rowKey(
-            CutId(cell.cutId),
-            cell.source.frameId!,
-          ),
-          documentRect: cell.rowBandRect(metrics),
-        ),
-  ];
-}
+];
 
 /// The conte's ink input/display stack: every window hosts the SAME
-/// interactive brush view the drawing canvas uses, windowed onto its ink
-/// surface by a derived viewport and clipped to its on-screen rect so
-/// pointer-downs outside it fall through to the window below.
+/// interactive brush view the drawing canvas uses, windowed onto its
+/// surface by a derived viewport ([SheetInkLayer]) — the sheet's own ink
+/// and, above it, the pictures drawing into their cels.
 class ConteInkLayer extends StatelessWidget {
   const ConteInkLayer({
     super.key,
@@ -154,6 +152,11 @@ class ConteInkLayer extends StatelessWidget {
     required this.viewport,
     required this.strokeActive,
     this.cacheInvalidationSink,
+    this.pictures,
+    this.pictureWindows = const [],
+    this.pictureInvalidationSink,
+    this.unwrittenInkIdOf,
+    this.beforeLanding,
   });
 
   final ConteInkController controller;
@@ -169,32 +172,72 @@ class ConteInkLayer extends StatelessWidget {
   /// The live panel viewport (the same transform the page painter applies).
   final CanvasViewport viewport;
 
-  /// Raised while any window has a stroke in progress, so the panel's
-  /// gesture layer holds navigation exactly as it does for canvas strokes.
+  /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
 
   final CacheInvalidationSink? cacheInvalidationSink;
 
+  /// The cels the pictures draw into, and the windows they draw through
+  /// ([contePictures]).
+  final ContePictureInkController? pictures;
+  final List<SheetPictureWindow> pictureWindows;
+
+  /// Where a picture's stroke tells the caches which cel changed — the
+  /// canvas's own sink: the cel is the canvas's, and the pictures and the
+  /// playback that show it have to hear.
+  final CacheInvalidationSink? pictureInvalidationSink;
+
+  /// The name a block not yet written on writes under ([conteInkWindows]).
+  final String Function(ContePlacedCell cell)? unwrittenInkIdOf;
+
+  /// Told each piece of a stroke is landing, before it is kept — where what
+  /// it was drawn into is made or named: the conte row a picture of a cut
+  /// with none draws into, the id a block's first handwriting puts on it.
+  /// So the stroke lands in something its cut has, in the stroke's own undo
+  /// step.
+  final ValueChanged<SheetWindow>? beforeLanding;
+
   @override
   Widget build(BuildContext context) {
     return SheetInkLayer(
-      windows: conteInkWindows(page),
+      windows: [
+        ...conteInkWindows(page, unwrittenInkIdOf: unwrittenInkIdOf),
+        ...pictureWindows,
+      ],
       keyPrefix: 'conte',
       viewport: viewport,
       brushToolState: brushToolState,
       strokeActive: strokeActive,
-      // The plane axis stays HERE, with the controller that has one.
-      sessionStateFor: (window) => controller.sessionStateFor(
-        window.plane! as ConteInkPlane,
-        window.key,
-      ),
-      onStrokeCommitted: (window, strokeData) => controller.commitStroke(
-        plane: window.plane! as ConteInkPlane,
-        key: window.key,
-        strokeData: strokeData,
-        historyManager: historyManager,
-        cacheInvalidationSink: cacheInvalidationSink,
-      ),
+      history: historyManager.gestures,
+      // The plane axis stays HERE, with the controllers that have one: a
+      // picture's plane is its cel's canvas size, the ink's is its plane.
+      sessionStateFor: (window) => switch (window.plane) {
+        final CanvasSize size => pictures!.sessionStateFor(size, window.key),
+        final plane => controller.sessionStateFor(
+          plane! as ConteInkPlane,
+          window.key,
+        ),
+      },
+      onStrokeCommitted: (window, strokeData) {
+        beforeLanding?.call(window);
+        if (window case SheetPictureWindow(plane: final CanvasSize size)) {
+          pictures!.commitStroke(
+            plane: size,
+            key: window.key,
+            strokeData: strokeData,
+            historyManager: historyManager,
+            cacheInvalidationSink: pictureInvalidationSink,
+          );
+          return;
+        }
+        controller.commitStroke(
+          plane: window.plane! as ConteInkPlane,
+          key: window.key,
+          strokeData: strokeData,
+          historyManager: historyManager,
+          cacheInvalidationSink: cacheInvalidationSink,
+        );
+      },
     );
   }
 }

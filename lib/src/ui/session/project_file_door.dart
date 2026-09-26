@@ -1,5 +1,6 @@
-// The .anicel door: everything that writes this session into a file, or
-// reads one back into it.
+// The .anicel door: everything that writes this session into a file, and
+// what settles into a session born from one (I-7: a file opens as a session
+// of its own — read first, then born with its project).
 //
 // Its own object since round 8 (G1, 2026-09-06). Like
 // [EditorVoiceRecording], it did not come free — its constructor lists the
@@ -11,13 +12,9 @@
 
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
-
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
-import '../../models/envelope/cut_envelope_ink_keys.dart';
-import '../../models/frame_id.dart';
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
@@ -45,15 +42,12 @@ import '../../services/project_lookup.dart'
     show cutPositionOf, projectAudioSourcePaths;
 import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
-import 'frame_clipboard.dart';
-import 'layer_clipboard.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
 import 'media_pool.dart';
 import 'project_file.dart';
 import 'rail_view.dart' show StandingLaw;
 import 'visibility_solo.dart';
-import 'playback_rig.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
@@ -106,15 +100,11 @@ class ProjectFileDoor {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required PlaybackRig playbackRig,
     required RenderCaches renderCaches,
     required MediaStagingStore staging,
     required MediaGrantLedger grants,
     required MediaFingerprintLedger fingerprints,
-    required FrameClipboard clipboard,
-    required LayerClipboard layerClipboard,
     required AudioConformStore audioConformStore,
-    required ValueNotifier<int> frameSeekCommitted,
     required MediaPool mediaPool,
     required LiveStrokeLanding liveStrokeLanding,
     required VisibilitySolo solo,
@@ -128,15 +118,11 @@ class ProjectFileDoor {
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
-       _playbackRig = playbackRig,
        _renderCaches = renderCaches,
        _staging = staging,
        _grants = grants,
        _fingerprints = fingerprints,
-       _clipboard = clipboard,
-       _layerClipboard = layerClipboard,
        _audioConformStore = audioConformStore,
-       _frameSeekCommitted = frameSeekCommitted,
        _mediaPool = mediaPool,
        _liveStrokeLanding = liveStrokeLanding,
        _keepStandingShown = keepStandingShown;
@@ -155,15 +141,11 @@ class ProjectFileDoor {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final PlaybackRig _playbackRig;
   final RenderCaches _renderCaches;
   final MediaStagingStore _staging;
   final MediaGrantLedger _grants;
   final MediaFingerprintLedger _fingerprints;
-  final FrameClipboard _clipboard;
-  final LayerClipboard _layerClipboard;
   final AudioConformStore _audioConformStore;
-  final ValueNotifier<int> _frameSeekCommitted;
   final LiveStrokeLanding _liveStrokeLanding;
   final MediaPool _mediaPool;
 
@@ -173,14 +155,9 @@ class ProjectFileDoor {
 
   static const AnicelFileService _anicelFileService = AnicelFileService();
 
-  /// The four cel stores an archive holds, in the order every writer
-  /// lists them: the drawings, then the two conte ink namespaces, then
-  /// the cut envelope's.
-  List<BrushFrameStore> get _auxCelStores => [
-    _renderCaches.conteInkRowStore,
-    _renderCaches.conteInkPageStore,
-    _renderCaches.envelopeInkStore,
-  ];
+  /// The cel stores an archive holds beside the drawings': every sheet's
+  /// ink ([RenderCaches.sheetInkStores]).
+  List<BrushFrameStore> get _auxCelStores => _renderCaches.sheetInkStores;
 
   /// Cels the last save could not write because the file their only copy
   /// lived in had been deleted.
@@ -278,6 +255,7 @@ class ProjectFileDoor {
       // point asking a file that refused this session again on a timer.
       return;
     }
+    _refuseAFileOpenElsewhere(filePath);
     // Raised for the WHOLE save, so a tick that comes due inside one stands
     // down instead of starting a SECOND write of the same file — an
     // incremental append reads the tail it is about to extend, and two of
@@ -297,6 +275,16 @@ class ProjectFileDoor {
     } finally {
       _file.endSave();
       MemoryBlackBox.end('save');
+    }
+  }
+
+  /// Throws before anything is written when [filePath] is another open
+  /// project's file — see [ProjectFile.isOpenElsewhere]. The Save As window
+  /// asks first and says so in words; this is the wall behind it, for
+  /// every save that did not come through that window.
+  void _refuseAFileOpenElsewhere(String filePath) {
+    if (_file.isOpenElsewhere(filePath)) {
+      throw FileOpenInAnotherProject(filePath);
     }
   }
 
@@ -439,10 +427,7 @@ class ProjectFileDoor {
   }
 
   /// Every store a cel ref can live in.
-  List<BrushFrameStore> get _stores => [
-    _renderCaches.brushFrameStore,
-    ..._auxCelStores,
-  ];
+  List<BrushFrameStore> get _stores => _renderCaches.celStores;
 
   /// Writes the CURRENT state to [path] as a complete, standalone archive
   /// and changes NOTHING about this session — no path adoption, no ref
@@ -506,11 +491,14 @@ class ProjectFileDoor {
     String placedPath, {
     required StagedArchive staged,
   }) {
+    _refuseAFileOpenElsewhere(placedPath);
+    final left = _file.path;
     _file.bindToSavedFile(
       placedPath,
       mediaInFile: staged.mediaInFile,
       cleanAsOf: staged.cleanAsOf,
     );
+    _letGoOfTheFileItLeft(left, placedPath);
     _changes.notifyChanged();
   }
 
@@ -733,7 +721,35 @@ class ProjectFileDoor {
   /// whoever holds them: the shell's tool notifier and the workspace's
   /// preset library, neither of which the door can reach. Null until the
   /// workspace installs it; a session with no workspace carries no tools.
-  ToolChoiceBridge? toolChoice;
+  ///
+  /// 🚨A file opens into a session NO WINDOW SHOWS YET (I-7: it is read
+  /// before its tab is added, so a read that fails leaves the tabs alone),
+  /// and the workspace installs this when the tab comes on screen. So what
+  /// the file saved waits here and is put back THEN — once: a tab brought
+  /// forward again later is not an open.
+  ToolChoiceBridge? get toolChoice => _toolChoice;
+  set toolChoice(ToolChoiceBridge? bridge) {
+    _toolChoice = bridge;
+    final waiting = _toolsToResume;
+    if (bridge != null && waiting != null) {
+      _toolsToResume = null;
+      bridge.resume(waiting);
+    }
+  }
+
+  ToolChoiceBridge? _toolChoice;
+
+  /// What an open read while no bridge was installed ([toolChoice]).
+  Map<String, Object?>? _toolsToResume;
+
+  void _resumeTools(Map<String, Object?> tools) {
+    final bridge = _toolChoice;
+    if (bridge == null) {
+      _toolsToResume = tools;
+      return;
+    }
+    bridge.resume(tools);
+  }
 
   /// Where the work stands right now, as every save writes it beside the
   /// project (F-123) — read as the save is made, so the file holds the place
@@ -829,12 +845,35 @@ class ProjectFileDoor {
     for (final carry in mediaToStore.keys) {
       _staging.retire(carry);
     }
+    final left = _file.path;
     _file.bindToSavedFile(
       filePath,
       mediaInFile: {...mediaEntryNamesFor(mediaToStore).values},
       cleanAsOf: cleanAsOf,
     );
+    _letGoOfTheFileItLeft(left, filePath);
     _changes.notifyChanged();
+  }
+
+  /// Lets go of [left] — the file this session was bound to before a save
+  /// bound it to [filePath] — once no cel still reads from it.
+  ///
+  /// 🚨The handles are per FILE since I-7 (a project per tab), so binding
+  /// to another file no longer lets the last one go by itself. A Save As
+  /// moves every clean cel onto the new file; a cel edited while it wrote
+  /// keeps its old ref, and the old file stays held while anything reads it.
+  void _letGoOfTheFileItLeft(String? left, String filePath) {
+    if (left == null || namesTheSameFile(left, filePath)) {
+      return;
+    }
+    for (final store in _stores) {
+      for (final path in store.filesReadFrom) {
+        if (namesTheSameFile(path, left)) {
+          return;
+        }
+      }
+    }
+    OpenProjectFile.instance.releaseFor(left);
   }
 
   /// Every audio path the project references (SE clips + the SOUND entries
@@ -847,33 +886,17 @@ class ProjectFileDoor {
     );
   }
 
-  /// Makes the session let go of the conforms whose PCM lives only on
-  /// disk — ON PROJECT OPEN ONLY.
+  /// Lands in THIS session everything [read] says besides its project —
+  /// the drawings, the grants and fingerprints, the place the work stood,
+  /// the tools, the file it is bound to.
   ///
-  /// A conform past the streaming threshold is held with no resident PCM
-  /// and the file as the copy of record, so a session that opened another
-  /// project would keep readers on bytes the new project has no business
-  /// with. See [AudioConformStore.releaseDiskBacked].
+  /// 🚨★★★ONLY THE SESSION BORN FOR [read] — made with its project
+  /// (`OpenProjects.prepare(read.project)`) and nothing else before this.
+  /// There is no open INTO a session any more (I-7): a file opens as a
+  /// session of its own, so nothing here is replaced and nothing is reset.
+  /// See [ProjectFileRead] for what the replace used to cost.
   ///
-  /// 🪦It used to run the cache collector here too, and the doc explained
-  /// why open was the right moment to enforce a size bound. There is no
-  /// bound and no collector: a conform waits in the RUN'S room and the
-  /// room goes when the run does, so nothing accumulates to collect.
-  ///
-  /// ⚠️ Deliberately NOT switched off under `FLUTTER_TEST` — a call site
-  /// compiled out of every test is a call site with no observer, which is
-  /// how the path assembly went unwatched before
-  /// ([[verify-before-claiming-shared]]).
-  void settleConformCache() {
-    _audioConformStore.releaseDiskBacked();
-  }
-
-  /// Opens a .anicel file, replacing the WHOLE session state: project,
-  /// drawings, selection (first cut, frame 0) — and BOTH undo stacks
-  /// (loaded state has no history; the load→draw→undo path is pinned by
-  /// test).
-  ///
-  /// Reads [filePath]; the session is BOUND to [bindTo] when the bytes came
+  /// The session is BOUND to [ProjectFileRead.bindTo] when the bytes came
   /// from somewhere other than the project's own address — a local staged
   /// copy of a cloud file that refused a direct read, where saves still
   /// have to go back to the real one.
@@ -882,103 +905,39 @@ class ProjectFileDoor {
   /// reading its cels out of is a temp the app made, so a save is what puts
   /// those pixels back at the address the user knows.
   ///
-  /// 🪦Two parameters stood beside [bindTo] until 2026-09-08 — `recoverAs`,
-  /// which is what [bindTo] used to be called when the autosave recovery
+  /// 🪦Two parameters stood beside `bindTo` until 2026-09-08 — `recoverAs`,
+  /// which is what `bindTo` used to be called when the autosave recovery
   /// flow was its main caller, and `overlayPath`, which laid a snapshot
   /// over the base. Both are gone with the sidecars, and so is the
   /// FormatException that refused an overlay fed through the
   /// whole-archive arm. ⛔The rename is the point: one name was answering
   /// 「which file do I save back to」 and 「is this a recovery」 at once.
-  Future<void> openProjectFromFile(
-    String filePath, {
-    String? bindTo,
-    bool Function()? isCancelled,
-  }) async {
-    final result = await _anicelFileService.open(
-      filePath: filePath,
+  void settle(ProjectFileRead read) {
+    assert(
+      _file.path == null && !_project.historyManager.canUndo,
+      'a file settles only into the session born for it — see '
+      'ProjectFileRead',
     );
-    // The read is the wait, and nothing has been applied yet: a press on
-    // the wait window's Cancel during it is honoured HERE, at the last
-    // moment it still means「nothing changed」— past this line the project
-    // lands. The same answer the materializer gives for the same press.
-    if (isCancelled?.call() ?? false) {
-      throw const MaterializeCancelled();
-    }
-    _playbackRig.letGoOfTheProject();
-    // BEFORE the project lands: a bookmark tracks the file rather than the
-    // path, so resolving one is how a referenced movie that was renamed or
-    // moved is found again — and the project has to be told, or the pool
-    // goes on naming an address nothing answers at. This is the same move
-    // the relative-path remap above makes, at the same moment, for the
-    // same reason.
-    final movedByGrant = await _grants.resolveMediaGrants(
-      result.session.grants,
-    );
-    _project.repository.replaceProject(
-      movedByGrant.isEmpty
-          ? result.project
-          : remapProjectMediaPaths(result.project, movedByGrant),
-    );
+    final result = read._result;
+    _grants.hold(read._grants);
     // Through the bookmark move as well. The service already narrowed these
     // against the RELATIVE-path remap it can see; this second move happens
     // out here, after a bookmark resolved to a file the user renamed, and
     // the service never learns about it. Two movers, both of which have to
     // be followed — miss one and the next save deletes the fact.
     _fingerprints.restoreFromFile(
-      result.session.mediaFingerprints.moved(movedByGrant),
+      result.session.mediaFingerprints.moved(read._grants.moved),
     );
-    // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
-    // until a cel is first shown (near-zero RAM for 1500-cut projects).
-    // The conte ink namespace routes to its own stores (R5); a ROW entry
-    // whose storyboard block no longer exists in the loaded project is
-    // pruned HERE — the load boundary is where "ink dies with the
-    // drawing" becomes permanent (saving never prunes, so an undone
-    // delete keeps its ink within the session).
-    final cels = _sortLoadedCels(result);
-    _renderCaches.brushFrameStore.restoreFromFile(cels.main);
-    final healed = _healStaleCelSizes(
-      cels.main,
-      project: result.project,
-      store: _renderCaches.brushFrameStore,
-    );
-    _renderCaches.conteInkRowStore.restoreFromFile(cels.inkRow);
-    _renderCaches.conteInkPageStore.restoreFromFile(cels.inkPage);
-    _renderCaches.envelopeInkStore.restoreFromFile(cels.envelope);
+    final healed = _landCels(read);
     // Held from now on, not from the first cel read — see
     // [OpenProjectFile.hold] for the gap that left.
-    OpenProjectFile.instance.hold(filePath);
-    _project.historyManager.clear();
-    _clipboard.clear();
-    _layerClipboard.clear();
-    // The selections name rows of the project being discarded, so no grid
-    // can draw them — and a band nothing shows still CLAIMS the cell verbs
-    // ([cellSelectionClaimsSubject]), which would leave Delete and the
-    // comma buttons dark with nothing on screen to explain why. Every
-    // other whole-state reset clears here; this one was the omission.
-    _selection.clearAllSelections();
-    _selection.trackFrameRangeSelection.value = null;
-    // Where the work stood when it was saved (F-123) — each part only if this
-    // project still has it: a cut that is gone opens on the first cut, as a
-    // file without the part does; a row that is gone lands on the top row,
-    // the rebuild's own fallback; the frame lands inside the cut through the
-    // rebuild's own clamp.
-    final resume = ProjectResume.fromJson(result.session.resume);
-    final savedCut = resume.cutId;
-    _timeline.editingSession.setActiveCutId(
-      savedCut != null && cutPositionOf(result.project, savedCut) != null
-          ? savedCut
-          : result.project.tracks.first.cuts.first.id,
+    OpenProjectFile.instance.hold(read.path);
+    _standWhereItWasSaved(
+      ProjectResume.fromJson(result.session.resume),
+      read.project,
     );
-    _controllers.rebuild(
-      preferredActiveLayerId: resume.layerId,
-      preferredFrameIndex: resume.frameIndex,
-    );
-    // F-169 ②: the row the work was saved standing on is where you go back
-    // to, so what the rail's view hides it with opens.
-    _keepStandingShown(reveal: true);
-    toolChoice?.resume(resume.tools);
     _file.bindToOpenedFile(
-      bindTo ?? filePath,
+      read.bindTo ?? read.path,
       // The media entries the file holds, as it says itself. Whether an
       // asset is carried is its own `carriedAs`, not whether it is here: a
       // carry the file does not hold reads its staged copy, or its original.
@@ -986,9 +945,8 @@ class ProjectFileDoor {
       // Dirty when the cels are being read out of a staged copy rather than
       // the project's own address — and when the load just HEALED
       // mismatched cels, where memory no longer matches the file (R7q2).
-      unsaved: bindTo != null || healed,
+      unsaved: read.bindTo != null || healed,
     );
-    settleConformCache();
     warmAudioConforms();
     // RELINK-2: the first of the three refresh moments. A project opened
     // on a machine that does not have its referenced media has to SAY so —
@@ -996,71 +954,188 @@ class ProjectFileDoor {
     // user has not done anything to prompt it.
     _mediaPool.refreshMediaExistence();
     _changes.warmActiveCut();
-    _frameSeekCommitted.value += 1;
     _changes.notifyChanged();
+  }
+
+  /// Every cel [read] holds, into the store that owns it — and whether any
+  /// had to be HEALED to its cut's size on the way (R7q2).
+  ///
+  /// R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
+  /// until a cel is first shown (near-zero RAM for 1500-cut projects).
+  /// Every sheet's ink routes to its own store (R5), and an entry whose
+  /// owner no longer exists in the loaded project is pruned HERE
+  /// ([_sortLoadedCels]).
+  bool _landCels(ProjectFileRead read) {
+    final cels = _sortLoadedCels(read._result, _renderCaches);
+    _renderCaches.brushFrameStore.restoreFromFile(cels.main);
+    final healed = _healStaleCelSizes(
+      cels.main,
+      project: read.project,
+      store: _renderCaches.brushFrameStore,
+    );
+    for (final store in _renderCaches.sheetInkStores) {
+      store.restoreFromFile(cels.ink[store] ?? const {});
+    }
+    return healed;
+  }
+
+  /// Where the work stood when it was saved (F-123) — each part only if
+  /// [project] still has it: a cut that is gone opens on the first cut,
+  /// where the session was born standing; a row that is gone lands on the
+  /// top row, the rebuild's own fallback; the frame lands inside the cut
+  /// through the rebuild's own clamp. And the tools, as they were.
+  void _standWhereItWasSaved(ProjectResume resume, Project project) {
+    final savedCut = resume.cutId;
+    if (savedCut != null && cutPositionOf(project, savedCut) != null) {
+      _timeline.editingSession.setActiveCutId(savedCut);
+    }
+    _controllers.rebuild(
+      preferredActiveLayerId: resume.layerId,
+      preferredFrameIndex: resume.frameIndex,
+    );
+    // F-169: the resume seats a row outside the session's own rebuild, so
+    // the standing law is asked here. 🪦It asked with `reveal` while an open
+    // came INTO a session whose rail view could be folding the saved row
+    // away (F-169 ②); a session born for its file has nothing folded, and
+    // what a file itself shuts — a folder — is not the view's to open.
+    _keepStandingShown();
+    _resumeTools(resume.tools);
   }
 }
 
-/// Every cut the project holds — what a loaded envelope's owner is
-/// checked against.
+/// A .anicel as READ — everything an open needs from the file, before any
+/// session holds it.
+///
+/// 🚨★★★A FILE OPENS AS A SESSION MADE FOR IT (I-7). It is read first, with
+/// no session; the session is then born with [project]
+/// (`OpenProjects.prepare`), and [ProjectFileDoor.settle] lands the rest of
+/// what the file says in it. Nothing is replaced, so nothing is reset.
+///
+/// 🪦Until 2026-09-26 the door opened a file INTO a session and replaced the
+/// project on screen — and so had to take down everything the last project
+/// left: its transport and movies, the file it held, its conforms, both
+/// undo stacks, its selections, every cel store. Each was a line of its own
+/// in that reset, and each piece of session state added since was one
+/// more line the reset could miss (the selections were: a band naming the
+/// discarded project kept the cell verbs dark). A session that is born for
+/// its project has nothing of another to take down, and a tab that closes
+/// takes its session with it.
+class ProjectFileRead {
+  ProjectFileRead._({
+    required this.path,
+    required this.bindTo,
+    required this.project,
+    required AnicelOpenResult result,
+    required ResolvedGrants grants,
+  }) : _result = result,
+       _grants = grants;
+
+  /// Where the bytes were read.
+  final String path;
+
+  /// Where saves go when it is not [path] — the real file of a staged copy.
+  final String? bindTo;
+
+  /// The file's project, with every reference a bookmark followed
+  /// elsewhere moved with it — what the session is born with.
+  final Project project;
+
+  final AnicelOpenResult _result;
+  final ResolvedGrants _grants;
+}
+
+/// Reads the .anicel at [filePath] — every byte an open needs, applied to
+/// nothing yet ([ProjectFileRead]).
+///
+/// [bindTo] is where saves go when [filePath] is not the project's own
+/// address ([ProjectFileDoor.settle]).
+Future<ProjectFileRead> readProjectFile(
+  String filePath, {
+  String? bindTo,
+  bool Function()? isCancelled,
+}) async {
+  final result = await const AnicelFileService().open(filePath: filePath);
+  // The read is the wait, and nothing has been made of it yet: a press on
+  // the wait window's Cancel during it is honoured HERE, before a bookmark
+  // is handed back to the OS — past this line the project is resolved and
+  // a session is born for it. The same answer the materializer gives for
+  // the same press.
+  if (isCancelled?.call() ?? false) {
+    throw const MaterializeCancelled();
+  }
+  // BEFORE the session is born: a bookmark tracks the file rather than the
+  // path, so resolving one is how a referenced movie that was renamed or
+  // moved is found again — and the project has to be told, or the pool
+  // goes on naming an address nothing answers at. This is the same move
+  // the relative-path remap in the service makes, for the same reason.
+  final grants = await resolveStoredGrants(result.session.grants);
+  return ProjectFileRead._(
+    path: filePath,
+    bindTo: bindTo,
+    project: grants.moved.isEmpty
+        ? result.project
+        : remapProjectMediaPaths(result.project, grants.moved),
+    result: result,
+    grants: grants,
+  );
+}
+
+/// Every cut the project holds — what a loaded envelope's or timesheet's
+/// ink is checked against.
 Set<CutId> _everyCutId(Project project) => {
   for (final track in project.tracks)
     for (final cut in track.cuts) cut.id,
 };
 
-/// Every drawing the project holds — what a loaded ROW ink entry is
-/// checked against.
-Set<FrameId> _everyFrameId(Project project) => {
-  for (final track in project.tracks)
-    for (final cut in track.cuts)
-      for (final layer in cut.layers)
-        for (final frame in layer.frames) frame.id,
-};
-
-/// The loaded cels, split by which store owns them — and PRUNED of the
-/// ones whose drawing no longer exists in the project being opened.
+/// The loaded cels, split by the store that owns them — the drawings', or
+/// a sheet's ink store ([RenderCaches.sheetInkStoreFor]) — and PRUNED of
+/// the ink whose owner no longer exists in the project being opened.
 ///
-/// The conte ink namespace routes to its own stores (R5); a ROW entry
-/// whose storyboard block no longer exists in the loaded project is
-/// pruned HERE — the load boundary is where "ink dies with the drawing"
-/// becomes permanent (saving never prunes, so an undone delete keeps
-/// its ink within the session).
+/// The load boundary is where "ink dies with its owner" becomes permanent
+/// (saving never prunes, so an undone delete keeps its ink within the
+/// session). The owner is what the key carries ([_InkOwners]).
 ({
   Map<BrushFrameKey, AnicelCelFileRef> main,
-  Map<BrushFrameKey, AnicelCelFileRef> inkRow,
-  Map<BrushFrameKey, AnicelCelFileRef> inkPage,
-  Map<BrushFrameKey, AnicelCelFileRef> envelope,
+  Map<BrushFrameStore, Map<BrushFrameKey, AnicelCelFileRef>> ink,
 })
-_sortLoadedCels(AnicelOpenResult result) {
+_sortLoadedCels(AnicelOpenResult result, RenderCaches caches) {
   final main = <BrushFrameKey, AnicelCelFileRef>{};
-  final inkRow = <BrushFrameKey, AnicelCelFileRef>{};
-  final inkPage = <BrushFrameKey, AnicelCelFileRef>{};
-  final envelope = <BrushFrameKey, AnicelCelFileRef>{};
-  Set<FrameId>? liveFrameIds;
-  Set<CutId>? liveCutIds;
+  final ink = <BrushFrameStore, Map<BrushFrameKey, AnicelCelFileRef>>{};
+  final owners = _InkOwners(result.project);
   for (final entry in result.cels.entries) {
     final key = entry.key;
-    if (isEnvelopeInkKey(key)) {
-      // An envelope's ink is keyed by its OWNER cut: the sheet dies with
-      // the cut it describes. Which BOX a stroke sits in is never pruned
-      // — swapping the form preset back has to bring the writing back
-      // with it.
-      liveCutIds ??= _everyCutId(result.project);
-      if (liveCutIds.contains(key.cutId)) {
-        envelope[key] = entry.value;
-      }
-    } else if (!isConteInkKey(key)) {
+    final store = caches.sheetInkStoreFor(key);
+    if (store == null) {
       main[key] = entry.value;
-    } else if (key.layerId == conteInkRowLayerId) {
-      liveFrameIds ??= _everyFrameId(result.project);
-      if (liveFrameIds.contains(key.frameId)) {
-        inkRow[key] = entry.value;
-      }
-    } else {
-      inkPage[key] = entry.value;
+    } else if (owners.stillHold(key)) {
+      (ink[store] ??= {})[key] = entry.value;
     }
   }
-  return (main: main, inkRow: inkRow, inkPage: inkPage, envelope: envelope);
+  return (main: main, ink: ink);
+}
+
+/// Whether a loaded sheet-ink key's owner is still in the project — each
+/// set gathered once, on the first key that asks.
+///
+/// A conte ROW entry belongs to its storyboard block ("ink dies with the
+/// block" — the block its `ExposureMemo.inkId` names, in its cut); a conte
+/// PAGE entry to nothing, the paper stays. An envelope's and a timesheet's
+/// belong to the cut the sheet describes — which box or band a stroke sits
+/// in is never pruned: swapping the envelope's form back has to bring the
+/// writing back with it.
+class _InkOwners {
+  _InkOwners(this._project);
+
+  final Project _project;
+  late final Set<CutId> _cuts = _everyCutId(_project);
+  late final Set<(CutId, String)> _blocks = writtenConteBlocks(_project);
+
+  bool stillHold(BrushFrameKey key) {
+    if (conteInkRowIdOf(key) case final inkId?) {
+      return _blocks.contains((key.cutId, inkId));
+    }
+    return isConteInkKey(key) || _cuts.contains(key.cutId);
+  }
 }
 
 /// R7q2 (유저 08-18: 「치유가 가볍게 가능하다면 해도 됨」): heal cels whose

@@ -97,56 +97,47 @@ class _XSheetGridHeaders {
   Widget _layerHeaderFor(TimelineDisplayRow entry) {
     final layer = entry.layer;
     final fold = _state._groupFoldFor(entry);
+    final hooks = _state.widget.hooks;
     return TimelineLayerControlsRow(
       axis: Axis.vertical,
       keyPrefix: 'xsheet',
       mainExtent: naturalHeaderExtent,
       depth: entry.depth,
-      onSettledPress: _state.widget.hooks.onSettledPress,
-      isLinked: _state.widget.hooks.layerIsLinkedOf?.call(layer.id) ?? false,
-      opacityOverride: _state.widget.hooks.layerOpacityOverrideOf?.call(
-        layer.id,
-      ),
-      onToggleLayerOnionSkin: _state.widget.hooks.onToggleLayerOnionSkin,
-      onionSkinEnabled:
-          _state.widget.hooks.layerOnionSkinEnabledOf?.call(layer.id) ?? false,
-      onLayerBlendModeSelected: _state.widget.hooks.onLayerBlendModeSelected,
+      onSettledPress: hooks.onSettledPress,
+      labelDoubleClick: hooks.labelDoubleClick,
+      linkPartners: hooks.layerLinkPartnersOf?.call(layer.id) ?? const [],
+      opacityOverride: hooks.layerOpacityOverrideOf?.call(layer.id),
+      onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
+      onionSkinEnabled: hooks.layerOnionSkinEnabledOf?.call(layer.id) ?? false,
+      onLayerBlendModeSelected: hooks.onLayerBlendModeSelected,
       wearsBaseComposite: attachRowWearsBaseComposite(
         layer,
         _state.widget.layers,
       ),
       layer: layer,
-      active: layer.id == _state.widget.hooks.activeLayerId,
+      active: layer.id == hooks.activeLayerId,
       // ⑨ · T1
-      selected: _state.widget.hooks.selectedRows.contains(
-        LayerRowAddress(layer.id),
-      ),
+      selected: hooks.selectedRows.contains(LayerRowAddress(layer.id)),
       metrics: _state._metrics,
-      onSelectLayer: _state.widget.hooks.onSelectLayer,
-      onToggleLayerVisibility: _state.widget.hooks.onToggleLayerVisibility,
-      onLayerOpacityChanged: _state.widget.hooks.onLayerOpacityChanged,
-      onLayerOpacityChangeEnd: _state.widget.hooks.onLayerOpacityChangeEnd,
-      opacityDragPreview: _state.widget.hooks.opacityDragPreview,
-      onToggleLayerTimesheet: _state.widget.hooks.onToggleLayerTimesheet,
-      fxState:
-          _state.widget.hooks.layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
-      onToggleLayerFx: _state.widget.hooks.onToggleLayerFx,
-      onLayerMarkSelected: _state.widget.hooks.onLayerMarkSelected,
-      onToggleLayerFillReference:
-          _state.widget.hooks.onToggleLayerFillReference,
-      onOpenLayerMixer: _state.widget.hooks.onOpenLayerMixer,
-      onOpenLayerReference: _state.widget.hooks.onOpenLayerReference,
+      onSelectLayer: hooks.onSelectLayer,
+      onToggleLayerVisibility: hooks.onToggleLayerVisibility,
+      onLayerOpacityChanged: hooks.onLayerOpacityChanged,
+      onLayerOpacityChangeEnd: hooks.onLayerOpacityChangeEnd,
+      opacityDragPreview: hooks.opacityDragPreview,
+      onToggleLayerTimesheet: hooks.onToggleLayerTimesheet,
+      fxState: hooks.layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
+      onToggleLayerFx: hooks.onToggleLayerFx,
+      onLayerMarkSelected: hooks.onLayerMarkSelected,
+      onToggleLayerFillReference: hooks.onToggleLayerFillReference,
+      onOpenLayerMixer: hooks.onOpenLayerMixer,
+      onOpenLayerReference: hooks.onOpenLayerReference,
       isReferenceSourceShort:
-          _state.widget.hooks.layerSourceIsShortOf?.call(layer.id) ?? false,
-      attachArrowPlacement: _state.widget.hooks.attachArrowPlacementOf?.call(
-        layer.id,
-      ),
-      isLayerSoloed: _state.widget.hooks.isLayerSoloed?.call(layer.id) ?? false,
+          hooks.layerSourceIsShortOf?.call(layer.id) ?? false,
+      attachArrowPlacement: hooks.attachArrowPlacementOf?.call(layer.id),
+      isLayerSoloed: hooks.isLayerSoloed?.call(layer.id) ?? false,
       hasLanes: _state._lanesFor(layer).isNotEmpty,
-      lanesExpanded: _state.widget.hooks.expandedLaneLayerIds.contains(
-        layer.id,
-      ),
-      onToggleLanes: _state.widget.hooks.onToggleLayerLanes,
+      lanesExpanded: hooks.expandedLaneLayerIds.contains(layer.id),
+      onToggleLanes: hooks.onToggleLayerLanes,
       // One fold twirl — the rail's rule, the rail's function.
       hasGroupFold: fold.has,
       groupFoldExpanded: fold.expanded,

@@ -10,7 +10,8 @@
 /// Everything here is derived. Nothing in this file is stored.
 library;
 
-import 'camera_instruction.dart' show CameraInstructionMarkType;
+import 'camera_instruction.dart'
+    show CameraInstructionDef, CameraInstructionMarkType;
 
 /// A transition span on the track's GLOBAL frame axis: `[start, end)`, plus
 /// WHICH transition it is.
@@ -87,6 +88,28 @@ TransitionSides transitionSidesOf(CameraInstructionMarkType mark) =>
       // so a hand-edited file cannot make it silently invisible.
       CameraInstructionMarkType.bar => TransitionSides.both,
     };
+
+/// The mark a transition term draws — [def]'s, or the bowtie for an id the
+/// vocabulary no longer holds, which is the shape a file from another build
+/// most likely meant.
+///
+/// 🚨Dropping the mark is where F.O once became O.L (user 2026-08-11): with
+/// the id gone, the geometry could only treat every span as a symmetric
+/// cross-dissolve. One resolution, so every reader falls back the same way.
+CameraInstructionMarkType transitionMarkOf(CameraInstructionDef? def) =>
+    def?.markType ?? CameraInstructionMarkType.ol;
+
+/// Whether a transition mark may be EDITED where a cut draws it — its grips,
+/// its term window, its delete. Every term but the two-sided one.
+///
+/// 유저 2026-09-26: 「ol은 특수한 상황이라 들어온 절반만 보이면 안되고
+/// 전체가 보여야되긴해. 그만큼 노리시로가 생기는거고. … 일단 ol블록만
+/// 편집불가능이 맞을거같은데」. An O.L is drawn whole in BOTH cuts it joins,
+/// each taking its のりしろ, so where a cut draws it is not where it is — it
+/// is edited on the storyboard, the axis it lives on. A fade lies inside its
+/// own cut and is drawn where it is.
+bool transitionEditableInCut(CameraInstructionMarkType mark) =>
+    transitionSidesOf(mark) != TransitionSides.both;
 
 /// D26 (유저 확정 2026-08-18): whether a one-sided fade reaches PAST its own
 /// cut's boundary. fi/fo/wi/wo are cut-internal directions — an F.O can

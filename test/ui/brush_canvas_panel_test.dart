@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -2027,6 +2028,137 @@ void main() {
         ),
       );
     });
+
+    testWidgets('a content stroke (a sheet or conte window\'s) holds the '
+        'wheel too, asked when the notch arrives', (tester) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+        canvasSize: const CanvasSize(width: 300, height: 300),
+      );
+      final viewports = <CanvasViewport>[];
+      final contentStroke = ValueNotifier<bool>(false);
+      addTearDown(contentStroke.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 640,
+              height: 360,
+              child: BrushCanvasPanel(
+                coordinator: coordinator,
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                floorCover: EdgeInsets.zero,
+                canvasSize: const CanvasSize(width: 300, height: 300),
+                contentStrokeActive: contentStroke,
+                onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      viewports.clear();
+      final wheel = TestPointer(9, PointerDeviceKind.mouse);
+      wheel.hover(viewportPoint(tester, const Offset(60, 60)));
+
+      contentStroke.value = true;
+      await tester.sendEventToBinding(wheel.scroll(const Offset(0, -120)));
+      await tester.pump();
+      expect(viewports, isEmpty, reason: 'a window is drawing');
+
+      contentStroke.value = false;
+      await tester.sendEventToBinding(wheel.scroll(const Offset(0, -120)));
+      await tester.pump();
+      expect(viewports, isNotEmpty);
+    });
+
+    testWidgets('a stroke begins without rebuilding the panel — the gesture '
+        'layer asks whether one is on when an event arrives', (tester) async {
+      // 2026-09-26: the panel held the flag in a setState, and rebuilt
+      // itself whole on every pen-down — the shell, the floating controls,
+      // the stage — for a value only the gesture layer reads, and only
+      // when a wheel or a pan arrives.
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+        canvasSize: const CanvasSize(width: 300, height: 300),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 640,
+              height: 360,
+              child: BrushCanvasPanel(
+                coordinator: coordinator,
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                floorCover: EdgeInsets.zero,
+                canvasSize: const CanvasSize(width: 300, height: 300),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final rebuilt = <Widget>[];
+      debugOnRebuildDirtyWidget = (element, _) => rebuilt.add(element.widget);
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+      final stroke = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryMouseButton,
+      );
+      await stroke.down(viewportPoint(tester, const Offset(50, 50)));
+      await tester.pump();
+      await stroke.moveTo(viewportPoint(tester, const Offset(80, 60)));
+      await tester.pump();
+      debugOnRebuildDirtyWidget = null;
+
+      expect(
+        rebuilt.whereType<CanvasViewportGestureLayer>(),
+        isEmpty,
+        reason: 'the stroke is under way and nothing above the view was '
+            'rebuilt to say so',
+      );
+      await stroke.up();
+      await tester.pumpAndSettle();
+    });
+  });
+
+  testWidgets('the gesture layer reads the stroke gate when the wheel '
+      'arrives, not when it was built', (tester) async {
+    var drawing = false;
+    final viewports = <CanvasViewport>[];
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 300,
+          height: 300,
+          child: CanvasViewportGestureLayer(
+            viewport: CanvasViewport(),
+            onViewportChanged: viewports.add,
+            strokeActive: () => drawing,
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+    final wheel = TestPointer(9, PointerDeviceKind.mouse);
+    wheel.hover(const Offset(60, 60));
+
+    drawing = true;
+    await tester.sendEventToBinding(wheel.scroll(const Offset(0, -120)));
+    await tester.pump();
+    expect(viewports, isEmpty, reason: 'drawing began after the build');
+
+    drawing = false;
+    await tester.sendEventToBinding(wheel.scroll(const Offset(0, -120)));
+    await tester.pump();
+    expect(viewports, isNotEmpty);
   });
 
   group('brush cursor', () {

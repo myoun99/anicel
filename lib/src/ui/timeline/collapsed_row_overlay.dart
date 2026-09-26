@@ -576,11 +576,11 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
           ..strokeWidth = covered ? 2 : 1
           ..color = covered ? colorScheme.primary : const Color(0x9EE9E7E2),
       );
-      final head = drawingHeadOf(run.label);
+      final head = drawingHeadOf(run.label, kind: row.kind);
       final mark = head.mark;
       if (mark != null) {
         _headMark(canvas, rect, mark);
-      } else {
+      } else if (head.word.isNotEmpty) {
         _label(canvas, rect, head.word);
       }
     }

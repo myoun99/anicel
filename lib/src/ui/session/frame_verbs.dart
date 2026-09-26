@@ -1,5 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
-import '../../models/audio_clip.dart';
+import '../../models/conte/conte_ink_keys.dart'
+    show conteInkRowKey;
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/cut.dart' show Cut;
@@ -220,31 +221,24 @@ class FrameVerbs {
       index: block.startIndex,
       count: block.endIndexExclusive - block.startIndex,
     );
-    var bornFrames = const <Frame>[];
-    var bornSounds = const <AudioClip>[];
-    var placed = clip;
-    var minted = const <FrameId, FrameId>{};
-    if (!linked) {
-      final independent = mintIndependentClip(
-        clip: clip,
-        from: [(cels: layer.frames, sounds: layer.audioClips)],
-        namesAreIdentity: layer.kind.celNameIsIdentity,
-        mint: () => _frameIds.mintFrameId(layer.id),
-      );
-      placed = independent.clip;
-      bornFrames = independent.born;
-      bornSounds = independent.bornSounds;
-      minted = independent.minted;
-    }
+    // The duplicate is a paste of the block beside itself: what its clip
+    // becomes on the row is [placedClipFor]'s answer, its source standing
+    // right there in the row.
+    final placed = placedClipFor(
+      layer: layer,
+      row: (clip: clip, cels: layer.frames, sounds: layer.audioClips),
+      independent: !linked,
+      ids: _frameIds,
+    );
     _controllers.timelineController.spliceRunsForLayers(
       runs: [
         (
           layerId: layer.id,
           index: block.endIndexExclusive,
           liftCount: 0,
-          clip: placed,
-          bornFrames: bornFrames,
-          bornSounds: bornSounds,
+          clip: placed.clip,
+          bornFrames: placed.born,
+          bornSounds: placed.bornSounds,
         ),
       ],
       description: linked ? 'Link duplicate frames' : 'Duplicate frames',
@@ -257,10 +251,18 @@ class FrameVerbs {
         store: store,
         cut: cut,
         to: layer.id,
-        minted: minted,
+        minted: placed.minted,
         pictureOf: (source) => store.bakedSurfaceOrNull(
           _internals.brushFrameKeyForCut(cut, layer.id, source),
         ),
+      );
+      final ink = _renderCaches.conteInkRowStore;
+      carryConteHandwriting(
+        store: ink,
+        cut: cut.id,
+        copies: placed.handwriting,
+        handwritingOf: (inkId) =>
+            ink.bakedSurfaceOrNull(conteInkRowKey(cut.id, inkId)),
       );
     }
     _changes.notifyChanged();
@@ -561,7 +563,10 @@ class FrameVerbs {
     final celNumber = frame?.celNumber;
     final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
     return switch (exposureState) {
-      TimelineCellExposureState.drawingStart => celNumberOrMark(frame?.name),
+      TimelineCellExposureState.drawingStart => celNumberOrMark(
+        frame?.name,
+        kind: layer.kind,
+      ),
       TimelineCellExposureState.held => celNumber ?? '',
       TimelineCellExposureState.markHeld =>
         celNumber == null ? inbetweenMark : '$celNumber $inbetweenMark',

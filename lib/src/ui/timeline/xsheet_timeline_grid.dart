@@ -15,7 +15,6 @@ import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'rail_column_swipe.dart';
 import 'layer_rail_window.dart';
-import 'frame_window_semantics.dart';
 
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
@@ -67,6 +66,7 @@ import 'timeline_grid_sheet.dart';
 import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
+import 'rail_eyes.dart';
 import 'timeline_swipe_columns.dart';
 import '../input/wheel_law.dart';
 import '../repaint_props.dart';
@@ -667,18 +667,28 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             columns: _columns.swipeColumns(),
                             rowsIn: (from, to) =>
                                 _columns.columnsIn(from, to, entries),
-                            child: Row(
-                              children: [
-                                for (
-                                  var index = 0;
-                                  index < entries.length;
-                                  index += 1
-                                )
-                                  _headers.draggableHeader(
-                                    entries[index],
-                                    _headers.headerFor(entries[index]),
-                                  ),
+                            // The rail's eyes, turned on their side with it
+                            // — a folder's flip dims its members' eyes here
+                            // as it does there (F-185).
+                            child: RailEyes.forLayers(
+                              [
+                                for (final entry in entries)
+                                  if (!entry.isLane) entry.layer,
                               ],
+                              stack: widget.layers,
+                              child: Row(
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < entries.length;
+                                    index += 1
+                                  )
+                                    _headers.draggableHeader(
+                                      entries[index],
+                                      _headers.headerFor(entries[index]),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                           Positioned.fill(
@@ -770,7 +780,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       viewportMainExtent: bodyViewportHeight,
       renderedFrames: _frameScroll.renderedFrameCount,
       cellWidth: _metrics.frameCellWidth,
-      isFrameReady: widget.hooks.isFrameReady,
+      readyRunsIn: widget.hooks.readyRunsIn,
     );
   }
 
@@ -1317,6 +1327,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       colorScheme: colorScheme,
       face: appFaceOf(DefaultTextStyle.of(context).style),
       numberType: XSheetFrameRailPainter.numberType,
+      secondsFontSize: 8,
       framesPerSecond: framesPerSecond,
       showSeconds: showSeconds,
       windowBucket: windowBucket,
@@ -1363,40 +1374,19 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     final colorScheme = scale.colorScheme;
-    final fillPaint = Paint();
     final linePaint = Paint()..strokeWidth = 1;
     // D8 (2026-08-18): the rail used to stroke a faint RECT around every
     // row — no cadence, no 6f/second strengthening, half a pixel off the
     // ruler's snap: one of the "미묘하게 다른 가이드선". It lays its paper
-    // through THE boundary-line law now, the very call the horizontal ruler
-    // lays its own with ([TimelineRulerScale.paintCellPaper] — once "the
-    // transposed same thing", now the same code); the structural right
-    // edge still paints once below.
-    final boundaryPaint = Paint();
-
-    // Self-windowing (UI-R15): only the rows under the live viewport
-    // record — a scroll is a repaint of this thin pass, never a rebuild.
-    final window = scale.visibleWindow();
-    for (
-      var frameIndex = window.startIndex;
-      frameIndex < window.endIndexExclusive;
-      frameIndex += 1
-    ) {
-      scale.paintCellPaper(
-        canvas,
-        frameIndex,
-        fill: fillPaint,
-        line: boundaryPaint,
-      );
-      for (final glyph in glyphsAt(scale, frameIndex, current: false)) {
-        glyph.paint(canvas);
-      }
-
-      // The cached-range strip moved to [TimelineRulerCursorOverlay] (in
-      // its vertical form, hugging the right edge): cached-ness is derived
-      // state with no invalidation event, so it must repaint freely rather
-      // than ride this gated painter.
-    }
+    // and its writing through the very call the horizontal ruler lays its
+    // own with ([TimelineRulerScale.paintWindow] — once "the transposed
+    // same thing", now the same code); the structural right edge still
+    // paints once below.
+    scale.paintWindow(canvas, glyphsAt);
+    // The cached-range strip moved to [TimelineRulerCursorOverlay] (in its
+    // vertical form, hugging the right edge): cached-ness is derived state
+    // with no invalidation event, so it must repaint freely rather than
+    // ride this gated painter.
 
     // The structural right edge, full strength, whatever the zoom.
     canvas.drawLine(
@@ -1432,7 +1422,7 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
     // 28px (R10 R6). The CORNER is the shared answer, the size is not.
     final second = secondsCornerGlyph(rect, (
       text: writing.second,
-      fontSize: 8,
+      fontSize: scale.secondsFontSize,
       color: scale.secondsInk(current: current),
       face: scale.face,
     ));
@@ -1492,14 +1482,13 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
   @override
   Object get props => (scale,);
 
-  // Every row gets a node — the rail numbers every frame.
+  // ↩️Every row got a node, because "the rail numbers every frame" — which
+  // stopped being so when its numbers began to thin with the ruler's
+  // (R9 #4). A node stands where a number is written, the ruler's code
+  // ([TimelineRulerScale.windowSemantics]).
   @override
-  SemanticsBuilderCallback get semanticsBuilder => (size) =>
-      frameWindowSemantics(
-        window: scale.visibleWindow(),
-        rectFor: scale.cellRectFor,
-        labelFor: (frameIndex) => 'frame ${frameIndex + 1}',
-      );
+  SemanticsBuilderCallback get semanticsBuilder =>
+      (size) => scale.windowSemantics();
 }
 
 /// One cell of the section band above the layer headers: the paper sheet's

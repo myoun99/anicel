@@ -32,25 +32,33 @@ enum PreferencesSection {
   memory,
 }
 
+/// [openSessions] is every open project, the one on screen among them —
+/// what the memory readouts add up (I-7).
 Future<void> showPreferencesDialog(
   BuildContext context, {
   required EditorSessionManager session,
+  required Iterable<EditorSessionManager> openSessions,
   PreferencesSection initialSection = PreferencesSection.input,
 }) {
   return showDialog<void>(
     context: context,
-    builder: (context) =>
-        _PreferencesDialog(session: session, initialSection: initialSection),
+    builder: (context) => _PreferencesDialog(
+      session: session,
+      openSessions: openSessions,
+      initialSection: initialSection,
+    ),
   );
 }
 
 class _PreferencesDialog extends StatefulWidget {
   const _PreferencesDialog({
     required this.session,
+    required this.openSessions,
     required this.initialSection,
   });
 
   final EditorSessionManager session;
+  final Iterable<EditorSessionManager> openSessions;
   final PreferencesSection initialSection;
 
   @override
@@ -87,8 +95,13 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
     PreferencesSection.display => DisplaySettingsSection(
       session: widget.session,
     ),
-    PreferencesSection.system => SystemStatusSection(session: widget.session),
-    PreferencesSection.memory => MemorySettingsSection(session: widget.session),
+    PreferencesSection.system => SystemStatusSection(
+      openSessions: widget.openSessions,
+    ),
+    PreferencesSection.memory => MemorySettingsSection(
+      session: widget.session,
+      openSessions: widget.openSessions,
+    ),
   };
 
   @override

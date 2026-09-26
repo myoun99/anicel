@@ -26,7 +26,7 @@ import 'temp_dir.dart';
 /// test's result, so a handle the OS still holds must not fail it.
 void deleteAfterSessionEnds(Directory directory) {
   addTearDown(() {
-    OpenProjectFile.instance.release();
+    OpenProjectFile.instance.releaseAll();
     deleteTempQuietly(directory);
   });
 }

@@ -14,14 +14,15 @@ import 'drag_value_label.dart';
 /// conte, the media viewer — 「최대한 통일」): the same chevrons, the same
 /// 30px/9pt readout at ⅛ page per pixel, the same '3/7 → 3' parse, the
 /// same disable-at-the-ends. What differs are values: the key prefix, the
-/// [page] the strip is looking at and how that page is SPELLED, whether
-/// turning is possible at all ([onTurnTo] null — Flutter's disabled idiom
-/// — keeps the cluster MOUNTED and inert), and an optional [leading] run
-/// that rides at the head of the cluster.
+/// [page] the strip is looking at, how that page is SPELLED and which page
+/// it calls 1, whether turning is possible at all ([onTurnTo] null —
+/// Flutter's disabled idiom — keeps the cluster MOUNTED and inert), and an
+/// optional [leading] run that rides at the head of the cluster.
 ///
 /// The spelling travels with the position because the hosts do not agree
 /// on it: the timesheet says '1/2', the spelling shared with the printed
-/// ページ header (R26 #41), while the conte and the viewer say '1 / 2'.
+/// ページ header (R26 #41), while the viewers say '1 / 2' ([viewerPage]).
+/// Every one of them counts from the first page, and so does a typed 3.
 ///
 /// ⚠️Up/down rather than left/right: the strip reads vertically, so a
 /// chevron pointing sideways would point at nothing.
@@ -91,5 +92,17 @@ List<Widget> pageTurnStrip({
     ),
   ];
 }
+
+/// Page [index] of [count] as a VIEWER numbers it: its first page is 1,
+/// written '1 / 2' — the media viewer's and the conte's, one rule (유저
+/// 2026-09-26: 「뷰어패널로서는 첫 페이지가 1이되도록 … 뷰어패널의 규칙
+/// 동일하게」).
+///
+/// ↩️The conte numbered its BODY here, as its pages print: the cover and
+/// its blank back read 「Cover」 · 「Blank」 and a typed 3 counted from the
+/// body. The printed numbers stay the body's; the viewer's count is the
+/// book's.
+({int index, int count, String readout}) viewerPage(int index, int count) =>
+    (index: index, count: count, readout: '${index + 1} / $count');
 
 void _noDrag(double units) {}

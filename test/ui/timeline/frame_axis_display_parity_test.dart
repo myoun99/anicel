@@ -152,6 +152,7 @@ void main() {
           colorScheme: ThemeData.light().colorScheme,
           face: const TextStyle(),
           numberType: XSheetFrameRailPainter.numberType,
+          secondsFontSize: 8,
         );
 
     test('a wide row labels every frame; a squeezed one climbs the '

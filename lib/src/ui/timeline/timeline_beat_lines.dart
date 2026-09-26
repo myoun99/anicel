@@ -5,7 +5,9 @@ import '../../models/app_frame_grid_settings.dart';
 import '../theme/app_theme.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
-import 'timeline_grid_metrics.dart' show timelineStrideHolding;
+import 'timeline_grid_metrics.dart'
+    show timelineFirstOnStride, timelineStrideHolding;
+import 'timeline_second.dart';
 import '../repaint_props.dart';
 
 /// The frame grid, ONE SHEET per grid (UI-R10 #26 → UI-R13 #7 → UI-R18
@@ -118,7 +120,8 @@ const double timelineGridBaseLineStroke = 1.0;
   strokeWidth: timelineGridBaseLineStroke,
 );
 
-/// 6f BEAT line — the sheet convention, zoom-independent.
+/// 6f BEAT line — the sheet convention, at every zoom where beats hold
+/// ([timelineSixLinesHold]).
 ///
 /// 🚨F-41 (유저 2026-08-28): 「그리드선이 너무 진함 … 포인트는 그리드선이
 /// 진해서 **블록이 한 블록이아니라 나뉜것처럼 보이는 착시현상**이 문제」.
@@ -138,13 +141,13 @@ const double timelineGridBaseLineStroke = 1.0;
   ColorScheme colorScheme,
 ) => (
   color: AppColors.beatLine.withValues(alpha: timelineSixGridAlpha),
-  strokeWidth: 1.0,
+  strokeWidth: timelineGridSixLineStroke,
 );
 
 /// SECOND (fps) line — the strongest.
 ({Color color, double strokeWidth}) timelineGridSecondLineInk() => (
   color: AppColors.beatLine.withValues(alpha: timelineSecondGridAlpha),
-  strokeWidth: 1.5,
+  strokeWidth: timelineGridSecondLineStroke,
 );
 
 /// ROW SEAM — the grid's CROSS-axis line, between one row and the next.
@@ -217,6 +220,49 @@ int timelineGridLineEveryFrames(double frameCellExtent) =>
       timelineGridBaseLineStroke + timelineMarkGap,
       frameCellExtent,
     );
+
+/// The 6f BEAT line's stroke — what six cells must keep ground beside
+/// ([timelineSixLinesHold]).
+const double timelineGridSixLineStroke = 1.0;
+
+/// The SECOND line's stroke — what its seconds keep ground beside
+/// ([timelineSecondLineEverySeconds]).
+const double timelineGridSecondLineStroke = 1.5;
+
+/// Whether the 6f BEAT lines stand at [frameCellExtent]: six cells hold a
+/// beat line and [timelineMarkGap] of ground beside it.
+///
+/// ↩️The beats and the seconds were drawn at every zoom — "the sheet
+/// convention, zoom-independent" — which held while the floor was 2.4px,
+/// fourteen pixels between beats. At the ten-minute floor (I-22, 1/8px at
+/// 24fps) they would stand three quarters of a pixel apart, one grey
+/// wash, so they obey the I-22 law every other mark does: 「겹칠때 생략」 —
+/// a mark stands down only where it would crowd the next.
+bool timelineSixLinesHold(double frameCellExtent) =>
+    6 * frameCellExtent >= timelineGridSixLineStroke + timelineMarkGap;
+
+/// Every how many SECONDS a second line is ruled at [frameCellExtent] — the
+/// rung of [timelineSecondStrideLadder] that holds a second line and
+/// [timelineMarkGap] of ground (1 at every zoom the floor used to allow).
+int timelineSecondLineEverySeconds(
+  double frameCellExtent,
+  int framesPerSecond,
+) => timelineSecondsHolding(
+  timelineGridSecondLineStroke + timelineMarkGap,
+  timelineSecondFrames(framesPerSecond) * frameCellExtent,
+);
+
+/// The step every boundary a frame line can stand on at [frameCellExtent]
+/// is a multiple of: the gcd of the base cadence, the 6f beat while beats
+/// hold, and the second lines' stride — so a drawer walking it asks the law
+/// about no boundary that could not answer, and skips none that could.
+int timelineFrameLineStep(double frameCellExtent, int framesPerSecond) {
+  final seconds =
+      timelineSecondFrames(framesPerSecond) *
+      timelineSecondLineEverySeconds(frameCellExtent, framesPerSecond);
+  final step = timelineGridLineEveryFrames(frameCellExtent).gcd(seconds);
+  return timelineSixLinesHold(frameCellExtent) ? step.gcd(6) : step;
+}
 
 /// Where the line at the boundary STARTING [frameIndex] is drawn, along
 /// the frame axis in content coordinates.
@@ -430,9 +476,13 @@ Color timelineStandingGround(Color resting, ColorScheme colorScheme) =>
 /// — the one grid language shared by the cell grid overlay and the frame
 /// ruler (R26 #40: "룰러도 프레임 셀 그리드랑 통일감").
 ///
-/// Null when the base cadence thins this boundary out at the current
-/// zoom. 6f boundaries read slightly stronger, second (fps) boundaries
-/// strongest — the sheet convention, zoom-independent.
+/// The strongest mark that stands there wins: a SECOND line on its rung of
+/// seconds ([timelineSecondLineEverySeconds]), a 6f BEAT while beats hold
+/// ([timelineSixLinesHold]), the faint BASE line on its cadence — null where
+/// each of them thins this boundary out. A second is ruled wherever one
+/// begins, as the ruler marks it ([timelineOnSecondBoundary]); it used to be
+/// ruled only where a second fell on a 6f beat, so 25 and 30 fps ruled
+/// seconds the ruler did not mark.
 ({Color color, double strokeWidth})? timelineFrameBoundaryLineInk({
   required int frameIndex,
   required double frameCellExtent,
@@ -442,16 +492,19 @@ Color timelineStandingGround(Color resting, ColorScheme colorScheme) =>
   if (frameIndex <= 0 || frameCellExtent <= 0) {
     return null;
   }
-  if (frameIndex % 6 == 0) {
-    return framesPerSecond > 0 && frameIndex % framesPerSecond == 0
-        ? timelineGridSecondLineInk()
-        : timelineGridSixLineInk(colorScheme);
+  final second = timelineSecondFrames(framesPerSecond);
+  final secondsApart = timelineSecondLineEverySeconds(
+    frameCellExtent,
+    framesPerSecond,
+  );
+  if (frameIndex % (second * secondsApart) == 0) {
+    return timelineGridSecondLineInk();
+  }
+  if (frameIndex % 6 == 0 && timelineSixLinesHold(frameCellExtent)) {
+    return timelineGridSixLineInk(colorScheme);
   }
   final cadence = timelineGridLineEveryFrames(frameCellExtent);
-  if (frameIndex % cadence != 0) {
-    return null;
-  }
-  return timelineGridBaseLineInk(colorScheme);
+  return frameIndex % cadence == 0 ? timelineGridBaseLineInk(colorScheme) : null;
 }
 
 /// The OUT-OF-CUT wash: everything past the cut's last frame, greyed.
@@ -694,7 +747,7 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     // the hoisted form of "which absolute frames does this canvas show".
     int firstBoundary(int period) => frameStartIndex <= 0
         ? period
-        : ((frameStartIndex + period - 1) ~/ period) * period;
+        : timelineFirstOnStride(frameStartIndex, period);
     double positionOf(int frame) => timelineFrameBoundaryLinePosition(
       frame - frameStartIndex,
       frameCellExtent,
@@ -702,42 +755,28 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     bool shown(int frame) =>
         (frame - frameStartIndex) * frameCellExtent <= mainExtent;
 
-    // BASE grid: flat faint, cadence-thinned (UI-R18 #8 — the storyboard
-    // look; beat frames skip, the beat pass draws them stronger). The ink
-    // comes from the LAW's named functions and the position from its snap
-    // — the stride loops below are the law's own cadence hoisted, so no
-    // per-boundary allocation happens on this content-length walk.
-    final baseInk = timelineGridBaseLineInk(colorScheme);
-    final basePaint = Paint()
-      ..color = inkOn(baseInk)
-      ..strokeWidth = baseInk.strokeWidth;
-    final cadence = timelineGridLineEveryFrames(frameCellExtent);
-    for (var frame = firstBoundary(cadence); shown(frame); frame += cadence) {
-      if (frame % 6 == 0) {
-        continue;
+    // Every boundary a line can stand on, walked once at the step the three
+    // marks share ([timelineFrameLineStep]), each asking THE law which mark
+    // stands there. The loops used to restate the law's cadence, one per
+    // mark, and the beat loop ruled every 6f boundary at every zoom — at
+    // the ten-minute floor (I-22) three quarters of a pixel apart.
+    final paints = <({Color color, double strokeWidth}), Paint>{};
+    final step = timelineFrameLineStep(frameCellExtent, framesPerSecond);
+    for (var frame = firstBoundary(step); shown(frame); frame += step) {
+      final ink = timelineFrameBoundaryLineInk(
+        frameIndex: frame,
+        frameCellExtent: frameCellExtent,
+        framesPerSecond: framesPerSecond,
+        colorScheme: colorScheme,
+      );
+      if (ink != null) {
+        line(
+          positionOf(frame),
+          paints[ink] ??= (Paint()
+            ..color = inkOn(ink)
+            ..strokeWidth = ink.strokeWidth),
+        );
       }
-      line(positionOf(frame), basePaint);
-    }
-
-    final sixInk = timelineGridSixLineInk(colorScheme);
-    final sixPaint = Paint()
-      ..color = inkOn(sixInk)
-      ..strokeWidth = sixInk.strokeWidth;
-    final secondInk = timelineGridSecondLineInk();
-    final secondPaint = Paint()
-      ..color = inkOn(secondInk)
-      ..strokeWidth = secondInk.strokeWidth;
-    // 6f is the sheet convention regardless of fps.
-    const beatPeriod = 6;
-    for (
-      var frame = firstBoundary(beatPeriod);
-      shown(frame);
-      frame += beatPeriod
-    ) {
-      final paint = framesPerSecond > 0 && frame % framesPerSecond == 0
-          ? secondPaint
-          : sixPaint;
-      line(positionOf(frame), paint);
     }
   }
 

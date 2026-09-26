@@ -86,4 +86,75 @@ void main() {
     await tester.pump();
     expect(find.text('2'), findsNothing);
   });
+
+  testWidgets('any Listenable slices the same way: news that moves no '
+      'slice rebuilds nothing, and the builder is handed the slice', (
+    tester,
+  ) async {
+    final model = _Counter();
+    addTearDown(model.dispose);
+    final seen = <int>[];
+
+    await tester.pumpWidget(
+      SlicedListenableBuilder<int>(
+        listenable: model,
+        slice: () => model.shown,
+        builder: (context, shown) {
+          seen.add(shown);
+          return Text('$shown', textDirection: TextDirection.ltr);
+        },
+      ),
+    );
+    expect(seen, [0]);
+
+    model.bumpUnseen();
+    await tester.pump();
+    expect(seen, [0], reason: 'the news changed nothing shown');
+
+    model.bumpShown();
+    await tester.pump();
+    expect(seen, [0, 1]);
+    expect(find.text('1'), findsOneWidget);
+  });
+
+  testWidgets('a rebuild from above hands the builder the slice as it is '
+      'NOW, and the next news is measured against that', (tester) async {
+    final model = _Counter();
+    addTearDown(model.dispose);
+    final seen = <int>[];
+
+    Widget host() => SlicedListenableBuilder<int>(
+      listenable: model,
+      slice: () => model.shown,
+      builder: (context, shown) {
+        seen.add(shown);
+        return Text('$shown', textDirection: TextDirection.ltr);
+      },
+    );
+
+    await tester.pumpWidget(host());
+    model.shown = 5; // changed with no news
+    await tester.pumpWidget(host());
+    expect(seen, [0, 5]);
+
+    // Already built from 5: news that leaves it at 5 is no change.
+    model.bumpUnseen();
+    await tester.pump();
+    expect(seen, [0, 5]);
+  });
+}
+
+class _Counter extends ChangeNotifier {
+  int shown = 0;
+  int unseen = 0;
+
+  void bumpShown() {
+    shown += 1;
+    notifyListeners();
+  }
+
+  void bumpUnseen() {
+    unseen += 1;
+    notifyListeners();
+  }
 }

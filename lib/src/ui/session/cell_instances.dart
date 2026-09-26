@@ -13,8 +13,10 @@ import 'instructions.dart';
 import 'lane_verbs.dart';
 import 'layer_verbs.dart';
 import 'track_se_display.dart';
+import 'transitions.dart';
 import 'frame_verbs.dart';
 import 'cell_verbs.dart';
+import 'storyboard_rows.dart';
 
 /// The CELL INSTANCES — creating instances for a selection, whether the
 /// active cell holds one, and the subject an instance edit acts on — as
@@ -35,8 +37,10 @@ class CellInstances {
     required LaneVerbs laneVerbs,
     required LayerVerbs layerVerbs,
     required TrackSeDisplay trackSe,
+    required Transitions transitions,
     required FrameVerbs frameVerbs,
     required CellVerbs cells,
+    required StoryboardRows storyboardRows,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -48,11 +52,17 @@ class CellInstances {
        _laneVerbs = laneVerbs,
        _layerVerbs = layerVerbs,
        _trackSe = trackSe,
+       _transitions = transitions,
        _frameVerbs = frameVerbs,
-       _cells = cells;
+       _cells = cells,
+       _storyboardRows = storyboardRows;
 
   final FrameVerbs _frameVerbs;
   final CellVerbs _cells;
+
+  /// Here for ONE question — whether a storyboard band NAMES cuts — asked
+  /// by the cuts rung of [editInstanceSubjectFor].
+  final StoryboardRows _storyboardRows;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -65,6 +75,7 @@ class CellInstances {
   final LaneVerbs _laneVerbs;
   final LayerVerbs _layerVerbs;
   final TrackSeDisplay _trackSe;
+  final Transitions _transitions;
 
   /// UI-R25 #3: Add with a LIVE selection fills the WHOLE selection —
   /// wherever creation is possible, kind by kind (the rule: anywhere
@@ -113,6 +124,7 @@ class CellInstances {
     // Camera goes FIRST — its undo restores a whole-project snapshot, so it
     // must be the last command undone (CompositeCommand undoes in reverse).
     final cameraCommands = <Command>[];
+    Command? transitionCommand;
     for (final layerId in selection.spanLayerIds) {
       final layer = displayById[layerId];
       if (layer == null) {
@@ -125,6 +137,13 @@ class CellInstances {
         }
         continue;
       }
+      // F-180 × #17: the transition row takes a span as long as the range —
+      // the storyboard's rule for its track range, on the cut view's.
+      if (layer.kind == LayerKind.transition) {
+        transitionCommand =
+            _transitions.transitionSpanCreationInCutCommand();
+        continue;
+      }
       // A direction row fills its gaps the way every cel row does: its
       // spans are its blocks (R27), and a bare one takes the ＋'s span at
       // the write — so it had no branch of its own to keep.
@@ -135,6 +154,7 @@ class CellInstances {
     }
     final commands = <Command>[
       ...cameraCommands,
+      ?transitionCommand,
       if (fills.isNotEmpty)
         ..._controllers.timelineController.drawingFramesCommandsForLayers(
           fills,
@@ -224,7 +244,11 @@ class CellInstances {
       LayerKind.animation ||
       LayerKind.storyboard ||
       LayerKind.image => _frameVerbs.canCreateDrawingAtCurrentFrame,
-      LayerKind.folder || LayerKind.adjustment || LayerKind.transition => false,
+      // F-180: the cut view creates on the transition row too, by the
+      // storyboard's verb ([Transitions.transitionSpanCreationInCutOrNull]).
+      LayerKind.transition =>
+        _transitions.transitionSpanCreationInCutOrNull != null,
+      LayerKind.folder || LayerKind.adjustment => false,
       _ => true,
     };
   }
@@ -256,10 +280,14 @@ class CellInstances {
         _project.activeCutOrNull?.camera.keyframeAt(frameIndex) != null,
       LayerKind.instruction =>
         _instructionVerbs.instructionSpanAt(layer.id, frameIndex) != null,
-      // ⛔Read-only inside a cut and nothing to author on a row that holds
-      // no cel of its own: reporting FULL keeps the fork from offering a
-      // creation their own verbs already refuse.
-      LayerKind.transition || LayerKind.folder || LayerKind.adjustment => true,
+      // What the cell SHOWS — the cut's row is a projection
+      // ([Transitions.transitionShownInCutAt]), and 「빈 칸」 is what the
+      // user is looking at.
+      LayerKind.transition => _transitions.transitionShownInCutAt(frameIndex),
+      // ⛔Nothing to author on a row that holds no cel of its own: reporting
+      // FULL keeps the fork from offering a creation their own verbs
+      // already refuse.
+      LayerKind.folder || LayerKind.adjustment => true,
       LayerKind.se ||
       LayerKind.animation ||
       LayerKind.storyboard ||
@@ -331,6 +359,15 @@ class CellInstances {
       // the ＋'s ([createActiveInstance]), never this button's.
       LayerKind.instruction || LayerKind.se =>
         _cells.hasActiveNonNegativeCell && activeCellHoldsAnInstance,
+      // The transition row edits what its mark SHOWS — its cell is the
+      // projection's (transition-row-open-in-the-cut) — and an O.L's mark
+      // is not the cut's to edit (유저 2026-09-26).
+      LayerKind.transition =>
+        _cells.hasActiveNonNegativeCell &&
+            _transitions.transitionSpanStartEditableInCutAt(
+                  _controllers.timelineController.currentFrameIndex,
+                ) !=
+                null,
       _ => _frameVerbs.canRenameFrameAtCurrentFrame,
     };
   }
@@ -356,11 +393,17 @@ class CellInstances {
   /// panel decides is which selections are ITS nouns, and CUTS are the
   /// storyboard's. The two later rulings (D28, then this) win on the
   /// repo's own tie-break: 확정이 둘이면 나중 것이 이긴다.
+  ///
+  /// 🚨The cuts rung is a band that NAMES cuts — Delete's question
+  /// (`EditorSessionManager.deleteSubjectFor`), asked the same way. It
+  /// asked whether any storyboard band was up at all, which an S-row or a
+  /// transition-row band answers yes without covering a cut
+  /// (storyboard-band-names-no-cut, 2026-09-26).
   PillSubject editInstanceSubjectFor({required bool cutsAreThisPanels}) =>
       pillSubjectOn(
         cuts:
             cutsAreThisPanels &&
-            _selection.trackFrameRangeSelection.value != null,
+            _storyboardRows.storyboardSelectedCutIds.isNotEmpty,
         layers: () => _layerVerbs.renameableSelectedLayerIds().isNotEmpty,
         cells: () => canEditCellInstanceAtCurrentFrame,
       );

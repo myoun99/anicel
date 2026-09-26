@@ -202,8 +202,23 @@ import '../../tool/refactor/clone_scan.dart';
 /// is that only the pointer route differs from Flutter's tooltip.
 /// ⛔Not merged: a shared helper would make the fork a rewrite, and there
 /// are two of them — the third is what earns a merge.
+///
+/// 90 → 91 again (2026-09-25, the conte cover), under the ceiling the
+/// tooltip set — a pair had left since without the ceiling following it
+/// down. The new pair is `_cover` and `_content` in
+/// `models/conte/conte_page_marks.dart`: each prints a media image where
+/// the source names one — the cover's picture, the body's company logo.
+/// ⛔Not merged: two of them, and the third is what earns a merge.
+///
+/// 91 → 90 (2026-09-26, I-22's ten-minute floor): the pair
+/// `TimelineFrameRulerPainter.paint` and `XSheetFrameRailPainter.paint`
+/// left — both strips lay their window through ONE call now
+/// (`TimelineRulerScale.paintWindow`), and the widest-digits measure the
+/// seconds cadence had copied from the numbers' is one method
+/// (`_widestDigits`). 🔬`clones.dart` on master and on the lane: that pair
+/// gone, nothing added.
 void main() {
-  const ceiling = 91;
+  const ceiling = 90;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

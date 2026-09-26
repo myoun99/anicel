@@ -374,6 +374,16 @@ enum AppStrings {
 
   // --- Project lifecycle confirmations ---
   String get closeProjectTitle => _s('closeProjectTitle');
+
+  /// The project popover's first row: a new project in a tab of its own
+  /// (I-7).
+  String get newProject => _s('newProject');
+
+  /// A never-saved project's tab (I-7); `{n}` is its number this run.
+  String get untitledProjectTab => _s('untitledProjectTab');
+
+  /// Save As pointed at a file another tab has open (I-7).
+  String get fileOpenInAnotherTab => _s('fileOpenInAnotherTab');
   String get closeProjectBody => _s('closeProjectBody');
   String get closeProjectVanishedBody => _s('closeProjectVanishedBody');
   String get commonSaveAs => _s('commonSaveAs');
@@ -404,6 +414,8 @@ enum AppStrings {
   /// or by the reference button's rasterize.
   String get bakeProgressRunning => _s('bakeProgressRunning');
   String get bakeProgressDone => _s('bakeProgressDone');
+  String get pasteProgressRunning => _s('pasteProgressRunning');
+  String get pasteProgressDone => _s('pasteProgressDone');
   String get unsavedAutosaveTitle => _s('unsavedAutosaveTitle');
   String get unsavedAutosaveBody => _s('unsavedAutosaveBody');
   String get commonNotNow => _s('commonNotNow');
@@ -620,8 +632,7 @@ enum AppStrings {
   String get sheetExposureBarHelp => _s('sheetExposureBarHelp');
   String get sheetExposureBarN => _s('sheetExposureBarN');
   String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
-  String get sheetInkBlock => _s('sheetInkBlock');
-  String get sheetInkAllow => _s('sheetInkAllow');
+  String get sheetBrushAllow => _s('sheetBrushAllow');
   String get sheetModeNotation => _s('sheetModeNotation');
   String get sheetModeData => _s('sheetModeData');
   String get sheetViewPage => _s('sheetViewPage');
@@ -652,7 +663,7 @@ enum AppStrings {
   String get tlNoLayers => _s('tlNoLayers');
   String get tlLegendLayer => _s('tlLegendLayer');
   String get tlAllDisplayedOpacity => _s('tlAllDisplayedOpacity');
-  String get tlLinkedLayerTooltip => _s('tlLinkedLayerTooltip');
+  String get tlLinkedWith => _s('tlLinkedWith');
 
   /// The reference row's file button — its tooltip, the button being an
   /// icon only — and its popover's first line when the press acts on
@@ -805,8 +816,33 @@ enum AppStrings {
   String get sbOneStoryboardRowPerCut => _s('sbOneStoryboardRowPerCut');
 
   /// The conte sheet panel.
-  String get cnActionColumn => _s('cnActionColumn');
-  String get cnConte => _s('cnConte');
+
+  /// The conte panel's page readout on the two pages that carry no number.
+
+  /// What the conte PRINTS — read from the NOTATION language's table, not
+  /// the program's (`conteWordsIn`).
+  String get cnHeadCut => _s('cnHeadCut');
+  String get cnHeadPicture => _s('cnHeadPicture');
+  String get cnHeadAction => _s('cnHeadAction');
+  String get cnHeadDialogue => _s('cnHeadDialogue');
+  String get cnHeadSeconds => _s('cnHeadSeconds');
+  String get cnCoverCuts => _s('cnCoverCuts');
+  String get cnCoverArtist => _s('cnCoverArtist');
+
+  /// What the timesheet PRINTS — read from the NOTATION language's table,
+  /// not the program's (`timesheetWordsIn`): its header boxes' labels, and
+  /// the words a repeat (UI-R10 #6) and a whole-cut hold (UI-R11 #15) print
+  /// down their column. Not the info dialog's field names (`sheetField*`):
+  /// those are the program's, and the paper keeps its forms' own shorthand.
+  String get sheetPrintEpisode => _s('sheetPrintEpisode');
+  String get sheetPrintTitle => _s('sheetPrintTitle');
+  String get sheetPrintScene => _s('sheetPrintScene');
+  String get sheetPrintCut => _s('sheetPrintCut');
+  String get sheetPrintDuration => _s('sheetPrintDuration');
+  String get sheetPrintName => _s('sheetPrintName');
+  String get sheetPrintPage => _s('sheetPrintPage');
+  String get sheetPrintRepeat => _s('sheetPrintRepeat');
+  String get sheetPrintHold => _s('sheetPrintHold');
 
   /// '{n}' is the comma count.
   String get tlSetCommaTemplate => _s('tlSetCommaTemplate');
@@ -1060,6 +1096,7 @@ enum AppStrings {
   String get exSheetLayers => _s('exSheetLayers');
   String get exContent => _s('exContent');
   String get exInk => _s('exInk');
+  String get exPictureLayer => _s('exPictureLayer');
   String get exFiles => _s('exFiles');
   String get exOneImage => _s('exOneImage');
   String get exOnePerLayer => _s('exOnePerLayer');
@@ -1541,7 +1578,7 @@ enum AppStrings {
   String get tlBypassAllFx => _s('tlBypassAllFx');
   String get tlAllOnTimesheet => _s('tlAllOnTimesheet');
   String get tlAllOffTimesheet => _s('tlAllOffTimesheet');
-  String get tlClearAllMarks => _s('tlClearAllMarks');
+  String get tlClearMarkFilter => _s('tlClearMarkFilter');
   String get tlClearAllFillRefs => _s('tlClearAllFillRefs');
   String get tlColVisibility => _s('tlColVisibility');
   String get tlColLayerKind => _s('tlColLayerKind');
@@ -1770,6 +1807,9 @@ enum AppStrings {
     'guideAddVanishingPoint': 'Add vanishing point',
     'guideMakeVertical': 'Make exactly vertical',
     'closeProjectTitle': 'Close project?',
+    'newProject': 'New project',
+    'untitledProjectTab': 'Untitled {n}',
+    'fileOpenInAnotherTab': 'That file is already open in another tab.',
     'closeProjectBody': 'Your changes are not saved. Close anyway?',
     'closeProjectVanishedBody':
         "This project's file is gone. Closing now takes the drawings that "
@@ -1788,6 +1828,8 @@ enum AppStrings {
     'resizeProgressDone': 'Resized',
     'bakeProgressRunning': 'Rasterizing…',
     'bakeProgressDone': 'Rasterized',
+    'pasteProgressRunning': 'Pasting…',
+    'pasteProgressDone': 'Pasted',
     'unsavedAutosaveTitle': 'Save your project',
     'unsavedAutosaveBody':
         'This project has never been saved, so autosave has nowhere to '
@@ -2019,8 +2061,7 @@ enum AppStrings {
         'Draw the hold bar from the (N+1)th comma of N+ holds',
     'sheetExposureBarN': 'N (industry standard 3)',
     'sheetSeEmptyFill': 'Gray out empty SE stretches',
-    'sheetInkBlock': 'Block Sheet Ink',
-    'sheetInkAllow': 'Allow Sheet Ink',
+    'sheetBrushAllow': 'Allow Brush',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
     'sheetModeData': 'Data Sheet (as exported)',
     'sheetViewPage': 'Page View',
@@ -2228,6 +2269,7 @@ enum AppStrings {
     'exSheetLayers': 'Layers',
     'exContent': 'Content',
     'exInk': 'Ink',
+    'exPictureLayer': 'Pictures',
     'exFiles': 'Files',
     'exOneImage': 'One image',
     'exOnePerLayer': 'One per layer',
@@ -2286,7 +2328,7 @@ enum AppStrings {
     'exSequencePerCutTemplate': '{frames} at each cut\'s own canvas size.',
     'exImageHeadlineTemplate': 'Frame {frame} of {cut} at {w}×{h}.',
     'exCelsHeadlineTemplate':
-        '{labels} · {files} as {background} {format} (기준+어태치 composited per cel).',
+        '{labels} · {files} as {background} {format} (base + attaches composited per cel).',
     'exTransparent': 'transparent',
     'exOpaque': 'opaque',
     'exSheetImageHeadlineTemplate':
@@ -2553,7 +2595,7 @@ enum AppStrings {
     'tlBypassAllFx': 'Bypass all fx',
     'tlAllOnTimesheet': 'All on timesheet',
     'tlAllOffTimesheet': 'All off timesheet',
-    'tlClearAllMarks': 'Clear all marks',
+    'tlClearMarkFilter': 'Clear mark filter',
     'tlClearAllFillRefs': 'Clear all fill references',
     'tlColVisibility': 'Visibility column',
     'tlColLayerKind': 'Layer kind column',
@@ -2596,7 +2638,7 @@ enum AppStrings {
     'tlNoLayers': 'No layers',
     'tlLegendLayer': 'LAYER',
     'tlAllDisplayedOpacity': 'All displayed layers opacity',
-    'tlLinkedLayerTooltip': 'Linked layer — pictures are shared',
+    'tlLinkedWith': 'Linked with',
     'tlLayerReference': 'Reference',
     'tlReferenceSourceShort': 'Runs {n} frames past the source',
     'tlSelectedLayers': 'Selected layers',
@@ -2680,8 +2722,22 @@ enum AppStrings {
     'tlPull': 'Pull (close frames)',
     'sbOneStoryboardRowPerCut':
         'This cut already has a storyboard row. A cut can hold only one.',
-    'cnActionColumn': 'Action',
-    'cnConte': 'Conte',
+    'cnHeadCut': 'CUT',
+    'cnHeadPicture': 'PICTURE',
+    'cnHeadAction': 'ACTION',
+    'cnHeadDialogue': 'DIALOGUE',
+    'cnHeadSeconds': 'TIME',
+    'cnCoverCuts': ' cuts',
+    'cnCoverArtist': 'Storyboard',
+    'sheetPrintEpisode': 'Ep.no',
+    'sheetPrintTitle': 'Title',
+    'sheetPrintScene': 'Scene',
+    'sheetPrintCut': 'Cut.no',
+    'sheetPrintDuration': 'Duration',
+    'sheetPrintName': 'Name',
+    'sheetPrintPage': 'Page',
+    'sheetPrintRepeat': 'REPEAT',
+    'sheetPrintHold': 'HOLD',
     'tlBlankX': 'Blank / X',
     'tlMark': 'Mark $inbetweenMark',
     'tlSetCommasN': 'Set N commas',
@@ -2846,6 +2902,9 @@ enum AppStrings {
     'guideAddVanishingPoint': '消失点を追加',
     'guideMakeVertical': '完全な垂直にする',
     'closeProjectTitle': 'プロジェクトを閉じますか？',
+    'newProject': '新規プロジェクト',
+    'untitledProjectTab': '無題 {n}',
+    'fileOpenInAnotherTab': 'そのファイルは別のタブで開いています。',
     'closeProjectBody': '変更は保存されていません。閉じますか？',
     'closeProjectVanishedBody':
         'このプロジェクトのファイルがなくなっています。このまま閉じると、その中にしか'
@@ -2864,6 +2923,8 @@ enum AppStrings {
     'resizeProgressDone': 'サイズ変更しました',
     'bakeProgressRunning': 'ラスタライズ中…',
     'bakeProgressDone': 'ラスタライズしました',
+    'pasteProgressRunning': 'ペースト中…',
+    'pasteProgressDone': 'ペーストしました',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
     'unsavedAutosaveBody':
         'このプロジェクトはまだ一度も保存されていないため、自動保存の書き込み'
@@ -2904,15 +2965,10 @@ enum AppStrings {
     'menuAction.cut-copy-ae-camera': 'カメラのAEキーフレームをコピー',
     'menuAction.cut-delete': 'カットを削除',
     'menuAction.layer-add': 'レイヤーを追加',
-    'menuAction.layer-add-attach-free-above': '上にフリーの付属レイヤーを追加',
-    'menuAction.layer-add-attach-free-below': '下にフリーの付属レイヤーを追加',
-    'menuAction.layer-add-attach-above': '上に同期の付属レイヤーを追加',
-    'menuAction.layer-add-attach-below': '下に同期の付属レイヤーを追加',
     'menuAction.layer-duplicate': 'レイヤーを複製',
     'menuAction.layer-link-duplicate': 'リンクして複製',
     'menuAction.layer-unlink': 'リンクを解除',
     'menuAction.layer-group-into-folder': 'フォルダにまとめる',
-    'menuAction.layer-group-attach-into-folder': '付属フォルダを作成',
     'menuAction.layer-rename': 'レイヤー名を変更…',
     'menuAction.layer-rasterize': 'ラスタライズ',
     'menuAction.layer-se-name-tag': 'SE ネームタグ…',
@@ -3115,8 +3171,7 @@ enum AppStrings {
     'sheetExposureBarHelp': 'N コマ以上の止めで (N+1) コマ目から線を引く',
     'sheetExposureBarN': 'N（業界標準は3）',
     'sheetSeEmptyFill': 'セリフのない区間をグレーで塗る',
-    'sheetInkBlock': '用紙の手書きを禁止',
-    'sheetInkAllow': '用紙の手書きを許可',
+    'sheetBrushAllow': 'ブラシを許可',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
     'sheetModeData': 'データシート（書き出しのまま）',
     'sheetViewPage': 'ページ表示',
@@ -3391,7 +3446,7 @@ enum AppStrings {
     'exAdd': '追加',
     'exSelect': '選択',
     'exSelBase': '基準',
-    'exSelAttach': '付属',
+    'exSelAttach': 'アタッチ',
     'exSelSheet': 'シート',
     'exSelDirection': 'ディレクション',
     'exSelCustom': 'カスタム',
@@ -3422,6 +3477,7 @@ enum AppStrings {
     'exSheetLayers': 'レイヤー',
     'exContent': '内容',
     'exInk': '線画',
+    'exPictureLayer': '絵',
     'exFiles': 'ファイル',
     'exOneImage': '画像1枚',
     'exOnePerLayer': 'レイヤーごとに1枚',
@@ -3507,7 +3563,7 @@ enum AppStrings {
     'exSequenceCanvasTemplate': '{w}×{h}で{frames}（キャンバスそのまま）。',
     'exSequencePerCutTemplate': 'カットごとのキャンバスサイズで{frames}。',
     'exImageHeadlineTemplate': '{cut}のフレーム{frame}、{w}×{h}。',
-    'exCelsHeadlineTemplate': '{labels} · {background}の{format}で{files}（セルごとに基準+付属を合成）。',
+    'exCelsHeadlineTemplate': '{labels} · {background}の{format}で{files}（セルごとに基準+アタッチを合成）。',
     'exTransparent': '透過',
     'exOpaque': '不透明',
     'exSheetImageHeadlineTemplate': '{pages}をB4 PNGで — パネルの用紙のまま、画面外で描画。',
@@ -3841,7 +3897,7 @@ enum AppStrings {
     'tlBypassAllFx': 'FXをすべてバイパス',
     'tlAllOnTimesheet': 'すべてシートに載せる',
     'tlAllOffTimesheet': 'すべてシートから外す',
-    'tlClearAllMarks': 'マークをすべて消去',
+    'tlClearMarkFilter': 'マークフィルターを解除',
     'tlClearAllFillRefs': '塗り参照をすべて解除',
     'tlColVisibility': '表示列',
     'tlColLayerKind': 'レイヤー種類列',
@@ -3916,7 +3972,7 @@ enum AppStrings {
     'tlNoLayers': 'レイヤーがありません',
     'tlLegendLayer': 'レイヤー',
     'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
-    'tlLinkedLayerTooltip': 'リンクレイヤー — 絵を共有しています',
+    'tlLinkedWith': 'リンク先',
     'tlLayerReference': '参照',
     'tlReferenceSourceShort': '素材より{n}フレーム長い',
     'tlSelectedLayers': '選択したレイヤー',
@@ -3964,10 +4020,10 @@ enum AppStrings {
     'seNameTagPreviewLine': 'セリフ',
     'tlKindInstruction': 'ディレクション',
     'tlNoriShiro': 'のりしろ',
-    'tlAttachFreeAbove': '上にフリーの付属レイヤー',
-    'tlAttachFreeBelow': '下にフリーの付属レイヤー',
-    'tlAttachSyncedAbove': '上に同期の付属レイヤー',
-    'tlAttachSyncedBelow': '下に同期の付属レイヤー',
+    'tlAttachFreeAbove': '上にフリーのアタッチレイヤー',
+    'tlAttachFreeBelow': '下にフリーのアタッチレイヤー',
+    'tlAttachSyncedAbove': '上にシンクのアタッチレイヤー',
+    'tlAttachSyncedBelow': '下にシンクのアタッチレイヤー',
     'tlLayerCommands': 'レイヤー操作',
     'tlFrameCommands': 'フレーム操作',
     'tlCut': 'カット',
@@ -3985,20 +4041,34 @@ enum AppStrings {
     'tlAddEffectTemplate': '{name}を追加',
     'tlDropIntoFolderTemplate': '{name} の中へ',
     'tlDropOutOfFolder': 'フォルダの外へ',
-    'tlDropAttachSyncedTemplate': '{name} に付属（同期）',
-    'tlDropAttachFreeTemplate': '{name} に付属（フリー）',
-    'tlDropDetachAttach': '付属を解除',
-    'tlDetachLayer': '付属を解除',
-    'tlAttachDropsFxTitle': '付属すると fx が失われます',
-    'tlAttachDropsFxBody': '付属レイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
+    'tlDropAttachSyncedTemplate': '{name} にアタッチ（シンク）',
+    'tlDropAttachFreeTemplate': '{name} にアタッチ（フリー）',
+    'tlDropDetachAttach': 'アタッチを解除',
+    'tlDetachLayer': 'アタッチを解除',
+    'tlAttachDropsFxTitle': 'アタッチすると fx が失われます',
+    'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlSharedEdit': '編集',
     'tlSharedUnlink': 'リンクから独立',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
     'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
-    'cnActionColumn': 'アクション',
-    'cnConte': '絵コンテ',
+    'cnHeadCut': 'カット',
+    'cnHeadPicture': '画面',
+    'cnHeadAction': '内容',
+    'cnHeadDialogue': 'セリフ',
+    'cnHeadSeconds': '秒',
+    'cnCoverCuts': 'cut',
+    'cnCoverArtist': 'コンテ',
+    'sheetPrintEpisode': '話数',
+    'sheetPrintTitle': 'タイトル',
+    'sheetPrintScene': 'シーン',
+    'sheetPrintCut': 'カット',
+    'sheetPrintDuration': 'タイム',
+    'sheetPrintName': '原画',
+    'sheetPrintPage': 'シート',
+    'sheetPrintRepeat': 'リピート',
+    'sheetPrintHold': '止め',
     'tlBlankX': '中割なし / ×',
     'tlMark': 'マーク $inbetweenMark',
     'tlSetCommasN': 'Nコマに設定',
@@ -4164,6 +4234,9 @@ enum AppStrings {
     'guideAddVanishingPoint': '소실점 추가',
     'guideMakeVertical': '정확히 수직으로',
     'closeProjectTitle': '프로젝트를 닫을까요?',
+    'newProject': '새 프로젝트',
+    'untitledProjectTab': '제목 없음 {n}',
+    'fileOpenInAnotherTab': '그 파일은 다른 탭에서 열려 있습니다.',
     'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
     'closeProjectVanishedBody':
         '이 프로젝트의 파일이 사라졌습니다. 지금 닫으면 그 안에만 있던 그림도 함께 '
@@ -4182,6 +4255,8 @@ enum AppStrings {
     'resizeProgressDone': '크기 변경 완료',
     'bakeProgressRunning': '래스터라이즈 중…',
     'bakeProgressDone': '래스터라이즈 완료',
+    'pasteProgressRunning': '붙여넣는 중…',
+    'pasteProgressDone': '붙여넣음',
     'unsavedAutosaveTitle': '프로젝트 저장',
     'unsavedAutosaveBody':
         '이 프로젝트는 한 번도 저장된 적이 없어서 자동 저장이 쓸 곳이 '
@@ -4222,15 +4297,10 @@ enum AppStrings {
     'menuAction.cut-copy-ae-camera': '카메라 AE 키프레임 복사',
     'menuAction.cut-delete': '컷 삭제',
     'menuAction.layer-add': '레이어 추가',
-    'menuAction.layer-add-attach-free-above': '위에 프리 부속 레이어 추가',
-    'menuAction.layer-add-attach-free-below': '아래에 프리 부속 레이어 추가',
-    'menuAction.layer-add-attach-above': '위에 동기 부속 레이어 추가',
-    'menuAction.layer-add-attach-below': '아래에 동기 부속 레이어 추가',
     'menuAction.layer-duplicate': '레이어 복제',
     'menuAction.layer-link-duplicate': '링크해서 복제',
     'menuAction.layer-unlink': '링크 해제',
     'menuAction.layer-group-into-folder': '폴더로 묶기',
-    'menuAction.layer-group-attach-into-folder': '부속 폴더 만들기',
     'menuAction.layer-rename': '레이어 이름 변경…',
     'menuAction.layer-rasterize': '래스터라이즈',
     'menuAction.layer-se-name-tag': 'SE 이름표…',
@@ -4431,8 +4501,7 @@ enum AppStrings {
     'sheetExposureBarHelp': 'N코마 이상 止め에서 (N+1)번째 코마부터 선을 긋기',
     'sheetExposureBarN': 'N (업계 표준 3)',
     'sheetSeEmptyFill': '대사 없는 구간을 회색으로 채우기',
-    'sheetInkBlock': '용지 손글씨 잠금',
-    'sheetInkAllow': '용지 손글씨 허용',
+    'sheetBrushAllow': '브러시 허용',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
     'sheetModeData': '데이터 시트(내보내는 그대로)',
     'sheetViewPage': '페이지 보기',
@@ -4707,7 +4776,7 @@ enum AppStrings {
     'exAdd': '추가',
     'exSelect': '선택',
     'exSelBase': '기준',
-    'exSelAttach': '부속',
+    'exSelAttach': '어태치',
     'exSelSheet': '시트',
     'exSelDirection': '디렉션',
     'exSelCustom': '커스텀',
@@ -4738,6 +4807,7 @@ enum AppStrings {
     'exSheetLayers': '레이어',
     'exContent': '내용',
     'exInk': '선화',
+    'exPictureLayer': '그림',
     'exFiles': '파일',
     'exOneImage': '이미지 한 장',
     'exOnePerLayer': '레이어마다 한 장',
@@ -4823,7 +4893,7 @@ enum AppStrings {
     'exSequenceCanvasTemplate': '{w}×{h}로 {frames}(캔버스 그대로).',
     'exSequencePerCutTemplate': '컷마다 제 캔버스 크기로 {frames}.',
     'exImageHeadlineTemplate': '{cut}의 {frame}프레임, {w}×{h}.',
-    'exCelsHeadlineTemplate': '{labels} · {background} {format}로 {files}(셀마다 기준+부속 합성).',
+    'exCelsHeadlineTemplate': '{labels} · {background} {format}로 {files}(셀마다 기준+어태치 합성).',
     'exTransparent': '투명',
     'exOpaque': '불투명',
     'exSheetImageHeadlineTemplate': '{pages}를 B4 PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
@@ -5151,7 +5221,7 @@ enum AppStrings {
     'tlBypassAllFx': 'FX 모두 우회',
     'tlAllOnTimesheet': '모두 시트에 올리기',
     'tlAllOffTimesheet': '모두 시트에서 내리기',
-    'tlClearAllMarks': '마크 모두 지우기',
+    'tlClearMarkFilter': '마크 필터 해제',
     'tlClearAllFillRefs': '채색 참조 모두 해제',
     'tlColVisibility': '표시 열',
     'tlColLayerKind': '레이어 종류 열',
@@ -5226,7 +5296,7 @@ enum AppStrings {
     'tlNoLayers': '레이어 없음',
     'tlLegendLayer': '레이어',
     'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
-    'tlLinkedLayerTooltip': '링크 레이어 — 그림을 공유합니다',
+    'tlLinkedWith': '링크 대상',
     'tlLayerReference': '참조',
     'tlReferenceSourceShort': '원본보다 {n}프레임 깁니다',
     'tlSelectedLayers': '선택한 레이어',
@@ -5275,10 +5345,10 @@ enum AppStrings {
     'seNameTagPreviewLine': '대사',
     'tlKindInstruction': '디렉션',
     'tlNoriShiro': '여백',
-    'tlAttachFreeAbove': '위에 프리 부속 레이어',
-    'tlAttachFreeBelow': '아래에 프리 부속 레이어',
-    'tlAttachSyncedAbove': '위에 동기 부속 레이어',
-    'tlAttachSyncedBelow': '아래에 동기 부속 레이어',
+    'tlAttachFreeAbove': '위에 프리 어태치 레이어',
+    'tlAttachFreeBelow': '아래에 프리 어태치 레이어',
+    'tlAttachSyncedAbove': '위에 싱크 어태치 레이어',
+    'tlAttachSyncedBelow': '아래에 싱크 어태치 레이어',
     'tlLayerCommands': '레이어 명령',
     'tlFrameCommands': '프레임 명령',
     'tlCut': '컷',
@@ -5296,8 +5366,8 @@ enum AppStrings {
     'tlAddEffectTemplate': '{name} 추가',
     'tlDropIntoFolderTemplate': '{name} 안으로',
     'tlDropOutOfFolder': '폴더 밖으로',
-    'tlDropAttachSyncedTemplate': '{name}에 장착 (동기)',
-    'tlDropAttachFreeTemplate': '{name}에 장착 (프리)',
+    'tlDropAttachSyncedTemplate': '{name}에 어태치 (싱크)',
+    'tlDropAttachFreeTemplate': '{name}에 어태치 (프리)',
     'tlDropDetachAttach': '어태치 해제',
     'tlDetachLayer': '어태치 해제',
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
@@ -5309,8 +5379,22 @@ enum AppStrings {
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
     'sbOneStoryboardRowPerCut': '이 컷에는 이미 스토리보드 레이어가 있습니다. 컷당 하나만 가능합니다.',
-    'cnActionColumn': '액션',
-    'cnConte': '콘티',
+    'cnHeadCut': '컷',
+    'cnHeadPicture': '화면',
+    'cnHeadAction': '내용',
+    'cnHeadDialogue': '대사',
+    'cnHeadSeconds': '초',
+    'cnCoverCuts': '컷',
+    'cnCoverArtist': '콘티',
+    'sheetPrintEpisode': '화수',
+    'sheetPrintTitle': '제목',
+    'sheetPrintScene': '씬',
+    'sheetPrintCut': '컷',
+    'sheetPrintDuration': '타임',
+    'sheetPrintName': '원화',
+    'sheetPrintPage': '시트',
+    'sheetPrintRepeat': '리피트',
+    'sheetPrintHold': '홀드',
     'tlBlankX': '중간 없음 / ×',
     'tlMark': '마크 $inbetweenMark',
     'tlSetCommasN': 'N코마로 설정',
@@ -5484,6 +5568,9 @@ enum AppStrings {
     'guideAddVanishingPoint': 'Ajouter un point de fuite',
     'guideMakeVertical': 'Rendre exactement vertical',
     'closeProjectTitle': 'Fermer le projet ?',
+    'newProject': 'Nouveau projet',
+    'untitledProjectTab': 'Sans titre {n}',
+    'fileOpenInAnotherTab': 'Ce fichier est déjà ouvert dans un autre onglet.',
     'closeProjectBody':
         'Vos modifications ne sont pas enregistrées. Fermer quand même ?',
     'closeProjectVanishedBody':
@@ -5499,6 +5586,8 @@ enum AppStrings {
     'resizeProgressDone': 'Redimensionné',
     'bakeProgressRunning': 'Pixellisation…',
     'bakeProgressDone': 'Pixellisé',
+    'pasteProgressRunning': 'Collage…',
+    'pasteProgressDone': 'Collé',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
     'unsavedAutosaveBody':
         "Ce projet n'a jamais été enregistré : la sauvegarde automatique "
@@ -5540,19 +5629,10 @@ enum AppStrings {
     'menuAction.cut-copy-ae-camera': 'Copier les clés AE de la caméra',
     'menuAction.cut-delete': 'Supprimer le plan',
     'menuAction.layer-add': 'Ajouter un calque',
-    'menuAction.layer-add-attach-free-above':
-        'Ajouter un calque attaché libre au-dessus',
-    'menuAction.layer-add-attach-free-below':
-        'Ajouter un calque attaché libre en dessous',
-    'menuAction.layer-add-attach-above':
-        'Ajouter un calque attaché synchronisé au-dessus',
-    'menuAction.layer-add-attach-below':
-        'Ajouter un calque attaché synchronisé en dessous',
     'menuAction.layer-duplicate': 'Dupliquer le calque',
     'menuAction.layer-link-duplicate': 'Dupliquer en liant',
     'menuAction.layer-unlink': 'Délier le calque',
     'menuAction.layer-group-into-folder': 'Grouper dans un dossier',
-    'menuAction.layer-group-attach-into-folder': 'Nouveau dossier attaché',
     'menuAction.layer-rename': 'Renommer le calque…',
     'menuAction.layer-rasterize': 'Pixelliser le calque',
     'menuAction.layer-se-name-tag': 'Étiquette SE…',
@@ -5780,8 +5860,7 @@ enum AppStrings {
         'Tracer le trait à partir du (N+1)e comma des maintiens de N+',
     'sheetExposureBarN': 'N (standard du métier : 3)',
     'sheetSeEmptyFill': 'Griser les plages sans dialogue',
-    'sheetInkBlock': "Bloquer l'écriture sur feuille",
-    'sheetInkAllow': "Autoriser l'écriture sur feuille",
+    'sheetBrushAllow': 'Autoriser le pinceau',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
     'sheetModeData': "Feuille de données (telle qu'exportée)",
     'sheetViewPage': 'Vue page',
@@ -6099,6 +6178,7 @@ enum AppStrings {
     'exSheetLayers': 'Calques',
     'exContent': 'Contenu',
     'exInk': 'Encre',
+    'exPictureLayer': 'Images',
     'exFiles': 'Fichiers',
     'exOneImage': 'Une image',
     'exOnePerLayer': 'Une par calque',
@@ -6553,7 +6633,7 @@ enum AppStrings {
     'tlBypassAllFx': 'Contourner tous les FX',
     'tlAllOnTimesheet': 'Tout mettre sur la feuille',
     'tlAllOffTimesheet': 'Tout retirer de la feuille',
-    'tlClearAllMarks': 'Effacer tous les repères',
+    'tlClearMarkFilter': 'Effacer le filtre de repères',
     'tlClearAllFillRefs': 'Effacer toutes les références de remplissage',
     'tlColVisibility': 'Colonne visibilité',
     'tlColLayerKind': 'Colonne type de calque',
@@ -6613,7 +6693,7 @@ enum AppStrings {
     'tlNoLayers': 'Aucun calque',
     'tlLegendLayer': 'CALQUE',
     'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
-    'tlLinkedLayerTooltip': 'Calque lié — les images sont partagées',
+    'tlLinkedWith': 'Lié à',
     'tlLayerReference': 'Référence',
     'tlReferenceSourceShort': 'Dépasse la source de {n} images',
     'tlSelectedLayers': 'Calques sélectionnés',
@@ -6700,8 +6780,22 @@ enum AppStrings {
         'Ce plan a déjà un calque storyboard. Un seul par plan.',
     'cnPreviousPage': 'Page précédente',
     'cnNextPage': 'Page suivante',
-    'cnActionColumn': 'Action',
-    'cnConte': 'Storyboard',
+    'cnHeadCut': 'PLAN',
+    'cnHeadPicture': 'IMAGE',
+    'cnHeadAction': 'ACTION',
+    'cnHeadDialogue': 'DIALOGUE',
+    'cnHeadSeconds': 'DURÉE',
+    'cnCoverCuts': ' plans',
+    'cnCoverArtist': 'Storyboard',
+    'sheetPrintEpisode': 'Ép.',
+    'sheetPrintTitle': 'Titre',
+    'sheetPrintScene': 'Scène',
+    'sheetPrintCut': 'Plan',
+    'sheetPrintDuration': 'Durée',
+    'sheetPrintName': 'Animateur',
+    'sheetPrintPage': 'Feuille',
+    'sheetPrintRepeat': 'RÉPÉT.',
+    'sheetPrintHold': 'FIXE',
     'tlBlankX': 'Vide / X',
     'tlMark': 'Repère $inbetweenMark',
     'tlSetCommasN': 'Régler sur N commas',
@@ -6860,6 +6954,9 @@ enum AppStrings {
     'guideAddVanishingPoint': '添加消失点',
     'guideMakeVertical': '设为完全垂直',
     'closeProjectTitle': '关闭项目？',
+    'newProject': '新建项目',
+    'untitledProjectTab': '未命名 {n}',
+    'fileOpenInAnotherTab': '该文件已在另一个标签页中打开。',
     'closeProjectBody': '你的更改尚未保存。仍要关闭吗？',
     'closeProjectVanishedBody':
         '此项目的文件已不在。现在关闭会一并失去只存在于该文件中的画稿。'
@@ -6873,6 +6970,8 @@ enum AppStrings {
     'resizeProgressDone': '已调整尺寸',
     'bakeProgressRunning': '正在栅格化…',
     'bakeProgressDone': '栅格化完成',
+    'pasteProgressRunning': '粘贴中…',
+    'pasteProgressDone': '已粘贴',
     'unsavedAutosaveTitle': '保存你的项目',
     'unsavedAutosaveBody':
         '此项目从未保存过，自动保存没有可写入的位置。选择一个文件后，'
@@ -6913,15 +7012,10 @@ enum AppStrings {
     'menuAction.cut-copy-ae-camera': '复制摄影机 AE 关键帧',
     'menuAction.cut-delete': '删除镜头',
     'menuAction.layer-add': '添加图层',
-    'menuAction.layer-add-attach-free-above': '在上方添加自由附属图层',
-    'menuAction.layer-add-attach-free-below': '在下方添加自由附属图层',
-    'menuAction.layer-add-attach-above': '在上方添加同步附属图层',
-    'menuAction.layer-add-attach-below': '在下方添加同步附属图层',
     'menuAction.layer-duplicate': '复制图层',
     'menuAction.layer-link-duplicate': '链接复制图层',
     'menuAction.layer-unlink': '取消图层链接',
     'menuAction.layer-group-into-folder': '编组到文件夹',
-    'menuAction.layer-group-attach-into-folder': '新建附属文件夹',
     'menuAction.layer-rename': '重命名图层…',
     'menuAction.layer-rasterize': '栅格化图层',
     'menuAction.layer-se-name-tag': 'SE 名字条…',
@@ -7103,8 +7197,7 @@ enum AppStrings {
     'sheetExposureBarHelp': '在 N 格以上的保持中，从第 (N+1) 格开始画线',
     'sheetExposureBarN': 'N（行业标准为 3）',
     'sheetSeEmptyFill': '将无台词区间置灰',
-    'sheetInkBlock': '禁止纸面手写',
-    'sheetInkAllow': '允许纸面手写',
+    'sheetBrushAllow': '允许画笔',
     'sheetModeNotation': '标注表（重复·保持文字）',
     'sheetModeData': '数据表（与导出一致）',
     'sheetViewPage': '分页视图',
@@ -7404,6 +7497,7 @@ enum AppStrings {
     'exSheetLayers': '图层',
     'exContent': '内容',
     'exInk': '线稿',
+    'exPictureLayer': '画面',
     'exFiles': '文件',
     'exOneImage': '单张图片',
     'exOnePerLayer': '每图层一张',
@@ -7812,7 +7906,7 @@ enum AppStrings {
     'tlBypassAllFx': '旁通全部 FX',
     'tlAllOnTimesheet': '全部放上摄影表',
     'tlAllOffTimesheet': '全部移出摄影表',
-    'tlClearAllMarks': '清除所有标记',
+    'tlClearMarkFilter': '清除标记筛选',
     'tlClearAllFillRefs': '清除所有填充参考',
     'tlColVisibility': '可见性列',
     'tlColLayerKind': '图层类型列',
@@ -7851,7 +7945,7 @@ enum AppStrings {
     'tlNoLayers': '没有图层',
     'tlLegendLayer': '图层',
     'tlAllDisplayedOpacity': '所有显示图层的不透明度',
-    'tlLinkedLayerTooltip': '链接图层 — 画面是共享的',
+    'tlLinkedWith': '链接到',
     'tlLayerReference': '引用',
     'tlReferenceSourceShort': '超出素材{n}帧',
     'tlSelectedLayers': '所选图层',
@@ -7938,8 +8032,22 @@ enum AppStrings {
     'sbOneStoryboardRowPerCut': '该镜头已有分镜图层，每个镜头只能有一个。',
     'cnPreviousPage': '上一页',
     'cnNextPage': '下一页',
-    'cnActionColumn': '动作',
-    'cnConte': '分镜',
+    'cnHeadCut': '镜头',
+    'cnHeadPicture': '画面',
+    'cnHeadAction': '内容',
+    'cnHeadDialogue': '台词',
+    'cnHeadSeconds': '秒',
+    'cnCoverCuts': '个镜头',
+    'cnCoverArtist': '分镜',
+    'sheetPrintEpisode': '话数',
+    'sheetPrintTitle': '标题',
+    'sheetPrintScene': '场景',
+    'sheetPrintCut': '镜头',
+    'sheetPrintDuration': '时间',
+    'sheetPrintName': '原画',
+    'sheetPrintPage': '摄影表',
+    'sheetPrintRepeat': '重复',
+    'sheetPrintHold': '停格',
     'tlBlankX': '空 / ×',
     'tlMark': '标记 $inbetweenMark',
     'tlSetCommasN': '设为 N 格',

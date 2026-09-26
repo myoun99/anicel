@@ -19,6 +19,7 @@ class TimelineFrameSpanPlacement {
     this.anchorAtTrailingEdge = false,
     this.crossInset = 0,
     this.crossExtent,
+    this.fitsIn,
   }) : assert(
          endIndexExclusive != null ||
              mainExtentCells != null ||
@@ -52,6 +53,13 @@ class TimelineFrameSpanPlacement {
   final double crossInset;
   final double? crossExtent;
 
+  /// The frames a fixed [mainExtent] has to fit in. While they are at least
+  /// that long the child keeps its size at every zoom; when they are
+  /// shorter it takes ONE CELL instead — a block edge's grip in a block too
+  /// short to hold it (유저 2026-09-26: 「1코마처럼 공간 부족하면 … 그냥
+  /// 가로 1칸 차지하도록」).
+  final ({int startIndex, int endIndexExclusive})? fitsIn;
+
   @override
   bool operator ==(Object other) =>
       other is TimelineFrameSpanPlacement &&
@@ -62,7 +70,8 @@ class TimelineFrameSpanPlacement {
       other.mainInset == mainInset &&
       other.anchorAtTrailingEdge == anchorAtTrailingEdge &&
       other.crossInset == crossInset &&
-      other.crossExtent == crossExtent;
+      other.crossExtent == crossExtent &&
+      other.fitsIn == fitsIn;
 
   @override
   int get hashCode => Object.hash(
@@ -74,6 +83,7 @@ class TimelineFrameSpanPlacement {
     anchorAtTrailingEdge,
     crossInset,
     crossExtent,
+    fitsIn,
   );
 }
 
@@ -102,6 +112,12 @@ Rect timelineFrameSpanRect(
       : cells != null
       ? cells * frames.frameCellExtent
       : placement.mainExtent!;
+  if (placement.fitsIn case final room?
+      when frames.edgeAt(room.endIndexExclusive) -
+              frames.edgeAt(room.startIndex) <
+          mainExtent) {
+    mainExtent = frames.frameCellExtent;
+  }
   if (mainExtent < 0) {
     mainExtent = 0;
   }

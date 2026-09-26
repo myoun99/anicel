@@ -49,11 +49,23 @@ class ProjectFile {
   ProjectFile({
     required ProjectAccess project,
     required MediaStagingStore staging,
+    bool Function(String path)? openElsewhere,
   }) : _project = project,
-       _staging = staging;
+       _staging = staging,
+       _openElsewhere = openElsewhere;
 
   final ProjectAccess _project;
   final MediaStagingStore _staging;
+  final bool Function(String path)? _openElsewhere;
+
+  /// Whether ANOTHER open project is bound to the file at [path] (I-7).
+  ///
+  /// 🚨ONE FILE, ONE WRITER. Two sessions bound to one archive each append
+  /// to a tail the other is also extending, and each one's next save
+  /// rewrites what the other just wrote. Opening a file already open shows
+  /// its tab instead ([OpenProjects.boundTo]); this is the other door in —
+  /// a Save As pointed at it — and every save asks it before writing.
+  bool isOpenElsewhere(String path) => _openElsewhere?.call(path) ?? false;
 
   Project _requireProject() => _project.repository.requireProject();
 
@@ -231,10 +243,10 @@ class ProjectFile {
   ///
   /// ⚠️Invalidated by [invalidateConformStoredBytes] on two events and
   /// they are BOTH needed: a completed save (the carried entry's length
-  /// moved) and the conform store answering (a conform was just built, or
-  /// dropped by [AudioConformStore.releaseDiskBacked]). Keying on the file
-  /// generation alone ([_fileGeneration], what the media map does) would
-  /// leave a freshly conformed sound showing nothing until the next save.
+  /// moved) and the conform store answering (a conform was just built).
+  /// Keying on the file generation alone ([_fileGeneration], what the media
+  /// map does) would leave a freshly conformed sound showing nothing until
+  /// the next save.
   Map<String, int> get conformStoredBytes {
     final known = _conformStoredBytes;
     if (known != null) {
@@ -729,8 +741,24 @@ class ProjectFile {
   /// [holdMediaBytes]): two callers woken by the same save both find it
   /// over, and an `await` between the wait and the act lets the other one
   /// act first. 🪦`saveSettled` waited alone, and nothing called it once
-  /// both did it this way (a0db20fa1).
+  /// both did it this way (a0db20fa1) — until a caller came that acts on
+  /// nothing after the wait ([saveSettled]).
   Completer<void> _saveEnded = Completer<void>()..complete();
+
+  /// Completes once no save is running — what letting a closed project go
+  /// waits for (I-7: a tab can close while the autosave clock is writing
+  /// its file, and a session disposed mid-write tears the tail it was
+  /// extending).
+  ///
+  /// ⚠️A WAIT ALONE, which the note above warns against — and safe here
+  /// for the one reason it names: the caller starts nothing after it. A
+  /// closed project's tab is gone and its clock hook with it, so no save
+  /// can begin between this completing and the session going.
+  Future<void> get saveSettled async {
+    while (_saveInFlight) {
+      await _saveEnded.future;
+    }
+  }
 
   /// Raised for the WHOLE save, retirement included — see
   /// [ProjectFileDoor.saveProjectToFile], which says why the window has to
@@ -944,4 +972,15 @@ final class _LiveHold {
   final moves = StreamController<HeldBytesMove>();
 
   final released = Completer<void>();
+}
+
+/// A save refused because [path] is another open project's file (I-7) —
+/// see [ProjectFile.isOpenElsewhere].
+final class FileOpenInAnotherProject implements Exception {
+  const FileOpenInAnotherProject(this.path);
+
+  final String path;
+
+  @override
+  String toString() => 'FileOpenInAnotherProject: $path';
 }

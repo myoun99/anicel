@@ -52,9 +52,10 @@ void createActiveInstance(EditorSessionManager session) {
       // adjustment holds effects; neither holds cels.
       break;
     case LayerKind.transition:
-      // Read-only inside a cut: the transition row is track-owned and is
-      // authored on the global axis, never through the active cut.
-      break;
+      // F-180 (유저 2026-09-25): 「타임라인패널(로컬)에서도 가능하도록」 — the
+      // span is written on the global row by the storyboard's own verb; the
+      // cut view only refuses where its projection already shows a mark.
+      session.transitions.createTransitionSpanInCut();
     case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
       session.createDrawingAtCurrentFrame();
   }

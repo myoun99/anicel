@@ -42,27 +42,67 @@ class KeyedKeepAliveStack<K, S> extends StatefulWidget {
 }
 
 class _KeyedKeepAliveStackState<K, S> extends State<KeyedKeepAliveStack<K, S>> {
-  final Map<K, Widget> _children = {};
+  /// Each visited key's child, held where only THAT key's slot hears it
+  /// change.
+  final Map<K, ValueNotifier<Widget>> _slots = {};
   final Map<K, S> _states = {};
+
+  /// 🚨The stack as last built, handed back unchanged while the same key is
+  /// active over the same keys (2026-09-26). [IndexedStack] wraps EVERY
+  /// child in its own visibility scaffolding and rebuilds all of it
+  /// whenever it is rebuilt — four elements a key, for keys nobody is
+  /// looking at. A state change of the active key is news for one slot, so
+  /// that slot is all that rebuilds: a brush pick rebuilt forty wrappers in
+  /// each of the tool panels, and a size drag did on every frame.
+  IndexedStack? _stack;
+  K? _stackKey;
+  List<K>? _stackKeys;
+
+  @override
+  void dispose() {
+    for (final slot in _slots.values) {
+      slot.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final key = widget.activeKey;
     final state = widget.stateOf();
-    final cached = _children[key];
-    if (cached == null || _states[key] != state) {
-      _children[key] = KeyedSubtree(
-        key: ValueKey<K>(key),
-        child: widget.builder(context),
-      );
+    final slot = _slots[key];
+    if (slot == null) {
+      _slots[key] = ValueNotifier<Widget>(_childOf(context, key));
+      _states[key] = state;
+      _stack = null;
+    } else if (_states[key] != state) {
+      slot.value = _childOf(context, key);
       _states[key] = state;
     }
-    return IndexedStack(
+    final stack = _stack;
+    if (stack != null &&
+        _stackKey == key &&
+        identical(_stackKeys, widget.keys)) {
+      return stack;
+    }
+    _stackKey = key;
+    _stackKeys = widget.keys;
+    return _stack = IndexedStack(
       index: widget.keys.indexOf(key),
       children: [
         for (final k in widget.keys)
-          _children[k] ?? SizedBox.shrink(key: ValueKey<K>(k)),
+          if (_slots[k] case final kept?)
+            ValueListenableBuilder<Widget>(
+              key: ValueKey<K>(k),
+              valueListenable: kept,
+              builder: (context, child, _) => child,
+            )
+          else
+            SizedBox.shrink(key: ValueKey<K>(k)),
       ],
     );
   }
+
+  Widget _childOf(BuildContext context, K key) =>
+      KeyedSubtree(key: ValueKey<K>(key), child: widget.builder(context));
 }

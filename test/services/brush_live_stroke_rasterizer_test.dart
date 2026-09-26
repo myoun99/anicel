@@ -6,6 +6,8 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 
 BrushDab _dab({required double x, required double y, double size = 10}) {
   return BrushDab(
@@ -22,6 +24,39 @@ BrushDab _dab({required double x, required double y, double size = 10}) {
 }
 
 void main() {
+  group('a dab the selection cannot reach is never accumulated', () {
+    CanvasSelectionRegion box(double l, double t, double r, double b) =>
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: l, top: t, right: r, bottom: b),
+        );
+
+    test('wholly outside: no tile is touched', () {
+      // One stroke over a sheet's windows reaches every window's view, and
+      // each keeps only its own slice — paying for the whole stroke in
+      // every window is what this avoids.
+      final rasterizer = BrushLiveStrokeRasterizer(
+        canvasSize: const CanvasSize(width: 1024, height: 1024),
+      )..selectionRegion = box(0, 0, 100, 100);
+      rasterizer.blendFrom([
+        _dab(x: 600.5, y: 600.5),
+        _dab(x: 700.5, y: 600.5),
+      ], from: 0);
+      expect(rasterizer.allocatedTileCount, 0);
+      expect(rasterizer.strokeBounds, isNull);
+    });
+
+    test('a dab whose centre is outside but whose footprint reaches in '
+        'still paints there', () {
+      final rasterizer = BrushLiveStrokeRasterizer(
+        canvasSize: const CanvasSize(width: 512, height: 512),
+      )..selectionRegion = box(100, 100, 200, 200);
+      rasterizer.blendFrom([_dab(x: 96.5, y: 150.5, size: 12)], from: 0);
+      final row = Uint8List(512 * 4);
+      rasterizer.copyRow(0, 150, 512, row, 0);
+      expect(row[100 * 4 + 3], greaterThan(0));
+    });
+  });
+
   group('BrushLiveStrokeRasterizer sparseness', () {
     test('a small stroke on a huge canvas allocates only its tiles', () {
       // The point of the sparse storage: the timesheet ink planes are

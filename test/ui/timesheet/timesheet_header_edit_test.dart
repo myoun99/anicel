@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -148,6 +150,35 @@ void main() {
           find.byKey(ValueKey<String>('timesheet-header-edit-$field-p0')),
           findsNothing,
         );
+      }
+    });
+
+    testWidgets('each typed box opens on the text the sheet PRINTS there', (
+      tester,
+    ) async {
+      await pumpLayer(tester);
+      final document = _document();
+      final printed = TimesheetDocumentPainter(
+        words: timesheetWordsIn(AppLanguage.en),
+        document: document,
+        layout: TimesheetDocumentLayout(document: document),
+        face: const TextStyle(),
+      );
+
+      for (final (field, text) in [
+        (TimesheetHeaderField.title, 'Project'),
+        (TimesheetHeaderField.name, 'MYOUN'),
+      ]) {
+        expect(printed.headerValueFor(field, 0), text);
+        final box = 'timesheet-header-edit-${field.name}-p0';
+        await tester.tap(find.byKey(ValueKey<String>(box)));
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextField>(find.byKey(_editorKey)).controller!.text,
+          text,
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
       }
     });
   });

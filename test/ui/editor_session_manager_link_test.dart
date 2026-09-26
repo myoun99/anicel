@@ -52,6 +52,21 @@ void main() {
     expect(layerVerbs.canUnlinkActiveLayer, isFalse);
   });
 
+  test('🗣️the badge NAMES the partner — its cut and its name — and a '
+      'row that is not linked names none', () {
+    // 유저 2026-09-25: 「링크버튼통해서 어디랑 링크되고있는지만 제대로
+    // 표시하게」.
+    final activeLayer = session.activeLayer!;
+    expect(layerVerbs.linkPartnersOf(activeLayer.id), isEmpty);
+
+    layerVerbs.linkDuplicateActiveLayer();
+
+    final cut = session.requireActiveCut;
+    expect(layerVerbs.linkPartnersOf(activeLayer.id), [
+      '${cut.name} · ${activeLayer.name}',
+    ], reason: 'the copy, in this cut, wearing the same name');
+  });
+
   test('createLinkedCutFromActiveCut adds a cut whose drawing layers are '
       'linked to the source (same names, shared pictures)', () {
     final sourceCutId = session.requireActiveCut.id;

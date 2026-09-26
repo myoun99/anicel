@@ -17,7 +17,7 @@ void main() {
   setUp(() => root = Directory.systemTemp.createTempSync('anicel_same_file'));
 
   tearDown(() {
-    OpenProjectFile.instance.release();
+    OpenProjectFile.instance.releaseAll();
     deleteTempQuietly(root);
   });
 
@@ -91,12 +91,12 @@ void main() {
     final file = inRoot('held.anicel');
     File(file).writeAsBytesSync([1, 2, 3]);
     final held = OpenProjectFile.instance..hold(file);
-    expect(held.isHolding, isTrue, reason: 'the premise');
+    expect(held.isHolding(file), isTrue, reason: 'the premise');
 
     held.releaseFor(file.replaceAll('/', r'\'));
 
     expect(
-      held.isHolding,
+      held.isHolding(file),
       isFalse,
       reason: '🪦it compared the strings whole, and kept the file open',
     );

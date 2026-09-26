@@ -2,11 +2,14 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart' show TextStyle;
 
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
+import '../../models/sheet_marks.dart';
+import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
+import '../../models/timesheet_words.dart';
 import '../timesheet/timesheet_document_painter.dart';
-import '../timesheet/timesheet_notation.dart';
 import 'offscreen_raster.dart';
 
 /// One sheet PAGE exporting as an image (EX6): the same B4 paper the
@@ -38,17 +41,20 @@ class ExportTimesheetPageTask {
 }
 
 /// Renders one page of [document] at [scale]× the panel's logical paper
-/// size. The painter pair (form + content) is exactly what the panel
-/// shows — the export IS the panel's picture, no second sheet layout to
-/// disagree with it.
+/// size. The painter's strata are exactly what the panel shows — the
+/// export IS the panel's picture, no second sheet layout to disagree with
+/// it — the saved [ink] included: the windows it shows through (the
+/// panel's own walk) and each window's baked raster.
 Future<ui.Image> renderTimesheetPageImage({
   required TimesheetDocument document,
   required TimesheetDocumentLayout layout,
   required int pageIndex,
-  required TimesheetNotation notation,
+  required TimesheetWords words,
   required TextStyle face,
   double scale = 2,
   CanvasSize? outputSize,
+  ({List<SheetInk> windows, ui.Image? Function(BrushFrameKey key) imageFor})?
+  ink,
 }) {
   final page = layout.pageRect(pageIndex);
   final (:width, :height) = offscreenRasterSize(
@@ -57,14 +63,17 @@ Future<ui.Image> renderTimesheetPageImage({
     scale: scale,
     outputSize: outputSize,
   );
-  // The panel's two strata, which differ in nothing but the strata.
-  TimesheetDocumentPainter strata(Set<SheetPaintLayer> layers) =>
+  // The panel's strata, in the panel's order ([SheetStratum]), which
+  // differ in nothing but the strata.
+  TimesheetDocumentPainter painterOf(SheetStratum stratum) =>
       TimesheetDocumentPainter(
         document: document,
         layout: layout,
         face: face,
-        layers: layers,
-        notation: notation,
+        layers: stratum.layers,
+        words: words,
+        ink: ink?.windows ?? const [],
+        inkImageFor: ink?.imageFor,
       );
   return rasterizeOffscreen(
     width: width,
@@ -73,14 +82,9 @@ Future<ui.Image> renderTimesheetPageImage({
       canvas.scale(width / page.width, height / page.height);
       canvas.translate(-page.left, -page.top);
       canvas.clipRect(page);
-      strata(const {
-        SheetPaintLayer.paper,
-        SheetPaintLayer.form,
-      }).paint(canvas, layout.documentSize);
-      strata(const {SheetPaintLayer.content}).paint(
-        canvas,
-        layout.documentSize,
-      );
+      for (final stratum in SheetStratum.values) {
+        painterOf(stratum).paint(canvas, layout.documentSize);
+      }
     },
   );
 }

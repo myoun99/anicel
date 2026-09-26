@@ -4,6 +4,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart' show firstUnusedLayerName;
 import '../../models/timeline_exposure.dart';
 
@@ -45,6 +46,17 @@ String nextCelLayerNameForCut(Cut cut) => firstUnusedLayerName(
   firstIndex: 0,
 );
 
+/// The name a new IMAGE row takes in [cut]: BG while the cut has none, then
+/// BOOK — and BOOK again for every one after, the SAME name stacked.
+///
+/// 🗣️유저 2026-09-25: 「같은이름쌓기로 가자. 지금처럼 중복허용으로. BG가없으면
+/// BG만들고, BG있으면 BOOK으로 쌓도록 … 앞으로 레이어이름BOOK고정에
+/// 프레임이름으로 북 구분하게 할거야」. ⛔So no number and no skipping: the
+/// books tell themselves apart by their FRAME names (BOOK1, BOOK2), and a
+/// cel's A/B/C ([nextCelLayerNameForCut]) is not a picture's name.
+String nextImageLayerNameForCut(Cut cut) =>
+    cut.layers.any((layer) => layer.name == 'BG') ? 'BOOK' : 'BG';
+
 Layer createDefaultAnimationLayer({
   required LayerId layerId,
   required Cut cut,
@@ -78,7 +90,12 @@ Layer createCoveringLayer({
   final cel = coveringCelFor(frameId: frameId, cutDuration: cut.duration);
   return Layer(
     id: layerId,
-    name: nextCelLayerNameForCut(cut),
+    // A picture row takes a picture's name, a conte row a cel's. ⛔Not
+    // [LayerKind.unnamedCelIsTheLayer]: what a row is CALLED and what its
+    // unnamed cel IS are two questions, whatever answers them alike today.
+    name: kind == LayerKind.image
+        ? nextImageLayerNameForCut(cut)
+        : nextCelLayerNameForCut(cut),
     kind: kind,
     frames: [cel.frame],
     timeline: cel.timeline,
@@ -98,6 +115,29 @@ Layer createCoveringLayer({
     timeline: {0: TimelineExposure.drawing(frameId, length: duration)},
   );
 }
+
+/// A row of a drawing [kind] made from nothing: a covering kind born over
+/// its cut in the one cel [coveringFrameId] names, an animation row with its
+/// default cels — and either wearing its kind's label (F-76,
+/// [LayerMark.bornOfKind]).
+///
+/// ONE birth for the layer panel's Add Layer and for the conte row a
+/// picture's first stroke makes on a cut that has none.
+Layer bornRowOfKind(
+  LayerKind kind, {
+  required LayerId layerId,
+  required FrameId Function() coveringFrameId,
+  required Cut cut,
+}) =>
+    (kind.coversWithoutGaps
+            ? createCoveringLayer(
+                layerId: layerId,
+                frameId: coveringFrameId(),
+                cut: cut,
+                kind: kind,
+              )
+            : createDefaultAnimationLayer(layerId: layerId, cut: cut))
+        .copyWith(mark: LayerMark.bornOfKind(kind));
 
 /// The storyboard-kind shorthand for [createCoveringLayer] (its original
 /// name — the storyboard row was the first covering kind).

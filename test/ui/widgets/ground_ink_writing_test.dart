@@ -115,4 +115,210 @@ void main() {
       reason: 'one Text for one string — never the writing laid twice',
     );
   });
+
+  group('a change of shape stays inside the writing (2026-09-26)', () {
+    // A bar whose fill crossed into or out of its words throws its writing
+    // away and builds the other shape — a replaced child, which used to be
+    // laid out again all the way up to the row's first relayout boundary (on
+    // a brush pick: the whole tool settings column, and its semantics).
+    Widget writing(List<GroundInkRun> runs, {ValueChanged<Offset>? painted}) =>
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 50),
+              child: SizedBox(
+                width: 200,
+                height: 20,
+                child: GroundInkWriting(
+                  runs: runs,
+                  builder: (context, ink) => _OffsetProbe(
+                    painted: painted ?? (_) {},
+                    child: Text('word', style: ink),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    testWidgets('a ground that starts or stops changing lays out nothing '
+        'above the writing', (tester) async {
+      var layouts = 0;
+      // The bar's shape: a fixed-height box under a row whose height is not
+      // fixed — so nothing between the counter and the writing is a
+      // relayout boundary but the writing's own box.
+      Widget bar(List<GroundInkRun> runs) => Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 200,
+            child: _LayoutCounter(
+              onLayout: () => layouts += 1,
+              child: SizedBox(
+                height: 20,
+                child: GroundInkWriting(
+                  runs: runs,
+                  builder: (context, ink) => Text('word', style: ink),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(bar(const [(end: 1.0, ink: white)]));
+      final before = layouts;
+
+      await tester.pumpWidget(
+        bar(const [(end: 0.5, ink: white), (end: 1.0, ink: black)]),
+      );
+      expect(
+        tester.widget<Text>(find.text('word')).style?.foreground?.shader,
+        isNotNull,
+        reason: 'fixture: the ground now changes under the writing',
+      );
+      await tester.pumpWidget(bar(const [(end: 1.0, ink: black)]));
+      expect(tester.widget<Text>(find.text('word')).style?.color, black);
+
+      expect(layouts, before);
+    });
+
+    testWidgets('a rebuild that changes nothing repaints nothing — a dock '
+        'keeps its still image', (tester) async {
+      var paints = 0;
+      Widget bar() => Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            child: _PaintCounter(
+              onPaint: () => paints += 1,
+              child: SizedBox(
+                width: 200,
+                height: 20,
+                child: GroundInkWriting(
+                  runs: const [(end: 1.0, ink: white)],
+                  builder: (context, ink) => Text('word', style: ink),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(bar());
+      final before = paints;
+
+      await tester.pumpWidget(bar());
+
+      expect(
+        paints,
+        before,
+        reason: 'the same ink over the same words is the same picture',
+      );
+    });
+
+    testWidgets('one ink paints the ordinary way — the canvas is moved only '
+        'for a shader', (tester) async {
+      final offsets = <Offset>[];
+      await tester.pumpWidget(
+        writing(const [(end: 1.0, ink: white)], painted: offsets.add),
+      );
+      expect(
+        offsets.last.dx,
+        50,
+        reason: 'one ink: painted at its offset, as it always was',
+      );
+
+      await tester.pumpWidget(
+        writing(
+          const [(end: 0.5, ink: white), (end: 1.0, ink: black)],
+          painted: offsets.add,
+        ),
+      );
+      expect(
+        offsets.last,
+        Offset.zero,
+        reason: 'a shader: the canvas moved to the writing\'s own origin',
+      );
+    });
+  });
+}
+
+/// Counts the layouts of what sits between its parent and the writing.
+class _LayoutCounter extends SingleChildRenderObjectWidget {
+  const _LayoutCounter({required this.onLayout, required super.child});
+
+  final VoidCallback onLayout;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderLayoutCounter(onLayout);
+}
+
+class _RenderLayoutCounter extends RenderProxyBox {
+  _RenderLayoutCounter(this.onLayout);
+
+  final VoidCallback onLayout;
+
+  @override
+  void performLayout() {
+    onLayout();
+    super.performLayout();
+  }
+}
+
+/// Counts the paints of what sits between the boundary and the writing.
+class _PaintCounter extends SingleChildRenderObjectWidget {
+  const _PaintCounter({required this.onPaint, required super.child});
+
+  final VoidCallback onPaint;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderPaintCounter(onPaint);
+}
+
+class _RenderPaintCounter extends RenderProxyBox {
+  _RenderPaintCounter(this.onPaint);
+
+  final VoidCallback onPaint;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    onPaint();
+    super.paint(context, offset);
+  }
+}
+
+/// Records the offset its paint is handed, then paints its child there.
+class _OffsetProbe extends SingleChildRenderObjectWidget {
+  const _OffsetProbe({required this.painted, required super.child});
+
+  final ValueChanged<Offset> painted;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderOffsetProbe(painted);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderOffsetProbe renderObject,
+  ) {
+    renderObject.painted = painted;
+  }
+}
+
+class _RenderOffsetProbe extends RenderProxyBox {
+  _RenderOffsetProbe(this.painted);
+
+  ValueChanged<Offset> painted;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    painted(offset);
+    super.paint(context, offset);
+  }
 }

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -30,7 +31,7 @@ void main() {
         .map((panel) => panel.cutPieceSlot)
         .firstWhere((held) => held != null)!;
     int brushTipsRow() => collectMemoryCensus(
-      session,
+      [session],
     ).items.firstWhere((item) => item.id == 'brushTips').bytes;
     final before = brushTipsRow();
 
@@ -47,12 +48,12 @@ void main() {
       ),
     );
 
-    expect(session.renderCaches.cutPieceBytes, 30 * 20 * 4);
+    expect(CutPieceSlot.allPieceBytes, 30 * 20 * 4);
     expect(brushTipsRow() - before, 30 * 20 * 4);
 
     // The workspace goes, and with it the piece it held.
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
-    expect(session.renderCaches.cutPieceBytes, 0);
+    expect(CutPieceSlot.allPieceBytes, 0);
   });
 }

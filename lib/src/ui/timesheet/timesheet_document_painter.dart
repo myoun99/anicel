@@ -1,15 +1,19 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart' show InbetweenMark;
+import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
+import '../../models/timesheet_words.dart';
 import '../text/dialogue_fit_layout.dart' show dialogueGlyphCenters;
 import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
@@ -23,8 +27,8 @@ import '../timeline/timeline_instruction_row_visual.dart'
 import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount, timelineDrawnEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
-import 'timesheet_notation.dart';
 import '../repaint_props.dart';
+import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
 import '../timeline/memo_token.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
@@ -429,13 +433,28 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     required this.layout,
     required this.face,
     this.viewport,
-    this.notation = TimesheetNotation.english,
+    required this.words,
     this.layers,
     this.dragPreview,
     this.cutId,
     this.effectiveRatio = 1.0,
+    this.ink = const [],
+    this.inkImageFor,
+    this.liveInkKeys = const {},
+    Listenable? inkRepaint,
   }) : accent = AppColors.accent,
-       super(repaint: dragPreview);
+       super(repaint: Listenable.merge([dragPreview, inkRepaint]));
+
+  /// The windows the sheet's ink shows through — the walk the brush writes
+  /// through too (`timesheetInkWindows`), handed in by whoever built it.
+  final List<SheetInk> ink;
+
+  /// A window's baked ink raster, or null to print none there.
+  final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// Keys a LIVE brush window is already showing: skipped here, so
+  /// translucent ink never composites twice.
+  final Set<BrushFrameKey> liveInkKeys;
 
   /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
   /// viewport transform lands the paper on the device grid with it.
@@ -461,9 +480,10 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   final TimesheetDocumentLayout layout;
   final CanvasViewport? viewport;
 
-  /// The NOTATION-language vocabulary the sheet prints in (UI-R10 #7);
-  /// focused tests keep the pre-R10 English default.
-  final TimesheetNotation notation;
+  /// The words the sheet prints, in the NOTATION language (UI-R10 #7) —
+  /// the caller's table (`timesheetWordsIn`). ⛔No default: an English one
+  /// stood here for focused tests, the painter's own copy of a table.
+  final TimesheetWords words;
 
   /// The app's face (`appFaceOf`) every word on the sheet is set in — the
   /// panel's and the export window's ambient style. 🗣️유저 2026-09-24
@@ -659,8 +679,35 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
       _bands.paintCutEndLine(canvas);
       _se.paintSeCrossingMarks(canvas);
     }
+    if (_draws(SheetPaintLayer.ink)) {
+      _paintInk(canvas);
+    }
 
     canvas.restore();
+  }
+
+  /// The handwriting, pen over paper: each window's surface where its
+  /// placement lays it, but for the windows a live brush view is showing.
+  ///
+  /// ⛔The sheet printed no ink of its own: the writing showed only through
+  /// the brush's windows, which mount with the brush switch on — so with
+  /// the switch off (every sheet's default since 09-25) the timesheet's
+  /// writing vanished while the conte's and the envelope's stayed (유저
+  /// 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」).
+  void _paintInk(Canvas canvas) {
+    final imageFor = inkImageFor;
+    if (imageFor == null) {
+      return;
+    }
+    for (final window in ink) {
+      if (liveInkKeys.contains(window.key)) {
+        continue;
+      }
+      final image = imageFor(window.key);
+      if (image != null) {
+        paintSheetInkWindow(canvas, image, window.placement);
+      }
+    }
   }
 
   // ── the bands: their own object, in their own file ──────────────────
@@ -670,9 +717,9 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   late final _TimesheetBandsPass _bands = _TimesheetBandsPass(this);
 
   static String headerFieldLabel(
-    TimesheetHeaderField field, [
-    TimesheetNotation notation = TimesheetNotation.english,
-  ]) => _TimesheetBandsPass.headerFieldLabel(field, notation);
+    TimesheetHeaderField field,
+    TimesheetWords words,
+  ) => _TimesheetBandsPass.headerFieldLabel(field, words);
 
   // ── the SE pass: its own object, in its own file ────────────────────
   //
@@ -719,6 +766,49 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     );
   }
 
+  /// The style the sheet sets its words in: [face] at [fontSize], in
+  /// [color], bold or not.
+  ///
+  /// ONE spelling for the printer and the header's editor (F-188, 유저
+  /// 2026-09-26: 「최대한 안움직이게」): the editor types a box's words in
+  /// the style they were printed in, so opening it moves no glyph. ↩️The
+  /// editor had its own copy, and named no face — it typed in another font.
+  static TextStyle wordsStyle(
+    TextStyle face, {
+    required double fontSize,
+    Color color = _ink,
+    bool bold = false,
+  }) => face.copyWith(
+    color: color,
+    fontSize: fontSize,
+    fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+  );
+
+  /// A header box's value: set this size, bold, centred on the box, in
+  /// [headerValueRect] (R7-⑥ reference layout).
+  static const double headerValueSize = 14;
+
+  /// Where a header box's value is set: its top this far down the box, no
+  /// wider than the box less its margins.
+  static Rect headerValueRect(Rect box) => Rect.fromLTRB(
+    box.left + 6,
+    box.top + 26,
+    box.right - 6,
+    box.bottom - 4,
+  );
+
+  /// The Direction memo: set this size, from the top left of
+  /// [memoTextRect], wrapped at its width.
+  static const double memoSize = 11;
+
+  /// Where the memo is set in its band.
+  static Rect memoTextRect(Rect band) => Rect.fromLTRB(
+    band.left + 8,
+    band.top + 6,
+    band.right - 8,
+    band.bottom - 6,
+  );
+
   void _text(
     Canvas canvas,
     String text,
@@ -733,11 +823,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: face.copyWith(
-          color: color,
-          fontSize: fontSize,
-          fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
-        ),
+        style: wordsStyle(face, fontSize: fontSize, color: color, bold: bold),
       ),
       textDirection: TextDirection.ltr,
       maxLines: 1,
@@ -753,29 +839,67 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
 
   @override
   Object get props => (
-    ByIdentity(document),
     layout.continuous,
     layout.resolvedSinglePage,
     viewport,
-    ByIdentity(notation),
     face,
     // Null means ALL strata, which is a different input from an empty set,
     // so the null is carried instead of folded into one.
     layers == null ? null : BySet(layers!),
-    // Everything `paint` reads has to be compared here or the sheet
-    // keeps printing the old value. `accent` tints the SE name boxes
-    // and `cutId` decides which cut's end line is data — the latter
-    // was masked only because `document` identity happens to change
-    // with the active cut, which is a coincidence and not a contract.
-    accent,
-    cutId,
     // 🐛SAME LAW, AND IT WAS ALREADY BROKEN before this line existed:
     // `paint` reads this for the text-zoom threshold (and now for the
     // transform), so a monitor or UI-scale change has to reach the
     // sheet. It did not — the threshold kept the old value until
     // something else happened to repaint.
     effectiveRatio,
+    // Each stratum compares what IT reads, and nothing another stratum
+    // reads (유저 2026-09-25: 「그림 수정하거나 텍스트 바뀌거나 하는데
+    // 용지 리빌드하면 너무 비효율적이잖아」): the paper and the form the
+    // sheet's shape, the values the document, the ink its windows — so a
+    // typed value re-records the values alone.
+    _drawPaper || _drawForm ? _formShape : null,
+    _drawContent ? _contentInputs : null,
+    _draws(SheetPaintLayer.ink) ? _inkInputs : null,
+  );
+
+  /// What the paper and the form print from — the sheet's SHAPE: the
+  /// columns and the letter over each, the pages, the header boxes, the
+  /// frame rate and the notation. A value typed on the sheet is not in it.
+  Object get _formShape => (
+    ByList([
+      for (final column in document.columns) (column.kind, column.label),
+    ]),
+    ByList([
+      for (final page in document.pages)
+        (page.index, page.startFrame, page.frameCount),
+    ]),
+    document.pageFrameCount,
+    document.fps,
+    ByList(document.visibleHeaderFields),
+    words,
+  );
+
+  /// What the values print from.
+  ///
+  /// Everything `paint` reads has to be compared here or the sheet keeps
+  /// printing the old value. `accent` tints the SE name boxes and `cutId`
+  /// decides which cut's end line is data — the latter was masked only
+  /// because `document` identity happens to change with the active cut,
+  /// which is a coincidence and not a contract.
+  Object get _contentInputs => (
+    ByIdentity(document),
+    words,
+    accent,
+    cutId,
     ByIdentity(dragPreview),
+  );
+
+  /// The ink's windows by value — the walk is rebuilt every build — and
+  /// which of them a live brush view shows: mounting a window HIDES that
+  /// key's baked ink here, unmounting shows it again.
+  Object get _inkInputs => (
+    ByList([for (final window in ink) (window.key, window.placement)]),
+    BySet(liveInkKeys),
   );
 }
 

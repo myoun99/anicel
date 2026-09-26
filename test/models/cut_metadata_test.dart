@@ -3,6 +3,8 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 
 void main() {
@@ -11,6 +13,16 @@ void main() {
       const metadata = CutMetadata.empty();
 
       expect(metadata.note, '');
+    });
+
+    test('🗣️the colour label is part of the value — metadata differing only '
+        'in its label is different metadata (유저 2026-09-26: 컷별 색라벨)', () {
+      const art = LayerMark(process: LayerProcess.art);
+      const labelled = CutMetadata(mark: art);
+
+      expect(labelled, isNot(const CutMetadata()));
+      expect(labelled, const CutMetadata(mark: art));
+      expect(labelled.hashCode, const CutMetadata(mark: art).hashCode);
     });
 
     test('value equality uses note', () {

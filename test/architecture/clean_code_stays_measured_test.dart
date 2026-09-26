@@ -122,7 +122,21 @@ void main() {
   /// (The 390 was the block frame lines round's: it retired the unused
   /// `rrectStroke` op, whose writer took eight, and left the ceiling where
   /// it was — the in-between mark round noticed it too, and adds none.)
-  const wideSignatures = 389;
+  ///
+  /// ⚠️389 → 387 on 2026-09-25, following two down: the panel writing moved
+  /// into the cut block's bands and the bands stopped folding, so the
+  /// folded block's `_paintAnchoredLabel` and the plates' `_paintPlatedGlyph`
+  /// went with what used them. 🔬`clean_code_diff` named those two, nothing
+  /// added.
+  ///
+  /// ⚠️387 → 385 on 2026-09-26, lowered as the rule asks: the conte sheet
+  /// engine round made the page ONE list of marks that every printer
+  /// replays, and the text helper each printer kept for itself went —
+  /// `ContePagePainter.text` and `_ContePdfPageWriter._text`. The Canvas
+  /// printer it added takes its face, strata and images once
+  /// (`SheetCanvasPrinter`) rather than on every call. 🔬`clean_code_diff`
+  /// between master and the lane names those two and nothing added.
+  const wideSignatures = 385;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -143,7 +157,26 @@ void main() {
   /// own layer classes. 🔬`clean_code_diff` between master and the lane
   /// named it and `_capture`, which had three jobs (take the image, build
   /// the picture that shows it, report a refusal) and was given one each.
-  const longBodies = 434;
+  ///
+  /// ⚠️434 → 433 on 2026-09-25, following one down: the storyboard's
+  /// `_paintPanelPictures` fell under the line when the panel writing left
+  /// it for the bands (and the fold gates with it).
+  ///
+  /// ⚠️433 → 432 on 2026-09-26, following one down: the ruler's
+  /// `TimelineFrameRulerPainter.paint` fell under the line when both
+  /// strips' window pass became one call (`TimelineRulerScale.paintWindow`,
+  /// I-22). 🔬`clean_code_diff` between master (`0e6fd93f2`, at 433) and
+  /// the lane named that one and nothing added.
+  ///
+  /// ⚠️432 → 430 on 2026-09-26 (I-7 ③, a file opens as a session of its
+  /// own): `ProjectFileDoor.openProjectFromFile` and
+  /// `TvppImportDoor.openAsProject` went — each replaced a live project and
+  /// carried the reset that went with it — and what took their place is
+  /// read, settle and bake, each in named steps (`_landCels`,
+  /// `_standWhereItWasSaved`, `_bakeEveryCel`, `_registerSounds`,
+  /// `_projectOf`). 🔬`clean_code_diff` between master (`2907ac360`, at 432)
+  /// and the lane: those two gone, nothing added.
+  const longBodies = 430;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

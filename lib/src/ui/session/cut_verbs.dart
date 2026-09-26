@@ -1,18 +1,29 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../../models/conte/conte_ink_keys.dart'
+    show conteInkRowIdOf, conteInkRowKey;
 import '../../models/cut.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/cut_id.dart';
+import '../../models/envelope/cut_envelope_ink_keys.dart'
+    show envelopeInkKeyOfCut;
 import '../../models/layer_id.dart';
+import '../../models/layer_mark.dart';
+import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
+import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
+import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'cut_placement.dart';
+import 'independent_clip_mint.dart' show carryBakedPictures, carrySurfaces;
+import 'render_caches.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
@@ -36,6 +47,7 @@ class CutVerbs {
     required StoryboardRows storyboardRows,
     required ActiveCutEdits activeCut,
     required CutPlacement placement,
+    required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -44,7 +56,11 @@ class CutVerbs {
        _internals = internals,
        _storyboardRows = storyboardRows,
        _activeCut = activeCut,
-       _placement = placement;
+       _placement = placement,
+       _renderCaches = renderCaches;
+
+  /// Where a duplicated cut's pictures are, and go.
+  final RenderCaches _renderCaches;
 
   final ActiveCutEdits _activeCut;
 
@@ -92,12 +108,74 @@ class CutVerbs {
     ),
   );
 
-  void duplicateActiveCut() => _activeCut.onActiveCut(
-    (cutId) => _project.cutCommandCoordinator.duplicateCut(
+  /// Duplicates the active cut, pictures and all: the copy mints every row
+  /// and cel afresh, and a picture lives under its cel's key, so each one
+  /// follows its cel over (F-62's law at the cut's scale). ↩️Nothing did
+  /// until 2026-09-26 — a duplicated cut came out with every drawing blank
+  /// (measured; card `duplicates-lose-their-pictures`).
+  void duplicateActiveCut() => _activeCut.onActiveCut((cutId) {
+    final source = _project.requireActiveCut;
+    final copy = _project.cutCommandCoordinator.duplicateCut(
       sourceCutId: cutId,
       targetTrackId: _selection.selectedTrackId,
-    ),
-  );
+    );
+    final into = _project.cutById(copy.cutId)!;
+    final store = _renderCaches.brushFrameStore;
+    for (final row in source.layers) {
+      carryBakedPictures(
+        internals: _internals,
+        store: store,
+        cut: into,
+        to: copy.rows[row.id]!,
+        minted: {for (final cel in row.frames) cel.id: copy.minted[cel.id]!},
+        pictureOf: (cel) => store.bakedSurfaceOrNull(
+          _internals.brushFrameKeyForCut(source, row.id, cel),
+        ),
+      );
+    }
+    _carrySheetInk(from: cutId, to: copy.cutId);
+  });
+
+  /// The sheets' handwriting of a duplicated cut, onto its copy: the conte
+  /// cells' block by block — each copied block keeps its handwriting id, on
+  /// the copy's cut — the envelope's and the timesheet's box by box and band
+  /// by band. From there the copy's is its own.
+  ///
+  /// 🗣️유저 2026-09-26 (cut-duplicate-sheet-ink-Q1): 「따라간다 — 복제는
+  /// 전부 복사」. Each sheet's ink is owned the way the load prunes it
+  /// (`_InkOwners`): a conte cell by its block, the others by their cut —
+  /// the envelope's by the cut that OWNS the envelope, the representative
+  /// when [from] shares one ([cutEnvelopeInkOwner]); the copy is no
+  /// sibling, so it owns its own. The conte's paper plane belongs to no cut
+  /// and stays where it is.
+  void _carrySheetInk({required CutId from, required CutId to}) {
+    void carry(
+      BrushFrameStore store,
+      CutId owner,
+      BrushFrameKey? Function(BrushFrameKey key) inCopy,
+    ) => carrySurfaces(
+      store: store,
+      sources: store.bakedSurfacesForCut(owner).entries,
+      surfaceOf: (written) => written.value,
+      keyOfCopy: (written) => inCopy(written.key),
+    );
+
+    carry(_renderCaches.conteInkRowStore, from, (key) {
+      final block = conteInkRowIdOf(key);
+      return block == null ? null : conteInkRowKey(to, block);
+    });
+    carry(
+      _renderCaches.envelopeInkStore,
+      cutEnvelopeInkOwner(_project.repository.requireProject(), from),
+      (key) => envelopeInkKeyOfCut(key, to),
+    );
+    for (final store in [
+      _renderCaches.timesheetInkStripStore,
+      _renderCaches.timesheetInkPageStore,
+    ]) {
+      carry(store, from, (key) => timesheetInkKeyOfCut(key, to));
+    }
+  }
 
   void deleteActiveCut() {
     // With a cut RANGE selection live, the delete command acts on the
@@ -169,6 +247,39 @@ class CutVerbs {
     (cutId) =>
         _project.cutCommandCoordinator.updateCutNote(cutId: cutId, note: note),
   );
+
+  /// The cuts a pick in the cut button is about: the ones the storyboard's
+  /// range covers, or — with no range up — the active cut. ONE list either
+  /// way, so the pick runs the same code with or without a selection (유저
+  /// 2026-09-26: 「선택범위 한상태로 조작가능한거 물론이고」).
+  List<CutId> get addressedCutIds {
+    final selected = _storyboardRows.storyboardSelectedCutIds;
+    if (selected.isNotEmpty) {
+      return selected;
+    }
+    final active = _timeline.editingSession.activeCutId;
+    return active == null ? const [] : [active];
+  }
+
+  /// The 색 라벨 the cut button shows: the first addressed cut's.
+  LayerMark get addressedCutMark {
+    final cutIds = addressedCutIds;
+    return cutIds.isEmpty
+        ? LayerMark.none
+        : _project.cutById(cutIds.first)?.metadata.mark ?? LayerMark.none;
+  }
+
+  /// Sets the 색 라벨 of every addressed cut — and of each one's 겸용
+  /// siblings — as ONE undo step. A label changes no cut's shape, so the
+  /// repaint is the whole of the reaction.
+  void setAddressedCutMark(LayerMark mark) {
+    final cutIds = addressedCutIds;
+    if (cutIds.isEmpty) {
+      return;
+    }
+    _project.cutCommandCoordinator.setCutMark(cutIds: cutIds, mark: mark);
+    _changes.notifyChanged();
+  }
 
   /// Whether the active cut's storyboard thumbnail is pinned to the
   /// playhead frame (drives the toolbar toggle's state).

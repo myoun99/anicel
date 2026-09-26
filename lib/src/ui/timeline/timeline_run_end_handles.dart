@@ -6,9 +6,12 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_repeat.dart';
+import 'axis_turn.dart' show extentAlong;
 import 'timeline_cell_style.dart'
     show timelineDrawingHeldColor, timelineTextOnColor;
 import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_geometry.dart';
+import 'timeline_frame_span_layout.dart';
 import 'timeline_glyph_cache.dart';
 
 /// Session-level hooks for the run-edge affordances (UI-R9 #10, TVP
@@ -73,8 +76,8 @@ double timelineRunClusterGlyphSize(double frameCellExtent) =>
 ///
 /// Identity vs display (UI-R11 #1/#2): [blockStartIndex] and [runKey]
 /// come from the COMMITTED run (stable across drags — R12-③), while
-/// [edgeOffset] follows the DISPLAY run, so the cluster rides block moves
-/// and live [+] adds.
+/// [run] is the DISPLAY run, so the cluster rides block moves and live [+]
+/// adds.
 class TimelineRunEdgeCluster {
   const TimelineRunEdgeCluster({
     required this.side,
@@ -82,7 +85,7 @@ class TimelineRunEdgeCluster {
     required this.runKey,
     required this.mode,
     required this.hasPattern,
-    required this.edgeOffset,
+    required this.run,
   });
 
   final TimelineRunEdgeSide side;
@@ -103,8 +106,9 @@ class TimelineRunEdgeCluster {
   /// the flyout's "Repeat selection" entry reads checked from it.
   final bool hasPattern;
 
-  /// Main-axis offset of the DISPLAY run edge.
-  final double edgeOffset;
+  /// The DISPLAY run, in frames: the edge the cluster stands beside, and
+  /// the room its size is measured against ([timelineRunClusterRect]).
+  final ({int startIndex, int endIndexExclusive}) run;
 
   /// The letter the property tag prints.
   String get modeLetter => switch (mode) {
@@ -121,11 +125,11 @@ class TimelineRunEdgeCluster {
       other.runKey == runKey &&
       other.mode == mode &&
       other.hasPattern == hasPattern &&
-      other.edgeOffset == edgeOffset;
+      other.run == run;
 
   @override
   int get hashCode =>
-      Object.hash(side, blockStartIndex, runKey, mode, hasPattern, edgeOffset);
+      Object.hash(side, blockStartIndex, runKey, mode, hasPattern, run);
 }
 
 /// A selection-scoped repeat pattern's span (UI-R10 #5 / UI-R19 #2).
@@ -275,6 +279,10 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
     }
 
     // END cluster on the display run edge.
+    final displayRun = (
+      startIndex: run.startIndex,
+      endIndexExclusive: run.endIndexExclusive,
+    );
     clusters.add(
       TimelineRunEdgeCluster(
         side: TimelineRunEdgeSide.end,
@@ -282,7 +290,7 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
         runKey: runKey,
         mode: endBehavior?.mode,
         hasPattern: endBehavior?.patternBlockStart != null,
-        edgeOffset: edgeX(run.endIndexExclusive),
+        run: displayRun,
       ),
     );
 
@@ -295,7 +303,7 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
           runKey: runKey,
           mode: startBehavior?.mode,
           hasPattern: startBehavior?.patternBlockStart != null,
-          edgeOffset: edgeX(run.startIndex),
+          run: displayRun,
         ),
       );
     }
@@ -317,21 +325,47 @@ Map<FrameId, List<int>> _startsByFrameId(Layer layer) {
   return starts;
 }
 
-/// The cluster's box in row-local coordinates, given its display edge.
+/// The cluster's box in row-local coordinates: its extent
+/// ([timelineRunClusterMainExtent]) beside the run's edge — after its end,
+/// before its start — and ONE CELL where the run is shorter than that.
+///
+/// 🗣️유저 2026-09-26 (zoom-floor-fixed-marks-Q3, 「삼각형과 같은 법」): at
+/// I-22's ten-minute floor the 7px cluster covered 56 frames, and a row of
+/// short runs laid its buttons over one another and over the cells a press
+/// was meant for. It keeps its size while its run holds it and takes one
+/// cell where it does not — the block edge's law
+/// (`timelineBlockEdgeGripPlacement`), asked through the same resolution.
 Rect timelineRunClusterRect({
   required TimelineRunEdgeCluster cluster,
-  required double frameCellExtent,
+  required TimelineFrameGeometry geometry,
   required double crossAxisExtent,
   required Axis axis,
 }) {
-  final mainExtent = timelineRunClusterMainExtent(frameCellExtent);
-  final mainStart = cluster.side == TimelineRunEdgeSide.end
-      ? cluster.edgeOffset
-      : cluster.edgeOffset - mainExtent;
-  return axis == Axis.horizontal
-      ? Rect.fromLTWH(mainStart, 0, mainExtent, crossAxisExtent)
-      : Rect.fromLTWH(0, mainStart, crossAxisExtent, mainExtent);
+  final end = cluster.side == TimelineRunEdgeSide.end;
+  return timelineFrameSpanRect(
+    TimelineFrameSpanPlacement(
+      startIndex: end ? cluster.run.endIndexExclusive : cluster.run.startIndex,
+      mainExtent: timelineRunClusterMainExtent(geometry.frameCellExtent),
+      anchorAtTrailingEdge: !end,
+      fitsIn: cluster.run,
+    ),
+    geometry,
+    crossAxisExtent: crossAxisExtent,
+    axis: axis,
+  );
 }
+
+/// How much of its size a cluster's glyph is drawn at in [slot]: all of it
+/// while the cluster keeps its extent, and the share its box kept where a
+/// short run gave it one cell — the triangle fills its box the same way.
+double timelineRunClusterGlyphFit(
+  Rect slot, {
+  required Axis axis,
+  required double frameCellExtent,
+}) => math.min(
+  1,
+  extentAlong(axis, slot.size) / timelineRunClusterMainExtent(frameCellExtent),
+);
 
 /// [+] takes the first half of the CROSS axis, the property letter the
 /// second, so the very next frame stays visible beside them (UI-R11 #13).

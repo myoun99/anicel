@@ -11,20 +11,13 @@ class _TimesheetBandsPass {
 
   final TimesheetDocumentPainter _painter;
 
-  /// The sheet of paper, and the printed edge around it — two strata that
-  /// used to be one call: the fill is PAPER, the border is FORM.
+  /// The sheet of paper — no printed edge around it ([paintSheetPaper]).
   void paintPaper(Canvas canvas, int pageIndex) {
-    final rect = _painter.layout.pageRect(pageIndex);
     if (_painter._drawPaper) {
-      canvas.drawRect(rect, Paint()..color = TimesheetDocumentPainter._paper);
-    }
-    if (_painter._drawForm) {
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4
-          ..color = TimesheetDocumentPainter._gridBold,
+      paintSheetPaper(
+        canvas,
+        _painter.layout.pageRect(pageIndex),
+        TimesheetDocumentPainter._paper,
       );
     }
   }
@@ -51,7 +44,7 @@ class _TimesheetBandsPass {
       if (_painter._drawForm) {
         _painter._text(
           canvas,
-          headerFieldLabel(box.field, _painter.notation),
+          headerFieldLabel(box.field, _painter.words),
           Offset(box.rect.center.dx, box.rect.top + 5),
           fontSize: 8,
           color: TimesheetDocumentPainter._gridMedium,
@@ -59,14 +52,15 @@ class _TimesheetBandsPass {
         );
       }
       if (_painter._drawContent) {
+        final value = TimesheetDocumentPainter.headerValueRect(box.rect);
         _painter._text(
           canvas,
           headerFieldValue(box.field, pageIndex),
-          Offset(box.rect.center.dx, box.rect.top + 26),
-          fontSize: 14,
+          Offset(value.center.dx, value.top),
+          fontSize: TimesheetDocumentPainter.headerValueSize,
           bold: true,
           centeredAtX: true,
-          maxWidth: box.rect.width - 12,
+          maxWidth: value.width,
         );
       }
     }
@@ -74,17 +68,17 @@ class _TimesheetBandsPass {
 
   /// The printed box label in the sheet's notation language (UI-R10 #7).
   static String headerFieldLabel(
-    TimesheetHeaderField field, [
-    TimesheetNotation notation = TimesheetNotation.english,
-  ]) {
+    TimesheetHeaderField field,
+    TimesheetWords words,
+  ) {
     return switch (field) {
-      TimesheetHeaderField.episode => notation.episode,
-      TimesheetHeaderField.title => notation.title,
-      TimesheetHeaderField.scene => notation.scene,
-      TimesheetHeaderField.cut => notation.cut,
-      TimesheetHeaderField.time => notation.duration,
-      TimesheetHeaderField.name => notation.name,
-      TimesheetHeaderField.sheet => notation.page,
+      TimesheetHeaderField.episode => words.episode,
+      TimesheetHeaderField.title => words.title,
+      TimesheetHeaderField.scene => words.scene,
+      TimesheetHeaderField.cut => words.cut,
+      TimesheetHeaderField.time => words.duration,
+      TimesheetHeaderField.name => words.name,
+      TimesheetHeaderField.sheet => words.page,
     };
   }
 
@@ -94,22 +88,25 @@ class _TimesheetBandsPass {
   /// cut-length drag instead of waiting for the release (F-88); the rest
   /// is the document's own.
   String headerFieldValue(TimesheetHeaderField field, int pageIndex) {
-    return switch (field) {
-      TimesheetHeaderField.episode => _painter.document.episode,
-      TimesheetHeaderField.title => _painter.document.title,
-      TimesheetHeaderField.scene => _painter.document.scene,
-      TimesheetHeaderField.cut => _painter.document.cutName,
-      // The sheet's 秒+コマ notation prints spaced ('2 + 6') like the
-      // reference forms; the model label stays compact for row labels.
-      TimesheetHeaderField.time => _painter.document
-          .frameLabel(_painter.livePlaybackFrameCount)
-          .replaceAll('+', ' + '),
-      TimesheetHeaderField.name => _painter.document.artist,
-      TimesheetHeaderField.sheet => _painter.layout.pageLabel(
-        pageIndex,
-        pageCount: _painter.livePageCount,
-      ),
-    };
+    final document = _painter.document;
+    return document.typedHeaderValue(field) ??
+        switch (field) {
+          TimesheetHeaderField.cut => document.cutName,
+          // The sheet's 秒+コマ notation prints spaced ('2 + 6') like the
+          // reference forms; the model label stays compact for row labels.
+          TimesheetHeaderField.time => document
+              .frameLabel(_painter.livePlaybackFrameCount)
+              .replaceAll('+', ' + '),
+          TimesheetHeaderField.sheet => _painter.layout.pageLabel(
+            pageIndex,
+            pageCount: _painter.livePageCount,
+          ),
+          // The typed boxes, answered above.
+          TimesheetHeaderField.episode ||
+          TimesheetHeaderField.title ||
+          TimesheetHeaderField.scene ||
+          TimesheetHeaderField.name => '',
+        };
   }
 
   /// The Direction memo band under the header: COMPLETELY open handwriting
@@ -117,21 +114,23 @@ class _TimesheetBandsPass {
   /// the top-right memo box frame are both retired). The cut's Direction
   /// memo (cut note) types into its top left, spanning the full width.
   void paintMemoBand(Canvas canvas, int pageIndex) {
-    final band = _painter.layout.memoBandRect(pageIndex);
+    final memo = TimesheetDocumentPainter.memoTextRect(
+      _painter.layout.memoBandRect(pageIndex),
+    );
     if (_painter.document.memoText.isNotEmpty) {
       final painter = TextPainter(
         text: TextSpan(
           text: _painter.document.memoText,
-          style: _painter.face.copyWith(
-            color: TimesheetDocumentPainter._ink,
-            fontSize: 11,
+          style: TimesheetDocumentPainter.wordsStyle(
+            _painter.face,
+            fontSize: TimesheetDocumentPainter.memoSize,
           ),
         ),
         textDirection: TextDirection.ltr,
         maxLines: 8,
         ellipsis: '…',
-      )..layout(maxWidth: band.width - 16);
-      painter.paint(canvas, Offset(band.left + 8, band.top + 6));
+      )..layout(maxWidth: memo.width);
+      painter.paint(canvas, memo.topLeft);
     }
     // NO derived instruction lines here anymore (R5-⑥): the shorthand
     // ('A→B PAN …') writes itself INTO the cut note once when the

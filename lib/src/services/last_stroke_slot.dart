@@ -18,6 +18,24 @@ import 'brush_stroke_commit_data.dart';
 /// projects, like [CutPieceSlot] and for the same reason: it holds dabs and
 /// pixels, nothing that belongs to the project it came from.
 class LastStrokeSlot extends ChangeNotifier {
+  LastStrokeSlot() {
+    census.add(this);
+  }
+
+  /// Every slot alive — one per app — for [allStrokeBytes].
+  static final Set<LastStrokeSlot> census = <LastStrokeSlot>{};
+
+  /// What every held stroke costs, read by the memory census directly —
+  /// counted once, like the cut piece and for its reason
+  /// ([CutPieceSlot.allPieceBytes]).
+  static int get allStrokeBytes {
+    var total = 0;
+    for (final slot in census) {
+      total += slot.strokeBytes;
+    }
+    return total;
+  }
+
   BrushStrokeCommitData? _stroke;
 
   BrushStrokeCommitData? get stroke => _stroke;
@@ -88,6 +106,7 @@ class LastStrokeSlot extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    census.remove(this);
     super.dispose();
   }
 }

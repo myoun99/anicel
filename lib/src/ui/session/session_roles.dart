@@ -116,7 +116,6 @@ abstract interface class ChangeSink {
 
 abstract interface class FrameIds {
   FrameId mintFrameId(LayerId layerId);
-  String nextFrameId(LayerId layerId);
 }
 
 abstract interface class TimelineAccess {
@@ -172,7 +171,6 @@ abstract interface class SessionInternals {
   bool Function()? get canvasHasSelection;
   void Function()? get clearCanvasSelection;
   TimelineRowAddress get currentRow;
-  ValueNotifier<TimelineRowAddress?> get currentRowListenable;
   PillSubject get deleteSubject;
   ValueNotifier<TimelineDragPreview?> get dragPreview;
   ValueNotifier<int> get editingFrameCursor;
@@ -184,7 +182,6 @@ abstract interface class SessionInternals {
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   PixelVerbSubject get pixelVerbSubject;
   bool resetLaneGroup(LayerId layerId, String headerLaneId);
-  ValueNotifier<int> get revealSelectionTick;
   bool rowIsSelected(TimelineRowAddress row);
   void selectLayer(LayerId layerId);
   void selectTrackCutAtPlayhead(TrackId trackId);
@@ -196,15 +193,9 @@ abstract interface class SessionInternals {
     int? globalFrameIndex,
   });
   TrackSeWindow get trackSeWindow;
-  ValueNotifier<Layer?> get transitionEdgeDragPreview;
   void updateActiveCutCameraTrack(
     TransformTrack track, {
     String description = 'Edit camera keyframes',
-  });
-  void updateLayerTransformEnabled(
-    LayerId layerId, {
-    required bool enabled,
-    String description = 'Toggle transform FX',
   });
   void updateLayerTransformTrack(
     LayerId layerId,

@@ -16,6 +16,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../models/audio_pcm_scale.dart';
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/wav16_header.dart';
@@ -217,7 +218,7 @@ class _ExportMixWriter {
         final outView = count == blockSamples
             ? out
             : Int16List.sublistView(out, 0, count * channels);
-        audioBusToInt16(busView, into: outView);
+        int16PcmOf(busView, into: outView);
         sink.writeFromSync(
           outView.buffer.asUint8List(
             outView.offsetInBytes,

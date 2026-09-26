@@ -47,6 +47,60 @@ void main() {
     expect(builds, 4);
   });
 
+  // 🚨A state change of the active key is news for ONE slot (2026-09-26):
+  // the IndexedStack's own visibility scaffolding round every key used to be
+  // rebuilt with it — forty wrappers a brush pick in each tool panel.
+  testWidgets('a state change rebuilds the active slot and none of the '
+      "stack's wrappers; a switch rebuilds them", (tester) async {
+    Future<void> pump({required String active, required int state}) {
+      return tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: KeyedKeepAliveStack<String, int>(
+            keys: _keys,
+            activeKey: active,
+            stateOf: () => state,
+            builder: (context) => Text('$active-$state'),
+          ),
+        ),
+      );
+    }
+
+    Future<int> wrappersRebuiltBy(Future<void> Function() act) async {
+      var wrappers = 0;
+      debugOnRebuildDirtyWidget = (element, _) {
+        if (element.widget is ExcludeFocus) wrappers += 1;
+      };
+      try {
+        await act();
+      } finally {
+        debugOnRebuildDirtyWidget = null;
+      }
+      return wrappers;
+    }
+
+    // Every key visited, so every key holds a slot and a wrapper.
+    for (final key in _keys) {
+      await pump(active: key, state: 1);
+    }
+    await pump(active: 'a', state: 1);
+
+    final onChange = await wrappersRebuiltBy(
+      () => pump(active: 'a', state: 2),
+    );
+    expect(find.text('a-2'), findsOneWidget, reason: 'the slot did rebuild');
+    expect(onChange, 0);
+
+    final onSwitch = await wrappersRebuiltBy(
+      () => pump(active: 'b', state: 2),
+    );
+    expect(
+      onSwitch,
+      _keys.length,
+      reason: 'premise: a switch rebuilds the stack, so the count can see it',
+    );
+  });
+
   testWidgets('hidden children keep their element state across switches', (
     tester,
   ) async {
@@ -98,3 +152,5 @@ class _CounterState extends State<_Counter> {
     );
   }
 }
+
+const _keys = ['a', 'b', 'c'];

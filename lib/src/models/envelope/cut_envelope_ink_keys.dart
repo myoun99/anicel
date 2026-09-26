@@ -32,8 +32,24 @@ BrushFrameKey envelopeInkBoxKey(CutId cutId, String boxId) {
     trackId: envelopeInkTrackId,
     cutId: cutId,
     layerId: envelopeInkLayerId,
-    frameId: FrameId('envelope-${cutId.value}-$boxId'),
+    frameId: FrameId('${_boxFramePrefix(cutId)}$boxId'),
   );
+}
+
+/// A box's frame id is this plus the box — minted by [envelopeInkBoxKey]
+/// and read back by [envelopeInkKeyOfCut], one spelling.
+String _boxFramePrefix(CutId cutId) => 'envelope-${cutId.value}-';
+
+/// The ink [key] is — the same box — on the envelope of the cut [cutId]
+/// instead (a duplicated cut's copy, cut-duplicate-sheet-ink); null for a
+/// key of no envelope.
+BrushFrameKey? envelopeInkKeyOfCut(BrushFrameKey key, CutId cutId) {
+  final prefix = _boxFramePrefix(key.cutId);
+  final frame = key.frameId.value;
+  if (!isEnvelopeInkKey(key) || !frame.startsWith(prefix)) {
+    return null;
+  }
+  return envelopeInkBoxKey(cutId, frame.substring(prefix.length));
 }
 
 /// Whether [key] belongs to the envelope ink namespace at all.

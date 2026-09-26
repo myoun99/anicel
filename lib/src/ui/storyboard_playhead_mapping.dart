@@ -4,6 +4,8 @@
 /// (playhead clamp on tab switch) share one implementation.
 library;
 
+import 'dart:math' as math;
+
 import '../models/track_frame_axis.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
@@ -106,10 +108,16 @@ int? storyboardPlayheadFrame(
   return null;
 }
 
-/// Whether the track-global [globalFrame] is READY to play — the
-/// storyboard ruler's green bar. [layout] takes a prebuilt layout: the
-/// ruler asks PER VISIBLE FRAME per repaint, and rebuilding the whole
-/// track layout for each column was a fixed per-tick tax (R12-⑥).
+/// The stretches of the track-global frames in `[start, end)` that are
+/// READY to play — the storyboard ruler's green bar. [layout] takes a
+/// prebuilt layout: the ruler asks on every repaint, and rebuilding the
+/// whole track layout each time was a fixed per-tick tax (R12-⑥).
+///
+/// Each cut answers for its own frames in spans of one picture
+/// ([PlaybackCacheBudget.playbackReadyRunsForCut]) — the bar used to ask
+/// per frame, which zoomed out to a ten-minute film was 89% of a playback
+/// tick (I-22). A frame belongs to the FIRST layout entry holding it, as
+/// it always has; the edges are the only places that can change.
 ///
 /// B1: a frame no cut owns is a GAP, and playback at a gap draws the
 /// background only — no picture, no fade ([CanvasPlaybackView]'s own
@@ -117,20 +125,79 @@ int? storyboardPlayheadFrame(
 /// DEFINITION, the same two-kind law the in-cut answer follows. (The
 /// multitrack gap-PARKED preview showing other tracks is the EDITING
 /// path, not playback — this bar answers for playback.)
-bool storyboardFrameReady(
+List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
   EditorSessionManager session,
-  int globalFrame, {
+  int start,
+  int end, {
   List<StoryboardTimelineLayoutEntry>? layout,
 }) {
-  for (final entry in layout ?? storyboardActiveTrackLayout(session)) {
-    if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
-      return session.playbackRig.playbackCache.isPlaybackFrameReadyForCut(
-        entry.cut,
-        globalFrame - entry.startFrame,
+  final entries = [
+    for (final entry in layout ?? storyboardActiveTrackLayout(session))
+      if (entry.startFrame < end && entry.endFrame > start) entry,
+  ];
+  final edges = <int>{
+    start,
+    end,
+    for (final entry in entries) ...[entry.startFrame, entry.endFrame],
+  }.where((frame) => frame >= start && frame <= end).toList()..sort();
+  if (edges.length < 2) {
+    return const [];
+  }
+  final owners = _firstOwners(entries, edges);
+  final runs = <({int startIndex, int endIndexExclusive})>[];
+  void ready(int from, int to) {
+    final last = runs.isEmpty ? null : runs.last;
+    if (last != null && last.endIndexExclusive == from) {
+      runs.last = (startIndex: last.startIndex, endIndexExclusive: to);
+    } else {
+      runs.add((startIndex: from, endIndexExclusive: to));
+    }
+  }
+
+  for (var stretch = 0; stretch < owners.length; stretch += 1) {
+    final from = edges[stretch];
+    final to = edges[stretch + 1];
+    final owner = owners[stretch];
+    if (owner == null) {
+      ready(from, to);
+      continue;
+    }
+    for (final run
+        in session.playbackRig.playbackCache.playbackReadyRunsForCut(
+          owner.cut,
+          from - owner.startFrame,
+          to - owner.startFrame,
+        )) {
+      ready(
+        run.startIndex + owner.startFrame,
+        run.endIndexExclusive + owner.startFrame,
       );
     }
   }
-  return true;
+  return runs;
+}
+
+/// Each stretch between two [edges] with the FIRST of [entries] covering
+/// it: painted in layout order, a stretch keeps the owner it got first.
+List<StoryboardTimelineLayoutEntry?> _firstOwners(
+  List<StoryboardTimelineLayoutEntry> entries,
+  List<int> edges,
+) {
+  final edgeAt = {for (var i = 0; i < edges.length; i += 1) edges[i]: i};
+  final owners = List<StoryboardTimelineLayoutEntry?>.filled(
+    edges.length - 1,
+    null,
+  );
+  for (final entry in entries) {
+    for (
+      var stretch = edgeAt[math.max(entry.startFrame, edges.first)]!;
+      stretch < owners.length && edges[stretch] < entry.endFrame;
+      stretch += 1
+    ) {
+      owners[stretch] ??= entry;
+    }
+  }
+  return owners;
 }
 
 /// Ruler seeks: playback seeks the clock; EDITING seeks are the session's

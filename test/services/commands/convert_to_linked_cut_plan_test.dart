@@ -7,6 +7,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -143,6 +144,113 @@ void main() {
       expect(plan.originOnlyLayerIds, [const LayerId('a1')]);
       expect(plan.targetOnlyLayerIds, [const LayerId('b1')]);
       expect(plan.linksAnything, isTrue);
+    });
+  });
+
+  // 🗣️유저 2026-09-25: image rows stack under ONE name (BOOK, BOOK, …), and
+  // namesakes pair 「레이어이름+프레임이름 통해서 같은거끼리 짝짓고, 아니면
+  // 쌓인 순서대로」.
+  group('rows sharing a NAME', () {
+    Layer book(String id, [String? celName]) => Layer(
+      id: LayerId(id),
+      name: 'BOOK',
+      kind: LayerKind.image,
+      frames: [frame('$id-cel', name: celName)],
+      timeline: const {},
+    );
+
+    List<(String, String)> pairsOf(ConvertToLinkedCutPlan plan) => [
+      for (final pair in plan.layerPairs)
+        (pair.originLayerId.value, pair.targetLayerId.value),
+    ];
+
+    test('pair by the PICTURE they hold first, whatever the stacking', () {
+      final origin = cut('origin', [book('k1', 'BOOK1'), book('k2', 'BOOK2')]);
+      final target = cut('target', [book('t1', 'BOOK2'), book('t2', 'BOOK1')]);
+      final plan = planConvertToLinkedCut(
+        project: project([origin, target]),
+        originCut: origin,
+        targetCut: target,
+      );
+      expect(pairsOf(plan), [('k1', 't2'), ('k2', 't1')]);
+      expect(plan.originOnlyLayerIds, isEmpty);
+      expect(plan.targetOnlyLayerIds, isEmpty);
+    });
+
+    test('and the rest in STACKING order — a namesake is never dropped for '
+        'another', () {
+      final origin = cut('origin', [book('k1'), book('k2'), book('k3')]);
+      final target = cut('target', [book('t1'), book('t2')]);
+      final plan = planConvertToLinkedCut(
+        project: project([origin, target]),
+        originCut: origin,
+        targetCut: target,
+      );
+      expect(pairsOf(plan), [('k1', 't1'), ('k2', 't2')]);
+      expect(plan.originOnlyLayerIds, [const LayerId('k3')]);
+      expect(plan.targetOnlyLayerIds, isEmpty);
+    });
+
+    test('a 겸용 re-run finds its OWN partner by the link before any '
+        'namesake — nothing to do, nothing to union', () {
+      final origin = cut('origin', [book('k1'), book('k2')]);
+      final target = cut('target', [book('t1'), book('t2')]);
+      LayerLinkGroup linked(String id, String originId, String targetId) =>
+          LayerLinkGroup(
+            id: id,
+            members: [
+              LayerLinkMember(
+                trackId: const TrackId('t'),
+                cutId: const CutId('origin'),
+                layerId: LayerId(originId),
+              ),
+              LayerLinkMember(
+                trackId: const TrackId('t'),
+                cutId: const CutId('target'),
+                layerId: LayerId(targetId),
+              ),
+            ],
+          );
+      final plan = planConvertToLinkedCut(
+        project: project([origin, target]).copyWith(
+          linkRegistry: LayerLinkRegistry(
+            groups: [linked('g1', 'k1', 't2'), linked('g2', 'k2', 't1')],
+          ),
+        ),
+        originCut: origin,
+        targetCut: target,
+      );
+      expect(
+        pairsOf(plan),
+        isEmpty,
+        reason: 'stacking order would have re-paired k1 with t1',
+      );
+      expect(plan.originOnlyLayerIds, isEmpty);
+      expect(plan.targetOnlyLayerIds, isEmpty);
+      expect(plan.linksAnything, isFalse);
+    });
+
+    test('a namesake of ANOTHER kind is never a partner', () {
+      final origin = cut('origin', [
+        Layer(
+          id: const LayerId('k-image'),
+          name: 'A',
+          kind: LayerKind.image,
+          frames: [frame('ki', name: '1')],
+          timeline: const {},
+        ),
+        layer('k-cel', 'A', [frame('kc', name: '1')]),
+      ]);
+      final target = cut('target', [
+        layer('t-cel', 'A', [frame('tc', name: '1')]),
+      ]);
+      final plan = planConvertToLinkedCut(
+        project: project([origin, target]),
+        originCut: origin,
+        targetCut: target,
+      );
+      expect(pairsOf(plan), [('k-cel', 't-cel')]);
+      expect(plan.originOnlyLayerIds, [const LayerId('k-image')]);
     });
   });
 }

@@ -20,7 +20,11 @@ import 'listenable_rebind.dart';
 /// (`notifier.value.copyWith(...)`), never capture the builder's value —
 /// off-slice fields may have changed without a rebuild, and writing a
 /// captured value back would silently revert them.
-class SlicedValueListenableBuilder<T, S> extends StatefulWidget {
+///
+/// ⛔The slicing is [SlicedListenableBuilder]'s, read through the value:
+/// one rule for "rebuild only when what is shown changed", whatever the
+/// news arrives on.
+class SlicedValueListenableBuilder<T, S> extends StatelessWidget {
   const SlicedValueListenableBuilder({
     super.key,
     required this.valueListenable,
@@ -33,51 +37,75 @@ class SlicedValueListenableBuilder<T, S> extends StatefulWidget {
   final Widget Function(BuildContext context, T value) builder;
 
   @override
-  State<SlicedValueListenableBuilder<T, S>> createState() =>
-      _SlicedValueListenableBuilderState<T, S>();
+  Widget build(BuildContext context) {
+    return SlicedListenableBuilder<S>(
+      listenable: valueListenable,
+      slice: () => slice(valueListenable.value),
+      builder: (context, _) => builder(context, valueListenable.value),
+    );
+  }
 }
 
-class _SlicedValueListenableBuilderState<T, S>
-    extends State<SlicedValueListenableBuilder<T, S>> {
-  late S _slice;
+/// Rebuilds its subtree when [listenable] notifies AND the [slice] it
+/// answers has changed — news that changes nothing the subtree shows stops
+/// here.
+///
+/// [builder] is handed the slice, so what it shows IS the slice: a value it
+/// read from anywhere else would be one a notification can change without
+/// reaching it. Slices compare by value (primitives and records both do).
+///
+/// A rebuild from ABOVE runs [builder] with the slice read afresh, so
+/// nothing the builder was handed by its widget is older than that widget.
+class SlicedListenableBuilder<S> extends StatefulWidget {
+  const SlicedListenableBuilder({
+    super.key,
+    required this.listenable,
+    required this.slice,
+    required this.builder,
+  });
+
+  final Listenable listenable;
+  final S Function() slice;
+  final Widget Function(BuildContext context, S slice) builder;
+
+  @override
+  State<SlicedListenableBuilder<S>> createState() =>
+      _SlicedListenableBuilderState<S>();
+}
+
+class _SlicedListenableBuilderState<S>
+    extends State<SlicedListenableBuilder<S>> {
+  /// The slice the subtree was last built from.
+  late S _shown;
 
   @override
   void initState() {
     super.initState();
-    widget.valueListenable.addListener(_onChanged);
-    _slice = widget.slice(widget.valueListenable.value);
+    _shown = widget.slice();
+    widget.listenable.addListener(_onChanged);
   }
 
   @override
-  void didUpdateWidget(SlicedValueListenableBuilder<T, S> oldWidget) {
+  void didUpdateWidget(SlicedListenableBuilder<S> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (rebindListener(
-      oldWidget.valueListenable,
-      widget.valueListenable,
-      _onChanged,
-    )) {
-      _slice = widget.slice(widget.valueListenable.value);
-    }
+    rebindListener(oldWidget.listenable, widget.listenable, _onChanged);
   }
 
   @override
   void dispose() {
-    widget.valueListenable.removeListener(_onChanged);
+    widget.listenable.removeListener(_onChanged);
     super.dispose();
   }
 
   void _onChanged() {
-    final next = widget.slice(widget.valueListenable.value);
-    if (next == _slice) {
-      return;
+    if (widget.slice() != _shown) {
+      setState(() {});
     }
-    setState(() {
-      _slice = next;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return widget.builder(context, widget.valueListenable.value);
+    _shown = widget.slice();
+    return widget.builder(context, _shown);
   }
 }

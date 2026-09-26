@@ -5,6 +5,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -69,19 +70,38 @@ void main() {
     ],
   );
 
-  EditorSessionManager threeTracks() => EditorSessionManager(
-    initialProject: Project(
-      id: const ProjectId('swipe-project'),
-      name: 'Swipe',
-      createdAt: DateTime.utc(2026, 8, 29),
-      tracks: [track('t1', 'One'), track('t2', 'Two'), track('t3', 'Three')],
-    ),
-  );
+  /// [seOf] reshapes each track's S row.
+  EditorSessionManager threeTracks({Layer Function(Layer se)? seOf}) {
+    Track shaped(String id, String name) {
+      final built = track(id, name);
+      return seOf == null
+          ? built
+          : built.copyWith(
+              seLayers: [for (final se in built.seLayers) seOf(se)],
+            );
+    }
 
-  Future<EditorSessionManager> pumpRail(WidgetTester tester) async {
+    return EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('swipe-project'),
+        name: 'Swipe',
+        createdAt: DateTime.utc(2026, 8, 29),
+        tracks: [
+          shaped('t1', 'One'),
+          shaped('t2', 'Two'),
+          shaped('t3', 'Three'),
+        ],
+      ),
+    );
+  }
+
+  Future<EditorSessionManager> pumpRail(
+    WidgetTester tester, {
+    Layer Function(Layer se)? seOf,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1400, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = threeTracks();
+    final session = threeTracks(seOf: seOf);
     addTearDown(session.dispose);
     await tester.pumpWidget(
       MaterialApp(
@@ -94,7 +114,7 @@ void main() {
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
               onShowSecondsChanged: (_) {},
-              thumbnailFor: null,
+              thumbnails: null,
             ),
           ),
         ),
@@ -311,6 +331,58 @@ void main() {
     );
   });
 
+  testWidgets('🚨the FX column reads a MIXED S row as the tap does — a sweep '
+      'turning fx off takes it off too', (tester) async {
+    // t1's S row is MIXED: an effect applies beside a transform that does
+    // not. A sweep from t1's V row turns fx OFF; it read the mixed row as
+    // already off and passed it by, where a tap on it turns it off.
+    final session = await pumpRail(
+      tester,
+      seOf: (se) => se.id == const LayerId('t1-s1')
+          ? se.copyWith(
+              transformEnabled: false,
+              effects: [
+                LayerEffect(id: const EffectId('glow'), kind: EffectKind.blur),
+              ],
+            )
+          : se,
+    );
+    LayerFxState rowFx() =>
+        session.effectsAndFx.layerFxState(const LayerId('t1-s1'));
+    LayerFxState trackFx() =>
+        session.effectsAndFx.trackFxState(const TrackId('t1'));
+    expect(
+      [trackFx(), rowFx()],
+      [LayerFxState.on, LayerFxState.mixed],
+      reason: 'the premise',
+    );
+
+    final first = tester.getCenter(
+      find.byKey(const ValueKey<String>('storyboard-track-fx-t1')),
+    );
+    final next = tester.getCenter(
+      find.byKey(const ValueKey<String>('storyboard-layer-fx-t1-s1')),
+    );
+    final gesture = await tester.startGesture(first);
+    for (var step = 1; step <= 6; step += 1) {
+      await gesture.moveTo(
+        Offset(first.dx, first.dy + (next.dy - first.dy) * step / 6),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(trackFx(), LayerFxState.off, reason: 'the press');
+    expect(
+      rowFx(),
+      LayerFxState.off,
+      reason:
+          'a mixed row reads ON, as the tap flips it and as the timeline '
+          'rail\'s sweep reads it',
+    );
+  });
+
   testWidgets('🚨and the LANE TWIRL sweeps, the last column that could not', (
     tester,
   ) async {
@@ -456,7 +528,7 @@ void main() {
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
               onShowSecondsChanged: (_) {},
-              thumbnailFor: null,
+              thumbnails: null,
             ),
           ),
         ),

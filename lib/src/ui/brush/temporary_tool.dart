@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../editor_session_manager.dart';
 import 'brush_tool_state.dart';
 
 /// Switches the tool while an input is HELD, and back when it lets go.
@@ -11,18 +10,18 @@ import 'brush_tool_state.dart';
 /// key are ONE law, so they are one piece of code: this. The canvas's mapped
 /// holds and the shell's held keys both come here.
 ///
-/// The tool it replaced lives on the SESSION
-/// ([EditorSessionManager.heldOriginalTool]) rather than here, so a panel
-/// that remounts mid-hold still springs back. `??=` keeps the FIRST original
-/// when two holds overlap — the later release then has nothing to put back.
+/// The tool it replaced lives in a [ToolHoldMemory] rather than here, so a
+/// panel that remounts mid-hold still springs back. `??=` keeps the FIRST
+/// original when two holds overlap — the later release then has nothing to
+/// put back.
 final class TemporaryTool {
   const TemporaryTool({
-    required this.session,
+    required this.memory,
     required this.current,
     required this.change,
   });
 
-  final EditorSessionManager session;
+  final ToolHoldMemory memory;
 
   /// The tool state in hand now.
   final BrushToolState Function() current;
@@ -32,16 +31,33 @@ final class TemporaryTool {
   final ValueChanged<BrushToolState>? change;
 
   void hold(CanvasTool tool) {
-    session.heldOriginalTool ??= current().tool;
+    memory.sprangFrom ??= current().tool;
     change?.call(current().copyWith(tool: tool));
   }
 
   /// [keep] leaves the held tool in hand — a mapping's 「keep」 release.
   void release({required bool keep}) {
-    final original = session.heldOriginalTool;
-    session.heldOriginalTool = null;
+    final original = memory.sprangFrom;
+    memory.sprangFrom = null;
     if (!keep && original != null) {
       change?.call(current().copyWith(tool: original));
     }
   }
+}
+
+/// The tool a temporary hold sprang FROM; null = no hold live.
+///
+/// It lives outside the canvas area's State because the PEN TAIL holds for
+/// as long as the pen stays flipped — across strokes, panel rebuilds and
+/// tab switches — where a barrel hold lasted one press. A State that
+/// unmounted mid-hold would lose the tool to spring back to, and leave the
+/// user holding an eraser with nothing to undo it. Not a listenable: only
+/// the release path reads it.
+///
+/// 🚨ONE per app, made by the shell beside the tool it remembers (I-7). It
+/// sat on the session while a session outlived everything that remounts;
+/// with a project per tab the session is what changes under a switch, and
+/// the tool — the app's, shared by every project — does not.
+final class ToolHoldMemory {
+  CanvasTool? sprangFrom;
 }

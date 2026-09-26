@@ -12,6 +12,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// R7q2 (유저 08-18: 「치유가 가볍게 가능하다면 해도 됨」): opening a file
@@ -56,11 +57,8 @@ void main() {
     );
     await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
-    final loaded = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
+    final loaded = await openedSession(path);
     addTearDown(loaded.dispose);
-    await loaded.projectDoor.openProjectFromFile(path);
 
     final healed = loaded.renderCaches.brushFrameStore.bakedSurfaceOrNull(key)!;
     expect(
@@ -78,11 +76,8 @@ void main() {
 
     // A healthy round-trip stays untouched and clean.
     await loaded.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
-    final clean = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
+    final clean = await openedSession(path);
     addTearDown(clean.dispose);
-    await clean.projectDoor.openProjectFromFile(path);
     expect(clean.projectFile.hasUnsavedChanges, isFalse);
   });
 }

@@ -35,7 +35,7 @@ void main() {
       final duplicateId = fixture.coordinator.duplicateLayer(
         cutId: _cutId,
         sourceLayerId: _layerBId,
-      );
+      ).layerId;
 
       final layers = requireCut(
         fixture.repository.requireProject(),
@@ -75,7 +75,7 @@ void main() {
       final duplicateId = fixture.coordinator.duplicateLayer(
         cutId: _cutId,
         sourceLayerId: _layerBId,
-      );
+      ).layerId;
 
       final duplicate = requireLayer(
         fixture.repository.requireProject(),
@@ -104,7 +104,7 @@ void main() {
         final duplicateId = fixture.coordinator.duplicateLayer(
           cutId: _cutId,
           sourceLayerId: _layerBId,
-        );
+        ).layerId;
         final duplicate = requireLayer(
           fixture.repository.requireProject(),
           cutId: _cutId,
@@ -152,11 +152,11 @@ void main() {
         final animationDuplicateId = fixture.coordinator.duplicateLayer(
           cutId: _cutId,
           sourceLayerId: _layerAId,
-        );
+        ).layerId;
         final storyboardDuplicateId = fixture.coordinator.duplicateLayer(
           cutId: _cutId,
           sourceLayerId: _layerBId,
-        );
+        ).layerId;
 
         expect(
           requireLayer(

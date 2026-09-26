@@ -1,4 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
+import '../../models/conte/conte_ink_keys.dart'
+    show conteHandwritingOfACopy, conteInkRowLayerId;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
@@ -9,7 +11,9 @@ import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../editing/cut_duplicate_helpers.dart' show remapTimelineExposure;
+import '../editing/frame_id_mint.dart' show mintFrameId;
 import '../project_lookup.dart' show requireCut;
+import '../project_repository.dart';
 import 'add_layer_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
@@ -29,12 +33,18 @@ class PasteLayerCommandInputPlan {
     required Map<FrameId, FrameId> frameIdMap,
     required this.layer,
     required this.insertionIndex,
-  }) : frameIdMap = Map.unmodifiable(frameIdMap);
+    Map<String, String> handwriting = const {},
+  }) : frameIdMap = Map.unmodifiable(frameIdMap),
+       handwriting = Map.unmodifiable(handwriting);
 
   final LayerId newLayerId;
   final Map<FrameId, FrameId> frameIdMap;
   final Layer layer;
   final int insertionIndex;
+
+  /// By each of the pasted blocks' handwriting ids, the one it starts as a
+  /// copy of ([conteHandwritingOfACopy]).
+  final Map<String, String> handwriting;
 }
 
 class DuplicateCutCommandInputPlan {
@@ -132,18 +142,24 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     LayerKind.camera => LayerKind.animation,
     final kind => kind,
   };
+  // Every block of the copy writes on the conte for itself: a row pasted
+  // beside its source must not share its source's handwriting.
+  final written = conteHandwritingOfACopy(
+    payload.timeline.map(
+      (index, exposure) => MapEntry(
+        index,
+        remapTimelineExposure(exposure: exposure, frameIdMap: frameIdMap),
+      ),
+    ),
+    () => mintFrameId(conteInkRowLayerId).value,
+  );
   final layer = Layer(
     id: newLayerId,
     name: payload.name,
     frames: payload.frames
         .map((frame) => frame.copyWith(id: frameIdMap[frame.id]))
         .toList(),
-    timeline: payload.timeline.map(
-      (index, exposure) => MapEntry(
-        index,
-        remapTimelineExposure(exposure: exposure, frameIdMap: frameIdMap),
-      ),
-    ),
+    timeline: written.exposures,
     // Instruction spans only belong on instruction rows and audio clips on
     // SE rows; cross-kind pastes drop them.
     instructions: pastedKind == LayerKind.instruction
@@ -172,6 +188,7 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     frameIdMap: frameIdMap,
     layer: layer,
     insertionIndex: insertionIndex,
+    handwriting: written.copies,
   );
 }
 
@@ -529,6 +546,33 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
       prefix: 'link',
       usedIds: {for (final group in project.linkRegistry.groups) group.id},
     ),
+  );
+}
+
+/// [layer] added to [cutId] at [insertionIndex], and to the 겸용 siblings
+/// [planAddLayerCommandInput] plans against the project as it stands.
+///
+/// ONE recipe for every way a row is added to a cut: the layer panel's Add
+/// Layer, on the cut the canvas stands on, and the conte row a picture's
+/// first stroke makes, on the picture's cut.
+AddLayerCommand plannedAddLayerCommand({
+  required ProjectRepository repository,
+  required CutId cutId,
+  required Layer layer,
+  int? insertionIndex,
+}) {
+  final plan = planAddLayerCommandInput(
+    project: repository.requireProject(),
+    cutId: cutId,
+    layer: layer,
+  );
+  return AddLayerCommand(
+    repository: repository,
+    cutId: cutId,
+    layer: layer,
+    insertionIndex: insertionIndex,
+    mirrors: plan.mirrors,
+    linkGroupId: plan.linkGroupId,
   );
 }
 

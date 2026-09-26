@@ -123,6 +123,13 @@ class StillRaster extends SingleChildRenderObjectWidget {
   static int get censusCaptures => _capturesEver;
   static int _capturesEver = 0;
 
+  /// The frame the last image of ANY region was taken on — one a frame. A
+  /// snapshot is a fixed price (1.6–2.0 ms of raster on the real Windows
+  /// app, whatever its size, 2026-09-25), and the regions one pick changes
+  /// become still together: taken on the same frame, their prices landed on
+  /// it at once.
+  static int? _lastCaptureFrame;
+
   @override
   RenderStillRaster createRenderObject(BuildContext context) =>
       RenderStillRaster(
@@ -222,6 +229,13 @@ class RenderStillRaster extends RenderProxyBox {
   @visibleForTesting
   bool get debugDrawnFromImage => _drawnFromImage;
   bool _drawnFromImage = false;
+
+  /// How many frames drawn from the image asked where the region sits the
+  /// full way — a transform to the root — before building the scene,
+  /// rather than cheaply.
+  @visibleForTesting
+  int get debugFullPlacementChecks => _fullPlacementChecks;
+  int _fullPlacementChecks = 0;
 
   /// How the region sat on the device pixel grid when its image was
   /// taken, for tests that need to prove the image was a copy and not a
@@ -416,12 +430,92 @@ class _StillLayer extends OffsetLayer {
   /// phase is a resample ([RasterGridFit]), so a region drawn from an
   /// image asks to be re-added whenever it no longer sits where its image
   /// was taken.
+  ///
+  /// ⚠️Asked cheaply first ([_measurePlacement]): building a transform to
+  /// the root for every region on every frame measured ~28 µs a region on
+  /// the real Windows app (09-25) and left a matrix behind each time — the
+  /// full fit is asked only when the layers above have moved.
+  ///
+  /// Under a follower the question waits for [addToScene]: a follower's
+  /// paint transform is the one it was last ADDED with, so asked here it
+  /// is a frame old — the region would show a resample for that frame.
   @override
   void updateSubtreeNeedsAddToScene() {
-    if (_picture != null && _owner._gridFit() != _imageFit) {
-      markNeedsAddToScene();
+    if (_picture != null) {
+      if (!_measurePlacement()) {
+        markNeedsAddToScene();
+      } else if (_nowDx != _placedDx ||
+          _nowDy != _placedDy ||
+          _nowBelowTransforms != _placedBelowTransforms) {
+        _owner._fullPlacementChecks += 1;
+        if (_owner._gridFit() != _imageFit) {
+          markNeedsAddToScene();
+        } else {
+          _keepPlacement();
+        }
+      }
     }
     super.updateSubtreeNeedsAddToScene();
+  }
+
+  // Where the layers above put this one: [_measurePlacement] writes the
+  // `_now` fields, [_keepPlacement] makes them the `_placed` ones.
+  double _nowDx = 0;
+  double _nowDy = 0;
+  int _nowBelowTransforms = 0;
+  double _placedDx = double.nan;
+  double _placedDy = double.nan;
+  int _placedBelowTransforms = 0;
+
+  /// Where the layers above put this one, into the `_now` fields: the
+  /// offsets above summed up to each transform, and each such sum with the
+  /// transform that moves it — by identity — folded into one number. A
+  /// walk of a few parents that allocates nothing. False when something
+  /// above places it by other means — a follower.
+  ///
+  /// ⚠️Summed only between transforms: under a scale, an ancestor moving
+  /// one way and a descendant moving the other by as much leave one sum of
+  /// all offsets unchanged while the region moved.
+  ///
+  /// Its own offset is not in it: that moving re-adds this layer, and
+  /// [addToScene] asks the full fit then.
+  bool _measurePlacement() {
+    var dx = 0.0;
+    var dy = 0.0;
+    var below = 0;
+    for (var layer = parent; layer != null; layer = layer.parent) {
+      switch (layer) {
+        case FollowerLayer():
+          return false;
+        case TransformLayer():
+          below = Object.hash(
+            below,
+            dx.hashCode,
+            dy.hashCode,
+            identityHashCode(layer.transform),
+          );
+          // A transform layer's own offset lands after its transform.
+          dx = layer.offset.dx;
+          dy = layer.offset.dy;
+        case OffsetLayer():
+          dx += layer.offset.dx;
+          dy += layer.offset.dy;
+        case LeaderLayer():
+          dx += layer.offset.dx;
+          dy += layer.offset.dy;
+        default:
+      }
+    }
+    _nowDx = dx;
+    _nowDy = dy;
+    _nowBelowTransforms = below;
+    return true;
+  }
+
+  void _keepPlacement() {
+    _placedDx = _nowDx;
+    _placedDy = _nowDy;
+    _placedBelowTransforms = _nowBelowTransforms;
   }
 
   /// Whether the image still shows the region: the gate is open, the
@@ -446,8 +540,10 @@ class _StillLayer extends OffsetLayer {
         return;
       }
       // `>`: the frame clock ticks after the scene is built, so the frame
-      // the region changed in already reads one here.
-      if (_frame - _changedAt > _stillFramesNeeded) {
+      // the region changed in already reads one here. And one image a
+      // frame across every region ([StillRaster._lastCaptureFrame]).
+      if (_frame - _changedAt > _stillFramesNeeded &&
+          StillRaster._lastCaptureFrame != _frame) {
         _capture();
         return;
       }
@@ -459,7 +555,7 @@ class _StillLayer extends OffsetLayer {
   }
 
   /// Takes the image of the region as the scene last had it, aligned to
-  /// the device pixel grid, and asks for a frame to show it in.
+  /// the device pixel grid, for the next frame to show.
   void _capture() {
     final fit = _owner._gridFit();
     if (fit == null) {
@@ -487,11 +583,15 @@ class _StillLayer extends OffsetLayer {
         _owner._standDown = StillStandDown.unvouched;
         return;
       }
+      StillRaster._lastCaptureFrame = _frame;
       final image = toImageSync(bounds, pixelRatio: fit.scale);
       _owner._captureCount += 1;
       _image = image;
       _picture = _pictureOf(image, fit, size);
       _imageFit = fit;
+      if (_measurePlacement()) {
+        _keepPlacement();
+      }
       _imageSignature = signature;
       _capturedAt = _frame;
       StillRaster._capturesEver += 1;
@@ -503,8 +603,15 @@ class _StillLayer extends OffsetLayer {
     }
     // The scene still holds the children: re-add this layer so the next
     // frame draws the image instead.
+    //
+    // ⛔NOT A FRAME OF ITS OWN (2026-09-25, H40). One asked for here shows
+    // nothing new — the image is of what is already on screen — and its
+    // frame counted as still for every other region, which then took ITS
+    // image and asked for another: a brush pick with the settings open grew
+    // nine frames longer, ~20 ms more of UI thread, and the images taken in
+    // a row landed on the stroke that followed (worst frame 48 → 63 ms).
+    // The next frame that comes anyway draws it.
     markNeedsAddToScene();
-    SchedulerBinding.instance.scheduleFrame();
   }
 
   /// The one picture the scene gets instead of the region: [image] put

@@ -23,6 +23,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -346,6 +347,59 @@ void main() {
           quality: PlaybackQuality.full,
         ),
         isNull,
+      );
+      cache.dispose();
+    });
+  });
+
+  testWidgets('heldSignature hands back the key the composite is filed '
+      'under, and files none of its own', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+      final held = cut();
+      await cache.prepareComposite(
+        cut: held,
+        frameIndex: 0,
+        quality: PlaybackQuality.full,
+      );
+      CutFrameCompositeSignature? heldAt(int frameIndex) =>
+          cache.heldSignature(
+            cache.signatureOf(
+              cut: held,
+              frameIndex: frameIndex,
+              quality: PlaybackQuality.full,
+            ),
+          );
+
+      expect(
+        heldAt(5),
+        isNotNull,
+        reason: 'frame 5 holds the same cel — the one image answers it',
+      );
+      expect(
+        identical(heldAt(5), heldAt(7)),
+        isTrue,
+        reason: 'two fresh signatures of one picture get the ONE filed key '
+            'back — what lets the green bar\'s next ask be `identical`',
+      );
+      cache.enforceBudget(
+        maxBytes: 0,
+        protect: const [
+          PlaybackProtectedRange(
+            cutId: CutId('cut'),
+            startFrame: 5,
+            endFrame: 5,
+            quality: PlaybackQuality.full,
+          ),
+        ],
+      );
+
+      expect(
+        heldAt(5),
+        isNull,
+        reason: 'only frame 0 filed a key — a read that filed frame 5 '
+            'would have let the range keep the image',
       );
       cache.dispose();
     });

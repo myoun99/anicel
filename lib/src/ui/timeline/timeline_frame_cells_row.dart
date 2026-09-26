@@ -7,8 +7,11 @@ import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/transition_geometry.dart'
+    show transitionEditableInCut, transitionMarkOf;
 import '../media/media_asset_drop_target.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cel_content_source.dart';
@@ -69,7 +72,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.rangeGesture,
     this.runEdit,
     this.baseLayer,
-    this.seSpillInLeadFrames,
+    this.spillInLeadFrames,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.substrateGeneration = '',
@@ -225,13 +228,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// row-wide and never unmounts mid-preview); null falls back to [layer].
   final Layer? baseLayer;
 
-  /// How far into its sound the block at frame 0 already is, when this
-  /// track-SE row's display clone starts with a block spilling in from an
-  /// earlier cut — null when nothing spills in. UI-R7 #6: the cut start
-  /// draws the `~` continuation and the block's start grip stands down (its
-  /// real start lives in that earlier cut). F-113: the block's waveform is
-  /// drawn from this far into the file.
-  final int? seSpillInLeadFrames;
+  /// How far into its block the cut's frame 0 already is, when this
+  /// track-owned row's display clone starts with a block spilling in from an
+  /// earlier cut — null when nothing spills in. UI-R7 #6: the block's start
+  /// grip stands down (its real start lives in that earlier cut), and an SE
+  /// row draws the `~` continuation at the cut start. F-113: an SE block's
+  /// waveform is drawn from this far into the file.
+  ///
+  /// The transition row answers too (유저 2026-09-26: 「애초에 넘어온쪽
+  /// 표시엔 머리그립이 없을텐데. se행이 그럴텐데」) — a fade that began in
+  /// the cut before is drawn from this cut's frame 0.
+  final int? spillInLeadFrames;
 
   @override
   Widget build(BuildContext context) {
@@ -338,10 +345,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
     //
     // ⛔EXCEPT THE FIRST BLOCK'S, which is the cut's own start: 「다만
     // 그렇다고 해도 타임라인 내 콘티블록의 첫번째 블록의 앞엣지는 진짜
-    // 컷길이 바꾸니까 그거만 없도록」 — that edge lives on the storyboard
-    // strip, where it re-times the film rather than the row.
+    // 컷길이 바꾸니까 그거만 없도록」 — that edge lives on the storyboard's
+    // cut row, where it re-times the film rather than the row.
     suppressStartGripAtZero:
-        (seSpillInLeadFrames != null &&
+        (spillInLeadFrames != null &&
             layerKindUsesSeSheetCells(layer.kind)) ||
         layer.kind.coversWithoutGaps,
   );
@@ -422,7 +429,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           frameRate: projectFrameRate,
           audioPeaksFor: peaksFor,
           color: timelineDrawingInkColor.withValues(alpha: 0.22),
-          leadInAtStart: seSpillInLeadFrames ?? 0,
+          leadInAtStart: spillInLeadFrames ?? 0,
           keyPrefix: keyPrefix,
         ),
       ...timelineRowSeLabelOverlays(
@@ -446,7 +453,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       ...timelineRowSeContinuationMarks(
         layer: layer,
         cutFrameCount: playbackFrameCount,
-        spillsInAtStart: seSpillInLeadFrames != null,
+        spillsInAtStart: spillInLeadFrames != null,
         frameStartIndex: frames.frameStartIndex,
         frameEndIndexExclusive: frames.frameEndIndexExclusive,
         keyPrefix: keyPrefix,
@@ -506,25 +513,38 @@ class TimelineFrameCellsRow extends StatelessWidget {
     );
   }
 
-  /// 🚨Grips are the one instruction facility the transition row does NOT
-  /// get: its local placement is a projection ([LayerKind.isReadOnlyInCut]),
-  /// so dragging an edge here would be editing a lie. Authoring lives on the
-  /// global axis, in the storyboard.
+  /// The span grips — the transition row's too since 2026-09-25 (유저,
+  /// transition-row-open-in-the-cut: 「편집은 동일하게 타임라인에서 다
+  /// 할수있고 … 일방적인 투영만 하되 편집은 가능하게」). Its marks are a
+  /// projection, so a grip there drags the GLOBAL span the mark shows
+  /// (`EdgeDrag.beginCutRowEdgeDrag`); ↩️it had none, 「dragging an edge
+  /// here would be editing a lie」, by the 08-09 read-only law.
+  ///
+  /// Two of the SE rows' answers hold for its marks as for their blocks: a
+  /// mark that began in the cut before keeps its head there (UI-R7 #6), and
+  /// an O.L's mark takes no grip at all — it is drawn whole in both cuts it
+  /// joins and edited on the storyboard ([transitionEditableInCut], 유저
+  /// 2026-09-26).
   List<Widget> _spanGrips(TimelineFrameGeometry frames) {
     final drag = commaDrag;
-    if (drag == null ||
-        !layer.kind.carriesInstructions ||
-        layer.kind.isReadOnlyInCut) {
+    if (drag == null || !layer.kind.carriesInstructions) {
       return const [];
     }
+    final defById = instructionDefById;
     return timelineRowInstructionEdgeGrips(
       layer: layer,
       frameStartIndex: frames.frameStartIndex,
       frameEndIndexExclusive: frames.frameEndIndexExclusive,
-      resolveFrameCellExtent: () => geometry.value.frameCellExtent,
+      geometry: geometry,
       commaDrag: drag,
       axis: axis,
       crossAxisExtent: crossAxisExtent,
+      suppressStartGripAtZero: spillInLeadFrames != null,
+      spanTakesGrips: layer.kind == LayerKind.transition
+          ? (event) => transitionEditableInCut(
+              transitionMarkOf(defById?.call(event.instructionId)),
+            )
+          : null,
     );
   }
 

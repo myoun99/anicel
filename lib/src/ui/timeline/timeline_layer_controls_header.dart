@@ -31,7 +31,7 @@ class LayerLegendCallbacks {
     required this.onToggleVisibilitySolo,
     required this.onSheetAllOn,
     required this.onSheetAllOff,
-    required this.onClearAllMarks,
+    required this.onClearMarkFilter,
     required this.onClearAllFillReferences,
     required this.onMuteAllSe,
     required this.onUnmuteAllSe,
@@ -57,7 +57,7 @@ class LayerLegendCallbacks {
   final VoidCallback onToggleVisibilitySolo;
   final VoidCallback onSheetAllOn;
   final VoidCallback onSheetAllOff;
-  final VoidCallback onClearAllMarks;
+  final VoidCallback onClearMarkFilter;
   final VoidCallback onClearAllFillReferences;
   final VoidCallback onMuteAllSe;
   final VoidCallback onUnmuteAllSe;
@@ -380,39 +380,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
       flyout: legend == null
           ? null
           : _LegendFlyout(
-              bulk: () => [
-                PanelFlyoutItem(
-                  keyValue: 'legend-mark-clear',
-                  label: AppText.strings.tlClearAllMarks,
-                  icon: Icons.label_off_outlined,
-                  onSelected: legend.onClearAllMarks,
-                ),
-              ],
-              // 🚨THE MARKS IN USE, not every mark there
-              // could be. A mark is a 공정/수정 pair now,
-              // so «every value» is a product of two lists
-              // and most of it would never appear in this
-              // project — the filter was always about what
-              // is actually on the rows, and this says so.
-              //
-              // Answering EMPTY when nothing is marked is what drops the
-              // divider too — the old `showRowSolos && marksInUse
-              // .isNotEmpty` gate, said once by the template.
-              solo: () => marksInUse.isEmpty
-                  ? const []
-                  : [
-                      PanelFlyoutHeader(AppText.strings.tlSoloColor),
-                      for (final mark
-                          in marksInUse.toList()
-                            ..sort((a, b) => a.sortKey.compareTo(b.sortKey)))
-                        if (!mark.isNone)
-                          PanelFlyoutItem(
-                            keyValue: 'legend-filter-mark-${mark.keySlug}',
-                            label: layerMarkDisplayName(mark),
-                            checked: rowFilter.markColors.contains(mark),
-                            onSelected: () => legend.onToggleMarkFilter(mark),
-                          ),
-                    ],
+              bulk: () => [_markFilterReset(legend)],
+              solo: () => _markSolos(legend),
             ),
       child: _legendIcon(
         Icons.label_outline,
@@ -422,16 +391,68 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     );
   }
 
+  /// 🚨THE FILTER'S OWN WAY BACK, not the labels' eraser
+  /// (clear-all-marks-meaning-Q1, 유저 2026-09-25: 「마크 모두 지우기를 삭제.
+  /// 그리고 마크 필터해제 넣고」). The row that stood here wiped every
+  /// layer's label; beside the solo list it read as 「undo the solo」, and
+  /// pressed that way it erased the project's labels and left the solo in
+  /// place.
+  PanelFlyoutItem _markFilterReset(LayerLegendCallbacks legend) =>
+      PanelFlyoutItem(
+        keyValue: 'legend-mark-filter-clear',
+        label: AppText.strings.tlClearMarkFilter,
+        icon: Icons.filter_alt_off_outlined,
+        enabled: rowFilter.markColors.isNotEmpty,
+        onSelected: legend.onClearMarkFilter,
+      );
+
+  /// The colour solos — 🚨THE MARKS IN USE, not every mark there could be.
+  /// A mark is a 공정/수정 pair now, so «every value» is a product of two
+  /// lists and most of it would never appear in this project — the filter
+  /// was always about what is actually on the rows, and this says so.
+  ///
+  /// Answering EMPTY when nothing is marked is what drops the divider too —
+  /// the old `showRowSolos && marksInUse.isNotEmpty` gate, said once by the
+  /// template.
+  ///
+  /// 🚨AND EVERY MARK THE FILTER HOLDS, in use or not
+  /// (mark-filter-held-after-its-mark-is-gone, 유저 2026-09-25: 「레이아웃만
+  /// 켜고, 다시 돌리려고 마크 모두 지우기 눌렀는데도 초기화안됨」). Clearing
+  /// every label left LO in the filter and gone from this list: every row
+  /// but the standing one hidden, and nothing here to uncheck.
+  List<PanelFlyoutEntry> _markSolos(LayerLegendCallbacks legend) {
+    final listed = {...marksInUse, ...rowFilter.markColors}
+      ..removeWhere((mark) => mark.isNone);
+    return listed.isEmpty
+        ? const []
+        : [
+            PanelFlyoutHeader(AppText.strings.tlSoloColor),
+            for (final mark
+                in listed.toList()
+                  ..sort((a, b) => a.sortKey.compareTo(b.sortKey)))
+              PanelFlyoutItem(
+                keyValue: 'legend-filter-mark-${mark.keySlug}',
+                label: layerMarkDisplayName(mark),
+                checked: rowFilter.markColors.contains(mark),
+                onSelected: () => legend.onToggleMarkFilter(mark),
+              ),
+          ];
+  }
+
   Widget _buildTypeButton(LayerLegendCallbacks? legend, Color restColor) {
+    // The kinds on the rows AND every kind the filter holds — a kind whose
+    // last row went away stays listed so its solo can still be undone, as
+    // the mark solo's does (mark-filter-held-after-its-mark-is-gone).
+    final listed = {...kindsInUse, ...rowFilter.kinds};
     return _cell(
       keyValue: 'legend-kind',
       tooltip: AppText.strings.tlColLayerKind,
-      entriesBuilder: legend == null || kindsInUse.isEmpty || !showRowSolos
+      entriesBuilder: legend == null || listed.isEmpty || !showRowSolos
           ? null
           : () => [
               PanelFlyoutHeader(AppText.strings.tlSoloKind),
               for (final kind in LayerKind.values)
-                if (kindsInUse.contains(kind))
+                if (listed.contains(kind))
                   PanelFlyoutItem(
                     keyValue: 'legend-filter-kind-${kind.name}',
                     label: layerKindDisplayName(kind),

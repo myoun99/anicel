@@ -21,6 +21,7 @@ class ConteCellSource {
     required this.endFrameExclusive,
     required this.pictureFrame,
     this.frameId,
+    this.inkId,
     this.action = '',
     this.rowSpan = 1,
     this.encroachFraction = 0,
@@ -37,6 +38,10 @@ class ConteCellSource {
 
   /// The drawing in the cell, when it has one.
   final FrameId? frameId;
+
+  /// The block's handwriting on the sheet — its exposure's
+  /// `ExposureMemo.inkId`; null until the block is first written on.
+  final String? inkId;
 
   /// The ACTION column's text — the exposure's `actionMemo`.
   final String action;
@@ -118,15 +123,34 @@ class ConteSheetSource {
     required this.cuts,
     this.title = '',
     this.episode = '',
+    this.logoAssetPath,
+    this.coverImagePath,
+    this.conteStaffName = '',
     this.framesPerSecond = 24,
   });
 
   final List<ConteCutSource> cuts;
 
-  /// Page header (design): work title, episode number, page number. The
-  /// page number is the layout's, not the source's.
+  /// The work and the episode — the cover's words. A body page prints
+  /// neither (유저 답 conte-body-header: its top is the page number and the
+  /// logo).
   final String title;
   final String episode;
 
+  /// The company logo each body page prints top-right; null prints none.
+  final String? logoAssetPath;
+
+  /// The cover's own picture (유저 답 conte-cover-image: 「표지 그림 칸을
+  /// 따로」); null leaves its place empty.
+  final String? coverImagePath;
+
+  /// The conte artist the cover names (유저 답 conte-cover-staff:
+  /// 「コンテ 한 줄」); empty prints no staff line.
+  final String conteStaffName;
+
   final int framesPerSecond;
+
+  /// The cut [cutId] names. Every cut a layout placed is here.
+  ConteCutSource cutById(String cutId) =>
+      cuts.firstWhere((cut) => cut.cutId.value == cutId);
 }

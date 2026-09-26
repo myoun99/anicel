@@ -106,8 +106,10 @@ class _LayerGridRailRows {
       onionSkinEnabled:
           _state.widget.hooks.layerOnionSkinEnabledOf?.call(row.layer.id) ??
           false,
-      isLinked:
-          _state.widget.hooks.layerIsLinkedOf?.call(row.layer.id) ?? false,
+      linkPartners: ByList(
+        _state.widget.hooks.layerLinkPartnersOf?.call(row.layer.id) ??
+            const <String>[],
+      ),
       // Solo is SESSION state, not a Layer field, so the layer comparison
       // cannot see it: the speaker's accent tint went stale the moment
       // solo moved anywhere but this row. It has always been shown here —
@@ -255,6 +257,7 @@ class _LayerGridRailRows {
       // T10: the rail row and the frame cells take the SAME settled-tap
       // clear, because 「행이든 뭐든 동일하게」.
       onSettledPress: _state.widget.hooks.onSettledPress,
+      labelDoubleClick: _state.widget.hooks.labelDoubleClick,
       onToggleLayerVisibility: _state.widget.hooks.onToggleLayerVisibility,
       onLayerOpacityChanged: _state.widget.hooks.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: _state.widget.hooks.onLayerOpacityChangeEnd,
@@ -291,8 +294,9 @@ class _LayerGridRailRows {
       groupFoldExpanded: fold.expanded,
       onToggleGroupFold: fold.onToggle,
       opacityDragPreview: _state.widget.hooks.opacityDragPreview,
-      isLinked:
-          _state.widget.hooks.layerIsLinkedOf?.call(row.layer.id) ?? false,
+      linkPartners:
+          _state.widget.hooks.layerLinkPartnersOf?.call(row.layer.id) ??
+          const [],
       onLayerBlendModeSelected: _state.widget.hooks.onLayerBlendModeSelected,
       opacityOverride: _state.widget.hooks.layerOpacityOverrideOf?.call(
         row.layer.id,
@@ -361,6 +365,7 @@ class _LayerGridRailRows {
                 for (final row in rows)
                   if (!row.isLane) row.layer,
               ],
+              stack: _state.widget.layers,
               child: Stack(
                 children: [
                   Column(

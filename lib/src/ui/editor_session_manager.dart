@@ -6,24 +6,11 @@ import 'package:flutter/foundation.dart';
 
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
+import '../services/persistence/open_project_file.dart';
 import '../services/project_lookup.dart' show cutPositionOf;
 import '../models/app_language.dart';
-// The six settings stores are injected THROUGH this class into
-// [EditorAppSettings], so their types stay in this file's constructor
-// signature even though nothing here reads them.
-import '../services/persistence/app_language_settings_store.dart';
-import '../services/persistence/app_accent_settings_store.dart';
-import '../services/persistence/app_frame_grid_settings_store.dart';
-import '../services/persistence/app_onion_skin_settings_store.dart';
-import '../services/persistence/app_ui_scale_store.dart';
-import '../services/persistence/app_workspace_colors_store.dart';
-import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
-import '../services/persistence/app_save_settings_store.dart';
-import '../services/persistence/app_memory_settings_store.dart';
 import '../services/persistence/app_memory_settings.dart';
-import '../services/persistence/audio_sync_settings_store.dart';
-import 'brush/brush_tool_state.dart' show CanvasTool;
 import '../models/app_input_settings.dart';
 import 'session/drags/media_placement_drag.dart';
 import 'session/attach_fx_confirm.dart';
@@ -32,11 +19,13 @@ import 'session/editor_voice_recording.dart';
 import '../models/app_accents.dart';
 import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
+import '../services/editing/frame_id_mint.dart' as frame_ids;
 import '../services/editing/layer_standing_after_change.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
+import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
 import '../models/drawing_guide.dart';
 import '../models/transform_track.dart';
@@ -83,7 +72,6 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
@@ -97,6 +85,7 @@ import '../services/history_places.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
+import 'brush/canvas_selection_commands.dart' show CanvasSelectionDocument;
 // ⑨: the row selection grows through the SAME span law the cell selection
 // uses — the rail's own drawn row list.
 import 'timeline/timeline_cell_exposure_state.dart';
@@ -138,6 +127,7 @@ import 'session/auto_frame_for_stroke.dart';
 import 'session/track_se_display.dart';
 import 'session/storyboard_cursor.dart';
 import 'session/storyboard_rows.dart';
+import 'session/app_clipboard.dart';
 import 'session/frame_clipboard.dart';
 import 'session/layer_clipboard.dart';
 import 'session/active_cut_controllers.dart';
@@ -186,38 +176,23 @@ class EditorSessionManager extends ChangeNotifier
         SessionInternals {
   EditorSessionManager({
     required Project initialProject,
+    EditorAppSettings? appSettings,
     AudioConformStore? audioConformStore,
     MediaStagingStore? mediaStagingStore,
-    AppLanguageSettingsStore? languageSettingsStore,
-    AppAccentSettingsStore? accentSettingsStore,
-    AppInputSettingsStore? inputSettingsStore,
-    AppSaveSettingsStore? saveSettingsStore,
-    AppMemorySettingsStore? memorySettingsStore,
-    AudioSyncSettingsStore? audioSyncSettingsStore,
-    AppWorkspaceColorsStore? workspaceColorsStore,
-    AppUiScaleStore? uiScaleStore,
-    AppOnionSkinSettingsStore? onionSkinSettingsStore,
-    AppFrameGridSettingsStore? frameGridSettingsStore,
     ImageCache? frameworkImageCache,
+    FailedSaveCopies? failedSaveCopies,
+    AppClipboard? appClipboard,
+    bool Function(String path)? fileIsOpenElsewhere,
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _injectedMediaStagingStore = mediaStagingStore,
        _frameworkImageCache = frameworkImageCache,
-       appSettings = EditorAppSettings(
-         languageSettingsStore: languageSettingsStore,
-         accentSettingsStore: accentSettingsStore,
-         workspaceColorsStore: workspaceColorsStore,
-         inputSettingsStore: inputSettingsStore,
-         saveSettingsStore: saveSettingsStore,
-         memorySettingsStore: memorySettingsStore,
-         audioSyncSettingsStore: audioSyncSettingsStore,
-         uiScaleStore: uiScaleStore,
-         onionSkinSettingsStore: onionSkinSettingsStore,
-         frameGridSettingsStore: frameGridSettingsStore,
-       ),
+       failedSaveCopies = failedSaveCopies ?? FailedSaveCopies(),
+       _appClipboard = appClipboard ?? AppClipboard(),
+       _fileIsOpenElsewhere = fileIsOpenElsewhere,
+       _ownsAppSettings = appSettings == null,
+       appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
-    appSettings.attachOnionSkin(onionSkin.settings);
-    appSettings.restore();
     historyManager = HistoryManager()..places.placeNow = () => standingPlace;
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
@@ -279,6 +254,11 @@ class EditorSessionManager extends ChangeNotifier
   @override
   final EditorAppSettings appSettings;
 
+  /// Whether [appSettings] is this session's own to let go of: the app's
+  /// one is shared by every open project and released by the shell that
+  /// made it (I-7); a session built without one made it for itself.
+  final bool _ownsAppSettings;
+
   /// The program + notation languages — a value-only channel (widgets
   /// subscribe where they read strings; no whole-session notify).
   ValueNotifier<AppLanguageSettings> get languageSettings =>
@@ -307,6 +287,29 @@ class EditorSessionManager extends ChangeNotifier
 
   void setMemorySettings(AppMemorySettings settings) =>
       appSettings.setMemorySettings(settings);
+
+  /// How much of the device's allowance this project's own caches may take:
+  /// all of it on screen, a share in a background tab — the shell says
+  /// which ([OpenProjects], I-7). What it scales is what can be rebuilt or
+  /// is kept whole elsewhere: the hot cels cool to the scratch room, the
+  /// playback frames render again.
+  ///
+  /// ⛔NOT the undo stack. Its entries are the user's history, and a
+  /// smaller budget parks them into a room that shrinks with it — the room
+  /// weighs what the stack was allowed to (유저 확정 2026-09-10) — and past
+  /// a full room the stack DROPS entries. A tab left in the background must
+  /// not cost its history.
+  double get cacheShare => _cacheShare;
+
+  double _cacheShare = 1;
+
+  set cacheShare(double share) {
+    if (share == _cacheShare) {
+      return;
+    }
+    _cacheShare = share;
+    _applyCacheBudgets();
+  }
 
   /// Every cache's budget at the automatic allowance, on this device's
   /// laws — what the memory tab's slider scales.
@@ -340,10 +343,15 @@ class EditorSessionManager extends ChangeNotifier
         AppMemory.settings.value.allowanceBytes ?? automaticAllowance;
     final by = deviceCacheBudgets.factorFor(allowance);
     final budgets = deviceCacheBudgets.scaledBy(by);
+    // This project's OWN caches take its share of the allowance ([cacheShare]);
+    // the lines below them are the process's and take it whole.
+    final own = _cacheShare == 1
+        ? budgets
+        : deviceCacheBudgets.scaledBy(by * _cacheShare);
     MemoryAllowance.factor.value = by;
-    renderCaches.applyCacheBudgets(budgets);
+    renderCaches.applyCacheBudgets(own);
     historyManager.byteBudget = budgets.undo;
-    playbackRig.playbackCache.playbackCacheByteBudget = budgets.playback;
+    playbackRig.playbackCache.playbackCacheByteBudget = own.playback;
     QaNativeEngine.instance?.nativeUploadByteBudget = budgets.nativeUploads;
     BrushTipStampCache.instance.byteBudget = budgets.brushTips;
     BrushLiveStrokeRasterizer.residentResultByteBudget = budgets.liveStroke;
@@ -377,16 +385,6 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
   );
 
-  /// The tool a temporary hold sprang FROM; null = no hold live.
-  ///
-  /// It lives here rather than in the canvas area's State because the PEN
-  /// TAIL holds for as long as the pen stays flipped — across strokes,
-  /// panel rebuilds and tab switches — where a barrel hold lasted one
-  /// press. A State that unmounted mid-hold would lose the tool to spring
-  /// back to, and leave the user holding an eraser with nothing to undo
-  /// it. Not a listenable: only the release path reads it.
-  CanvasTool? heldOriginalTool;
-
   // ── every pixel this session is holding: its own object ─────────────
   //
   // A collaborator (session/render_caches.dart): the cel stores the
@@ -406,17 +404,17 @@ class EditorSessionManager extends ChangeNotifier
     onEditActivity: () => playbackRig.prerenderScheduler.notifyEditActivity(),
   );
 
-  /// The OS memory-pressure signal, forwarded by the workspace's binding
-  /// observer: the hot cel tier halves and cools, and the playback caches
+  /// The OS memory-pressure signal, forwarded by the shell to every open
+  /// project: the hot cel tier halves and cools, and the playback caches
   /// re-run their budget against the shrunken world. Standing down is
   /// lossless by construction — cels encode to cold, dirty ones stay.
   void respondToMemoryPressure() {
-    renderCaches.brushFrameStore.respondToMemoryPressure();
-    // ⚠️And the three sheet-ink stores — cel stores like the drawings',
-    // and until 2026-09-11 they never heard the warning.
-    renderCaches.conteInkRowStore.respondToMemoryPressure();
-    renderCaches.conteInkPageStore.respondToMemoryPressure();
-    renderCaches.envelopeInkStore.respondToMemoryPressure();
+    // ⚠️EVERY cel store — the sheet-ink stores are cel stores like the
+    // drawings', and until 2026-09-11 they never heard the warning, so this
+    // walks the one list rather than naming them.
+    for (final store in renderCaches.celStores) {
+      store.respondToMemoryPressure();
+    }
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     historyManager.respondToMemoryPressure();
@@ -610,8 +608,6 @@ class EditorSessionManager extends ChangeNotifier
     },
   );
 
-  int _frameSequence = 0;
-
   // ── where a new row's id comes from: its own object ─────────────────
   //
   // A collaborator (session/layer_id_mint.dart): the `default-layer-N`
@@ -622,14 +618,22 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_clipboard.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final FrameClipboard clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
-  late final LayerClipboard layerClipboard = LayerClipboard(project: this, selection: this, changes: this, layerStack: layerStack);
+  late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
+  late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, internals: this, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
+
+  /// What the boards above hold — the APP's, handed to every open project
+  /// by the shell (I-7, 유저 2026-09-26: 「탭사이에 복사나 붙여넣기 뭐든
+  /// 가능. 앱 전체에 하나」). A session built without one keeps its own.
+  final AppClipboard _appClipboard;
+
+  /// [_appClipboard], for the memory census to weigh what it holds.
+  AppClipboard get appClipboard => _appClipboard;
 
   // ── the layer verbs: their own object, in their own file ────────────
   //
   // A collaborator (session/layer_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
+  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits, internals: this, renderCaches: renderCaches);
 
   // ── the cut's row stack: its own object ─────────────────────────────
   //
@@ -677,8 +681,25 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   /// What the rail leaves off the screen (sections, the row filter, folded
-  /// attach groups) — held here because the standing law reads it (F-169).
+  /// attach groups) and what it twirls open — held here because the
+  /// standing law reads it (F-169), and the rows it names are this
+  /// project's (I-7).
   late final RailView railView = RailView();
+
+  /// Where this project's CANVAS is framed — its zoom, pan and turn; null
+  /// until something frames it, which the canvas resolves to the identity
+  /// at read time.
+  ///
+  /// 🚨The PROJECT's since I-7 (a project per tab). The canvas is rebuilt
+  /// for the tab on screen, so a framing kept in its State went with every
+  /// switch, and a tab came back at the identity rather than where it was
+  /// left.
+  final ValueNotifier<CanvasViewport?> canvasViewport = ValueNotifier(null);
+
+  /// This project's marquee and polygon trace — the app's selection channel
+  /// shows it while this project is on screen (I-7; see
+  /// [CanvasSelectionDocument]).
+  final CanvasSelectionDocument canvasSelection = CanvasSelectionDocument();
 
   // Where the user stands (Round 6): cut, row and layer.
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId));
@@ -816,18 +837,6 @@ class EditorSessionManager extends ChangeNotifier
   void clearStoryboardCutSelection() =>
       storyboardRows.clearStoryboardCutSelection();
 
-  /// [currentRow] as a LISTENABLE — R10 #19's other half. The row you are
-  /// standing on is DRAWN now (the active layer's row, an fx header, a
-  /// property lane), and the rails have to learn it moved WITHOUT a
-  /// session notify: the claim that moves it fires on pointer-down, inside
-  /// gestures whose whole contract is silence until release.
-  ///
-  /// A [ValueNotifier] only notifies on a real change, so pressing again
-  /// in the row you are already standing on costs nothing — which is the
-  /// common case, and the reason this can be published eagerly.
-  @override
-  final ValueNotifier<TimelineRowAddress?> currentRowListenable =
-      ValueNotifier<TimelineRowAddress?>(null);
 
   /// The role's face on [RowSelection.rowSelection] — the collaborator owns
   /// the notifier, the session plays the role every other collaborator
@@ -847,7 +856,7 @@ class EditorSessionManager extends ChangeNotifier
   // sits on the GLOBAL axis.
   late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: projectSettings, trackSe: trackSe, transitions: transitions);
 
-  late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections);
+  late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections, history: historyManager);
 
   /// ⚠️Two ROLE members, not forwarders: [SessionInternals.rowIsSelected]
   /// and [SelectionAccess.clearRowSelection] are asked of the SESSION by
@@ -1047,7 +1056,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
+  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions, internals: this, renderCaches: renderCaches);
 
   TimelineRowAddress get selectedRow => standing.selectedRow;
 
@@ -1237,6 +1246,21 @@ class EditorSessionManager extends ChangeNotifier
     super.dispose();
   }
 
+  /// A project closing lets go of every file it holds: the one it is bound
+  /// to — held by the save or the open, cels or none — and whatever its
+  /// clean cels read from (a copy a save moved them onto). The process holds
+  /// a file per open project (I-7), and a tab that closed has no reason to
+  /// keep its file undeletable.
+  void _letGoOfTheFilesItHolds() {
+    final files = {
+      ?projectFile.path,
+      for (final store in renderCaches.celStores) ...store.filesReadFrom,
+    };
+    for (final path in files) {
+      OpenProjectFile.instance.releaseFor(path);
+    }
+  }
+
   /// Everything the constructor wired up or opened, in the order it must be
   /// let go of — one list this class HOLDS, rather than a teardown it
   /// spells out step by step.
@@ -1257,7 +1281,6 @@ class EditorSessionManager extends ChangeNotifier
   List<void Function()> get _teardown => [
     () => AppMemory.settings.removeListener(_applyCacheBudgets),
     layerStack.dispose,
-    currentRowListenable.dispose,
     rowSelectionVerbs.dispose,
     // ⚠️Deleting this line alone survives the teardown test: the `disposed`
     // guard inside [_publishCutLocalLaneRange] already answers. It stays
@@ -1266,7 +1289,7 @@ class EditorSessionManager extends ChangeNotifier
     // the test reports the write to a disposed notifier).
     () => laneRangeSelection.removeListener(_publishCutLocalLaneRange),
     cutLocalLaneRangeSelection.dispose,
-    revealSelectionTick.dispose,
+    rangeSelections.dispose,
     memoryPressureTicks.dispose,
     () => playbackRig.playback.globalFrameIndexListenable.removeListener(
       followPlaybackCut,
@@ -1289,7 +1312,11 @@ class EditorSessionManager extends ChangeNotifier
     playbackRig.dispose,
     renderCaches.dispose,
     audioConformStore.dispose,
-    appSettings.dispose,
+    () {
+      if (_ownsAppSettings) {
+        appSettings.dispose();
+      }
+    },
     visibilitySolo.dispose,
     editingFrameCursor.dispose,
     frameScrub.dispose,
@@ -1298,15 +1325,16 @@ class EditorSessionManager extends ChangeNotifier
     frameRangeSelection.dispose,
     brushInputActive.dispose,
     dragPreview.dispose,
-    transitionEdgeDragPreview.dispose,
     opacityVerbs.dispose,
     onionSkin.dispose,
     cutVerbs.dispose,
     trackFrameRangeSelection.dispose,
     railView.dispose,
+    canvasViewport.dispose,
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
     standing.dispose,
+    _letGoOfTheFilesItHolds,
     historyManager.dispose,
   ];
 
@@ -1423,6 +1451,7 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     activeCut: _activeCutEdits,
     placement: cutPlacement,
+    renderCaches: renderCaches,
   );
 
   @override
@@ -1577,7 +1606,6 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    internals: this,
     activeCut: _activeCutEdits,
   );
 
@@ -1727,30 +1755,6 @@ class EditorSessionManager extends ChangeNotifier
   @override
   double layerOpacityAtFrame(Layer layer, int frameIndex) {
     return resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex);
-  }
-
-  // --- Layer FX switches (PERSISTED layer state, R8) -----------------------
-
-  /// Writes one row's TRANSFORM switch; one undo step, no-op when unchanged.
-  @override
-  void updateLayerTransformEnabled(
-    LayerId layerId, {
-    required bool enabled,
-    String description = 'Toggle transform FX',
-  }) {
-    final layer = commitLayerById(layerId);
-    if (layer == null || layer.transformEnabled == enabled) {
-      return;
-    }
-    historyManager.execute(
-      UpdateLayerTransformEnabledCommand(
-        repository: repository,
-        layerId: layerId,
-        transformEnabled: enabled,
-        description: description,
-      ),
-    );
-    notifyListeners(); // Not a structural cut edit — see [_setLayerFxSwitches].
   }
 
   // --- Visibility solo mode (session view state, not persisted) ------------
@@ -1981,8 +1985,8 @@ class EditorSessionManager extends ChangeNotifier
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor, internals: this);
 
   /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
-  /// listener and by the repo-direct mix edits (mute/fader/pan/solo,
-  /// which bypass history).
+  /// listener and by the SE solo — the one mix switch that bypasses
+  /// history (mute, fader and pan are edits and undo).
   @override
   void refreshLiveAudioSchedule() {
     if (playbackRig.audioDeviceTransport.carryingPlayback) {
@@ -2015,25 +2019,6 @@ class EditorSessionManager extends ChangeNotifier
   //
   // The caret has to SAY when a drop does something structural, because a
   // folder joined in silence is a change nobody asked for.
-
-  /// A tick the rails watch to bring the SELECTION back into view (user,
-  /// 2026-08-09: walking rows and frames with the arrow keys kept selecting
-  /// things that were off screen).
-  ///
-  /// A tick rather than a value, and a notifier rather than a session
-  /// notify: what to reveal is already readable — the current row and the
-  /// current frame — so the only thing that has to travel is "now". Every
-  /// surface answers it in its own geometry, which is the only way one
-  /// signal can serve a rail that runs down, a sheet that runs across, and
-  /// a storyboard on a global axis.
-  ///
-  /// ⚠️Deliberately NOT fired by every selection change. A cell tap already
-  /// puts the thing under your finger, and the playhead moves every frame
-  /// of playback — revealing on those would yank the view out from under
-  /// the hand that put it there. It fires where the selection moves without
-  /// the pointer: the arrow keys.
-  @override
-  final ValueNotifier<int> revealSelectionTick = ValueNotifier<int>(0);
 
   // ── the layer row drag: its own object, in its own file ─────────────
   //
@@ -2189,12 +2174,6 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
   );
 
-  /// The transition row as the in-flight edge drag would leave it — the
-  /// strip renders THIS while a grip is held, so the mark follows the hand
-  /// instead of jumping on release. Null when no drag is in flight.
-  @override
-  final ValueNotifier<Layer?> transitionEdgeDragPreview = ValueNotifier(null);
-
   // --- Media import (R3b): stills, GIF sequences, cut folders -------------
 
   // ── the landing and the file doors: their own objects ────────────────
@@ -2248,26 +2227,19 @@ class EditorSessionManager extends ChangeNotifier
   );
 
   // The TVPaint door (session/tvpp_import_door.dart). A .tvpp opens AS A
-  // PROJECT — it holds several cuts — so unlike its sibling doors it
-  // replaces the session's project the way an .anicel open does, and its
-  // constructor lists that: the reset touches the clipboards, the
-  // controllers and the file record, not just the landing.
+  // PROJECT — it holds several cuts — so unlike its sibling doors it lands
+  // in a session born for it, as an .anicel does (I-7): what it does here
+  // is bake the pictures the conversion planned, into the stores this
+  // session was born with. (The clipboards it once emptied are the app's
+  // now, and a project's arrival leaves them alone.)
   late final TvppImportDoor tvppDoor = TvppImportDoor(
     project: this,
-    selection: this,
     changes: this,
-    timeline: this,
     internals: this,
     renderCaches: renderCaches,
-    landing: importLanding,
-    controllers: activeCutControllers,
-    playbackRig: playbackRig,
     file: projectFile,
     projectDoor: projectDoor,
     mediaPool: mediaPool,
-    clipboard: clipboard,
-    layerClipboard: layerClipboard,
-    frameSeekCommitted: frameSeekCommitted,
   );
 
   @override
@@ -2311,10 +2283,7 @@ class EditorSessionManager extends ChangeNotifier
     notify: notifyListeners,
   );
   @override
-  FrameId mintFrameId(LayerId layerId) {
-    _frameSequence += 1;
-    return FrameId(nextFrameId(layerId));
-  }
+  FrameId mintFrameId(LayerId layerId) => frame_ids.mintFrameId(layerId);
 
   @override
   Layer? get targetLayerForKindToggle => activeLayer;
@@ -2352,10 +2321,9 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
 
-    _frameSequence += 1;
     activeCutControllers.timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
-      frameId: FrameId(nextFrameId(layer.id)),
+      frameId: mintFrameId(layer.id),
     );
     notifyListeners();
   }
@@ -2369,6 +2337,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     frameIds: this,
+    layerIds: layerIds,
     controllers: activeCutControllers,
     frameVerbs: frameVerbs,
   );
@@ -2377,7 +2346,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: cells, frameVerbs: frameVerbs, internals: this);
+  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, transitions: transitions, cells: cells, frameVerbs: frameVerbs, internals: this, storyboardRows: storyboardRows);
 
   @override
   bool get canCreateInstance => cellInstances.canCreateInstance;
@@ -2400,17 +2369,6 @@ class EditorSessionManager extends ChangeNotifier
     selection.startIndex,
     selection.endIndexExclusive,
   );
-
-  /// ⚠️Formats an id from the CURRENT sequence — it does not advance it.
-  /// Call [mintFrameId] unless you have just incremented `_frameSequence`
-  /// yourself. The wall clock in here is decoration, not identity: its
-  /// resolution on Windows is coarser than a tight mint loop, so two ids
-  /// made in the same tick are equal, and equal frame ids are ONE drawing.
-  @override
-  String nextFrameId(LayerId layerId) {
-    final timestamp = DateTime.now().microsecondsSinceEpoch;
-    return 'ui-frame-${layerId.value}-$timestamp-$_frameSequence';
-  }
 
   // --- Comma edge drag ------------------------------------------------------
   //
@@ -2846,6 +2804,15 @@ class EditorSessionManager extends ChangeNotifier
   @override
   void notifyChanged() => notifyListeners();
 
+  /// Every announcement first lets the verbs' row follow an active layer the
+  /// program moved ([Standing.followActiveLayer], F-183 ③) — the one point
+  /// every door that moves it passes, collaborators' and this class's own.
+  @override
+  void notifyListeners() {
+    standing.followActiveLayer();
+    super.notifyListeners();
+  }
+
   // --- Run-edge NEW FRAMES drag (UI-R8 [+] handle) --------------------------
 
   // ── the run frames add drag: its own object ─────────────────────────
@@ -2957,7 +2924,11 @@ class EditorSessionManager extends ChangeNotifier
   /// why the cuts rung is a question and not a given (R5q1).
   PillSubject deleteSubjectFor({required bool cutsAreThisPanels}) =>
       pillSubjectOn(
-        cuts: cutsAreThisPanels && trackFrameRangeSelection.value != null,
+        // A band that NAMES cuts — see
+        // [StoryboardToolbarPanelContext.deleteSubject].
+        cuts:
+            cutsAreThisPanels &&
+            storyboardRows.storyboardSelectedCutIds.isNotEmpty,
         layers: () => layerVerbs.deletableSelectedLayerIds().isNotEmpty,
         cells: () => cells.canDeleteCellAtCurrentFrame,
       );
@@ -3359,6 +3330,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/onion_skin.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
   late final OnionSkin onionSkin = OnionSkin(
+    settings: appSettings.onionSkinSettings,
     project: this,
     selection: this,
     changes: this,
@@ -3392,6 +3364,7 @@ class EditorSessionManager extends ChangeNotifier
   late final ProjectFile projectFile = ProjectFile(
     project: this,
     staging: mediaStagingStore,
+    openElsewhere: _fileIsOpenElsewhere,
   );
 
   // ── the media pool: its own object ───────────────────────────────────
@@ -3417,15 +3390,11 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     controllers: activeCutControllers,
-    playbackRig: playbackRig,
     renderCaches: renderCaches,
     staging: mediaStagingStore,
     grants: mediaGrants,
     fingerprints: mediaFingerprints,
-    clipboard: clipboard,
-    layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,
-    frameSeekCommitted: frameSeekCommitted,
     mediaPool: mediaPool,
     liveStrokeLanding: liveStrokeLanding,
     solo: visibilitySolo,
@@ -3438,7 +3407,14 @@ class EditorSessionManager extends ChangeNotifier
   /// whole-write-temp-beside-the-file). Here rather than on the project
   /// file because it outlives any one binding: a person who opened another
   /// project can still back up the last one's.
-  late final FailedSaveCopies failedSaveCopies = FailedSaveCopies();
+  ///
+  /// 🚨ONE per app, handed to every open project by the shell (I-7): the
+  /// list is the RUN's, so a tab that closed leaves its copy on the list the
+  /// other tabs offer. A session built without one keeps its own.
+  final FailedSaveCopies failedSaveCopies;
+
+  /// See [ProjectFile.isOpenElsewhere] — the shell's answer, handed down.
+  final bool Function(String path)? _fileIsOpenElsewhere;
 
   // ── the project-wide audio settings: their own object ────────────────
   //

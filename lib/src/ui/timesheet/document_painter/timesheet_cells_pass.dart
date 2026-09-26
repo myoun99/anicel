@@ -501,7 +501,7 @@ class _TimesheetCellsPass {
     if (wordRows > 0) {
       _painter._paintVerticalWord(
         canvas,
-        _painter.notation.repeat,
+        _painter.words.repeat,
         centerX: slot.centerX,
         top: slot.cellTop + TimesheetDocumentLayout.rowHeight,
         rows: wordRows,
@@ -551,7 +551,7 @@ class _TimesheetCellsPass {
         // notation hold word (止め) vertically (UI-R11 #15).
         _painter._paintVerticalWord(
           canvas,
-          _painter.notation.hold,
+          _painter.words.hold,
           centerX: slot.centerX,
           top: slot.cellTop,
           rows: slot.cell.spanLength ?? 1,

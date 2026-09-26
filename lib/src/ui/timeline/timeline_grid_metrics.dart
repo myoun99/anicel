@@ -140,19 +140,40 @@ const double timelineBottomScrollbarRailHeight = AppScrollbarLane.wide;
 /// now climbs the ladder on its own measure — a number by its measured
 /// extent (`TimelineRulerScale.labelEveryFrames`), a line by its stroke
 /// (`timelineGridLineEveryFrames`).
-const List<int> timelineFrameStrideLadder = [1, 3, 6, 12, 24, 48, 96];
+///
+/// ↩️I-22 (the ten-minute floor, 2026-09-26): the list stopped at 96 — at
+/// the old 2.4px floor 96 frames held any number the ruler writes. At an
+/// eighth of a pixel they hold a fifth of one, so past the rungs the user
+/// named the ladder goes on doubling, as the rule always said, as far as a
+/// mark asks ([timelineFrameStrides]).
+const List<int> timelineFrameStrideLadder = [1, 3, 6, 12, 24];
 
-/// The densest rung of [timelineFrameStrideLadder] whose span, over cells of
-/// [cellExtent], holds a mark of [markExtent] — the one question both marks
-/// ask, each with its own extent.
+/// Every rung of the ladder, densest first: the rungs the user named, then
+/// doubling on without end.
+Iterable<int> timelineFrameStrides() sync* {
+  yield* timelineFrameStrideLadder;
+  for (var stride = timelineFrameStrideLadder.last * 2; ; stride *= 2) {
+    yield stride;
+  }
+}
+
+/// The densest rung of the ladder ([timelineFrameStrides]) whose span, over
+/// cells of [cellExtent], holds a mark of [markExtent] — the one question
+/// every mark asks, each with its own extent.
 int timelineStrideHolding(double markExtent, double cellExtent) {
-  for (final stride in timelineFrameStrideLadder) {
+  assert(markExtent.isFinite && cellExtent > 0);
+  for (final stride in timelineFrameStrides()) {
     if (markExtent <= stride * cellExtent) {
       return stride;
     }
   }
-  return timelineFrameStrideLadder.last;
+  throw StateError('the ladder has no top rung');
 }
+
+/// The first frame at or after [frame] that a walk over every [stride]th
+/// frame stands on — where a window's walk of marks starts.
+int timelineFirstOnStride(int frame, int stride) =>
+    (frame + stride - 1) ~/ stride * stride;
 
 class TimelineGridMetrics {
   static const int defaultMinimumVisibleFrameCells = 24;

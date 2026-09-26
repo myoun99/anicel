@@ -222,7 +222,10 @@ void main() {
             blockStartIndex: 0,
             blockOrdinal: 0,
             edge: TimelineBlockEdge.end,
-            resolveFrameCellExtent: () => 48,
+            geometry: testFrameGeometry(
+              frameCellExtent: 48,
+              frameEndIndexExclusive: 10,
+            ),
             callbacks: TimelineCommaDragCallbacks(
               onBegin: (_, _, edge) {
                 begins.add(edge);

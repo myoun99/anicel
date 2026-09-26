@@ -43,12 +43,19 @@ import 'same_file.dart';
 class OpenProjectFile {
   OpenProjectFile._();
 
-  /// One per process, because one project is open at a time — the same
-  /// shape the native decoder's single document has.
+  /// One per process, holding a file per open project.
+  ///
+  /// ↩️It held ONE file, 「because one project is open at a time」, and
+  /// reading any other file let the first go. With a project per tab (I-7,
+  /// 유저 2026-09-26) that rule stripped the protection off every tab but
+  /// the one that read last — its `.anicel` became deletable while its clean
+  /// cels still pointed into it, which is the 94-drawings loss this class
+  /// exists to refuse. So it holds every file some project reads from, and
+  /// each is let go by name.
   static final OpenProjectFile instance = OpenProjectFile._();
 
-  String? _path;
-  RandomAccessFile? _handle;
+  /// The held descriptors, by the path each was first held under.
+  final Map<String, RandomAccessFile> _handles = {};
 
   /// How many times a read had to open the file.
   ///
@@ -62,7 +69,7 @@ class OpenProjectFile {
   /// [length] bytes of [path] from [offset], through a handle kept for next
   /// time.
   ///
-  /// ⚠️Sequential by nature — the callers are the session's cel stores on
+  /// ⚠️Sequential by nature — the callers are the sessions' cel stores on
   /// one isolate. A second reader would need its own handle, not a share of
   /// this one, and there is no such caller.
   ///
@@ -83,7 +90,7 @@ class OpenProjectFile {
     try {
       return _readThrough(_handleFor(path), offset, length);
     } on Object {
-      release();
+      releaseFor(path);
       return _readThrough(_handleFor(path), offset, length);
     }
   }
@@ -97,32 +104,37 @@ class OpenProjectFile {
     return handle.readSync(length);
   }
 
-  RandomAccessFile _handleFor(String path) {
-    final open = _handle;
-    final held = _path;
-    if (open != null && held != null && namesTheSameFile(held, path)) {
-      return open;
+  /// The key [path] is held under, whatever spelling it arrives in.
+  String? _heldAs(String path) {
+    for (final held in _handles.keys) {
+      if (namesTheSameFile(held, path)) {
+        return held;
+      }
     }
-    // A different project: the old handle has no reason to keep the old
-    // file undeletable.
-    release();
+    return null;
+  }
+
+  RandomAccessFile _handleFor(String path) {
+    final held = _heldAs(path);
+    if (held != null) {
+      return _handles[held]!;
+    }
     debugOpens += 1;
     final opened = File(path).openSync();
-    _path = path;
-    _handle = opened;
+    _handles[path] = opened;
     return opened;
   }
 
-  /// Lets go if — and only if — the file being held is [path].
+  /// Lets go if — and only if — [path] is being held.
   ///
   /// ⛔The path test is the point. A blanket release from whoever is about
   /// to write SOMETHING would drop the project file for a sidecar write,
   /// and the protection would be off during exactly the window a save
-  /// takes.
+  /// takes — and, with a project per tab, off for every OTHER tab's file.
   void releaseFor(String path) {
-    final held = _path;
-    if (held != null && namesTheSameFile(held, path)) {
-      release();
+    final held = _heldAs(path);
+    if (held != null) {
+      _close(_handles.remove(held)!);
     }
   }
 
@@ -146,17 +158,17 @@ class OpenProjectFile {
     }
   }
 
-  /// Whether the file being held has lost its NAME — deleted or moved by
+  /// Whether [path] is held and has lost its NAME — deleted or moved by
   /// someone else while our descriptor still reads it. POSIX only: Windows
   /// refuses both while we hold the file (the table above).
-  bool get heldNameVanished {
-    final path = _path;
-    return _handle != null && path != null && !File(path).existsSync();
+  bool heldNameVanished(String path) {
+    final held = _heldAs(path);
+    return held != null && !File(held).existsSync();
   }
 
   /// Copies the held file's bytes, through OUR descriptor, to
-  /// [destination]; answers it, or null when [path] is not what is held or
-  /// the copy failed.
+  /// [destination]; answers it, or null when [path] is not held or the
+  /// copy failed.
   ///
   /// 🚨★★★**ONCE THE NAME IS GONE, THE DESCRIPTOR IS THE ONLY WAY LEFT TO
   /// THOSE BYTES** (POSIX: `unlink` removes the name, the bytes live while a
@@ -169,11 +181,11 @@ class OpenProjectFile {
   /// every cel read meanwhile throw. A one-megabyte buffer keeps the copy's
   /// memory flat whatever the project weighs.
   String? copyOut(String path, String destination) {
-    final open = _handle;
-    final held = _path;
-    if (open == null || held == null || !namesTheSameFile(held, path)) {
+    final held = _heldAs(path);
+    if (held == null) {
       return null;
     }
+    final open = _handles[held]!;
     final part = '$destination.part';
     RandomAccessFile? out;
     try {
@@ -217,19 +229,12 @@ class OpenProjectFile {
   /// move would have left it.
   @visibleForTesting
   void debugHoldAs(String actual, String reported) {
-    release();
+    releaseFor(reported);
     debugOpens += 1;
-    _handle = File(actual).openSync();
-    _path = reported;
+    _handles[reported] = File(actual).openSync();
   }
 
-  void release() {
-    final open = _handle;
-    _handle = null;
-    _path = null;
-    if (open == null) {
-      return;
-    }
+  static void _close(RandomAccessFile open) {
     try {
       open.closeSync();
     } on Object {
@@ -238,18 +243,29 @@ class OpenProjectFile {
     }
   }
 
-  /// Whether a file is being held right now (diagnostics/tests).
-  bool get isHolding => _handle != null;
+  /// Lets go of every file — a test's cleanup, so it can delete its folder.
+  /// ⛔No product caller: a blanket release is the shape that took every
+  /// other open project's protection away (see [instance]).
+  @visibleForTesting
+  void releaseAll() {
+    for (final open in _handles.values) {
+      _close(open);
+    }
+    _handles.clear();
+  }
 
-  /// The file being held, or null.
-  String? get heldPath => _path;
+  /// Whether [path] is being held right now (diagnostics/tests).
+  bool isHolding(String path) => _heldAs(path) != null;
+
+  /// Every file being held (diagnostics/tests).
+  Iterable<String> get heldPaths => _handles.keys;
 
   static void debugResetForTests() {
-    instance.release();
+    instance.releaseAll();
     debugOpens = 0;
   }
 
-  /// Closes the held descriptor while KEEPING it as the held one — the
+  /// Closes [path]'s held descriptor while KEEPING it as the held one — the
   /// state a share that dropped leaves behind.
   ///
   /// 🧪The seam exists because nothing else can produce that state on
@@ -258,7 +274,10 @@ class OpenProjectFile {
   /// hold it, POSIX keeps our descriptor working), and neither does a
   /// rename.
   @visibleForTesting
-  static void debugBreakHeldHandle() {
-    instance._handle?.closeSync();
+  static void debugBreakHeldHandle(String path) {
+    final held = instance._heldAs(path);
+    if (held != null) {
+      instance._handles[held]!.closeSync();
+    }
   }
 }

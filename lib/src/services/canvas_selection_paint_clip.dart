@@ -8,6 +8,7 @@ import '../models/dirty_region.dart';
 import 'bitmap_surface_brush_commit.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_stroke_blend.dart';
+import 'brush_stroke_commit_data.dart';
 import 'canvas_selection_region.dart';
 
 /// A stroke rasterized and CLIPPED to the live selection (R26 #18: "선택
@@ -117,14 +118,23 @@ ClippedStrokePixels? rasterizeStrokeForClipping({
 ///
 /// Null when the stroke draws nothing, or nothing of it survives the
 /// selection.
+///
+/// Dabs the selection cannot reach are left out before anything is
+/// rasterized — the live rasterizer's rule ([CanvasSelectionRegion.mayCover]),
+/// for the same reason: the mask would zero every pixel they add.
 ClippedStrokePixels? clipDabsToSelection({
   required List<BrushDab> dabs,
   required CanvasSize canvasSize,
   required int tileSize,
   required CanvasSelectionRegion region,
 }) {
+  final reaching = [
+    for (final dab in dabs)
+      if (dirtyRegionForBrushDab(dab) case final reach?)
+        if (region.mayCover(reach)) dab,
+  ];
   final rasterized = rasterizeStrokeForClipping(
-    dabs: dabs,
+    dabs: reaching,
     canvasSize: canvasSize,
     tileSize: tileSize,
   );
@@ -135,4 +145,61 @@ ClippedStrokePixels? clipDabsToSelection({
           bounds: rasterized.bounds,
           region: region,
         );
+}
+
+/// A finished stroke's commit payload confined to [region], for landing on
+/// [surface] — the cel as it stands at the commit. Null when nothing of
+/// the stroke survives, and the caller then commits nothing at all.
+///
+/// 🚨★★★PROMOTED TILES ARE THE ANSWER ONLY WHILE [surface] IS THE ONE THEY
+/// WERE BLENDED AGAINST. They were masked in the pre-blend kernel, so on
+/// that surface they are already clipped and pass straight through. Once
+/// anything has landed on the cel in between, the commit ignores them and
+/// re-derives the stroke from its dabs (`BrushStrokeCommitData`) — and
+/// until this function it re-derived the WHOLE stroke there, the selection
+/// forgotten: the clip had passed promoted payloads through unconditionally.
+/// So a moved surface takes the same route as a stroke with no live pixels:
+/// the dabs, rasterized and clipped here, and the commit composites what
+/// is left.
+///
+/// ⚠️It is the ordinary case on a sheet, not an edge: a timesheet page's
+/// two halves are two windows onto ONE band surface, and a stroke over
+/// both lands twice on it in the same pen-up.
+///
+/// ⛔ONE funnel for the canvas's selection (R26 #18, 「선택하고 그리면 선택
+/// 내부만 그려진다」) and a sheet window's slice of one paper — the same
+/// question, 「only here」, asked of the same payload.
+BrushStrokeCommitData? clipStrokeCommitToSelection(
+  BrushStrokeCommitData data, {
+  required CanvasSelectionRegion region,
+  required BitmapSurface surface,
+}) {
+  final promoted = data.promotedTiles;
+  if (promoted != null && identical(data.promotedBase, surface)) {
+    return promoted.isEmpty ? null : data;
+  }
+  final pixels = data.strokePixels;
+  final bounds = data.strokeBounds;
+  final clipped = pixels == null || bounds == null
+      ? clipDabsToSelection(
+          dabs: data.sourceDabs,
+          canvasSize: surface.canvasSize,
+          tileSize: surface.tileSize,
+          region: region,
+        )
+      : clipStrokePixelsToSelection(
+          pixels: pixels,
+          bounds: bounds,
+          region: region,
+        );
+  if (clipped == null) {
+    return null;
+  }
+  return BrushStrokeCommitData(
+    sourceDabs: data.sourceDabs,
+    strokePixels: clipped.pixels,
+    strokeBounds: clipped.bounds,
+    blendMode: data.blendMode,
+    strokeOpacity: data.strokeOpacity,
+  );
 }

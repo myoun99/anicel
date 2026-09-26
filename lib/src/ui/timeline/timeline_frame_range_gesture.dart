@@ -12,7 +12,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
-import 'timeline_cell_double_tap.dart';
+import 'timeline_double_tap.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
@@ -732,6 +732,13 @@ class _TimelineLaneRangeGestureLayerState
     return frame < 0 ? 0 : frame;
   }
 
+  /// The cells the double tap aims at ([timelineDoubleTapAim]).
+  TimelineDoubleTapCells get _cells => (
+    frameAt: _frameAt,
+    axis: widget.axis,
+    cellExtent: () => widget.frameCellExtent,
+  );
+
   /// This layer's row address on the mount's row list — the grip seam's
   /// vocabulary.
   TimelineRowAddress get _rowAddress =>
@@ -881,7 +888,7 @@ class _TimelineLaneRangeGestureLayerState
         onPressDown: timelineCellDoubleTapRecord(
           layerId: widget.layer.id,
           laneId: widget.laneId,
-          frameAt: _frameAt,
+          cells: _cells,
         ),
         onTap: (localPosition) => widget.callbacks.onTapAt(
           widget.layer.id,
@@ -919,7 +926,7 @@ class _TimelineLaneRangeGestureLayerState
               : timelineCellDoubleTapActivation(
                   layerId: widget.layer.id,
                   laneId: widget.laneId,
-                  frameAt: _frameAt,
+                  cells: _cells,
                   onActivate: (frame) =>
                       activate(widget.layer.id, widget.laneId, frame),
                 ),

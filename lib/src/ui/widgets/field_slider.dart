@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../input/control_press_claim.dart';
@@ -348,6 +349,8 @@ class _FieldSliderState extends State<FieldSlider> {
 
   /// The track's length along [FieldSlider.axis].
   double _trackExtent = 0;
+
+  void _takeTrackExtent(double extent) => _trackExtent = extent;
 
   /// The +/− pair as last built, and what it was built from.
   ///
@@ -696,37 +699,36 @@ class _FieldSliderState extends State<FieldSlider> {
       ),
     );
 
-    Widget bar = LayoutBuilder(
-      builder: (context, constraints) {
-        _trackExtent = _vertical ? constraints.maxHeight : constraints.maxWidth;
-        return DecoratedBox(
-          decoration: ShapeDecoration(
-            color: _asDrawn(AppColors.surface),
-            shape: AppShapes.container(
-              _radius,
-              side: BorderSide(color: _asDrawn(AppColors.hairline)),
+    Widget bar = _TrackExtentProbe(
+      vertical: _vertical,
+      onExtent: _takeTrackExtent,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          color: _asDrawn(AppColors.surface),
+          shape: AppShapes.container(
+            _radius,
+            side: BorderSide(color: _asDrawn(AppColors.hairline)),
+          ),
+        ),
+        child: SuperellipseClip(
+          shape: AppShapes.container(_radius),
+          child: CustomPaint(
+            painter: _FieldSliderTrackPainter(
+              axis: widget.axis,
+              t: t,
+              originT: _originFraction,
+              accent: _asDrawn(accent),
+            ),
+            child: SizedBox(
+              width: _vertical ? widget.height : null,
+              height: _vertical ? null : widget.height,
+              child: _vertical
+                  ? RotatedBox(quarterTurns: 1, child: inner)
+                  : inner,
             ),
           ),
-          child: SuperellipseClip(
-            shape: AppShapes.container(_radius),
-            child: CustomPaint(
-              painter: _FieldSliderTrackPainter(
-                axis: widget.axis,
-                t: t,
-                originT: _originFraction,
-                accent: _asDrawn(accent),
-              ),
-              child: SizedBox(
-                width: _vertical ? widget.height : null,
-                height: _vertical ? null : widget.height,
-                child: _vertical
-                    ? RotatedBox(quarterTurns: 1, child: inner)
-                    : inner,
-              ),
-            ),
-          ),
-        );
-      },
+        ),
+      ),
     );
 
     if (!_enabled) {
@@ -776,6 +778,12 @@ class _FieldSliderState extends State<FieldSlider> {
       ),
     );
     final claimed = Semantics(
+      // 🚨ITS OWN SEMANTICS BOUNDARY (2026-09-26). A value that changes lays
+      // its writing out again, and every layout re-walks the nearest
+      // boundary's whole share of the semantics tree — without one here that
+      // was the panel's scroll view, about a thousand nodes for one number.
+      // The bar was a node of its own already; this stops the walk at it.
+      container: true,
       slider: true,
       label: widget.label,
       value: valueText,
@@ -969,4 +977,67 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
 
   @override
   Object get props => (t, originT, axis, accent);
+}
+
+/// Hands the bar's length along its axis to the gesture math as the bar is
+/// laid out — the one thing the bar needed a `LayoutBuilder` for.
+///
+/// 🚨NOT A LAYOUT BUILDER (2026-09-26). A layout builder re-runs its builder
+/// on every rebuild, and that is a relayout — which climbs past the bar to
+/// whatever the row's first relayout boundary is. In a settings panel that
+/// is the scroll view's content: a brush pick handed every bar a new value
+/// and laid out the whole panel column (91 render objects for 5 changed
+/// numbers), and a drag did it on every move. Each object laid out is also
+/// a semantics update — on a machine whose accessibility tree is on, the
+/// pick's heaviest frame spent ~4 ms there. This lays the bar out exactly
+/// as the builder did (its constraints, handed straight through) and asks
+/// for nothing when the bar is only repainted.
+class _TrackExtentProbe extends SingleChildRenderObjectWidget {
+  const _TrackExtentProbe({
+    required this.vertical,
+    required this.onExtent,
+    required super.child,
+  });
+
+  final bool vertical;
+  final ValueChanged<double> onExtent;
+
+  @override
+  _RenderTrackExtentProbe createRenderObject(BuildContext context) =>
+      _RenderTrackExtentProbe(vertical: vertical, onExtent: onExtent);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderTrackExtentProbe renderObject,
+  ) {
+    renderObject
+      ..vertical = vertical
+      ..onExtent = onExtent;
+  }
+}
+
+class _RenderTrackExtentProbe extends RenderProxyBox {
+  _RenderTrackExtentProbe({
+    required bool vertical,
+    required this.onExtent,
+  }) : _vertical = vertical;
+
+  ValueChanged<double> onExtent;
+
+  bool get vertical => _vertical;
+  bool _vertical;
+  set vertical(bool value) {
+    if (_vertical == value) {
+      return;
+    }
+    _vertical = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    onExtent(_vertical ? constraints.maxHeight : constraints.maxWidth);
+  }
 }

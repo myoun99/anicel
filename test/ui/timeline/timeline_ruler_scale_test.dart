@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart' show wordFitsAsItIs;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show timelineMarkGap;
+    show timelineFrameBoundaryLineInk, timelineGridLineSnap, timelineMarkGap;
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_second.dart'
+    show timelineSecondStrideLadder;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
     show XSheetFrameRailPainter;
 
@@ -51,6 +53,7 @@ void main() {
     colorScheme: colorScheme ?? light,
     face: face,
     numberType: numberType,
+    secondsFontSize: axis == Axis.horizontal ? 9 : 8,
     framesPerSecond: framesPerSecond,
     showSeconds: showSeconds,
     windowBucket: windowBucket,
@@ -506,6 +509,236 @@ void main() {
       expect(number.rect.center.dx, closeTo(row.center.dx, 1e-9));
     });
   });
+
+  group('I-22: at the ten-minute floor the strip writes and papers in '
+      'stretches', () {
+    const cell = 1 / 8;
+    TimelineRulerScale wide({
+      Axis axis = Axis.horizontal,
+      double cellExtent = cell,
+      int frameStartIndex = 0,
+    }) => scale(
+      axis: axis,
+      metrics: TimelineGridMetrics.defaults.copyWith(
+        frameCellWidth: cellExtent,
+      ),
+      frameStartIndex: frameStartIndex,
+      frameEndIndexExclusive: 14400,
+      playbackFrameCount: 14400,
+      numberType: axis == Axis.horizontal
+          ? TimelineFrameRulerPainter.numberType
+          : XSheetFrameRailPainter.numberType,
+    );
+    TimelineRulerGlyphLayout layoutOf(Axis axis) => axis == Axis.horizontal
+        ? TimelineFrameRulerPainter.glyphsAt
+        : XSheetFrameRailPainter.glyphsAt;
+
+    test('the seconds thin on their ladder where a second cannot hold its '
+        'mark', () {
+      final strip = wide();
+      final every = strip.secondsLabelEverySeconds;
+      expect(every, greaterThan(1));
+      expect(timelineSecondStrideLadder, contains(every));
+      expect(strip.modelAt(0).secondsLabel, '0');
+      expect(strip.modelAt(24 * every).secondsLabel, '$every');
+      expect(
+        strip.modelAt(24).secondsLabel,
+        isEmpty,
+        reason: 'second 1 is off the rung',
+      );
+    });
+
+    test('every second still writes at every zoom the old floor allowed', () {
+      for (final atLeast in [2.4, 24.0]) {
+        expect(
+          scale(
+            metrics: TimelineGridMetrics.defaults.copyWith(
+              frameCellWidth: atLeast,
+            ),
+            frameEndIndexExclusive: 14400,
+          ).secondsLabelEverySeconds,
+          1,
+          reason: '${atLeast}px',
+        );
+      }
+    });
+
+    test('every frame a strip writes at is on its writing step', () {
+      for (final axis in Axis.values) {
+        final strip = wide(axis: axis);
+        final step = strip.writingStep;
+        for (var frame = 0; frame < 14400; frame += 1) {
+          final writing = strip.writingAt(frame, current: false);
+          if (writing.number.isNotEmpty || writing.second.isNotEmpty) {
+            expect(frame % step, 0, reason: '$axis frame $frame');
+          }
+        }
+      }
+    });
+
+    test('no two seconds a strip writes stand closer than the mark gap', () {
+      // A sweep, not the floor alone: the gap decides the rung only in the
+      // band where a second holds its widest mark but not the gap as well.
+      for (final axis in Axis.values) {
+        for (var step = 10; step <= 500; step += 1) {
+          final strip = wide(axis: axis, cellExtent: step / 200);
+          Rect? previous;
+          var closest = double.infinity;
+          for (var second = 100; second < 300; second += 1) {
+            final text = strip.writingAt(second * 24, current: false).second;
+            if (text.isEmpty) {
+              continue;
+            }
+            final rect = layoutOf(axis)(strip, second * 24, current: false)
+                .singleWhere((glyph) => glyph.painter.plainText == text)
+                .rect;
+            if (previous != null) {
+              closest = math.min(
+                closest,
+                axis == Axis.horizontal
+                    ? rect.left - previous.right
+                    : rect.top - previous.bottom,
+              );
+            }
+            previous = rect;
+          }
+          expect(
+            closest,
+            greaterThanOrEqualTo(timelineMarkGap - 1e-9),
+            reason: '$axis at ${step / 200}px',
+          );
+        }
+      }
+    });
+
+    test('a strip paints every mark its window holds, whatever frame the '
+        'window starts on', () {
+      for (final axis in Axis.values) {
+        final strip = wide(axis: axis, frameStartIndex: 7);
+        final drawn = _DrawnWidths();
+        (axis == Axis.horizontal
+                ? TimelineFrameRulerPainter(scale: strip)
+                : XSheetFrameRailPainter(scale: strip))
+            .paint(drawn, const Size(1800, 28));
+        var written = 0;
+        for (var frame = 7; frame < 14400; frame += 1) {
+          written += layoutOf(axis)(strip, frame, current: false).length;
+        }
+        expect(written, greaterThan(0), reason: 'the premise: $axis writes');
+        expect(drawn.widths, hasLength(written), reason: '$axis');
+      }
+    });
+
+    test('both strips give a node where they write a number and nowhere '
+        'else — the rail\'s every row went with its every-row numbers', () {
+      for (final axis in Axis.values) {
+        final strip = wide(axis: axis, frameStartIndex: 7);
+        final nodes =
+            (axis == Axis.horizontal
+                    ? TimelineFrameRulerPainter(scale: strip)
+                    : XSheetFrameRailPainter(scale: strip))
+                .semanticsBuilder!(const Size(1800, 28));
+        final numbered = [
+          for (var frame = 7; frame < 14400; frame += 1)
+            if (strip.modelAt(frame).label.isNotEmpty) 'frame ${frame + 1}',
+        ];
+        expect(numbered, isNotEmpty, reason: 'the premise: $axis numbers');
+        expect(
+          nodes.map((node) => node.properties.label),
+          numbered,
+          reason: '$axis',
+        );
+      }
+    });
+
+    test('the paper is one rect per ground: the selected cell and the '
+        'playback end are its only edges', () {
+      final strip = scale(
+        axis: Axis.vertical,
+        currentFrameIndex: 10,
+        playbackFrameCount: 50,
+        frameEndIndexExclusive: 100,
+        pastPlaybackWash: const Color(0xFF123456),
+      );
+      final canvas = _Rects();
+      strip.paintPaperIn(canvas, (startIndex: 0, endIndexExclusive: 100));
+
+      expect(canvas.rects.map((rect) => rect.color.toARGB32()), [
+        strip.modelAt(0).background.toARGB32(),
+        strip.modelAt(10).background.toARGB32(),
+        strip.modelAt(11).background.toARGB32(),
+        strip.modelAt(50).background.toARGB32(),
+      ]);
+      expect(canvas.rects.first.rect, strip.cellRectFor(0).expandToInclude(
+        strip.cellRectFor(9),
+      ));
+      expect(canvas.rects.last.rect, strip.cellRectFor(50).expandToInclude(
+        strip.cellRectFor(99),
+      ));
+    });
+
+    test('the paper rules every line the law rules, whatever frame a '
+        'stretch starts on', () {
+      for (final axis in Axis.values) {
+        // The selected cell and the playback end cut the paper at 10, 11
+        // and 50 — none of them on the lines' step at this zoom.
+        final strip = scale(
+          axis: axis,
+          metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
+          currentFrameIndex: 10,
+          playbackFrameCount: 50,
+          frameEndIndexExclusive: 1000,
+        );
+        final lines = _Lines();
+        strip.paintPaperIn(lines, (startIndex: 0, endIndexExclusive: 1000));
+
+        double edgeOf(int frame) {
+          final rect = strip.cellRectFor(frame);
+          return (axis == Axis.horizontal ? rect.left : rect.top) +
+              timelineGridLineSnap;
+        }
+
+        final ruled = [
+          for (var frame = 0; frame < 1000; frame += 1)
+            if (timelineFrameBoundaryLineInk(
+                  frameIndex: frame,
+                  frameCellExtent: cell,
+                  framesPerSecond: 24,
+                  colorScheme: strip.colorScheme,
+                ) !=
+                null)
+              edgeOf(frame),
+        ];
+        double along(Offset start) =>
+            axis == Axis.horizontal ? start.dx : start.dy;
+        expect(ruled.length, greaterThan(2), reason: 'the premise');
+        expect(lines.starts.map(along), ruled, reason: '$axis');
+      }
+    });
+  });
+}
+
+/// Every line drawn, by where it starts.
+class _Lines implements Canvas {
+  final starts = <Offset>[];
+
+  @override
+  void drawLine(Offset p1, Offset p2, Paint paint) => starts.add(p1);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+/// Every rect laid, with the colour it was laid in.
+class _Rects implements Canvas {
+  final rects = <({Rect rect, Color color})>[];
+
+  @override
+  void drawRect(Rect rect, Paint paint) =>
+      rects.add((rect: rect, color: paint.color));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 /// The width every paragraph is DRAWN at — through the canvas's scale, since

@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 import 'package:flutter/services.dart' show FontLoader;
 
-/// Loads the app UI's own faces — BIZ UDPGothic and 나눔고딕, both weights,
-/// exactly as `pubspec.yaml` declares them — from the files the bundle
-/// ships, so a test measures text the way the app lays it out.
+/// Loads the app's own faces — BIZ UDPGothic and 나눔고딕, both weights,
+/// by the names and files `AppTypography` declares (the ones `pubspec.yaml`
+/// ships) — so a test measures text the way the app lays it out.
 ///
 /// ⚠️flutter_test does not load the app's fonts. Without this every glyph is
 /// measured in the test font, and a box that clips in BIZ UDPGothic can pass
@@ -14,15 +15,15 @@ import 'package:flutter/services.dart' show FontLoader;
 Future<void> loadTheAppFaces() async {
   for (final (family, files) in _faces) {
     final loader = FontLoader(family);
-    for (final file in files) {
-      final bytes = File('assets/fonts/$file').readAsBytesSync();
+    for (final path in [files.regular, files.bold]) {
+      final bytes = File(path).readAsBytesSync();
       loader.addFont(Future.value(ByteData.view(bytes.buffer)));
     }
     await loader.load();
   }
 }
 
-const _faces = [
-  ('BIZ UDPGothic', ['BIZUDPGothic-Regular.ttf', 'BIZUDPGothic-Bold.ttf']),
-  ('Nanum Gothic', ['NanumGothic-Regular.ttf', 'NanumGothic-Bold.ttf']),
+final _faces = [
+  (AppTypography.bundledFamily, AppTypography.bundledFiles),
+  (AppTypography.bundledFallback.single, AppTypography.bundledFallbackFiles),
 ];

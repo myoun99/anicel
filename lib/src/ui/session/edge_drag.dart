@@ -94,7 +94,8 @@ class EdgeDragVerbs {
       spanStartIndex: spanStartIndex,
       edge: edge,
       layerId: layerId,
-      preview: _roles.internals.transitionEdgeDragPreview,
+      preview: _roles.internals.dragPreview,
+      formsOf: _transitions.previewFormsOf,
       commitInstructions: _transitions.updateTransitionInstructions,
     );
     if (drag == null) {
@@ -108,6 +109,53 @@ class EdgeDragVerbs {
 
   void updateTransitionEdgeDrag(int cumulativeDelta) =>
       _transitionEdgeDrag?.update(cumulativeDelta);
+
+  /// A grip on a row the CUT view draws: the row's own comma drag — except
+  /// the transition row's mark, which drags the GLOBAL span it shows
+  /// through the storyboard's own verb (transition-row-open-in-the-cut,
+  /// 유저 2026-09-25: 「편집은 동일하게 타임라인에서 다 할수있고, 원본
+  /// 데이터는 글로벌에서 가지고있음」). [blockStartIndex] is the block as
+  /// the row DRAWS it, which on the transition row is a projection. An
+  /// O.L's mark has no grips here (유저 2026-09-26), and refuses one.
+  bool beginCutRowEdgeDrag({
+    required LayerId layerId,
+    required int blockStartIndex,
+    required TimelineBlockEdge edge,
+  }) {
+    if (!_transitions.isTrackTransitionLayerId(layerId)) {
+      return beginExposureEdgeDrag(
+        layerId: layerId,
+        blockStartIndex: blockStartIndex,
+        edge: edge,
+      );
+    }
+    final start = _transitions.transitionSpanStartEditableInCutAt(
+      blockStartIndex,
+    );
+    return start != null &&
+        beginTransitionEdgeDrag(
+          spanStartIndex: start,
+          edge: edge,
+          layerId: layerId,
+        );
+  }
+
+  /// Steps whichever cut-row drag [beginCutRowEdgeDrag] started — only one
+  /// is ever in flight, and the other answers nothing.
+  void updateCutRowEdgeDrag(int cumulativeDelta) {
+    updateExposureEdgeDrag(cumulativeDelta);
+    updateTransitionEdgeDrag(cumulativeDelta);
+  }
+
+  void endCutRowEdgeDrag() {
+    endExposureEdgeDrag();
+    endTransitionEdgeDrag();
+  }
+
+  void cancelCutRowEdgeDrag() {
+    cancelExposureEdgeDrag();
+    cancelTransitionEdgeDrag();
+  }
 
   /// Commits the drag as ONE undo step through the row's own writer.
   void endTransitionEdgeDrag() {

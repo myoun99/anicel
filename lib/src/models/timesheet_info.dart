@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import 'envelope/cut_envelope_presets.dart';
 import 'production_staff.dart';
 
 export 'production_staff.dart';
@@ -25,6 +26,8 @@ class TimesheetInfo {
     this.seEmptyFill = true,
     this.staff = const {},
     this.logoAssetPath,
+    this.coverImagePath,
+    this.envelopeFormId = CutEnvelopePresets.analogId,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -61,6 +64,17 @@ class TimesheetInfo {
   /// form prints in its corner. Null prints nothing.
   final String? logoAssetPath;
 
+  /// The conte cover's own picture, a [MediaAsset] path of kind `image`
+  /// (유저 답 conte-cover-image: 「표지 그림 칸을 따로」). Null leaves its
+  /// place empty.
+  final String? coverImagePath;
+
+  /// Which bundled 봉투 form the cut envelope prints — chosen in its panel
+  /// and kept with the work (유저 답 sheet-form-choice-home: 「해당 패널에
+  /// 지금처럼 두고싶고, 그 상태에서 작품에 저장되도록」). ↩️It was a
+  /// workspace value that did not outlive the session.
+  final String envelopeFormId;
+
   /// The role's assignee, or an empty one when nobody is set — so a form
   /// binding never has to null-check.
   ProductionStaff staffFor(String role) =>
@@ -82,6 +96,8 @@ class TimesheetInfo {
     bool? seEmptyFill,
     Map<String, ProductionStaff>? staff,
     String? Function()? logoAssetPath,
+    String? Function()? coverImagePath,
+    String? envelopeFormId,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -97,6 +113,10 @@ class TimesheetInfo {
       logoAssetPath: logoAssetPath == null
           ? this.logoAssetPath
           : logoAssetPath(),
+      coverImagePath: coverImagePath == null
+          ? this.coverImagePath
+          : coverImagePath(),
+      envelopeFormId: envelopeFormId ?? this.envelopeFormId,
     );
   }
 
@@ -126,6 +146,9 @@ class TimesheetInfo {
         for (final entry in staff.entries) entry.key: entry.value.toJson(),
       },
     if (logoAssetPath != null) 'logo': logoAssetPath,
+    if (coverImagePath != null) 'cover': coverImagePath,
+    if (envelopeFormId != CutEnvelopePresets.analogId)
+      'envelopeForm': envelopeFormId,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -150,6 +173,9 @@ class TimesheetInfo {
           ),
       },
       logoAssetPath: json['logo'] as String?,
+      coverImagePath: json['cover'] as String?,
+      envelopeFormId:
+          json['envelopeForm'] as String? ?? CutEnvelopePresets.analogId,
     );
   }
 
@@ -164,6 +190,8 @@ class TimesheetInfo {
           other.exposureBarThreshold == exposureBarThreshold &&
           other.seEmptyFill == seEmptyFill &&
           other.logoAssetPath == logoAssetPath &&
+          other.coverImagePath == coverImagePath &&
+          other.envelopeFormId == envelopeFormId &&
           mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
@@ -177,6 +205,8 @@ class TimesheetInfo {
     exposureBarThreshold,
     seEmptyFill,
     logoAssetPath,
+    coverImagePath,
+    envelopeFormId,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),

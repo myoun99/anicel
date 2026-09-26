@@ -3381,8 +3381,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   /// The pointer's canvas-space angle about the transformed box center.
+  /// The pointer's angle about the ROTATION'S FIXED POINT — the anchor
+  /// ([SelectionAffine.anchorCanvas]), which a turn leaves where it is.
+  ///
+  /// 🚨It measured about the BOX CENTRE (`apply(pivot)`) until 2026-09-25:
+  /// right while the box turned about its centre, wrong from the day it
+  /// turned about the anchor (09-20). The centre orbits the anchor, so
+  /// each move read the hand against a centre the last move had carried
+  /// off — the box lagged the hand, and a hand held still kept turning it
+  /// (유저: 「십자 앵커 위치 바꾸고 사각형 바깥 조작해서 회전시킬때 아직도
+  /// 전위치랑 현위치랑 순간이동」). Measured: a still pen turned it 2.3°.
   double _pointerAngleAbout(CanvasPoint pointer, SelectionAffine affine) {
-    final center = affine.apply(affine.pivot);
+    final center = affine.anchorCanvas;
     return math.atan2(pointer.y - center.y, pointer.x - center.x) *
         180 /
         math.pi;

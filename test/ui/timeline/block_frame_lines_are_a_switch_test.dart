@@ -165,6 +165,20 @@ void main() {
       }
     });
 
+    test('a stretch that starts off the lines\' step keeps every line the '
+        'law rules in it (I-22: the lines walk their step)', () {
+      // 7 is on no step these zooms keep: a tile or a window can begin there.
+      for (final cell in [1 / 8, 0.5, 3.0]) {
+        final painter = painterFor(lines: true, cell: cell);
+        final ruled = [
+          for (var frame = 7; frame < 30; frame += 1)
+            if (frame != 14) ?lawLineAt(painter, frame),
+        ];
+        expect(ruled, isNotEmpty, reason: 'cell $cell: the premise');
+        expect(painter.substrateIn(7, 40).lines, ruled, reason: 'cell $cell');
+      }
+    });
+
     test('see-through paper carries no second line — the sheet\'s own shows '
         'through it (F-7)', () {
       // The folded row lies on the artwork: no ground to pre-blend an
@@ -390,6 +404,69 @@ void main() {
         lines[3].rect.width,
         timelineGridSecondLineInk().strokeWidth,
         reason: 'frame 24 is a second — the span counts from where it is',
+      );
+    });
+
+    testWidgets('zoomed out, the SE paper span keeps exactly the lines the '
+        'law rules, from wherever it starts (I-22: the lines walk their '
+        'step)', (tester) async {
+      AppFrameGridSettings.settings.value = const AppFrameGridSettings(
+        blockFrameLines: true,
+      );
+      // Half a pixel a frame: the lines stand every sixth frame, and the
+      // span's first inner boundary (21) is on none of them.
+      const cell = 0.5;
+      const start = 20;
+      const frames = 200;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: TimelineGridLaw(
+            ground: host,
+            framesPerSecond: 24,
+            child: const Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: frames * cell,
+                height: 28,
+                child: SePaperSpan(
+                  axis: Axis.horizontal,
+                  frameCellExtent: cell,
+                  startFrame: start,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final paint = tester.widget<CustomPaint>(
+        find.descendant(
+          of: find.byType(SePaperSpan),
+          matching: find.byType(CustomPaint),
+        ),
+      );
+      final spy = _PaintSpy();
+      paint.painter!.paint(spy, const Size(frames * cell, 28));
+
+      var ruled = 0;
+      for (var frame = start + 1; frame < start + frames; frame += 1) {
+        if (timelineFrameBoundaryLineInk(
+              frameIndex: frame,
+              frameCellExtent: cell,
+              framesPerSecond: 24,
+              colorScheme: scheme,
+            ) !=
+            null) {
+          ruled += 1;
+        }
+      }
+      expect(ruled, greaterThan(2), reason: 'the premise');
+      expect(
+        [
+          for (final fill in spy.fills)
+            if (fill.rect.width <= 2) fill,
+        ],
+        hasLength(ruled),
       );
     });
   });

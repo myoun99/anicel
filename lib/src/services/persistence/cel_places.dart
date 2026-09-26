@@ -49,7 +49,7 @@ final class DrawingCelPlace extends CelPlace {
     required Frame frame,
   }) : ownerName = rowOwnerName(track: track, cut: cut),
        layerName = layer.name,
-       celName = celNumberOrMark(frame.name);
+       celName = celNumberOrMark(frame.name, kind: layer.kind);
 
   final String ownerName;
   final String layerName;
@@ -66,7 +66,8 @@ final class ContePageInkPlace extends CelPlace {
   final int pageNumber;
 }
 
-/// Conte ink over one storyboard drawing's row.
+/// Conte handwriting of one storyboard block: its cut, and the drawing the
+/// block shows.
 final class ConteRowInkPlace extends CelPlace {
   const ConteRowInkPlace({required this.cutName, required this.celName});
 
@@ -121,6 +122,7 @@ class _CelPlaceIndex {
           place: EnvelopeInkPlace(cut.name),
         );
       }
+      final drawings = <FrameId, DrawingCelPlace>{};
       for (final frame in owned.layer.frames) {
         final drawing = DrawingCelPlace.at(
           track: owned.track,
@@ -133,22 +135,26 @@ class _CelPlaceIndex {
           position: _drawings.length,
           place: drawing,
         );
-        if (cut != null) {
-          _rows[(cut.id, frame.id)] = (
-            plane: _Plane.conteRow,
-            position: _rows.length,
-            place: ConteRowInkPlace(
-              cutName: cut.name,
-              celName: drawing.celName,
-            ),
-          );
+        drawings[frame.id] = drawing;
+      }
+      // A block's handwriting, over the drawing the block shows.
+      for (final exposure in owned.layer.timeline.values) {
+        final inkId = exposure.memo?.inkId ?? '';
+        final drawing = drawings[exposure.frameId];
+        if (cut == null || inkId.isEmpty || drawing == null) {
+          continue;
         }
+        _rows[(cut.id, inkId)] = (
+          plane: _Plane.conteRow,
+          position: _rows.length,
+          place: ConteRowInkPlace(cutName: cut.name, celName: drawing.celName),
+        );
       }
     }
   }
 
   final _drawings = <(LayerId, FrameId), _Found>{};
-  final _rows = <(CutId, FrameId), _Found>{};
+  final _rows = <(CutId, String), _Found>{};
   final _envelopes = <CutId, _Found>{};
 
   _Found placeOf(BrushFrameKey key) {
@@ -161,7 +167,7 @@ class _CelPlaceIndex {
       );
     }
     final found = isConteInkRowKey(key)
-        ? _rows[(key.cutId, key.frameId)]
+        ? _rows[(key.cutId, conteInkRowIdOf(key)!)]
         : isEnvelopeInkKey(key)
         ? _envelopes[key.cutId]
         : _drawings[(key.layerId, key.frameId)];

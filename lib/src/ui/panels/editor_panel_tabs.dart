@@ -34,6 +34,7 @@ class EditorPanelTab {
     this.stillRaster = true,
     this.sillTrailing,
     this.collapsedExtent = 0,
+    this.contentIdentity,
   });
 
   /// Stable identifier the group reports through `onTabSelected`.
@@ -120,6 +121,38 @@ class EditorPanelTab {
   /// for 콘티·뷰어: 「진짜 깔끔하게 내용물 안 보이게」). The frame panels ask
   /// for their command bar's height and keep working while folded.
   final double collapsedExtent;
+
+  /// What this tab's content is built FOR — null for a tab whose builder
+  /// is the same whatever happens. A kept-alive tab's content is kept only
+  /// while this stays the same; see [builtFor].
+  final Object? contentIdentity;
+
+  /// This tab with everything it builds — the content and the sill's
+  /// controls — keyed by [identity], so both are made again whenever that
+  /// changes and never carry their State across it, the kept-alive cache
+  /// included ([contentIdentity]).
+  EditorPanelTab builtFor(Object identity) {
+    final key = ObjectKey(identity);
+    final sill = sillTrailing;
+    return EditorPanelTab(
+      id: id,
+      label: label,
+      icon: icon,
+      builder: (context) => KeyedSubtree(key: key, child: builder(context)),
+      buttonKey: buttonKey,
+      minContentWidth: minContentWidth,
+      minContentHeight: minContentHeight,
+      locked: locked,
+      keepAlive: keepAlive,
+      staticRaster: staticRaster,
+      stillRaster: stillRaster,
+      sillTrailing: sill == null
+          ? null
+          : (context) => KeyedSubtree(key: key, child: sill(context)),
+      collapsedExtent: collapsedExtent,
+      contentIdentity: identity,
+    );
+  }
 }
 
 /// A tab in flight between (or within) tab groups.
@@ -264,7 +297,25 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   /// keep-alive tab's builder must close over stable objects only (the
   /// session, long-lived notifiers) and subscribe internally — the cache
   /// never re-runs it.
-  final Map<String, Widget> _contentCache = <String, Widget>{};
+  ///
+  /// 🚨…while the tab is built for the SAME thing ([EditorPanelTab
+  /// .contentIdentity]). The session stopped being stable with a project
+  /// per tab (I-7): the cached canvas went on showing the project that was
+  /// switched away from, because nothing here re-ran its builder.
+  final Map<String, ({Object? identity, Widget content})> _contentCache =
+      <String, ({Object? identity, Widget content})>{};
+
+  /// [tab]'s kept content — built again when it is built for something
+  /// else now.
+  Widget _keptContent(EditorPanelTab tab) {
+    final kept = _contentCache[tab.id];
+    if (kept != null && identical(kept.identity, tab.contentIdentity)) {
+      return kept.content;
+    }
+    final content = _buildTabContent(tab);
+    _contentCache[tab.id] = (identity: tab.contentIdentity, content: content);
+    return content;
+  }
 
   /// Stable per-tab visibility feeds for [PanelVisibilityScope] (heavy
   /// hosts pause their rebuilds while offstage). Never disposed eagerly:
@@ -566,7 +617,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
         child: PanelCollapsedScope(
           collapsed: widget.collapsed && tab.id == active.id,
           child: tab.keepAlive
-              ? (_contentCache[tab.id] ??= _buildTabContent(tab))
+              ? _keptContent(tab)
               : _buildTabContent(tab),
         ),
       ),

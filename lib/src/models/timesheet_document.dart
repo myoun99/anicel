@@ -490,6 +490,22 @@ class TimesheetDocument {
   final String scene;
   final String artist;
 
+  /// What a TYPED header box prints — the boxes whose text lives on
+  /// [TimesheetInfo], which a tap edits — or null for the boxes the sheet
+  /// works out (the cut, its length, the page).
+  ///
+  /// ⛔The printer and the in-place editor both read this: two lookups of
+  /// one box are how an editor opens on text the sheet does not print.
+  String? typedHeaderValue(TimesheetHeaderField field) => switch (field) {
+    TimesheetHeaderField.episode => episode,
+    TimesheetHeaderField.title => title,
+    TimesheetHeaderField.scene => scene,
+    TimesheetHeaderField.name => artist,
+    TimesheetHeaderField.cut ||
+    TimesheetHeaderField.time ||
+    TimesheetHeaderField.sheet => null,
+  };
+
   /// The cut's Direction memo (the cut note) printed in the memo band —
   /// per-cut data, editable in place on the sheet. Instruction shorthand
   /// lines land HERE (auto-written once at creation, R5-⑥) instead of a
@@ -741,7 +757,7 @@ class _LayerCellsPass {
          // [drawingHeadOf] is the one place that decides which is which;
          // the cel export reads the same answer through [Frame.celNumber].
          for (final frame in layer.frames)
-           frame.id: drawingHeadOf(frame.name),
+           frame.id: drawingHeadOf(frame.name, kind: layer.kind),
        },
        seNamesByFrameId = <FrameId, String?>{
          if (includeSeNames)

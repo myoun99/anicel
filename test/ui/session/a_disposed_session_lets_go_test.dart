@@ -40,14 +40,12 @@ void main() {
   test('every notifier the session owns is released', () {
     final session = disposedSession();
     final owned = <String, void Function()>{
-      'currentRowListenable': () => session.currentRowListenable.addListener(
-        () {},
-      ),
+      'currentRowListenable': () =>
+          session.standing.currentRowListenable.addListener(() {}),
       'cutLocalLaneRangeSelection': () => session.cutLocalLaneRangeSelection
           .addListener(() {}),
-      'revealSelectionTick': () => session.revealSelectionTick.addListener(
-        () {},
-      ),
+      'revealSelectionTick': () =>
+          session.rangeSelections.revealSelectionTick.addListener(() {}),
       'memoryPressureTicks': () => session.memoryPressureTicks.addListener(
         () {},
       ),
@@ -62,8 +60,6 @@ void main() {
       ),
       'brushInputActive': () => session.brushInputActive.addListener(() {}),
       'dragPreview': () => session.dragPreview.addListener(() {}),
-      'transitionEdgeDragPreview': () => session.transitionEdgeDragPreview
-          .addListener(() {}),
       'opacityVerbs.dragPreview': () => session.opacityVerbs.dragPreview
           .addListener(() {}),
       // The V row's preview sat beside the layer's for weeks and the list

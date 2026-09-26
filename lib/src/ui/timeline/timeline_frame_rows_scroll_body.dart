@@ -7,6 +7,7 @@ import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_audio_spans.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart';
@@ -22,6 +23,7 @@ import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
+import 'timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 
 import '../../models/project_frame_rate.dart';
 import '../listenable_rebind.dart';
@@ -81,7 +83,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.runEdit,
     this.laneEdit,
     this.dragPreview,
-    this.seSpillInLeadFrames = const {},
+    this.spillInLeadFrames = const {},
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.substrateGeneration = '',
@@ -225,10 +227,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// dragged layer's row (through its gate), never this body.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
 
-  /// Track-SE rows whose display clone starts with a spill-in block, each
-  /// with how far into that block the cut starts (UI-R7 #6: `~` at the cut
-  /// start, start grip stands down; F-113: the waveforms start there).
-  final Map<LayerId, int> seSpillInLeadFrames;
+  /// Track-owned rows whose display clone starts with a block spilling in
+  /// from an earlier cut, each with how far into it the cut starts — see
+  /// [TimelineGridHooks.spillInLeadFrames].
+  final Map<LayerId, int> spillInLeadFrames;
 
   @override
   State<TimelineFrameRowsScrollBody> createState() =>
@@ -281,10 +283,18 @@ typedef _RowMemoInputs = ({
   // the camera track / instruction registry, and the SE spill-in lead
   // (F-113: the waveform's start moves with it, so it keys the memo too).
   ByIdentity<Object?> auxiliaryIdentity,
-  int? seSpillInLeadFrames,
+  int? spillInLeadFrames,
   // REC1-D: the clip-marker switch is a display fact — toggling it must
   // invalidate SE rows (the memo-token discipline).
   String? seClipMarkerTooltip,
+  // The waveform an SE row paints arrives on its OWN — a conform lands
+  // after the take or the import is placed, and the store's notification
+  // rebuilds the host with the same Layer. So the peaks join the key, one
+  // per sound the row draws, by identity (null while extracting). 🪦The
+  // row was built while the take's conform still ran, and every rebuild
+  // after handed that blank row back until an edit replaced the layer —
+  // 「이름/대사 지정하니까 보이네」 (유저 09-25, card `F-178` ⑥).
+  ByList<AudioPeaks?> seAudioPeaks,
   // A1 (2026-08-17): the frames/seconds display mode is a display fact
   // too — the run-duration labels ride the rows as a foreground painter,
   // so a memo hit on toggle returned the identical widget and the block
@@ -309,10 +319,10 @@ class _TimelineFrameRowsScrollBodyState
   /// Identity-gated row memo (the timesheet-document memo, per row): on a
   /// commit-time rebuild the untouched layers come back as the SAME Layer
   /// instances from the repository, so their rows reuse the cached widget
-  /// INSTANCE and Flutter skips their whole subtree rebuild. Only kinds
-  /// whose row visuals derive purely from the Layer value are memoized —
-  /// camera rows read the active cut's camera track, SE rows resolve
-  /// waveform peaks that load asynchronously, and lane rows are few.
+  /// INSTANCE and Flutter skips their whole subtree rebuild. What a row
+  /// shows beyond its Layer joins the key ([_RowMemoInputs]) — the camera
+  /// track, the SE waveform peaks — and lane rows, which are few, are not
+  /// memoized.
   final Map<Object, _RowMemoEntry> _rowMemo = {};
 
   /// The LIVE frame-axis geometry every painted row follows (R28 #4).
@@ -404,13 +414,27 @@ class _TimelineFrameRowsScrollBodyState
   /// folder row is a cells row now, so it keys like one.
   String _rowKeySuffix(TimelineDisplayRow row) => row.lane?.laneId ?? 'cells';
 
+  /// What an SE row's waveform strips paint, one per sound it draws
+  /// ([seAudioSpans]) — nothing for every other row.
+  List<AudioPeaks?> _seAudioPeaksOf(Layer layer) {
+    final peaksFor = widget.audioPeaksFor;
+    if (peaksFor == null || !layerKindUsesSeSheetCells(layer.kind)) {
+      return const [];
+    }
+    return [
+      for (final span in seAudioSpans(layer)) peaksFor(span.clip.filePath),
+    ];
+  }
+
   bool _rowIsMemoizable(TimelineDisplayRow row) {
     // Every non-lane row memoizes now (UI-R20 #4): the churny inputs the
     // sparse kinds depended on joined the memo token — the camera track
     // and the instruction registry ride [TimelineRowMemoAux] identities,
-    // SE spill-in rides a per-layer flag, and the SE/camera display
-    // clones themselves are identity-cached upstream. The audio WAVEFORM
-    // stays safe because it lives on the (unmemoized) lane rows.
+    // SE spill-in rides a per-layer flag, the SE row's waveform peaks ride
+    // the key by identity, and the SE/camera display clones themselves are
+    // identity-cached upstream. 🪦「The audio WAVEFORM stays safe because it
+    // lives on the (unmemoized) lane rows」 stood here — the SE row paints
+    // one under its blocks too, and it stayed blank (09-25).
     //
     // R10 brought FOLDER rows in: their band used to churn a fresh runs
     // list per build, which is exactly why they were excluded — now the
@@ -485,7 +509,7 @@ class _TimelineFrameRowsScrollBodyState
       commaDrag: widget.commaDrag,
       rangeGesture: widget.rangeGesture,
       runEdit: widget.runEdit,
-      seSpillInLeadFrames: widget.seSpillInLeadFrames[layer.id],
+      spillInLeadFrames: widget.spillInLeadFrames[layer.id],
       windowBucket: widget.windowBucket,
       viewportMainExtent: widget.viewportMainExtent,
       substrateGeneration: widget.substrateGeneration,
@@ -520,7 +544,7 @@ class _TimelineFrameRowsScrollBodyState
             metrics: widget.metrics,
             frameRate: widget.projectFrameRate,
             audioPeaksFor: widget.audioPeaksFor,
-            spillInLeadFrames: widget.seSpillInLeadFrames[layer.id],
+            spillInLeadFrames: widget.spillInLeadFrames[layer.id],
             onSetClipOffset: widget.audioLane?.onSetClipOffset == null
                 ? null
                 : (clipIndex, offsetFrames) =>
@@ -609,8 +633,9 @@ class _TimelineFrameRowsScrollBodyState
       hasActivateCell: widget.onActivateCell != null,
       dragPreview: ByIdentity(widget.dragPreview),
       auxiliaryIdentity: ByIdentity(_auxiliaryIdentityFor(row.layer)),
-      seSpillInLeadFrames: widget.seSpillInLeadFrames[row.layer.id],
+      spillInLeadFrames: widget.spillInLeadFrames[row.layer.id],
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
+      seAudioPeaks: ByList(_seAudioPeaksOf(row.layer)),
       showSeconds: widget.showSeconds,
     );
     final cached = _rowMemo[rowKey.value];

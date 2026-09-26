@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart'
     show wav16HeaderBytes;
 import 'package:anicel/src/services/media/project_media_sources.dart';
@@ -18,6 +19,7 @@ import 'package:anicel/src/ui/session/media_pool.dart';
 import 'package:anicel/src/ui/session/project_file.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import '../../helpers/carried_media_fixture.dart';
+import '../../helpers/opened_session.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -80,8 +82,9 @@ void main() {
     ]);
   }
 
-  EditorSessionManager aSession(String staged) => EditorSessionManager(
-    initialProject: createDefaultProject(),
+  EditorSessionManager aSession(String staged, [Project? project]) =>
+      EditorSessionManager(
+    initialProject: project ?? createDefaultProject(),
     mediaStagingStore: MediaStagingStore(
       directoryPath: '${root.path}/$staged',
     ),
@@ -171,9 +174,11 @@ void main() {
       );
       File(path).deleteSync();
 
-      final reopened = aSession('Reopened');
+      final reopened = await openedSession(
+        projectPath,
+        make: (project) => aSession('Reopened', project),
+      );
       addTearDown(reopened.dispose);
-      await reopened.projectDoor.openProjectFromFile(projectPath);
 
       expect(
         reopened.projectFile.mediaByteSourceFor(path).readSync(),
@@ -225,9 +230,11 @@ void main() {
       await save();
       File(path).deleteSync();
 
-      final reopened = aSession('Reopened');
+      final reopened = await openedSession(
+        projectPath,
+        make: (project) => aSession('Reopened', project),
+      );
       addTearDown(reopened.dispose);
-      await reopened.projectDoor.openProjectFromFile(projectPath);
 
       expect(reopened.projectFile.mediaByteSourceFor(path).readSync(), second);
     });
@@ -298,11 +305,13 @@ void main() {
     );
   });
 
-  test('🚨a project opened after another reports ITS media\'s sizes', () async {
-    await pool.addMediaAssets([path], carried: true);
-    await save();
-    expect(file.mediaStoredBytesFor(path), isNotNull, reason: 'measured once');
-
+  test('🚨an opened project reports ITS media\'s sizes — the file it was '
+      'read from', () async {
+    // 🪦「A project opened AFTER ANOTHER」 while an open replaced the project
+    // of the session that had saved the last one: the sizes were cached
+    // against saves alone, so the open kept the LAST file's, and this one's
+    // entry was not in them. A file opens as a session of its own now
+    // (I-7); what is left to pin is that the sizes are its own file's.
     final otherPath = normalizedMediaPath('${root.path}/other.wav');
     File(otherPath).writeAsBytesSync(Uint8List(3000));
     final other = aSession('Other');
@@ -315,16 +324,18 @@ void main() {
     );
     File(otherPath).deleteSync();
 
-    await session.projectDoor.openProjectFromFile(otherProject);
+    final opened = await openedSession(
+      otherProject,
+      make: (project) => aSession('Opened', project),
+    );
+    addTearDown(opened.dispose);
 
-    final carry = carryIn(session, otherPath)!;
-    expect(mediaEntryHeld(file.mediaInFile, carry), isTrue);
+    final carry = carryIn(opened, otherPath)!;
+    expect(mediaEntryHeld(opened.projectFile.mediaInFile, carry), isTrue);
     expect(
-      file.mediaStoredBytesFor(otherPath),
+      opened.projectFile.mediaStoredBytesFor(otherPath),
       isNotNull,
-      reason:
-          'the sizes were cached against saves alone, so an open kept the '
-          'LAST file\'s — and this one\'s entry was not in them',
+      reason: 'the file it was read from holds the entry, so it is measured',
     );
   });
 

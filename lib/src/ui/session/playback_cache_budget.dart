@@ -2,7 +2,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_warm_extent.dart';
-import '../../services/cut_frame_composite_plan.dart';
+import '../../services/playback/cut_composite_structure.dart';
+import '../../services/playback/cut_frame_composite_signature.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/playback_cache_budget.dart';
 import '../../models/playback_quality.dart';
@@ -44,6 +45,17 @@ class PlaybackCacheBudget {
   final PlaybackRun _run;
 
   PlaybackCacheBudgetEnforcer? _enforcer;
+
+  /// [playbackReadyRunsForCut]'s memo: per cut instance, each structure's
+  /// full signature at one quality and one pixel revision.
+  final Expando<
+    ({
+      PlaybackQuality quality,
+      int pixelRevision,
+      Map<CutFrameCompositeSignature, CutFrameCompositeSignature> byStructure,
+    })
+  >
+  _signedStructures = Expando('signedCompositeStructures');
 
   PlaybackCacheBudgetEnforcer get _playbackCacheBudgetEnforcer =>
       _enforcer ??= PlaybackCacheBudgetEnforcer(
@@ -150,17 +162,21 @@ class PlaybackCacheBudget {
   List<PlaybackProtectedRange> debugPlaybackProtectedRanges() =>
       _playbackProtectedRanges();
 
-  /// Whether [frameIndex] is READY to play at the current quality — the
-  /// timeline ruler's green bar.
-  bool isPlaybackFrameReady(int frameIndex) {
+  /// The stretches of the active cut's frames in `[start, end)` that are
+  /// READY to play at the current quality — the timeline ruler's green
+  /// bar. None without an active cut.
+  List<({int startIndex, int endIndexExclusive})> playbackReadyRuns(
+    int start,
+    int end,
+  ) {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
-      return false;
+      return const [];
     }
-    return isPlaybackFrameReadyForCut(cut, frameIndex);
+    return playbackReadyRunsForCut(cut, start, end);
   }
 
-  /// [isPlaybackFrameReady] for an arbitrary cut — the storyboard's green
+  /// [playbackReadyRuns] for an arbitrary cut — the storyboard's green
   /// bar spans every cut of the track.
   ///
   /// TWO kinds of frame, one bar (유저 2026-08-16, 「왜 콘텐츠끝너머가
@@ -174,18 +190,87 @@ class PlaybackCacheBudget {
   ///
   /// The empty answer reads the same shared visit the signature rides, so
   /// it cannot disagree with what the compose loop would actually paint.
-  bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) {
-    if (_renderCaches.cutFrameCompositeCache.validCompositeOrNull(
+  ///
+  /// ★Asked once per span of one picture, never per frame (I-22): zoomed
+  /// out to ten minutes the per-frame read was 94% of a playback tick. The
+  /// spans come from [compositeStructureSpansIn]; each structure's full
+  /// signature is taken once per pixel revision, and the cache is asked
+  /// with [CutFrameCompositeCache.heldSignature] — a pure read, where the
+  /// per-frame bar filed an index key and touched the entry as used for
+  /// every frame on screen. The key the cache hands back is kept, so the
+  /// next ask of a held picture is `identical` rather than a walk over
+  /// every layer node (measured: that walk was most of what was left).
+  List<({int startIndex, int endIndexExclusive})> playbackReadyRunsForCut(
+    Cut cut,
+    int start,
+    int end,
+  ) {
+    final composites = _renderCaches.cutFrameCompositeCache;
+    final quality = _run.playbackQuality;
+    final signed = _signedStructuresOf(cut, quality);
+    bool isReady(CutFrameCompositeSignature structure, int frameIndex) {
+      if (structure.nodes.isEmpty) {
+        return true;
+      }
+      final held = composites.heldSignature(
+        signed[structure] ??= composites.signatureOf(
           cut: cut,
           frameIndex: frameIndex,
-          quality: _run.playbackQuality,
-        ) !=
-        null) {
+          quality: quality,
+        ),
+      );
+      if (held == null) {
+        return false;
+      }
+      signed[structure] = held;
       return true;
     }
-    return resolveCutFrameCompositeTree(
-      cut: cut,
-      frameIndex: frameIndex,
-    ).isEmpty;
+
+    final runs = <({int startIndex, int endIndexExclusive})>[];
+    for (final span in compositeStructureSpansIn(
+      cut,
+      start: start,
+      end: end,
+    )) {
+      if (!isReady(span.signature, span.start)) {
+        continue;
+      }
+      final last = runs.isEmpty ? null : runs.last;
+      if (last != null && last.endIndexExclusive == span.start) {
+        runs.last = (
+          startIndex: last.startIndex,
+          endIndexExclusive: span.endExclusive,
+        );
+      } else {
+        runs.add((
+          startIndex: span.start,
+          endIndexExclusive: span.endExclusive,
+        ));
+      }
+    }
+    return runs;
+  }
+
+  /// Each structure's full signature for [cut] at [quality], good until a
+  /// pixel moves: [BrushFrameStore.celPixelRevision] is the store's one
+  /// signal that a source revision may have changed (a whole-store swap
+  /// opens a new project, so its cuts are new instances and miss here).
+  Map<CutFrameCompositeSignature, CutFrameCompositeSignature>
+  _signedStructuresOf(Cut cut, PlaybackQuality quality) {
+    final revision =
+        _renderCaches.cutFrameCompositeCache.frameStore.celPixelRevision.value;
+    final held = _signedStructures[cut];
+    if (held != null &&
+        held.quality == quality &&
+        held.pixelRevision == revision) {
+      return held.byStructure;
+    }
+    final fresh = (
+      quality: quality,
+      pixelRevision: revision,
+      byStructure: <CutFrameCompositeSignature, CutFrameCompositeSignature>{},
+    );
+    _signedStructures[cut] = fresh;
+    return fresh.byStructure;
   }
 }

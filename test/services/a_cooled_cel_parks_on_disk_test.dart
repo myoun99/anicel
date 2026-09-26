@@ -78,6 +78,36 @@ void main() {
   });
 
 
+  test('🚨 two stores park the SAME key in two files — one open project\'s '
+      'cooling never lands on another\'s parked cel (I-7)', () async {
+    // Two untitled projects share a project id, so their cels share keys;
+    // the ink stores' keys are constants in every project.
+    final a = BrushFrameStore()..hotCelByteBudget = 0;
+    final b = BrushFrameStore()..hotCelByteBudget = 0;
+    final k1 = key('f1');
+    final inA = inked(3);
+    final inB = inked(7);
+    a.storeBakedSurface(k1, inA);
+    a.storeBakedSurface(key('f2'), inked(5));
+    await a.drainCooling();
+    b.storeBakedSurface(k1, inB);
+    b.storeBakedSurface(key('f2'), inked(9));
+    await b.drainCooling();
+    expect(a.isCelCold(k1), isTrue, reason: 'premise: parked');
+    expect(b.isCelCold(k1), isTrue, reason: 'premise: parked');
+
+    expect(
+      a.bakedSurfaceOrNull(k1)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      inA.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      reason: 'a shared file name let the second store\'s park overwrite '
+          'the first one\'s — a picture from another project',
+    );
+    expect(
+      b.bakedSurfaceOrNull(k1)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      inB.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+    );
+  });
+
   test('🚨 a park that FAILS leaves the cel HOT rather than dropping it',
       () async {
     // The room is gone — a volume unmounted, a permission revoked. Over

@@ -330,15 +330,13 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('a zoom step through the listenable reaches the panel but the '
-      'toolbar instance SURVIVES it (UI-R6 #4 zoom scoping)', (tester) async {
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
-    final zoom = ValueNotifier<double>(24);
-    addTearDown(zoom.dispose);
-
+  /// The timeline tab over [session], zoomed by [zoom] — the zoom arrives
+  /// through the listenable alone, with no host rebuild.
+  Future<void> pumpZoomableTimeline(
+    WidgetTester tester,
+    EditorSessionManager session,
+    ValueNotifier<double> zoom,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -356,6 +354,18 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  testWidgets('a zoom step through the listenable reaches the panel but the '
+      'toolbar instance SURVIVES it (UI-R6 #4 zoom scoping)', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final zoom = ValueNotifier<double>(24);
+    addTearDown(zoom.dispose);
+
+    await pumpZoomableTimeline(tester, session, zoom);
 
     expect(
       tester.widget<TimelinePanel>(find.byType(TimelinePanel)).pixelsPerFrame,
@@ -417,6 +427,37 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('…and a LINKED row survives it too: its partners are a fresh '
+      'list every build, compared by what it holds', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    session.layerVerbs.linkDuplicateActiveLayer();
+    final zoom = ValueNotifier<double>(24);
+    addTearDown(zoom.dispose);
+    await pumpZoomableTimeline(tester, session, zoom);
+
+    TimelineLayerControlsRow linkedRow() => tester
+        .widgetList<TimelineLayerControlsRow>(
+          find.byType(TimelineLayerControlsRow),
+        )
+        .firstWhere((row) => row.linkPartners.isNotEmpty);
+    final before = linkedRow();
+
+    zoom.value = 48;
+    await tester.pump();
+
+    expect(
+      identical(linkedRow(), before),
+      isTrue,
+      reason: 'a zoom step must not reconstruct a linked rail row',
+    );
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a cursor move repaints only the timesheet playhead overlay '
       '— never the sheet painter', (tester) async {
     final session = EditorSessionManager(
@@ -438,7 +479,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final paintFinder = find.byKey(
-      const ValueKey<String>('timesheet-document-paint'),
+      const ValueKey<String>('timesheet-content-paint'),
     );
     expect(paintFinder, findsOneWidget);
     expect(

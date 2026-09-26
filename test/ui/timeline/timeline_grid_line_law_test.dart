@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart'
+    show timelineRulerSecondsLabel;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineBaseGridAlpha;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
-    show timelineFrameStrideLadder;
+    show timelineFrameStrides;
 
 /// D8/D32/D38 (2026-08-18): THE grid-line law — ink, position, cadence and
 /// the over-block treatment stated once, consulted by every drawer (the
@@ -56,6 +58,29 @@ void main() {
     );
   });
 
+  test('the grid rules its second line where the ruler writes a second — a '
+      'nonsense rate included', () {
+    // One answer to 「does a second begin here」: the ruler reads a nonsense
+    // rate as 24, and the grid ruled no second at all for it.
+    for (final fps in [24, 30, 0]) {
+      for (var frame = 6; frame <= 120; frame += 6) {
+        final ruled =
+            timelineFrameBoundaryLineInk(
+              frameIndex: frame,
+              frameCellExtent: 24,
+              framesPerSecond: fps,
+              colorScheme: scheme,
+            ) ==
+            timelineGridSecondLineInk();
+        final marked = timelineRulerSecondsLabel(
+          frameIndex: frame,
+          framesPerSecond: fps,
+        ).isNotEmpty;
+        expect(ruled, marked, reason: 'frame $frame at $fps fps');
+      }
+    }
+  });
+
   test('the position convention is boundary + the ruler\'s own half-pixel '
       'snap (D8)', () {
     expect(timelineFrameBoundaryLinePosition(0, 24), timelineGridLineSnap);
@@ -96,16 +121,112 @@ void main() {
     for (final cell in [1.0, 2.4, 3.0, 4.0, 8.0, 12.0, 16.0, 24.0]) {
       final cadence = timelineGridLineEveryFrames(cell);
       expect(cadence * cell, greaterThanOrEqualTo(room), reason: '${cell}px');
-      final index = timelineFrameStrideLadder.indexOf(cadence);
+      final strides = timelineFrameStrides().take(24).toList();
+      final index = strides.indexOf(cadence);
       if (index > 0) {
         expect(
-          timelineFrameStrideLadder[index - 1] * cell,
+          strides[index - 1] * cell,
           lessThan(room),
           reason: '${cell}px: the denser rung would crowd',
         );
       }
     }
     expect(timelineGridLineEveryFrames(8), 1, reason: '33% keeps every line');
+  });
+
+  group('I-22: at the ten-minute floor the marks thin by the same law', () {
+    ({Color color, double strokeWidth})? inkAt(
+      int frame, {
+      required double cell,
+      int fps = 24,
+    }) => timelineFrameBoundaryLineInk(
+      frameIndex: frame,
+      frameCellExtent: cell,
+      framesPerSecond: fps,
+      colorScheme: scheme,
+    );
+
+    test('the 6f beats stand down and the seconds step on their ladder', () {
+      const cell = 1 / 8; // 24fps: a second is 3px
+      expect(timelineSixLinesHold(cell), isFalse);
+      expect(
+        timelineSixLinesHold(0.5),
+        isTrue,
+        reason: 'six half-pixel cells hold a beat and its ground, just',
+      );
+      expect(timelineSixLinesHold(0.49), isFalse);
+      expect(
+        timelineSecondLineEverySeconds(cell, 24),
+        2,
+        reason: 'a second line and its ground need 3.5px; two seconds are 6',
+      );
+      expect(inkAt(48, cell: cell), timelineGridSecondLineInk());
+      expect(
+        inkAt(24, cell: cell),
+        timelineGridBaseLineInk(scheme),
+        reason: 'the odd second keeps the faint base line on its cadence',
+      );
+      expect(inkAt(6, cell: cell), isNull, reason: 'no beat at 0.75px');
+    });
+
+    test('at every zoom the old floor allowed, nothing moved', () {
+      for (final cell in [2.4, 8.0, 24.0]) {
+        expect(timelineSixLinesHold(cell), isTrue, reason: '${cell}px');
+        expect(timelineSecondLineEverySeconds(cell, 24), 1);
+        expect(inkAt(6, cell: cell), timelineGridSixLineInk(scheme));
+        expect(inkAt(24, cell: cell), timelineGridSecondLineInk());
+      }
+    });
+
+    test('a second is ruled where it begins, whatever the rate', () {
+      expect(
+        inkAt(25, cell: 24, fps: 25),
+        timelineGridSecondLineInk(),
+        reason: 'the ruler marks second 1 at frame 25; the grid rules it',
+      );
+      expect(inkAt(24, cell: 24, fps: 25), timelineGridSixLineInk(scheme));
+    });
+
+    test('the step a drawer walks visits every boundary the law rules', () {
+      for (final fps in [24, 25, 30, 60]) {
+        for (final cell in [1 / 20, 1 / 8, 0.5, 1.0, 2.4, 6.0, 24.0]) {
+          final step = timelineFrameLineStep(cell, fps);
+          for (var frame = 1; frame < 6000; frame += 1) {
+            if (inkAt(frame, cell: cell, fps: fps) != null) {
+              expect(
+                frame % step,
+                0,
+                reason: '$fps fps at ${cell}px: frame $frame is ruled but '
+                    'the walk steps by $step',
+              );
+            }
+          }
+        }
+      }
+    });
+
+    test('a sheet whose window starts off the step still rules every line '
+        'the law rules in it', () {
+      const cell = 1 / 8;
+      const start = 7;
+      const extent = 125.0;
+      final lines = _Lines();
+      TimelineGridSheetPainter(
+        frameCellExtent: cell,
+        framesPerSecond: 24,
+        colorScheme: scheme,
+        ground: null,
+        frameStartIndex: start,
+      ).paint(lines, const Size(extent, 40));
+
+      final ruled = [
+        for (var frame = start; (frame - start) * cell <= extent; frame += 1)
+          if (inkAt(frame, cell: cell) != null)
+            timelineFrameBoundaryLinePosition(frame - start, cell),
+      ];
+      expect(ruled, isNotEmpty, reason: 'the premise: the window rules');
+      expect(lines.alongs, ruled);
+    });
   });
 
   test('the over-block ink darkens the paper, never glows over it (D32)', () {
@@ -148,4 +269,15 @@ void main() {
     expect(baseShift, lessThan(secondShift));
     expect(baseShift, greaterThan(0));
   });
+}
+
+/// Every line drawn, as where it stands along a horizontal frame axis.
+class _Lines implements Canvas {
+  final alongs = <double>[];
+
+  @override
+  void drawLine(Offset p1, Offset p2, Paint paint) => alongs.add(p1.dx);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

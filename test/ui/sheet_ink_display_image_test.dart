@@ -11,6 +11,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
@@ -73,7 +74,7 @@ void main() {
     controller.syncGeometry(
       const ConteSheetMetrics(pageWidth: 200, pageHeight: 280),
     );
-    final key = ConteInkController.pageKey(0);
+    final key = conteInkPageKey(0);
     pageStore.storeBakedSurface(key, freshSurface(red));
 
     await tester.runAsync(() async {

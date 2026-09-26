@@ -25,7 +25,7 @@ List<Cut> _cutsOf(EditorSessionManager session) =>
 
 String _printedCut(WidgetTester tester) {
   final paint = tester.widget<CustomPaint>(
-    find.byKey(const ValueKey<String>('timesheet-document-paint')),
+    find.byKey(const ValueKey<String>('timesheet-content-paint')),
   );
   return (paint.painter! as TimesheetDocumentPainter).document.cutName;
 }
@@ -39,7 +39,7 @@ int? _sheetPlayheadFrame(WidgetTester tester) {
 
 List<String> _envelopeCuts(WidgetTester tester) {
   final paint = tester.widget<CustomPaint>(
-    find.byKey(const ValueKey<String>('cut-envelope-page')),
+    find.byKey(const ValueKey<String>('envelope-content-paint')),
   );
   return [
     for (final line in (paint.painter! as CutEnvelopePainter).source.cuts)

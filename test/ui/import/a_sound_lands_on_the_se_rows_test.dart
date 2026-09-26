@@ -63,7 +63,9 @@ void main() {
     return file.path;
   }
 
-  /// [seconds] of a quiet tone, written as the conform's own WAV.
+  /// [seconds] of a quiet tone, written as a conform — which is not a WAV
+  /// since 08-30 and no decoder reads: only the conform store's stand-in
+  /// ([soundConformStore]) answers for it, which is all these doors ask.
   Future<String> writeSound(String name, double seconds) async {
     const rate = 48000;
     final samples = Float32List((rate * seconds).round());

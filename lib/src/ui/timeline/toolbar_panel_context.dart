@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart' show BuildContext;
+
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/cut_id.dart';
@@ -9,6 +13,9 @@ import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
 import '../editor_command_actions.dart' show createActiveInstance;
 import '../editor_session_manager.dart';
+import '../paste_with_its_media.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 
 /// B8 (2026-08-17): 상단 버튼의 패널 스코프 — the shared toolbar's layer,
 /// frame, shared and fx verbs dispatch AGAINST THE PANEL THEY ARE PRESSED
@@ -159,9 +166,15 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
 /// member is a one-line delegation on purpose — this panel's dispatch is
 /// the baseline B8 pins, so the wrapper must add nothing to it.
 class TimelineToolbarPanelContext implements ToolbarPanelContext {
-  const TimelineToolbarPanelContext(this.session);
+  const TimelineToolbarPanelContext(this.session, {this.waitIn});
 
   final EditorSessionManager session;
+
+  /// Where a paste that brings media from another project puts up its wait
+  /// window ([pasteWithItsMedia]) — the widget the press came through.
+  /// Without one (a test's context) the paste lands at once, recording no
+  /// carried medium it has not held.
+  final BuildContext? waitIn;
 
   // ⑥ 유저 2026-08-12: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션
   // 레이어 생성.」 — moved here verbatim from the button.
@@ -243,7 +256,21 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
       session.canPasteIndependentFrameAtCurrentFrame;
 
   @override
-  void pasteIndependentFrame() => session.pasteIndependentFrameAtCurrentFrame();
+  void pasteIndependentFrame() {
+    final context = waitIn;
+    if (context == null) {
+      session.pasteIndependentFrameAtCurrentFrame();
+      return;
+    }
+    unawaited(
+      pasteWithItsMedia(
+        context,
+        title: editorActionLabel(EditorActionIds.editPasteIndependent),
+        board: session.clipboard,
+        paste: session.pasteIndependentFrameAtCurrentFrame,
+      ),
+    );
+  }
 
   @override
   bool get canPasteLinkedFrame => session.canPasteLinkedFrameAtCurrentFrame;
@@ -499,22 +526,33 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   /// THE one resolver behind the edit button: what the press would open.
   /// [canEditInstance] and the host's dispatch both read this.
   StoryboardEditTarget? get editTarget {
-    // The selection speaks first — the shared ladder's own order.
-    if (session.trackFrameRangeSelection.value != null) {
+    // The selection speaks first — the shared ladder's own order — and its
+    // cuts rung is a band that NAMES cuts, the question [deleteSubject]
+    // asks. 🚨It asked whether ANY band was up, from when the V row's was
+    // the only band this rail could sweep: a band over the S rows or the
+    // transition row opened the ACTIVE cut's rename, a cut the band did not
+    // even cover (storyboard-band-names-no-cut, 2026-09-26).
+    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       return const StoryboardEditCut();
     }
-    // …and a live CELL band speaks before the standing row does, exactly
-    // as it does in this class's [deleteSubject].
+    // …and a band that names rows this press would MISS claims it before
+    // the standing row speaks.
     //
     // The axis here is not the session's: THIS panel's press lands on the
     // STANDING ROW (a track, an S row, a lane, the transition fixture),
-    // and a cut-local band never names one of those — so any band at all
-    // names rows this press would miss. Without the guard it fell through
-    // to the row rung below, where a TrackRowAddress cursor means "rename
-    // the cut". Delete and Rename are documented as ONE ladder; splitting
-    // them here left the same band dark on one button and aimed at the
-    // cut on the other.
-    if (session.cells.cellSelectionClaimsSubject) {
+    // and a cut-local band never names one of those — so any CELL band at
+    // all names rows this press would miss. Without the guard it fell
+    // through to the row rung below, where a TrackRowAddress cursor means
+    // "rename the cut". Delete and Rename are documented as ONE ladder;
+    // splitting them here left the same band dark on one button and aimed
+    // at the cut on the other.
+    //
+    // A band of THIS rail is asked the timeline's question for the same
+    // verb ([EditorSessionManager.bandNamesRowsThisPressWouldMiss]): one
+    // that covers the standing row lets the press land there, at the
+    // playhead; one that covers only other rows refuses it. There is no
+    // band-wide rename to route to (board R8-c).
+    if (session.cells.cellSelectionClaimsSubject || _bandMissesTheStandingRow) {
       return null;
     }
     switch (session.storyboardStandingRow) {
@@ -580,19 +618,27 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   /// own cuts rung), the selection-borne cell rungs (lane keys, selected
   /// blocks — this panel's lanes and strips write those), then THE BLOCK
   /// UNDER THE CURSOR, whatever its kind.
+  ///
+  /// 🚨The cuts rung is a band that NAMES cuts — one over the V row
+  /// ([StoryboardRows.storyboardSelectedCutIds]). It used to ask whether
+  /// any band was up at all, from when the V row's was the only band this
+  /// rail could sweep; once the S rows and the transition row swept bands
+  /// of their own, a band over them deleted the cut the session stood in —
+  /// a cut the band did not even cover (transition-row-range-in-the-cut,
+  /// 2026-09-26).
   @override
   PillSubject get deleteSubject {
-    if (session.trackFrameRangeSelection.value != null) {
+    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       return PillSubject.cuts;
     }
     if (session.cells.canDeleteCellForSelection) {
       return PillSubject.cells;
     }
-    // A live CELL band claims the press even when it holds nothing this
-    // panel may delete — the same guard the strip's comma verb already
-    // states. Without it a band the collector refuses fell through to the
-    // cursor rung, where a TRACK-ROW cursor means "delete the cut".
-    if (session.cells.cellSelectionClaimsSubject) {
+    // A live band claims the press even when it holds nothing this panel
+    // may delete — the same guard the strip's comma verb already states.
+    // Without it a band the collector refuses fell through to the cursor
+    // rung, where a TRACK-ROW cursor means "delete the cut".
+    if (_bandClaimsThePress) {
       return PillSubject.nothing;
     }
     return session.storyboardCursor.canDeleteBlockAtStoryboardCursor
@@ -602,7 +648,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
 
   @override
   void deleteSelectionSubject() {
-    if (session.trackFrameRangeSelection.value != null) {
+    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       session.deleteSelectionSubject();
       return;
     }
@@ -610,10 +656,21 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
       session.cells.deleteCellAtCurrentFrame();
       return;
     }
-    if (session.cells.cellSelectionClaimsSubject) {
+    if (_bandClaimsThePress) {
       return;
     }
     session.storyboardCursor.deleteBlockAtStoryboardCursor();
+  }
+
+  /// A cell band, or one of this rail's own.
+  bool get _bandClaimsThePress =>
+      session.cells.cellSelectionClaimsSubject ||
+      session.trackFrameRangeSelection.value != null;
+
+  /// A band of this rail that does not cover the row the press lands on.
+  bool get _bandMissesTheStandingRow {
+    final band = session.trackFrameRangeSelection.value;
+    return band != null && !band.coversRow(session.storyboardStandingRow);
   }
 
   /// The cuts this panel's 링크 독립 means: its EDIT TARGET's cuts rung —
@@ -627,8 +684,9 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (editTarget is! StoryboardEditCut) {
       return const [];
     }
-    if (session.trackFrameRangeSelection.value != null) {
-      return session.storyboardRows.storyboardSelectedCutIds;
+    final named = session.storyboardRows.storyboardSelectedCutIds;
+    if (named.isNotEmpty) {
+      return named;
     }
     final cut = session.activeCutOrNull;
     return cut == null ? const [] : [cut.id];

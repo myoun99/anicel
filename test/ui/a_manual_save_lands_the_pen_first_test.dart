@@ -11,6 +11,7 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
+import '../helpers/opened_session.dart';
 import '../helpers/temp_dir.dart';
 
 /// 🚨★★★**PRESS SAVE WITH THE PEN DOWN AND THAT LINE IS IN THAT FILE.**
@@ -99,14 +100,14 @@ void main() {
 
     expect(landed, 1, reason: 'fixture premise: the lander ran');
 
-    // ⚠️Read it back. An open replaces the whole session from the FILE, so
-    // what the store answers afterwards is what the archive carried and not
-    // what this session happened to still be holding.
-    session.liveStrokeLanding.lander = null;
-    await session.projectDoor.openProjectFromFile(path);
+    // ⚠️Read it back — in the session the file opens as, whose store holds
+    // what the archive carried and never what this session happened to
+    // still be holding.
+    final readBack = await openedSession(path);
+    addTearDown(readBack.dispose);
 
     expect(
-      session.renderCaches.brushFrameStore.bakedSurfaceOrNull(key)?.tiles,
+      readBack.renderCaches.brushFrameStore.bakedSurfaceOrNull(key)?.tiles,
       isNotEmpty,
       reason: '⛔THE WHOLE ROUND: the landing has to happen BEFORE the store '
           'snapshots. Moved one line later and the save still succeeds, the '

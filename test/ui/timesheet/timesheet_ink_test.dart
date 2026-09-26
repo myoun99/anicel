@@ -8,6 +8,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -89,7 +90,7 @@ void main() {
           0,
           document.halfFrameCount *
               TimesheetDocumentLayout.rowHeight *
-              TimesheetInkController.inkScale,
+              timesheetInkScale,
         ),
         reason: 'the right half windows the band below row 72',
       );
@@ -191,10 +192,10 @@ void main() {
       final screenY = ink.panY + ink.zoom * (window.inkOffset.dy + inkPoint.dy);
       final docX =
           window.documentRect.left +
-          inkPoint.dx / TimesheetInkController.inkScale;
+          inkPoint.dx / timesheetInkScale;
       final docY =
           window.documentRect.top +
-          inkPoint.dy / TimesheetInkController.inkScale;
+          inkPoint.dy / timesheetInkScale;
       expect(screenX, closeTo(panel.panX + panel.zoom * docX, 1e-9));
       expect(screenY, closeTo(panel.panY + panel.zoom * docY, 1e-9));
 
@@ -220,24 +221,24 @@ void main() {
       expect(
         controller.stripBandSurfaceSize,
         CanvasSize(
-          width: (layout.halfWidth * TimesheetInkController.inkScale).ceil(),
+          width: (layout.halfWidth * timesheetInkScale).ceil(),
           height:
               document.pageFrameCount *
               TimesheetDocumentLayout.rowHeight.toInt() *
-              TimesheetInkController.inkScale,
+              timesheetInkScale,
         ),
       );
       expect(
         controller.pageSurfaceSize,
         CanvasSize(
-          width: (layout.paperWidth * TimesheetInkController.inkScale).ceil(),
-          height: (layout.paperHeight * TimesheetInkController.inkScale).ceil(),
+          width: (layout.paperWidth * timesheetInkScale).ceil(),
+          height: (layout.paperHeight * timesheetInkScale).ceil(),
         ),
       );
 
       final state = controller.sessionStateFor(
         TimesheetInkPlane.strip,
-        TimesheetInkController.stripBandKey(_cutId, 0),
+        timesheetInkStripKey(_cutId, 0),
       );
       expect(
         state.canvasState.currentSurface.canvasSize,
@@ -251,8 +252,8 @@ void main() {
       final controller = TimesheetInkController();
       controller.syncGeometry(layout);
       final historyManager = HistoryManager();
-      final band0 = TimesheetInkController.stripBandKey(_cutId, 0);
-      final page0 = TimesheetInkController.pageKey(_cutId, 0);
+      final band0 = timesheetInkStripKey(_cutId, 0);
+      final page0 = timesheetInkPageKey(_cutId, 0);
 
       controller.commitStroke(
         plane: TimesheetInkPlane.strip,
@@ -351,8 +352,8 @@ void main() {
       );
       await stroke(gridPoint, gridPoint + const Offset(24, 10));
 
-      final band0 = TimesheetInkController.stripBandKey(_cutId, 0);
-      final page0 = TimesheetInkController.pageKey(_cutId, 0);
+      final band0 = timesheetInkStripKey(_cutId, 0);
+      final page0 = timesheetInkPageKey(_cutId, 0);
       expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
       expect(controller.hasInkFor(TimesheetInkPlane.page, page0), isFalse);
 

@@ -6,11 +6,12 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
-import '../../models/layer_mark.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import 'layer_label_controls.dart' show LayerMarkEdit;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
+import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cel_content_source.dart';
@@ -22,6 +23,7 @@ import 'timeline_frame_rows_scroll_body.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_filter.dart';
+import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
 import '../../models/project_frame_rate.dart';
 
@@ -58,6 +60,7 @@ class TimelineGridHooks {
     this.frameNameForLayer,
     this.celContent,
     required this.onSelectLayer,
+    this.labelDoubleClick,
     required this.onSelectFrame,
     this.onSettledPress,
     this.onScrubFrame,
@@ -86,7 +89,7 @@ class TimelineGridHooks {
     this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
     this.layerFxStateOf,
-    this.layerIsLinkedOf,
+    this.layerLinkPartnersOf,
     this.onToggleLayerCollapsed,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
@@ -101,7 +104,7 @@ class TimelineGridHooks {
     this.onRowSelectionSpan,
     this.selectedRows = const {},
     this.runEdit,
-    this.isFrameReady,
+    this.readyRunsIn,
     this.expandedLaneLayerIds = const {},
     this.laneOpenOf,
     this.laneGroupOnOf,
@@ -119,7 +122,7 @@ class TimelineGridHooks {
     this.onToggleAttachGroup,
     this.dragPreview,
     this.opacityDragPreview,
-    this.seSpillInLeadFrames = const {},
+    this.spillInLeadFrames = const {},
     this.cutEndDrag,
     this.substrateGeneration = '',
     this.onLayerBlendModeSelected,
@@ -177,6 +180,10 @@ class TimelineGridHooks {
   final TimelineCelContentSource? celContent;
 
   final ValueChanged<LayerId> onSelectLayer;
+
+  /// A double click on a row's LABEL — the rename (I-48) — asked at its
+  /// first press ([TimelineLabelDoubleClick]). Null mounts none.
+  final TimelineLabelDoubleClick? labelDoubleClick;
 
   final ValueChanged<int> onSelectFrame;
 
@@ -287,13 +294,13 @@ class TimelineGridHooks {
   /// The AE-style layer fx MASTER (R8: persisted, tri-state); null hides it.
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
 
-  /// Link badge state (L4): whether a layer's pictures are shared with a
-  /// link group. Null shows no badges.
+  /// Link badge (L4): the rows a layer shares its pictures with (empty: not
+  /// linked). Null shows no badges.
   ///
   /// (x-sheet) The link badge (L4) and the camera column's live opacity (R27 #9):
   /// two answers the panel held for the rail alone, until the sheet's
   /// header became the rail's row stood up and asked for them too.
-  final bool Function(LayerId layerId)? layerIsLinkedOf;
+  final List<String> Function(LayerId layerId)? layerLinkPartnersOf;
 
   /// The row twirl that folds a FOLDER's members (the attach fold has its
   /// own hook because it is session state, not layer state).
@@ -318,7 +325,7 @@ class TimelineGridHooks {
 
   final ValueChanged<LayerId>? onToggleLayerFx;
 
-  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
   final ValueChanged<LayerId>? onToggleLayerFillReference;
@@ -363,7 +370,7 @@ class TimelineGridHooks {
   final TimelineRunEditCallbacks? runEdit;
 
   /// Cached-range resolver for the ruler's green strip.
-  final bool Function(int frameIndex)? isFrameReady;
+  final ReadyRunsIn? readyRunsIn;
 
   /// AE-style property lanes: layers whose twirl-down is open, the toggle,
   /// and the lane provider (generic — transform lanes now, FX lanes later).
@@ -438,11 +445,12 @@ class TimelineGridHooks {
   final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
   opacityDragPreview;
 
-  /// Track-SE rows whose display clone starts with a spill-in block, each
-  /// with how far into that block the cut starts — both grids read it
-  /// (UI-R7 #6: `~` at the cut start, start grip stands down; F-113: the
-  /// block's waveform starts that far into its sound).
-  final Map<LayerId, int> seSpillInLeadFrames;
+  /// Track-owned rows (the SE rows, the transition row) whose display clone
+  /// starts with a block spilling in from an earlier cut, each with how far
+  /// into that block the cut starts — both grids read it (UI-R7 #6: the
+  /// block's start grip stands down, and an SE row draws `~` at the cut
+  /// start; F-113: its waveform starts that far into the sound).
+  final Map<LayerId, int> spillInLeadFrames;
 
   /// End-line drag hooks (UI-R18 #14): the red cut-end boundary grows a
   /// grip that end-trims the ACTIVE cut through the session's trim

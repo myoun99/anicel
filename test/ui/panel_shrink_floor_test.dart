@@ -98,7 +98,7 @@ void main() {
     onPixelsPerFrameChanged: (_) {},
     showSeconds: false,
     onShowSecondsChanged: (_) {},
-    thumbnailFor: null,
+    thumbnails: null,
   );
 
   Rect rectOf(WidgetTester tester, String key) =>
@@ -145,7 +145,7 @@ void main() {
       expect(
         body.top - panel.top,
         StoryboardPanel.minPanelHeight -
-            2 * StoryboardPanel.minTrackLaneHeight -
+            2 * timelineLayerRowHeight -
             rectOf(tester, 'storyboard-horizontal-scrollbar').height,
         reason: 'the header band the floor reserves is the one drawn',
       );
@@ -263,7 +263,7 @@ void main() {
       final body = rectOf(tester, 'storyboard-vertical-scrollbar');
       final bottomRail = rectOf(tester, 'storyboard-horizontal-scrollbar');
 
-      expect(body.height, 2 * StoryboardPanel.minTrackLaneHeight);
+      expect(body.height, 2 * timelineLayerRowHeight);
       expect(body.height, greaterThan(32));
       expect(bottomRail.bottom, host.bottom);
       expect(body.bottom, bottomRail.top);
@@ -317,42 +317,6 @@ void main() {
             'and the frame area still keeps its reserve — two cells at '
             'the DEFAULT zoom, which is how that constant states itself',
       );
-    });
-
-    testWidgets('the conte keeps room for the action field its selected '
-        'cell mounts', (tester) async {
-      final session = await pumpAt(
-        tester,
-        (s) => ConteTabHost(session: s, thumbnailFor: null),
-        height: ConteTabHost.minPanelHeight,
-      );
-      expect(tester.takeException(), isNull);
-
-      // Select a cell so the non-flexible action row mounts.
-      final page = rectOf(tester, 'conte-page');
-      outer:
-      for (var fx = 0.1; fx < 1.0; fx += 0.2) {
-        for (var fy = 0.1; fy < 1.0; fy += 0.2) {
-          await tester.tapAt(
-            Offset(page.left + page.width * fx, page.top + page.height * fy),
-          );
-          await tester.pumpAndSettle();
-          if (find
-              .byKey(const ValueKey<String>('conte-action-field'))
-              .evaluate()
-              .isNotEmpty) {
-            break outer;
-          }
-        }
-      }
-      expect(
-        tester.takeException(),
-        isNull,
-        reason:
-            'the action row is a plain column child — it takes its '
-            'height whether or not there is room',
-      );
-      expect(session.repository.requireProject(), isNotNull);
     });
   });
 
@@ -474,8 +438,8 @@ void main() {
         );
         expect(
           rectOf(tester, 'storyboard-vertical-scrollbar').height,
-          greaterThanOrEqualTo(2 * StoryboardPanel.minTrackLaneHeight),
-          reason: 'two lanes or more at $height',
+          greaterThanOrEqualTo(2 * timelineLayerRowHeight),
+          reason: 'the two-row budget or more at $height',
         );
       }
     });
@@ -507,27 +471,47 @@ void main() {
       }
     });
 
-    testWidgets('the conte sheet, whose floor is chrome alone', (tester) async {
+    // The two pages that only scale declare no floor, so the dock may hand
+    // them a sliver. 44 is the floor the conte used to claim for the ACTION
+    // field under its page — gone since the ACTION is edited on the page.
+    const sliver = 44.0;
+
+    testWidgets('the conte sheet, which declares no floor at all', (
+      tester,
+    ) async {
       EditorSessionManager? session;
-      for (final height in [ConteTabHost.minPanelHeight, ...heights]) {
+      for (final height in [sliver, ...heights]) {
         session = await pumpAt(
           tester,
-          (s) => ConteTabHost(session: s, thumbnailFor: null),
+          (s) => ConteTabHost(session: s, thumbnails: null),
           height: height,
           reuse: session,
         );
         expect(tester.takeException(), isNull, reason: 'conte at $height');
+        // The book always turns (a cover, its blank back, the body), so the
+        // page strip is always there — whole, inside the panel, at a sliver
+        // too.
+        final host = tester.getRect(find.byType(ConteTabHost));
+        final strip = tester.getRect(
+          find.byKey(const ValueKey<String>('canvas-page-strip')),
+        );
+        expect(strip.top, greaterThanOrEqualTo(host.top - 0.01));
+        expect(strip.bottom, lessThanOrEqualTo(host.bottom + 0.01));
+        expect(
+          find.byKey(const ValueKey<String>('conte-next-page-button')),
+          findsOneWidget,
+          reason: 'no control is shed for want of room',
+        );
       }
     });
 
     testWidgets('the cut envelope, which declares no floor at all', (
       tester,
     ) async {
-      // It sits in the bottom dock beside the conte, so it is asked for
-      // the conte's floor too — and a page that only scales has to survive
-      // it without claiming a taller minimum for the whole dock.
+      // A page that only scales has to survive a sliver without claiming a
+      // taller minimum for the whole bottom dock it shares with the conte.
       EditorSessionManager? session;
-      for (final height in [ConteTabHost.minPanelHeight, ...heights]) {
+      for (final height in [sliver, ...heights]) {
         session = await pumpAt(
           tester,
           (s) => CutEnvelopeTabHost(session: s),

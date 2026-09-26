@@ -137,7 +137,7 @@ void main() {
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
     final resident = ProcessInfo.currentRss;
-    final census = collectMemoryCensus(session);
+    final census = collectMemoryCensus([session]);
     expect(
       census.footprintBytes,
       isNot(resident),

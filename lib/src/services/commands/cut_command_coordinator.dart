@@ -12,6 +12,7 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
@@ -66,6 +67,8 @@ import 'relink_media_asset_command.dart';
 import 'rasterize_layer_reference_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
+import 'linked_cut_field_command.dart';
+import 'update_cut_mark_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
 import 'update_track_effects_command.dart';
@@ -92,6 +95,25 @@ part 'cut_commands/link_commands.dart';
 part 'cut_commands/track_commands.dart';
 part 'cut_commands/folder_and_attachment_commands.dart';
 part 'cut_commands/project_setting_commands.dart';
+
+/// A pasted (or duplicated) layer: its id, and which cel of the copy each
+/// of its cels was minted from — what the pictures follow, since they live
+/// in a store keyed by the ids the paste just changed (F-62's lesson, at the
+/// layer's scale) — and, by each of its blocks' handwriting ids, the one it
+/// starts as a copy of (`conteHandwritingOfACopy`).
+typedef PastedLayer = ({
+  LayerId layerId,
+  Map<FrameId, FrameId> minted,
+  Map<String, String> handwriting,
+});
+
+/// A duplicated cut: its id, which row of it each source row became, and
+/// which cel each source cel became — [PastedLayer]'s answer for a whole cut.
+typedef DuplicatedCut = ({
+  CutId cutId,
+  Map<LayerId, LayerId> rows,
+  Map<FrameId, FrameId> minted,
+});
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -157,6 +179,8 @@ class CutCommandCoordinator {
   );
   void updateCutNote({required CutId cutId, required String note}) =>
       _cuts.updateCutNote(cutId: cutId, note: note);
+  void setCutMark({required List<CutId> cutIds, required LayerMark mark}) =>
+      _cuts.setCutMark(cutIds: cutIds, mark: mark);
   void updateCutThumbnailFrame({
     required CutId cutId,
     required int? frameIndex,
@@ -182,7 +206,7 @@ class CutCommandCoordinator {
   void deleteCut({required CutId cutId}) => _cuts.deleteCut(cutId: cutId);
   void deleteCuts({required List<CutId> cutIds}) =>
       _cuts.deleteCuts(cutIds: cutIds);
-  void duplicateCut({
+  DuplicatedCut duplicateCut({
     required CutId sourceCutId,
     required TrackId targetTrackId,
     String? newName,
@@ -296,8 +320,12 @@ class CutCommandCoordinator {
       throw ArgumentError.value(name, 'name', 'Layer name cannot be empty.');
     }
 
-    final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    if (layer.name == trimmedName) {
+    // ANYWHERE, as the name write itself is (`ProjectRepository`'s
+    // layer-flag updates: 「track-owned SE layers must reach the same
+    // commands」). ↩️A cut-scoped lookup here threw on a track's SE row —
+    // found by I-48's label double click, and the menu's rename with it.
+    final renamed = _requireLayerAnywhere(layerId);
+    if (renamed.name == trimmedName) {
       return;
     }
 
@@ -324,7 +352,7 @@ class CutCommandCoordinator {
     // (demand a separator, demand the default shape) would put back the
     // very "my own name stopped following" surprise this removes.
     final followers = <Command>[];
-    final ownerPrefix = layer.name;
+    final ownerPrefix = renamed.name;
     for (final attached in attachedLayersOf(
       layerId,
       _requireCut(cutId).layers,
@@ -572,7 +600,7 @@ class CutCommandCoordinator {
     );
   }
 
-  LayerId duplicateLayer({
+  PastedLayer duplicateLayer({
     required CutId cutId,
     required LayerId sourceLayerId,
   }) {
@@ -595,7 +623,7 @@ class CutCommandCoordinator {
     );
   }
 
-  LayerId pasteLayer({
+  PastedLayer pasteLayer({
     required CutId cutId,
     required LayerCopyPayload payload,
     required int insertionIndex,
@@ -622,7 +650,11 @@ class CutCommandCoordinator {
       ),
     );
 
-    return plan.layer.id;
+    return (
+      layerId: plan.layer.id,
+      minted: plan.frameIdMap,
+      handwriting: plan.handwriting,
+    );
   }
 
   /// RASTERIZE (§6-f): nulls the layer's media reference — the pixels are

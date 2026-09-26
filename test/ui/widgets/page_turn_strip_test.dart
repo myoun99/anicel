@@ -26,11 +26,7 @@ void main() {
           key: const ValueKey<String>('strip'),
           children: pageTurnStrip(
             keyPrefix: 'sheet',
-            page: (
-              index: pageIndex,
-              count: pageCount,
-              readout: '${pageIndex + 1} / $pageCount',
-            ),
+            page: viewerPage(pageIndex, pageCount),
             onTurnTo: onTurnTo,
             leading: leading,
           ),

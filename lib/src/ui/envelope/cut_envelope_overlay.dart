@@ -11,10 +11,10 @@ import 'cut_envelope_ink.dart';
 /// The envelope's ink input layer: one brush canvas per MOUNTED box.
 ///
 /// Mounting is gated ([mountedEnvelopeInkWindows]) because the analog form
-/// has 86 inking boxes and each window costs a session. With the gate the
-/// count sits at conte's order of magnitude, which is what lets this keep
-/// the per-window structure — a stroke stays in the box it started in for
-/// free, through pointer capture, instead of being routed by hand.
+/// has 86 inking boxes and each window costs a session — and every mounted
+/// window hears every stroke, keeping only its own box's piece of it
+/// ([sheetInkRegions]). With the gate the count sits at conte's order of
+/// magnitude.
 ///
 /// The gate is applied by the HOST, not here: the page painter has to skip
 /// exactly the boxes this layer mounts, and one shared list is what keeps
@@ -44,8 +44,7 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
   /// The live panel viewport — the same transform the painter applies.
   final CanvasViewport viewport;
 
-  /// Raised while any window has a stroke in progress, so the panel's
-  /// gesture layer holds navigation exactly as it does for canvas strokes.
+  /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
 
   final CacheInvalidationSink? cacheInvalidationSink;
@@ -58,6 +57,7 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
       viewport: viewport,
       brushToolState: brushToolState,
       strokeActive: strokeActive,
+      history: historyManager.gestures,
       // ⛔One plane, so the window's plane stays null and this controller
       // never asks. That is the whole shape of the envelope's difference.
       sessionStateFor: (window) => controller.sessionStateFor(null, window.key),

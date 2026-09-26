@@ -195,7 +195,7 @@ void main() {
       expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.on);
     });
 
-    test('updateLayerTransformEnabled is idempotent (no empty undo steps)', () {
+    test('setLayerTransformFx is idempotent (no empty undo steps)', () {
       final session = makeSession();
       final row = armRow(session);
 
@@ -204,7 +204,7 @@ void main() {
 
       // Writing the value it already has must record NOTHING, or the undo
       // stack grows a step that walks nowhere.
-      session.updateLayerTransformEnabled(row.id, enabled: false);
+      session.effectsAndFx.setLayerTransformFx(row.id, enabled: false);
       session.undo();
       expect(
         transformEnabledOf(session, row.id),

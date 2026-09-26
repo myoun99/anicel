@@ -26,7 +26,7 @@ void main() {
   test('the census reports the process, not just our caches', () {
     final session = newSession();
     addTearDown(session.dispose);
-    final census = collectMemoryCensus(session);
+    final census = collectMemoryCensus([session]);
 
     // 🚨THE WHOLE POINT OF TWO TOTALS. A fresh session holds almost
     // nothing, but the PROCESS holds the Dart heap, Skia's arenas and the
@@ -57,13 +57,13 @@ void main() {
     // the user was looking at. The engine answers on every platform now
     // and RSS is only the no-engine fallback — either way this is a real
     // number, which is what the row exists to show.
-    expect(collectMemoryCensus(session).footprintBytes, greaterThan(0));
+    expect(collectMemoryCensus([session]).footprintBytes, greaterThan(0));
   });
 
   test('every item carries a label, and the ids are the census ids', () {
     final session = newSession();
     addTearDown(session.dispose);
-    final ids = collectMemoryCensus(session).items.map((i) => i.id).toSet();
+    final ids = collectMemoryCensus([session]).items.map((i) => i.id).toSet();
     // A new cache added to the census with no label would render its raw
     // id — `panelRasters` in front of an animator. This is the list the
     // section switches on; the two must not drift.
@@ -88,7 +88,7 @@ void main() {
   test('items come back largest first', () {
     final session = newSession();
     addTearDown(session.dispose);
-    final bytes = collectMemoryCensus(session).items.map((i) => i.bytes);
+    final bytes = collectMemoryCensus([session]).items.map((i) => i.bytes);
     expect(
       bytes.toList(),
       orderedEquals(bytes.toList()..sort((a, b) => b.compareTo(a))),
@@ -107,7 +107,12 @@ void main() {
     addTearDown(session.dispose);
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: MemorySettingsSection(session: session)),
+        home: Scaffold(
+          body: MemorySettingsSection(
+            session: session,
+            openSessions: [session],
+          ),
+        ),
       ),
     );
     expect(
@@ -160,7 +165,7 @@ void main() {
     addTearDown(session.dispose);
     session.renderCaches.storyboardThumbnailBytes = 12345;
     final row = collectMemoryCensus(
-      session,
+      [session],
     ).items.singleWhere((item) => item.id == 'storyboardThumbnails');
     expect(row.bytes, 12345);
   });
@@ -173,7 +178,12 @@ void main() {
       addTearDown(session.dispose);
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: MemorySettingsSection(session: session)),
+          home: Scaffold(
+            body: MemorySettingsSection(
+              session: session,
+              openSessions: [session],
+            ),
+          ),
         ),
       );
       for (final key in [
@@ -205,7 +215,12 @@ void main() {
       addTearDown(session.dispose);
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: MemorySettingsSection(session: session)),
+          home: Scaffold(
+            body: MemorySettingsSection(
+              session: session,
+              openSessions: [session],
+            ),
+          ),
         ),
       );
       final line = tester
@@ -234,7 +249,12 @@ void main() {
       );
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: MemorySettingsSection(session: session)),
+          home: Scaffold(
+            body: MemorySettingsSection(
+              session: session,
+              openSessions: [session],
+            ),
+          ),
         ),
       );
       AppIconButton automatic() => tester.widget<AppIconButton>(

@@ -8,20 +8,22 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// R5: the conte sheet ink rides the .anicel archive as a second cel
-/// namespace — the row plane keyed by the storyboard block's [FrameId]
-/// (the memo's identity), the page plane by page index. Load prunes row
-/// entries whose block no longer exists ("ink dies with the drawing" at
-/// the session boundary; saving never prunes, so an undone delete keeps
-/// its ink within the session).
+/// namespace — the row plane keyed by the storyboard block's own ink id
+/// (`ExposureMemo.inkId`), the page plane by page index. Load prunes row
+/// entries no block names any more ("ink dies with the block" at the
+/// session boundary; saving never prunes, so an undone delete keeps its
+/// ink within the session).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -59,7 +61,11 @@ void main() {
         Frame(id: const FrameId('sb-f1'), duration: 8, strokes: const []),
       ],
       timeline: {
-        0: const TimelineExposure.drawing(FrameId('sb-f1'), length: 8),
+        0: const TimelineExposure.drawing(
+          FrameId('sb-f1'),
+          length: 8,
+          memo: ExposureMemo(inkId: 'ink-live'),
+        ),
       },
     );
     project = project.copyWith(
@@ -77,17 +83,22 @@ void main() {
     final s = EditorSessionManager(initialProject: project);
     addTearDown(s.dispose);
     final cut = s.requireActiveCut;
-    final liveKey = conteInkRowKey(cut.id, const FrameId('sb-f1'));
-    final deadKey = conteInkRowKey(cut.id, const FrameId('long-dead-block'));
+    final liveKey = conteInkRowKey(cut.id, 'ink-live');
+    final deadKey = conteInkRowKey(cut.id, 'long-dead-block');
+    // The drawing's own id names no block's handwriting.
+    final drawingKey = conteInkRowKey(cut.id, 'sb-f1');
 
     s.renderCaches.conteInkRowStore.storeBakedSurface(liveKey, inkSurface(seed: 3));
     s.renderCaches.conteInkRowStore.storeBakedSurface(deadKey, inkSurface(seed: 5));
+    s.renderCaches.conteInkRowStore.storeBakedSurface(
+      drawingKey,
+      inkSurface(seed: 9),
+    );
     s.renderCaches.conteInkPageStore.storeBakedSurface(conteInkPageKey(0), inkSurface());
     await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
-    final loaded = EditorSessionManager(initialProject: createDefaultProject());
+    final loaded = await openedSession(path);
     addTearDown(loaded.dispose);
-    await loaded.projectDoor.openProjectFromFile(path);
 
     expect(
       loaded.renderCaches.conteInkRowStore.celHasRenderableContent(liveKey),
@@ -98,6 +109,12 @@ void main() {
       loaded.renderCaches.conteInkRowStore.celHasRenderableContent(deadKey),
       isFalse,
       reason: 'a dead block\'s ink prunes at the load boundary',
+    );
+    expect(
+      loaded.renderCaches.conteInkRowStore.celHasRenderableContent(drawingKey),
+      isFalse,
+      reason: 'ink is kept by the BLOCK that wrote it, not by the drawing '
+          'the block shows',
     );
     expect(
       loaded.renderCaches.conteInkPageStore.celHasRenderableContent(conteInkPageKey(0)),
@@ -117,11 +134,8 @@ void main() {
       inkSurface(seed: 7),
     );
     await loaded.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
-    final reloaded = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
+    final reloaded = await openedSession(path);
     addTearDown(reloaded.dispose);
-    await reloaded.projectDoor.openProjectFromFile(path);
     expect(reloaded.renderCaches.conteInkRowStore.celHasRenderableContent(liveKey), isTrue);
     expect(
       reloaded.renderCaches.conteInkPageStore.celHasRenderableContent(conteInkPageKey(1)),

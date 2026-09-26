@@ -20,6 +20,7 @@ import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_span_layout.dart';
+import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'axis_turn.dart';
 import '../repaint_props.dart';
 
@@ -715,10 +716,19 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
     final seen = timelineGridGroundOver(under: ground, painted: paper);
     if (blockFrameLines && seen != null && frameCellExtent > 0) {
       final frames = (extentAlong(axis, size) / frameCellExtent).round();
-      for (var offset = 1; offset < frames; offset += 1) {
+      // Only the boundaries a line can stand on ([timelineFrameLineStep]) —
+      // the sheet's and the rows' walk. It asked every frame of the block,
+      // and at I-22's floor a ten-minute sound is 14,400 of them.
+      final step = timelineFrameLineStep(frameCellExtent, framesPerSecond);
+      for (
+        var frame = timelineFirstOnStride(startFrame + 1, step);
+        frame < startFrame + frames;
+        frame += step
+      ) {
+        final offset = frame - startFrame;
         final line = timelineBlockFrameLine(
           axis: axis,
-          frameIndex: startFrame + offset,
+          frameIndex: frame,
           boundary: offset * frameCellExtent,
           across: (from: 0, to: cross),
           frameCellExtent: frameCellExtent,

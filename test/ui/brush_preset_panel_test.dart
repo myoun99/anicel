@@ -329,6 +329,36 @@ void main() {
     expect(unselectedRow.color, Colors.transparent);
   });
 
+  testWidgets('a pick repaints the highlight bar and replaces nothing — the '
+      'bar is the same box, held or not', (tester) async {
+    // 2026-09-26: a bar that came and went was a child added and dropped on
+    // every pick, laid out again up the row, each object a semantics update.
+    final presets = [_calligraphy(), _marker()];
+    await _pumpPanel(tester, presets: presets, selectedPresetId: _marker().id);
+    Finder bar(String id) =>
+        find.byKey(ValueKey<String>('brush-preset-bar-$id'));
+    Decoration paintOf(String id) =>
+        tester.widget<DecoratedBox>(bar(id)).decoration;
+    final markerBar = tester.renderObject(bar('preset-marker'));
+    final calligraphyBar = tester.renderObject(bar('preset-calligraphy'));
+    expect(paintOf('preset-marker'), isA<ShapeDecoration>());
+    expect(paintOf('preset-calligraphy'), const BoxDecoration());
+
+    await _pumpPanel(
+      tester,
+      presets: presets,
+      selectedPresetId: _calligraphy().id,
+    );
+
+    expect(paintOf('preset-calligraphy'), isA<ShapeDecoration>());
+    expect(paintOf('preset-marker'), const BoxDecoration());
+    expect(tester.renderObject(bar('preset-marker')), same(markerBar));
+    expect(
+      tester.renderObject(bar('preset-calligraphy')),
+      same(calligraphyBar),
+    );
+  });
+
   testWidgets('🚨H40: a pick moves the highlight and rebuilds neither the '
       'list nor the rail', (tester) async {
     // 유저 2026-09-11: 「고르는 프레임에서 끝나더라도 지금 안그래도 고를때

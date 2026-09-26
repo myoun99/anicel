@@ -110,7 +110,7 @@ void main() {
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
               onShowSecondsChanged: (_) {},
-              thumbnailFor: null,
+              thumbnails: null,
             ),
           ),
         ),

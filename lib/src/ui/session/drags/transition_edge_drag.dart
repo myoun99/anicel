@@ -5,6 +5,7 @@ import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../timeline/instruction_span_editing.dart';
+import '../../timeline/timeline_drag_preview.dart';
 import 'editor_drag_session.dart';
 
 /// The transition row's edge drag (the first [EditorDragSession]; the
@@ -22,7 +23,8 @@ class TransitionEdgeDrag implements EditorDragSession {
     required Layer before,
     required int spanStartIndex,
     required TimelineBlockEdge edge,
-    required ValueNotifier<Layer?> preview,
+    required ValueNotifier<TimelineDragPreview?> preview,
+    required ({Layer shown, Layer? global}) Function(Layer row) formsOf,
     required void Function(
       Map<int, InstructionEvent> instructions, {
       required String description,
@@ -32,6 +34,7 @@ class TransitionEdgeDrag implements EditorDragSession {
        _spanStartIndex = spanStartIndex,
        _edge = edge,
        _preview = preview,
+       _formsOf = formsOf,
        _commitInstructions = commitInstructions;
 
   /// Grabs [edge] of the transition span starting at [spanStartIndex]
@@ -48,7 +51,8 @@ class TransitionEdgeDrag implements EditorDragSession {
     required int spanStartIndex,
     required TimelineBlockEdge edge,
     LayerId? layerId,
-    required ValueNotifier<Layer?> preview,
+    required ValueNotifier<TimelineDragPreview?> preview,
+    required ({Layer shown, Layer? global}) Function(Layer row) formsOf,
     required void Function(
       Map<int, InstructionEvent> instructions, {
       required String description,
@@ -66,6 +70,7 @@ class TransitionEdgeDrag implements EditorDragSession {
       spanStartIndex: spanStartIndex,
       edge: edge,
       preview: preview,
+      formsOf: formsOf,
       commitInstructions: commitInstructions,
     );
   }
@@ -78,10 +83,14 @@ class TransitionEdgeDrag implements EditorDragSession {
   /// change". The commit reads THIS, never [_preview].
   Layer? _after;
 
-  /// The session's display channel (the strip renders it so the mark
-  /// follows the hand instead of jumping on release) — published to,
+  /// The session's one drag-preview channel, published to in the track-SE
+  /// rows' shape — the cut's form and the track's ([_formsOf]) — so the mark
+  /// follows the hand on both surfaces instead of jumping on release;
   /// cleared by both closers, never read back.
-  final ValueNotifier<Layer?> _preview;
+  final ValueNotifier<TimelineDragPreview?> _preview;
+
+  /// The row's two preview forms (`Transitions.previewFormsOf`).
+  final ({Layer shown, Layer? global}) Function(Layer row) _formsOf;
 
   /// The row's own writer on the session ([updateTransitionInstructions]):
   /// one undo step, description and all.
@@ -99,8 +108,17 @@ class TransitionEdgeDrag implements EditorDragSession {
       startEdge: _edge == TimelineBlockEdge.start,
       delta: cumulativeDelta,
     );
-    _after = next == null ? null : _before.copyWith(instructions: next);
-    _preview.value = _after;
+    final after = next == null ? null : _before.copyWith(instructions: next);
+    _after = after;
+    if (after == null) {
+      _preview.value = null;
+      return;
+    }
+    final forms = _formsOf(after);
+    _preview.value = ExposureEdgeDragPreview(
+      previewLayer: forms.shown,
+      globalPreviewLayer: forms.global,
+    );
   }
 
   /// Commits the drag as ONE undo step through the row's own writer.

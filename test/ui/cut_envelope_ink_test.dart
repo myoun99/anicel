@@ -1,5 +1,6 @@
-import 'dart:ui' show Size;
+import 'dart:ui' show Offset, Size;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_form.dart';
@@ -9,8 +10,9 @@ import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 
-/// Envelope ink lives in ONE plane: every stroke belongs to the box it
-/// started in, and there is no page window because the form has no margin.
+/// Envelope ink lives in ONE plane: every box keeps the piece of a stroke
+/// drawn over it, and there is no page window because the form has no
+/// margin.
 void main() {
   const owner = CutId('cut-1');
 
@@ -81,8 +83,8 @@ void main() {
     final ink = window.inkViewport(panel);
 
     // Paper is 100 wide and the form fills it, so a surface pixel is
-    // 100/4096 of a paper unit.
-    expect(ink.zoom, 2 / (envelopeInkSurfaceWidth / 100));
+    // 100/W of a paper unit.
+    expect(ink.zoom, 2 / (envelopeInkSurfaceWidth(1) / 100));
     expect(ink.panX, 10 + 2 * 25, reason: 'box left is 25 in paper space');
     expect(ink.panY, 20 + 2 * 50);
   });
@@ -141,7 +143,8 @@ void main() {
     expect(rect.height, 150);
   });
 
-  test('windows follow FORM order, so an inner box is hit before its host', () {
+  test('windows follow FORM order, so an inner box keeps what is drawn over '
+      'it and its host the rest', () {
     final windows = envelopeInkWindows(
       layoutOf(const [
         EnvelopeBox(
@@ -160,9 +163,20 @@ void main() {
       windows.map((window) => window.id),
       ['outer', 'inner'],
       reason:
-          'bottom-of-stack first — the last one wins a hit, matching '
+          'bottom-of-stack first — the last one keeps a spot, matching '
           'inkBoxAt\'s reverse search',
     );
+    final regions = sheetInkRegions(windows);
+    CanvasPoint under(SheetInkWindow window, Offset paper) {
+      final pixel = window.placement.pixelOf(paper);
+      return CanvasPoint(x: pixel.dx, y: pixel.dy);
+    }
+
+    const middle = Offset(50, 50);
+    const corner = Offset(10, 10);
+    expect(regions[0]!.containsPoint(under(windows[0], middle)), isFalse);
+    expect(regions[0]!.containsPoint(under(windows[0], corner)), isTrue);
+    expect(regions[1]!.containsPoint(under(windows[1], middle)), isTrue);
   });
 
   test('the analog preset gives every inking box a window', () {
@@ -269,10 +283,13 @@ void main() {
 
       controller.syncGeometry(aspectRatio: 660 / 497);
 
-      expect(controller.surfaceSize!.width, envelopeInkSurfaceWidth);
+      expect(
+        controller.surfaceSize!.width,
+        envelopeInkSurfaceWidth(660 / 497),
+      );
       expect(
         controller.surfaceSize!.height,
-        (envelopeInkSurfaceWidth / (660 / 497)).ceil(),
+        (envelopeInkSurfaceWidth(660 / 497) / (660 / 497)).ceil(),
       );
 
       // The analog preset printed on a 4K cut is the same surface.

@@ -12,6 +12,7 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/theme/conte_ink.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
@@ -289,29 +290,30 @@ void main() {
   });
 
   testWidgets('on the dark lane itself the shared paint entry lands solid '
-      'LIGHT — the storyboard band/plate situation', (tester) async {
-    // No substrate: the glyph is painted straight onto the cut-block plate
-    // color through the one entry point every site uses.
+      'LIGHT — the storyboard plate situation', (tester) async {
+    // No substrate: the glyph is painted straight onto the cut block's plate
+    // — the conte sheet's ink since 2026-09-26 — through the one entry point
+    // every site uses (a layerless cut's + stands on it).
     const style = TextStyle(fontSize: 11, fontWeight: FontWeight.w700);
     final data = await tester.runAsync(() async {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       canvas.drawRect(
         const Rect.fromLTWH(0, 0, 64, 24),
-        Paint()..color = AppColors.washUp,
+        Paint()..color = conteSheetInk,
       );
       paintTimelineGlyphOnGround(
         canvas,
         const Offset(4, 4),
         '24',
         style,
-        ground: AppColors.washUp,
+        ground: conteSheetInk,
       );
       final image = await recorder.endRecording().toImage(64, 24);
       return image.toByteData(format: ui.ImageByteFormat.rawRgba);
     });
     final bytes = data!;
-    final groundSum = channelSum(AppColors.washUp);
+    final groundSum = channelSum(conteSheetInk);
     var present = 0;
     var light = 0;
     for (var y = 0; y < 24; y += 1) {
@@ -334,7 +336,7 @@ void main() {
     expect(
       light,
       greaterThanOrEqualTo(4),
-      reason: 'washUp is far below the crossover (luminance 0.02): white',
+      reason: 'the conte sheet\'s ink is far below the crossover: white',
     );
   });
 
@@ -541,53 +543,67 @@ void main() {
 
   /// 🚨D29-2 (유저 2026-08-22) — this test used to require THREE users of
   /// the picture-aware ground: the panel name, the comma and the create `+`.
-  /// Two of those left the picture entirely.
+  /// Two of those left the picture on 2026-09-25, and the `+` followed on
+  /// 2026-09-26 (유저: 「콘티블록 상단띠 전면을 생성버튼으로」) — so NOTHING
+  /// the painter writes rides a picture any more, and nothing may guess at
+  /// one.
   ///
   /// > 「그냥 애초에 **받는 바탕을 똑같게** 하면 되는거 아닌가? **컷 제목이랑
   /// > 스토리보드블록의 썸네일없는공간이랑 뭐가 다른거지?**」
   ///
-  /// ⚠️The picture-aware ground is still RIGHT for writing that has nowhere
-  /// else to go, and D29's finding stands for those — so the rule is not
-  /// deleted, it is scoped. What must never come back is a CARRIED glyph
-  /// guessing at the picture beneath it.
-  test('D29: writing that really does ride the picture still reads the '
-      'picture ground — and only that writing', () {
+  /// ⚠️D29's finding stands: a picture-aware ground is right for writing
+  /// that has nowhere else to go. There is no such writing now; one that
+  /// comes back must earn the picture ground again, not find it lying here.
+  test('D29: no writing rides the picture — every word is handed the '
+      'CARRIED ground of the band it stands in', () {
     final painter = File(
       'lib/src/ui/storyboard_cut_blocks_painter.dart',
     ).readAsStringSync();
     expect(
       painter,
-      contains('storyboardPanelPictureGroundColor'),
-      reason: 'a folded block\'s labels and the create + genuinely sit on '
-          'paper-white composite thumbnails — the dark plate resolved WHITE '
-          'ink on white pictures there',
+      isNot(contains('_stripWritingGround')),
+      reason: 'the create + stood on the paper-white composite in the strip '
+          'until 2026-09-26; it stands in the conte top band now',
     );
     expect(
-      RegExp(r'ground: _stripWritingGround\(block\)')
-          .allMatches(painter)
-          .length,
-      greaterThanOrEqualTo(1),
-      reason: 'the create + still takes it: a no-layer cut paints its '
-          'coverage cell\'s paper-white composite right under the glyph',
+      'storyboardPanelPictureGroundColor'.allMatches(painter).length,
+      1,
+      reason: 'its one reader is the EDGES\' ground map (groundsOf): a '
+          'triangle does stand on a picture, and a word never does',
     );
     expect(
-      RegExp(r'_paintPlatedGlyph\(').allMatches(painter).length,
-      greaterThanOrEqualTo(3),
-      reason: 'the panel NAME and its COMMA are carried now (D29-2), plus '
-          'the helper\'s own definition — they receive the band\'s fill, '
-          'which is what the cut title receives, so one block cannot wear '
-          'two inks again',
+      painter,
+      isNot(contains('ground: storyboardPanelPictureGroundColor')),
+      reason: 'and no glyph is handed it',
     );
     expect(
-      RegExp(r'ground: _bandGround\(block\)').allMatches(painter).length,
-      greaterThanOrEqualTo(2),
-      reason: 'and what they are handed is the CARRIED ground by name',
+      painter,
+      contains('final cutGround = _bandGround(block, StoryboardBand.cut);'),
+      reason: 'the cut\'s number and length read the cut\'s band',
+    );
+    expect(
+      painter,
+      contains(
+        'final conteGround = _bandGround(block, StoryboardBand.conte);',
+      ),
+      reason: 'the panels\' names and commas and the + read the conte '
+          'blocks\' band',
+    );
+    expect(
+      RegExp(
+        r'_paintPanel(Heads|Commas)\(canvas, block, ground: conteGround\);',
+      ).allMatches(painter).length,
+      2,
+      reason: 'the panel NAME and its COMMA stand in the conte blocks\' '
+          'bands (유저 2026-09-26) and are handed that band\'s fill — the '
+          'same kind of ground the cut title receives, so one block cannot '
+          'wear two inks for one reason again (D29-2)',
     );
     expect(
       painter,
       isNot(contains('ground: _stripGround(block)')),
-      reason: 'no strip glyph reads the plate directly — the writing '
-          'ground decides (D29)',
+      reason: 'no glyph reads the plate directly — the writing ground '
+          'decides (D29)',
     );
     expect(
       painter,

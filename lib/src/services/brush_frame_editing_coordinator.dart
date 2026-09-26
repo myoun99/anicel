@@ -120,7 +120,37 @@ class BrushFrameEditingCoordinator {
   }
 
   BrushEditSessionState _sessionFor(BrushFrameKey key) {
-    return sessionStore.sessionOrNull(key) ?? _seedSession(key);
+    final session = sessionStore.sessionOrNull(key);
+    if (session == null || _storeMovedPast(key, session)) {
+      return _seedSession(key);
+    }
+    return session;
+  }
+
+  /// 🚨★★★A SESSION FOLLOWS THE STORE, NOT THE COORDINATOR THAT SEEDED IT.
+  ///
+  /// Every write this coordinator makes donates its surface as the store's
+  /// truth, so its own sessions and the store never part. A SECOND
+  /// coordinator over the same store — a conte picture drawing a cel the
+  /// canvas also stands on — writes the store without touching this one's
+  /// sessions, and a session left on the old pixels is a stroke of theirs
+  /// the next commit here paints over: the split the session store's link
+  /// resolver closed for two ROWS (2026-09-12), said of two coordinators.
+  ///
+  /// ⚠️A null baked surface is 「empty」 only when the store holds the cel
+  /// in no other tier: a cold cel whose read failed this moment answers
+  /// null too, and reseeding blank from that is the loss the store's own
+  /// read forbids.
+  bool _storeMovedPast(BrushFrameKey key, BrushEditSessionState session) {
+    final current = session.canvasState.currentSurface;
+    final baked = frameStore.bakedSurfaceOrNull(key);
+    if (baked != null) {
+      return !identical(baked, current) &&
+          baked.canvasSize == sessionStore.canvasSize;
+    }
+    return current.tiles.isNotEmpty &&
+        !frameStore.isCelCold(key) &&
+        !frameStore.isCelFileBacked(key);
   }
 
   /// Seeds the frame's session from the baked raster truth — O(1) and

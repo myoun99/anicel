@@ -34,7 +34,7 @@ void main() {
   }) async {
     final emitted = <CanvasViewport>[];
     final pressed = <int>[];
-    final stroke = ValueNotifier<bool>(false);
+    final stroke = SheetStrokeHold(brushInput: (_) {});
     addTearDown(stroke.dispose);
     await tester.pumpWidget(
       MaterialApp(
@@ -49,7 +49,7 @@ void main() {
               viewport: CanvasViewport(),
               onViewportChanged: emitted.add,
               drawingOn: drawing,
-              contentStrokeActive: drawing ? stroke : null,
+              strokeHold: stroke,
               content: (context, viewport) => Stack(
                 children: [
                   Positioned(

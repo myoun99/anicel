@@ -5,7 +5,9 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'package:anicel/src/ui/session/project_resume.dart' show ToolChoiceBridge;
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// F-123: what the tools were holding rides with the save and is handed back
@@ -36,15 +38,14 @@ void main() {
     );
     s.dispose();
 
-    final reopened = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
     Map<String, Object?>? handed;
-    reopened.projectDoor.toolChoice = (
-      read: () => const {},
-      resume: (saved) => handed = saved,
+    final reopened = await openedSession(
+      projectPath,
+      before: (session) => session.projectDoor.toolChoice = (
+        read: () => const {},
+        resume: (saved) => handed = saved,
+      ),
     );
-    await reopened.projectDoor.openProjectFromFile(projectPath);
     expect(handed, {'tool': 'eraser', 'fillOpacity': 0.5});
     reopened.dispose();
   });
@@ -55,14 +56,45 @@ void main() {
       buildAnicelArchiveBytes(project: createDefaultProject(), cels: const []),
     );
 
-    final opened = EditorSessionManager(initialProject: createDefaultProject());
     Map<String, Object?>? handed;
-    opened.projectDoor.toolChoice = (
-      read: () => const {},
-      resume: (saved) => handed = saved,
+    final opened = await openedSession(
+      projectPath,
+      before: (session) => session.projectDoor.toolChoice = (
+        read: () => const {},
+        resume: (saved) => handed = saved,
+      ),
     );
-    await opened.projectDoor.openProjectFromFile(projectPath);
     expect(handed, isEmpty);
     opened.dispose();
+  });
+
+  test('🚨I-7: a file read before its tab exists hands the choice to the '
+      'bridge the window installs LATER — once, not at every switch', () async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.projectDoor.toolChoice = (
+      read: () => {'tool': 'eraser'},
+      resume: (_) {},
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    // Read with no bridge: the tab it will show in does not exist yet.
+    final read = await openedSession(projectPath);
+    addTearDown(read.dispose);
+
+    final handed = <Map<String, Object?>>[];
+    ToolChoiceBridge bridge() => (
+      read: () => const {},
+      resume: handed.add,
+    );
+    read.projectDoor.toolChoice = bridge();
+    expect(handed, [
+      {'tool': 'eraser'},
+    ], reason: 'the tab came on screen: the tools come back');
+    read.projectDoor.toolChoice = bridge();
+    expect(handed, hasLength(1), reason: 'coming forward again is no open');
   });
 }

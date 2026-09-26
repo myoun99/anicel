@@ -27,7 +27,7 @@ void main() {
 
   setUp(() => folder = Directory.systemTemp.createTempSync('qa_f128_'));
   tearDown(() {
-    OpenProjectFile.instance.release();
+    OpenProjectFile.instance.releaseAll();
     deleteTempQuietly(folder);
   });
 

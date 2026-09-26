@@ -3,6 +3,7 @@ import 'package:anicel/src/services/editing/default_layer_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -74,6 +75,41 @@ void main() {
     expect(layer.kind, LayerKind.animation);
     expect(layer.frames, isEmpty);
     expect(layer.timeline, isEmpty);
+  });
+
+  test('🗣️a new IMAGE row is BG while the cut has none, then BOOK — the '
+      'same name stacked, never numbered', () {
+    // 유저 2026-09-25: 「BG가없으면 BG만들고, BG있으면 BOOK으로 쌓도록 …
+    // 레이어이름BOOK고정에 프레임이름으로 북 구분」.
+    Layer born(List<Layer> layers) => createCoveringLayer(
+      layerId: const LayerId('new-layer'),
+      frameId: const FrameId('new-frame'),
+      cut: _cut(layers: layers),
+      kind: LayerKind.image,
+    );
+
+    expect(born([_layer('A')]).name, 'BG');
+    expect(
+      born([_layer('A'), _layer('BG', kind: LayerKind.image)]).name,
+      'BOOK',
+    );
+    expect(
+      born([
+        _layer('BG', kind: LayerKind.image),
+        _layer('BOOK', kind: LayerKind.image),
+      ]).name,
+      'BOOK',
+      reason: 'BOOK stacks on BOOK — the frame name tells the books apart',
+    );
+    expect(
+      createCoveringLayer(
+        layerId: const LayerId('new-layer'),
+        frameId: const FrameId('new-frame'),
+        cut: _cut(layers: [_layer('A'), _layer('BG', kind: LayerKind.image)]),
+      ).name,
+      'B',
+      reason: 'a conte row still takes a cel\'s name',
+    );
   });
 }
 

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_row_address.dart';
+import '../../services/history_manager.dart';
 import '../timeline/property_lane_model.dart' show TimelineDisplayRow;
 import '../timeline/timeline_row_span_resolver.dart'
     show resolveSelectionSpanRows;
@@ -30,9 +31,15 @@ typedef FoldHandOff =
 class RowSelection {
   RowSelection({
     required RangeSelections rangeSelections,
-  }) : _rangeSelections = rangeSelections;
+    required HistoryManager history,
+  }) : _rangeSelections = rangeSelections,
+       _history = history;
 
   final RangeSelections _rangeSelections;
+
+  /// Where a press spread over the selection lands as one step
+  /// ([pressAcross], [pickAcross]).
+  final HistoryManager _history;
 
 
   /// Where the live row-select drag started; null between drags.
@@ -160,5 +167,59 @@ class RowSelection {
   Set<LayerId> rowsActedOnBy(LayerId pressedId) {
     final carried = rowSelectionCarriedBy(pressedId);
     return carried.isEmpty ? {pressedId} : carried;
+  }
+
+  /// 🚨A PRESS INSIDE THE SELECTION IS A PRESS ON EVERY SELECTED ROW
+  /// (row-buttons-act-on-the-selection, 유저 2026-09-25, answering
+  /// clear-all-marks-meaning-Q1: 「선택범위 내부 레이어 조절하면 선택범위
+  /// 레이어 모두 적용. 언두하나. 바깥 레이어 조절하면 바깥 그 레이어만
+  /// 조절 … 그거 로직 발견해서 통합시켜서 적용」) — the rows are
+  /// [rowsActedOnBy]'s, the rule the row drag and the reference button
+  /// already answer by.
+  ///
+  /// A two-state button SETS the pressed row's new value on every row the
+  /// press acts on: a row is flipped only when it still shows what the
+  /// pressed row showed, and a row without the button ([valueOf] null) is
+  /// passed by. That is the column swipe's rule (`RailColumnSwipe`: only the
+  /// rows that disagree are touched), so a swipe that starts on a selected
+  /// row paints on from what this press set, and a linked row a flip already
+  /// mirrored is not flipped back. It lands as ONE undo step.
+  void pressAcross(
+    LayerId pressedId, {
+    required bool? Function(LayerId id) valueOf,
+    required void Function(LayerId id) flip,
+    required String description,
+  }) {
+    final shown = valueOf(pressedId);
+    if (shown == null) {
+      flip(pressedId);
+      return;
+    }
+    final rows = rowsActedOnBy(pressedId);
+    _history.runAsOneStep(description, () {
+      // Read live, row by row — the pressed row too: a flip that mirrored
+      // into a row later in the list has already set it.
+      for (final id in rows) {
+        if (valueOf(id) == shown) {
+          flip(id);
+        }
+      }
+    });
+  }
+
+  /// A pick on [pressedId] — a label, a blend mode — made on every row the
+  /// press acts on ([rowsActedOnBy]) as ONE undo step. [pick] is asked row
+  /// by row, and a row without the control answers by doing nothing.
+  void pickAcross(
+    LayerId pressedId,
+    void Function(LayerId id) pick, {
+    required String description,
+  }) {
+    final rows = rowsActedOnBy(pressedId);
+    _history.runAsOneStep(description, () {
+      for (final id in rows) {
+        pick(id);
+      }
+    });
   }
 }

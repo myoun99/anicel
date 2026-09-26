@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_second.dart';
 
 void main() {
   group('TimelineGridMetrics', () {
@@ -50,7 +51,12 @@ void main() {
 
     test('the stride ladder is the paper timesheet\'s, anchored at frame 1 '
         '(user rule: all → 3f → 6f → 12f → 24f…)', () {
-      expect(timelineFrameStrideLadder, [1, 3, 6, 12, 24, 48, 96]);
+      expect(timelineFrameStrideLadder, [1, 3, 6, 12, 24]);
+      expect(
+        timelineFrameStrides().take(9),
+        [1, 3, 6, 12, 24, 48, 96, 192, 384],
+        reason: 'doubling on past the rungs the user named (I-22)',
+      );
     });
 
     // I-22: which rung stands is no longer a threshold on the cell here —
@@ -61,7 +67,31 @@ void main() {
       expect(timelineStrideHolding(8.5, 8), 3);
       expect(timelineStrideHolding(30, 8), 6);
       expect(timelineStrideHolding(3, 2.4), 3);
-      expect(timelineStrideHolding(1000, 1), 96, reason: 'the top rung');
+      expect(
+        timelineStrideHolding(1000, 1),
+        1536,
+        reason: 'no top rung: the ten-minute floor needs the ladder to go on',
+      );
+    });
+
+    test('the seconds climb a pro editor\'s ruler, doubling on past ten '
+        'minutes (I-22)', () {
+      expect(
+        timelineSecondStrideLadder,
+        [1, 2, 5, 10, 15, 30, 60, 120, 300, 600],
+      );
+      expect(timelineSecondsHolding(3, 3), 1);
+      expect(timelineSecondsHolding(3.5, 3), 2);
+      expect(timelineSecondsHolding(1000, 1), 1200);
+    });
+
+    test('a walk over a stride starts on its first frame at or after the '
+        'window\'s', () {
+      expect(timelineFirstOnStride(0, 6), 0);
+      expect(timelineFirstOnStride(1, 6), 6);
+      expect(timelineFirstOnStride(6, 6), 6);
+      expect(timelineFirstOnStride(7, 6), 12);
+      expect(timelineFirstOnStride(7, 1), 7);
     });
 
     test('custom metrics can be created', () {

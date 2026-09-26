@@ -15,7 +15,6 @@ library;
 
 import 'dart:math' as math;
 import 'dart:typed_data';
-import '../../models/audio_pcm_scale.dart';
 
 /// One volume-envelope point (AUDIO-PRO R1) — mirrors the C
 /// `qa_audio_envelope_key`: at [sample] (clip-local, from the clip's
@@ -337,21 +336,6 @@ Float32List audioBusToFloat(Float64List bus, {Float32List? into}) {
   return out;
 }
 
-/// Output stage: the mix bus to 16-bit device samples.
-///
-/// Clipping lives HERE, not in the mix — the bus is allowed past unity
-/// (that is what headroom is), and only the conversion to a fixed-point
-/// format has to decide what to do about it. Dart's `double.round()` rounds
-/// half away from zero, exactly like C's `llround`.
-///
-/// Scaling by 32768 (not 32767) is what makes the chain lossless at unity
-/// gain: a decoder hands us `raw / 32768`, so multiplying back by 32768
-/// returns the SAME int16 the file held. -32768 survives too, which the
-/// 32767 convention cannot represent. Only +1.0 needs the clamp.
-Int16List audioBusToInt16(Float64List bus, {Int16List? into}) {
-  final out = into ?? Int16List(bus.length);
-  for (var index = 0; index < bus.length; index += 1) {
-    out[index] = int16FromUnitSample(bus[index]);
-  }
-  return out;
-}
+// 🪦`audioBusToInt16` — the mix bus to 16-bit samples — was one of three
+// loops over [int16FromUnitSample]; the bus goes through `int16PcmOf` now,
+// beside the scale it applies (09-25).

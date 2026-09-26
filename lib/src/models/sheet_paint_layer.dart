@@ -25,6 +25,15 @@ enum SheetPaintLayer {
   /// Values read from the project — the layer that has to be erasable.
   content,
 
+  /// The film's own PICTURES a sheet shows — the conte's panels (with the
+  /// camera work written on them) and its cover picture — apart from the
+  /// typed values (유저 2026-09-25: 「흰 배경/ 용지서식(칸이나 픽쳐
+  /// 텍스트나 이런거)/그림 이런식으로. psd출력할때 이런느낌으로」 · 「그림
+  /// 수정하거나 텍스트 바뀌거나 하는데 용지 리빌드하면 너무 비효율적」).
+  /// Nothing in it overlaps a value, so the strata stack to the page in
+  /// either order.
+  picture,
+
   /// Handwriting. Lives in its own store, never in a cel.
   ink;
 
@@ -38,4 +47,22 @@ enum SheetPaintLayer {
     }
     return null;
   }
+}
+
+/// The strata a sheet is BAKED in, bottom to top — each re-recorded only
+/// when what it prints changes (유저 2026-09-25: 「그림 수정하거나 텍스트
+/// 바뀌거나 하는데 용지 리빌드하면 너무 비효율적이잖아」 · 「캔버스베이스
+/// 패널은 다 통일해줘」). The paper rides with the form: both change only
+/// with the sheet's shape. An export that paints a page whole paints it in
+/// the same order.
+enum SheetStratum {
+  form({SheetPaintLayer.paper, SheetPaintLayer.form}),
+  content({SheetPaintLayer.content}),
+  picture({SheetPaintLayer.picture}),
+  ink({SheetPaintLayer.ink});
+
+  const SheetStratum(this.layers);
+
+  /// The layers this stratum prints.
+  final Set<SheetPaintLayer> layers;
 }

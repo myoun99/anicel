@@ -11,6 +11,7 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
+import '../paste_with_its_media.dart';
 import '../widgets/app_icon_button.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
@@ -373,16 +374,16 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
-  /// A row the cut may only READ takes no verb from here — the transition
-  /// row is authored on the global axis ("컷 타임라인은 보여주기만"), so
-  /// selecting it must not light up rename/duplicate/delete.
+  /// A track's fixture row takes no row verb from here
+  /// ([LayerKind.isTrackFixture]) — selecting the transition row must not
+  /// light up duplicate.
   ///
   /// A getter because ① moved rename OUT of the menu: the pill's button and
   /// the entries that stayed behind have to answer the same question, and
   /// two copies of this line would eventually stop agreeing.
   bool get _canEditActiveLayer {
     final active = session.activeLayer;
-    return active != null && !active.kind.isReadOnlyInCut;
+    return active != null && !active.kind.isTrackFixture;
   }
 
   List<PanelFlyoutEntry> _layerEntries(BuildContext context) {
@@ -419,7 +420,14 @@ class TimelineActionToolbar extends StatelessWidget {
             : 'Paste layer (${session.layerClipboard.layerClipboardName})',
         icon: Icons.content_paste,
         enabled: serves && session.layerClipboard.hasLayerClipboard,
-        onSelected: session.layerClipboard.pasteLayerFromClipboard,
+        onSelected: () => unawaited(
+          pasteWithItsMedia(
+            context,
+            title: session.layerClipboard.layerClipboardName ?? 'Paste layer',
+            board: session.layerClipboard,
+            paste: session.layerClipboard.pasteLayerFromClipboard,
+          ),
+        ),
       ),
       // R5 #5: the row-order STEP verbs are gone, session methods and all
       // (user: "단축키로도 남기지마 일단"). The drag is the whole answer
@@ -816,7 +824,7 @@ class TimelineActionToolbar extends StatelessWidget {
   Widget _sharedPill() => ListenableBuilder(
     listenable: Listenable.merge([
       session.rowSelection,
-      session.currentRowListenable,
+      session.standing.currentRowListenable,
       session.frameRangeSelection,
       session.laneRangeSelection,
       session.trackFrameRangeSelection,

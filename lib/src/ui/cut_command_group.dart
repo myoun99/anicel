@@ -13,6 +13,8 @@ import 'editor_session_manager.dart';
 import 'text/app_strings.dart';
 import 'widgets/command_pill.dart';
 import 'widgets/panel_flyout.dart';
+import 'timeline/layer_label_controls.dart'
+    show layerMarkColor, layerMarkFlyoutEntries;
 
 /// The CUT pill, mounted IDENTICALLY on the timeline and storyboard bars.
 ///
@@ -131,6 +133,19 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         label: AppText.strings.cutEditNote,
         icon: Icons.note_alt_outlined,
         onSelected: _editActiveCutNote,
+      ),
+      // 🗣️유저 2026-09-26: 「색라벨 정하는건 블록마다 다른거니까 컷버튼안에
+      // 있다던가. 선택범위 한상태로 조작가능한거 물론이고」 — THE label list
+      // ([layerMarkFlyoutEntries], its third trigger after the rail chip and
+      // the export window), aimed at the cuts the pick is about: the range's,
+      // or the active cut ([CutVerbs.addressedCutIds]).
+      PanelFlyoutItem(
+        keyValue: 'cut-mark-button',
+        label: AppText.strings.tlLayerMark,
+        swatch: layerMarkColor(session.cutVerbs.addressedCutMark),
+        submenuBuilder: () => layerMarkFlyoutEntries(
+          onSelected: session.cutVerbs.setAddressedCutMark,
+        ),
       ),
       PanelFlyoutItem(
         keyValue: 'resize-cut-canvas-button',

@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 
+import 'timeline_frame_geometry_probe.dart';
+
 /// R28 #3: the block edge grip is ONE widget with CONSTANT geometry.
 ///
 /// Two contracts live here. The first is the user-visible rule — hovering an
@@ -45,7 +47,10 @@ void main() {
                 height: 60,
                 child: BlockEdgeGrip(
                   edge: TimelineBlockEdge.end,
-                  resolveFrameCellExtent: () => 40,
+                  geometry: testFrameGeometry(
+                    frameCellExtent: 40,
+                    frameEndIndexExclusive: 10,
+                  ),
                   hooks: hooks,
                 ),
               ),
@@ -209,7 +214,10 @@ void main() {
                     blockStartIndex: 0,
                     blockOrdinal: 0,
                     edge: TimelineBlockEdge.start,
-                    resolveFrameCellExtent: () => 40,
+                    geometry: testFrameGeometry(
+                      frameCellExtent: 40,
+                      frameEndIndexExclusive: 10,
+                    ),
                     callbacks: TimelineCommaDragCallbacks(
                       onBegin: (_, _, _) => true,
                       onUpdate: (_) {},
@@ -232,11 +240,11 @@ void main() {
       findsOneWidget,
       reason: 'the grip key format is unchanged by the extraction',
     );
-    // I-43: the placement is the triangle's own box — a third of the edge
-    // cell along, half the row across, in the block's FAR corner for a
-    // start edge.
+    // I-43: the placement is the triangle's own box — 100%'s third of a cell
+    // along (8px, 유저 09-26 — this 40px cell is wider), half the row across,
+    // in the block's FAR corner for a start edge.
     final size = tester.getSize(find.byType(BlockEdgeGrip));
-    expect(size.width, moreOrLessEquals(40 / 3));
+    expect(size.width, 8);
     expect(size.height, 30);
     expect(tester.getTopLeft(find.byType(BlockEdgeGrip)), const Offset(0, 30));
   });
@@ -268,7 +276,10 @@ void main() {
                   ),
                   child: BlockEdgeGrip(
                     edge: TimelineBlockEdge.end,
-                    resolveFrameCellExtent: () => 40,
+                    geometry: testFrameGeometry(
+                      frameCellExtent: 40,
+                      frameEndIndexExclusive: 10,
+                    ),
                     hooks: inertHooks(),
                   ),
                 ),
@@ -280,10 +291,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // A third of a cell in from the trailing edge, on the row's NEAR side.
+    // 100%'s third of a cell in from the trailing edge, on the NEAR side.
     expect(
       tester.getTopLeft(find.byType(BlockEdgeGrip)).dx,
-      moreOrLessEquals(3 * 40 - 40 / 3),
+      3 * 40 - 8.0,
     );
     expect(tester.getTopLeft(find.byType(BlockEdgeGrip)).dy, 0);
   });

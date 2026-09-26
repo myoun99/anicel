@@ -77,6 +77,13 @@ void main() {
     }
   }
 
+  /// The top-left quarter of the left box's slice of the form's surface
+  /// ([envelopeInkSurfaceWidth] across the form), inked solid.
+  Future<ui.Image> leftQuarter() {
+    final surface = envelopeInkSurfaceWidth(testForm.aspectRatio);
+    return solidInk((surface / 4).round(), (surface / 2).round());
+  }
+
   Future<(int, int, int)> pixelAt(ui.Image image, int x, int y) async {
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     final offset = (y * image.width + x) * 4;
@@ -104,9 +111,9 @@ void main() {
     await tester.runAsync(() async {
       final layout = layoutOn(200);
       final leftKey = envelopeInkBoxKey(owner, 'left');
-      // A quarter of the left box's surface slice (2048 × 4096), inked
-      // solid: it lands on the box's top-left quarter and nowhere else.
-      final ink = await solidInk(512, 1024);
+      // A quarter of the left box's surface slice, inked solid: it lands
+      // on the box's top-left quarter and nowhere else.
+      final ink = await leftQuarter();
       addTearDown(ink.dispose);
 
       final rendered = await paintSheet(
@@ -114,7 +121,7 @@ void main() {
           face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
-          inkKeyFor: (boxId) => envelopeInkBoxKey(owner, boxId),
+          inkOwner: owner,
           inkImageFor: (key) => key == leftKey ? ink : null,
         ),
         200,
@@ -139,7 +146,7 @@ void main() {
     await tester.runAsync(() async {
       final layout = layoutOn(200);
       final leftKey = envelopeInkBoxKey(owner, 'left');
-      final ink = await solidInk(512, 1024);
+      final ink = await leftQuarter();
       addTearDown(ink.dispose);
 
       final rendered = await paintSheet(
@@ -147,7 +154,7 @@ void main() {
           face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
-          inkKeyFor: (boxId) => envelopeInkBoxKey(owner, boxId),
+          inkOwner: owner,
           inkImageFor: (key) => key == leftKey ? ink : null,
           liveInkKeys: {leftKey},
         ),
@@ -173,7 +180,7 @@ void main() {
           face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
-          inkKeyFor: (boxId) => envelopeInkBoxKey(owner, boxId),
+          inkOwner: owner,
           liveInkKeys: live,
         );
 
@@ -212,7 +219,7 @@ void main() {
 
     Future<(EditorSessionManager, CutEnvelopeInkController)> pumpEnvelope(
       WidgetTester tester, {
-      bool inkEnabled = false,
+      bool brushAllowed = false,
       ValueNotifier<BrushToolState>? brush,
     }) async {
       final session = EditorSessionManager(initialProject: project());
@@ -231,8 +238,8 @@ void main() {
               session: session,
               inkController: ink,
               brushToolState: tool,
-              inkEnabled: inkEnabled,
-              onInkEnabledChanged: (_) {},
+              brushAllowed: brushAllowed,
+              onBrushAllowedChanged: (_) {},
             ),
           ),
         ),
@@ -242,23 +249,23 @@ void main() {
     }
 
     testWidgets('the panel draws the sheet inside the canvas shell, with '
-        'ink BLOCKED until it is asked for', (tester) async {
+        'the brush OFF until it is asked for', (tester) async {
       await pumpEnvelope(tester);
 
       expect(
-        find.byKey(const ValueKey<String>('cut-envelope-page')),
+        find.byKey(const ValueKey<String>('envelope-form-paint')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('envelope-ink-toggle-button')),
+        find.byKey(const ValueKey<String>('envelope-brush-toggle-button')),
         findsOneWidget,
       );
       expect(find.byType(CutEnvelopeInkOverlay), findsNothing);
     });
 
-    testWidgets('with ink allowed the overlay mounts only the boxes big '
+    testWidgets('with the brush on the overlay mounts only the boxes big '
         'enough to write in — never all 86', (tester) async {
-      await pumpEnvelope(tester, inkEnabled: true);
+      await pumpEnvelope(tester, brushAllowed: true);
 
       final overlay = tester.widget<CutEnvelopeInkOverlay>(
         find.byType(CutEnvelopeInkOverlay),
@@ -277,7 +284,7 @@ void main() {
     testWidgets('a brush change rebuilds no ink window, and the windows read '
         'the brush in hand', (tester) async {
       final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
-      await pumpEnvelope(tester, inkEnabled: true, brush: brush);
+      await pumpEnvelope(tester, brushAllowed: true, brush: brush);
       expect(find.byType(CutEnvelopeInkOverlay), findsOneWidget);
 
       final next = brush.value.copyWith(size: 40, color: 0xFF336699);
@@ -329,16 +336,16 @@ void main() {
       final painter =
           tester
                   .widget<CustomPaint>(
-                    find.byKey(const ValueKey<String>('cut-envelope-page')),
+                    find.byKey(const ValueKey<String>('envelope-form-paint')),
                   )
                   .painter!
               as CutEnvelopePainter;
       expect(painter.layout.form.id, CutEnvelopePresets.digitalId);
     });
 
-    testWidgets('a stroke lands on the box it started in and one undo '
+    testWidgets('a stroke lands on the box it is drawn over and one undo '
         'clears it', (tester) async {
-      final (session, ink) = await pumpEnvelope(tester, inkEnabled: true);
+      final (session, ink) = await pumpEnvelope(tester, brushAllowed: true);
 
       final overlay = tester.widget<CutEnvelopeInkOverlay>(
         find.byType(CutEnvelopeInkOverlay),
@@ -366,6 +373,37 @@ void main() {
       );
       session.historyManager.undo();
       expect(ink.hasInkFor(null, window.key), isFalse);
+    });
+
+    // ↩️The envelope kept a bare stroke flag the timesheet and the conte
+    // each wired to the session; this sheet never was, so a cut switch could
+    // land under the pen mid-stroke. One hold for the three now.
+    testWidgets('a stroke holds the brush input the way a canvas stroke '
+        'does — seeks and cut switches wait for the pen (R15-⑤)', (
+      tester,
+    ) async {
+      final (session, _) = await pumpEnvelope(tester, brushAllowed: true);
+      final overlay = tester.widget<CutEnvelopeInkOverlay>(
+        find.byType(CutEnvelopeInkOverlay),
+      );
+      final window = overlay.windows.first;
+      final origin = tester.getTopLeft(find.byType(CutEnvelopeInkOverlay));
+      final rect = window.screenRect(overlay.viewport);
+
+      expect(session.brushInputActive.value, isFalse);
+      final gesture = await tester.startGesture(
+        origin + rect.center,
+        pointer: 7,
+      );
+      await tester.pump();
+      await gesture.moveTo(origin + rect.center + const Offset(6, 4));
+      await tester.pump();
+      expect(session.brushInputActive.value, isTrue);
+      expect(session.editingInteractionBusy, isTrue);
+
+      await gesture.up();
+      await tester.pump();
+      expect(session.brushInputActive.value, isFalse);
     });
   });
 }

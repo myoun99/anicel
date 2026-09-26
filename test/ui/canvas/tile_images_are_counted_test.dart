@@ -98,7 +98,7 @@ void main() {
       scratch.ensure(1000);
 
       final rows = {
-        for (final item in collectMemoryCensus(session).items)
+        for (final item in collectMemoryCensus([session]).items)
           item.id: item.bytes,
       };
 

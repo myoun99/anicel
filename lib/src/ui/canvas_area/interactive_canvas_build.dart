@@ -17,8 +17,8 @@ class _InteractiveCanvasBuild {
 
   /// The held-tool road (PEN-7a, I-15) over this canvas's tool channel —
   /// the same [TemporaryTool] the shell's held keys switch through.
-  TemporaryTool _temporaryTool(EditorSessionManager session) => TemporaryTool(
-    session: session,
+  TemporaryTool get _temporaryTool => TemporaryTool(
+    memory: _state._toolHold,
     current: () => _state.widget.brushToolState.value,
     change: _state.widget.onBrushToolStateChanged,
   );
@@ -178,44 +178,55 @@ class _InteractiveCanvasBuild {
       // gate at event time. Attached here so the region is exactly what
       // the panel lays out, splitter drags and resizes included.
       key: _state.widget.navigationRegionKey,
+      // 🚨ONE CANVAS PER PROJECT (I-7). The region key above is the
+      // WINDOW's — one GlobalKey for every project — and a GlobalKey
+      // carries its element, and every State under it, to wherever it is
+      // next built. The canvas area around this is made again per project
+      // (`_CanvasAreaKey`), yet the host under this key rode across: it had
+      // taken the FIRST project's drawing store once, and a stroke drawn in
+      // the next tab went into that store (measured, 2026-09-26). Keyed by
+      // the project it draws, the host is made again with the tab.
       child: KeyedSubtree(
-        key: const ValueKey<String>('main-canvas-brush-host-container'),
-        // The tool-state boundary (R18 UI-2): a tool switch rebuilds ONLY
-        // the host config — and since H40 ② a setting tweak not even that
-        // (below) — every session-derived value above (layer stacks, poses,
-        // onion requests) is captured and reused, and the host's element
-        // keeps all its state.
-        //
-        // The STANDING ROW rides the same boundary, SUBSCRIBED rather than
-        // read at build time: it is published without a session notify (the
-        // claim fires on pointer-down, inside gestures whose contract is
-        // silence until release), so a canvas that read it above would go
-        // on taking strokes after the user stepped onto a property lane.
-        //
-        // 🚨H40 ② (2026-09-24): the BRUSH rides it SLICED — the tool and its
-        // shape ([BrushCanvasPanel.structureOf]) are the whole of what this
-        // config is built from. A size, a flow, a colour used to rebuild the
-        // host and the panel under it, relaying out the panel's shell for
-        // numbers it does not show; the panel hears those for itself now,
-        // and the verbs here read the brush when they run.
-        child: SlicedValueListenableBuilder<
-          BrushToolState,
-          (CanvasTool, CanvasShapeKind?)
-        >(
-          valueListenable: _state.widget.brushToolState,
-          slice: BrushCanvasPanel.structureOf,
-          builder: (context, _) => ListenableBuilder(
-            listenable: Listenable.merge([
-              session.currentRowListenable,
-              // D12: the playing cut's identity — fires once per cut
-              // crossing (never per tick), and only the host CONFIG
-              // changes, like everything else on this boundary.
-              _state._playbackFitCut,
-            ]),
-            builder: (context, _) => _host(
-              context,
-              session,
-              isCameraLayerActive: isCameraLayerActive,
+        key: ObjectKey(session),
+        child: KeyedSubtree(
+          key: const ValueKey<String>('main-canvas-brush-host-container'),
+          // The tool-state boundary (R18 UI-2): a tool switch rebuilds ONLY
+          // the host config — and since H40 ② a setting tweak not even that
+          // (below) — every session-derived value above (layer stacks, poses,
+          // onion requests) is captured and reused, and the host's element
+          // keeps all its state.
+          //
+          // The STANDING ROW rides the same boundary, SUBSCRIBED rather than
+          // read at build time: it is published without a session notify (the
+          // claim fires on pointer-down, inside gestures whose contract is
+          // silence until release), so a canvas that read it above would go
+          // on taking strokes after the user stepped onto a property lane.
+          //
+          // 🚨H40 ② (2026-09-24): the BRUSH rides it SLICED — the tool and its
+          // shape ([BrushCanvasPanel.structureOf]) are the whole of what this
+          // config is built from. A size, a flow, a colour used to rebuild the
+          // host and the panel under it, relaying out the panel's shell for
+          // numbers it does not show; the panel hears those for itself now,
+          // and the verbs here read the brush when they run.
+          child: SlicedValueListenableBuilder<
+            BrushToolState,
+            (CanvasTool, CanvasShapeKind?)
+          >(
+            valueListenable: _state.widget.brushToolState,
+            slice: BrushCanvasPanel.structureOf,
+            builder: (context, _) => ListenableBuilder(
+              listenable: Listenable.merge([
+                session.standing.currentRowListenable,
+                // D12: the playing cut's identity — fires once per cut
+                // crossing (never per tick), and only the host CONFIG
+                // changes, like everything else on this boundary.
+                _state._playbackFitCut,
+              ]),
+              builder: (context, _) => _host(
+                context,
+                session,
+                isCameraLayerActive: isCameraLayerActive,
+              ),
             ),
           ),
         ),
@@ -252,7 +263,7 @@ class _InteractiveCanvasBuild {
     // published without a session notify, so a manipulator gate
     // computed above would answer the row you left. Same trap the
     // stroke gate two lines down was written to avoid.
-    final standing = session.currentRowListenable.value;
+    final standing = session.standing.currentRowListenable.value;
     final showPositionGizmo =
         canPoseActiveLayer &&
         standing is LaneRowAddress &&
@@ -293,7 +304,7 @@ class _InteractiveCanvasBuild {
     );
     return MainCanvasBrushHost(
       rowAcceptsStrokes: _EditorCanvasAreaState._rowAcceptsStrokes(
-        session.currentRowListenable.value,
+        session.standing.currentRowListenable.value,
       ),
       // MERGED canvas: we own the live-stroke overlay, so the
       // layer stack can paint the active layer inside the
@@ -455,8 +466,8 @@ class _InteractiveCanvasBuild {
       // Release springs back (default) or keeps the switched
       // tool, per the mapping. I-15: a held KEY switches through
       // the same [TemporaryTool] from the shell.
-      onTemporaryToolHold: _temporaryTool(session).hold,
-      onTemporaryToolRelease: _temporaryTool(session).release,
+      onTemporaryToolHold: _temporaryTool.hold,
+      onTemporaryToolRelease: _temporaryTool.release,
       // PEN-7b: the control-mode touch slots — the flip funnel
       // comes from the shell; the brush-size drag lands here
       // (this widget owns the tool state channel).

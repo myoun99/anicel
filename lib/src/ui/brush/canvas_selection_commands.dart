@@ -21,22 +21,25 @@ typedef SelectionTransformValues = ({
   double anchorY,
 });
 
-/// The imperative selection channel (P9): the app-level shortcuts
-/// (Ctrl+D deselect) call in; the mounted selection layer binds the
-/// handlers. Unbound calls are no-ops and [hasSelection] is false.
+/// ONE PROJECT's selection on its canvas: the marquee (or the box a tool
+/// made) and an open polygon trace. The channel below shows the one of the
+/// project on screen ([CanvasSelectionCommands.document]).
 ///
-/// R17-U: also a [ChangeNotifier] — the layer pings [notifySessionChanged]
-/// on selection/transform mutations so the tool settings panel's numeric
-/// fields track handle drags live (notification is coalesced and deferred
-/// a microtask: mutations fire inside build/gesture phases).
-class CanvasSelectionCommands extends ChangeNotifier {
+/// 🚨I-7 (a project per tab). The channel is the app's — its keys, its
+/// bindings, the modes a tool remembers — and it held this state as the one
+/// document there was. With a tab per project a marquee drawn in one would
+/// have clipped the strokes of the next, so the state is the project's and
+/// the channel is pointed at it; a tab keeps its marquee while another is
+/// in front, the way it keeps its history.
+final class CanvasSelectionDocument {
   /// R28-S (R26 #18 / R27 #19): the live selection REGION lives here, not
   /// inside the selection layer's State.
   ///
   /// The layer only mounts for the selection tools, so a layer-owned
   /// region evaporated the moment the user picked the brush — which is
   /// why "선택하고 다른 툴" had nothing to act on and the selection tool
-  /// read as doing nothing at all. Owning it at the app level makes the
+  /// read as doing nothing at all. Owning it outside the layer (on the
+  /// app's channel until I-7, on the project's document since) makes the
   /// region a DOCUMENT-level fact: it survives tool switches, the ants
   /// keep showing under every tool, and painting can clip to it.
   CanvasSelectionRegion? _region;
@@ -53,28 +56,71 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// this is where the lift captures `regionBefore`. So the UNDO restored
   /// a selection the user never made, and it then clipped their strokes.
   ///
-  /// ⛔**THE FIX IS THE NAMING, NOT A GUARD AT EACH READER.** [region] —
-  /// the name every consumer outside the layer already reads — now means
-  /// 「what the user selected」 and goes null while this is set. The raw
-  /// geometry is [liveShape], and the only thing that wants it is the
-  /// layer that draws the box. A new reader cannot pick the wrong one by
-  /// accident, which is the whole point of splitting the two questions
-  /// instead of adding a flag for readers to remember.
+  /// ⛔**THE FIX IS THE NAMING, NOT A GUARD AT EACH READER.**
+  /// [CanvasSelectionCommands.region] — the name every consumer outside
+  /// the layer already reads — now means 「what the user selected」 and goes
+  /// null while this is set. The raw geometry is
+  /// [CanvasSelectionCommands.liveShape], and the only thing that wants it
+  /// is the layer that draws the box. A new reader cannot pick the wrong
+  /// one by accident, which is the whole point of splitting the two
+  /// questions instead of adding a flag for readers to remember.
   bool _regionIsImplicit = false;
+
+  /// The vertices of an OPEN polygon trace, oldest first; empty when none
+  /// is being traced.
+  ///
+  /// Lives here rather than in the selection layer's State for the same
+  /// reason the region does, but for a sharper case: an open trace has to
+  /// survive a CUT change (유저 확정 — *"의미 잃어도 그거는 폴리곤을
+  /// 완성하고 나서 결과를 어떻게 처리하느냐의 문제"*), and changing cuts
+  /// remounts the layer outright. State kept down there would be gone.
+  final List<CanvasPoint> _polygonPoints = [];
+
+  /// Vertices taken back by undo, newest first — the redo side. Cleared by
+  /// the next real vertex, the way every redo stack is.
+  final List<CanvasPoint> _polygonRedo = [];
+}
+
+/// The imperative selection channel (P9): the app-level shortcuts
+/// (Ctrl+D deselect) call in; the mounted selection layer binds the
+/// handlers. Unbound calls are no-ops and [hasSelection] is false.
+///
+/// R17-U: also a [ChangeNotifier] — the layer pings [notifySessionChanged]
+/// on selection/transform mutations so the tool settings panel's numeric
+/// fields track handle drags live (notification is coalesced and deferred
+/// a microtask: mutations fire inside build/gesture phases).
+class CanvasSelectionCommands extends ChangeNotifier {
+  /// The selection of the project on screen — see [CanvasSelectionDocument].
+  CanvasSelectionDocument _document = CanvasSelectionDocument();
+
+  CanvasSelectionDocument get document => _document;
+
+  /// Shows [next]'s selection — the shell's move when a project tab comes on
+  /// screen, made AFTER the canvas has landed what it was holding: a landing
+  /// writes the region it moved, and it must write the project it lifted
+  /// from.
+  set document(CanvasSelectionDocument next) {
+    if (identical(next, _document)) {
+      return;
+    }
+    _document = next;
+    notifySessionChanged();
+  }
 
   /// The mode a fresh marquee/lasso combines with [region] (R26 #16).
   /// Default = 추가 (the user's stated default).
   SelectionCombineMode _combineMode = SelectionCombineMode.defaultMode;
 
   /// 🚨THE SELECTION — what the USER chose. Null while the live shape is a
-  /// tool's own implicit target (F-108, see [_regionIsImplicit]).
-  CanvasSelectionRegion? get region => _regionIsImplicit ? null : _region;
+  /// tool's own implicit target (F-108 — the document's implicit flag).
+  CanvasSelectionRegion? get region =>
+      _document._regionIsImplicit ? null : _document._region;
 
   /// The live SHAPE on the canvas, selection or not — the marquee's
   /// outline, or the box the move tool synthesized with nothing selected.
   /// ⚠️GEOMETRY. The layer that owns the box reads this to stay in step
   /// with the channel; everyone else means [region].
-  CanvasSelectionRegion? get liveShape => _region;
+  CanvasSelectionRegion? get liveShape => _document._region;
 
   /// True when a region is selected — the single truth the shortcuts, the
   /// paint clip and the ants all read.
@@ -102,47 +148,35 @@ class CanvasSelectionCommands extends ChangeNotifier {
   void setRegion(CanvasSelectionRegion? region, {bool implicit = false}) {
     // Nothing is implicit about nothing: clearing always clears both.
     final nextImplicit = region != null && implicit;
-    if (_region == region && _regionIsImplicit == nextImplicit) {
+    final document = _document;
+    if (document._region == region &&
+        document._regionIsImplicit == nextImplicit) {
       return;
     }
-    _region = region;
-    _regionIsImplicit = nextImplicit;
+    document._region = region;
+    document._regionIsImplicit = nextImplicit;
     notifySessionChanged();
   }
 
-  /// The vertices of an OPEN polygon trace, oldest first; empty when none
-  /// is being traced.
-  ///
-  /// Lives here rather than in the selection layer's State for the same
-  /// reason the region does, but for a sharper case: an open trace has to
-  /// survive a CUT change (유저 확정 — *"의미 잃어도 그거는 폴리곤을
-  /// 완성하고 나서 결과를 어떻게 처리하느냐의 문제"*), and changing cuts
-  /// remounts the layer outright. State kept down there would be gone.
-  final List<CanvasPoint> _polygonPoints = [];
-
-  /// Vertices taken back by undo, newest first — the redo side. Cleared by
-  /// the next real vertex, the way every redo stack is.
-  final List<CanvasPoint> _polygonRedo = [];
-
   List<CanvasPoint> get polygonPoints =>
-      List<CanvasPoint>.unmodifiable(_polygonPoints);
+      List<CanvasPoint>.unmodifiable(_document._polygonPoints);
 
   /// Whether a polygon trace is open. While true, undo/redo mean "take the
   /// last vertex back" / "put it back" rather than their document meanings,
   /// and the confirm action closes the trace instead of a transform box.
-  bool get hasOpenPolygon => _polygonPoints.isNotEmpty;
+  bool get hasOpenPolygon => _document._polygonPoints.isNotEmpty;
 
   /// Whether a closed polygon could be made right now — three vertices is
   /// the least that encloses anything.
-  bool get canClosePolygon => _polygonPoints.length >= 3;
+  bool get canClosePolygon => _document._polygonPoints.length >= 3;
 
   /// Whether [redoPolygonPoint] would put a vertex back — the question it
   /// answers by acting, asked without acting.
-  bool get canRedoPolygonPoint => _polygonRedo.isNotEmpty;
+  bool get canRedoPolygonPoint => _document._polygonRedo.isNotEmpty;
 
   void addPolygonPoint(CanvasPoint point) {
-    _polygonPoints.add(point);
-    _polygonRedo.clear();
+    _document._polygonPoints.add(point);
+    _document._polygonRedo.clear();
     notifySessionChanged();
   }
 
@@ -150,19 +184,19 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// then lets undo mean what it usually means, so undo never becomes a
   /// dead key just because a trace was open a moment ago.
   bool undoPolygonPoint() {
-    if (_polygonPoints.isEmpty) {
+    if (_document._polygonPoints.isEmpty) {
       return false;
     }
-    _polygonRedo.add(_polygonPoints.removeLast());
+    _document._polygonRedo.add(_document._polygonPoints.removeLast());
     notifySessionChanged();
     return true;
   }
 
   bool redoPolygonPoint() {
-    if (_polygonRedo.isEmpty) {
+    if (_document._polygonRedo.isEmpty) {
       return false;
     }
-    _polygonPoints.add(_polygonRedo.removeLast());
+    _document._polygonPoints.add(_document._polygonRedo.removeLast());
     notifySessionChanged();
     return true;
   }
@@ -189,7 +223,9 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// too few vertices to enclose anything. Either way the trace is over.
   CanvasSelectionShape? takePolygonShape() {
     final closed = canClosePolygon
-        ? CanvasSelectionShape(List<CanvasPoint>.of(_polygonPoints))
+        ? CanvasSelectionShape(
+            List<CanvasPoint>.of(_document._polygonPoints),
+          )
         : null;
     abandonPolygon();
     return closed;
@@ -198,11 +234,11 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// Drops the trace with nothing committed — a tool change, a shape
   /// change, or Escape.
   void abandonPolygon() {
-    if (_polygonPoints.isEmpty && _polygonRedo.isEmpty) {
+    if (_document._polygonPoints.isEmpty && _document._polygonRedo.isEmpty) {
       return;
     }
-    _polygonPoints.clear();
-    _polygonRedo.clear();
+    _document._polygonPoints.clear();
+    _document._polygonRedo.clear();
     notifySessionChanged();
   }
 
@@ -374,7 +410,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
       layerDeselect();
       return;
     }
-    final before = _region;
+    final before = _document._region;
     if (before == null) {
       return;
     }

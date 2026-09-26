@@ -58,7 +58,30 @@ class VolatileScratchFiles {
   /// ⛔It does NOT follow memory pressure down. Pressure is the OS saying
   /// RAM is tight, and this room is not RAM; lowering it there would shed
   /// the user's history to relieve something it was never holding.
+  ///
+  /// 🚨With a project per tab (I-7) there is a stack per project and ONE
+  /// room, so the room weighs what the STACKS were allowed: the sum of
+  /// their budgets ([allow]). A room sized for one stack made each tab's
+  /// parking crowd the others', and a stack refused by a full room DROPS
+  /// entries — one tab's history spent on another's.
   static int ceilingBytes = 0;
+
+  /// Each undo stack's budget, by stack — [ceilingBytes] is their sum.
+  static final Map<Object, int> _allowances = {};
+
+  /// [stack] may park [bytes] in this room — its undo budget, set in the
+  /// same call ([HistoryManager.byteBudget]).
+  static void allow(Object stack, int bytes) {
+    _allowances[stack] = bytes;
+    ceilingBytes = _allowances.values.fold(0, (sum, each) => sum + each);
+  }
+
+  /// [stack] is gone; the room stops holding a place for it.
+  static void forget(Object stack) {
+    if (_allowances.remove(stack) != null) {
+      ceilingBytes = _allowances.values.fold(0, (sum, each) => sum + each);
+    }
+  }
 
   /// Writes [bytes] under a name this run picks, and answers the path —
   /// or null when the room refused, in which case the caller must KEEP

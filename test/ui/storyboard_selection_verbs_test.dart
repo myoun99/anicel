@@ -12,6 +12,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart'
     show transitionLayerIdForTrack;
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -20,6 +21,11 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cut_move_drag.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
+    show
+        StoryboardEditCut,
+        StoryboardEditSeEntry,
+        StoryboardToolbarPanelContext;
 
 /// What the storyboard's selection can DO. Every verb here is the
 /// timeline's, aimed at the other axis: the rows differ, the grammar does
@@ -151,6 +157,28 @@ void main() {
       session.undo();
 
       expect(seLayerOf(session).timeline.keys, [2, 9]);
+    });
+
+    test('the panel\'s Delete on an S-row range takes the sounds — a range '
+        'that names no cut deletes none', () {
+      final session = sessionFor();
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+      final panel = StoryboardToolbarPanelContext(session);
+      expect(panel.deleteSubject, PillSubject.cells);
+
+      panel.deleteSelectionSubject();
+
+      expect(seLayerOf(session).timeline.keys, [9]);
+      expect(
+        session.repository.requireProject().tracks.single.cuts.map(
+          (cut) => cut.id,
+        ),
+        [const CutId('cut-1'), const CutId('cut-2')],
+      );
     });
 
     test('the CUT row keeps its verb: a cut selection deletes cuts', () {
@@ -515,6 +543,31 @@ void main() {
       expect(landed.endFrameExclusive, 7);
     });
 
+    test('a transition-row DELETE on an UNSELECTED track takes that track\'s '
+        'spans — the write goes to the row\'s own track', () {
+      final session = EditorSessionManager(initialProject: twoTrackProject());
+      addTearDown(session.dispose);
+      final transitionId = transitionLayerIdForTrack(track2Id);
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: transitionId,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 4,
+      );
+      expect(session.trackFrameRangeSelection.value!.trackId, track2Id);
+
+      session.cells.deleteCellAtCurrentFrame();
+
+      final tracks = session.repository.requireProject().tracks;
+      expect(tracks.last.transitionLayer.instructions, isEmpty);
+      session.undo();
+      expect(
+        session.repository.requireProject().tracks.last.transitionLayer
+            .instructions
+            .keys,
+        [2],
+      );
+    });
+
     test('cancelling restores the selection to its own track too', () {
       final session = EditorSessionManager(initialProject: twoTrackProject());
       addTearDown(session.dispose);
@@ -826,6 +879,110 @@ void main() {
       seRowSession.selectRow(const LayerRowAddress(_seLayerId));
       seRowSession.blockShift.pushBlocks(2, currentRow: seRowSession.selectedRow);
       expect(seLayerOf(seRowSession).timeline.keys, [4, 11]);
+    });
+  });
+
+  /// storyboard-band-names-no-cut (2026-09-26): Edit and 링크 독립 asked
+  /// whether ANY band was up where Delete asks whether the band names cuts —
+  /// so an S-row or transition-row band opened the ACTIVE cut's rename.
+  group('Edit and 링크 독립 on the storyboard selection — a band names cuts '
+      'only over the cut row', () {
+    test('an S-row band over the row you stand on edits the entry at the '
+        'playhead — never the active cut\'s name', () {
+      final session = sessionFor();
+      session.selectRow(const LayerRowAddress(_seLayerId));
+      session.selectGlobalFrame(3);
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+      final panel = StoryboardToolbarPanelContext(session);
+
+      final target = panel.editTarget;
+      expect(
+        target,
+        isA<StoryboardEditSeEntry>(),
+        reason: 'the band covers the row the press lands on, so the press '
+            'lands there — the timeline\'s law for the same verb',
+      );
+      final entry = target! as StoryboardEditSeEntry;
+      expect(entry.layerId, _seLayerId);
+      expect(entry.globalFrame, 3);
+    });
+
+    test('a band over OTHER rows claims the press — the cut row you stand on '
+        'is not what it names', () {
+      final session = sessionFor();
+      session.selectRow(const TrackRowAddress(_trackId));
+      session.selectGlobalFrame(3);
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+      final panel = StoryboardToolbarPanelContext(session);
+      expect(
+        session.activeCutOrNull,
+        isNotNull,
+        reason: 'CONTROL: a cut to rename stands under the playhead',
+      );
+
+      expect(panel.editTarget, isNull);
+      expect(panel.canEditInstance, isFalse);
+      expect(panel.canUnlink, isFalse);
+    });
+
+    test('a transition-row band names no cut either', () {
+      final session = sessionFor();
+      session.selectRow(const TrackRowAddress(_trackId));
+      session.selectGlobalFrame(3);
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: transitionLayerIdForTrack(_trackId),
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+      expect(
+        session.trackFrameRangeSelection.value,
+        isNotNull,
+        reason: 'premise: the band is up',
+      );
+
+      expect(StoryboardToolbarPanelContext(session).editTarget, isNull);
+    });
+
+    test('a band over the CUT row edits the cut, as it deletes it', () {
+      final session = sessionFor();
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+
+      expect(
+        StoryboardToolbarPanelContext(session).editTarget,
+        isA<StoryboardEditCut>(),
+      );
+    });
+
+    test('the session\'s own ladder asks the same question', () {
+      final session = sessionFor();
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+      expect(
+        session.cellInstances.editInstanceSubject,
+        isNot(PillSubject.cuts),
+      );
+
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+      expect(session.cellInstances.editInstanceSubject, PillSubject.cuts);
     });
   });
 }

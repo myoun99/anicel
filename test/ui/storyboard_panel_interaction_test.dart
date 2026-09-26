@@ -42,6 +42,7 @@ import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
+import '../helpers/fixed_thumbnails.dart';
 import 'storyboard_cut_block_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
@@ -1189,9 +1190,11 @@ void main() {
       // TRAILING edge is the cut's length and reaches these hooks; the
       // leading one is the first panel's comma and has its own verb.
       // The grips are PAINTED targets on the timeline's chrome layer now,
-      // so they are read off its model rather than found by key.
+      // so they are read off its model rather than found by key — the
+      // PLATE's layer, where a cut with no conte blocks keeps its edges
+      // (유저 2026-09-26: 「콘티레이어 없으면 컷블록 기존처럼 배치」).
       expect(
-        timelineRowChromeIds(tester, 'track-a', prefix: 'storyboard'),
+        timelineRowChromeIds(tester, 'track-a', prefix: 'storyboard-plate'),
         containsAll(<String>[
           'block-edge-grip-start-track-a-0',
           'block-edge-grip-start-track-a-1',
@@ -1204,7 +1207,7 @@ void main() {
           tester,
           'track-a',
           'block-edge-grip-end-track-a-0',
-          prefix: 'storyboard',
+          prefix: 'storyboard-plate',
         ),
       );
       await gesture.moveBy(const Offset(19, 0));
@@ -1958,7 +1961,9 @@ Future<void> _pumpStoryboardPanel(
           onSeekGlobalFrame: onSeekGlobalFrame,
           onScrubGlobalFrame: onScrubGlobalFrame,
           onScrubEnd: onScrubEnd,
-          thumbnailFor: thumbnailFor,
+          thumbnails: thumbnailFor == null
+              ? null
+              : fixedThumbnails(thumbnailFor),
           pixelsPerFrame: pixelsPerFrame,
           showSeconds: showSeconds,
           projectFrameRate: projectFrameRate,

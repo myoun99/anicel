@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import '../../helpers/exposure_of.dart';
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
@@ -14,15 +17,20 @@ import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 /// grids' cell widgets are never rebuilt. Pinned via widget identity: a
 /// widget instance only changes when its parent rebuilds it.
 void main() {
-  final layers = [
-    Layer(id: const LayerId('layer-1'), name: 'A', frames: const []),
-    Layer(id: const LayerId('layer-2'), name: 'B', frames: const []),
-  ];
+  // Four one-frame drawings on each row, on the LAYER: a row walks its
+  // cells by where its layer's blocks change (I-22).
+  Layer row(String id, String name) => Layer(
+    id: LayerId(id),
+    name: name,
+    frames: [Frame(id: const FrameId('cel'), duration: 1, strokes: const [])],
+    timeline: {
+      for (var frame = 0; frame < 4; frame += 1)
+        frame: const TimelineExposure.drawing(FrameId('cel'), length: 1),
+    },
+  );
+  final layers = [row('layer-1', 'A'), row('layer-2', 'B')];
 
-  TimelineCellExposureState stateFor(Layer layer, int frameIndex) =>
-      frameIndex < 4
-      ? TimelineCellExposureState.drawingStart
-      : TimelineCellExposureState.uncovered;
+  const stateFor = exposureOf;
 
   testWidgets('timeline: a cursor tick rebuilds no frame cells and moves '
       'the selection ring', (tester) async {

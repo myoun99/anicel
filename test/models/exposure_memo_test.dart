@@ -10,13 +10,22 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 /// makes two exposures of the same cel carry two memos, and it is what lets
 /// every move and copy carry the memo without any code knowing about it.
 void main() {
-  const memo = ExposureMemo(actionMemo: 'Girl looks up', note: 'BG reuse');
+  const memo = ExposureMemo(
+    actionMemo: 'Girl looks up',
+    note: 'BG reuse',
+    inkId: 'ink-1',
+  );
 
   group('ExposureMemo', () {
     test('an empty memo is what "no memo" means', () {
       expect(const ExposureMemo.empty().isEmpty, isTrue);
       expect(const ExposureMemo(note: 'x').isEmpty, isFalse);
       expect(const ExposureMemo(actionMemo: 'x').isEmpty, isFalse);
+      expect(
+        const ExposureMemo(inkId: 'x').isEmpty,
+        isFalse,
+        reason: 'a block written on on the conte has a memo to keep',
+      );
     });
 
     test('round-trips through JSON', () {

@@ -4,12 +4,15 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/export_spec.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -17,11 +20,14 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
+import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/conte_pdf_writer.dart';
 import 'package:anicel/src/ui/export/export_conte_render.dart';
@@ -58,6 +64,8 @@ void main() {
         entry.key: TimelineExposure.drawing(
           FrameId('$cutId-${entry.key}'),
           length: entry.value,
+          // Written on: the printers print only a block's own handwriting.
+          memo: ExposureMemo(inkId: 'ink-$cutId-${entry.key}'),
         ),
     },
   );
@@ -130,14 +138,24 @@ void main() {
       );
       expect(pages, isNotEmpty);
       final fonts = await ContePdfFonts.load();
-      return writeContePdf(source: source, pages: pages, fonts: fonts);
+      return writeContePdf(
+        source: source,
+        pages: pages,
+        fonts: fonts,
+        words: conteWordsIn(AppLanguage.ja),
+      );
     });
 
     expect(bytes, isNotNull);
     expect(isPdf(bytes!), isTrue, reason: 'starts with %PDF');
     // The embedded fonts SUBSET: only the used glyphs ship, so the file
-    // stays kilobytes despite the 6MB font assets.
+    // stays kilobytes despite the app's multi-megabyte faces.
     expect(bytes.length, greaterThan(2000));
+    expect(
+      bytes.length,
+      lessThan(1 << 20),
+      reason: 'whole, one weight of the app\'s face is 4.6MB',
+    );
   });
 
   Future<ui.Image> solidInk(int width, int height) async {
@@ -179,7 +197,7 @@ void main() {
       final band = cell.rowBandRect(metrics);
       final rowKey = conteInkRowKey(
         CutId(cell.cutId),
-        cell.source.frameId!,
+        cell.source.inkId!,
       );
       final ink = await solidInk(
         (band.width * 4).ceil(),
@@ -189,6 +207,7 @@ void main() {
         final rendered = await renderContePageImage(
           page: page,
           source: source,
+          words: conteWordsIn(AppLanguage.ja),
           inkImageFor: (key) => key == rowKey ? ink : null,
         );
         try {
@@ -202,7 +221,7 @@ void main() {
           final above = await pixelAt(
             rendered,
             band.center.dx.round(),
-            (metrics.margin + 4).round(),
+            (metrics.topBandTop + 4).round(),
           );
           expect(
             above,
@@ -228,7 +247,7 @@ void main() {
       );
       final cell = pages.first.cells.first;
       final band = cell.rowBandRect(pages.first.metrics);
-      final rowKey = conteInkRowKey(CutId(cell.cutId), cell.source.frameId!);
+      final rowKey = conteInkRowKey(CutId(cell.cutId), cell.source.inkId!);
       final ink = await solidInk(
         (band.width * 4).ceil(),
         (band.height * 4).ceil(),
@@ -237,11 +256,13 @@ void main() {
         final fonts = await ContePdfFonts.load();
         final plain = await writeContePdf(
           source: source,
+          words: conteWordsIn(AppLanguage.ja),
           pages: pages,
           fonts: fonts,
         );
         final inked = await writeContePdf(
           source: source,
+          words: conteWordsIn(AppLanguage.ja),
           pages: pages,
           fonts: fonts,
           inkPictures: {rowKey: (await ContePdfPicture.fromImage(ink))!},
@@ -301,8 +322,8 @@ void main() {
     expect(status.data, contains('conte.pdf'));
   });
 
-  testWidgets('the page-image format writes one PNG per page through the '
-      'shared stream', (tester) async {
+  testWidgets('the page-image format writes one PNG per page of the book '
+      'through the shared stream', (tester) async {
     final session = EditorSessionManager(initialProject: project());
     addTearDown(session.dispose);
     await tester.binding.setSurfaceSize(const Size(1120, 660));
@@ -342,7 +363,115 @@ void main() {
         .whereType<File>()
         .map((file) => file.path.split(Platform.pathSeparator).last)
         .toList();
-    expect(files, contains('conte.png'));
+    expect(
+      files,
+      containsAll(['conte_p1.png', 'conte_p2.png', 'conte_p3.png']),
+      reason: 'the whole book: the cover, its blank back, then the body',
+    );
+  });
+
+  testWidgets('the page images carry the cover\'s picture and the logo the '
+      'panel prints — the pages name them, the export reads them', (
+    tester,
+  ) async {
+    Future<String> solidPng(String name, Color color) async {
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder).drawPaint(Paint()..color = color);
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(8, 8);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      picture.dispose();
+      image.dispose();
+      final file = File('${temp.path}${Platform.pathSeparator}$name');
+      await file.writeAsBytes(data!.buffer.asUint8List());
+      return file.path;
+    }
+
+    final (cover, logo) = (await tester.runAsync(
+      () async => (
+        await solidPng('cover.png', const Color(0xFF00FF00)),
+        await solidPng('logo.png', const Color(0xFF0000FF)),
+      ),
+    ))!;
+    final session = EditorSessionManager(
+      initialProject: project().copyWith(
+        timesheetInfo: TimesheetInfo.empty.copyWith(
+          coverImagePath: () => cover,
+          logoAssetPath: () => logo,
+        ),
+      ),
+    );
+    addTearDown(session.dispose);
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-png')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-1')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-browse-button')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    Future<(int, int, int)> pageAt(String name, double x, double y) async {
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}${Platform.pathSeparator}$name').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      return (await tester.runAsync(() => pixelAt(image, x.round(), y.round())))!;
+    }
+
+    // At 1× a point is a pixel. Where each picture sits is what the pages'
+    // marks say.
+    final source = buildConteSheetSource(session.repository.requireProject());
+    final book = layoutConteBook(
+      source,
+      metrics: ConteSheetMetrics(
+        cameraAspect: session.camera.cameraFrameAspect,
+      ),
+    );
+    Rect imageOn(int page) =>
+        contePageMarks(
+          book[page],
+          source,
+          words: conteWordsIn(AppLanguage.ja),
+        ).whereType<SheetImage>().single.slot;
+    final onCover = await pageAt(
+      'conte_p1.png',
+      imageOn(0).center.dx,
+      imageOn(0).center.dy,
+    );
+    expect(onCover, (0, 255, 0), reason: 'the cover picture ships');
+    final onBody = await pageAt(
+      'conte_p3.png',
+      imageOn(2).center.dx,
+      imageOn(2).center.dy,
+    );
+    expect(onBody, (0, 0, 255), reason: 'and so does the logo');
   });
 
   testWidgets('the page-image scale rasters the page at that multiple — '
@@ -392,7 +521,7 @@ void main() {
     expect(state.debugSpecs.conte.sheetScale, 1);
     await tester.runAsync(state.export);
     await tester.pump();
-    final atOne = pngWidth('conte.png');
+    final atOne = pngWidth('conte_p3.png');
 
     await tester.tap(find.byKey(const ValueKey<String>('export-contescale-3')));
     await tester.pump();
@@ -400,7 +529,7 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
     expect(
-      pngWidth('conte.png'),
+      pngWidth('conte_p3.png'),
       inInclusiveRange(atOne * 3 - 1, atOne * 3 + 1),
       reason: 'the run rasters at sheetScale × the page\'s point size',
     );

@@ -15,6 +15,10 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineRowPaperExtent;
+import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
+    show BlockEdgeGrip;
+import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart'
+    show TimelineFrameCellsRow;
 
 import 'timeline_cell_probe.dart';
 
@@ -310,6 +314,27 @@ void main() {
           .top,
       row.top,
     );
+  });
+
+  testWidgets('the span\'s grips listen to their ROW\'s live geometry — a '
+      'zoom step moves their round end and their drag with the row, not a '
+      'copy of it (the box is 100%\'s size, 유저 2026-09-26)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _pumpHome(tester, _project(), onRepositoryCreated: (_) {});
+
+    for (final edge in ['start', 'end']) {
+      final key = find.byKey(
+        ValueKey<String>('timeline-block-edge-grip-$edge-inst-cam-0'),
+      );
+      final grip = tester.widget<BlockEdgeGrip>(
+        find.descendant(of: key, matching: find.byType(BlockEdgeGrip)),
+      );
+      final row = tester.widget<TimelineFrameCellsRow>(
+        find.ancestor(of: key, matching: find.byType(TimelineFrameCellsRow)),
+      );
+      expect(identical(grip.geometry, row.geometry), isTrue, reason: edge);
+    }
   });
 
   testWidgets('end grip resizes an instruction span with one undo', (

@@ -237,8 +237,38 @@ int _ceilDiv(int a, int b) => (a + b - 1) ~/ b;
 /// [framesPerSecond] is the COUNTING base, never the exact fraction: this
 /// is the integer-frame surface ProjectFrameRate.countingBase exists for.
 String secondsPlusFramesLabel(int frames, int framesPerSecond) {
+  final (:seconds, frames: left) = durationSecondsAndFrames(
+    frames,
+    framesPerSecond,
+  );
+  return '$seconds+$left';
+}
+
+/// A running time the way a conte's cover prints it — minutes, seconds and
+/// frames: `20:52+12`.
+String runningTimeLabel(int frames, int framesPerSecond) {
+  final (:seconds, frames: left) = durationSecondsAndFrames(
+    frames,
+    framesPerSecond,
+  );
+  final clock = '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  return '$clock+$left';
+}
+
+/// A duration of [frames] split the one way every surface prints it: the
+/// whole seconds, and the frames left over (秒+コマ) — for the notations
+/// above and for a sheet that prints the two in boxes of their own (the
+/// cut envelope's).
+///
+/// ⛔ONE split. The notations each divided by the rate themselves, and the
+/// envelope a third time; three copies of one division are three answers
+/// the day one of them guards a zero rate and the others do not.
+({int seconds, int frames}) durationSecondsAndFrames(
+  int frames,
+  int framesPerSecond,
+) {
   final fps = framesPerSecond < 1 ? 1 : framesPerSecond;
-  return '${frames ~/ fps}+${frames % fps}';
+  return (seconds: frames ~/ fps, frames: frames % fps);
 }
 
 /// The audio pull that keeps every sound's exact FRAME span across a

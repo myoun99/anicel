@@ -38,6 +38,20 @@ void main() {
     expect(nodes[0].properties.textDirection, TextDirection.ltr);
   });
 
+  test('a step walks only the frames on it, from the first one on it', () {
+    final asked = <int>[];
+    frameWindowSemantics(
+      window: (startIndex: 7, endIndexExclusive: 30),
+      step: 6,
+      rectFor: rectFor,
+      labelFor: (frameIndex) {
+        asked.add(frameIndex);
+        return 'f$frameIndex';
+      },
+    );
+    expect(asked, [12, 18, 24]);
+  });
+
   test('an empty window emits nothing', () {
     expect(
       frameWindowSemantics(

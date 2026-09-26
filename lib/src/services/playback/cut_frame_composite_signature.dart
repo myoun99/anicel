@@ -247,12 +247,21 @@ class CutFrameCompositeSignature {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CutFrameCompositeSignature &&
+          // Hashed once (below): two different pictures part here, before
+          // any walk over the layer nodes.
+          other.hashCode == hashCode &&
           other.canvasSize == canvasSize &&
           other.quality == quality &&
           listEquals(other.nodes, nodes);
 
+  /// Hashed once: a signature never changes, and the readiness bar looks
+  /// the same held ones up on every signal.
   @override
-  int get hashCode => Object.hash(canvasSize, quality, Object.hashAll(nodes));
+  late final int hashCode = Object.hash(
+    canvasSize,
+    quality,
+    Object.hashAll(nodes),
+  );
 
   @override
   String toString() =>

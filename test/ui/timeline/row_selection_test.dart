@@ -406,9 +406,9 @@ void main() {
       }
     });
 
-    test('a row that is READ-ONLY in this cut is not renamed with the rest', () {
-      // ⚠️The exclusion is exactly [LayerKind.isReadOnlyInCut] — the rows a
-      // cut only BORROWS from its track. The camera is NOT one of them: its
+    test('a track\'s fixture row is not renamed with the rest', () {
+      // ⚠️The exclusion is exactly [LayerKind.isTrackFixture] — the row a
+      // TRACK owns, one per track. The camera is NOT one of them: its
       // name is editable today through the ordinary rename, and ⑨ invents no
       // new restriction (the assumption that it would was mine, and the
       // first version of this test asserted it wrongly).
@@ -416,13 +416,13 @@ void main() {
       final camera = s.layers.firstWhere(
         (layer) => layer.kind == LayerKind.camera,
       );
-      final readOnly = s.layers
-          .where((layer) => layer.kind.isReadOnlyInCut)
+      final fixtures = s.layers
+          .where((layer) => layer.kind.isTrackFixture)
           .toList();
 
       s.rowSelection.value = [
         LayerRowAddress(camera.id),
-        for (final layer in readOnly) LayerRowAddress(layer.id),
+        for (final layer in fixtures) LayerRowAddress(layer.id),
       ];
 
       expect(s.layerVerbs.renameableSelectedLayerIds(), [camera.id]);

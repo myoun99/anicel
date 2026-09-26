@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/temporary_tool.dart';
 import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
-import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_key_holds.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
@@ -18,7 +16,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 /// The road is the shell's own: the shortcut manager with the holds on it,
 /// a focus inside, and the keyboard's real events.
 void main() {
-  late EditorSessionManager session;
+  late ToolHoldMemory memory;
   late ValueNotifier<BrushToolState> tool;
   late ValueNotifier<bool> strokeLive;
   late EditorShortcutBindings bindings;
@@ -38,8 +36,7 @@ void main() {
     WidgetTester tester, {
     Widget Function()? focused,
   }) async {
-    session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
+    memory = ToolHoldMemory();
     tool = ValueNotifier(BrushToolState.defaults);
     addTearDown(tool.dispose);
     strokeLive = ValueNotifier(false);
@@ -49,7 +46,7 @@ void main() {
       bindings: bindings,
       tool: tool,
       temporaryTool: TemporaryTool(
-        session: session,
+        memory: memory,
         current: () => tool.value,
         change: (next) => tool.value = next,
       ),
@@ -170,7 +167,7 @@ void main() {
       expect(tool.value.tool, CanvasTool.eyedropper, reason: '$drawing');
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
       expect(tool.value.tool, drawing);
-      expect(session.heldOriginalTool, isNull);
+      expect(memory.sprangFrom, isNull);
     }
   });
 
@@ -271,7 +268,7 @@ void main() {
     await pumpRoad(tester);
     // PEN-7a: the barrel button mapped to the eraser, held.
     final penButton = TemporaryTool(
-      session: session,
+      memory: memory,
       current: () => tool.value,
       change: (next) => tool.value = next,
     );
@@ -287,7 +284,7 @@ void main() {
     penButton.hold(CanvasTool.eraser);
     penButton.release(keep: true);
     expect(tool.value.tool, CanvasTool.eraser);
-    expect(session.heldOriginalTool, isNull);
+    expect(memory.sprangFrom, isNull);
   });
 
   testWidgets('a shell that goes away lets go of the pan', (tester) async {
@@ -299,6 +296,31 @@ void main() {
     expect(CanvasPanHold.held.value, isFalse);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     expect(CanvasPanHold.held.value, isFalse);
+  });
+
+  testWidgets('🚨I-7: pointed at another project\'s stroke, the holds wait on '
+      'THAT one — the one they left no longer counts', (tester) async {
+    await pumpRoad(tester);
+    final onScreen = ValueNotifier(true);
+    addTearDown(onScreen.dispose);
+    holds.strokeLive = onScreen;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    expect(tool.value.tool, CanvasTool.brush, reason: 'its stroke is live');
+
+    strokeLive.value = true;
+    strokeLive.value = false;
+    await tester.pump();
+    expect(
+      tool.value.tool,
+      CanvasTool.brush,
+      reason: 'the project behind finishing a stroke frees nothing',
+    );
+
+    onScreen.value = false;
+    await tester.pump();
+    expect(tool.value.tool, CanvasTool.eyedropper);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    expect(tool.value.tool, CanvasTool.brush);
   });
 }
 

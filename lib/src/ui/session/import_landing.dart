@@ -247,13 +247,13 @@ class ImportLanding {
     };
     return ImportIdMint(
       nextLayerId: () => _layerIds.mint(usedIds: usedLayerIds),
-      // Through the MINT, not the formatter. `nextFrameId` reads
-      // `_frameSequence` and does not advance it, so calling it directly
-      // leaves the wall clock as the only thing telling two cels apart —
-      // and an import mints a whole layer inside one clock tick. Every cel
-      // of that layer came out with the SAME id, which is not "cels that
-      // look alike": it is one drawing exposed N times. A 10-drawing layer
-      // arrived as one drawing.
+      // Through the MINT. A formatter stood beside it that read the count
+      // without advancing it, and calling that left the wall clock as the
+      // only thing telling two cels apart — and an import mints a whole
+      // layer inside one clock tick. Every cel of that layer came out with
+      // the SAME id, which is not "cels that look alike": it is one drawing
+      // exposed N times. A 10-drawing layer arrived as one drawing. The
+      // formatter is gone since 2026-09-26 (`frame_id_mint.dart`).
       nextFrameId: _frameIds.mintFrameId,
       nextCutId: () {
         _importCutSequence += 1;

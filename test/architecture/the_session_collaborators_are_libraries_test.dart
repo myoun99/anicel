@@ -54,6 +54,11 @@ const _mayNameTheSession = <String, String>{
   'session_legend_callbacks.dart':
       'A free function that WIRES a session into the timeline legend. It '
       'takes the session as a parameter — it does not hold one.',
+  'session_row_button_presses.dart':
+      'The rail rows\' buttons WIRED to a session, built by the two hosts '
+      'that draw rails (the timeline tab, the storyboard tab) and by the SE '
+      'mixer their speaker opens, for the length of a press — the session '
+      'never constructs it or keeps one.',
 };
 
 /// What `SessionInternals` still carries: the MEASURED remainder of the
@@ -83,7 +88,22 @@ const _mayNameTheSession = <String, String>{
 /// to; and the SE solo set moved into `VisibilitySolo`, whose toggle is its
 /// one writer — `VisibilitySolo`, whose only read of the role this was, no
 /// longer takes it, and the playback rig takes the set by constructor.
-const _sessionInternalsMembers = 39;
+/// 39 → 38 (2026-09-25, other-track-s-row-fx-and-mixer): the transform
+/// switch's writer moved into `EffectsAndFx`, its one caller, which finds a
+/// row the way every fx switch does — the host's copy asked the active
+/// track alone, so another track's S row could not be switched. It was
+/// `EffectsAndFx`'s only read of the role, so it no longer takes it.
+/// 38 → 37 (2026-09-25, the sixth family): the transition row's own drag
+/// preview channel went — its grips and moves publish on the one channel
+/// the SE rows use, in their two forms (the cut's, the track's), so the
+/// session holds no second one (transition-row-open-in-the-cut).
+/// 37 → 36 (2026-09-26, the seventh family): the listenable of the row you
+/// stand on moved into `Standing`, beside its one writer
+/// (`publishCurrentRow`); the rails and the canvas read it there.
+/// 36 → 35 (2026-09-26, the eighth family): the reveal tick moved into
+/// `RangeSelections`, beside its one writer (`revealSelection`), which
+/// releases it; the rails' hosts read it there.
+const _sessionInternalsMembers = 35;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

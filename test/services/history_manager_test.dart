@@ -4,6 +4,7 @@ import 'package:anicel/src/services/history_manager.dart';
 
 void main() {
   _pressureTests();
+  _foldTests();
   group('HistoryManager', () {
     test('starts empty', () {
       final historyManager = HistoryManager();
@@ -165,6 +166,67 @@ void _pressureTests() {
     history.respondToMemoryPressure();
     await history.drainSpilling();
     expect(history.undoCount, after);
+  });
+}
+
+void _foldTests() {
+  // swipe-is-one-undo: a gesture that writes across many events — the
+  // rail's column swipe — folds what it wrote at the release.
+  group('gestures.foldSince', () {
+    test('folds everything pushed since the mark into ONE step, and only '
+        'that', () {
+      final history = HistoryManager();
+      final earlier = _FakeCommand();
+      history.execute(earlier);
+      final mark = history.gestures.mark;
+      final run = [_FakeCommand(), _FakeCommand(), _FakeCommand()];
+      run.forEach(history.execute);
+
+      history.gestures.foldSince(mark, 'Sweep');
+
+      expect(history.undoCount, 2);
+      expect(
+        [for (final command in run) command.executeCount],
+        [1, 1, 1],
+        reason: 'folding re-files what already ran — it runs nothing again',
+      );
+      history.undo();
+      expect([for (final command in run) command.undoCount], [1, 1, 1]);
+      expect(earlier.undoCount, 0, reason: 'the step before the mark');
+    });
+
+    test('a run an undo broke into is left as it was', () {
+      final history = HistoryManager();
+      final mark = history.gestures.mark;
+      for (var i = 0; i < 3; i += 1) {
+        history.execute(_FakeCommand());
+      }
+      history.undo();
+
+      history.gestures.foldSince(mark, 'Sweep');
+
+      expect(history.undoCount, 2, reason: 'nothing folded');
+    });
+
+    test('a run the deep end cut into is left as it was — a fold would take '
+        'half of the gesture', () {
+      final history = HistoryManager(maxEntries: 4);
+      history.execute(_FakeCommand());
+      history.execute(_FakeCommand());
+      final mark = history.gestures.mark;
+      final run = [_FakeCommand(), _FakeCommand(), _FakeCommand()];
+      run.forEach(history.execute);
+      expect(history.undoCount, 4, reason: 'the premise: the stack trimmed');
+
+      history.gestures.foldSince(mark, 'Sweep');
+      history.undo();
+
+      expect(
+        [for (final command in run) command.undoCount],
+        [0, 0, 1],
+        reason: 'one undo is still one entry — not the last two of three',
+      );
+    });
   });
 }
 

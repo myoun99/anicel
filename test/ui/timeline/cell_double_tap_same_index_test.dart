@@ -5,7 +5,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
@@ -26,12 +26,15 @@ void main() {
     timeline: {0: const TimelineExposure.drawing(FrameId('cel'), length: 6)},
   );
 
-  setUp(TimelineCellDoubleTapGate.reset);
+  setUp(TimelineDoubleTapGate.reset);
 
   Future<void> pumpRow(
     WidgetTester tester, {
     required List<int> activations,
     required List<int> selections,
+    Layer? onLayer,
+    double cell = cellExtent,
+    int frames = 6,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -42,10 +45,10 @@ void main() {
               builder: (context) => timelineRowCellsPaintArea(
                 context: context,
                 keyPrefix: 'timeline',
-                layer: layer,
+                layer: onLayer ?? layer,
                 geometry: testFrameGeometry(
-                  frameCellExtent: cellExtent,
-                  frameEndIndexExclusive: 6,
+                  frameCellExtent: cell,
+                  frameEndIndexExclusive: frames,
                 ),
                 crossAxisExtent: 24,
                 axis: Axis.horizontal,
@@ -95,35 +98,111 @@ void main() {
     expect(activations, <int>[2]);
   });
 
+  // 🗣️유저 2026-09-26 (zoom-floor-fixed-marks-Q2, 「1px 보다 좁은 칸은 같은
+  // 픽셀이면 같은 칸」): at the ten-minute floor a pixel is eight frames, and
+  // a hand that moved within one pixel landed on another cell.
+  group('narrower than a pixel, a cell is the pixel it falls in', () {
+    const eighth = 1 / 8;
+    final film = Layer(
+      id: layerId,
+      name: 'A',
+      frames: [
+        Frame(id: const FrameId('cel'), duration: 2000, strokes: const []),
+      ],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('cel'), length: 2000),
+      },
+    );
+
+    Future<List<int>> doubleTapAt(
+      WidgetTester tester,
+      double first,
+      double second,
+    ) async {
+      final activations = <int>[];
+      await pumpRow(
+        tester,
+        activations: activations,
+        selections: [],
+        onLayer: film,
+        cell: eighth,
+        frames: 2000,
+      );
+      await tester.tapAt(Offset(first, 12));
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(Offset(second, 12));
+      await tester.pump(const Duration(milliseconds: 700));
+      return activations;
+    }
+
+    testWidgets('two taps in one pixel open the cell that pixel is', (
+      tester,
+    ) async {
+      // 100.1 and 100.8 are frames 800 and 806; the pixel's middle is 804.
+      expect(await doubleTapAt(tester, 100.1, 100.8), <int>[804]);
+    });
+
+    testWidgets('two taps a pixel apart are two cells', (tester) async {
+      expect(await doubleTapAt(tester, 100.8, 101.2), isEmpty);
+    });
+
+    test('a pixel a cell and up, the aim is the tap itself', () {
+      for (final axis in Axis.values) {
+        const tap = Offset(100.3, 40.7);
+        expect(
+          timelineDoubleTapAim(tap, (
+            frameAt: (_) => null,
+            axis: axis,
+            cellExtent: () => 1.0,
+          )),
+          tap,
+        );
+        expect(
+          timelineDoubleTapAim(tap, (
+            frameAt: (_) => null,
+            axis: axis,
+            cellExtent: () => eighth,
+          )),
+          axis == Axis.horizontal
+              ? const Offset(100.5, 40.7)
+              : const Offset(100.3, 40.5),
+          reason: 'only along the frame axis',
+        );
+      }
+    });
+  });
+
   // 🗣️유저 2026-09-11: 「트랜스폼행에서 더블클릭으로 편집창 안열리는것등
   // 이런거 싹 법 하나로 통일」 — a lane band rides this same gate, so a lane is
   // part of WHICH cell a tap hit.
   test("a layer's cell and its lane's cell at one frame are TWO cells", () {
     const layerId = LayerId('a');
-    TimelineCellDoubleTapGate.recordTapDown(layerId, 3);
-    expect(
-      TimelineCellDoubleTapGate.acceptsActivation(
-        layerId,
-        3,
-        laneId: 'position',
-      ),
-      isFalse,
-      reason: 'the cells row, then its lane: two seeks',
+    final TimelineDoubleTapCells cells = (
+      frameAt: (_) => 3,
+      axis: Axis.horizontal,
+      cellExtent: () => 10.0,
     );
-    TimelineCellDoubleTapGate.recordTapDown(layerId, 3, laneId: 'position');
-    expect(
-      TimelineCellDoubleTapGate.acceptsActivation(layerId, 3, laneId: 'scale'),
-      isFalse,
-      reason: 'two lanes of one layer: two cells',
-    );
-    TimelineCellDoubleTapGate.recordTapDown(layerId, 3, laneId: 'position');
-    expect(
-      TimelineCellDoubleTapGate.acceptsActivation(
-        layerId,
-        3,
-        laneId: 'position',
-      ),
-      isTrue,
-    );
+    var opened = 0;
+    void press({String? lane}) => timelineCellDoubleTapRecord(
+      layerId: layerId,
+      laneId: lane,
+      cells: cells,
+    )(Offset.zero);
+    void pressAgain({String? lane}) => timelineCellDoubleTapActivation(
+      layerId: layerId,
+      laneId: lane,
+      cells: cells,
+      onActivate: (_) => opened += 1,
+    )(TapDownDetails());
+
+    press();
+    pressAgain(lane: 'position');
+    expect(opened, 0, reason: 'the cells row, then its lane: two seeks');
+    press(lane: 'position');
+    pressAgain(lane: 'scale');
+    expect(opened, 0, reason: 'two lanes of one layer: two cells');
+    press(lane: 'position');
+    pressAgain(lane: 'position');
+    expect(opened, 1);
   });
 }

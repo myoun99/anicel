@@ -257,7 +257,11 @@ void main() {
 /// 그림을 쓴다」): +1 in brush_tip_preview — a sampled tip's grid drawn once
 /// at the icon's device size and placed 1:1 every frame after. The 1:1 blit
 /// class, owning `FilterQuality.none` on its own Paint.
-const int _knownRawDraws = 30;
+/// **29** on 2026-09-26 (유저 「다 통일해줘」): −1 — the conte printer and
+/// the envelope painter each drew a picture contained in its box; both go
+/// through `paintSheetImageContained` now, which owns the quality its
+/// caller names.
+const int _knownRawDraws = 29;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

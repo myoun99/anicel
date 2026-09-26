@@ -2,9 +2,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
-import '../../models/layer_id.dart';
-import '../../models/project_id.dart';
-import '../../models/track_id.dart';
+import '../../models/timesheet_ink_keys.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
@@ -23,10 +21,15 @@ enum TimesheetInkPlane {
   /// memo band, margins) — one surface per page
   /// (`sheet-page-<cut>-p<n>`); the continuous view shows page 1's in its
   /// identical header geometry.
-  page,
+  page;
+
+  /// The plane [key]'s ink lives on — its layer says; the ink walk and the
+  /// sheet's printing both ask here.
+  static TimesheetInkPlane of(BrushFrameKey key) =>
+      key.layerId == timesheetInkStripLayerId ? strip : page;
 }
 
-/// Owns the sheet ink stores: brush strokes on the timesheet, kept in
+/// The timesheet's ink: brush strokes on the timesheet, kept in
 /// coordinators/stores fully SEPARATE from the session's cel
 /// [BrushFrameStore] so sheet ink can never leak into cel rendering or
 /// export. Strokes commit through the app [HistoryManager] with the same
@@ -39,63 +42,42 @@ enum TimesheetInkPlane {
 /// makes a sheet hear its ink come back through undo had to be written in
 /// the shared class, and would have reached every sheet but this one.
 class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
-  TimesheetInkController()
-    : this._(
-        InkPlaneSlot(store: BrushFrameStore(), initialFrameKey: _initKey),
-        InkPlaneSlot(store: BrushFrameStore(), initialFrameKey: _initKey),
-      );
+  /// The strip and page stores are the SESSION's when it hands them in, so
+  /// the project archive saves and opens the timesheet's ink with the
+  /// conte's and the envelope's; a test's controller makes its own.
+  TimesheetInkController({
+    BrushFrameStore? stripStore,
+    BrushFrameStore? pageStore,
+  }) : this._(
+         InkPlaneSlot(
+           store: stripStore ?? BrushFrameStore(),
+           initialFrameKey: _initKey,
+         ),
+         InkPlaneSlot(
+           store: pageStore ?? BrushFrameStore(),
+           initialFrameKey: _initKey,
+         ),
+       );
 
   TimesheetInkController._(this._strip, this._page)
     : super({TimesheetInkPlane.strip: _strip, TimesheetInkPlane.page: _page});
 
-  /// Ink resolution multiplier over document space (72px per frame row —
-  /// the plan's 4×). Affordable because the live-stroke rasterizer is
-  /// tile-sparse: stroke cost scales with the ink actually drawn, never
-  /// with the logical surface size.
-  static const int inkScale = 4;
-
-  /// The ink store is namespaced by these synthetic ids; they only need to
-  /// be unique inside the controller's own stores.
-  static const ProjectId inkProjectId = ProjectId('timesheet-ink');
-  static const TrackId inkTrackId = TrackId('timesheet-ink');
-  static const LayerId stripLayerId = LayerId('sheet-strip');
-  static const LayerId pageLayerId = LayerId('sheet-page');
-
-  static BrushFrameKey stripBandKey(CutId cutId, int band) {
-    return BrushFrameKey(
-      projectId: inkProjectId,
-      trackId: inkTrackId,
-      cutId: cutId,
-      layerId: stripLayerId,
-      frameId: FrameId('sheet-strip-${cutId.value}-b$band'),
-    );
-  }
-
-  static BrushFrameKey pageKey(CutId cutId, int page) {
-    return BrushFrameKey(
-      projectId: inkProjectId,
-      trackId: inkTrackId,
-      cutId: cutId,
-      layerId: pageLayerId,
-      frameId: FrameId('sheet-page-${cutId.value}-p$page'),
-    );
-  }
-
   static const BrushFrameKey _initKey = BrushFrameKey(
-    projectId: inkProjectId,
-    trackId: inkTrackId,
+    projectId: timesheetInkProjectId,
+    trackId: timesheetInkTrackId,
     cutId: CutId('timesheet-ink-init'),
-    layerId: stripLayerId,
+    layerId: timesheetInkStripLayerId,
     frameId: FrameId('timesheet-ink-init'),
   );
 
   final InkPlaneSlot _strip;
   final InkPlaneSlot _page;
 
-  /// One page band of frame rows × the half column width, at [inkScale].
+  /// One page band of frame rows × the half column width, at
+  /// [timesheetInkScale].
   CanvasSize? get stripBandSurfaceSize => _strip.size;
 
-  /// The whole PAGED paper, at [inkScale].
+  /// The whole PAGED paper, at [timesheetInkScale].
   CanvasSize? get pageSurfaceSize => _page.size;
 
   /// Adopts the sheet geometry from the PAGED layout (both view modes
@@ -108,17 +90,17 @@ class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
     final document = pagedLayout.document;
     _strip.syncTo(
       CanvasSize(
-        width: (pagedLayout.halfWidth * inkScale).ceil(),
+        width: (pagedLayout.halfWidth * timesheetInkScale).ceil(),
         height:
             (document.pageFrameCount * TimesheetDocumentLayout.rowHeight)
                 .ceil() *
-            inkScale,
+            timesheetInkScale,
       ),
     );
     _page.syncTo(
       CanvasSize(
-        width: (pagedLayout.paperWidth * inkScale).ceil(),
-        height: (pagedLayout.paperHeight * inkScale).ceil(),
+        width: (pagedLayout.paperWidth * timesheetInkScale).ceil(),
+        height: (pagedLayout.paperHeight * timesheetInkScale).ceil(),
       ),
     );
   }

@@ -1,8 +1,11 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
+import '../../models/sheet_marks.dart';
+import '../../models/timesheet_ink_keys.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
@@ -11,11 +14,10 @@ import 'timesheet_document_painter.dart';
 import 'timesheet_ink_controller.dart';
 
 /// Computes the ink windows for the current view mode, bottom-of-stack
-/// first: page ink lies under the strip windows, so a stroke STARTING on
+/// first: page ink lies under the strip windows, so what a stroke draws on
 /// the column grid goes to the frame-anchored strip plane and everything
-/// else (header, memo band, margins, gaps) goes to the page plane. A
-/// stroke keeps its start plane for its whole duration (pointer capture) —
-/// simpler than per-segment routing and closer to how a pen behaves.
+/// else (header, memo band, margins, gaps) goes to the page plane — one
+/// stroke, split where it crosses ([sheetInkRegions]).
 List<SheetInkWindow> timesheetInkWindows({
   required TimesheetDocumentLayout layout,
   required TimesheetDocumentLayout pagedLayout,
@@ -24,41 +26,50 @@ List<SheetInkWindow> timesheetInkWindows({
   final document = layout.document;
   final windows = <SheetInkWindow>[];
   const rowHeight = TimesheetDocumentLayout.rowHeight;
+  SheetInkWindow window(
+    String id,
+    BrushFrameKey key,
+    Rect rect, {
+    Offset origin = Offset.zero,
+  }) => SheetInkWindow(
+    id: id,
+    key: key,
+    plane: TimesheetInkPlane.of(key),
+    placement: SheetInkPlacement(
+      window: rect,
+      scale: timesheetInkScale.toDouble(),
+      origin: origin,
+    ),
+  );
 
   if (layout.continuous) {
     // Page ink: page 1's surface over the identical header/memo geometry
     // (later pages' page ink is paged-view only).
     windows.add(
-      SheetInkWindow(
-        id: 'page-0-continuous',
-        surfaceScale: TimesheetInkController.inkScale.toDouble(),
-        plane: TimesheetInkPlane.page,
-        key: TimesheetInkController.pageKey(cutId, 0),
-        documentRect: Rect.fromLTWH(
+      window(
+        'page-0-continuous',
+        timesheetInkPageKey(cutId, 0),
+        Rect.fromLTWH(
           layout.paperLeft,
           layout.pageTop(0),
           pagedLayout.paperWidth,
           pagedLayout.paperHeight,
         ),
-        inkOffset: Offset.zero,
       ),
     );
     // Strip ink: the page bands stacked seamlessly down the single strip.
     final bandHeight = document.pageFrameCount * rowHeight;
     for (var band = 0; band < document.pages.length; band += 1) {
       windows.add(
-        SheetInkWindow(
-          id: 'strip-$band-continuous',
-          surfaceScale: TimesheetInkController.inkScale.toDouble(),
-          plane: TimesheetInkPlane.strip,
-          key: TimesheetInkController.stripBandKey(cutId, band),
-          documentRect: Rect.fromLTWH(
+        window(
+          'strip-$band-continuous',
+          timesheetInkStripKey(cutId, band),
+          Rect.fromLTWH(
             layout.halfLeft(0, 0),
             layout.halfRowsTop(0) + band * bandHeight,
             layout.halfWidth,
             bandHeight,
           ),
-          inkOffset: Offset.zero,
         ),
       );
     }
@@ -70,36 +81,33 @@ List<SheetInkWindow> timesheetInkWindows({
   final visiblePages = layout.visiblePageIndexes;
   for (final pageIndex in visiblePages) {
     windows.add(
-      SheetInkWindow(
-        id: 'page-$pageIndex',
-        surfaceScale: TimesheetInkController.inkScale.toDouble(),
-        plane: TimesheetInkPlane.page,
-        key: TimesheetInkController.pageKey(cutId, pageIndex),
-        documentRect: layout.pageRect(pageIndex),
-        inkOffset: Offset.zero,
+      window(
+        'page-$pageIndex',
+        timesheetInkPageKey(cutId, pageIndex),
+        layout.pageRect(pageIndex),
       ),
     );
   }
   for (final pageIndex in visiblePages) {
     for (final strip in layout.halfStrips) {
       windows.add(
-        SheetInkWindow(
-          id: 'strip-$pageIndex-h${strip.half}',
-          surfaceScale: TimesheetInkController.inkScale.toDouble(),
-          plane: TimesheetInkPlane.strip,
-          key: TimesheetInkController.stripBandKey(cutId, pageIndex),
-          documentRect: Rect.fromLTWH(
+        window(
+          'strip-$pageIndex-h${strip.half}',
+          timesheetInkStripKey(cutId, pageIndex),
+          Rect.fromLTWH(
             layout.halfLeft(pageIndex, strip.half),
             layout.halfRowsTop(pageIndex),
             layout.halfWidth,
             strip.rowCount * rowHeight,
           ),
-          inkOffset: Offset(
+          // The right half shows the band's lower rows: one surface, two
+          // windows onto it.
+          origin: Offset(
             0,
             strip.half *
                 document.halfFrameCount *
                 rowHeight *
-                TimesheetInkController.inkScale,
+                timesheetInkScale,
           ),
         ),
       );
@@ -111,8 +119,7 @@ List<SheetInkWindow> timesheetInkWindows({
 /// The sheet's ink input/display stack: every window hosts the SAME
 /// interactive brush view the drawing canvas uses (current brush/eraser,
 /// live overlay, dab commit), windowed onto its ink surface by a derived
-/// viewport and clipped to its on-screen rect so pointer-downs outside it
-/// fall through to the window below.
+/// viewport ([SheetInkLayer]).
 class TimesheetInkLayer extends StatelessWidget {
   const TimesheetInkLayer({
     super.key,
@@ -139,8 +146,7 @@ class TimesheetInkLayer extends StatelessWidget {
   /// applies).
   final CanvasViewport viewport;
 
-  /// Raised while any window has a stroke in progress, so the panel's
-  /// gesture layer holds navigation exactly as it does for canvas strokes.
+  /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
 
   final CacheInvalidationSink? cacheInvalidationSink;
@@ -158,6 +164,7 @@ class TimesheetInkLayer extends StatelessWidget {
       viewport: viewport,
       brushToolState: brushToolState,
       strokeActive: strokeActive,
+      history: historyManager.gestures,
       // The plane axis stays HERE, with the controller that has one. The
       // shared layer hands the window back and asks nothing about it.
       sessionStateFor: (window) => controller.sessionStateFor(

@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/session/visibility_solo.dart';
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**THE FILE NEVER SEES A VIEW STATE** (F-153).
@@ -67,8 +68,8 @@ void main() {
   }
 
   Future<EditorSessionManager> reopened(String path) async {
-    final s = session();
-    await s.projectDoor.openProjectFromFile(path);
+    final s = await openedSession(path);
+    addTearDown(s.dispose);
     return s;
   }
 

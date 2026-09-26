@@ -1,7 +1,8 @@
 // THE RAIL'S PAINT-SWIPE: A DRAG THAT STARTS ON A COLUMN LATCHES THE
 // OPPOSITE OF THE FIRST ROW'S VALUE AND SETS EVERY ROW IT CROSSES TO IT —
-// EACH ROW ONCE, ROWS THAT ALREADY AGREE LEFT ALONE, ROWS WITH NO CONTROL
-// SKIPPED, AND A PRESS ON A SPACER STARTS NOTHING.
+// EACH ROW ONCE WHILE THE STRETCH HOLDS IT AND BACK WHEN THE CURSOR DRAWS
+// BACK FROM IT (F-182), ROWS THAT ALREADY AGREE LEFT ALONE, ROWS WITH NO
+// CONTROL SKIPPED, AND A PRESS ON A SPACER STARTS NOTHING.
 //
 // No test named this widget (audit 2026-09-03) although both rails wear
 // it. These pins drive it with four rows of one column.
@@ -203,11 +204,14 @@ void main() {
     }
   });
 
-  // ⛔A row the sweep already painted is NOT painted again — a drag that
-  // wanders back over one must not undo it.
-  testWidgets('a pointer that goes back and forth paints each row once', (
-    tester,
-  ) async {
+  // 🚨F-182 (유저 2026-09-25): 「레이어 라벨 버튼 드래그 일괄조작, 원래 위치로
+  // 돌아가면 원복하도록」. ↩️This pin said the opposite until that day — 「a
+  // drag that wanders back over one must not undo it」. A row is painted
+  // once while the stretch holds it; drawing back takes it back (here, with
+  // no history above the rail, by pressing it again) and reaching it again
+  // paints it again.
+  testWidgets('a pointer that goes back and forth takes back what it leaves',
+      (tester) async {
     final rail = await pump(
       tester,
       _Rail({for (var row = 0; row < 8; row += 1) row: false}),
@@ -221,9 +225,13 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(rail.toggled, [0, 1, 2, 3]);
-    expect(rail.values[0], isTrue);
-    expect(rail.values[3], isTrue);
+    expect(rail.toggled, [0, 1, 2, 3, 3, 2, 1, 1, 2, 3, 3, 2, 1]);
+    expect(rail.values[0], isTrue, reason: 'the row the press began on');
+    expect(
+      [rail.values[1], rail.values[2], rail.values[3]],
+      [false, false, false],
+      reason: 'back where the press began, the rest are as they were',
+    );
   });
 
   // 🚨②, MEASURED. 유저 suspected the sweep does work per BUTTON on every

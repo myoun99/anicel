@@ -23,8 +23,9 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 /// C④ (#1116's open cell ④) — a MIXED multi-row rigid range move (SE rows
 /// + the transition row) carries the transition spans as frame-axis
 /// riders, exactly as the plain slide already does (C1): they shift with
-/// the frame delta on their OWN row, preview live on the transition's own
-/// channel, and land in the SAME single undo.
+/// the frame delta on their OWN row, preview live beside the SE rows in
+/// their two forms (the cut's projection, the track's row), and land in the
+/// SAME single undo.
 const _trackId = TrackId('mixed-track');
 const _seLayerId = LayerId('mixed-se-1');
 const _seLayer2Id = LayerId('mixed-se-2');
@@ -131,9 +132,24 @@ void main() {
           .transitionLayer
           .instructions;
 
+  /// The step's preview of the transition row in both of its forms — the SE
+  /// rows' shape: the storyboard's strip reads the global one, the cut's
+  /// rows the projection.
+  ({Layer? global, Layer? shown}) transitionForms(
+    EditorSessionManager session,
+  ) => (
+    global: timelineDragPreviewGlobalLayerFor(
+      session.dragPreview.value,
+      transitionId(),
+    ),
+    shown: timelineDragPreviewLayerFor(
+      session.dragPreview.value,
+      transitionId(),
+    ),
+  );
+
   test('a rigid row-hop step carries the transition spans: live preview '
-      'on the transition\'s own channel, never the layers map, and ONE '
-      'undo lands both', () {
+      'in the SE rows\' two forms, and ONE undo lands both', () {
     final session = sessionFor();
     selectMixedSpan(session);
 
@@ -142,18 +158,14 @@ void main() {
     // machine owns it.
     session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _seLayer2Id);
 
-    // Mid-step: the transition previews its shifted span on its own
-    // channel (C④: it used to be CLEARED here — the spans snapped home
-    // the moment the pointer crossed a row)…
-    final transitionPreview = session.transitionEdgeDragPreview.value;
-    expect(transitionPreview, isNotNull);
-    expect(transitionPreview!.instructions.keys.toList(), [3]);
-    // …and never leaks into the layers map, where the cut timeline's
-    // read-only clone would pick up its GLOBAL keys.
-    final preview = session.dragPreview.value;
-    if (preview is BlockMoveDragPreview) {
-      expect(preview.previewLayers.containsKey(transitionId()), isFalse);
-    }
+    // Mid-step: the transition previews its shifted span beside the SE
+    // rows (C④: it used to be CLEARED here — the spans snapped home the
+    // moment the pointer crossed a row)…
+    final forms = transitionForms(session);
+    expect(forms.global!.instructions.keys.toList(), [3]);
+    // …and the cut's rows get the PROJECTION, never the global keys. This
+    // O.L sits inside cut 1 and crosses nothing, so the cut draws no mark.
+    expect(forms.shown!.instructions.keys, isNot(contains(3)));
 
     session.rangeMove.endFrameRangeMoveDrag();
 
@@ -314,8 +326,8 @@ void main() {
     );
   });
 
-  test('the plain slide keeps the transition OFF the layers map too — the '
-      'active track\'s display clone shares its id', () {
+  test('the plain slide hands the cut the projection too, never the global '
+      'keys — the active track\'s display clone shares its id', () {
     final session = sessionFor();
     selectMixedSpan(session);
 
@@ -323,17 +335,14 @@ void main() {
     // No row hop: the plain slide owns the step.
     session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);
 
-    final preview = session.dragPreview.value;
-    expect(preview, isA<BlockMoveDragPreview>());
+    expect(session.dragPreview.value, isA<BlockMoveDragPreview>());
+    final forms = transitionForms(session);
+    expect(forms.global!.instructions.keys.toList(), [3]);
     expect(
-      (preview! as BlockMoveDragPreview).previewLayers.containsKey(
-        transitionId(),
-      ),
-      isFalse,
-      reason: 'a global-keyed transition entry would leak into the cut '
-          'timeline\'s read-only projection',
+      forms.shown!.instructions.keys,
+      isNot(contains(3)),
+      reason: 'a global-keyed entry would leak into the cut\'s projection',
     );
-    expect(session.transitionEdgeDragPreview.value, isNotNull);
 
     session.rangeMove.cancelFrameRangeMoveDrag();
   });

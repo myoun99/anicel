@@ -96,19 +96,28 @@ Future<void> activateCellEditor(
       // the twirl-down.
       break;
     case LayerKind.transition:
-      // READ-ONLY inside a cut. The cut view windows the track's spans for
-      // reading; a double-tap here must not open the editor, or the
-      // "컷 타임라인은 보여주기만" law would be broken by the one gesture
-      // that looks harmless.
+      // 🚨The cut view OPENS the span its mark shows (유저 2026-09-25,
+      // transition-row-open-in-the-cut: 「편집은 동일하게 타임라인에서 다
+      // 할수있고, 원본 데이터는 글로벌에서 가지고있음」 — the 08-09 「컷
+      // 타임라인은 보여주기만」 law is reversed for editing). The door is the
+      // storyboard's own, on the GLOBAL span the projection drew here — for
+      // every mark but an O.L's, which stays the storyboard's (유저
+      // 2026-09-26).
       //
-      // ⚠️Reaching the row's editor is NOT this switch's job even on the
-      // global axis, because this whole function dispatches on
-      // [EditorSessionManager.activeLayer] — the CUT's drawing target — and the
-      // storyboard rail's standing row is deliberately separate state (user
-      // 2026-07-27: picking a rail row never moves the drawing target). The
-      // storyboard host dispatches [editTransitionSpanInstance] off
-      // `selectedRow` instead.
-      break;
+      // ⚠️This function dispatches on the CUT's drawing target; the
+      // storyboard rail's standing row is separate state (user 2026-07-27),
+      // so the storyboard host reaches the same door off `selectedRow`.
+      final start = session.transitions.transitionSpanStartEditableInCutAt(
+        frameIndex < 0 ? session.currentFrameIndex : frameIndex,
+      );
+      if (start != null) {
+        await editTransitionSpanInstance(
+          context,
+          session,
+          globalFrame: start,
+          previewAxis: previewAxis,
+        );
+      }
     case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
       await _renameSelectedFrame(context, session);
   }

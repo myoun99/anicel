@@ -7,16 +7,6 @@ import 'timeline_frame_ruler_painter.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 
-/// Where a ruler strip writes at one frame — the strip's OWN layout
-/// (`TimelineFrameRulerPainter.glyphsAt` across, `XSheetFrameRailPainter
-/// .glyphsAt` down); [current] asks for the playhead's pair.
-typedef TimelineRulerGlyphLayout =
-    List<TimelineGlyphPlacement> Function(
-      TimelineRulerScale scale,
-      int frameIndex, {
-      required bool current,
-    });
-
 /// The playhead's own writing on a ruler strip, and what of the strip's
 /// writing it stands on (I-16).
 ///

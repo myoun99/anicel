@@ -73,7 +73,7 @@ TimelineCellWriting timelineCellMarker({
               layer.kind.carriesInstructions ||
               layer.kind == LayerKind.camera
           ? nothing
-          : drawingHeadOf(frameName),
+          : drawingHeadOf(frameName, kind: layer.kind),
     TimelineCellExposureState.held => nothing,
     TimelineCellExposureState.markHeld ||
     TimelineCellExposureState.markUncovered => timelineInbetweenMarkWriting,

@@ -1,6 +1,7 @@
 import '../core/collection_equality.dart';
 import 'frame_id.dart';
 import '../core/copy_with_sentinel.dart';
+import 'layer_kind.dart';
 import 'stroke.dart';
 import 'text_cel_style.dart';
 
@@ -43,7 +44,8 @@ enum InbetweenMark {
 /// The mark a drawing without a cel number wears where the number would
 /// stand — mark 1, the same mark as the dot inside a block (유저
 /// 2026-09-24), on the sheet, the timeline, the flip HUD, the storyboard and
-/// in a save's notice.
+/// in a save's notice — on every row but one whose picture is the layer
+/// ([drawingHeadOf]).
 const InbetweenMark unnamedDrawingMark = InbetweenMark.one;
 
 /// The mark the dot inside a block wears (its breakdown offsets) — mark 1,
@@ -55,17 +57,28 @@ const InbetweenMark breakdownMark = InbetweenMark.one;
 /// number — or, with none, a [mark].
 typedef DrawingHead = ({String word, InbetweenMark? mark});
 
-/// What a drawing named [name] wears where its block starts, as DATA: its
-/// cel number, or — with none — no word and [unnamedDrawingMark].
+/// What a drawing named [name] on a row of [kind] wears where its block
+/// starts, as DATA: its cel number, or — with none — no word, and
+/// [unnamedDrawingMark] on the one kind whose unnamed drawing is an
+/// in-between ([LayerKind.unnamedDrawingIsInbetween], animation); nothing at
+/// all on every other kind (유저 2026-09-26: 「애니메이션 이외 레이어는
+/// 이름없으면 진짜 이름없도록 통일」 — 09-25 the image layer first: 「중간나누기
+/// 마크가아니라 이름을 안보이게」).
 ///
 /// 🚨ONE ANSWER for every surface that shows a drawing's head — the
 /// timeline's rows, the flip window, the folded strip, the storyboard's
 /// panels, the sheet — so the mark it wears is the mark of the dot inside a
-/// block, drawn by the same code (유저 2026-09-24).
-DrawingHead drawingHeadOf(String? name) => switch (celNumberOf(name)) {
-  final celNumber? => (word: celNumber, mark: null),
-  null => (word: '', mark: unnamedDrawingMark),
-};
+/// block, drawn by the same code (유저 2026-09-24). The [kind] is required
+/// so that no surface can answer for a row without asking what it is.
+DrawingHead drawingHeadOf(String? name, {required LayerKind kind}) =>
+    switch (celNumberOf(name)) {
+      final celNumber? => (word: celNumber, mark: null),
+      null when kind.unnamedDrawingIsInbetween => (
+        word: '',
+        mark: unnamedDrawingMark,
+      ),
+      null => (word: '', mark: null),
+    };
 
 /// The cel number a drawing named [name] prints: [name] trimmed, or null
 /// when nothing is left of it.
@@ -81,11 +94,12 @@ String? celNumberOf(String? name) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
-/// What a drawing named [name] WRITES where its block starts, as TEXT — a
-/// file name, a notice: [drawingHeadOf], its mark spelled as its glyph. A
-/// surface that draws asks [drawingHeadOf] and draws the mark.
-String celNumberOrMark(String? name) {
-  final head = drawingHeadOf(name);
+/// What a drawing named [name] on a row of [kind] WRITES where its block
+/// starts, as TEXT — a file name, a notice: [drawingHeadOf], its mark
+/// spelled as its glyph. A surface that draws asks [drawingHeadOf] and
+/// draws the mark.
+String celNumberOrMark(String? name, {required LayerKind kind}) {
+  final head = drawingHeadOf(name, kind: kind);
   return head.mark?.glyph ?? head.word;
 }
 

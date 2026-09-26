@@ -44,12 +44,17 @@ import 'offscreen_raster.dart';
 /// Surfaces are cached per cut and retained per FRAME's covering set: a
 /// single-cut stream holds one cut's cels at a time (as before), and the
 /// stack bake (R3a) holds one cut per covering track while streaming.
+/// The ground a frame is rendered on unless a caller names another — what
+/// the storyboard's and the conte's pictures stand on, and so what a conte
+/// picture drawn live stands on too.
+const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
+
 class ExportFrameRenderer {
   ExportFrameRenderer({
     required this.session,
     CameraFrameRenderService? renderService,
     this.applyLayerFx = true,
-    ui.Color background = const ui.Color(0xFFFFFFFF),
+    ui.Color background = exportFrameGround,
   }) : renderService =
            renderService ?? CameraFrameRenderService(background: background);
 

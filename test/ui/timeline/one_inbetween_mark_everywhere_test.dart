@@ -10,12 +10,15 @@
 // An unnamed drawing's head printed ● as TEXT — in its cel number's type,
 // twice the sheet's dot, at a size and a baseline of the face's own — while
 // the dot inside a block was a mark. These pins look at what each surface
-// lays down: the same circle for both, one size per surface. (The
-// storyboard's panels are pinned in `storyboard_three_band_test`.)
+// lays down: the same circle for both, one size per surface. (A storyboard
+// panel draws no mark at all since 2026-09-26 — 「콘티레이어는 이름 없으면
+// 진짜 이름 없도록」 — pinned in `storyboard_cut_block_bands_test`.)
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -39,6 +42,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
+import '../../helpers/exposure_of.dart';
 import '../../helpers/run_edge_fixtures.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -49,27 +53,36 @@ void main() {
   const rowExtent = 28.0;
   const frames = 8;
 
-  // An UNNAMED block over 0-3 with a dot at 2, then a named one over 4-7.
-  TimelineCellExposureState stateFor(Layer layer, int frame) =>
-      switch (frame) {
-        0 || 4 => TimelineCellExposureState.drawingStart,
-        2 => TimelineCellExposureState.markHeld,
-        _ => TimelineCellExposureState.held,
-      };
+  // An UNNAMED block over 0-3 with a dot at 2, then a named one over 4-7 —
+  // on the layer, which is where a row reads where its cells change (I-22).
+  final cels = [
+    Frame(id: const FrameId('unnamed'), duration: 1, strokes: const []),
+    Frame(id: const FrameId('named'), duration: 1, strokes: const []),
+  ];
+  const blocks = {
+    0: TimelineExposure.drawing(
+      FrameId('unnamed'),
+      length: 4,
+      breakdownOffsets: [2],
+    ),
+    4: TimelineExposure.drawing(FrameId('named'), length: 4),
+  };
+  const stateFor = exposureOf;
 
   final layer = Layer(
     id: const LayerId('row'),
     name: 'A',
-    frames: const [],
-    timeline: const {},
+    frames: cels,
+    timeline: blocks,
   );
 
   TimelineRowCellsPainter rowPainter(
     Axis axis, {
     double cell = 24,
     double crossExtent = rowExtent,
+    Layer? row,
   }) => TimelineRowCellsPainter(
-        layer: layer,
+        layer: row ?? layer,
         geometry: testFrameGeometry(
           frameCellExtent: cell,
           frameEndIndexExclusive: frames,
@@ -178,7 +191,7 @@ void main() {
       'cell is the only one that draws it', () {
     for (final crossExtent in [rowExtent, 12.0, 8.0]) {
       for (
-        var cell = TimelineZoomLimits.minPixelsPerFrame;
+        var cell = TimelineZoomLimits.minPixelsPerFrameAt(24);
         cell <= TimelineZoomLimits.maxPixelsPerFrame;
         cell += 0.6
       ) {
@@ -266,12 +279,15 @@ void main() {
     }
   });
 
-  FlipHudPainter flipWindow(String label) => FlipHudPainter(
+  FlipHudPainter flipWindow(
+    String label, {
+    LayerKind kind = LayerKind.animation,
+  }) => FlipHudPainter(
     snapshot: FlipHudSnapshot(
       rows: [
         FlipHudRow(
           name: 'A',
-          kind: LayerKind.animation,
+          kind: kind,
           runs: [FlipHudRun(startIndex: 0, length: 2, label: label)],
         ),
       ],
@@ -312,7 +328,11 @@ void main() {
     );
   });
 
-  Future<_Laid> foldedStrip(WidgetTester tester, String label) async {
+  Future<_Laid> foldedStrip(
+    WidgetTester tester,
+    String label, {
+    LayerKind kind = LayerKind.animation,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -323,7 +343,7 @@ void main() {
                 rows: [
                   FlipHudRow(
                     name: 'A',
-                    kind: LayerKind.animation,
+                    kind: kind,
                     runs: [FlipHudRun(startIndex: 0, length: 2, label: label)],
                   ),
                 ],
@@ -364,6 +384,68 @@ void main() {
     );
   });
 
+  // 🗣️유저 2026-09-25: 「이미지레이어는 프레임 이름 없으면 중간나누기 마크가
+  // 아니라 이름을 안보이게 하는 상태로」 — the layer IS the picture there,
+  // so its unnamed head is neither a mark nor a word, on every surface.
+  group('an IMAGE row\'s unnamed head wears NOTHING', () {
+    final image = Layer(
+      id: const LayerId('bg'),
+      name: 'BG',
+      kind: LayerKind.image,
+      frames: cels,
+      timeline: blocks,
+    );
+
+    for (final axis in Axis.values) {
+      test('on its row: no mark and no word — a dot INSIDE the block is '
+          'still a mark ($axis)', () {
+        final painter = rowPainter(axis, row: image);
+        final laid = _Laid();
+        painter.paint(laid, rowSize(axis));
+
+        expect(
+          laid.circles.map((circle) => circle.center),
+          [painter.paperRectFor(2).center],
+          reason: 'the dot at 2 is the only circle',
+        );
+        expect(
+          laid.paragraphs.where(
+            (box) => box.overlaps(painter.cellRectFor(0)),
+          ),
+          isEmpty,
+        );
+      });
+    }
+
+    test('in the flip window', () {
+      final size = FlipHudMetrics.sizeFor(FlipHudAxis.frame);
+      final unnamed = _Laid();
+      flipWindow('', kind: LayerKind.image).paint(unnamed, size);
+      expect(unnamed.circles, isEmpty);
+      final named = _Laid();
+      flipWindow('BG1', kind: LayerKind.image).paint(named, size);
+      expect(
+        named.paragraphs.where((box) => (box.height - font).abs() < 1e-6),
+        hasLength(1),
+        reason: '⛔전제: a NAMED image cel still writes its name',
+      );
+      expect(
+        unnamed.paragraphs.where((box) => (box.height - font).abs() < 1e-6),
+        isEmpty,
+      );
+    });
+
+    testWidgets('on the folded row\'s strip', (tester) async {
+      final unnamed = await foldedStrip(tester, '', kind: LayerKind.image);
+      expect(unnamed.circles, isEmpty);
+      // The block holds frames 0-1 at 12px: no word of any width there.
+      expect(
+        unnamed.paragraphs.where((box) => box.center.dx < 24),
+        isEmpty,
+      );
+    });
+  });
+
   test('the sheet draws an unnamed head and a block\'s dot as ONE small '
       'circle — 「타임시트패널에서 동그라미는 작은걸로 통일」', () {
     final document = TimesheetDocument.fromCut(
@@ -395,6 +477,7 @@ void main() {
     final layout = TimesheetDocumentLayout(document: document);
     final laid = _Laid();
     TimesheetDocumentPainter(
+      words: timesheetWordsIn(AppLanguage.en),
       face: const TextStyle(),
       document: document,
       layout: layout,

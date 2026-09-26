@@ -81,6 +81,11 @@ class BrushFrameStore {
   /// timeline to look again, so the tint sat there until some unrelated
   /// rebuild (switching layers) came along. Only the CROSSING bumps, so a
   /// stroke on an already-drawn cel costs nothing.
+  ///
+  /// 🚨It is the tint's ONLY pixel event (F-166, 2026-09-26): the per-edit
+  /// signal below stopped reaching it, because it repainted every row after
+  /// every stroke. So every surface this store replaces runs the detector —
+  /// a way of emptying a cel that skips it leaves a block white over nothing.
   final ValueNotifier<int> celContentRevision = ValueNotifier<int>(0);
 
   /// Bumps on EVERY pixel edit ([markCelEdited]), crossing or not.
@@ -97,20 +102,28 @@ class BrushFrameStore {
   final Set<BrushFrameKey> _celsWithContent = {};
 
   void _noteCelContent(BrushFrameKey canonicalKey) {
+    if (_recordCelContent(canonicalKey)) {
+      celContentRevision.value += 1;
+    }
+  }
+
+  /// Brings the detector's memory up to date for [canonicalKey] and says
+  /// whether it crossed — a batch records each of its cels and bumps once.
+  bool _recordCelContent(BrushFrameKey canonicalKey) {
     // ⛔The SAME question the block draws, not a second copy of it — a
     // detector that crossed on one rule while the paint read another is how
     // the block came to disagree with the drawing in the first place.
     final has = celHasRenderableContent(canonicalKey);
     final had = _celsWithContent.contains(canonicalKey);
     if (has == had) {
-      return;
+      return false;
     }
     if (has) {
       _celsWithContent.add(canonicalKey);
     } else {
       _celsWithContent.remove(canonicalKey);
     }
-    celContentRevision.value += 1;
+    return true;
   }
 
   /// Derived preview caches. NOT byte-budgeted (R19 P3a): every donated or
@@ -311,6 +324,10 @@ class BrushFrameStore {
   // time. See [SessionScratch].
 
   final Map<BrushFrameKey, BitmapSurface> _bakedSurfaces = {};
+
+  /// This store's own prefix in the scratch room — see
+  /// [ScratchCelFiles.newNamespace] for whose cels it keeps apart.
+  final String _scratchNamespace = ScratchCelFiles.newNamespace();
   final Map<BrushFrameKey, AnicelCelFileRef> _coldCels = {};
   final Map<BrushFrameKey, AnicelCelFileRef> _fileCels = {};
   final Map<BrushFrameKey, int> _hotByteEstimates = {};
@@ -343,8 +360,14 @@ class BrushFrameStore {
   /// 2026-08-16: RAM 비례 + 메모리 압박 반응 — a 3GB tablet was being
   /// asked to hold a desktop's 1.5GB of hot cels).
   int get hotCelByteBudget => _hotBudget.bytes;
-
   set hotCelByteBudget(int value) => _hotBudget.bytes = value;
+
+  /// Cools what the budget no longer holds — asked when a budget MOVES (a
+  /// new allowance, a project tab sent behind, I-7) rather than left for
+  /// the next cel to arrive, which a tab behind the one on screen never
+  /// gets. The budget write itself stays a write: the memory warning is
+  /// its own kick ([respondToMemoryPressure]).
+  void coolToBudget() => _scheduleCooling();
 
   /// The least a memory warning leaves the hot tier — and the least the
   /// memory tab's allowance may scale it to ([CacheBudgets.floors]).
@@ -563,7 +586,7 @@ class BrushFrameStore {
   /// 30-second hang; a user would have found it as a hot device.
   bool _storeCold(BrushFrameKey key, AnicelCelBlob blob) {
     final name = anicelCelEntryName(key);
-    final path = ScratchCelFiles.write(name, blob.bytes);
+    final path = ScratchCelFiles.write(_scratchNamespace, name, blob.bytes);
     if (path == null) {
       return false;
     }
@@ -661,6 +684,16 @@ class BrushFrameStore {
     _scheduleCooling();
   }
 
+  /// Every tile the HOT surfaces hold, into [tiles] (an identity set) — what
+  /// a holder that shares tiles with this store must not count again (the
+  /// app's clipboard, in the memory census). Cold and file cels hold no
+  /// tile objects.
+  void addHotTilesTo(Set<Object> tiles) {
+    for (final surface in _bakedSurfaces.values) {
+      tiles.addAll(surface.tiles.values);
+    }
+  }
+
   /// Whether a cel's HOT surface holds [tile] at [coord] — the question a
   /// copy-on-write fork makes necessary (undo-held-tile-pictures, stage 2).
   /// An independent paste or duplicate (`carryBakedPictures`) and an unlink
@@ -712,16 +745,20 @@ class BrushFrameStore {
     // could not delete its own temp folder afterwards. That is exactly what
     // a user closing a project and then tidying the folder would hit.
     //
-    // ⚠️**FOUR stores share the one handle** — the main cel store plus the
-    // conté row, conté page and envelope ink stores, all holding refs into
-    // the SAME `.anicel` (one `open` fills all four:
-    // `project_file_door.dart`). So this is not「nothing can name the file
-    // any more」, it is「this store cannot」, and it is only the whole truth
-    // because the product always swaps the four together (project open, and
-    // `_resetSessionForImportedProject`). ⛔Nothing rests on that: letting
-    // go early costs one re-open on the next sibling's read, which is why
-    // the release is unconditional rather than counted.
-    OpenProjectFile.instance.release();
+    // ⚠️**EVERY cel store of a session shares the one handle** — the main
+    // cel store and each sheet's ink store, all holding refs into the SAME
+    // `.anicel` (one open fills them all: `ProjectFileDoor.settle`). So
+    // this is not「nothing can name the file any more」, it is「this store
+    // cannot」, and it is only the whole truth because the product always
+    // fills them together — and, since a file opens as a session of its own
+    // (I-7), only once. ⛔Nothing rests on that: letting go early costs one
+    // re-open on the next sibling's read, which is why the release is not
+    // counted.
+    //
+    // ↩️It was UNCONDITIONAL — the one handle, whatever it held. With a
+    // project per tab (I-7) that let go of every OTHER tab's file too, so it
+    // lets go of the files THIS store read from and no others.
+    releaseFilesReadFrom();
     _frames.clear();
     clearDisplayCaches();
     _bakedSurfaces.clear();
@@ -815,6 +852,20 @@ class BrushFrameStore {
         _dirtySinceSave.remove(entry.key);
         _editTicks.remove(entry.key);
       }
+    }
+  }
+
+  /// The files this store's clean cels read from — the project file, or a
+  /// copy a save moved them onto.
+  Set<String> get filesReadFrom => {
+    for (final ref in _fileCels.values) ref.filePath,
+  };
+
+  /// Lets go of the held handle on every file in [filesReadFrom] — the
+  /// store's own, and no other open project's (see [OpenProjectFile]).
+  void releaseFilesReadFrom() {
+    for (final path in filesReadFrom) {
+      OpenProjectFile.instance.releaseFor(path);
     }
   }
 
@@ -1158,6 +1209,7 @@ class BrushFrameStore {
       return;
     }
     var edited = false;
+    var crossed = false;
     for (final key in _celKeysOfCut(cutId)) {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
       final surface = bakedSurfaceOrNull(key)!;
@@ -1179,9 +1231,14 @@ class BrushFrameStore {
       // [_clearAllTiers] precedent).
       _update(_canonicalize(key), _markCacheDirty);
       edited = true;
+      // An offset can carry every line off the canvas.
+      crossed = _recordCelContent(key) || crossed;
     }
     if (edited) {
       celPixelRevision.value += 1;
+    }
+    if (crossed) {
+      celContentRevision.value += 1;
     }
     _scheduleCooling();
   }
@@ -1223,6 +1280,7 @@ class BrushFrameStore {
   /// size (954 of 1024 tiles of an 8K fill deleted by one visit to a
   /// default-sized cut; the user's data-loss report).
   void resizeBakedSurfaces(CanvasSize canvasSize, {required CutId cutId}) {
+    var crossed = false;
     for (final key in _bakedSurfaces.keys.toList()) {
       if (key.cutId != cutId) {
         continue;
@@ -1234,6 +1292,11 @@ class BrushFrameStore {
       _storeHot(key, resizeBitmapSurfaceCanvas(surface, canvasSize));
       _fileCels.remove(key);
       _dirtySinceSave.add(key);
+      // A crop can take every line with it.
+      crossed = _recordCelContent(key) || crossed;
+    }
+    if (crossed) {
+      celContentRevision.value += 1;
     }
     _resizeRefCels(_coldCels, canvasSize, cutId: cutId, read: _readScratchBlob);
     _resizeRefCels(
@@ -1316,12 +1379,19 @@ class BrushFrameStore {
     for (final key in _celKeysOfCut(cutId)) {
       _removeBaked(key);
     }
+    var crossed = false;
     for (final entry in snapshot.entries) {
       _storeHot(entry.key, entry.value);
       _fileCels.remove(entry.key);
       _dirtySinceSave.add(entry.key);
       // The display caches follow the restored truth.
       storeRebuiltDisplayCache(key: entry.key, previewSurface: entry.value);
+      // The removal above crossed each drawn cel to empty; this crosses it
+      // back, or the detector would remember the cut as blank.
+      crossed = _recordCelContent(entry.key) || crossed;
+    }
+    if (crossed) {
+      celContentRevision.value += 1;
     }
     _scheduleCooling();
   }

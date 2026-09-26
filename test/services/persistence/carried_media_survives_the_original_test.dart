@@ -12,6 +12,7 @@ import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/media_pool.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import '../../helpers/opened_session.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -134,14 +135,16 @@ void main() {
     );
     File(path).deleteSync();
 
-    final reopened = EditorSessionManager(
-      initialProject: createDefaultProject(),
-      mediaStagingStore: MediaStagingStore(
-        directoryPath: '${root.path}/Reopened',
+    final reopened = await openedSession(
+      projectPath,
+      make: (project) => EditorSessionManager(
+        initialProject: project,
+        mediaStagingStore: MediaStagingStore(
+          directoryPath: '${root.path}/Reopened',
+        ),
       ),
     );
     addTearDown(reopened.dispose);
-    await reopened.projectDoor.openProjectFromFile(projectPath);
 
     // What every consumer reads through — the decoder over the framed entry.
     expect(reopened.projectFile.mediaByteSourceFor(path).readSync(), original);

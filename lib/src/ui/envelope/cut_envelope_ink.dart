@@ -7,6 +7,7 @@ import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/frame_id.dart';
+import '../../models/sheet_marks.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/history_manager.dart';
 import '../sheet/sheet_ink_layer.dart';
@@ -19,10 +20,11 @@ import '../sheet/sheet_ink_controller.dart';
 /// so undo behaves identically.
 ///
 /// ONE plane, unlike the timesheet's and conte's pair: an envelope has no
-/// page plane because it has no margin — its boxes meet, and every stroke
-/// belongs to the box it started in. A box that stops existing takes its
-/// ink with it, which is exactly the contract that removes stray
-/// annotations from a form the user re-shapes.
+/// page plane because it has no margin — its boxes meet, and every box
+/// keeps the piece of a stroke drawn over it (one paper, 유저 2026-09-25;
+/// it was the whole stroke to the box it started in). A box that stops
+/// existing takes its ink with it, which is exactly the contract that
+/// removes stray annotations from a form the user re-shapes.
 class CutEnvelopeInkController extends SheetInkController<Null> {
   CutEnvelopeInkController({BrushFrameStore? store})
     : this._(
@@ -63,10 +65,11 @@ class CutEnvelopeInkController extends SheetInkController<Null> {
   /// Never notifies: callers run this during build.
   void syncGeometry({required double aspectRatio}) {
     final ratio = aspectRatio <= 0 ? 1.0 : aspectRatio;
+    final width = envelopeInkSurfaceWidth(ratio);
     _plane.syncTo(
       CanvasSize(
-        width: envelopeInkSurfaceWidth.ceil(),
-        height: (envelopeInkSurfaceWidth / ratio).ceil().clamp(1, 1 << 16),
+        width: width.ceil(),
+        height: (width / ratio).ceil().clamp(1, 1 << 16),
       ),
     );
   }
@@ -117,7 +120,7 @@ bool _mountable(
 /// One per box that takes ink, in FORM order — so a box drawn later (an
 /// inner cell over the one it sits on) is hit first, matching
 /// [CutEnvelopeLayout.inkBoxAt]. There is no page window: the form has no
-/// margin, its cells meet, and a stroke that starts outside every inking
+/// margin, its cells meet, and what a stroke draws outside every inking
 /// box simply has nowhere to go.
 List<SheetInkWindow> envelopeInkWindows(
   CutEnvelopeLayout layout,
@@ -130,13 +133,15 @@ List<SheetInkWindow> envelopeInkWindows(
         SheetInkWindow(
           id: placed.box.id,
           key: envelopeInkBoxKey(ownerCutId, placed.box.id),
-          documentRect: Rect.fromLTWH(
-            placed.x,
-            placed.y,
-            placed.width,
-            placed.height,
+          placement: SheetInkPlacement(
+            window: Rect.fromLTWH(
+              placed.x,
+              placed.y,
+              placed.width,
+              placed.height,
+            ),
+            scale: surfaceScale,
           ),
-          surfaceScale: surfaceScale,
         ),
   ];
 }

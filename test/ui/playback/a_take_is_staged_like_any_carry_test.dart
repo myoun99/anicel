@@ -4,7 +4,11 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/native/qa_audio_decoder.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/audio_conform_runner.dart'
+    show decodeAudioSource;
 import 'package:anicel/src/services/media/project_media_sources.dart'
     show mediaEntryHeld;
 import 'package:anicel/src/services/persistence/app_documents.dart';
@@ -13,6 +17,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
+import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**A TAKE IS A CARRIED ASSET, AND CARRIED ASSETS LIVE IN THE RUN'S
@@ -81,14 +86,16 @@ void main() {
     );
   }
 
-  /// Every file the staging room holds, by name.
+  /// Every file the staging room holds, by name — each open project's
+  /// store keeps its own folder in it (I-7), so the walk goes down into
+  /// them.
   List<String> stagedNames() {
     final room = Directory(SessionScratch.stagedFolder());
     if (!room.existsSync()) {
       return const [];
     }
     return [
-      for (final entity in room.listSync())
+      for (final entity in room.listSync(recursive: true))
         if (entity is File) entity.path.replaceAll(r'\', '/').split('/').last,
     ];
   }
@@ -111,8 +118,14 @@ void main() {
     final clip = manager.activeTrack.seLayers.first.audioClips.single;
     expect(
       clip.filePath,
-      '${SessionScratch.stagedFolder()}/${lane.name}_T01.wav',
-      reason: 'the pool path is the take\'s address inside the run\'s room',
+      '${manager.mediaStagingStore.directoryPath}/${lane.name}_T01.wav',
+      reason: 'the pool path is the take\'s address in its project\'s own '
+          'folder of the run\'s room',
+    );
+    expect(
+      clip.filePath,
+      startsWith('${SessionScratch.stagedFolder().replaceAll(r'\', '/')}/'),
+      reason: 'inside the run\'s room',
     );
     expect(
       manager.mediaPool.mediaAssets.single.path,
@@ -138,6 +151,39 @@ void main() {
     );
   });
 
+  test('🚨 two open projects recording on a lane of the same name make two '
+      'takes, not one file with two owners (I-7)', () async {
+    final a = session();
+    final b = session();
+    addTearDown(a.dispose);
+    addTearDown(b.dispose);
+    Future<String> recordOn(EditorSessionManager project) async {
+      final lane = project.activeTrack.seLayers.first;
+      await project.voiceRecording.placeVoiceRecording(
+        takeOfSeconds(1.0),
+        laneId: lane.id,
+        anchorFrame: 0,
+      );
+      return project.activeTrack.seLayers.first.audioClips.single.filePath;
+    }
+
+    final inA = await recordOn(a);
+    final inB = await recordOn(b);
+
+    expect(
+      inA.split('/').last,
+      inB.split('/').last,
+      reason: 'premise: the same take name on both lanes',
+    );
+    expect(
+      inA,
+      isNot(inB),
+      reason: 'the free-name walk asks only its own store, so a room shared '
+          'by every open project handed both the same address — and the '
+          'conform cache names its output by it',
+    );
+  });
+
   test('⛔ nothing is written outside the container', () async {
     // The regression this round exists for: the take shelf resolved to
     // `<documents>/Anicel/Recordings`, which on Windows IS the checkout.
@@ -158,6 +204,56 @@ void main() {
           'app writes to its container and to the project file, and to '
           'nowhere else',
     );
+  });
+
+  /// 🚨★★★**A TAKE IS A WAV — THE FILE EVERY SOUND DOOR READS** (유저
+  /// 09-25, card `F-178` ⑥: 「녹음중에는 파형 보이는데 녹음끝내면
+  /// 사라지네. 파일 생기긴하는데」). The conform encoder wrote it, from
+  /// when a conform was a WAV; it stopped being one on 08-30, and no
+  /// decoder reads a conform — so the block had no waveform and no sound.
+  /// ⚠️The session here stubs the conform runner, which is why nothing
+  /// else in this file could see that: this asks the decoder itself.
+  group('with the decoder', () {
+    final libraryPath = nativeEngineLibraryPathOrNull();
+
+    setUp(() {
+      QaAudioDecoder.debugResetForTests();
+      debugQaEngineLibraryPathOverride = libraryPath;
+    });
+
+    tearDown(() {
+      QaAudioDecoder.debugResetForTests();
+      debugQaEngineLibraryPathOverride = null;
+    });
+
+    test('🚨the take reads back as the samples that were recorded', () async {
+      final manager = session();
+      addTearDown(manager.dispose);
+      final lane = manager.activeTrack.seLayers.first;
+      expect(
+        await manager.voiceRecording.placeVoiceRecording(
+          takeOfSeconds(1.0),
+          laneId: lane.id,
+          anchorFrame: 0,
+        ),
+        isTrue,
+      );
+      final path = manager.mediaPool.mediaAssets.single.path;
+
+      final decoded = decodeAudioSource(
+        manager.projectFile.mediaByteSourceFor(path),
+      );
+
+      expect(decoded, isNotNull, reason: 'no decoder read what was written');
+      expect(decoded!.channels, 1);
+      expect(decoded.sampleRate, 48000);
+      expect(decoded.samples, hasLength(48000));
+      expect(
+        decoded.samples.every((sample) => sample == 0.25),
+        isTrue,
+        reason: 'at the level the meter showed',
+      );
+    }, skip: libraryPath == null ? nativeEngineMissingSkipReason : false);
   });
 
   test('the take number walks past what the PROJECT already holds', () async {

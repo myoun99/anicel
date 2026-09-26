@@ -108,13 +108,16 @@ void main() {
       canvasSize: canvasSize,
       tileSize: tileSize,
     )..selectionRegion = region;
-    final dirty = rasterizer.blendFrom(dabs, from: 0)!;
+    final dirty = rasterizer.blendFrom(dabs, from: 0);
     final model = ActiveStrokeOverlayModel(tileSize: tileSize)
       ..blendMode = mode
       ..erase = mode == BrushBlendMode.erase
       ..preBlendBase = base;
     addTearDown(model.dispose);
-    model.updateRegion(source: rasterizer, region: dirty);
+    // Null when no dab can reach the selection: nothing was accumulated.
+    if (dirty != null) {
+      model.updateRegion(source: rasterizer, region: dirty);
+    }
     return (model, rasterizer);
   }
 

@@ -69,7 +69,19 @@ class _BrushEditStroke {
     _state._symmetryTransforms = symmetry == null
         ? const []
         : symmetryTransforms(symmetry);
-    _state._strokeDynamics = BrushStrokeDynamics(settings: strokeSettings);
+    // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
+    // jitter come from its press, so every view that hears the press rolls
+    // the same numbers. A sheet's windows each draw their own slice of one
+    // stroke (one paper, 유저 2026-09-25), and the pieces meet as the one
+    // stroke they are — a scattered dab cut at a window edge goes on in the
+    // window beside it — without any view being told who else heard it.
+    final dice = Object.hash(event.pointer, event.timeStamp);
+    _state._spacingRandom = math.Random(dice);
+    _state._dualPhaseRandom = math.Random(dice + 1);
+    _state._strokeDynamics = BrushStrokeDynamics(
+      settings: strokeSettings,
+      random: math.Random(dice + 2),
+    );
     _state._lastDirectionDegrees = null;
     _state._previousBaseDab = null;
     _state._groundMixer = strokeSettings.shape.mixesGroundColor

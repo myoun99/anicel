@@ -48,9 +48,13 @@ class PlaybackProtectedRange {
 }
 
 class _CompositeEntry {
-  _CompositeEntry({required this.image});
+  _CompositeEntry({required this.image, required this.signature});
 
   final ui.Image image;
+
+  /// The key this entry is filed under — what
+  /// [CutFrameCompositeCache.heldSignature] hands back.
+  final CutFrameCompositeSignature signature;
 
   /// The index keys pointing at this image — the reference count AND the
   /// reverse index in one. Eviction used to rediscover these by scanning
@@ -144,10 +148,8 @@ class CutFrameCompositeCache {
   ///
   /// ⚠️Cost shape: a MISS now computes one signature where the bare index
   /// miss used to return free — but every miss path that matters was
-  /// already paying it (prepare computes the signature to build; the
-  /// readiness bar resolves the same shared visit for its empty-frame
-  /// answer). The hit path pays exactly what it always did: one
-  /// signature, one compare.
+  /// already paying it (prepare computes the signature to build). The hit
+  /// path pays exactly what it always did: one signature, one compare.
   ui.Image? validCompositeOrNull({
     required Cut cut,
     required int frameIndex,
@@ -165,6 +167,12 @@ class CutFrameCompositeCache {
     entry.lastUsed = ++_useCounter;
     return entry.image;
   }
+
+  /// The key a held composite for [signature] is filed under, or null: a
+  /// pure read (no index key filed, no entry touched) for the green bar.
+  CutFrameCompositeSignature? heldSignature(
+    CutFrameCompositeSignature signature,
+  ) => _images[signature]?.signature;
 
   /// The lookup both prepare paths share: the signature this (cut, frame,
   /// quality) composites to, the index key that points at it, and the
@@ -258,7 +266,8 @@ class CutFrameCompositeCache {
       _pointIndexAt(indexKey, signature);
       return landed.image;
     }
-    final entry = _CompositeEntry(image: image)..lastUsed = ++_useCounter;
+    final entry = _CompositeEntry(image: image, signature: signature)
+      ..lastUsed = ++_useCounter;
     _images[signature] = entry;
     _estimatedBytes += estimatedImageBytes(image.width, image.height);
     _pointIndexAt(indexKey, signature);
@@ -516,13 +525,6 @@ class CutFrameCompositeCache {
         )
         .map((entry) => entry.key)
         .toList();
-    for (final key in stale) {
-      _releaseIndexEntry(key);
-    }
-  }
-
-  void invalidateCut(CutId cutId) {
-    final stale = _index.keys.where((key) => key.$1 == cutId).toList();
     for (final key in stale) {
       _releaseIndexEntry(key);
     }

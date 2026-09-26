@@ -16,6 +16,7 @@ import 'timeline/se_layer_mixer.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
+import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'timeline/timeline_tile_raster_source.dart'
     show timelineSubstrateGeneration;
@@ -38,6 +39,7 @@ import 'timeline/timeline_frame_range_gesture.dart';
 import 'timeline/timeline_run_end_handles.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
+import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_panel.dart';
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
@@ -331,6 +333,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         previewAxis: _previewAxis,
       );
 
+  /// I-48: a double click on a row's label renames the rows its first
+  /// press acted on.
+  VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
+      renameOnLabelDoubleClick(context, _session, pressed);
+
   /// 🚨T25 — the SELECTION's instance, not the playhead's.
   ///
   /// The button moved to the shared pill, so its subject moved with it:
@@ -432,37 +439,24 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     return null;
   }
 
-  void _toggleLayerVisibility(LayerId layerId) {
-    final view = widget.cameraViewEnabled;
-    if (view != null && _kindOf(layerId) == LayerKind.camera) {
-      view.value = !view.value;
-      return;
-    }
-    _session.layerSwitches.toggleLayerVisibility(layerId);
-  }
-
-  // Opacity drags preview per move and commit ONE write on release
-  // (R4 #4): the camera row's slider is the camera-view dim notifier —
-  // already cheap and live, so it applies on both hooks.
-  //
-  // ONE router for both hooks, because the routing question is one
-  // question. [sessionWrite] is the only thing the preview and the commit
-  // disagree about, and it is a value.
-  void _applyLayerOpacity(
-    LayerId layerId,
-    double opacity,
-    void Function(LayerId layerId, double opacity) sessionWrite,
-  ) {
-    final dim = widget.cameraDimOpacity;
-    if (dim != null && _kindOf(layerId) == LayerKind.camera) {
-      dim.value = opacity;
-      return;
-    }
-    sessionWrite(layerId, opacity);
-  }
+  /// The rail rows' buttons as a press asks them — spread over the row
+  /// selection when the pressed row is in it. The camera row's eye and
+  /// slider drive the camera view (R4 #4: its dim is already cheap and
+  /// live, so it applies on the drag as on the release).
+  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(
+    _session,
+    cameraView: widget.cameraViewEnabled,
+    cameraDim: widget.cameraDimOpacity,
+  );
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => RailSweepHistory(
+    history: _session.historyManager.gestures,
+    changed: _session.notifyChanged,
+    child: _panel(context),
+  );
+
+  Widget _panel(BuildContext context) {
     // Playback ticks flow into the frame cursor (see _syncFrameCursor) —
     // NEVER as a panel rebuild: only the cursor-driven widgets (playhead
     // layer, rulers, lane values, counter) subscribe, so the grids'
@@ -538,14 +532,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             dragPreview: _session.dragPreview,
             frameCursor: _frameCursor,
             frameReadySignal: _frameReadySignal,
-            revealSelectionTick: _session.revealSelectionTick,
+            revealSelectionTick: _session.rangeSelections.revealSelectionTick,
             // F-110: the page-turn tick. This is the same listenable
             // [_syncFrameCursor] reads playback out of — null while nothing
             // plays, which is what keeps a keyboard walk on the walk law.
             playbackFrame:
                 _session.playbackRig.playback.globalFrameIndexListenable,
-            isFrameReady:
-                _session.playbackRig.playbackCache.isPlaybackFrameReady,
+            readyRunsIn:
+                _session.playbackRig.playbackCache.playbackReadyRuns,
             playbackFrameCount:
                 _session.activeCutSpan.activeCutPlaybackFrameCount,
             // The のりしろ: how far past the cut's end line it is DRAWN, and
@@ -569,6 +563,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // the move-from-inside drag working.
             onSelectLayer: (layerId) =>
                 _session.standOnRow(LayerRowAddress(layerId)),
+            labelDoubleClick: _renameOnLabelDoubleClick,
             // Ruler scrubs during playback SEEK the playback clock instead of
             // moving the (hidden) editing playhead.
             onSelectFrame: (frameIndex) {
@@ -680,45 +675,37 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             },
             // Kind-dispatched (unified layer controls): the camera row drives
             // the camera-view notifiers, every other row the layer flags.
-            onToggleLayerVisibility: _toggleLayerVisibility,
-            onLayerOpacityChanged: (layerId, opacity) => _applyLayerOpacity(
-              layerId,
-              opacity,
-              _session.opacityVerbs.previewLayerOpacity,
-            ),
-            onLayerOpacityChangeEnd: (layerId, opacity) => _applyLayerOpacity(
-              layerId,
-              opacity,
-              _session.opacityVerbs.commitLayerOpacity,
-            ),
-            onToggleLayerTimesheet: _session.layerSwitches.toggleLayerTimesheet,
-            onToggleLayerFillReference: _session.layerSwitches.toggleLayerFillReference,
-            onLayerMarkSelected: _session.layerMarks.setLayerMark,
+            onToggleLayerVisibility: _rowPresses.toggleVisibility,
+            onLayerOpacityChanged: _rowPresses.previewOpacity,
+            onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
+            onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
+            onToggleLayerFillReference: _rowPresses.toggleFillReference,
+            onLayerMarkSelected: _rowPresses.pickMark,
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
             layerFxStateOf: _session.effectsAndFx.layerFxState,
-            layerIsLinkedOf: _session.layerVerbs.isLayerLinked,
+            layerLinkPartnersOf: _session.layerVerbs.linkPartnersOf,
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.
             onToggleLayerCollapsed: _session.folders.toggleLayerCollapsed,
-            onToggleLayerFx: _session.effectsAndFx.toggleLayerFx,
+            onToggleLayerFx: _rowPresses.toggleFx,
             // Per-layer onion skin (UI-R17 #5, TVPaint style).
             layerOnionSkinEnabledOf: _session.onionSkin.isLayerOnionSkinEnabled,
-            onToggleLayerOnionSkin: _session.onionSkin.toggleLayerOnionSkin,
+            onToggleLayerOnionSkin: _rowPresses.toggleOnionSkin,
             displayedOnionSkinOn: _session.onionSkin.displayedLayersOnionSkinEnabled,
             // Comma edge drags preview live from the session's drag-start
             // snapshot and commit as ONE undo entry on release.
             commaDrag: TimelineCommaDragCallbacks(
               onBegin: (layerId, blockStartIndex, edge) =>
-                  _session.edgeDrag.beginExposureEdgeDrag(
+                  _session.edgeDrag.beginCutRowEdgeDrag(
                     layerId: layerId,
                     blockStartIndex: blockStartIndex,
                     edge: edge,
                   ),
-              onUpdate: _session.edgeDrag.updateExposureEdgeDrag,
-              onEnd: _session.edgeDrag.endExposureEdgeDrag,
-              onCancel: _session.edgeDrag.cancelExposureEdgeDrag,
+              onUpdate: _session.edgeDrag.updateCutRowEdgeDrag,
+              onEnd: _session.edgeDrag.endCutRowEdgeDrag,
+              onCancel: _session.edgeDrag.cancelCutRowEdgeDrag,
             ),
             // TVP-style frame ranges (UI-R8): a cell drag SELECTS a range
             // (block-snapped), a drag starting inside the selection MOVES it
@@ -799,7 +786,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // R10 #19's rail half: the row you are standing on is DRAWN,
             // and a lane's label is a place you can stand.
             currentRowHooks: TimelineCurrentRowHooks(
-              currentRow: _session.currentRowListenable,
+              currentRow: _session.standing.currentRowListenable,
               onStandOnLane: _standOnLaneRow,
             ),
             // P2b: the rail row IS the handle. Pen and mouse move it; a
@@ -916,14 +903,18 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             opacityDragPreview: _session.opacityVerbs.dragPreview,
             masterOpacityValue: _session.opacityVerbs.lastMasterOpacity,
             // R27 #6: the blend mode reads and commits from the LABEL now.
-            onLayerBlendModeSelected: _session.layerSwitches.setLayerBlendMode,
+            onLayerBlendModeSelected: _rowPresses.pickBlendMode,
             // R27 #9: the camera row's opacity IS the camera-view dim
             // notifier — handing it to the slider keeps a drag off the host.
             layerOpacityOverrideOf: _cameraDimOverrideFor,
-            // Sounds carrying over from the previous cut (UI-R7 #6): the
-            // cut start draws `~`, the spill block's start grip stands
-            // down, and its waveform starts that far into the sound (F-113).
-            seSpillInLeadFrames: _session.trackSe.trackSeSpillInLeadFrames,
+            // Blocks carrying over from the previous cut (UI-R7 #6): the
+            // spill block's start grip stands down, a sound's cut start
+            // draws `~` and its waveform starts that far in (F-113) — and
+            // the transition row's mark answers the same way.
+            spillInLeadFrames: {
+              ..._session.trackSe.trackSeSpillInLeadFrames,
+              ..._session.transitions.transitionSpillInLeadFrames,
+            },
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.
@@ -1034,7 +1025,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // B8: this panel's dispatch context — the session's cut-local
         // verbs, verbatim (the baseline the storyboard's own context
         // diverges from).
-        panelContext: TimelineToolbarPanelContext(_session),
+        panelContext: TimelineToolbarPanelContext(_session, waitIn: context),
         onAddLayer: _session.layerStack.addLayer,
         onRenameLayer: () =>
             unawaited(renameActiveLayerWithDialog(context, _session)),
@@ -1230,7 +1221,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     widget.session.languageSettings.addListener(_handleExternalSignal);
     // Same story for the row you are STANDING on: it publishes on its own
     // notifier, and Edit Instance's enablement now reads it.
-    widget.session.currentRowListenable.addListener(_handleExternalSignal);
+    widget.session.standing.currentRowListenable.addListener(
+      _handleExternalSignal,
+    );
     // …and for the cut-local BAND, which grows per pointer move on its own
     // notifier. Seven gates read it now (the active-row verbs stand down
     // when it names other rows), so without this the enforcement lands
@@ -1246,7 +1239,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     if (!identical(oldWidget.session, widget.session)) {
       oldWidget.session.playheadMoved.removeListener(_handleExternalSignal);
       oldWidget.session.languageSettings.removeListener(_handleExternalSignal);
-      oldWidget.session.currentRowListenable.removeListener(
+      oldWidget.session.standing.currentRowListenable.removeListener(
         _handleExternalSignal,
       );
       oldWidget.session.frameRangeSelection.removeListener(
@@ -1254,7 +1247,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       );
       widget.session.playheadMoved.addListener(_handleExternalSignal);
       widget.session.languageSettings.addListener(_handleExternalSignal);
-      widget.session.currentRowListenable.addListener(_handleExternalSignal);
+      widget.session.standing.currentRowListenable.addListener(
+        _handleExternalSignal,
+      );
       widget.session.frameRangeSelection.addListener(_handleExternalSignal);
       _cachedActions = null;
     }
@@ -1265,7 +1260,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   void dispose() {
     widget.session.playheadMoved.removeListener(_handleExternalSignal);
     widget.session.languageSettings.removeListener(_handleExternalSignal);
-    widget.session.currentRowListenable.removeListener(_handleExternalSignal);
+    widget.session.standing.currentRowListenable.removeListener(
+      _handleExternalSignal,
+    );
     widget.session.frameRangeSelection.removeListener(_handleExternalSignal);
     super.dispose();
   }

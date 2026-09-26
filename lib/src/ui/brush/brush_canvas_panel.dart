@@ -187,6 +187,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.pasteboardNone,
     this.onPasteboardColorChanged,
     this.onPasteboardNone,
+    this.hasPasteboard = true,
     this.backdropArgb,
     this.backdropNone,
     this.onBackdropColorChanged,
@@ -637,6 +638,17 @@ class BrushCanvasPanel extends StatefulWidget {
   /// scope, like [pasteboardColor].
   final bool? pasteboardNone;
   final VoidCallback? onPasteboardNone;
+
+  /// Whether this stage HAS a pasteboard plane at all. A paper panel — a
+  /// sheet — has none: its paper is a printed page, not a canvas with a
+  /// drawing bound around it, so the stage is the backdrop alone (유저
+  /// 2026-09-25, F-179: 「타임시트패널등 캔버스 베이스 패널엔 페이스트보드가
+  /// 없다는 뜻임」 · 「배경색은 캔버스 패널의 배경색 따라가도록」).
+  ///
+  /// ⛔Not [pasteboardNone]: that one is the plane being ABSENT, which shows
+  /// the checkerboard where it would be. A sheet has no such plane to be
+  /// absent.
+  final bool hasPasteboard;
 
   /// The BACKDROP behind the pasteboard (R3b): the stage's floor — thinnable
   /// since F-114 — or the alpha checkerboard while the preview toggle is on.
@@ -1195,7 +1207,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     CanvasPanHold.held.removeListener(_onPanHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
     widget.brushToolState?.removeListener(_handleBrushChanged);
-    widget.selectionCommands?.regionHistoryRecorder = null;
+    _selectionSeat.unbindSelectionHistoryRecorder();
     // Leave no verb pointing at a dead State: the buttons must go dead
     // with the canvas rather than throw when pressed after it is gone.
     if (identical(
@@ -1632,16 +1644,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               selectionCommands:
                   widget
                       .selectionCommands,
+              // No setState for either: the gesture layer asks both
+              // when an event arrives (see its `strokeActive`).
               onTransformDragActiveChanged:
-                  (active) {
-                    if (_transformDragActive !=
-                        active) {
-                      setState(
-                        () => _transformDragActive =
-                            active,
-                      );
-                    }
-                  },
+                  (active) => _transformDragActive = active,
               onDragActiveChanged: (active) {
                 if (_selectionDragActive !=
                     active) {
@@ -1650,11 +1656,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                       ?.call(
                         active,
                       );
-                  setState(
-                    () =>
-                        _selectionDragActive =
-                            active,
-                  );
+                  _selectionDragActive = active;
                 }
               },
               // R14-④: the Move tool lifts the
@@ -1891,7 +1893,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
-          setState(() => _strokeActive = active);
+          // ⛔NOT a setState (2026-09-26): nothing the panel draws reads
+          // this — the gesture layer asks for it when an event arrives —
+          // and the rebuild it forced rebuilt the whole canvas panel on
+          // every pen-down and pen-up.
+          _strokeActive = active;
         }
       },
       // The underlay paints the paper (and the layers below); an opaque
@@ -2191,7 +2197,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // Only reachable from the interactive canvas, which requires the
     // coordinator to exist.
     final coordinator = widget._editableCoordinator!;
-    final strokeData = _selectionSeat.clipStrokeToSelection(rawStrokeData);
+    final strokeData = _selectionSeat.clipStrokeToSelection(
+      rawStrokeData,
+      surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+    );
     if (strokeData == null) {
       // Entirely outside the selection: nothing lands, nothing undoes.
       // The live overlay already showed it clipped, so the pen-up is
@@ -2508,13 +2517,22 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                       bottom: _capsuleMargin,
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: _capsule(
-                          colorScheme,
-                          keyValue: 'canvas-page-strip',
-                          width: _pageStripWidth,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: pageStrip,
+                        // A panel shorter than the strip gets the whole strip,
+                        // smaller — never a column that overflows, and never
+                        // one missing a control. Its height is its controls
+                        // and a readout that wraps (「12 / 51」 is two lines
+                        // in 30px), so no floor number can promise it room.
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: _capsule(
+                            colorScheme,
+                            keyValue: 'canvas-page-strip',
+                            width: _pageStripWidth,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: pageStrip,
+                            ),
                           ),
                         ),
                       ),
@@ -3102,6 +3120,7 @@ class _StagePlanes extends StatelessWidget {
     required this.pasteboardArgb,
     required this.backdropNone,
     required this.pasteboardNone,
+    required this.hasPasteboard,
     required this.paperNone,
     required this.canvasSize,
     required this.viewport,
@@ -3115,6 +3134,9 @@ class _StagePlanes extends StatelessWidget {
   /// would be.
   final bool backdropNone;
   final bool pasteboardNone;
+
+  /// [BrushCanvasPanel.hasPasteboard].
+  final bool hasPasteboard;
   final bool paperNone;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
@@ -3128,6 +3150,7 @@ class _StagePlanes extends StatelessWidget {
         pasteboard: Color(pasteboardArgb),
         backdropNone: backdropNone,
         pasteboardNone: pasteboardNone,
+        hasPasteboard: hasPasteboard,
         paperNone: paperNone,
         canvasSize: canvasSize,
         viewport: viewport,
@@ -3153,6 +3176,7 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     required this.pasteboard,
     required this.backdropNone,
     required this.pasteboardNone,
+    required this.hasPasteboard,
     required this.paperNone,
     required this.canvasSize,
     required this.viewport,
@@ -3162,6 +3186,9 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   final Color pasteboard;
   final bool backdropNone;
   final bool pasteboardNone;
+
+  /// [BrushCanvasPanel.hasPasteboard]: false leaves the backdrop alone.
+  final bool hasPasteboard;
   final bool paperNone;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
@@ -3205,12 +3232,14 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     canvas.save();
     canvas.clipRect(box);
     _paintPlane(canvas, box, null, (color: backdrop, none: backdropNone));
-    _paintPlane(
-      canvas,
-      box,
-      _quad(canvasSize.pasteboardRect),
-      (color: pasteboard, none: pasteboardNone),
-    );
+    if (hasPasteboard) {
+      _paintPlane(
+        canvas,
+        box,
+        _quad(canvasSize.pasteboardRect),
+        (color: pasteboard, none: pasteboardNone),
+      );
+    }
     if (paperNone) {
       _paintPlane(
         canvas,
@@ -3278,6 +3307,7 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     pasteboard,
     backdropNone,
     pasteboardNone,
+    hasPasteboard,
     paperNone,
     canvasSize,
     viewport,

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_mark.dart';
 import '../editor_session_manager.dart';
 import '../timeline/timeline_layer_controls_header.dart'
     show LayerLegendCallbacks;
@@ -28,7 +29,9 @@ LayerLegendCallbacks sessionLegendCallbacks(
   onRevealOnionSkinPanel: onRevealOnionSkinPanel,
   onSheetAllOn: () => session.layerSwitches.setAllLayersOnTimesheet(true),
   onSheetAllOff: () => session.layerSwitches.setAllLayersOnTimesheet(false),
-  onClearAllMarks: session.layerMarks.clearAllLayerMarks,
+  onClearMarkFilter: () => onSetRowFilter?.call(
+    rowFilter.copyWith(markColors: const <LayerMark>{}),
+  ),
   onClearAllFillReferences: session.layerSwitches.clearAllFillReferences,
   onMuteAllSe: () => session.layerSwitches.setAllSeLayersMuted(true),
   onUnmuteAllSe: () => session.layerSwitches.setAllSeLayersMuted(false),

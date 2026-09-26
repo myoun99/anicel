@@ -126,13 +126,18 @@ TimelineGlyphPlacement? secondsCornerGlyph(
   return (
     painter: timelineGlyphPainter(
       seconds.text,
-      seconds.face.copyWith(
-        fontSize: seconds.fontSize,
-        fontWeight: FontWeight.w700,
-        color: seconds.color,
-      ),
+      timelineSecondsType(
+        seconds.face,
+        seconds.fontSize,
+      ).copyWith(color: seconds.color),
     ),
     offset: Offset(rect.left + 2, rect.top + 1),
     fit: wordFitsAsItIs,
   );
 }
+
+/// The type a seconds index is set in — bold, in a strip's [face] at the
+/// strip's own [fontSize] — for the corner that writes it
+/// ([secondsCornerGlyph]) and the cadence that measures it.
+TextStyle timelineSecondsType(TextStyle face, double fontSize) =>
+    face.copyWith(fontSize: fontSize, fontWeight: FontWeight.w700);

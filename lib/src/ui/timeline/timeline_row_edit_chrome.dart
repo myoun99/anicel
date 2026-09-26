@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show listEquals;
+import 'dart:ui' show ClipOp;
+import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
@@ -55,11 +56,17 @@ class TimelineRowGripTarget extends TimelineRowChromeTarget {
     required this.edge,
     required this.blockStartIndex,
     required this.blockOrdinal,
+    required this.paperCorner,
   });
 
   final TimelineBlockEdge edge;
   final int blockStartIndex;
   final int blockOrdinal;
+
+  /// The corner of the paper the grip sits in — the block's own at this
+  /// zoom ([blockEdgeGripCornerRadius]), or, when a row's grips sit on a
+  /// paper of its own, that paper's ([TimelineGripPaper]).
+  final double paperCorner;
 
   @override
   bool operator ==(Object other) =>
@@ -68,11 +75,18 @@ class TimelineRowGripTarget extends TimelineRowChromeTarget {
       other.rect == rect &&
       other.edge == edge &&
       other.blockStartIndex == blockStartIndex &&
-      other.blockOrdinal == blockOrdinal;
+      other.blockOrdinal == blockOrdinal &&
+      other.paperCorner == paperCorner;
 
   @override
-  int get hashCode =>
-      Object.hash(id, rect, edge, blockStartIndex, blockOrdinal);
+  int get hashCode => Object.hash(
+    id,
+    rect,
+    edge,
+    blockStartIndex,
+    blockOrdinal,
+    paperCorner,
+  );
 }
 
 /// A run edge's [+] half.
@@ -168,6 +182,31 @@ typedef TimelineChromeGripBlock = ({
   bool endGrip,
 });
 
+/// The paper a row's grips sit on when its blocks are not their own paper —
+/// the storyboard's cut row, whose blocks are the panels and whose paper is
+/// each cut's plate: the frames where a plate starts ([cornerStarts]) and
+/// ends ([cornerEnds]), and the corner it wears there. A grip at one of
+/// them is in the plate's round corner; one between panels stands on the
+/// plate's straight edge.
+typedef TimelineGripPaper = ({
+  Set<int> cornerStarts,
+  Set<int> cornerEnds,
+  double cornerRadius,
+});
+
+/// A stretch of a row whose ground is not the row's `gripGround` — one of
+/// the storyboard cut row's label bands, or a panel's picture on its plate.
+typedef TimelineChromeGround = ({Rect rect, Color color});
+
+/// What a row's grips stand on where that is more than one colour: on the
+/// storyboard's cut row a triangle crosses a label band into a picture or
+/// the plate.
+abstract interface class TimelineChromeGrounds {
+  /// The grounds under [box] (chrome-local) other than the row's
+  /// `gripGround` — disjoint, so a pixel has one.
+  List<TimelineChromeGround> under(Rect box);
+}
+
 /// [layer]'s drawing blocks as grip material. Ghost repeat instances are
 /// DERIVED, so they carry no timing grips (UI-R8); a spill-in display
 /// block's start lives in an earlier cut, so it carries no start grip
@@ -178,7 +217,7 @@ typedef TimelineChromeGripBlock = ({
 /// left. I-21 retired that: a lead edge trades frames with the block in
 /// front of it, so those boundaries are real front edges again. Only the
 /// FIRST block's is still suppressed ([suppressStartGripAtZero]) — that
-/// one is the cut's own start and lives on the storyboard strip.
+/// one is the cut's own start and lives on the storyboard's cut row.
 List<TimelineChromeGripBlock> timelineLayerGripBlocks(
   Layer layer, {
   bool suppressStartGripAtZero = false,
@@ -217,6 +256,7 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
   required double crossAxisExtent,
   required Axis axis,
   required bool includeRunEdges,
+  TimelineGripPaper? gripPaper,
 }) {
   final targets = <TimelineRowChromeTarget>[];
   final patternSpans = <Rect>[];
@@ -245,25 +285,39 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       if (edge == TimelineBlockEdge.end && !block.endGrip) {
         continue;
       }
+      // The SAME placement the sparse rows lay their grip widgets out by,
+      // resolved the same way — one law, not a parity between two.
+      final rect = timelineFrameSpanRect(
+        timelineBlockEdgeGripPlacement(
+          edge: edge,
+          startIndex: block.startIndex,
+          endIndexExclusive: block.endIndexExclusive,
+          crossAxisExtent: crossAxisExtent,
+        ),
+        geometry,
+        crossAxisExtent: crossAxisExtent,
+        axis: axis,
+      );
       targets.add(
         TimelineRowGripTarget(
           id: 'block-edge-grip-${edge.name}-$gripIdScope-${block.ordinal}',
-          // The SAME placement the sparse rows lay their grip widgets out
-          // by, resolved the same way — one law, not a parity between two.
-          rect: timelineFrameSpanRect(
-            timelineBlockEdgeGripPlacement(
-              edge: edge,
-              startIndex: block.startIndex,
-              endIndexExclusive: block.endIndexExclusive,
-              crossAxisExtent: crossAxisExtent,
-            ),
-            geometry,
-            crossAxisExtent: crossAxisExtent,
-            axis: axis,
-          ),
+          rect: rect,
           edge: edge,
           blockStartIndex: block.startIndex,
           blockOrdinal: block.ordinal,
+          paperCorner: switch (gripPaper) {
+            null => blockEdgeGripCornerRadius(
+              rect,
+              axis: axis,
+              frameCellExtent: frameCellExtent,
+            ),
+            final paper =>
+              (edge == TimelineBlockEdge.start
+                      ? paper.cornerStarts.contains(block.startIndex)
+                      : paper.cornerEnds.contains(block.endIndexExclusive))
+                  ? paper.cornerRadius
+                  : 0,
+          },
         ),
       );
     }
@@ -284,7 +338,7 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
     for (final cluster in chrome.clusters) {
       final rect = timelineRunClusterRect(
         cluster: cluster,
-        frameCellExtent: frameCellExtent,
+        geometry: geometry,
         crossAxisExtent: crossAxisExtent,
         axis: axis,
       );
@@ -336,6 +390,7 @@ class TimelineRowChromeResolver {
     required this.crossAxisExtent,
     required this.axis,
     required this.includeRunEdges,
+    this.gripPaper,
   });
 
   final List<TimelineChromeGripBlock> gripBlocks;
@@ -349,6 +404,10 @@ class TimelineRowChromeResolver {
   final Axis axis;
   final bool includeRunEdges;
 
+  /// The paper the grips sit on when the blocks are not their own; null on
+  /// every row whose blocks are.
+  final TimelineGripPaper? gripPaper;
+
   TimelineFrameGeometry? _lastGeometry;
   TimelineRowEditChromeModel? _lastModel;
 
@@ -361,7 +420,15 @@ class TimelineRowChromeResolver {
       other.gripIdScope == gripIdScope &&
       other.crossAxisExtent == crossAxisExtent &&
       other.axis == axis &&
-      other.includeRunEdges == includeRunEdges;
+      other.includeRunEdges == includeRunEdges &&
+      _samePaper(other.gripPaper, gripPaper);
+
+  static bool _samePaper(TimelineGripPaper? a, TimelineGripPaper? b) =>
+      a == null || b == null
+      ? a == b
+      : a.cornerRadius == b.cornerRadius &&
+            setEquals(a.cornerStarts, b.cornerStarts) &&
+            setEquals(a.cornerEnds, b.cornerEnds);
 
   TimelineRowEditChromeModel resolve(TimelineFrameGeometry geometry) {
     final cached = _lastModel;
@@ -377,6 +444,7 @@ class TimelineRowChromeResolver {
       crossAxisExtent: crossAxisExtent,
       axis: axis,
       includeRunEdges: includeRunEdges,
+      gripPaper: gripPaper,
     );
     _lastGeometry = geometry;
     _lastModel = model;
@@ -396,6 +464,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     required this.draggingGripId,
     required this.devicePixelRatio,
     this.gripGround = timelineDrawingHeldColor,
+    this.gripGrounds,
   }) : super(repaint: geometry);
 
   final TimelineRowChromeResolver resolver;
@@ -426,10 +495,14 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   final double devicePixelRatio;
 
   /// The color of what the grips sit ON (feedback #11, re-picked by the
-  /// ground law 2026-08-17) — the row's block paper on a timeline row; the
-  /// storyboard strip passes its panel-picture ground while thumbnails are
-  /// shown (B1) and its cut-block plate otherwise.
+  /// ground law 2026-08-17) — the row's block paper on a timeline row, the
+  /// cut plate on the storyboard's cut row
+  /// ([TimelineRowEditChromeLayer.gripGround]).
   final Color gripGround;
+
+  /// Where the grips stand on more than [gripGround], read once a paint
+  /// against the live geometry ([TimelineRowEditChromeLayer.gripGrounds]).
+  final TimelineChromeGrounds Function()? gripGrounds;
 
   /// Every target this row would draw, in hit order — THE probe surface,
   /// the successor of `find.byKey` on the widgets these replaced.
@@ -470,31 +543,18 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       );
     }
     final glyphSize = timelineRunClusterGlyphSize(frameCellExtent);
+    final grounds = gripGrounds?.call();
     for (final target in model.targets) {
       switch (target) {
         case TimelineRowGripTarget():
-          paintBlockEdgeGrip(
-            canvas,
-            blockEdgeGripPath(
-              target.rect,
-              edge: target.edge,
-              axis: resolver.axis,
-              arcBleed: 1 / devicePixelRatio,
-            ),
-            target.id == draggingGripId
-                ? BlockEdgeGripInk.dragging
-                : target.id == hoveredId
-                ? BlockEdgeGripInk.hovered
-                : BlockEdgeGripInk.rest,
-            ground: gripGround,
-          );
+          _paintGrip(canvas, target, grounds);
         case TimelineRowRunAddTarget():
           paintTimelineRunGlyph(
             canvas,
             text: '+',
             slot: target.rect,
             type: face.copyWith(
-              fontSize: glyphSize + 2,
+              fontSize: (glyphSize + 2) * _glyphFitIn(target.rect),
               color: timelineRunGlyphColor(
                 colorScheme,
                 hovered: target.id == hoveredId,
@@ -508,7 +568,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
             text: target.letter,
             slot: target.rect,
             type: face.copyWith(
-              fontSize: glyphSize,
+              fontSize: glyphSize * _glyphFitIn(target.rect),
               color: timelineRunGlyphColor(
                 colorScheme,
                 hovered: target.id == hoveredId,
@@ -517,6 +577,55 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
             ),
           );
       }
+    }
+  }
+
+  /// A run button's glyph keeps to its box ([timelineRunClusterGlyphFit]).
+  double _glyphFitIn(Rect slot) => timelineRunClusterGlyphFit(
+    slot,
+    axis: resolver.axis,
+    frameCellExtent: frameCellExtent,
+  );
+
+  /// One grip, in the ink the ground law picks for each ground it stands on
+  /// ([blockEdgeGripColor]): [gripGround] wherever [grounds] has nothing
+  /// under it, and each region's own colour inside that region.
+  ///
+  /// 🗣️유저 2026-09-26: 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게
+  /// 가능하지?」 — on the storyboard's black plate a triangle crosses a label
+  /// band into a picture or the plate, and one ink vanishes on one of them.
+  void _paintGrip(
+    Canvas canvas,
+    TimelineRowGripTarget target,
+    TimelineChromeGrounds? grounds,
+  ) {
+    final triangle = blockEdgeGripPath(
+      target.rect,
+      edge: target.edge,
+      axis: resolver.axis,
+      round: (paperCorner: target.paperCorner, bleed: 1 / devicePixelRatio),
+    );
+    final ink = target.id == draggingGripId
+        ? BlockEdgeGripInk.dragging
+        : target.id == hoveredId
+        ? BlockEdgeGripInk.hovered
+        : BlockEdgeGripInk.rest;
+    final under = grounds?.under(target.rect) ?? const [];
+    if (under.isEmpty) {
+      paintBlockEdgeGrip(canvas, triangle, ink, ground: gripGround);
+      return;
+    }
+    canvas.save();
+    for (final region in under) {
+      canvas.clipRect(region.rect, clipOp: ClipOp.difference);
+    }
+    paintBlockEdgeGrip(canvas, triangle, ink, ground: gripGround);
+    canvas.restore();
+    for (final region in under) {
+      canvas.save();
+      canvas.clipRect(region.rect);
+      paintBlockEdgeGrip(canvas, triangle, ink, ground: region.color);
+      canvas.restore();
     }
   }
 
@@ -537,6 +646,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       operatingId,
       draggingGripId,
       gripGround,
+      // By identity: a fresh reader is a fresh picture of the grounds (a
+      // label set, a thumbnail arrived), and the rebuild that made it is
+      // the only one that knows.
+      gripGrounds,
       devicePixelRatio,
     );
   }
@@ -614,6 +727,7 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     required this.grips,
     required this.runEdit,
     this.gripGround = timelineDrawingHeldColor,
+    this.gripGrounds,
   });
 
   /// Key placed on the [CustomPaint] itself: tests read the painter (and
@@ -643,10 +757,16 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
 
   /// The color under the grips (feedback #11, re-picked by the ground law
   /// 2026-08-17). The default is the timeline's plain paper; a row whose
-  /// blocks wear a color label passes that paper, and the storyboard strip
-  /// passes what its band actually shows — the panel-picture ground while
-  /// thumbnails are shown (B1), the cut-block plate otherwise.
+  /// blocks wear a color label passes that paper, and the storyboard's cut
+  /// row passes its cut plate — the ground wherever [gripGrounds] names
+  /// nothing. ↩️It passed the panel-picture ground (B1) while the bands
+  /// folded and the pictures filled the block.
   final Color gripGround;
+
+  /// Where the grips stand on more than [gripGround] — null on a row of
+  /// one colour. The storyboard's cut row hands its label bands and its
+  /// pictures here, over the plate its [gripGround] is.
+  final TimelineChromeGrounds Function()? gripGrounds;
 
   @override
   State<TimelineRowEditChromeLayer> createState() =>
@@ -1131,6 +1251,7 @@ class _TimelineRowEditChromeLayerState
         draggingGripId: _gripDragging ? _gripTarget?.id : _pressedId,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         gripGround: widget.gripGround,
+        gripGrounds: widget.gripGrounds,
       ),
       child: _ChromeHitGate(
         // Off-target pixels belong to the cells: the gate keeps the

@@ -10,7 +10,6 @@ import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_mark.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
@@ -19,6 +18,8 @@ import 'layer_opacity_field.dart';
 import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
 import 'rail_eyes.dart';
+import 'timeline_double_tap.dart'
+    show TimelineLabelDoubleClick, timelineLabelDoubleTapDetector;
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
 import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
@@ -136,6 +137,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.metrics,
     required this.onSelectLayer,
     this.onSettledPress,
+    this.labelDoubleClick,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
@@ -160,7 +162,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onionSkinEnabled = false,
     this.onToggleLayerOnionSkin,
     this.opacityDragPreview,
-    this.isLinked = false,
+    this.linkPartners = const [],
     this.onLayerBlendModeSelected,
     this.opacityOverride,
     this.chromeless = false,
@@ -202,6 +204,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// selected goes (유저: 「클릭하고 떼면 뭐든 비우게」). The SAME callback
   /// the frame cells take, because 「행이든 뭐든 동일하게」.
   final VoidCallback? onSettledPress;
+
+  /// A double click on this strip — the LABEL — asked at its first press
+  /// (I-48; see [TimelineLabelDoubleClick]). Null mounts none.
+  final TimelineLabelDoubleClick? labelDoubleClick;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
@@ -211,7 +217,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
   final ValueChanged<LayerId> onToggleLayerTimesheet;
-  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
   /// Drawing rows' FILL-reference toggle (R20-C2, the CSP lighthouse);
   /// null hides it.
@@ -294,9 +300,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
   opacityDragPreview;
 
-  /// Link badge (L4): this layer's pictures are shared with a link group
-  /// ("이름이 같으면 같은 그림") — a small chain icon after the name.
-  final bool isLinked;
+  /// Link badge (L4): the rows this layer shares its pictures with — its
+  /// link group's other members, each as a row reads ([linkPartnerLines]) —
+  /// shown as a small chain icon after the name whose tooltip names them.
+  /// Empty: not linked, no badge.
+  ///
+  /// 🗣️유저 2026-09-25: 「링크버튼통해서 어디랑 링크되고있는지만 제대로
+  /// 표시하게」. ↩️It was a bool, and the tooltip a fixed sentence.
+  final List<String> linkPartners;
 
   /// R27 #6: the blend-mode dropdown lives in the LABEL now (rightmost
   /// slot, past the opacity bar) instead of the timeline toolbar. Null
@@ -342,11 +353,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // 그만좀하자」). Both wear the same widget-level policy now, device gate
     // included. The sheet's columns read it through the same widget: an
     // `InkWell.onTap` fires on the RELEASE, which was F-26's report.
-    //
-    // ⛔The InkWell keeps a NO-OP `onTap`, which is not decoration: it holds
-    // a tap recognizer in the arena so scroll slop over a row behaves the
-    // way it always has. The painted cells do the identical thing for the
-    // identical reason.
+    final doubleClick = labelDoubleClick;
+    final surface = _surface(context, colorScheme);
     final strip = InstantTapRegion(
       pressSeeksFor: AppInput.timelineCellPressSeeks,
       // The PICK. Whether it also CLEARS is the session's call — see
@@ -356,39 +364,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
       // And when the press turned out to be a tap, the selection goes —
       // 유저: 「클릭하고 떼면 뭐든 비우게」.
       onSettledTap: onSettledPress == null ? null : (_) => onSettledPress!(),
-      child: InkWell(
-        key: ValueKey<String>(_rowKey),
-        onTap: () {},
-        // No hover glow on the ROW surface (UI-R24 #6): selection speaks
-        // through the background alone; only the buttons may brighten.
-        hoverColor: Colors.transparent,
-        child: Container(
-          width: _width,
-          height: _height,
-          padding: _padding,
-          decoration: _plate(colorScheme),
-          child: Semantics(
-            key: active ? ValueKey<String>('$keyPrefix-selected-layer') : null,
-            label: active ? 'selected layer' : 'layer',
-            container: true,
-            explicitChildNodes: true,
-            // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
-            // shared skeleton in the shared order at the shared extents,
-            // running downward: the same list the rail's rows and the
-            // legend above read.
-            child: Flex(
-              direction: axis,
-              crossAxisAlignment: _crossAxisAlignment,
-              children: [
-                ..._leadingCells(),
-                ?_depthGuides(colorScheme),
-                _nameArea(context, colorScheme),
-                ..._trailingCells(colorScheme),
-              ],
+      // I-48: the label's double click, INSIDE the pick — the deeper
+      // listener hears a press first, so its record reads the selection
+      // before the pick can change it.
+      child: doubleClick == null
+          ? surface
+          : timelineLabelDoubleTapDetector(
+              layerId: layer.id,
+              doubleClick: doubleClick,
+              child: surface,
             ),
-          ),
-        ),
-      ),
     );
 
     // R10 R3: a folder row used to carry rename + dissolve on a context
@@ -428,6 +413,46 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // instead of along its row — and 「헤더쪽은 손떼면」 does NOT mean it.
     return PressFireScope(fireOn: PressFire.down, child: strip);
   }
+
+  /// The strip itself — its plate and its twelve slots.
+  ///
+  /// ⛔The InkWell keeps a NO-OP `onTap`, which is not decoration: it holds
+  /// a tap recognizer in the arena so scroll slop over a row behaves the
+  /// way it always has. The painted cells do the identical thing for the
+  /// identical reason.
+  Widget _surface(BuildContext context, ColorScheme colorScheme) => InkWell(
+    key: ValueKey<String>(_rowKey),
+    onTap: () {},
+    // No hover glow on the ROW surface (UI-R24 #6): selection speaks
+    // through the background alone; only the buttons may brighten.
+    hoverColor: Colors.transparent,
+    child: Container(
+      width: _width,
+      height: _height,
+      padding: _padding,
+      decoration: _plate(colorScheme),
+      child: Semantics(
+        key: active ? ValueKey<String>('$keyPrefix-selected-layer') : null,
+        label: active ? 'selected layer' : 'layer',
+        container: true,
+        explicitChildNodes: true,
+        // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
+        // shared skeleton in the shared order at the shared extents,
+        // running downward: the same list the rail's rows and the
+        // legend above read.
+        child: Flex(
+          direction: axis,
+          crossAxisAlignment: _crossAxisAlignment,
+          children: [
+            ..._leadingCells(),
+            ?_depthGuides(colorScheme),
+            _nameArea(context, colorScheme),
+            ..._trailingCells(colorScheme),
+          ],
+        ),
+      ),
+    ),
+  );
 
   /// `timeline-folder-row-…` / `xsheet-layer-row-…`: the kind's word and the
   /// surface's word, one grammar.
@@ -575,15 +600,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// text there (A6) — the chip reads the axis.
   ///
   /// Its plate dims with the eye (F-56), so it reads the eye the way the eye
-  /// does — [_visibilityToggle].
+  /// does — [_visibilityToggle] — a folder above that hides the row included
+  /// (F-185: 「색라벨도 동일하게 비활성화색」).
   Widget _markChip() => RailEyeBuilder(
     layer: layer,
-    builder: (context, eyeOn) => LayerMarkChip.forLayer(
+    builder: (context, eye) => LayerMarkChip.forLayer(
       layer,
       keyPrefix: keyPrefix,
       onMarkSelected: onLayerMarkSelected,
       axis: axis,
-      isVisible: eyeOn,
+      isVisible: eye.on && !eye.hiddenAbove,
     ),
   );
 
@@ -675,11 +701,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
       readableText(axis, layer.name, style: layerRowNameStyle(context));
 
   Widget? _linkBadge(ColorScheme colorScheme) {
-    if (!isLinked) return null;
+    if (linkPartners.isEmpty) return null;
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: AppTooltip(
-        message: AppText.strings.tlLinkedLayerTooltip,
+        message: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
         child: Icon(
           Icons.link,
           key: ValueKey<String>('$keyPrefix-layer-link-badge-${layer.id}'),
@@ -833,9 +859,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget _visibilityToggle() => RailSwipeColumnPointer(
     child: RailEyeBuilder(
       layer: layer,
-      builder: (context, eyeOn) => LayerVisibilityToggleButton(
+      builder: (context, eye) => LayerVisibilityToggleButton(
         keyValue: '$keyPrefix-layer-visibility-${layer.id}',
-        isVisible: eyeOn,
+        isVisible: eye.on,
+        hiddenAbove: eye.hiddenAbove,
         onToggle: () => onToggleLayerVisibility(layer.id),
       ),
     ),

@@ -1356,11 +1356,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final strings = AppText.strings;
     return pageTurnStrip(
       keyPrefix: widget.viewerId,
-      page: (
-        index: pageIndex,
-        count: pageCount,
-        readout: '${pageIndex + 1} / $pageCount',
-      ),
+      page: viewerPage(pageIndex, pageCount),
       onTurnTo: _turnToPage,
       leading: [
         // 🚨PLAY sits with the page controls, not in a strip of its own:

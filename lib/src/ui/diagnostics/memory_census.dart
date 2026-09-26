@@ -6,6 +6,8 @@ import 'package:flutter/painting.dart';
 import '../../native/native_scratch.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/brush_tip_stamp_cache.dart';
+import '../../services/cut_piece_slot.dart';
+import '../../services/last_stroke_slot.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/tile_pyramid.dart';
 import '../editor_session_manager.dart';
@@ -130,55 +132,78 @@ class MemoryCensus {
 
 /// Takes the census. Cheap — every number below is a counter the holder
 /// already maintains, so this is addition, not measurement.
-MemoryCensus collectMemoryCensus(EditorSessionManager session) {
+///
+/// 🚨EVERY OPEN PROJECT (I-7). The app is holding what all of its tabs hold,
+/// so a project's rows are the SUM over [sessions] — the tab on screen and
+/// the ones behind it — and what the app holds once for all of them (the
+/// held stroke, the cut piece, the engine) is counted once. A census of the
+/// tab on screen alone would put every other tab's drawings in
+/// `untrackedBytes`, which the panel reads out as the engine's.
+MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
+  int sum(int Function(EditorSessionManager session) bytesOf) =>
+      sessions.fold(0, (total, session) => total + bytesOf(session));
   final items = <MemoryCensusItem>[
     MemoryCensusItem(
       id: 'drawings',
-      bytes:
-          session.renderCaches.brushFrameStore.hotBakedBytes +
-          // ⛔NOT `coldBakedBytes` (2026-09-11): a cooled cel is written to
-          // the run's 이사대기 room and only a file ref stays in memory —
-          // those are bytes on DISK. Counted here, 「ours」 swelled and the
-          // engine's share shrank by exactly as much.
-          // 🚨LIFTED PIXELS COUNT, and were missing until 2026-09-10. A
-          // move or a transform holds the pixels it picked up — up to a
-          // whole canvas — in the SAME store, and the readout said
-          // nothing about them: mid-transform the panel showed less
-          // memory than the app was holding, and the difference read as
-          // engine overhead.
-          //
-          // ⛔Folded into `drawings` rather than given a row: it is the
-          // same store holding the same user's artwork, it is zero the
-          // moment the tool lets go, and a row of its own would need a
-          // fifth string in five languages to say "usually nothing".
-          session.renderCaches.brushFrameStore.reclaimableViewBytes,
+      bytes: sum(
+        (session) =>
+            session.renderCaches.brushFrameStore.hotBakedBytes +
+            // ⛔NOT `coldBakedBytes` (2026-09-11): a cooled cel is written to
+            // the run's 이사대기 room and only a file ref stays in memory —
+            // those are bytes on DISK. Counted here, 「ours」 swelled and the
+            // engine's share shrank by exactly as much.
+            // 🚨LIFTED PIXELS COUNT, and were missing until 2026-09-10. A
+            // move or a transform holds the pixels it picked up — up to a
+            // whole canvas — in the SAME store, and the readout said
+            // nothing about them: mid-transform the panel showed less
+            // memory than the app was holding, and the difference read as
+            // engine overhead.
+            //
+            // ⛔Folded into `drawings` rather than given a row: it is the
+            // same store holding the same user's artwork, it is zero the
+            // moment the tool lets go, and a row of its own would need a
+            // fifth string in five languages to say "usually nothing".
+            session.renderCaches.brushFrameStore.reclaimableViewBytes,
+      ) + _clipboardOnlyBytes(sessions),
     ),
     MemoryCensusItem(
       id: 'sheetInk',
-      bytes:
-          // Resident only, like the drawings row above.
-          session.renderCaches.conteInkRowStore.hotBakedBytes +
-          session.renderCaches.conteInkPageStore.hotBakedBytes +
-          session.renderCaches.envelopeInkStore.hotBakedBytes,
+      bytes: sum(
+        (session) =>
+            // Resident only, like the drawings row above.
+            session.renderCaches.sheetInkStores.fold(
+              0,
+              (sum, store) => sum + store.hotBakedBytes,
+            ),
+      ),
     ),
     MemoryCensusItem(
       id: 'undo',
       bytes:
-          session.historyManager.retainedBytes +
+          sum((session) => session.historyManager.retainedBytes) +
           // 확정's held stroke (confirm-button): a past edit kept to be laid
           // down again, which is what this row counts. Folded in rather than
-          // given a row, for the reason `drawings` gives above.
-          session.renderCaches.lastStrokeBytes,
+          // given a row, for the reason `drawings` gives above. The app's,
+          // so once ([CutPieceSlot.allPieceBytes]).
+          LastStrokeSlot.allStrokeBytes,
     ),
     MemoryCensusItem(
       id: 'playbackFrames',
-      bytes: session.renderCaches.cutFrameCompositeCache.estimatedBytes,
-      detail: session.renderCaches.cutFrameCompositeCache.pinnedBytes,
+      bytes: sum(
+        (session) => session.renderCaches.cutFrameCompositeCache.estimatedBytes,
+      ),
+      detail: sum(
+        (session) => session.renderCaches.cutFrameCompositeCache.pinnedBytes,
+      ),
     ),
     MemoryCensusItem(
       id: 'layerImages',
-      bytes: session.renderCaches.layerFrameImageCache.estimatedBytes,
-      detail: session.renderCaches.layerFrameImageCache.pinnedBytes,
+      bytes: sum(
+        (session) => session.renderCaches.layerFrameImageCache.estimatedBytes,
+      ),
+      detail: sum(
+        (session) => session.renderCaches.layerFrameImageCache.pinnedBytes,
+      ),
     ),
     MemoryCensusItem(
       id: 'brushTips',
@@ -190,10 +215,10 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
           // as engine overhead — 2026-09-10.
           (QaNativeEngine.instance?.nativeUploadBytes ?? 0) +
           // The cut tool's HELD piece is the stamp's tip (유저: 「잘라내기 할
-          // 때마다 가지고 있는 찍기 팁 교체야」), so it rides this row —
-          // pushed by the workspace, whose State owns the slot. 🆕I-14: a cut
-          // from the media viewer holds its source at full size.
-          session.renderCaches.cutPieceBytes,
+          // 때마다 가지고 있는 찍기 팁 교체야」), so it rides this row — the
+          // app's one slot, counted once. 🆕I-14: a cut from the media
+          // viewer holds its source at full size.
+          CutPieceSlot.allPieceBytes,
     ),
     // 🚨THE CANVAS'S OWN PICTURES, which a phone keeps as GPU textures:
     // every decoded tile, alive as long as its tile is — the picture on
@@ -250,19 +275,30 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
           // `DisplayBufferCache._maxChainBytes` — it read one image until
           // 2026-09-12, and the canvases it was not counting showed up in
           // 「엔진·폰트·프레임워크」 as 10GB nothing would own.
-          session.renderCaches.canvasBufferBytes,
+          sum(
+            (session) =>
+                session.renderCaches.canvasBufferBytes +
+                // The conte's live pictures are the same painter, one
+                // buffer each.
+                session.renderCaches.livePictureBufferBytes.values.fold(
+                  0,
+                  (total, bytes) => total + bytes,
+                ),
+          ),
     ),
     // Pushed by the mounted viewers rather than read off a holder the
     // session owns — see [RenderCaches.viewerRasterBytesByViewer].
     MemoryCensusItem(
       id: 'viewerPages',
-      bytes: session.renderCaches.viewerRasterBytes,
+      bytes: sum((session) => session.renderCaches.viewerRasterBytes),
     ),
     // Pushed by the workspace, whose State owns the store — see
     // [RenderCaches.storyboardThumbnailBytes].
     MemoryCensusItem(
       id: 'storyboardThumbnails',
-      bytes: session.renderCaches.storyboardThumbnailBytes,
+      bytes: sum(
+        (session) => session.renderCaches.storyboardThumbnailBytes,
+      ),
     ),
     // A movie kept as a reference, decoded where it is shown. Its pictures
     // live in the cel store and are paid from the drawings' hot budget —
@@ -270,7 +306,9 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
     // for playback would read as drawings grown by hundreds of megabytes.
     MemoryCensusItem(
       id: 'moviePictures',
-      bytes: session.renderCaches.brushFrameStore.movieCelBytes,
+      bytes: sum(
+        (session) => session.renderCaches.brushFrameStore.movieCelBytes,
+      ),
     ),
   ]..sort((a, b) => b.bytes.compareTo(a.bytes));
 
@@ -286,4 +324,38 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
     deviceBytes: QaNativeEngine.instance?.physicalMemoryBytes,
     items: items,
   );
+}
+
+/// The pictures the app's clipboard holds ON ITS OWN — the tiles of its
+/// copies that no open project's store holds hot — for the drawings row.
+///
+/// 🔎clipboard-held-pictures-uncounted (2026-09-26): a copy holds its cels'
+/// pictures BY VALUE (F-161; a layer copy since I-7), and while its source
+/// stands untouched it shares every tile with it — structural sharing, so
+/// counting the copy whole would bill one picture twice. Drawn over or cut
+/// away, the source lets go and the copy alone keeps those tiles; they fell
+/// to `untrackedBytes`, which the panel reads out as the engine's.
+///
+/// ⚠️A tile ONCE, however many holders reach it: the app's one clipboard
+/// is every session's, and both of its boards may hold one picture. Folded
+/// into `drawings`, the lifted pixels' reason: the same user's artwork, and
+/// a row of its own would be a string in five languages for what is
+/// usually nothing.
+int _clipboardOnlyBytes(Iterable<EditorSessionManager> sessions) {
+  final hot = Set<Object>.identity();
+  for (final session in sessions) {
+    session.renderCaches.brushFrameStore.addHotTilesTo(hot);
+  }
+  final counted = Set<Object>.identity();
+  var bytes = 0;
+  for (final session in sessions) {
+    for (final picture in session.appClipboard.heldPictures) {
+      for (final tile in picture.tiles.values) {
+        if (!hot.contains(tile) && counted.add(tile)) {
+          bytes += picture.tileBytes;
+        }
+      }
+    }
+  }
+  return bytes;
 }

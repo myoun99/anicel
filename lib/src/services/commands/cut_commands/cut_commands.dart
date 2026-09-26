@@ -238,6 +238,25 @@ class _CutCommands {
         ),
       );
 
+  /// Sets the 색 라벨 of [cutIds] — and of each one's 겸용 siblings — as ONE
+  /// undo step ([UpdateCutMarkCommand]); nothing at all when every one of
+  /// them already wears [mark].
+  void setCutMark({required List<CutId> cutIds, required LayerMark mark}) {
+    final project = _coordinator.repository.requireProject();
+    if (LinkedCutFieldCommand.linkedCutsOf(project, cutIds).every(
+      (cutId) => requireCut(project, cutId).metadata.mark == mark,
+    )) {
+      return;
+    }
+    _coordinator.historyManager.execute(
+      UpdateCutMarkCommand(
+        repository: _coordinator.repository,
+        cutIds: cutIds,
+        mark: mark,
+      ),
+    );
+  }
+
   /// Pins the storyboard thumbnail to a cut-local frame (null = back to the
   /// first frame); one undo step.
   void updateCutThumbnailFrame({
@@ -370,7 +389,7 @@ class _CutCommands {
     );
   }
 
-  void duplicateCut({
+  DuplicatedCut duplicateCut({
     required CutId sourceCutId,
     required TrackId targetTrackId,
     String? newName,
@@ -393,6 +412,11 @@ class _CutCommands {
         layerIdMap: plan.layerIdMap,
         frameIdMap: plan.frameIdMap,
       ),
+    );
+    return (
+      cutId: plan.newCutId,
+      rows: plan.layerIdMap,
+      minted: plan.frameIdMap,
     );
   }
 }

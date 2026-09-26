@@ -1,6 +1,9 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../../models/cut.dart';
+import '../../models/layer_id.dart';
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/rename_cut_dialog.dart';
@@ -74,33 +77,69 @@ Future<void> deleteActiveLayerWithDialog(
 /// had no door — this is the door. The dialog is the same one; only the
 /// subject changed, and it changes the way every other row verb's does: ask
 /// the selection, fall back to the row you are standing on.
-///
-/// The seed name is honest about that subject. One row (selected or active)
-/// seeds its own name; SEVERAL seed nothing, because there is no single name
-/// they currently share and offering one of them would quietly propose
-/// renaming the rest to it.
 Future<void> renameActiveLayerWithDialog(
   BuildContext context,
   EditorSessionManager session,
 ) {
   final selected = session.layerVerbs.renameableSelectedLayerIds();
-  final activeLayer = session.activeLayer;
-  if (selected.isEmpty && activeLayer == null) {
-    return Future<void>.value();
-  }
-  final soleId = selected.length == 1 ? selected.single : null;
-  final sole = soleId == null
-      ? null
-      : session.layers.where((layer) => layer.id == soleId).firstOrNull;
-  final initialName = selected.length > 1
-      ? ''
-      : (sole ?? activeLayer)?.name ?? '';
-  return askThenCommit<String>(
+  return _askRowsName(
     context,
-    dialog: (_) => RenameLayerDialog(initialName: initialName),
+    session,
+    selected.isNotEmpty ? selected : [?session.activeLayer?.id],
     commit: (nextName) => selected.isEmpty
         ? session.layerVerbs.renameActiveLayer(nextName)
         : session.layerVerbs.renameSelectedLayers(nextName),
+  );
+}
+
+/// I-48 (유저 2026-09-26): 「레이어 라벨 더블클릭시 해당 레이어 이름변경 로직
+/// 발동. 버튼이랑 마찬가지로 여러레이어 선택한채로 해당 레이어 발동했을때
+/// 선택범위 안이면 다른레이어도 변경, 아니면 해당레이어만」.
+///
+/// The rows are the buttons' ([RowSelectionVerbs.rowsActedOnBy]), read NOW —
+/// this is asked at the double click's FIRST press
+/// ([TimelineLabelDoubleClick] says why) — and what it returns is the rename
+/// the second press opens.
+VoidCallback renameOnLabelDoubleClick(
+  BuildContext context,
+  EditorSessionManager session,
+  LayerId pressed,
+) {
+  final rows = session.layerVerbs.renameableOf(
+    session.rowSelectionVerbs.rowsActedOnBy(pressed),
+  );
+  return () => unawaited(
+    _askRowsName(
+      context,
+      session,
+      rows,
+      commit: (nextName) => session.layerVerbs.renameRows(rows, nextName),
+    ),
+  );
+}
+
+/// The rename dialog for [rows], nothing when there are none.
+///
+/// The seed name is honest about the subject: one row (selected, active or
+/// pressed) seeds its own name; SEVERAL seed nothing, because there is no
+/// single name they currently share and offering one of them would quietly
+/// propose renaming the rest to it.
+Future<void> _askRowsName(
+  BuildContext context,
+  EditorSessionManager session,
+  List<LayerId> rows, {
+  required void Function(String nextName) commit,
+}) {
+  if (rows.isEmpty) {
+    return Future<void>.value();
+  }
+  final sole = rows.length == 1
+      ? session.layers.where((layer) => layer.id == rows.single).firstOrNull
+      : null;
+  return askThenCommit<String>(
+    context,
+    dialog: (_) => RenameLayerDialog(initialName: sole?.name ?? ''),
+    commit: commit,
   );
 }
 

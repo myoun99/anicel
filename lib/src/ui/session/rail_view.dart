@@ -10,9 +10,10 @@ typedef StandingLaw = void Function({bool reveal, bool filterSparesStanding});
 
 /// THE RAIL'S VIEW — which layer rows the rail leaves off the screen by a
 /// choice of the user's that is not the document's: the hidden sections,
-/// the row filter and the folded attach groups. View state: session-only,
-/// never saved, and it outlives the panels that draw it (a tab switch keeps
-/// it). A FOLDER's fold is not here — it is `Layer.collapsed`, the file's.
+/// the row filter and the folded attach groups — and which it opens up: the
+/// property-lane twirls. View state: session-only, never saved, and it
+/// outlives the panels that draw it (a tab switch keeps it). A FOLDER's fold
+/// is not here — it is `Layer.collapsed`, the file's.
 ///
 /// 🚨F-169 (유저 2026-09-24): 「보이는거만 선택가능하고 안보이는거 선택되는
 /// 상황엔 다른 보이는레이어 선택하도록」. The three lived on the workspace, and
@@ -21,6 +22,12 @@ typedef StandingLaw = void Function({bool reveal, bool filterSparesStanding});
 /// the rail unfolded that row to show where you stood. They live here so the
 /// law that keeps you on a shown row ([Standing.keepStandingShown]) reads
 /// the same three the grids draw by.
+///
+/// 🚨The twirls joined them with I-7 (a project per tab): they name LAYER
+/// IDS, which are the project's — every new project's first layer has the
+/// same one — so a set the workspace kept for the window twirled the layer
+/// open in every tab, and undoing a twirl in one project reached a set the
+/// others were reading.
 class RailView {
   /// SE/camera sections hidden from the grids (the timeline toolbar's
   /// toggles, the retired section fold's replacement).
@@ -41,9 +48,24 @@ class RailView {
     const <LayerId>{},
   );
 
+  /// Layers whose AE-style property-lane twirl-down is open. The walk
+  /// reads it too: property rows are stops (R10 #19).
+  final ValueNotifier<Set<LayerId>> expandedLaneLayerIds = ValueNotifier(
+    const <LayerId>{},
+  );
+
+  /// LANE GROUPS twirled open inside a layer's twirl-down (AE group
+  /// collapse — default collapsed). Keyed by `laneGroupKey`, because a row
+  /// carries more than one group: Transform, plus one header per R6 effect.
+  final ValueNotifier<Set<String>> expandedLaneGroupKeys = ValueNotifier(
+    const <String>{},
+  );
+
   void dispose() {
     hiddenSections.dispose();
     rowFilter.dispose();
     collapsedAttachBaseIds.dispose();
+    expandedLaneLayerIds.dispose();
+    expandedLaneGroupKeys.dispose();
   }
 }

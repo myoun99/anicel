@@ -574,8 +574,7 @@ class TimelineGridTileStore {
     final lead = painter.wordCellBefore(spanStartIndex);
     for (final frameIndex in [
       ?lead,
-      for (var index = spanStartIndex; index < spanEndIndexExclusive; index += 1)
-        index,
+      ...painter.writingCellsIn(spanStartIndex, spanEndIndexExclusive),
     ]) {
       final model = painter.cellModelAt(frameIndex);
       final mark = model.mark;

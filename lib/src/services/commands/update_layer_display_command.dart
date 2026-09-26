@@ -93,19 +93,25 @@ class UpdateLayerDisplayCommand implements Command {
   }
 }
 
-/// The four fields this command owns, captured together.
+/// The fields this command owns, captured together.
 ///
-/// Restoring all four rather than just the one that changed is correct
+/// Restoring all of them rather than just the one that changed is correct
 /// BECAUSE they are set one at a time: each command's snapshot is the
-/// state immediately before its own change, so the other three in it are
+/// state immediately before its own change, so the others in it are
 /// already whatever the previous commands left. Tracking which single
 /// field moved would be a second thing to keep in sync for no gain.
+///
+/// The SE row's fader and pan joined on 2026-09-25: they change what the
+/// film SOUNDS like, which is the reason mute is here (유저 the same day:
+/// 「소리 … 선택범위 레이어 모두 적용. 언두하나」).
 class _DisplayState {
   const _DisplayState({
     required this.isVisible,
     required this.opacity,
     required this.blendMode,
     required this.muted,
+    required this.audioGain,
+    required this.audioPan,
     required this.collapsed,
   });
 
@@ -114,6 +120,8 @@ class _DisplayState {
     opacity: layer.opacity,
     blendMode: layer.blendMode,
     muted: layer.muted,
+    audioGain: layer.audioGain,
+    audioPan: layer.audioPan,
     collapsed: layer.collapsed,
   );
 
@@ -121,6 +129,8 @@ class _DisplayState {
   final double opacity;
   final LayerBlendMode blendMode;
   final bool muted;
+  final double audioGain;
+  final double audioPan;
   final bool collapsed;
 
   Layer restoreOnto(Layer layer) => layer.copyWith(
@@ -128,6 +138,8 @@ class _DisplayState {
     opacity: opacity,
     blendMode: blendMode,
     muted: muted,
+    audioGain: audioGain,
+    audioPan: audioPan,
     collapsed: collapsed,
   );
 }
