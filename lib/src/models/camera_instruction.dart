@@ -168,6 +168,18 @@ class CameraInstructionSet {
     return null;
   }
 
+  /// The first `custom-<n>` id none of [defs] holds — how a term the user
+  /// adds is named, and how a term arriving from another project (I-7) is
+  /// renamed when this vocabulary already spells that id differently.
+  String freeCustomId() {
+    final used = {for (final def in defs) def.id};
+    var index = 1;
+    while (used.contains('custom-$index')) {
+      index += 1;
+    }
+    return 'custom-$index';
+  }
+
   /// The standard 撮影 vocabulary (撮ま! chapters): camera work, transitions
   /// and filter effects. Projects without a stored set open with this.
   static final CameraInstructionSet standard = CameraInstructionSet(

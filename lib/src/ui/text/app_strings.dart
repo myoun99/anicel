@@ -414,6 +414,8 @@ enum AppStrings {
   /// or by the reference button's rasterize.
   String get bakeProgressRunning => _s('bakeProgressRunning');
   String get bakeProgressDone => _s('bakeProgressDone');
+  String get pasteProgressRunning => _s('pasteProgressRunning');
+  String get pasteProgressDone => _s('pasteProgressDone');
   String get unsavedAutosaveTitle => _s('unsavedAutosaveTitle');
   String get unsavedAutosaveBody => _s('unsavedAutosaveBody');
   String get commonNotNow => _s('commonNotNow');
@@ -1828,6 +1830,8 @@ enum AppStrings {
     'resizeProgressDone': 'Resized',
     'bakeProgressRunning': 'Rasterizing…',
     'bakeProgressDone': 'Rasterized',
+    'pasteProgressRunning': 'Pasting…',
+    'pasteProgressDone': 'Pasted',
     'unsavedAutosaveTitle': 'Save your project',
     'unsavedAutosaveBody':
         'This project has never been saved, so autosave has nowhere to '
@@ -2923,6 +2927,8 @@ enum AppStrings {
     'resizeProgressDone': 'サイズ変更しました',
     'bakeProgressRunning': 'ラスタライズ中…',
     'bakeProgressDone': 'ラスタライズしました',
+    'pasteProgressRunning': 'ペースト中…',
+    'pasteProgressDone': 'ペーストしました',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
     'unsavedAutosaveBody':
         'このプロジェクトはまだ一度も保存されていないため、自動保存の書き込み'
@@ -4255,6 +4261,8 @@ enum AppStrings {
     'resizeProgressDone': '크기 변경 완료',
     'bakeProgressRunning': '래스터라이즈 중…',
     'bakeProgressDone': '래스터라이즈 완료',
+    'pasteProgressRunning': '붙여넣는 중…',
+    'pasteProgressDone': '붙여넣음',
     'unsavedAutosaveTitle': '프로젝트 저장',
     'unsavedAutosaveBody':
         '이 프로젝트는 한 번도 저장된 적이 없어서 자동 저장이 쓸 곳이 '
@@ -5586,6 +5594,8 @@ enum AppStrings {
     'resizeProgressDone': 'Redimensionné',
     'bakeProgressRunning': 'Pixellisation…',
     'bakeProgressDone': 'Pixellisé',
+    'pasteProgressRunning': 'Collage…',
+    'pasteProgressDone': 'Collé',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
     'unsavedAutosaveBody':
         "Ce projet n'a jamais été enregistré : la sauvegarde automatique "
@@ -6970,6 +6980,8 @@ enum AppStrings {
     'resizeProgressDone': '已调整尺寸',
     'bakeProgressRunning': '正在栅格化…',
     'bakeProgressDone': '栅格化完成',
+    'pasteProgressRunning': '粘贴中…',
+    'pasteProgressDone': '已粘贴',
     'unsavedAutosaveTitle': '保存你的项目',
     'unsavedAutosaveBody':
         '此项目从未保存过，自动保存没有可写入的位置。选择一个文件后，'

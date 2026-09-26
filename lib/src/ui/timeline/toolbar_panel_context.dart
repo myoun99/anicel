@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart' show BuildContext;
+
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/cut_id.dart';
@@ -9,6 +13,9 @@ import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
 import '../editor_command_actions.dart' show createActiveInstance;
 import '../editor_session_manager.dart';
+import '../paste_with_its_media.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 
 /// B8 (2026-08-17): 상단 버튼의 패널 스코프 — the shared toolbar's layer,
 /// frame, shared and fx verbs dispatch AGAINST THE PANEL THEY ARE PRESSED
@@ -159,9 +166,15 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
 /// member is a one-line delegation on purpose — this panel's dispatch is
 /// the baseline B8 pins, so the wrapper must add nothing to it.
 class TimelineToolbarPanelContext implements ToolbarPanelContext {
-  const TimelineToolbarPanelContext(this.session);
+  const TimelineToolbarPanelContext(this.session, {this.waitIn});
 
   final EditorSessionManager session;
+
+  /// Where a paste that brings media from another project puts up its wait
+  /// window ([pasteWithItsMedia]) — the widget the press came through.
+  /// Without one (a test's context) the paste lands at once, recording no
+  /// carried medium it has not held.
+  final BuildContext? waitIn;
 
   // ⑥ 유저 2026-08-12: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션
   // 레이어 생성.」 — moved here verbatim from the button.
@@ -243,7 +256,22 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
       session.canPasteIndependentFrameAtCurrentFrame;
 
   @override
-  void pasteIndependentFrame() => session.pasteIndependentFrameAtCurrentFrame();
+  void pasteIndependentFrame() {
+    final context = waitIn;
+    if (context == null) {
+      session.pasteIndependentFrameAtCurrentFrame();
+      return;
+    }
+    unawaited(
+      pasteWithItsMedia(
+        context,
+        title: editorActionLabel(EditorActionIds.editPasteIndependent),
+        mustHold: session.clipboard.pasteMustHoldMedia,
+        hold: session.clipboard.holdWhatThePasteBrings,
+        paste: session.pasteIndependentFrameAtCurrentFrame,
+      ),
+    );
+  }
 
   @override
   bool get canPasteLinkedFrame => session.canPasteLinkedFrameAtCurrentFrame;

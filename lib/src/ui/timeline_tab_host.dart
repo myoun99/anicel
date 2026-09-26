@@ -1019,7 +1019,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // B8: this panel's dispatch context — the session's cut-local
         // verbs, verbatim (the baseline the storyboard's own context
         // diverges from).
-        panelContext: TimelineToolbarPanelContext(_session),
+        panelContext: TimelineToolbarPanelContext(_session, waitIn: context),
         onAddLayer: _session.layerStack.addLayer,
         onRenameLayer: () =>
             unawaited(renameActiveLayerWithDialog(context, _session)),

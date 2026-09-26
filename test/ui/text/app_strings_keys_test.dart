@@ -629,6 +629,8 @@ void main() {
     'imSound': (s) => s.imSound,
     'bakeProgressRunning': (s) => s.bakeProgressRunning,
     'bakeProgressDone': (s) => s.bakeProgressDone,
+    'pasteProgressRunning': (s) => s.pasteProgressRunning,
+    'pasteProgressDone': (s) => s.pasteProgressDone,
     'mpFileMissing': (s) => s.mpFileMissing,
     'mpInUseOnTimeline': (s) => s.mpInUseOnTimeline,
     'mpNameEmpty': (s) => s.mpNameEmpty,

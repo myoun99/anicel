@@ -1021,7 +1021,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// ruling: the order was 「여러 단축키 기존 버튼에 연결」), so the
   /// storyboard's own pill and its keys answered differently.
   ToolbarPanelContext get _workingPanel => switch (_session.workingPanel) {
-    WorkingPanel.timeline => TimelineToolbarPanelContext(_session),
+    WorkingPanel.timeline => TimelineToolbarPanelContext(
+      _session,
+      waitIn: context,
+    ),
     WorkingPanel.storyboard => StoryboardToolbarPanelContext(_session),
   };
 

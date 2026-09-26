@@ -11,6 +11,7 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
+import '../paste_with_its_media.dart';
 import '../widgets/app_icon_button.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
@@ -419,7 +420,15 @@ class TimelineActionToolbar extends StatelessWidget {
             : 'Paste layer (${session.layerClipboard.layerClipboardName})',
         icon: Icons.content_paste,
         enabled: serves && session.layerClipboard.hasLayerClipboard,
-        onSelected: session.layerClipboard.pasteLayerFromClipboard,
+        onSelected: () => unawaited(
+          pasteWithItsMedia(
+            context,
+            title: session.layerClipboard.layerClipboardName ?? 'Paste layer',
+            mustHold: session.layerClipboard.pasteMustHoldMedia,
+            hold: session.layerClipboard.holdWhatThePasteBrings,
+            paste: session.layerClipboard.pasteLayerFromClipboard,
+          ),
+        ),
       ),
       // R5 #5: the row-order STEP verbs are gone, session methods and all
       // (user: "단축키로도 남기지마 일단"). The drag is the whole answer

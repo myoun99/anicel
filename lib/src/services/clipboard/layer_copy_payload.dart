@@ -100,6 +100,30 @@ class LayerCopyPayload {
 
   /// The FILL tool's reference flag (R20-C2).
   final bool isFillReference;
+
+  /// This payload with [timeline] and [instructions] replaced — how a paste
+  /// from another project re-spells the terms the row names (I-7).
+  LayerCopyPayload copyWith({
+    Map<int, TimelineExposure>? timeline,
+    Map<int, InstructionEvent>? instructions,
+  }) => LayerCopyPayload(
+    name: name,
+    kind: kind,
+    isVisible: isVisible,
+    opacity: opacity,
+    frames: frames,
+    timeline: timeline ?? this.timeline,
+    instructions: instructions ?? this.instructions,
+    audioClips: audioClips,
+    mediaReference: mediaReference,
+    blendMode: blendMode,
+    transformTrack: transformTrack,
+    transformEnabled: transformEnabled,
+    effects: effects,
+    mark: mark,
+    onTimesheet: onTimesheet,
+    isFillReference: isFillReference,
+  );
 }
 
 LayerCopyPayload copyLayerToPayload(Layer source) {

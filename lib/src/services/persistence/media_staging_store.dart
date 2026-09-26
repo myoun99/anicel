@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 import '../../core/path_names.dart';
 import '../../models/media_asset.dart'
     show MediaCarry, mediaCarryName, mediaNameParts;
+import '../media/media_byte_source.dart'
+    show MediaByteSource, MediaWindowReader;
 import 'media_blob_codec.dart';
 import 'scratch_file.dart';
 import 'session_scratch.dart';
@@ -297,6 +299,53 @@ class MediaStagingStore {
   bool _retiring(MediaCarry carry) =>
       _retireWhenLetGo.contains(mediaCarryName(carry));
 
+  /// [stageCarriedBytes] for bytes ANOTHER open project holds (I-7): a paste
+  /// from one project into another carries each medium it names as a carry
+  /// of the target's own, read from wherever the source keeps it NOW — its
+  /// archive, its staged copy ([sources]) — and not from the original file,
+  /// which carrying exists to outlive and which a voice take never had.
+  ///
+  /// ⛔The name starts with `stageCarriedBytes` on purpose:
+  /// `every_carry_stages_its_bytes_test` scans for that, and a variant of
+  /// the funnel must read as one to the scanner as well as to a person.
+  ///
+  /// The same framing rule and the same address as every carry
+  /// ([writeMediaBlob] under [_basePathFor]); a carry already staged keeps
+  /// what it has. ⚠️A source that will not read is SKIPPED, as the funnel
+  /// skips a file that will not open — the caller records only what came.
+  Future<List<({MediaCarry carry, StagedMedia staged})>> stageCarriedBytesFrom(
+    Map<MediaCarry, MediaByteSource> sources,
+  ) async {
+    final done = <({MediaCarry carry, StagedMedia staged})>[];
+    final todo = <(MediaCarry, MediaByteSource, String)>[];
+    for (final MapEntry(key: carry, value: source) in sources.entries) {
+      final already = find(carry);
+      if (already != null) {
+        done.add((carry: carry, staged: already));
+      } else if (!_retiring(carry)) {
+        todo.add((carry, source, _basePathFor(carry)));
+      }
+    }
+    if (todo.isEmpty) {
+      return done;
+    }
+    Directory(directoryPath).createSync(recursive: true);
+    final written = debugStageInline
+        ? _stageBytesFrom(todo)
+        : await Isolate.run(() => _stageBytesFrom(todo));
+    for (final (carry, one) in written) {
+      done.add((
+        carry: carry,
+        staged: StagedMedia(
+          path: one.path,
+          framed: one.framed,
+          storedLength: one.storedLength,
+        ),
+      ));
+    }
+    return done;
+  }
+
   /// [stageCarriedBytes] for bytes that have no file yet — a voice take,
   /// which this app MADE rather than copied from somewhere.
   ///
@@ -570,6 +619,45 @@ typedef MediaLeftBehind = ({String name, int offset, int length});
 /// be a whole folder, and one unreadable asset must not cost the rest their
 /// bytes — the pool then simply has no staged copy for it, which is the
 /// same state as never having asked.
+/// [MediaStagingStore.stageCarriedBytesFrom]'s work: [_stageBytes] with the
+/// bytes read from another project's [MediaByteSource] — plain data, so it
+/// crosses the isolate as the carries do — through a reader that keeps its
+/// file open for the whole copy ([MediaByteSource.openWindowReader]).
+List<(MediaCarry, ({String path, bool framed, int storedLength}))>
+_stageBytesFrom(List<(MediaCarry, MediaByteSource, String)> todo) {
+  final out = <(MediaCarry, ({String path, bool framed, int storedLength}))>[];
+  for (final (carry, source, basePath) in todo) {
+    final MediaWindowReader reader;
+    final int length;
+    try {
+      length = source.lengthSync();
+      reader = source.openWindowReader();
+    } on Object {
+      continue;
+    }
+    try {
+      final written = writeMediaBlob(
+        basePath: basePath,
+        length: length,
+        readInto: reader.readIntoSync,
+      );
+      out.add((
+        carry,
+        (
+          path: written.path,
+          framed: written.framed,
+          storedLength: File(written.path).lengthSync(),
+        ),
+      ));
+    } on Object {
+      continue;
+    } finally {
+      reader.close();
+    }
+  }
+  return out;
+}
+
 List<({String path, bool framed, int storedLength})> _stageBytes(
   List<MediaCarry> carries,
   String directoryPath,
