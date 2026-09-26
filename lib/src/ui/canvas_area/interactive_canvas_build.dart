@@ -398,9 +398,11 @@ class _InteractiveCanvasBuild {
       // nothing, so neither wants a block made underneath — and
       // neither earns a 「no frame here」 notice either.
       //
-      // Then make the block if the toggle and the row allow it —
-      // every one of those gates already lives inside
-      // `beginAutoFrameForStroke`, so nothing re-asks them — and
+      // Then make the block if the row, the toggle and the layer
+      // allow it — the row in `_strokeNeedsCel` (H19's question is
+      // the shell's; ↩️F-196: it was missing, and a lane's press made
+      // a block), the rest inside `beginAutoFrameForStroke`, so
+      // nothing re-asks them — and
       // otherwise say WHY at the cursor, which only the shell can
       // answer because the refusal is a SECTION question.
       onPressNeedsCel: () {

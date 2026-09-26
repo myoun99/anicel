@@ -1911,6 +1911,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // An empty frame stands the view DOWN rather than unmounting it —
       // the mount was the expensive half of a flip that crosses a block.
       editable: widget.celEditable,
+      // H19's other question, carried down (F-196): the row decides what a
+      // press may DO, so a lane over a cel draws no line at all.
+      rowAcceptsStrokes: widget.rowAcceptsStrokes,
       // Guides are stored in canvas space, but this view's strokes record
       // in artwork coordinates (the draw-through wrap below). They make the
       // same trip the pointers do, or the axis sits where the pen is not.
@@ -2194,8 +2197,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   void _commitSourceStroke(BrushStrokeCommitData rawStrokeData) {
-    // Only reachable from the interactive canvas, which requires the
-    // coordinator to exist.
+    // Only reachable from a stroke the interactive canvas began, and it
+    // begins one only on a cel whose row takes strokes — the two halves
+    // [_editableCoordinator] asks. ↩️F-196: the view used to hear only the
+    // cel half, so a lane's stroke reached this and threw.
     final coordinator = widget._editableCoordinator!;
     final strokeData = _selectionSeat.clipStrokeToSelection(
       rawStrokeData,

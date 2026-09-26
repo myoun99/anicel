@@ -671,7 +671,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// asks it directly — it IS a stroke, whichever tool is up, so the door
   /// it takes on an empty cell is the stroke's (confirm-button).
   bool _strokeNeedsCel(EditorSessionManager session) {
-    if (session.autoFrame.beginAutoFrameForStroke()) {
+    // 🚨F-196: the ROW first. `beginAutoFrameForStroke` asks the toggle and
+    // the LAYER, never the row you stand on, so a press on a lane's empty
+    // frame made a block on the layer beneath it and then drew into it —
+    // the stroke the lane refuses.
+    if (_rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
+        session.autoFrame.beginAutoFrameForStroke()) {
       return true;
     }
     cursorNotices.show(_drawRefusalFor(session));

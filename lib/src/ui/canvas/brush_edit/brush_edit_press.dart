@@ -142,6 +142,16 @@ class _BrushEditPress {
       return;
     }
 
+    // 🚨F-196: a press that would DRAW asks the row first, so a row that
+    // takes no strokes shows no line at all — the fill and the stroke
+    // below are both drawing. The mapped verbs above still ran: an undo or
+    // an eyedropper hold is not drawing. The host explains the refusal
+    // (`MainCanvasBrushHost`'s listener speaks for 「a row that takes no
+    // strokes」), so nothing is said twice.
+    if (!_state.widget.rowAcceptsStrokes) {
+      return;
+    }
+
     final canvasPosition = _state._canvasPositionFromLocal(event.localPosition);
     // The pasteboard is EVERY tool's input boundary (user feedback +
     // Flash parity): strokes, the eyedropper and fill taps all work on
@@ -396,16 +406,27 @@ class _BrushEditPress {
     }
 
     final hadDabs = _state._collectedDabs.isNotEmpty;
-    if (hadDabs) {
-      // The commit reads the rasterizer's tiles — blend any dabs still
-      // waiting on the per-frame flush first.
-      _state._overlay.flushPendingOverlayDabs();
-      _state._stroke.commitStroke();
-    }
-
-    _state._stroke.endStrokeInput();
-    if (!hadDabs) {
-      _state._overlay.resetOverlay();
+    var landed = false;
+    try {
+      if (hadDabs) {
+        // The commit reads the rasterizer's tiles — blend any dabs still
+        // waiting on the per-frame flush first.
+        _state._overlay.flushPendingOverlayDabs();
+        _state._stroke.commitStroke();
+        landed = true;
+      }
+    } finally {
+      // 🚨F-196: the stroke ENDS whether or not its commit landed. A commit
+      // that threw skipped this, and the live stroke never let go — the
+      // session refused every seek while it thought the pen was down
+      // (유저: 「타임라인이 잠금상태? 룰러쪽 드래그 안먹는데」), and this view
+      // refused every new press while it held the drawing pointer.
+      _state._stroke.endStrokeInput();
+      // A commit that landed dropped the overlay with it; one that did not
+      // drops it here, since nothing it shows was kept.
+      if (!landed) {
+        _state._overlay.resetOverlay();
+      }
     }
     return hadDabs;
   }

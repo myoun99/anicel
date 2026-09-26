@@ -89,6 +89,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.overlayModel,
     this.paintsContent = true,
     this.editable = true,
+    this.rowAcceptsStrokes = true,
     this.onPressNeedsCel,
     CanvasViewport? viewport,
     CutGuides? guides,
@@ -110,6 +111,21 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// above [key]: a frame flip must reset this view IN PLACE, never
   /// rebuild it.
   final bool editable;
+
+  /// Whether the ROW the playhead stands on takes strokes — false on a
+  /// property lane (`MainCanvasBrushHost.rowAcceptsStrokes`).
+  ///
+  /// 🗣️F-196 (유저 2026-09-27): 「fx행에 서있는데 그림이 그려지고 커밋시
+  /// 사라짐. … 안그려져야 하는곳은 통일해서 선 안나오게」. H19 split this from
+  /// [editable] one layer up, and this view only ever heard [editable] — so
+  /// on a lane over a cel it began the stroke, drew the live line, and the
+  /// commit was refused at pen-up.
+  ///
+  /// ★Two questions, two flags, as H19 has them: [editable] says whether
+  /// there is a cel (what is PAINTED, and whether a press asks for one);
+  /// this says whether a press may DRAW. ⛔Folding it into [editable] would
+  /// stand the view down on a lane, and standing down paints nothing.
+  final bool rowAcceptsStrokes;
 
   /// 🚨I-10 — WHOEVER HEARS THE PRESS IS THE ONLY ONE WHO CAN DRAW IT.
   ///
