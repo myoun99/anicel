@@ -200,16 +200,21 @@ void main() {
       expect(s.currentRow, lane);
     });
 
-    test('a lane stood on in the storyboard is not the row the timeline '
-        'comes back to — nor its drawing target', () {
+    test('a lane stood on in the storyboard stays the storyboard\'s — the '
+        'timeline comes back to its LAYER', () {
       final s = session();
       const lane = LaneRowAddress(seId, 'position');
       s.standOnRow(lane, panel: WorkingPanel.storyboard);
       expect(s.currentRow, lane);
-      expect(s.activeLayerId, celA, reason: '유저 2026-07-27');
+      expect(
+        s.activeLayerId,
+        seId,
+        reason: '↩️F-187 (was 유저 2026-07-27): 「se행에 선다 … 타임라인패널에 '
+            '반영」',
+      );
 
       s.claimTimelineRow();
-      expect(s.currentRow, const LayerRowAddress(celA));
+      expect(s.currentRow, const LayerRowAddress(seId));
       s.claimStoryboardRow();
       expect(s.currentRow, lane);
     });
@@ -269,7 +274,7 @@ void main() {
     });
 
     test('dragging an S row\'s lane on the storyboard picks the rail\'s row, '
-        'not the drawing target', () {
+        'and the timeline stands there too', () {
       final s = session();
       s.updateLaneRangeSelectionDrag(
         layerId: seId,
@@ -279,7 +284,7 @@ void main() {
         spanLaneIds: const ['position'],
         panel: WorkingPanel.storyboard,
       );
-      expect(s.activeLayerId, celA, reason: '유저 2026-07-27');
+      expect(s.activeLayerId, seId, reason: '↩️F-187 (was 유저 2026-07-27)');
       expect(s.selectedRow, const LayerRowAddress(seId));
       expect(s.workingPanel, WorkingPanel.storyboard);
     });
@@ -390,6 +395,7 @@ void main() {
         const LaneRowAddress(seId, 'position'),
         panel: WorkingPanel.storyboard,
       );
+      final seated = s.activeLayerId;
       s.handOffCurrentRowOnFold(seId, panel: WorkingPanel.storyboard);
       expect(
         s.currentRow,
@@ -398,7 +404,12 @@ void main() {
             'flip still walked the lane a frame at a time',
       );
       expect(s.workingPanel, WorkingPanel.storyboard);
-      expect(s.activeLayerId, celA, reason: '유저 2026-07-27');
+      expect(
+        s.activeLayerId,
+        seated,
+        reason: 'the fold is the storyboard\'s hand-off — the layer you draw '
+            'on stays where the stand seated it (F-187)',
+      );
     });
 
     test('a V track\'s lanes folding hand the storyboard the TRACK row — '
@@ -440,11 +451,15 @@ void main() {
     test('the timeline\'s fold leaves the storyboard\'s lane, and the '
         'storyboard\'s leaves the timeline\'s', () {
       final s = session();
-      s.standOnRow(const LaneRowAddress(celA, 'opacity'));
+      // ↩️F-187: a storyboard stand seats the timeline too, so the timeline's
+      // lane is stood on AFTER it — a timeline pick leaves the storyboard's
+      // row alone (2026-07-27) — and the storyboard is touched again.
       s.standOnRow(
         const LaneRowAddress(seId, 'position'),
         panel: WorkingPanel.storyboard,
       );
+      s.standOnRow(const LaneRowAddress(celA, 'opacity'));
+      s.claimStoryboardRow();
 
       s.handOffCurrentRowOnFold(seId);
       expect(

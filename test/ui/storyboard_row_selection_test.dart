@@ -101,6 +101,9 @@ void main() {
 
     test('NEITHER kind moves the drawing target: the rail\'s row and the '
         "CUT's row are separate selections", () {
+      // ↩️The STORE's pick. Since F-187 the stands that pick through it — the
+      // verb, a cell's press — seat the timeline afterwards
+      // (where_the_storyboard_stands_the_timeline_stands_test.dart).
       final session = sessionFor(projectWithTwoCuts());
       final drawingLayerId = session.activeLayerId;
 

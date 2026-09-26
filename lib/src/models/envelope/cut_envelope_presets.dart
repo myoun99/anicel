@@ -1,3 +1,5 @@
+import '../layer_mark.dart';
+import '../layer_process.dart';
 import 'cut_envelope_form.dart';
 
 /// The bundled cut-envelope forms.
@@ -69,25 +71,24 @@ EnvelopeRule _aRule(double x1, double y1, double x2, double y2) => EnvelopeRule(
 );
 
 /// The four approval boxes: a printed label above, a stamp space below.
+///
+/// ⛔The stamp space binds nothing: a 도장 or a check is made per cut on
+/// the envelope itself (유저 09-25: 「도장이나 체크나 이런거는 그냥 전처럼
+/// 컷봉투 내에서 조작」), not carried by the work's staff.
 List<EnvelopeBox> _approval(
   double x,
   double width,
   String label,
-  String role,
+  String id,
 ) => [
   EnvelopeBox(
-    id: 'approval-$role-label',
+    id: 'approval-$id-label',
     rect: _a(x, 12, width, 22),
     label: label,
     labelSize: 10,
     takesInk: false,
   ),
-  EnvelopeBox(
-    id: 'approval-$role',
-    rect: _a(x, 34, width, 46),
-    contentKind: EnvelopeContentKind.image,
-    binding: '{staff.$role.stamp}',
-  ),
+  EnvelopeBox(id: 'approval-$id', rect: _a(x, 34, width, 46)),
 ];
 
 /// One CUT line: `C` printed at the left, the number beside it, then
@@ -139,14 +140,20 @@ List<EnvelopeBox> _cutLine(int index, double top) {
   ];
 }
 
-/// The 担当 table's columns: x, width, printed head, and the staff role
-/// whose name fills the second row.
-const List<(double, double, String, String?)> _staffColumns = [
-  (28, 42, '原画', 'genga'),
-  (70, 48, '動画', 'douga'),
-  (118, 51, '色指定', 'colorDesign'),
-  (169, 48, 'スキャン', 'scan'),
-  (217, 51, 'トレス・ペイント', 'tracePaint'),
+/// The 担当 table's columns: the name box's id, x, width, the printed
+/// head, and the colour label whose worker fills the second row.
+///
+/// A null label is a role the colour labels do not have — the pen writes
+/// it (유저 답 envelope-roles-without-label: 「빈칸으로 두고 손으로 쓴다」).
+///
+/// ⚠️The id is its own field: the ink plane keys on it, so it must not
+/// move when the binding does.
+const List<(String, double, double, String, LayerMark?)> _staffColumns = [
+  ('genga', 28, 42, '原画', LayerMark(process: LayerProcess.key)),
+  ('douga', 70, 48, '動画', LayerMark(process: LayerProcess.inbetween)),
+  ('colorDesign', 118, 51, '色指定', null),
+  ('scan', 169, 48, 'スキャン', null),
+  ('tracePaint', 217, 51, 'トレス・ペイント', null),
 ];
 
 /// Cel rows: eight printed rows, the count the real sheet has room for.
@@ -210,7 +217,7 @@ List<EnvelopeBox> _analogBoxes() => [
     labelSize: 9,
   ),
 
-  for (final (x, width, head, role) in _staffColumns) ...[
+  for (final (id, x, width, head, worker) in _staffColumns) ...[
     EnvelopeBox(
       id: 'staff-head-$head',
       rect: _a(x, 290, width, 16),
@@ -219,12 +226,12 @@ List<EnvelopeBox> _analogBoxes() => [
       takesInk: false,
     ),
     EnvelopeBox(
-      id: 'staff-name-${role ?? head}',
+      id: 'staff-name-$id',
       rect: _a(x, 306, width, 22),
-      contentKind: role == null
+      contentKind: worker == null
           ? EnvelopeContentKind.blank
           : EnvelopeContentKind.text,
-      binding: role == null ? null : '{staff.$role.name}',
+      binding: worker == null ? null : '{staff.${worker.keySlug}.name}',
       contentSize: 10,
     ),
     for (var row = 0; row < _celRowCount; row += 1)
@@ -379,18 +386,13 @@ List<EnvelopeBox> _digitalBoxes() => [
     prefix: 'lo',
     left: 82,
     top: 82,
-    columns: [
-      ('演出', 'director'),
-      ('監督', 'chiefDirector'),
-      ('作画監督', 'animationDirector'),
-      ('総作画監督', 'chiefAnimationDirector'),
-    ],
+    heads: ['演出', '監督', '作画監督', '総作画監督'],
   ),
   ..._digitalCheck(
     prefix: 'genga',
     left: 82,
     top: 270,
-    columns: [('演出', 'director'), ('作画監督', 'animationDirector')],
+    heads: ['演出', '作画監督'],
   ),
 
   const EnvelopeBox(
@@ -406,11 +408,14 @@ List<EnvelopeBox> _digitalBoxes() => [
 
 /// One check grid: a head row of roles, a stamp row, and the four
 /// correction rows whose labels print OUTSIDE the table.
+///
+/// ⛔The stamp row binds nothing — the same law as the paper 봉투's
+/// approval boxes ([_approval]).
 List<EnvelopeBox> _digitalCheck({
   required String prefix,
   required double left,
   required double top,
-  required List<(String, String)> columns,
+  required List<String> heads,
 }) {
   const double columnWidth = 60;
   const double headHeight = 10;
@@ -418,11 +423,11 @@ List<EnvelopeBox> _digitalCheck({
   const double rowHeight = 21;
   const corrections = <String>['シート修正', 'セル修正', '原図修正', 'frame修正'];
   return [
-    for (var index = 0; index < columns.length; index += 1) ...[
+    for (var index = 0; index < heads.length; index += 1) ...[
       EnvelopeBox(
         id: '$prefix-head-$index',
         rect: _d(left + index * columnWidth, top, columnWidth, headHeight),
-        label: columns[index].$1,
+        label: heads[index],
         labelSize: 9.5,
         takesInk: false,
       ),
@@ -437,8 +442,6 @@ List<EnvelopeBox> _digitalCheck({
         label: 'UP日    /',
         labelSize: 8,
         labelAlign: EnvelopeAlign.left,
-        contentKind: EnvelopeContentKind.image,
-        binding: '{staff.${columns[index].$2}.stamp}',
       ),
       for (var row = 0; row < corrections.length; row += 1)
         EnvelopeBox(

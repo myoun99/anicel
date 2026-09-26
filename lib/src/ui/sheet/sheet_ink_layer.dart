@@ -117,12 +117,26 @@ class SheetInkWindow extends SheetWindow {
     required super.key,
     required this.placement,
     super.plane,
+    this.refusal,
   });
 
   /// The window of an ink mark a sheet's walk yields — the walk the sheet's
   /// printers read too, so the brush writes where the paper shows.
-  SheetInkWindow.of(SheetInk ink, {required String id, Object? plane})
-    : this(id: id, key: ink.key, placement: ink.placement, plane: plane);
+  SheetInkWindow.of(
+    SheetInk ink, {
+    required String id,
+    Object? plane,
+    String? refusal,
+  }) : this(
+         id: id,
+         key: ink.key,
+         placement: ink.placement,
+         plane: plane,
+         refusal: refusal,
+       );
+
+  @override
+  final String? refusal;
 
   /// Where this window shows its surface — the one mapping between ink
   /// pixels and the paper the printers lay the ink back by.
@@ -157,8 +171,9 @@ class SheetInkWindow extends SheetWindow {
       _outlineShape([for (final point in paper) placement.pixelOf(point)]);
 
   @override
-  CanvasSelectionRegion get shows =>
-      CanvasSelectionRegion.shape(_surfaceShape(surfaceRect));
+  CanvasSelectionRegion? get shows => refusal != null
+      ? null
+      : CanvasSelectionRegion.shape(_surfaceShape(surfaceRect));
 
   /// This window as the mark a printer lays its ink by.
   SheetInk get mark =>

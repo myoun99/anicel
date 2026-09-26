@@ -119,7 +119,10 @@ void main() {
 
     // And the tail flag only ever comes from HID.
     expect(PenSidecars.freshInverted(), isFalse);
-    raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 2));
+    // The native side takes the next report; no tick runs before the ask,
+    // so only reading at the ask can see it (H43: the timer's copy of a
+    // pen's down was the pen still hovering).
+    raw.debugPollOverride = () => const QaPenRawState(flags: 0x08, sequence: 2);
     expect(PenSidecars.freshInverted(), isTrue);
 
     raw.stop();

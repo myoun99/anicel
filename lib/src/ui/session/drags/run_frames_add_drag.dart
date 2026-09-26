@@ -5,7 +5,7 @@ import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/timeline_repeat.dart';
 import '../../../models/timeline_run_edit.dart';
-import '../../../models/track.dart';
+import '../../../services/editing/run_id_mint.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import 'editor_drag_session.dart';
 
@@ -17,7 +17,6 @@ class RunFramesAddDrag implements EditorDragSession {
     required Layer before,
     required int blockStartIndex,
     required bool atEnd,
-    required List<Track> Function() tracksNow,
     required int Function() activeCutFrameCount,
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function({required Layer before, required Layer after})
@@ -25,7 +24,6 @@ class RunFramesAddDrag implements EditorDragSession {
   }) : _before = before,
        _blockStart = blockStartIndex,
        _atEnd = atEnd,
-       _tracksNow = tracksNow,
        _activeCutFrameCount = activeCutFrameCount,
        _preview = preview,
        _commitLayerDrag = commitLayerDrag;
@@ -38,7 +36,6 @@ class RunFramesAddDrag implements EditorDragSession {
     required bool atEnd,
     required bool Function(LayerId) blockMoveEligible,
     required Layer? Function(LayerId) layerById,
-    required List<Track> Function() tracksNow,
     required int Function() activeCutFrameCount,
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function({required Layer before, required Layer after})
@@ -55,7 +52,6 @@ class RunFramesAddDrag implements EditorDragSession {
       before: layer,
       blockStartIndex: blockStartIndex,
       atEnd: atEnd,
-      tracksNow: tracksNow,
       activeCutFrameCount: activeCutFrameCount,
       preview: preview,
       commitLayerDrag: commitLayerDrag,
@@ -74,10 +70,6 @@ class RunFramesAddDrag implements EditorDragSession {
   /// with the object.
   final List<FrameId> _reservedIds = [];
 
-  /// The CURRENT tracks, read per reservation miss — the walk that keeps a
-  /// reserved id unique against the whole project.
-  final List<Track> Function() _tracksNow;
-
   /// The run-behavior fill boundary (hold/repeat edges fill to the cut
   /// end); read per update.
   final int Function() _activeCutFrameCount;
@@ -89,31 +81,17 @@ class RunFramesAddDrag implements EditorDragSession {
   final void Function({required Layer before, required Layer after})
   _commitLayerDrag;
 
-  /// Reserves project-unique frame ids for the drag, deterministically:
-  /// the same ordinal always resolves the same id, so every preview step
-  /// and the commit agree.
+  /// Reserves the drag's new frame ids, deterministically: the same ordinal
+  /// always resolves the same id, so every preview step and the commit
+  /// agree.
+  ///
+  /// 🚨From the RUN, not the project's first free `frame-N`: a drawing
+  /// undone keeps its picture in the session under its id for the redo, and
+  /// the next drag given that id showed it on a blank cel (card
+  /// `undone-paste-reuses-ids`).
   FrameId _reservedNewFrameId(int ordinal) {
     while (_reservedIds.length <= ordinal) {
-      final used = <String>{for (final id in _reservedIds) id.value};
-      for (final track in _tracksNow()) {
-        for (final layer in track.seLayers) {
-          for (final frame in layer.frames) {
-            used.add(frame.id.value);
-          }
-        }
-        for (final cut in track.cuts) {
-          for (final layer in cut.layers) {
-            for (final frame in layer.frames) {
-              used.add(frame.id.value);
-            }
-          }
-        }
-      }
-      var candidate = 1;
-      while (used.contains('frame-$candidate')) {
-        candidate += 1;
-      }
-      _reservedIds.add(FrameId('frame-$candidate'));
+      _reservedIds.add(mintFrameId(_before.id));
     }
     return _reservedIds[ordinal];
   }

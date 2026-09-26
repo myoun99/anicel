@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -11,6 +12,7 @@ import '../../models/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
+import '../../models/brush_input_source.dart';
 import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';

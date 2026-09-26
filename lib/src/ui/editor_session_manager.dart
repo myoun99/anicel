@@ -19,7 +19,7 @@ import 'session/editor_voice_recording.dart';
 import '../models/app_accents.dart';
 import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
-import '../services/editing/frame_id_mint.dart' as frame_ids;
+import '../services/editing/run_id_mint.dart' as frame_ids;
 import '../services/editing/layer_standing_after_change.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/bitmap_surface.dart';

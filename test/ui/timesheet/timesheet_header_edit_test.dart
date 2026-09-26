@@ -8,6 +8,8 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
@@ -25,19 +27,20 @@ TimesheetDocument _document({String note = ''}) {
     ),
     projectName: 'Project',
     fps: 24,
-    info: const TimesheetInfo(artist: 'MYOUN'),
+    info: const TimesheetInfo(
+      title: 'YOASOBI',
+      episode: 'MV',
+    ).withStaffName(const LayerMark(process: LayerProcess.key), '大川'),
   );
 }
 
 const _editorKey = ValueKey<String>('timesheet-header-edit-field');
 
 void main() {
-  late List<(TimesheetHeaderField, String)> committedFields;
   late List<String> committedMemos;
   late Offset layerOrigin;
 
   Future<void> pumpLayer(WidgetTester tester, {String note = ''}) async {
-    committedFields = [];
     committedMemos = [];
     final layout = TimesheetDocumentLayout(document: _document(note: note));
     final documentSize = layout.documentSize;
@@ -58,8 +61,6 @@ void main() {
               child: TimesheetHeaderEditLayer(
                 layout: layout,
                 viewport: CanvasViewport(),
-                onHeaderFieldCommitted: (field, text) =>
-                    committedFields.add((field, text)),
                 onMemoCommitted: committedMemos.add,
               ),
             ),
@@ -71,54 +72,6 @@ void main() {
   }
 
   group('TimesheetHeaderEditLayer', () {
-    testWidgets('tapping the TITLE box opens an in-place editor preloaded '
-        'with the printed value; submit commits the change', (tester) async {
-      await pumpLayer(tester);
-
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timesheet-header-edit-title-p0')),
-      );
-      await tester.pumpAndSettle();
-
-      final editor = tester.widget<TextField>(find.byKey(_editorKey));
-      expect(editor.controller!.text, 'Project');
-
-      await tester.enterText(find.byKey(_editorKey), 'YOASOBI');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
-
-      expect(committedFields, [(TimesheetHeaderField.title, 'YOASOBI')]);
-      expect(find.byKey(_editorKey), findsNothing);
-    });
-
-    testWidgets('submitting unchanged text commits nothing', (tester) async {
-      await pumpLayer(tester);
-
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timesheet-header-edit-name-p0')),
-      );
-      await tester.pumpAndSettle();
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
-
-      expect(committedFields, isEmpty);
-    });
-
-    testWidgets('escape cancels the edit without committing', (tester) async {
-      await pumpLayer(tester);
-
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timesheet-header-edit-scene-p0')),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(_editorKey), 'S99');
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
-
-      expect(committedFields, isEmpty);
-      expect(find.byKey(_editorKey), findsNothing);
-    });
-
     testWidgets('tapping the memo band edits the cut note; tapping away '
         'commits it', (tester) async {
       await pumpLayer(tester, note: 'カットO.L');
@@ -140,46 +93,63 @@ void main() {
       expect(find.byKey(_editorKey), findsNothing);
     });
 
-    testWidgets('derived boxes (CUT/TIME/SHEET) take no tap zones', (
-      tester,
-    ) async {
-      await pumpLayer(tester);
+    testWidgets('submitting unchanged text commits nothing', (tester) async {
+      await pumpLayer(tester, note: 'カットO.L');
 
-      for (final field in ['cut', 'time', 'sheet']) {
-        expect(
-          find.byKey(ValueKey<String>('timesheet-header-edit-$field-p0')),
-          findsNothing,
-        );
-      }
-    });
-
-    testWidgets('each typed box opens on the text the sheet PRINTS there', (
-      tester,
-    ) async {
-      await pumpLayer(tester);
-      final document = _document();
-      final printed = TimesheetDocumentPainter(
-        words: timesheetWordsIn(AppLanguage.en),
-        document: document,
-        layout: TimesheetDocumentLayout(document: document),
-        face: const TextStyle(),
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-memo-edit-p0')),
       );
+      await tester.pumpAndSettle();
+      await tester.tapAt(layerOrigin + const Offset(5, 5));
+      await tester.pumpAndSettle();
 
-      for (final (field, text) in [
-        (TimesheetHeaderField.title, 'Project'),
-        (TimesheetHeaderField.name, 'MYOUN'),
-      ]) {
-        expect(printed.headerValueFor(field, 0), text);
-        final box = 'timesheet-header-edit-${field.name}-p0';
-        await tester.tap(find.byKey(ValueKey<String>(box)));
-        await tester.pumpAndSettle();
+      expect(committedMemos, isEmpty);
+    });
+
+    testWidgets('escape cancels the edit without committing', (tester) async {
+      await pumpLayer(tester);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-memo-edit-p0')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(_editorKey), 'PAN');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(committedMemos, isEmpty);
+      expect(find.byKey(_editorKey), findsNothing);
+    });
+
+    testWidgets('⛔no header box takes a tap — the header is printed, not '
+        'edited', (tester) async {
+      // 유저 09-25: 「작품명/화수는 이제 타임시트패널같은곳에서 편집안하게.
+      // 작업자든 뭐든. 해당 설정은 프로젝트 설정쪽에」.
+      await pumpLayer(tester);
+
+      for (final field in TimesheetHeaderField.values) {
         expect(
-          tester.widget<TextField>(find.byKey(_editorKey)).controller!.text,
-          text,
+          find.byKey(ValueKey<String>('timesheet-header-edit-${field.name}-p0')),
+          findsNothing,
+          reason: field.name,
         );
-        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-        await tester.pumpAndSettle();
       }
     });
+  });
+
+  test('the header prints the work\'s title and episode, the 원화 worker '
+      'as its 作業者, and leaves the scene to the pen', () {
+    final document = _document();
+    final printed = TimesheetDocumentPainter(
+      words: timesheetWordsIn(AppLanguage.en),
+      document: document,
+      layout: TimesheetDocumentLayout(document: document),
+      face: const TextStyle(),
+    );
+
+    expect(printed.headerValueFor(TimesheetHeaderField.title, 0), 'YOASOBI');
+    expect(printed.headerValueFor(TimesheetHeaderField.episode, 0), 'MV');
+    expect(printed.headerValueFor(TimesheetHeaderField.name, 0), '大川');
+    expect(printed.headerValueFor(TimesheetHeaderField.scene, 0), '');
   });
 }

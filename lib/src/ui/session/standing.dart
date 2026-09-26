@@ -16,6 +16,7 @@ import '../timeline/layer_timeline_display_adapter.dart'
 import '../timeline/property_lane_model.dart'
     show LayerRowHiddenBy, layerRowHiddenBy;
 import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
+import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../timeline/timeline_section_policy.dart'
     show timelineSectionForLayerKind;
 import 'playback_rig.dart';
@@ -108,6 +109,10 @@ class Standing {
   /// overriding the read put the ring on the wrong row. The two writers say
   /// it instead, each where it moved the layer.
   ///
+  /// ↩️F-187 (09-26): a stand made in the storyboard seats the timeline too
+  /// now ([_seatTimelineOnStoryboardStand]) — the two still differ wherever
+  /// the cut does not show the rail's row, and the reason above holds there.
+  ///
   /// ↩️F-183 ③ (09-26): two writers were not all of them — the attach door,
   /// the duplicate, the paste and a cross-row drag's landing moved the layer
   /// too and said nothing. [followActiveLayer] now says it for every writer,
@@ -156,7 +161,9 @@ class Standing {
   /// storyboard): it acts only when the active layer MOVED, and leaves a row
   /// that is already one of the active layer's own — its lanes — where it
   /// is. The storyboard rail stands without moving the active layer, so it
-  /// never reaches here.
+  /// never reaches here. ↩️F-187: its doors do move it now, through
+  /// [_seatLayer], which seats the timeline's row in the same step — so this
+  /// finds the row already there.
   void followActiveLayer() {
     final active = _selection.activeLayerId;
     if (active == _activeSeen) {
@@ -259,6 +266,9 @@ class Standing {
   ///
   /// Picking a row here therefore never moves the drawing target — not for
   /// a V row (a track has no layer to select) and not for an S row.
+  /// ↩️F-187 (09-26): the storyboard's stands seat the timeline once they
+  /// land ([_seatTimelineOnStoryboardStand]); this row is still its own
+  /// store, and picking it ([selectRow]) is still not seating anything.
   ///
   /// A stored row that the rail no longer shows (its track's SE slot went
   /// away) falls back to the track row rather than lighting nothing.
@@ -442,10 +452,12 @@ class Standing {
   /// one of the two frames is passed.
   /// [panel] is the panel the row is stood on IN. On the STORYBOARD's rails
   /// the row you stand on and the layer you draw on are separate states (유저
-  /// 2026-07-27). It is a parameter rather than a second verb because the
-  /// clearing law is the same on both panels — only whose row it is differs,
-  /// and stating that difference once here beats restating the law at each
-  /// call site, which is the mistake T4 was.
+  /// 2026-07-27) — ↩️as STATE; once the stand and its frame have landed,
+  /// this verb seats the timeline there too (F-187,
+  /// [_seatTimelineOnStoryboardStand]). It is a parameter rather than a
+  /// second verb because the clearing law is the same on both panels — only
+  /// whose row it is differs, and stating that difference once here beats
+  /// restating the law at each call site, which is the mistake T4 was.
   /// ↩️It was a flag, `takesLayerActive`, and a flag could say only half of
   /// it: a LANE stood on in either panel went through one shared lane arm,
   /// which wrote both panels' rows at once. The panel says the whole of it.
@@ -455,6 +467,7 @@ class Standing {
     int? frameIndex,
     int? globalFrameIndex,
   }) {
+    final before = _selection.activeLayerId;
     // 🚨T10. T4's law is untouched by this: the clearing still lives INSIDE
     // the verb rather than at its call sites — scattering it was T4's whole
     // bug. What changed is that the verb now asks a question first.
@@ -482,24 +495,32 @@ class Standing {
       // 선택 해제 — and the artwork's selection is a tool still in hand.
       _selection.clearTimelineSelections();
     }
+    var onTheStoryboard = false;
     switch (row) {
       case LayerRowAddress(:final layerId) when panel == WorkingPanel.timeline:
         selectLayer(layerId);
       case LaneRowAddress() when panel == WorkingPanel.timeline:
         _standOnTimelineLane(row);
       case LayerRowAddress() || LaneRowAddress():
-        // The storyboard's rails: the rail's row, never the drawing target.
+        // The storyboard's rails: the rail's row — and the timeline's seat,
+        // once the frame has landed (below).
         selectRow(row);
+        onTheStoryboard = true;
       case TrackRowAddress():
         // A track row has no layer to make active, and it is the storyboard's
-        // row whichever surface names it.
+        // row whichever surface names it. ↩️Standing on it is standing on
+        // the CUT, which seats one (F-187, below).
         selectRow(row);
+        onTheStoryboard = true;
     }
     if (frameIndex != null) {
       _selection.selectFrameIndex(frameIndex);
     }
     if (globalFrameIndex != null) {
       _selection.selectGlobalFrame(globalFrameIndex);
+    }
+    if (onTheStoryboard) {
+      _seatTimelineOnStoryboardStand(before: before);
     }
   }
 
@@ -654,6 +675,69 @@ class Standing {
       case TrackRowAddress():
         break;
     }
+  }
+
+  /// The one door that stands on the storyboard WITHOUT [standOnRow] — the
+  /// cells' press, which picks with [selectRow] and seeks the playback-aware
+  /// way — runs its [stand] through here, so the timeline is seated after it
+  /// the way the verb seats it ([_seatTimelineOnStoryboardStand]).
+  void standInStoryboard(void Function() stand) {
+    final before = _selection.activeLayerId;
+    stand();
+    _seatTimelineOnStoryboardStand(before: before);
+  }
+
+  /// 🗣️F-187 (유저 2026-09-26): 「se행에 선다던가 컷에 선다던가. 다 로컬인
+  /// 타임라인패널에 반영? 통일되도록. 컷에서면 콘티레이어가 있다면 콘티레이어에
+  /// 서도록」 · 「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥
+  /// 그대로둠. 아무것도 안하고」 — a stand made in the storyboard is the
+  /// timeline's too: a label's, a lane's, the ↑/↓ walk ([standOnRow]) and a
+  /// cell's press ([standInStoryboard]).
+  ///
+  /// ↩️For those it reverses 2026-07-27's 「the row you stand on and the
+  /// layer you draw on are separate states here」. What stays separate is
+  /// the STORE: [selectedRow] is still which rail row is lit, and a timeline
+  /// pick still leaves it alone. The seat is the program's ([_seatLayer]) —
+  /// the drawing target and the timeline's row move, and the panel being
+  /// worked in stays the storyboard.
+  ///
+  /// Asked ONCE, after the stand and its frame have landed, against
+  /// [before] — the layer the stand found: an S row (or one of its lanes)
+  /// the cut shows seats its layer; the V row is standing on the CUT
+  /// ([layerACutStandSeats]). A row the cut does not show — a gap has no
+  /// cut, a V lane's carrier is no layer — seats nothing.
+  ///
+  /// ⚠️A flip, a ruler seek and playback cross cuts the way they always have
+  /// — whether they follow too is the user's to say
+  /// (storyboard-flip-crosses-cut).
+  void _seatTimelineOnStoryboardStand({required LayerId? before}) {
+    final seat = switch (storyboardStandingRow) {
+      LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
+          when _internals.activeCutHasLayer(layerId) =>
+        layerId,
+      TrackRowAddress() => layerACutStandSeats(before: before),
+      _ => null,
+    };
+    if (seat != null) {
+      _seatLayer(seat);
+    }
+  }
+
+  /// The layer standing on the active CUT seats (F-187): its conte row when
+  /// it has one ([storyboardLayerForCut]); else [before] — the layer you
+  /// stood on — when the cut shows it (a track's S row does, in every cut);
+  /// else null, and nothing is done: the cut's own landing ([selectCut]'s
+  /// memory) stands.
+  ///
+  /// ★One answer for every door that stands on a cut — the storyboard's V
+  /// row and the conte preview's cells.
+  LayerId? layerACutStandSeats({required LayerId? before}) {
+    final cut = _project.activeCutOrNull;
+    final conte = cut == null ? null : storyboardLayerForCut(cut);
+    if (conte != null) {
+      return conte.id;
+    }
+    return _internals.activeCutHasLayer(before) ? before : null;
   }
 
   /// Selects a row of the storyboard's rail by ADDRESS — the rail taps and

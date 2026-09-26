@@ -108,7 +108,7 @@ void main() {
       return drained;
     };
 
-    expect(service.freshContactPressure(), isNull, reason: 'not running yet');
+    expect(service.freshPacket(), isNull, reason: 'not running yet');
 
     service.start();
     queue = const [
@@ -130,18 +130,56 @@ void main() {
     // One poll tick delivers; the newest packet wins.
     await Future<void>.delayed(WintabPenService.pollInterval * 3);
     expect(service.latest.value?.pressure, 0.62);
-    expect(service.freshContactPressure(), 0.62);
+    expect(service.freshPacket()?.pressure, 0.62);
 
     // Beyond the fresh window the override stands down — built off the
     // frozen base the packet was delivered at.
     final stale = DateTime(
       2024,
     ).add(WintabPenService.freshWindow + const Duration(milliseconds: 1));
-    expect(service.freshContactPressure(now: stale), isNull);
+    expect(service.freshPacket(now: stale), isNull);
 
     service.stop();
     expect(service.latest.value, isNull);
-    expect(service.freshContactPressure(), isNull);
+    expect(service.freshPacket(), isNull);
+  });
+
+  test('asking takes what the driver has queued, not what the timer last '
+      'took (H43)', () {
+    // The poll timer can be a whole interval behind the pen. At the down,
+    // the packet it last took was the pen still HOVERING — and the stroke's
+    // first dab was stamped with that while the contact packet sat queued.
+    final service = WintabPenService.instance;
+    WintabPenService.debugClockOverride = () => DateTime(2024);
+    var queue = <QaTabletPacket>[];
+    service.debugPollOverride = () {
+      final drained = queue;
+      queue = [];
+      return drained;
+    };
+    service.start();
+    service.debugInjectPacket(
+      const QaTabletPacket(
+        pressure: 0,
+        tiltAzimuthDegrees: 0,
+        altitude: 1,
+        timeMs: 1000,
+        buttons: 0,
+      ),
+    );
+    queue = const [
+      QaTabletPacket(
+        pressure: 0.45,
+        tiltAzimuthDegrees: 0,
+        altitude: 1,
+        timeMs: 1006,
+        buttons: 1,
+      ),
+    ];
+
+    // No poll tick has run in between: only the ask can have taken it.
+    expect(service.freshPacket()?.pressure, 0.45);
+    expect(queue, isEmpty);
   });
 
   test('the dead-path guard demotes when packets flow but nothing reaches '

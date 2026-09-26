@@ -5,6 +5,8 @@ import 'frame.dart'
 import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
+import 'layer_mark.dart';
+import 'layer_process.dart';
 import 'project_frame_rate.dart' show secondsPlusFramesLabel;
 import 'sheet_sources.dart';
 import 'timeline_exposure.dart';
@@ -12,6 +14,11 @@ import 'timeline_repeat.dart';
 import 'timesheet_info.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
+
+/// The colour label whose worker a sheet's 作業者 box names — 원화. 유저
+/// 09-25: 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든 스태프의 원화
+/// 이름 인식하게하고」.
+const LayerMark sheetArtistMark = LayerMark(process: LayerProcess.key);
 
 /// How many paper pages [drawnFrameCount] rows fill at [pageFrameCount]
 /// rows a page — always at least one, and capped so junk data cannot ask
@@ -228,7 +235,6 @@ class TimesheetDocument {
   TimesheetDocument._({
     required this.title,
     required this.episode,
-    required this.scene,
     required this.artist,
     required this.memoText,
     required this.visibleHeaderFields,
@@ -379,8 +385,7 @@ class TimesheetDocument {
     return TimesheetDocument._(
       title: info.title.isEmpty ? projectName : info.title,
       episode: info.episode,
-      scene: info.scene,
-      artist: info.artist,
+      artist: info.staffNameFor(sheetArtistMark),
       memoText: cut.metadata.note,
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
@@ -483,28 +488,12 @@ class TimesheetDocument {
     );
   }
 
-  /// Sheet-header text: production title (project name unless overridden),
-  /// episode label, scene label and artist name from [TimesheetInfo].
+  /// Sheet-header text: the work's title (the project's name while it has
+  /// none) and episode from [TimesheetInfo], and the sheet's 作業者 — the
+  /// cut's 원화 worker ([sheetArtistMark]).
   final String title;
   final String episode;
-  final String scene;
   final String artist;
-
-  /// What a TYPED header box prints — the boxes whose text lives on
-  /// [TimesheetInfo], which a tap edits — or null for the boxes the sheet
-  /// works out (the cut, its length, the page).
-  ///
-  /// ⛔The printer and the in-place editor both read this: two lookups of
-  /// one box are how an editor opens on text the sheet does not print.
-  String? typedHeaderValue(TimesheetHeaderField field) => switch (field) {
-    TimesheetHeaderField.episode => episode,
-    TimesheetHeaderField.title => title,
-    TimesheetHeaderField.scene => scene,
-    TimesheetHeaderField.name => artist,
-    TimesheetHeaderField.cut ||
-    TimesheetHeaderField.time ||
-    TimesheetHeaderField.sheet => null,
-  };
 
   /// The cut's Direction memo (the cut note) printed in the memo band —
   /// per-cut data, editable in place on the sheet. Instruction shorthand

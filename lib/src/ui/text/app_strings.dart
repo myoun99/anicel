@@ -621,12 +621,10 @@ enum AppStrings {
   String get sheetFieldTime => _s('sheetFieldTime');
   String get sheetFieldName => _s('sheetFieldName');
   String get sheetFieldSheet => _s('sheetFieldSheet');
-  String get sheetTitleHint => _s('sheetTitleHint');
-  String get sheetArtist => _s('sheetArtist');
-  String get sheetStaffByProcess => _s('sheetStaffByProcess');
+  String get workSettingsTitle => _s('workSettingsTitle');
+  String get workSettingsStaff => _s('workSettingsStaff');
+  String get staffWorker => _s('staffWorker');
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
-  String get sheetStampPick => _s('sheetStampPick');
-  String get sheetStampClear => _s('sheetStampClear');
   String get sheetNotation => _s('sheetNotation');
   String get sheetExposureBar => _s('sheetExposureBar');
   String get sheetExposureBarHelp => _s('sheetExposureBarHelp');
@@ -2049,12 +2047,10 @@ enum AppStrings {
     'sheetFieldTime': 'Time',
     'sheetFieldName': 'Name',
     'sheetFieldSheet': 'Sheet',
-    'sheetTitleHint': 'Project name when empty',
-    'sheetArtist': 'Artist',
-    'sheetStaffByProcess': 'Staff by process',
+    'workSettingsTitle': 'Work settings',
+    'workSettingsStaff': 'Staff',
+    'staffWorker': 'Artist',
     'sheetVisibleBoxes': 'Visible boxes',
-    'sheetStampPick': 'Choose stamp',
-    'sheetStampClear': 'Remove stamp',
     'sheetNotation': 'Notation',
     'sheetExposureBar': 'Exposure hold bar',
     'sheetExposureBarHelp':
@@ -2954,6 +2950,7 @@ enum AppStrings {
     'menuAction.edit-toggle-mark': 'マークの切り替え',
     'menuAction.edit-keyboard-shortcuts': 'キーボードショートカット…',
     'menuAction.edit-preferences': '環境設定…',
+    'menuAction.work-settings': '作品設定…',
     'menuAction.cut-new': 'カットを新規作成',
     'menuAction.cut-duplicate': 'カットを複製',
     'menuAction.cut-create-linked': 'リンクカットを作成',
@@ -3160,12 +3157,10 @@ enum AppStrings {
     'sheetFieldTime': 'タイム',
     'sheetFieldName': '作画者',
     'sheetFieldSheet': 'シート',
-    'sheetTitleHint': '空欄ならプロジェクト名',
-    'sheetArtist': '作画者',
-    'sheetStaffByProcess': '工程ごとの担当',
+    'workSettingsTitle': '作品設定',
+    'workSettingsStaff': 'スタッフ設定',
+    'staffWorker': '作業者',
     'sheetVisibleBoxes': '表示する枠',
-    'sheetStampPick': 'ハンコを選ぶ',
-    'sheetStampClear': 'ハンコを外す',
     'sheetNotation': '表記',
     'sheetExposureBar': '止めの引き伸ばし線',
     'sheetExposureBarHelp': 'N コマ以上の止めで (N+1) コマ目から線を引く',
@@ -4286,6 +4281,7 @@ enum AppStrings {
     'menuAction.edit-toggle-mark': '마크 켜기/끄기',
     'menuAction.edit-keyboard-shortcuts': '키보드 단축키…',
     'menuAction.edit-preferences': '환경설정…',
+    'menuAction.work-settings': '작품 설정…',
     'menuAction.cut-new': '새 컷',
     'menuAction.cut-duplicate': '컷 복제',
     'menuAction.cut-create-linked': '링크 컷 만들기',
@@ -4490,12 +4486,10 @@ enum AppStrings {
     'sheetFieldTime': '타임',
     'sheetFieldName': '작화자',
     'sheetFieldSheet': '시트',
-    'sheetTitleHint': '비우면 프로젝트 이름',
-    'sheetArtist': '작화자',
-    'sheetStaffByProcess': '공정별 담당자',
+    'workSettingsTitle': '작품 설정',
+    'workSettingsStaff': '스태프 설정',
+    'staffWorker': '작업자',
     'sheetVisibleBoxes': '표시할 칸',
-    'sheetStampPick': '도장 고르기',
-    'sheetStampClear': '도장 지우기',
     'sheetNotation': '표기',
     'sheetExposureBar': '止め 늘림 선',
     'sheetExposureBarHelp': 'N코마 이상 止め에서 (N+1)번째 코마부터 선을 긋기',
@@ -5618,6 +5612,7 @@ enum AppStrings {
     'menuAction.edit-toggle-mark': 'Basculer le repère',
     'menuAction.edit-keyboard-shortcuts': 'Raccourcis clavier…',
     'menuAction.edit-preferences': 'Préférences…',
+    'menuAction.work-settings': 'Réglages de l’œuvre…',
     'menuAction.cut-new': 'Nouveau plan',
     'menuAction.cut-duplicate': 'Dupliquer le plan',
     'menuAction.cut-create-linked': 'Créer un plan lié',
@@ -5848,12 +5843,10 @@ enum AppStrings {
     'sheetFieldTime': 'Durée',
     'sheetFieldName': 'Animateur',
     'sheetFieldSheet': 'Feuille',
-    'sheetTitleHint': 'Nom du projet si vide',
-    'sheetArtist': 'Animateur',
-    'sheetStaffByProcess': 'Équipe par étape',
+    'workSettingsTitle': 'Réglages de l’œuvre',
+    'workSettingsStaff': 'Équipe',
+    'staffWorker': 'Artiste',
     'sheetVisibleBoxes': 'Cases visibles',
-    'sheetStampPick': 'Choisir le tampon',
-    'sheetStampClear': 'Retirer le tampon',
     'sheetNotation': 'Notation',
     'sheetExposureBar': 'Trait de maintien',
     'sheetExposureBarHelp':
@@ -7001,6 +6994,7 @@ enum AppStrings {
     'menuAction.edit-toggle-mark': '切换标记',
     'menuAction.edit-keyboard-shortcuts': '键盘快捷键…',
     'menuAction.edit-preferences': '偏好设置…',
+    'menuAction.work-settings': '作品设置…',
     'menuAction.cut-new': '新建镜头',
     'menuAction.cut-duplicate': '复制镜头',
     'menuAction.cut-create-linked': '创建链接镜头',
@@ -7186,12 +7180,10 @@ enum AppStrings {
     'sheetFieldTime': '时长',
     'sheetFieldName': '作画',
     'sheetFieldSheet': '表号',
-    'sheetTitleHint': '留空则用项目名',
-    'sheetArtist': '作画',
-    'sheetStaffByProcess': '各工序负责人',
+    'workSettingsTitle': '作品设置',
+    'workSettingsStaff': '人员设置',
+    'staffWorker': '作业者',
     'sheetVisibleBoxes': '显示的栏位',
-    'sheetStampPick': '选择印章',
-    'sheetStampClear': '移除印章',
     'sheetNotation': '标注',
     'sheetExposureBar': '保持延长线',
     'sheetExposureBarHelp': '在 N 格以上的保持中，从第 (N+1) 格开始画线',

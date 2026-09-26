@@ -63,8 +63,8 @@ class _WorkspaceDocumentViews {
 
   final ValueNotifier<bool> _envelopeBrushAllowed = ValueNotifier(false);
 
-  /// The media images the sheets print (the logo, the cover picture, the
-  /// 도장), decoded once each for the conte and the envelope alike.
+  /// The media images the sheets print (the logo, the cover picture),
+  /// decoded once each for the conte and the envelope alike.
   ///
   /// A repaint is all a landed decode needs — the painters listen to it —
   /// but the cache lives HERE because the tabs are rebuilt on every panel

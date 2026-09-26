@@ -283,6 +283,11 @@ class BrushShape {
     BrushInputSource source,
   ) => curves[(target, source)];
 
+  /// Whether [source] drives any setting of this brush — whether a stroke
+  /// needs that input read at all.
+  bool reads(BrushInputSource source) =>
+      curves.keys.any((key) => key.$2 == source);
+
   /// The PRESSURE curve driving [target], if any — the common case, and the
   /// only one that existed before sources were separated.
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>

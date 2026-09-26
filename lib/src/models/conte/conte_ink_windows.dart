@@ -20,7 +20,9 @@ import 'conte_sheet_layout.dart';
 /// A cell's row is its BLOCK's handwriting ([ConteCellSource.inkId]). A
 /// block not yet written on has none to print; the pen still writes there,
 /// under the id [unwrittenInkIdOf] names before it exists — the printers
-/// pass nothing and print no row for it.
+/// pass nothing and print no row for it. So does a cell with no block at
+/// all: its band is the handwriting of the block its first stroke makes
+/// (유저 답 conte-drawing-target-Q3 「그림 칸과 같이 (토글을 따른다)」).
 Iterable<SheetInk> conteInkMarks(
   ContePageLayout page,
   ConteSheetMetrics metrics, {
@@ -40,10 +42,6 @@ Iterable<SheetInk> conteInkMarks(
     Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
   );
   for (final cell in page.cells) {
-    // A cell with no drawing is no block: nothing of it to write on.
-    if (cell.source.frameId == null) {
-      continue;
-    }
     final inkId = cell.source.inkId ?? unwrittenInkIdOf?.call(cell);
     if (inkId == null) {
       continue;

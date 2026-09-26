@@ -1,16 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut.dart';
-import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/models/track.dart';
-import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/session/drags/run_frames_add_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
@@ -36,22 +31,6 @@ void main() {
     kind: LayerKind.image,
   );
 
-  List<Track> tracksHolding(Layer layer) => [
-    Track(
-      id: const TrackId('t'),
-      name: 'V',
-      cuts: [
-        Cut(
-          id: const CutId('c'),
-          name: 'c',
-          layers: [layer],
-          duration: 12,
-          canvasSize: const CanvasSize(width: 100, height: 100),
-        ),
-      ],
-    ),
-  ];
-
   ({
     RunFramesAddDrag? drag,
     ValueNotifier<TimelineDragPreview?> preview,
@@ -74,7 +53,6 @@ void main() {
         atEnd: atEnd,
         blockMoveEligible: (_) => eligible,
         layerById: (_) => before,
-        tracksNow: () => tracksHolding(before),
         activeCutFrameCount: () => 12,
         preview: preview,
         commitLayerDrag: ({required before, required after}) =>

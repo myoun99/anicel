@@ -141,8 +141,12 @@ Future<void> tapStoryboardCutBlock(WidgetTester tester, String cutId) async {
   });
 }
 
-Future<void> createSecondCut(WidgetTester tester) async {
+/// Makes a cut with the new-cut button and answers its id. A new cut's id is
+/// minted for the run (`mintCutId`), so a test names the cut it made, never
+/// a number it expects.
+Future<String> createSecondCut(WidgetTester tester) async {
   await tapCutCommandButton(tester, const ValueKey<String>('new-cut-button'));
+  return (await activeCutIdOf(tester)).value;
 }
 
 Future<void> expectCutName(

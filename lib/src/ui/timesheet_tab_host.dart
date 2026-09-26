@@ -265,18 +265,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           );
   }
 
-  void _commitHeaderField(TimesheetHeaderField field, String text) {
-    final info = widget.session.timesheetInfo;
-    final next = switch (field) {
-      TimesheetHeaderField.title => info.copyWith(title: text),
-      TimesheetHeaderField.episode => info.copyWith(episode: text),
-      TimesheetHeaderField.scene => info.copyWith(scene: text),
-      TimesheetHeaderField.name => info.copyWith(artist: text),
-      _ => info,
-    };
-    widget.session.updateTimesheetInfo(next);
-  }
-
   Future<void> _editSheetInfo() {
     final session = widget.session;
     return askThenCommit<TimesheetInfo>(
@@ -578,7 +566,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               ),
                               layout: layout,
                               viewport: viewport,
-                              onHeaderFieldCommitted: _commitHeaderField,
                               onMemoCommitted:
                                   session.cutVerbs.updateActiveCutNote,
                             ),

@@ -43,7 +43,6 @@ class RunFramesAddDragVerbs {
       atEnd: atEnd,
       blockMoveEligible: _internals.blockMoveEligible,
       layerById: _project.layerById,
-      tracksNow: () => _project.repository.requireProject().tracks,
       activeCutFrameCount: () => _project.activeCutFrameCount,
       preview: _internals.dragPreview,
       commitLayerDrag: ({required before, required after}) {

@@ -65,11 +65,11 @@ void main() {
     )..start();
     PenSidecars.channelServices.add(channel);
 
-    expect(PenSidecars.freshContactPressure(), isNull);
+    expect(PenSidecars.freshReading(), isNull);
 
     controller.add({'pressure': 0.3});
     await Future<void>.delayed(Duration.zero);
-    expect(PenSidecars.freshContactPressure(), 0.3);
+    expect(PenSidecars.freshReading()?.pressure, 0.3);
 
     // A live Wintab stream outranks the channel sidecar.
     final wintab = WintabPenService.instance;
@@ -87,9 +87,56 @@ void main() {
         buttons: 1,
       ),
     );
-    expect(PenSidecars.freshContactPressure(), 0.9);
+    expect(PenSidecars.freshReading()?.pressure, 0.9);
 
     wintab.debugReset();
-    expect(PenSidecars.freshContactPressure(), 0.3);
+    expect(PenSidecars.freshReading()?.pressure, 0.3);
+  });
+
+  test('a reading says whether the pen was touching — the tip bit, or '
+      'pressure above zero where there is no bit to read (H43)', () async {
+    final wintab = WintabPenService.instance;
+    WintabPenService.debugClockOverride = () => DateTime(2024);
+    wintab.debugPollOverride = () => const [];
+    wintab.start();
+    QaTabletPacket packet({required double pressure, required int buttons}) =>
+        QaTabletPacket(
+          pressure: pressure,
+          tiltAzimuthDegrees: 0,
+          altitude: 1,
+          timeMs: 1,
+          buttons: buttons,
+        );
+
+    wintab.debugInjectPacket(packet(pressure: 0, buttons: 0));
+    expect(PenSidecars.freshReading()?.touching, isFalse, reason: 'hovering');
+    wintab.debugInjectPacket(packet(pressure: 0, buttons: 1));
+    expect(PenSidecars.freshReading()?.touching, isTrue, reason: 'tip down');
+    wintab.debugInjectPacket(packet(pressure: 0.2, buttons: 0));
+    expect(
+      PenSidecars.freshReading()?.touching,
+      isTrue,
+      reason: 'a driver that leaves the tip bit clear',
+    );
+    // The barrel switch is not the tip.
+    wintab.debugInjectPacket(packet(pressure: 0, buttons: 2));
+    expect(PenSidecars.freshReading()?.touching, isFalse);
+    wintab.debugReset();
+
+    final controller = StreamController<dynamic>();
+    addTearDown(controller.close);
+    PenSidecars.channelServices.add(
+      PlatformPenChannelService(
+        'qa_pen/test',
+        'test',
+        debugStream: controller.stream,
+      )..start(),
+    );
+    controller.add({'pressure': 0.0});
+    await Future<void>.delayed(Duration.zero);
+    expect(PenSidecars.freshReading()?.touching, isFalse);
+    controller.add({'pressure': 0.4});
+    await Future<void>.delayed(Duration.zero);
+    expect(PenSidecars.freshReading()?.touching, isTrue);
   });
 }

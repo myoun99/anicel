@@ -79,21 +79,32 @@ void main() {
     ]);
   });
 
-  test('⛔a cell with NO frame is skipped — both walkers did this, and the '
-      'one that stopped would print a band the screen never showed', () {
-    final windows = conteInkMarks(
-      page([
-        cell(cutId: 'c1', rowOnPage: 0),
-        cell(cutId: 'c2', rowOnPage: 1, frameId: 'f2', inkId: 'i2'),
-      ]),
-      metrics,
-      unwrittenInkIdOf: (placed) => 'named-${placed.cutId}',
-    ).toList();
+  test('a cell with NO block prints no band — and the pen writes it under '
+      'the name it is given ahead, the handwriting of the block its first '
+      'stroke makes', () {
+    // 유저 답 conte-drawing-target-Q3 「그림 칸과 같이 (토글을 따른다)」.
+    // ↩️The walk skipped such a cell, so its band was the paper's.
+    final sheet = page([
+      cell(cutId: 'c1', rowOnPage: 0),
+      cell(cutId: 'c2', rowOnPage: 1, frameId: 'f2', inkId: 'i2'),
+    ]);
 
-    expect(windows.map((w) => w.key), [
+    expect(conteInkMarks(sheet, metrics).map((w) => w.key), [
       conteInkPageKey(0),
       conteInkRowKey(const CutId('c2'), 'i2'),
-    ]);
+    ], reason: 'the printers name nothing ahead, so they print no band');
+    expect(
+      conteInkMarks(
+        sheet,
+        metrics,
+        unwrittenInkIdOf: (placed) => 'named-${placed.cutId}',
+      ).map((w) => w.key),
+      [
+        conteInkPageKey(0),
+        conteInkRowKey(const CutId('c1'), 'named-c1'),
+        conteInkRowKey(const CutId('c2'), 'i2'),
+      ],
+    );
   });
 
   test('a block never written on prints NO band, and the pen writes it '

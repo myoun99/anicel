@@ -19,7 +19,7 @@ import 'wintab_pen_service.dart';
 ///   unconditionally on their platform by [bind] — they only restore
 ///   data the embedder drops today.
 ///
-/// The brush canvas asks [freshContactPressure] per pointer sample; the
+/// The brush canvas asks [freshReading] per pointer sample; the
 /// input inspector lists [channelServices] readouts beside the Wintab
 /// line.
 abstract final class PenSidecars {
@@ -45,22 +45,34 @@ abstract final class PenSidecars {
     }
   }
 
-  /// The freshest driver-side contact pressure across every live
-  /// sidecar; null = no sidecar speaks for this moment (use the pointer
-  /// event's own pressure).
-  static double? freshContactPressure() {
-    final wintab = WintabPenService.instance.freshContactPressure();
-    if (wintab != null) {
-      return wintab;
+  /// The freshest driver-side pressure READING across every live sidecar,
+  /// and whether the pen was TOUCHING when it was taken; null = no sidecar
+  /// speaks for this moment (use the pointer event's own pressure).
+  ///
+  /// ⚠️TOUCHING IS THE DRIVER'S WORD, not the pointer's. At the pen's down
+  /// the newest Wintab packet can still be one from the hover just before
+  /// it (pressure 0, tip up): a reading of the pen, but not of this
+  /// contact (H43). The tip bit says so outright; pressure above zero
+  /// answers the same for a driver that leaves the bit clear — and is the
+  /// only answer the channel sidecars have, which carry no buttons.
+  static ({double pressure, bool touching})? freshReading() {
+    final packet = WintabPenService.instance.freshPacket();
+    if (packet != null) {
+      return _reading(packet.pressure, tip: packet.buttons & _wintabTip != 0);
     }
     for (final service in channelServices) {
       final pressure = service.freshContactPressure();
       if (pressure != null) {
-        return pressure;
+        return _reading(pressure, tip: false);
       }
     }
     return null;
   }
+
+  static ({double pressure, bool touching}) _reading(
+    double pressure, {
+    required bool tip,
+  }) => (pressure: pressure.clamp(0.0, 1.0), touching: tip || pressure > 0);
 
   /// The freshest driver-side BUTTON state, as FLUTTER button bits; null =
   /// no sidecar speaks for this moment (use the pointer event's own).

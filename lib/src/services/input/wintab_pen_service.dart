@@ -11,7 +11,7 @@ import '../../models/app_input_settings.dart';
 /// Flutter's pointer events keep driving position and every gesture; this
 /// service polls the DRIVER's packet queue (through [QaTabletBridge]) and
 /// holds the freshest contact pressure/tilt. The brush canvas consults
-/// [freshContactPressure] per pointer sample — so a pen the OS misreports
+/// [freshPacket] per pointer sample — so a pen the OS misreports
 /// (as touch, or as mouse with Ink unchecked) still paints with the
 /// driver's full pressure.
 ///
@@ -197,24 +197,28 @@ class WintabPenService {
     }
   }
 
-  /// The driver's CONTACT pressure when the stream is live and fresh —
-  /// null tells the caller to use the pointer event's own pressure.
-  /// Contact = pressure above zero; hovering pens stream 0 and must not
-  /// flatten a real 0-pressure … the caller only asks mid-stroke.
-  double? freshContactPressure({DateTime? now}) =>
-      _freshPacket(now)?.pressure.clamp(0.0, 1.0);
-
   /// The driver's BUTTON state (raw Wintab bits) while the stream is live
   /// and fresh — null tells the caller to trust the pointer event's own
   /// buttons. [PenSidecars.freshButtons] translates the bits.
-  int? freshButtons({DateTime? now}) => _freshPacket(now)?.buttons;
+  int? freshButtons({DateTime? now}) => freshPacket(now: now)?.buttons;
 
-  /// The newest packet, or null when this service is idle or its last
-  /// packet has aged out of [freshWindow].
-  QaTabletPacket? _freshPacket(DateTime? now) {
+  /// The driver's newest packet as of THIS call — null when this service
+  /// is idle or its last packet has aged out of [freshWindow], which tells
+  /// the caller to use the pointer event's own reading.
+  /// [PenSidecars.freshReading] reads a pressure off it.
+  ///
+  /// 🚨DRAINS THE QUEUE FIRST (H43, 2026-09-26). The canvas asks at the
+  /// pen's DOWN as well as along the stroke, and the poll timer can be a
+  /// whole [pollInterval] behind: the packet it last took was, as often as
+  /// not, the pen still HOVERING — pressure 0, tip up. The first dab was
+  /// stamped with that, and a press whose buttons were read off it did not
+  /// draw at all. The contact packet was already in the driver's queue; it
+  /// just had not been taken yet.
+  QaTabletPacket? freshPacket({DateTime? now}) {
     if (_timer == null) {
       return null;
     }
+    _pump();
     final packet = latest.value;
     if (packet == null) {
       return null;

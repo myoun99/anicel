@@ -152,7 +152,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     StoryboardThumbnailTier tier = StoryboardThumbnailTier.strip,
   }) {
     final key = (cutId: cut.id, frameIndex: frameIndex, tier: tier);
-    final signature = _signatureFor(cut, frameIndex);
+    final signature = _signatureFor(cut);
     if (_renderedSignatures[key] != signature && !_rendering.contains(key)) {
       _rendering.add(key);
       _startRender(cut, key, signature);
@@ -272,17 +272,47 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     });
   }
 
-  String _signatureFor(Cut cut, int frameIndex) {
+  /// [_signatureFor]'s answer per cut INSTANCE, with the edit generation it
+  /// was spelled at. A cut is immutable — an edit is a new instance — so an
+  /// instance's signature moves only with the generation, which carries the
+  /// pixel edits no model does: a stroke leaves the cut as it was. ⚡I-22:
+  /// at the ten-minute floor every panel of the film is asked for on every
+  /// paint, and each ask spelled the cut's whole layer stack again and
+  /// folded every timeline.
+  final Expando<({int generation, String signature})> _signatures =
+      Expando();
+
+  /// How many signatures were spelled — the cost [_signatures] keeps off
+  /// every paint.
+  @visibleForTesting
+  int get debugSignaturesSpelled => _spelled;
+  int _spelled = 0;
+
+  String _signatureFor(Cut cut) {
+    final generation = _editGenerations[cut.id] ?? 0;
+    final held = _signatures[cut];
+    if (held != null && held.generation == generation) {
+      return held.signature;
+    }
+    final signature = _spellSignature(cut, generation);
+    _signatures[cut] = (generation: generation, signature: signature);
+    return signature;
+  }
+
+  /// What every panel's picture of [cut] is made of — alike for all of
+  /// them: a panel's frame is its KEY. ↩️The frame was spelled in here too
+  /// (since the key took it, 3e46410fa), which made the same cut a string
+  /// per panel.
+  String _spellSignature(Cut cut, int generation) {
+    _spelled += 1;
     final buffer = StringBuffer()
       ..write(cut.canvasSize.width)
       ..write('x')
       ..write(cut.canvasSize.height)
       ..write('#')
-      ..write(_editGenerations[cut.id] ?? 0)
+      ..write(generation)
       ..write('#')
       ..write(cut.duration)
-      ..write('#f')
-      ..write(frameIndex)
       // The thumbnail renders THROUGH the camera: camera work must
       // re-render it (was signature-blind — R4-⑩). The fade component is
       // gone with the cut transform (R4): the effects are TRACK data and

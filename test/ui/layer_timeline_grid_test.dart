@@ -1948,10 +1948,8 @@ void main() {
   ) async {
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.uncovered,
+        layers: _layersWith(layer2: {2: _block('layer-2', 1)}),
+        exposureStateForLayer: exposureOf,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? 'A1'
@@ -1963,10 +1961,12 @@ void main() {
 
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.markHeld
-            : TimelineCellExposureState.uncovered,
+        layers: _layersWith(
+          layer2: {
+            1: _block('layer-2', 3, dots: [1]),
+          },
+        ),
+        exposureStateForLayer: exposureOf,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? 'A1'
@@ -2163,16 +2163,8 @@ void main() {
     await tester.pumpWidget(
       _grid(
         currentFrameIndex: 4,
-        exposureStateForLayer: (layer, frameIndex) {
-          if (layer.id != const LayerId('layer-1')) {
-            return TimelineCellExposureState.uncovered;
-          }
-          return switch (frameIndex) {
-            4 => TimelineCellExposureState.drawingStart,
-            5 || 6 => TimelineCellExposureState.held,
-            _ => TimelineCellExposureState.uncovered,
-          };
-        },
+        layers: _layersWith(layer1: {4: _block('layer-1', 3)}),
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -2186,16 +2178,8 @@ void main() {
     await tester.pumpWidget(
       _grid(
         currentFrameIndex: 6,
-        exposureStateForLayer: (layer, frameIndex) {
-          if (layer.id != const LayerId('layer-1')) {
-            return TimelineCellExposureState.uncovered;
-          }
-          return switch (frameIndex) {
-            4 => TimelineCellExposureState.drawingStart,
-            5 || 6 => TimelineCellExposureState.held,
-            _ => TimelineCellExposureState.uncovered,
-          };
-        },
+        layers: _layersWith(layer1: {4: _block('layer-1', 3)}),
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -2561,16 +2545,8 @@ void main() {
         width: 1600,
         playbackFrameCount: 12,
         currentFrameIndex: 2,
-        exposureStateForLayer: (layer, frameIndex) {
-          if (layer.id != const LayerId('layer-1')) {
-            return TimelineCellExposureState.uncovered;
-          }
-          return switch (frameIndex) {
-            2 => TimelineCellExposureState.drawingStart,
-            3 || 4 => TimelineCellExposureState.held,
-            _ => TimelineCellExposureState.uncovered,
-          };
-        },
+        layers: _layersWith(layer1: {2: _block('layer-1', 3)}),
+        exposureStateForLayer: exposureOf,
       ),
     );
 

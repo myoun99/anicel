@@ -585,36 +585,43 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
       }
     }
 
-    // The `x` markers, and the SELECTION when the cursor is not on a block.
+    // The SELECTION when the cursor is not on a block.
     // 「빈 프레임이면 그 한 칸」 — same selected ink, one cell wide.
-    for (var frame = first; frame < visibleFrames; frame += 1) {
-      if (row.runs.isNotEmpty && row.runAt(frame) != null) {
-        continue;
-      }
-      if (frame == current) {
-        final cell = Rect.fromLTRB(
-          x(frame) + 1,
-          4,
-          x(frame + 1) - 1,
-          size.height - 4,
+    if (current >= first &&
+        current < visibleFrames &&
+        row.runAt(current) == null) {
+      final cell = Rect.fromLTRB(
+        x(current) + 1,
+        4,
+        x(current + 1) - 1,
+        size.height - 4,
+      );
+      final rrect = RRect.fromRectAndRadius(cell, const Radius.circular(2));
+      canvas
+        ..drawRRect(
+          rrect,
+          Paint()..color = colorScheme.primary.withValues(alpha: 0.30),
+        )
+        ..drawRRect(
+          rrect,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = colorScheme.primary,
         );
-        final rrect = RRect.fromRectAndRadius(cell, const Radius.circular(2));
-        canvas
-          ..drawRRect(
-            rrect,
-            Paint()..color = colorScheme.primary.withValues(alpha: 0.30),
-          )
-          ..drawRRect(
-            rrect,
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 2
-              ..color = colorScheme.primary,
-          );
-      }
+    }
+    // The `x` markers. An empty stretch starts at frame 0 or where a run
+    // ends, so only those are asked — never the strip frame by frame (I-22:
+    // the ten-minute floor puts ~10,000 frames in it).
+    for (final frame in {
+      0,
+      for (final run in row.runs) run.endIndexExclusive,
+    }) {
       // `holdsDrawings` and the playback range are the cells painter's own
       // two conditions for the marker; borrowed rather than re-decided.
-      if (row.holdsDrawings &&
+      if (frame >= first &&
+          frame < visibleFrames &&
+          row.holdsDrawings &&
           !snapshot.outsidePlayback(frame) &&
           row.emptyRunStartsAt(frame)) {
         _label(

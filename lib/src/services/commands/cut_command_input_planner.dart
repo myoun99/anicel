@@ -11,7 +11,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../editing/cut_duplicate_helpers.dart' show remapTimelineExposure;
-import '../editing/frame_id_mint.dart' show mintFrameId;
+import '../editing/run_id_mint.dart' show mintCutId, mintFrameId;
 import '../project_lookup.dart' show requireCut;
 import '../project_repository.dart';
 import 'add_layer_command.dart';
@@ -63,7 +63,7 @@ class DuplicateCutCommandInputPlan {
 CreateCutCommandInputPlan planCreateCutCommandInput(Project project) {
   final ids = _ProjectIdSnapshot.fromProject(project);
   return CreateCutCommandInputPlan(
-    cutId: CutId(_firstAvailableId(prefix: 'cut', usedIds: ids.cutIds)),
+    cutId: mintCutId(),
     layerId: LayerId(_firstAvailableId(prefix: 'layer', usedIds: ids.layerIds)),
   );
 }
@@ -76,8 +76,7 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
   final ids = _ProjectIdSnapshot.fromProject(project);
   ids.includeCut(sourceCut);
 
-  final newCutId = CutId(_firstAvailableId(prefix: 'cut', usedIds: ids.cutIds));
-  ids.cutIds.add(newCutId.value);
+  final newCutId = mintCutId();
 
   final layerIdMap = <LayerId, LayerId>{};
   final frameIdMap = <FrameId, FrameId>{};
@@ -90,7 +89,7 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
     layerIdMap[layer.id] = newLayerId;
 
     for (final frame in layer.frames) {
-      ids.mintFrameIdFor(frame.id, frameIdMap);
+      _copyOf(frame.id, on: newLayerId, into: frameIdMap);
     }
 
     for (final exposure in layer.timeline.values) {
@@ -98,7 +97,7 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
       if (frameId == null) {
         continue;
       }
-      ids.mintFrameIdFor(frameId, frameIdMap);
+      _copyOf(frameId, on: newLayerId, into: frameIdMap);
     }
   }
 
@@ -123,12 +122,12 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
 
   final frameIdMap = <FrameId, FrameId>{};
   for (final frame in payload.frames) {
-    ids.mintFrameIdFor(frame.id, frameIdMap);
+    _copyOf(frame.id, on: newLayerId, into: frameIdMap);
   }
   for (final exposure in payload.timeline.values) {
     final frameId = exposure.frameId;
     if (frameId == null) continue;
-    ids.mintFrameIdFor(frameId, frameIdMap);
+    _copyOf(frameId, on: newLayerId, into: frameIdMap);
   }
 
   final hasStoryboardLayer = targetCut.layers.any(
@@ -256,8 +255,7 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   required Cut sourceCut,
 }) {
   final ids = _ProjectIdSnapshot.fromProject(project);
-  final newCutId = CutId(_firstAvailableId(prefix: 'cut', usedIds: ids.cutIds));
-  ids.cutIds.add(newCutId.value);
+  final newCutId = mintCutId();
 
   final minted = _mintLinkIds(project, ids, [
     for (final layer in sourceCut.layers)
@@ -272,7 +270,7 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
       for (final layer in sourceCut.layers)
         if (minted.layerIdMap.containsKey(layer.id) &&
             _bornWithAFreshPanel(layer))
-          layer.id: ids.mintFrameId(),
+          layer.id: mintFrameId(minted.layerIdMap[layer.id]!),
     },
   );
 }
@@ -342,7 +340,9 @@ ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
     if (_bornWithAFreshPanel(
       owner.layers.firstWhere((layer) => layer.id == layerId),
     )) {
-      coveringFrameIdBySource[(owner.id, layerId)] = ids.mintFrameId();
+      coveringFrameIdBySource[(owner.id, layerId)] = mintFrameId(
+        unionLayerIdMap[(owner.id, layerId)]!,
+      );
     }
   }
 
@@ -600,59 +600,43 @@ String _firstAvailableId({
   }
 }
 
+/// The layer ids the project holds — what a new row's first free
+/// `layer-N` steps past.
+///
+/// ⛔No cut or frame ids here any more: a cut's sheets and a cel's picture
+/// are kept by the SESSION under those ids after an undo or a delete, so a
+/// copy takes them from the run ([mintCutId], [mintFrameId]) rather than as
+/// the first the project has free (card `undone-paste-reuses-ids`). The
+/// stores key a row's pictures by its cels' ids, so a row's own id may
+/// still be the first free.
 class _ProjectIdSnapshot {
-  _ProjectIdSnapshot({
-    required this.cutIds,
-    required this.layerIds,
-    required this.frameIds,
-  });
+  _ProjectIdSnapshot({required this.layerIds});
 
   factory _ProjectIdSnapshot.fromProject(Project project) {
-    final snapshot = _ProjectIdSnapshot(
-      cutIds: <String>{},
-      layerIds: <String>{},
-      frameIds: <String>{},
-    );
-
+    final snapshot = _ProjectIdSnapshot(layerIds: <String>{});
     for (final track in project.tracks) {
       for (final cut in track.cuts) {
         snapshot.includeCut(cut);
       }
     }
-
     return snapshot;
   }
 
-  final Set<String> cutIds;
   final Set<String> layerIds;
-  final Set<String> frameIds;
-
-  /// A frame id nothing in the project holds yet.
-  FrameId mintFrameId() {
-    final id = FrameId(_firstAvailableId(prefix: 'frame', usedIds: frameIds));
-    frameIds.add(id.value);
-    return id;
-  }
-
-  /// The fresh frame id [source] copies to, minted on first sight and
-  /// remembered in [map] after that — one cel exposed twice must come out
-  /// as one cel, not two that look alike. Both planners mint this way.
-  FrameId mintFrameIdFor(FrameId source, Map<FrameId, FrameId> map) =>
-      map.putIfAbsent(source, mintFrameId);
 
   void includeCut(Cut cut) {
-    cutIds.add(cut.id.value);
     for (final layer in cut.layers) {
       layerIds.add(layer.id.value);
-      for (final frame in layer.frames) {
-        frameIds.add(frame.id.value);
-      }
-      for (final exposure in layer.timeline.values) {
-        final frameId = exposure.frameId;
-        if (frameId != null) {
-          frameIds.add(frameId.value);
-        }
-      }
     }
   }
 }
+
+/// The fresh id [source] copies to on the row [on], minted on first sight
+/// and remembered in [into] after that — one cel exposed twice must come
+/// out as one cel, not two that look alike. Both copying planners mint
+/// this way.
+FrameId _copyOf(
+  FrameId source, {
+  required LayerId on,
+  required Map<FrameId, FrameId> into,
+}) => into.putIfAbsent(source, () => mintFrameId(on));

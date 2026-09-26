@@ -28,6 +28,7 @@ import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
 import '../../models/import/import_warning.dart';
+import '../../models/timesheet_info.dart';
 import '../text/model_vocabulary.dart';
 import '../text/place_lines.dart' show celPlaceLine;
 import '../input/control_press_claim.dart';
@@ -38,7 +39,9 @@ import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
 import '../dialogs/folder_pick_flow.dart';
+import '../dialogs/dialog_verb.dart';
 import '../dialogs/preferences_dialog.dart';
+import '../dialogs/work_settings_window.dart';
 import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
 import '../sliced_value_listenable_builder.dart';
@@ -686,6 +689,26 @@ class EditorTopStrip extends StatelessWidget {
   /// 버튼안으로」). ⛔Behaviour unchanged where it is load-bearing: a closed
   /// panel still has no other way back than that list, one level in.
   List<PanelFlyoutEntry> _settingsEntries(BuildContext context) => [
+    // 🗣️유저 09-25 (project-settings-window): 「작품명/화수는 이제
+    // 타임시트패널같은곳에서 편집안하게 … 해당 설정은 프로젝트 설정쪽에
+    // 버튼둬서. 상단띠의 설정버튼이 낫겟지」 — the work's words, above the
+    // app's own settings.
+    _item(
+      id: 'work-settings',
+      label: 'Work settings…',
+      icon: Icons.theaters_outlined,
+      onPressed: () => unawaited(
+        askThenCommit<TimesheetInfo>(
+          context,
+          dialog: (_) => WorkSettingsWindow(
+            initialInfo: session.timesheetInfo,
+            projectName: session.repository.requireProject().name,
+          ),
+          commit: session.updateTimesheetInfo,
+        ),
+      ),
+    ),
+    const PanelFlyoutDivider(),
     _item(
       id: 'edit-keyboard-shortcuts',
       label: 'Keyboard shortcuts…',

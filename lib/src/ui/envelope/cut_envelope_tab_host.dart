@@ -76,7 +76,7 @@ class CutEnvelopeTabHost extends StatefulWidget {
   final bool brushAllowed;
   final ValueChanged<bool>? onBrushAllowedChanged;
 
-  /// Resolves a media asset path (logo, 도장) to a decoded image.
+  /// Resolves a media asset path (the logo) to a decoded image.
   final ui.Image? Function(String assetPath)? imageFor;
 
   /// Notifies when an image [imageFor] answered null for has landed — the
@@ -213,7 +213,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                   sheet: 'envelope',
                   painters: {
                     SheetStratum.form: painterOf(SheetStratum.form),
-                    // A landed logo or 도장 — nothing the painter compares
+                    // A landed logo — nothing the painter compares
                     // changes for it.
                     SheetStratum.content: painterOf(
                       SheetStratum.content,

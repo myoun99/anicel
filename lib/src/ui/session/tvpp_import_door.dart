@@ -31,7 +31,7 @@ import '../../models/track_se_migration.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/editing/default_layer_helpers.dart'
     show defaultLayerIdForSequence;
-import '../../services/editing/frame_id_mint.dart';
+import '../../services/editing/run_id_mint.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/import/tvp_import_planner.dart';

@@ -59,13 +59,13 @@ Line 8''';
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    await createSecondCut(tester);
+    final second = await createSecondCut(tester);
     await switchToCut(tester, 'default-cut-1');
 
     await saveCutNote(tester, 'Cut 1 note');
     expect(await currentCutNoteFromDialog(tester), 'Cut 1 note');
 
-    await switchToCut(tester, 'cut-1');
+    await switchToCut(tester, second);
     expect(await currentCutNoteFromDialog(tester), '');
 
     await saveCutNote(tester, 'Cut 2 note');
@@ -79,33 +79,33 @@ Line 8''';
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    await createSecondCut(tester);
+    final second = await createSecondCut(tester);
     await switchToCut(tester, 'default-cut-1');
 
     await saveCutNote(tester, 'Cut 1 note');
 
-    await switchToCut(tester, 'cut-1');
+    await switchToCut(tester, second);
     await saveCutNote(tester, 'Cut 2 old note');
     await saveCutNote(tester, 'Cut 2 new note');
     expect(await currentCutNoteFromDialog(tester), 'Cut 2 new note');
     await expectActiveCutName(tester, '2');
-    expect(await activeCutIdOf(tester), const CutId('cut-1'));
+    expect(await activeCutIdOf(tester), CutId(second));
 
     await tapUndoButton(tester);
 
     expect(await currentCutNoteFromDialog(tester), 'Cut 2 old note');
     await expectActiveCutName(tester, '2');
-    expect(await activeCutIdOf(tester), const CutId('cut-1'));
+    expect(await activeCutIdOf(tester), CutId(second));
 
     await switchToCut(tester, 'default-cut-1');
     expect(await currentCutNoteFromDialog(tester), 'Cut 1 note');
 
-    await switchToCut(tester, 'cut-1');
+    await switchToCut(tester, second);
     await tapRedoButton(tester);
 
     expect(await currentCutNoteFromDialog(tester), 'Cut 2 new note');
     await expectActiveCutName(tester, '2');
-    expect(await activeCutIdOf(tester), const CutId('cut-1'));
+    expect(await activeCutIdOf(tester), CutId(second));
 
     await switchToCut(tester, 'default-cut-1');
     expect(await currentCutNoteFromDialog(tester), 'Cut 1 note');
@@ -304,13 +304,13 @@ Line 8''';
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    await createSecondCut(tester);
+    final second = await createSecondCut(tester);
 
     await renameActiveCut(tester, '1');
 
     await expectCutsNamed(tester, '1', 2);
     await expectCutExists(tester, 'default-cut-1', exists: true);
-    await expectCutExists(tester, 'cut-1', exists: true);
+    await expectCutExists(tester, second, exists: true);
     await expectActiveCutName(tester, '1');
     expect(find.textContaining('already'), findsNothing);
     expect(find.textContaining('duplicate'), findsNothing);

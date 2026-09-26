@@ -13,8 +13,6 @@ class SheetTextTarget {
     required this.text,
     required this.style,
     required this.onCommitted,
-    this.multiline = false,
-    this.centred = false,
   });
 
   /// The tap zone's key.
@@ -38,19 +36,17 @@ class SheetTextTarget {
 
   /// Called with the new words — only when they changed.
   final ValueChanged<String> onCommitted;
-
-  final bool multiline;
-  final bool centred;
 }
 
 /// Tap-to-edit on a sheet: a tap on one of [targets] swaps in a TextField
 /// right over it under the panel's viewport — editing in place on the paper.
 ///
-/// ONE in-place editor for the sheets: the timesheet's header boxes and
-/// memo band, and the conte's ACTION (유저 2026-09-25: 「액션은
-/// 콘티프리뷰에서 해당 칸 누르면 텍스트 편집할수있게」). It was the
-/// timesheet's own layer; the conte's ACTION had a field that mounted under
-/// the page instead.
+/// ONE in-place editor for the sheets: the timesheet's memo band and the
+/// conte's ACTION (유저 2026-09-25: 「액션은 콘티프리뷰에서 해당 칸 누르면
+/// 텍스트 편집할수있게」). It was the timesheet's own layer; the conte's
+/// ACTION had a field that mounted under the page instead. Both are
+/// paragraphs, so the field is always one: the header boxes it once took
+/// single lines for are printed, not edited, since 09-25.
 ///
 /// The layer sits UNDER the ink layer in a sheet's stack, so the sheet's
 /// brush switch is the mode switch: brush on → the pen draws (taps
@@ -252,12 +248,8 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
                     controller: _controller,
                     focusNode: _focusNode,
                     autofocus: true,
-                    maxLines: target.multiline ? null : 1,
-                    expands: target.multiline,
-                    onSubmitted: target.multiline ? null : (_) => _commit(),
-                    textAlign: target.centred
-                        ? TextAlign.center
-                        : TextAlign.start,
+                    maxLines: null,
+                    expands: true,
                     // The printer's style and nothing else: a field lays
                     // its words out in the theme's input style with this
                     // one over it, and whatever this leaves unset — the
@@ -305,15 +297,10 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
     final slot = target.textRect;
     final painter = TextPainter(
       text: TextSpan(text: target.text, style: target.style),
-      textAlign: target.centred ? TextAlign.center : TextAlign.left,
       textDirection: TextDirection.ltr,
-      maxLines: target.multiline ? null : 1,
     )..layout(maxWidth: slot.width);
-    final left = target.centred
-        ? slot.left + (slot.width - painter.width) / 2
-        : slot.left;
     final printed = Rect.fromLTWH(
-      left,
+      slot.left,
       slot.top,
       painter.width,
       painter.height,

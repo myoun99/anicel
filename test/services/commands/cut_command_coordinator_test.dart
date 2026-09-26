@@ -40,7 +40,8 @@ import 'package:anicel/src/services/project_repository.dart';
 
 void main() {
   group('CutCommandCoordinator', () {
-    test('createCut plans first-available IDs and records undo/redo', () {
+    test('createCut mints a cut id of its own, the first free layer id, and '
+        'records undo/redo — the redo bringing back the SAME cut', () {
       final existingCut = _cut(
         id: 'cut-2',
         name: 'Existing',
@@ -61,13 +62,12 @@ void main() {
       );
 
       var cuts = fixture.cutsFor(const TrackId('track-1'));
-      expect(cuts.map((cut) => cut.id), [
-        const CutId('cut-2'),
-        const CutId('cut-1'),
-      ]);
+      final created = cuts.last.id;
+      expect(cuts.first, existingCut);
+      expect(created, isNot(existingCut.id));
       expect(cuts.last.name, 'Created');
       expect(cuts.last.layers.first.id, const LayerId('layer-1'));
-      expect(fixture.editingSession.activeCutId, const CutId('cut-1'));
+      expect(fixture.editingSession.activeCutId, created);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
 
@@ -82,11 +82,12 @@ void main() {
       fixture.historyManager.redo();
 
       cuts = fixture.cutsFor(const TrackId('track-1'));
-      expect(cuts.map((cut) => cut.id), [
-        const CutId('cut-2'),
-        const CutId('cut-1'),
-      ]);
-      expect(fixture.editingSession.activeCutId, const CutId('cut-1'));
+      expect(
+        cuts.map((cut) => cut.id),
+        [existingCut.id, created],
+        reason: 'what the session kept under the cut\'s id is its again',
+      );
+      expect(fixture.editingSession.activeCutId, created);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
     });
@@ -1540,7 +1541,8 @@ void main() {
     });
 
     test(
-      'duplicateCut plans IDs, uses default copy name, and records undo/redo',
+      'duplicateCut mints a cut of its own, uses the default copy name, and '
+      'records undo/redo',
       () {
         final sourceCut = _cut(
           id: 'cut-1',
@@ -1591,15 +1593,29 @@ void main() {
         var targetCuts = fixture.cutsFor(const TrackId('track-target'));
         expect(targetCuts, hasLength(2));
         final duplicate = targetCuts.last;
-        expect(duplicate.id, const CutId('cut-2'));
+        final existing = [sourceCut.id, targetCut.id];
+        expect(existing, isNot(contains(duplicate.id)));
         expect(duplicate.name, 'Source Copy');
         expect(duplicate.layers.single.id, const LayerId('layer-2'));
-        expect(duplicate.layers.single.frames.map((frame) => frame.id), [
-          const FrameId('frame-4'),
-          const FrameId('frame-5'),
-        ]);
+        final cels = [
+          for (final frame in duplicate.layers.single.frames) frame.id,
+        ];
+        expect(cels, hasLength(2));
+        expect(cels.toSet(), hasLength(2), reason: 'two cels, two ids');
+        expect(
+          cels,
+          everyElement(
+            isNot(
+              anyOf(
+                const FrameId('frame-1'),
+                const FrameId('frame-2'),
+                const FrameId('frame-3'),
+              ),
+            ),
+          ),
+        );
         expect(fixture.cutsFor(const TrackId('track-source')), [sourceCut]);
-        expect(fixture.editingSession.activeCutId, const CutId('cut-2'));
+        expect(fixture.editingSession.activeCutId, duplicate.id);
         expect(fixture.historyManager.undoCount, 1);
 
         fixture.historyManager.undo();
@@ -1612,7 +1628,7 @@ void main() {
 
         targetCuts = fixture.cutsFor(const TrackId('track-target'));
         expect(targetCuts.last, duplicate);
-        expect(fixture.editingSession.activeCutId, const CutId('cut-2'));
+        expect(fixture.editingSession.activeCutId, duplicate.id);
         expect(fixture.historyManager.undoCount, 1);
       },
     );
@@ -2248,7 +2264,6 @@ void main() {
       const info = TimesheetInfo(
         title: 'YOASOBI',
         episode: 'MV',
-        artist: 'MYOUN',
       );
 
       fixture.coordinator.setTimesheetInfo(info);

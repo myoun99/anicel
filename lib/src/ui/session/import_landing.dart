@@ -253,7 +253,7 @@ class ImportLanding {
       // layer inside one clock tick. Every cel of that layer came out with
       // the SAME id, which is not "cels that look alike": it is one drawing
       // exposed N times. A 10-drawing layer arrived as one drawing. The
-      // formatter is gone since 2026-09-26 (`frame_id_mint.dart`).
+      // formatter is gone since 2026-09-26 (`run_id_mint.dart`).
       nextFrameId: _frameIds.mintFrameId,
       nextCutId: () {
         _importCutSequence += 1;

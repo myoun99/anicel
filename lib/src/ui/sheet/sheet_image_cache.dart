@@ -6,8 +6,8 @@ import 'package:flutter/foundation.dart';
 import '../../services/import/raster_cel_import.dart' show readImageFileOrNull;
 
 /// The decoded media images the sheets print, by asset path — the company
-/// logo (the conte's body pages and the envelope), the conte's cover
-/// picture, the envelope's 도장.
+/// logo (the conte's body pages and the envelope) and the conte's cover
+/// picture.
 ///
 /// 🚨THE PAINTER ASKS SYNCHRONOUSLY. A sheet painter's `imageFor` returns a
 /// `ui.Image?` right now — it is inside a paint pass and cannot await — so a
@@ -24,8 +24,8 @@ import '../../services/import/raster_cel_import.dart' show readImageFileOrNull;
 /// null IS the memory of that, which is why the lookup asks
 /// `containsKey` rather than testing the value.
 ///
-/// ⚠️Sheet images are a handful — a logo, a cover picture, one stamp per
-/// role — and each decodes once for the life of the workspace. This is not
+/// ⚠️Sheet images are a handful — a logo, a cover picture — and each
+/// decodes once for the life of the workspace. This is not
 /// a general image cache and has no eviction; if it ever holds cels it
 /// needs one.
 class SheetImageCache extends ChangeNotifier {
@@ -45,7 +45,7 @@ class SheetImageCache extends ChangeNotifier {
   }
 
   Future<void> _load(String assetPath) async {
-    // A stamp whose file went away is not an error the user can act on from
+    // A picture whose file went away is not an error the user can act on from
     // here — the sheet simply prints the empty box.
     final image = await readImageFileOrNull(assetPath);
     if (_disposed) {
