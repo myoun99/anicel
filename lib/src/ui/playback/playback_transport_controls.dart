@@ -157,8 +157,8 @@ class PlaybackTransportControls extends StatelessWidget {
             // touched about as often as the project frame rate — and the
             // transport is the one row on the 문턱 that has to stay readable
             // at a glance. Its entries (and their key strings) live in
-            // [ProjectSettingsPill] now. [qualityLabel] stays here because
-            // the label is this widget's vocabulary; the pill borrows it.
+            // [ProjectSettingsMenu] now. [qualityLabel] stays here because
+            // the label is this widget's vocabulary; the menu borrows it.
             // The level meter (AUDIO-PRO R2), only while THIS scope's
             // playback is live — a silent strip otherwise would just be
             // chrome.

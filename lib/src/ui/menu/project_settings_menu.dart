@@ -12,30 +12,25 @@ import '../playback/playback_transport_controls.dart'
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_icon_button.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../input/control_press_claim.dart';
 
-/// The ⚙ pill: everything the frame panels' bar carried that is a SETTING
-/// rather than a command — project frame rate, project audio sample rate,
-/// the project camera frame, playback quality.
+/// The project's settings — its frame rate, its audio sample rate, its
+/// camera frame and the playback quality — as rows of the top strip's ⚙,
+/// one level in, beside the work's (유저 답 playback-quality-home-Q1
+/// 「프로젝트 설정으로 같이」, with 「다만 프로젝트 설정이랑 작품설정이랑
+/// 나누는게 깔끔할지도?」). ↩️They were the ⚙ on the frame panels' sill,
+/// beside the transport.
 ///
-/// ⚠️It is NOT a pill any more (⑪, 유저 2026-08-12: 「설정버튼은 알약 테두리
-/// 없애고 그냥 일반버튼으로」). It was one — the grammar's other end, a noun
-/// with no verbs outside its menu — but it lives on the SILL, among the
-/// transport icons, and there a bare row already means 「a state machine」.
-/// A border around a single button on that strip said the opposite of what
-/// every control beside it says.
-///
-/// 유저 2026-08-27: the menu is VALUE ROWS now — 「FPS 24」, the sample
+/// 유저 2026-08-27: the menu is VALUE ROWS — 「FPS 24」, the sample
 /// rate, the camera frame, the quality — and each row opens its own small
 /// change window. The presets used to be inlined here, which made the one
 /// menu as tall as all of its settings put together; a row that states its
 /// current value is the compact form, and the window it opens is where the
 /// choices live.
-class ProjectSettingsPill extends StatefulWidget {
-  const ProjectSettingsPill({super.key, required this.session});
+class ProjectSettingsMenu {
+  const ProjectSettingsMenu(this.session);
 
   final EditorSessionManager session;
 
@@ -53,13 +48,6 @@ class ProjectSettingsPill extends StatefulWidget {
   static String audioSampleRateLabel(int rate) => rate % 1000 == 0
       ? '${rate ~/ 1000}kHz'
       : '${(rate / 1000).toStringAsFixed(1)}kHz';
-
-  @override
-  State<ProjectSettingsPill> createState() => _ProjectSettingsPillState();
-}
-
-class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
-  EditorSessionManager get session => widget.session;
 
   /// EXPORT-AUDIO ④: a pulldown-pair change (23.976↔24 — 0.1% of real speed)
   /// asks what happens to SOUND, because audio exists in real seconds and
@@ -134,9 +122,9 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
       title: AppText.strings.tlProjectAudioRate,
       titleIcon: Icons.graphic_eq,
       current: session.projectAudio.projectAudioSampleRate,
-      presets: ProjectSettingsPill.audioSampleRatePresets,
+      presets: ProjectSettingsMenu.audioSampleRatePresets,
       keyValue: (preset) => 'timeline-samplerate-$preset',
-      label: ProjectSettingsPill.audioSampleRateLabel,
+      label: ProjectSettingsMenu.audioSampleRateLabel,
       apply: session.projectAudio.setProjectAudioSampleRate,
     ),
   );
@@ -166,7 +154,9 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
         ),
       );
 
-  List<PanelFlyoutEntry> _entries(BuildContext context) {
+  /// The rows, each stating its setting as it is now and opening the window
+  /// that changes it.
+  List<PanelFlyoutEntry> entries(BuildContext context) {
     final strings = AppText.strings;
     final cameraSize = session.camera.cameraFrameSize;
     return [
@@ -178,7 +168,7 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
       ),
       PanelFlyoutItem(
         keyValue: 'project-settings-audio-rate',
-        label: ProjectSettingsPill.audioSampleRateLabel(
+        label: ProjectSettingsMenu.audioSampleRateLabel(
           session.projectAudio.projectAudioSampleRate,
         ),
         icon: Icons.graphic_eq,
@@ -202,22 +192,6 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
       ),
     ];
   }
-
-  @override
-  Widget build(BuildContext context) => AppIconButton(
-    // ⑪ 유저 2026-08-12: 「설정버튼은 알약 테두리 없애고 그냥 일반버튼으로」.
-    //
-    // ★And the grammar agrees, which makes this a simplification rather than
-    // an exception. A pill's border says 「a noun and its verbs」; this one had
-    // a noun and NO verbs, standing on the SILL among the transport icons —
-    // where a bare row of icons already means 「a state machine」. The border
-    // was drawing a boundary around a single button, on the one strip whose
-    // other controls deliberately wear none.
-    keyValue: 'project-settings-button',
-    tooltip: AppText.strings.projectFpsTitle,
-    icon: const Icon(Icons.settings_outlined),
-    onPressed: () => showPanelFlyout(context, entries: _entries(context)),
-  );
 }
 
 /// One value row's question: which window, what it is called, what the
@@ -350,7 +324,7 @@ class _FpsWindowState extends State<_FpsWindow> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final preset in ProjectSettingsPill.fpsPresets)
+          for (final preset in ProjectSettingsMenu.fpsPresets)
             _ChoiceRow(
               // Integer rates keep their original key (`timeline-fps-24`);
               // the pulldown rates key off the fraction, since `23.976` in

@@ -54,6 +54,7 @@ import '../export/export_dialog.dart';
 import '../import/import_dialog.dart';
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
+import 'project_settings_menu.dart';
 import '../session/project_file_door.dart'
     show SaveAsked, StagedArchive, readProjectFile;
 import '../session/tvpp_import_door.dart' show readTvppProject;
@@ -725,6 +726,15 @@ class EditorTopStrip extends StatelessWidget {
           commit: session.updateTimesheetInfo,
         ),
       ),
+    ),
+    // 유저 답 playback-quality-home-Q1 「프로젝트 설정으로 같이」 — 「다만
+    // 프로젝트 설정이랑 작품설정이랑 나누는게 깔끔할지도?」: the project's own
+    // values beside the work's, one level in — the sill's ⚙ rows, moved.
+    _item(
+      id: 'project-settings',
+      label: 'Project settings',
+      icon: Icons.video_settings_outlined,
+      submenuBuilder: () => ProjectSettingsMenu(session).entries(context),
     ),
     const PanelFlyoutDivider(),
     _item(

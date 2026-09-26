@@ -93,6 +93,31 @@ void main() {
     );
   });
 
+  testWidgets('Settings: the project\'s settings are one level in, beside '
+      'the work\'s — FPS, audio, camera frame, playback quality', (
+    tester,
+  ) async {
+    // 답 playback-quality-home-Q1 「프로젝트 설정으로 같이」: the sill's ⚙
+    // rows, moved.
+    await pumpHome(tester);
+
+    await openStrip(tester, 'top-strip-settings-button');
+    expect(
+      find.byKey(const ValueKey<String>('menu-work-settings')),
+      findsOneWidget,
+    );
+    await hoverEntry(tester, 'menu-project-settings');
+
+    for (final row in [
+      'project-settings-fps',
+      'project-settings-audio-rate',
+      'project-settings-camera-size',
+      'project-settings-quality',
+    ]) {
+      expect(find.byKey(ValueKey<String>(row)), findsOneWidget, reason: row);
+    }
+  });
+
   testWidgets('Settings: the panel rows are the show/hide switch now', (
     tester,
   ) async {

@@ -4,11 +4,12 @@ import '../camera/camera_view_toggle_button.dart';
 import '../editor_session_manager.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_transport_controls.dart';
-import 'project_settings_pill.dart';
 
-/// What a frame panel puts on the 문턱: its playback transport, the camera
-/// view toggle, and the settings pill — right-aligned, ahead of the region's
-/// own collapse button.
+/// What a frame panel puts on the 문턱: its playback transport and the camera
+/// view toggle — right-aligned, ahead of the region's own collapse button.
+/// ↩️A ⚙ of the project's settings stood here too, until they went to the
+/// top strip's ⚙ beside the work's (답 playback-quality-home-Q1 「프로젝트
+/// 설정으로 같이」).
 ///
 /// ★They live on the SILL rather than in the command bar for one reason
 /// (유저 확정, 2026-08-10): the sill's right edge does not move. Its tabs
@@ -72,8 +73,6 @@ class FramePanelSillControls extends StatelessWidget {
           enabled: cameraViewEnabled,
           keyValue: cameraViewKeyValue,
         ),
-        const SizedBox(width: 6),
-        ProjectSettingsPill(session: session),
         const SizedBox(width: 4),
       ],
     );
