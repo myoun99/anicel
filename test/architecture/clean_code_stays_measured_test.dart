@@ -161,7 +161,14 @@ void main() {
   /// ⚠️434 → 433 on 2026-09-25, following one down: the storyboard's
   /// `_paintPanelPictures` fell under the line when the panel writing left
   /// it for the bands (and the fold gates with it).
-  const longBodies = 433;
+  ///
+  /// ⚠️433 → 431 on 2026-09-26: master stood at 432, one under a ceiling
+  /// that had not followed it down, and the ruler's
+  /// `TimelineFrameRulerPainter.paint` fell under the line when both
+  /// strips' window pass became one call (`TimelineRulerScale.paintWindow`,
+  /// I-22). 🔬`clean_code_diff` between master and the lane named that one
+  /// and nothing added.
+  const longBodies = 431;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

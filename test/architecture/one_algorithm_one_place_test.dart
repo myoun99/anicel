@@ -209,8 +209,16 @@ import '../../tool/refactor/clone_scan.dart';
 /// `models/conte/conte_page_marks.dart`: each prints a media image where
 /// the source names one — the cover's picture, the body's company logo.
 /// ⛔Not merged: two of them, and the third is what earns a merge.
+///
+/// 91 → 90 (2026-09-26, I-22's ten-minute floor): the pair
+/// `TimelineFrameRulerPainter.paint` and `XSheetFrameRailPainter.paint`
+/// left — both strips lay their window through ONE call now
+/// (`TimelineRulerScale.paintWindow`), and the widest-digits measure the
+/// seconds cadence had copied from the numbers' is one method
+/// (`_widestDigits`). 🔬`clones.dart` on master and on the lane: that pair
+/// gone, nothing added.
 void main() {
-  const ceiling = 91;
+  const ceiling = 90;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

@@ -513,15 +513,25 @@ void main() {
   group('I-22: at the ten-minute floor the strip writes and papers in '
       'stretches', () {
     const cell = 1 / 8;
-    TimelineRulerScale wide({Axis axis = Axis.horizontal}) => scale(
+    TimelineRulerScale wide({
+      Axis axis = Axis.horizontal,
+      double cellExtent = cell,
+      int frameStartIndex = 0,
+    }) => scale(
       axis: axis,
-      metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
+      metrics: TimelineGridMetrics.defaults.copyWith(
+        frameCellWidth: cellExtent,
+      ),
+      frameStartIndex: frameStartIndex,
       frameEndIndexExclusive: 14400,
       playbackFrameCount: 14400,
       numberType: axis == Axis.horizontal
           ? TimelineFrameRulerPainter.numberType
           : XSheetFrameRailPainter.numberType,
     );
+    TimelineRulerGlyphLayout layoutOf(Axis axis) => axis == Axis.horizontal
+        ? TimelineFrameRulerPainter.glyphsAt
+        : XSheetFrameRailPainter.glyphsAt;
 
     test('the seconds thin on their ladder where a second cannot hold its '
         'mark', () {
@@ -566,6 +576,59 @@ void main() {
       }
     });
 
+    test('no two seconds a strip writes stand closer than the mark gap', () {
+      // A sweep, not the floor alone: the gap decides the rung only in the
+      // band where a second holds its widest mark but not the gap as well.
+      for (final axis in Axis.values) {
+        for (var step = 10; step <= 500; step += 1) {
+          final strip = wide(axis: axis, cellExtent: step / 200);
+          Rect? previous;
+          var closest = double.infinity;
+          for (var second = 100; second < 300; second += 1) {
+            final text = strip.writingAt(second * 24, current: false).second;
+            if (text.isEmpty) {
+              continue;
+            }
+            final rect = layoutOf(axis)(strip, second * 24, current: false)
+                .singleWhere((glyph) => glyph.painter.plainText == text)
+                .rect;
+            if (previous != null) {
+              closest = math.min(
+                closest,
+                axis == Axis.horizontal
+                    ? rect.left - previous.right
+                    : rect.top - previous.bottom,
+              );
+            }
+            previous = rect;
+          }
+          expect(
+            closest,
+            greaterThanOrEqualTo(timelineMarkGap - 1e-9),
+            reason: '$axis at ${step / 200}px',
+          );
+        }
+      }
+    });
+
+    test('a strip paints every mark its window holds, whatever frame the '
+        'window starts on', () {
+      for (final axis in Axis.values) {
+        final strip = wide(axis: axis, frameStartIndex: 7);
+        final drawn = _DrawnWidths();
+        (axis == Axis.horizontal
+                ? TimelineFrameRulerPainter(scale: strip)
+                : XSheetFrameRailPainter(scale: strip))
+            .paint(drawn, const Size(1800, 28));
+        var written = 0;
+        for (var frame = 7; frame < 14400; frame += 1) {
+          written += layoutOf(axis)(strip, frame, current: false).length;
+        }
+        expect(written, greaterThan(0), reason: 'the premise: $axis writes');
+        expect(drawn.widths, hasLength(written), reason: '$axis');
+      }
+    });
+
     test('the paper is one rect per ground: the selected cell and the '
         'playback end are its only edges', () {
       final strip = scale(
@@ -576,7 +639,7 @@ void main() {
         pastPlaybackWash: const Color(0xFF123456),
       );
       final canvas = _Rects();
-      strip.paintPaperIn(canvas, 0, 100, fill: Paint(), line: Paint());
+      strip.paintPaperIn(canvas, (startIndex: 0, endIndexExclusive: 100));
 
       expect(canvas.rects.map((rect) => rect.color.toARGB32()), [
         strip.modelAt(0).background.toARGB32(),

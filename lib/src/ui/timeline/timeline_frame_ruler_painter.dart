@@ -122,45 +122,14 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     final colorScheme = scale.colorScheme;
-    final fillPaint = Paint();
     final linePaint = Paint()..strokeWidth = 1;
 
-    // Self-windowing (UI-R15): only the headers under the live viewport
-    // record — a scroll is a repaint of this thin pass, never a rebuild.
-    final window = scale.visibleWindow();
-
-    // PASS 1 — paper, and on it the SAME grid the cells use (R26 #40):
-    // base cadence lines, 6f stronger, second boundaries strongest
-    // ([TimelineRulerScale.paintCellPaper] — the rail's and the playhead
-    // writing's too). Painting every cell's paper BEFORE any label is what
-    // keeps a narrow cell's label alive: the old single pass let the next
-    // cell's fill erase the half that overflowed (R26 #39, "텍스트 절반이
-    // 사라짐"). The cached-range strip is NOT here — it moved to
-    // [TimelineRulerCursorOverlay] with the cursor tint, because its
-    // truth is derived state that no gate can compare.
-    // ([TimelineRulerScale.paintPaperIn] — a stretch of one ground at a
-    // time, not a cell at a time: I-22's floor puts ~19,000 in a window).
-    scale.paintPaperIn(
-      canvas,
-      window.startIndex,
-      window.endIndexExclusive,
-      fill: fillPaint,
-      line: linePaint,
-    );
-    linePaint.strokeWidth = 1;
-
-    // PASS 2 — labels last, so nothing can paint over them; only the frames
-    // a mark can stand on ([TimelineRulerScale.writingStep]).
-    final step = scale.writingStep;
-    for (
-      var frameIndex = (window.startIndex + step - 1) ~/ step * step;
-      frameIndex < window.endIndexExclusive;
-      frameIndex += step
-    ) {
-      for (final glyph in glyphsAt(scale, frameIndex, current: false)) {
-        glyph.paint(canvas);
-      }
-    }
+    // The paper, on it the SAME grid the cells use (R26 #40), and the
+    // labels last ([TimelineRulerScale.paintWindow]). The cached-range
+    // strip is NOT here — it moved to [TimelineRulerCursorOverlay] with the
+    // cursor tint, because its truth is derived state that no gate can
+    // compare.
+    scale.paintWindow(canvas, glyphsAt);
 
     // The strip's structural BASELINE (the ruler/body divider) — full
     // strength, once, whatever the zoom; per-cell borders above stay
@@ -286,6 +255,16 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
 /// ruler, `XSheetFrameRailPainter.numberType` for the rail).
 typedef TimelineRulerNumberType =
     TextStyle Function(TimelineRulerScale scale, {required bool everyFrame});
+
+/// Where a ruler strip writes at one frame — the strip's OWN layout
+/// ([TimelineFrameRulerPainter.glyphsAt] across, `XSheetFrameRailPainter
+/// .glyphsAt` down); [current] asks for the playhead's pair.
+typedef TimelineRulerGlyphLayout =
+    List<TimelineGlyphPlacement> Function(
+      TimelineRulerScale scale,
+      int frameIndex, {
+      required bool current,
+    });
 
 /// [TimelineRulerScale.labelEveryFrames], measured once per scale.
 final Expando<int> _labelEveryFramesOf = Expando<int>('labelEveryFrames');
@@ -482,10 +461,6 @@ final class TimelineRulerScale {
   /// a number: it gave up rungs the numbers still fit, and kept every frame
   /// where four digits ran into each other.
   ///
-  /// The widest number is the widest digit, as many times over as the
-  /// longest label has digits, so a face with proportional figures cannot
-  /// slip a wider run past the measure.
-  ///
   /// Every frame is measured NARROWED ([numberFitIn]) — as far as half-width
   /// and no further (ruler-digits-in-the-app-face-Q1): only a number that
   /// would still touch the next thins the strip.
@@ -498,32 +473,22 @@ final class TimelineRulerScale {
         ? '$safeFps'
         : '${frameEndIndexExclusive > 1 ? frameEndIndexExclusive : 1}';
     final digits = longest.length;
-    double widestIn(TextStyle type, {double widthAtMost = double.infinity}) {
-      var widest = 0.0;
-      for (var digit = 0; digit <= 9; digit += 1) {
-        final glyph = timelineGlyphPainter('$digit' * digits, type);
-        final extent = extentAlong(
-          axis,
-          Size(math.min(glyph.width, widthAtMost), glyph.height),
-        );
-        widest = extent > widest ? extent : widest;
-      }
-      return widest;
-    }
-
     final cell = metrics.frameCellWidth;
     final everyFrame = numberTypeAt(everyFrame: true);
     final halfWidth =
         digits * (everyFrame.fontSize ?? double.infinity) *
         timelineNumberNarrowestEm;
-    if (widestIn(everyFrame, widthAtMost: halfWidth) + timelineMarkGap <=
+    if (_widestDigits(everyFrame, digits, widthAtMost: halfWidth) +
+            timelineMarkGap <=
         cell) {
       return 1;
     }
     // Past every frame the numbers are the every-Nth overlay: the rung that
     // holds the overlay's widest number, and never the first — that is the
     // every-frame writing the line above has already refused.
-    final overlay = widestIn(numberTypeAt(everyFrame: false)) + timelineMarkGap;
+    final overlay =
+        _widestDigits(numberTypeAt(everyFrame: false), digits) +
+        timelineMarkGap;
     final stride = timelineStrideHolding(overlay, cell);
     final overlayFloor = timelineFrameStrideLadder[1];
     return stride > overlayFloor ? stride : overlayFloor;
@@ -531,9 +496,10 @@ final class TimelineRulerScale {
 
   /// The paper under one cell: its ground, and on it THE boundary line —
   /// the grid law's ink composited onto that ground — turned by [axis]: down
-  /// the ruler's cell edge, across the rail's row edge. Both strips lay their
-  /// paper here, and so does the playhead's writing when it uncovers a cell
-  /// (I-16); [fill] and [line] are the caller's, reused across its cells.
+  /// the ruler's cell edge, across the rail's row edge. The playhead's
+  /// writing lays it when it uncovers a cell (I-16) and both strips lay it a
+  /// stretch at a time ([paintPaperIn]); [fill] and [line] are the caller's,
+  /// reused across its cells.
   ///
   /// D8 (2026-08-18): the rail used to stroke a faint RECT around every row
   /// — no cadence, no 6f/second strengthening, half a pixel off the ruler's
@@ -559,9 +525,34 @@ final class TimelineRulerScale {
     _paintBoundaryLine(canvas, frameIndex, ground, line);
   }
 
-  /// The paper under frames [from, to) — each stretch of one ground as ONE
-  /// rect, and on it every line THE law rules there: what [paintCellPaper]
-  /// lays one cell at a time, laid for a window at once.
+  /// A strip's window, both passes — the ruler's across and the rail's
+  /// down, one code: the paper ([paintPaperIn]), then the marks, only on
+  /// the frames a mark can stand on ([writingStep]), each where the strip's
+  /// own [layout] sets it.
+  ///
+  /// Self-windowing (UI-R15): only the frames under the live viewport
+  /// record — a scroll is a repaint of this thin pass, never a rebuild.
+  /// Every cell's paper goes down BEFORE any label, which is what keeps a
+  /// narrow cell's label alive: the old single pass let the next cell's
+  /// fill erase the half that overflowed (R26 #39, "텍스트 절반이 사라짐").
+  void paintWindow(Canvas canvas, TimelineRulerGlyphLayout layout) {
+    final window = visibleWindow();
+    paintPaperIn(canvas, window);
+    final step = writingStep;
+    for (
+      var frameIndex = timelineFirstOnStride(window.startIndex, step);
+      frameIndex < window.endIndexExclusive;
+      frameIndex += step
+    ) {
+      for (final glyph in layout(this, frameIndex, current: false)) {
+        glyph.paint(canvas);
+      }
+    }
+  }
+
+  /// The paper under [frames] — each stretch of one ground as ONE rect,
+  /// and on it every line THE law rules there: what [paintCellPaper] lays
+  /// one cell at a time, laid for a window at once.
   ///
   /// 🚨I-22 (the ten-minute floor): at an eighth of a pixel a window is
   /// ~19,000 cells, and a rect and a line check for every one of them was
@@ -570,11 +561,11 @@ final class TimelineRulerScale {
   /// edges a stretch has; the lines walk [timelineFrameLineStep].
   void paintPaperIn(
     Canvas canvas,
-    int from,
-    int to, {
-    required Paint fill,
-    required Paint line,
-  }) {
+    ({int startIndex, int endIndexExclusive}) frames,
+  ) {
+    final (startIndex: from, endIndexExclusive: to) = frames;
+    final fill = Paint();
+    final line = Paint();
     final edges = <int>{
       from,
       to,
@@ -592,7 +583,7 @@ final class TimelineRulerScale {
         fill..color = ground,
       );
       for (
-        var frame = (start + step - 1) ~/ step * step;
+        var frame = timelineFirstOnStride(start, step);
         frame < end;
         frame += step
       ) {
@@ -643,20 +634,32 @@ final class TimelineRulerScale {
     final second = timelineSecondFrames(framesPerSecond);
     final digits = '${math.max(0, frameEndIndexExclusive - 1) ~/ second}'
         .length;
-    final type = face.copyWith(
-      fontSize: secondsFontSize,
-      fontWeight: FontWeight.w700,
+    return timelineSecondsHolding(
+      _widestDigits(timelineSecondsType(face, secondsFontSize), digits) +
+          timelineMarkGap,
+      second * metrics.frameCellWidth,
     );
+  }
+
+  /// The widest run of [digits] digits this strip can set in [type],
+  /// measured along [axis] and as drawn no wider than [widthAtMost]: the
+  /// widest digit, as many times over, so a face with proportional figures
+  /// cannot slip a wider run past the measure.
+  double _widestDigits(
+    TextStyle type,
+    int digits, {
+    double widthAtMost = double.infinity,
+  }) {
     var widest = 0.0;
     for (var digit = 0; digit <= 9; digit += 1) {
       final glyph = timelineGlyphPainter('$digit' * digits, type);
-      final extent = extentAlong(axis, Size(glyph.width, glyph.height));
+      final extent = extentAlong(
+        axis,
+        Size(math.min(glyph.width, widthAtMost), glyph.height),
+      );
       widest = extent > widest ? extent : widest;
     }
-    return timelineSecondsHolding(
-      widest + timelineMarkGap,
-      second * metrics.frameCellWidth,
-    );
+    return widest;
   }
 
   /// The step every frame this strip writes at is a multiple of — the gcd

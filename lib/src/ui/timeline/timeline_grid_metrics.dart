@@ -170,6 +170,11 @@ int timelineStrideHolding(double markExtent, double cellExtent) {
   throw StateError('the ladder has no top rung');
 }
 
+/// The first frame at or after [frame] that a walk over every [stride]th
+/// frame stands on — where a window's walk of marks starts.
+int timelineFirstOnStride(int frame, int stride) =>
+    (frame + stride - 1) ~/ stride * stride;
+
 class TimelineGridMetrics {
   static const int defaultMinimumVisibleFrameCells = 24;
 

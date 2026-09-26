@@ -85,6 +85,15 @@ void main() {
       expect(timelineSecondsHolding(1000, 1), 1200);
     });
 
+    test('a walk over a stride starts on its first frame at or after the '
+        'window\'s', () {
+      expect(timelineFirstOnStride(0, 6), 0);
+      expect(timelineFirstOnStride(1, 6), 6);
+      expect(timelineFirstOnStride(6, 6), 6);
+      expect(timelineFirstOnStride(7, 6), 12);
+      expect(timelineFirstOnStride(7, 1), 7);
+    });
+
     test('custom metrics can be created', () {
       const metrics = TimelineGridMetrics(
         minimumVisibleFrameCells: 12,

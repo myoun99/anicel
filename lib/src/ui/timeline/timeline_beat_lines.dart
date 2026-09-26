@@ -5,7 +5,8 @@ import '../../models/app_frame_grid_settings.dart';
 import '../theme/app_theme.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
-import 'timeline_grid_metrics.dart' show timelineStrideHolding;
+import 'timeline_grid_metrics.dart'
+    show timelineFirstOnStride, timelineStrideHolding;
 import 'timeline_second.dart';
 import '../repaint_props.dart';
 
@@ -746,7 +747,7 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     // the hoisted form of "which absolute frames does this canvas show".
     int firstBoundary(int period) => frameStartIndex <= 0
         ? period
-        : ((frameStartIndex + period - 1) ~/ period) * period;
+        : timelineFirstOnStride(frameStartIndex, period);
     double positionOf(int frame) => timelineFrameBoundaryLinePosition(
       frame - frameStartIndex,
       frameCellExtent,

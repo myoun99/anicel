@@ -1364,40 +1364,15 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     final colorScheme = scale.colorScheme;
-    final fillPaint = Paint();
     final linePaint = Paint()..strokeWidth = 1;
     // D8 (2026-08-18): the rail used to stroke a faint RECT around every
     // row — no cadence, no 6f/second strengthening, half a pixel off the
     // ruler's snap: one of the "미묘하게 다른 가이드선". It lays its paper
-    // through THE boundary-line law now, the very call the horizontal ruler
-    // lays its own with ([TimelineRulerScale.paintCellPaper] — once "the
-    // transposed same thing", now the same code); the structural right
-    // edge still paints once below.
-    final boundaryPaint = Paint();
-
-    // Self-windowing (UI-R15): only the rows under the live viewport
-    // record — a scroll is a repaint of this thin pass, never a rebuild.
-    final window = scale.visibleWindow();
-    // A stretch of one ground at a time, then only the rows a mark can
-    // stand on — the ruler's two passes (I-22: ~19,000 rows a window at
-    // the ten-minute floor).
-    scale.paintPaperIn(
-      canvas,
-      window.startIndex,
-      window.endIndexExclusive,
-      fill: fillPaint,
-      line: boundaryPaint,
-    );
-    final step = scale.writingStep;
-    for (
-      var frameIndex = (window.startIndex + step - 1) ~/ step * step;
-      frameIndex < window.endIndexExclusive;
-      frameIndex += step
-    ) {
-      for (final glyph in glyphsAt(scale, frameIndex, current: false)) {
-        glyph.paint(canvas);
-      }
-    }
+    // and its writing through the very call the horizontal ruler lays its
+    // own with ([TimelineRulerScale.paintWindow] — once "the transposed
+    // same thing", now the same code); the structural right edge still
+    // paints once below.
+    scale.paintWindow(canvas, glyphsAt);
     // The cached-range strip moved to [TimelineRulerCursorOverlay] (in its
     // vertical form, hugging the right edge): cached-ness is derived state
     // with no invalidation event, so it must repaint freely rather than
