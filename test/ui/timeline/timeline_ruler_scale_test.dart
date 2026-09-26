@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_second.dart'
+    show timelineSecondStrideLadder;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
     show XSheetFrameRailPainter;
 
@@ -51,6 +53,7 @@ void main() {
     colorScheme: colorScheme ?? light,
     face: face,
     numberType: numberType,
+    secondsFontSize: axis == Axis.horizontal ? 9 : 8,
     framesPerSecond: framesPerSecond,
     showSeconds: showSeconds,
     windowBucket: windowBucket,
@@ -506,6 +509,101 @@ void main() {
       expect(number.rect.center.dx, closeTo(row.center.dx, 1e-9));
     });
   });
+
+  group('I-22: at the ten-minute floor the strip writes and papers in '
+      'stretches', () {
+    const cell = 1 / 8;
+    TimelineRulerScale wide({Axis axis = Axis.horizontal}) => scale(
+      axis: axis,
+      metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
+      frameEndIndexExclusive: 14400,
+      playbackFrameCount: 14400,
+      numberType: axis == Axis.horizontal
+          ? TimelineFrameRulerPainter.numberType
+          : XSheetFrameRailPainter.numberType,
+    );
+
+    test('the seconds thin on their ladder where a second cannot hold its '
+        'mark', () {
+      final strip = wide();
+      final every = strip.secondsLabelEverySeconds;
+      expect(every, greaterThan(1));
+      expect(timelineSecondStrideLadder, contains(every));
+      expect(strip.modelAt(0).secondsLabel, '0');
+      expect(strip.modelAt(24 * every).secondsLabel, '$every');
+      expect(
+        strip.modelAt(24).secondsLabel,
+        isEmpty,
+        reason: 'second 1 is off the rung',
+      );
+    });
+
+    test('every second still writes at every zoom the old floor allowed', () {
+      for (final atLeast in [2.4, 24.0]) {
+        expect(
+          scale(
+            metrics: TimelineGridMetrics.defaults.copyWith(
+              frameCellWidth: atLeast,
+            ),
+            frameEndIndexExclusive: 14400,
+          ).secondsLabelEverySeconds,
+          1,
+          reason: '${atLeast}px',
+        );
+      }
+    });
+
+    test('every frame a strip writes at is on its writing step', () {
+      for (final axis in Axis.values) {
+        final strip = wide(axis: axis);
+        final step = strip.writingStep;
+        for (var frame = 0; frame < 14400; frame += 1) {
+          final writing = strip.writingAt(frame, current: false);
+          if (writing.number.isNotEmpty || writing.second.isNotEmpty) {
+            expect(frame % step, 0, reason: '$axis frame $frame');
+          }
+        }
+      }
+    });
+
+    test('the paper is one rect per ground: the selected cell and the '
+        'playback end are its only edges', () {
+      final strip = scale(
+        axis: Axis.vertical,
+        currentFrameIndex: 10,
+        playbackFrameCount: 50,
+        frameEndIndexExclusive: 100,
+        pastPlaybackWash: const Color(0xFF123456),
+      );
+      final canvas = _Rects();
+      strip.paintPaperIn(canvas, 0, 100, fill: Paint(), line: Paint());
+
+      expect(canvas.rects.map((rect) => rect.color), [
+        strip.modelAt(0).background,
+        strip.modelAt(10).background,
+        strip.modelAt(11).background,
+        strip.modelAt(50).background,
+      ]);
+      expect(canvas.rects.first.rect, strip.cellRectFor(0).expandToInclude(
+        strip.cellRectFor(9),
+      ));
+      expect(canvas.rects.last.rect, strip.cellRectFor(50).expandToInclude(
+        strip.cellRectFor(99),
+      ));
+    });
+  });
+}
+
+/// Every rect laid, with the colour it was laid in.
+class _Rects implements Canvas {
+  final rects = <({Rect rect, Color color})>[];
+
+  @override
+  void drawRect(Rect rect, Paint paint) =>
+      rects.add((rect: rect, color: paint.color));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 /// The width every paragraph is DRAWN at — through the canvas's scale, since

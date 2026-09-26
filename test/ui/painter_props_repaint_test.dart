@@ -96,6 +96,7 @@ void main() {
             colorScheme: const ColorScheme.light(),
             face: const TextStyle(),
             numberType: TimelineFrameRulerPainter.numberType,
+            secondsFontSize: 9,
           ),
         );
 

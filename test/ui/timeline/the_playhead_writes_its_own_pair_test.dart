@@ -44,6 +44,7 @@ void main() {
     numberType: axis == Axis.horizontal
         ? TimelineFrameRulerPainter.numberType
         : XSheetFrameRailPainter.numberType,
+    secondsFontSize: axis == Axis.horizontal ? 9 : 8,
     showSeconds: showSeconds,
   );
 

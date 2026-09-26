@@ -50,7 +50,12 @@ void main() {
 
     test('the stride ladder is the paper timesheet\'s, anchored at frame 1 '
         '(user rule: all → 3f → 6f → 12f → 24f…)', () {
-      expect(timelineFrameStrideLadder, [1, 3, 6, 12, 24, 48, 96]);
+      expect(timelineFrameStrideLadder, [1, 3, 6, 12, 24]);
+      expect(
+        timelineFrameStrides().take(9),
+        [1, 3, 6, 12, 24, 48, 96, 192, 384],
+        reason: 'doubling on past the rungs the user named (I-22)',
+      );
     });
 
     // I-22: which rung stands is no longer a threshold on the cell here —
@@ -61,7 +66,11 @@ void main() {
       expect(timelineStrideHolding(8.5, 8), 3);
       expect(timelineStrideHolding(30, 8), 6);
       expect(timelineStrideHolding(3, 2.4), 3);
-      expect(timelineStrideHolding(1000, 1), 96, reason: 'the top rung');
+      expect(
+        timelineStrideHolding(1000, 1),
+        1536,
+        reason: 'no top rung: the ten-minute floor needs the ladder to go on',
+      );
     });
 
     test('custom metrics can be created', () {

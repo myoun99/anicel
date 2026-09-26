@@ -31,10 +31,18 @@ import '../text/word_condensation.dart';
 /// One function because the timeline, the storyboard and the x-sheet all ask
 /// it: the expression used to be written out twice, letter for letter, and
 /// fixing one would have left the sheet counting from 1.
+///
+/// Every [everySeconds]-th second only (I-22 — the strip's measured rung,
+/// [TimelineRulerScale.secondsLabelEverySeconds]); counted from 0, so the
+/// head always writes.
 String timelineRulerSecondsLabel({
   required int frameIndex,
   required int framesPerSecond,
-}) => timelineOnSecondBoundary(frameIndex, framesPerSecond)
+  int everySeconds = 1,
+}) =>
+    frameIndex %
+            (timelineSecondFrames(framesPerSecond) * everySeconds) ==
+        0
     ? timelineRulerSecondOf(
         frameIndex: frameIndex,
         framesPerSecond: framesPerSecond,
@@ -130,25 +138,24 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
     // 사라짐"). The cached-range strip is NOT here — it moved to
     // [TimelineRulerCursorOverlay] with the cursor tint, because its
     // truth is derived state that no gate can compare.
-    for (
-      var frameIndex = window.startIndex;
-      frameIndex < window.endIndexExclusive;
-      frameIndex += 1
-    ) {
-      scale.paintCellPaper(
-        canvas,
-        frameIndex,
-        fill: fillPaint,
-        line: linePaint,
-      );
-    }
+    // ([TimelineRulerScale.paintPaperIn] — a stretch of one ground at a
+    // time, not a cell at a time: I-22's floor puts ~19,000 in a window).
+    scale.paintPaperIn(
+      canvas,
+      window.startIndex,
+      window.endIndexExclusive,
+      fill: fillPaint,
+      line: linePaint,
+    );
     linePaint.strokeWidth = 1;
 
-    // PASS 2 — labels last, so nothing can paint over them.
+    // PASS 2 — labels last, so nothing can paint over them; only the frames
+    // a mark can stand on ([TimelineRulerScale.writingStep]).
+    final step = scale.writingStep;
     for (
-      var frameIndex = window.startIndex;
+      var frameIndex = (window.startIndex + step - 1) ~/ step * step;
       frameIndex < window.endIndexExclusive;
-      frameIndex += 1
+      frameIndex += step
     ) {
       for (final glyph in glyphsAt(scale, frameIndex, current: false)) {
         glyph.paint(canvas);
@@ -228,7 +235,7 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
     // Top line: the second index on fps boundaries (UI-R10 #27).
     final second = secondsCornerGlyph(rect, (
       text: writing.second,
-      fontSize: 9,
+      fontSize: scale.secondsFontSize,
       color: scale.secondsInk(current: current),
       face: scale.face,
     ));
@@ -283,6 +290,9 @@ typedef TimelineRulerNumberType =
 /// [TimelineRulerScale.labelEveryFrames], measured once per scale.
 final Expando<int> _labelEveryFramesOf = Expando<int>('labelEveryFrames');
 
+/// [TimelineRulerScale.secondsLabelEverySeconds], measured once per scale.
+final Expando<int> _secondsLabelEveryOf = Expando<int>('secondsLabelEvery');
+
 /// The frame SCALE a frame-axis strip draws: the bounds, the playhead and
 /// playback range, the leading spacer along the main axis, the metrics and
 /// colours, the fps and label mode, and the self-windowing inputs.
@@ -312,6 +322,7 @@ final class TimelineRulerScale {
     required this.colorScheme,
     required this.face,
     required this.numberType,
+    required this.secondsFontSize,
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.windowBucket,
@@ -355,6 +366,12 @@ final class TimelineRulerScale {
   /// painters set them in it, so what the cadence measured is what is
   /// painted.
   final TimelineRulerNumberType numberType;
+
+  /// The size this strip sets its SECONDS in — the ruler's 9, the rail's 8
+  /// (R10 R6: the corner is shared, the size is not). A value here for the
+  /// reason [numberType] is one: [secondsLabelEverySeconds] measures the
+  /// seconds in it and both painters write them in it.
+  final double secondsFontSize;
 
   final int framesPerSecond;
 
@@ -537,9 +554,62 @@ final class TimelineRulerScale {
     required Paint fill,
     required Paint line,
   }) {
-    final model = modelAt(frameIndex);
-    final rect = cellRectFor(frameIndex);
-    canvas.drawRect(rect, fill..color = model.background);
+    final ground = modelAt(frameIndex).background;
+    canvas.drawRect(cellRectFor(frameIndex), fill..color = ground);
+    _paintBoundaryLine(canvas, frameIndex, ground, line);
+  }
+
+  /// The paper under frames [from, to) — each stretch of one ground as ONE
+  /// rect, and on it every line THE law rules there: what [paintCellPaper]
+  /// lays one cell at a time, laid for a window at once.
+  ///
+  /// 🚨I-22 (the ten-minute floor): at an eighth of a pixel a window is
+  /// ~19,000 cells, and a rect and a line check for every one of them was
+  /// this strip's whole cost. A cell's ground moves only at the selected
+  /// cell and at the end of playback ([modelAt]), so those are the only
+  /// edges a stretch has; the lines walk [timelineFrameLineStep].
+  void paintPaperIn(
+    Canvas canvas,
+    int from,
+    int to, {
+    required Paint fill,
+    required Paint line,
+  }) {
+    final edges = <int>{
+      from,
+      to,
+      currentFrameIndex,
+      currentFrameIndex + 1,
+      playbackFrameCount,
+    }.where((edge) => edge >= from && edge <= to).toList()..sort();
+    final step = timelineFrameLineStep(metrics.frameCellWidth, framesPerSecond);
+    for (var index = 0; index + 1 < edges.length; index += 1) {
+      final start = edges[index];
+      final end = edges[index + 1];
+      final ground = modelAt(start).background;
+      canvas.drawRect(
+        cellRectFor(start).expandToInclude(cellRectFor(end - 1)),
+        fill..color = ground,
+      );
+      for (
+        var frame = (start + step - 1) ~/ step * step;
+        frame < end;
+        frame += step
+      ) {
+        _paintBoundaryLine(canvas, frame, ground, line);
+      }
+    }
+  }
+
+  /// THE boundary line at [frameIndex]'s leading edge, on [ground] — the
+  /// grid law's ink composited onto it, turned by [axis]; nothing where the
+  /// law thins the boundary out.
+  void _paintBoundaryLine(
+    Canvas canvas,
+    int frameIndex,
+    Color ground,
+    Paint line,
+  ) {
     final ink = timelineFrameBoundaryLineInk(
       frameIndex: frameIndex,
       frameCellExtent: metrics.frameCellWidth,
@@ -549,16 +619,53 @@ final class TimelineRulerScale {
     if (ink == null) {
       return;
     }
+    final rect = cellRectFor(frameIndex);
     final edge =
         (axis == Axis.horizontal ? rect.left : rect.top) + timelineGridLineSnap;
     canvas.drawLine(
       offsetAlong(axis, along: edge, across: 0),
       offsetAlong(axis, along: edge, across: crossExtent),
       line
-        ..color = timelineGridLineInkOnGround(ink, model.background)
+        ..color = timelineGridLineInkOnGround(ink, ground)
         ..strokeWidth = ink.strokeWidth,
     );
   }
+
+  /// Every how many SECONDS the seconds line writes a mark — the rung of
+  /// the seconds ladder ([timelineSecondsHolding]) whose span holds the
+  /// widest second this strip writes, set in [secondsFontSize] and measured
+  /// along [axis], with [timelineMarkGap] to the next. Every second, at
+  /// every zoom the old floor allowed; I-22's 「겹칠때 생략」 past that.
+  int get secondsLabelEverySeconds =>
+      _secondsLabelEveryOf[this] ??= _measuredSecondsLabelEvery();
+
+  int _measuredSecondsLabelEvery() {
+    final second = timelineSecondFrames(framesPerSecond);
+    final digits = '${math.max(0, frameEndIndexExclusive - 1) ~/ second}'
+        .length;
+    final type = face.copyWith(
+      fontSize: secondsFontSize,
+      fontWeight: FontWeight.w700,
+    );
+    var widest = 0.0;
+    for (var digit = 0; digit <= 9; digit += 1) {
+      final glyph = timelineGlyphPainter('$digit' * digits, type);
+      final extent = extentAlong(axis, Size(glyph.width, glyph.height));
+      widest = extent > widest ? extent : widest;
+    }
+    return timelineSecondsHolding(
+      widest + timelineMarkGap,
+      second * metrics.frameCellWidth,
+    );
+  }
+
+  /// The step every frame this strip writes at is a multiple of — the gcd
+  /// of the number cadence ([labelEveryFrames]) and the seconds'
+  /// ([secondsLabelEverySeconds]) — so a painter walking it writes every
+  /// mark and visits no cell that has none.
+  int get writingStep => labelEveryFrames.gcd(
+    timelineSecondFrames(framesPerSecond) * secondsLabelEverySeconds,
+  );
 
   /// The resolved per-cell model — the probe surface.
   ///
@@ -579,6 +686,7 @@ final class TimelineRulerScale {
       frameIndex: frameIndex,
       label: labeled ? frameNumberLabel(frameIndex) : '',
       secondsLabel: timelineRulerSecondsLabel(
+        everySeconds: secondsLabelEverySeconds,
         frameIndex: frameIndex,
         framesPerSecond: framesPerSecond,
       ),
@@ -652,6 +760,7 @@ final class TimelineRulerScale {
           other.metrics == metrics &&
           other.face == face &&
           other.numberType == numberType &&
+          other.secondsFontSize == secondsFontSize &&
           other.framesPerSecond == framesPerSecond &&
           other.showSeconds == showSeconds &&
           identical(other.windowBucket, windowBucket) &&
@@ -671,6 +780,7 @@ final class TimelineRulerScale {
     metrics,
     face,
     numberType,
+    secondsFontSize,
     framesPerSecond,
     showSeconds,
     identityHashCode(windowBucket),

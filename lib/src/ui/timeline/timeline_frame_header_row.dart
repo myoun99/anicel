@@ -91,6 +91,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       colorScheme: colorScheme,
       face: appFaceOf(DefaultTextStyle.of(context).style),
       numberType: TimelineFrameRulerPainter.numberType,
+      secondsFontSize: 9,
       framesPerSecond: framesPerSecond,
       showSeconds: showSeconds,
       windowBucket: windowBucket,

@@ -1317,6 +1317,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       colorScheme: colorScheme,
       face: appFaceOf(DefaultTextStyle.of(context).style),
       numberType: XSheetFrameRailPainter.numberType,
+      secondsFontSize: 8,
       framesPerSecond: framesPerSecond,
       showSeconds: showSeconds,
       windowBucket: windowBucket,
@@ -1377,26 +1378,30 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
     // Self-windowing (UI-R15): only the rows under the live viewport
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = scale.visibleWindow();
+    // A stretch of one ground at a time, then only the rows a mark can
+    // stand on — the ruler's two passes (I-22: ~19,000 rows a window at
+    // the ten-minute floor).
+    scale.paintPaperIn(
+      canvas,
+      window.startIndex,
+      window.endIndexExclusive,
+      fill: fillPaint,
+      line: boundaryPaint,
+    );
+    final step = scale.writingStep;
     for (
-      var frameIndex = window.startIndex;
+      var frameIndex = (window.startIndex + step - 1) ~/ step * step;
       frameIndex < window.endIndexExclusive;
-      frameIndex += 1
+      frameIndex += step
     ) {
-      scale.paintCellPaper(
-        canvas,
-        frameIndex,
-        fill: fillPaint,
-        line: boundaryPaint,
-      );
       for (final glyph in glyphsAt(scale, frameIndex, current: false)) {
         glyph.paint(canvas);
       }
-
-      // The cached-range strip moved to [TimelineRulerCursorOverlay] (in
-      // its vertical form, hugging the right edge): cached-ness is derived
-      // state with no invalidation event, so it must repaint freely rather
-      // than ride this gated painter.
     }
+    // The cached-range strip moved to [TimelineRulerCursorOverlay] (in its
+    // vertical form, hugging the right edge): cached-ness is derived state
+    // with no invalidation event, so it must repaint freely rather than
+    // ride this gated painter.
 
     // The structural right edge, full strength, whatever the zoom.
     canvas.drawLine(
@@ -1432,7 +1437,7 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
     // 28px (R10 R6). The CORNER is the shared answer, the size is not.
     final second = secondsCornerGlyph(rect, (
       text: writing.second,
-      fontSize: 8,
+      fontSize: scale.secondsFontSize,
       color: scale.secondsInk(current: current),
       face: scale.face,
     ));

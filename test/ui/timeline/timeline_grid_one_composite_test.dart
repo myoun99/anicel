@@ -180,6 +180,7 @@ void main() {
           colorScheme: scheme,
           face: const TextStyle(),
           numberType: TimelineFrameRulerPainter.numberType,
+          secondsFontSize: 9,
         ),
       ).paint(spy, const Size(24 * 30, 28));
       return spy;
@@ -213,6 +214,7 @@ void main() {
           colorScheme: scheme,
           face: const TextStyle(),
           numberType: TimelineFrameRulerPainter.numberType,
+          secondsFontSize: 9,
         ),
       ).scale.modelAt(6).background;
       expect(
@@ -255,6 +257,7 @@ void main() {
           colorScheme: scheme,
           face: const TextStyle(),
           numberType: XSheetFrameRailPainter.numberType,
+          secondsFontSize: 8,
         ),
       ).paint(spy, const Size(28, 24 * 30));
       return spy;
@@ -290,6 +293,7 @@ void main() {
         colorScheme: scheme,
         face: const TextStyle(),
         numberType: XSheetFrameRailPainter.numberType,
+        secondsFontSize: 8,
       ).modelAt(6).background;
       expect(ground, isNot(scheme.surface), reason: 'fixture premise');
       expect(
@@ -330,6 +334,7 @@ void main() {
         colorScheme: scheme,
         face: const TextStyle(),
         numberType: TimelineFrameRulerPainter.numberType,
+        secondsFontSize: 9,
       ),
     ).paint(ruler, const Size(24 * 30, 28));
 
