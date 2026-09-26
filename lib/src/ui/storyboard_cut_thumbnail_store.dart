@@ -272,13 +272,36 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     });
   }
 
+  /// [_signatureFor]'s answers, per cut INSTANCE, frame and edit
+  /// generation. A cut is immutable — an edit is a new instance — so what
+  /// an instance's signature spells moves only with the generation, which
+  /// carries the pixel edits no model does. ⚡I-22: at the ten-minute floor
+  /// every panel of the film is asked for on every paint, and each ask
+  /// spelled the cut's whole layer stack again and folded every timeline.
+  final Expando<({int generation, Map<int, String> byFrame})> _signatures =
+      Expando();
+
   String _signatureFor(Cut cut, int frameIndex) {
+    final generation = _editGenerations[cut.id] ?? 0;
+    var held = _signatures[cut];
+    if (held == null || held.generation != generation) {
+      held = (generation: generation, byFrame: {});
+      _signatures[cut] = held;
+    }
+    return held.byFrame[frameIndex] ??= _spellSignature(
+      cut,
+      frameIndex,
+      generation,
+    );
+  }
+
+  String _spellSignature(Cut cut, int frameIndex, int generation) {
     final buffer = StringBuffer()
       ..write(cut.canvasSize.width)
       ..write('x')
       ..write(cut.canvasSize.height)
       ..write('#')
-      ..write(_editGenerations[cut.id] ?? 0)
+      ..write(generation)
       ..write('#')
       ..write(cut.duration)
       ..write('#f')
