@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_workspace_colors.dart';
@@ -146,9 +148,12 @@ void main() {
     final projects = make();
     final open = projects.open(createDefaultProject());
     bind(open, 'C:/work/Scene 3.anicel');
+    // A backslash separates only on Windows; elsewhere it is a letter of
+    // the name and this spelling is another file (namesTheSameFile), so no
+    // tab is bound to it (measured: CI on Linux found none).
     expect(
-      identical(projects.boundTo(r'C:\work\Scene 3.anicel'), open),
-      isTrue,
+      projects.boundTo(r'C:\work\Scene 3.anicel'),
+      Platform.isWindows ? same(open) : isNull,
     );
     expect(projects.boundTo('C:/work/Scene 4.anicel'), isNull);
   });
