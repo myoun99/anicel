@@ -526,22 +526,33 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   /// THE one resolver behind the edit button: what the press would open.
   /// [canEditInstance] and the host's dispatch both read this.
   StoryboardEditTarget? get editTarget {
-    // The selection speaks first — the shared ladder's own order.
-    if (session.trackFrameRangeSelection.value != null) {
+    // The selection speaks first — the shared ladder's own order — and its
+    // cuts rung is a band that NAMES cuts, the question [deleteSubject]
+    // asks. 🚨It asked whether ANY band was up, from when the V row's was
+    // the only band this rail could sweep: a band over the S rows or the
+    // transition row opened the ACTIVE cut's rename, a cut the band did not
+    // even cover (storyboard-band-names-no-cut, 2026-09-26).
+    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       return const StoryboardEditCut();
     }
-    // …and a live CELL band speaks before the standing row does, exactly
-    // as it does in this class's [deleteSubject].
+    // …and a band that names rows this press would MISS claims it before
+    // the standing row speaks.
     //
     // The axis here is not the session's: THIS panel's press lands on the
     // STANDING ROW (a track, an S row, a lane, the transition fixture),
-    // and a cut-local band never names one of those — so any band at all
-    // names rows this press would miss. Without the guard it fell through
-    // to the row rung below, where a TrackRowAddress cursor means "rename
-    // the cut". Delete and Rename are documented as ONE ladder; splitting
-    // them here left the same band dark on one button and aimed at the
-    // cut on the other.
-    if (session.cells.cellSelectionClaimsSubject) {
+    // and a cut-local band never names one of those — so any CELL band at
+    // all names rows this press would miss. Without the guard it fell
+    // through to the row rung below, where a TrackRowAddress cursor means
+    // "rename the cut". Delete and Rename are documented as ONE ladder;
+    // splitting them here left the same band dark on one button and aimed
+    // at the cut on the other.
+    //
+    // A band of THIS rail is asked the timeline's question for the same
+    // verb ([EditorSessionManager.bandNamesRowsThisPressWouldMiss]): one
+    // that covers the standing row lets the press land there, at the
+    // playhead; one that covers only other rows refuses it. There is no
+    // band-wide rename to route to (board R8-c).
+    if (session.cells.cellSelectionClaimsSubject || _bandMissesTheStandingRow) {
       return null;
     }
     switch (session.storyboardStandingRow) {
@@ -656,6 +667,12 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
       session.cells.cellSelectionClaimsSubject ||
       session.trackFrameRangeSelection.value != null;
 
+  /// A band of this rail that does not cover the row the press lands on.
+  bool get _bandMissesTheStandingRow {
+    final band = session.trackFrameRangeSelection.value;
+    return band != null && !band.coversRow(session.storyboardStandingRow);
+  }
+
   /// The cuts this panel's 링크 독립 means: its EDIT TARGET's cuts rung —
   /// the selected cut range, else the cut under the cursor on a track row.
   ///
@@ -667,8 +684,9 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (editTarget is! StoryboardEditCut) {
       return const [];
     }
-    if (session.trackFrameRangeSelection.value != null) {
-      return session.storyboardRows.storyboardSelectedCutIds;
+    final named = session.storyboardRows.storyboardSelectedCutIds;
+    if (named.isNotEmpty) {
+      return named;
     }
     final cut = session.activeCutOrNull;
     return cut == null ? const [] : [cut.id];

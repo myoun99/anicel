@@ -16,6 +16,7 @@ import 'track_se_display.dart';
 import 'transitions.dart';
 import 'frame_verbs.dart';
 import 'cell_verbs.dart';
+import 'storyboard_rows.dart';
 
 /// The CELL INSTANCES — creating instances for a selection, whether the
 /// active cell holds one, and the subject an instance edit acts on — as
@@ -39,6 +40,7 @@ class CellInstances {
     required Transitions transitions,
     required FrameVerbs frameVerbs,
     required CellVerbs cells,
+    required StoryboardRows storyboardRows,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -52,10 +54,15 @@ class CellInstances {
        _trackSe = trackSe,
        _transitions = transitions,
        _frameVerbs = frameVerbs,
-       _cells = cells;
+       _cells = cells,
+       _storyboardRows = storyboardRows;
 
   final FrameVerbs _frameVerbs;
   final CellVerbs _cells;
+
+  /// Here for ONE question — whether a storyboard band NAMES cuts — asked
+  /// by the cuts rung of [editInstanceSubjectFor].
+  final StoryboardRows _storyboardRows;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -386,11 +393,17 @@ class CellInstances {
   /// panel decides is which selections are ITS nouns, and CUTS are the
   /// storyboard's. The two later rulings (D28, then this) win on the
   /// repo's own tie-break: 확정이 둘이면 나중 것이 이긴다.
+  ///
+  /// 🚨The cuts rung is a band that NAMES cuts — Delete's question
+  /// (`EditorSessionManager.deleteSubjectFor`), asked the same way. It
+  /// asked whether any storyboard band was up at all, which an S-row or a
+  /// transition-row band answers yes without covering a cut
+  /// (storyboard-band-names-no-cut, 2026-09-26).
   PillSubject editInstanceSubjectFor({required bool cutsAreThisPanels}) =>
       pillSubjectOn(
         cuts:
             cutsAreThisPanels &&
-            _selection.trackFrameRangeSelection.value != null,
+            _storyboardRows.storyboardSelectedCutIds.isNotEmpty,
         layers: () => _layerVerbs.renameableSelectedLayerIds().isNotEmpty,
         cells: () => canEditCellInstanceAtCurrentFrame,
       );
