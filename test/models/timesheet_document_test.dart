@@ -12,6 +12,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
@@ -108,44 +110,33 @@ void main() {
 
       final overridden = _document(
         _cut(),
-        info: const TimesheetInfo(
-          title: 'YOASOBI',
-          episode: 'MV',
-          artist: 'MYOUN',
-        ),
+        info: const TimesheetInfo(title: 'YOASOBI', episode: 'MV'),
       );
       expect(overridden.title, 'YOASOBI');
       expect(overridden.episode, 'MV');
-      expect(overridden.artist, 'MYOUN');
     });
 
-    test('a TYPED header box — the ones a tap edits — answers with its own '
-        'info field; a box the sheet works out answers none', () {
-      // The printer and the in-place editor both read this one answer.
+    test('the 作業者 is the 원화 worker — not another stage\'s, nor a '
+        'correction\'s', () {
+      // 유저 09-25: 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든
+      // 스태프의 원화 이름 인식하게하고」.
       final document = _document(
         _cut(),
-        info: const TimesheetInfo(
-          title: 'YOASOBI',
-          episode: 'MV',
-          scene: 'S1',
-          artist: 'MYOUN',
-        ),
+        info: TimesheetInfo.empty
+            .withStaffName(const LayerMark(process: LayerProcess.key), '大川')
+            .withStaffName(
+              const LayerMark(process: LayerProcess.layout),
+              'LO',
+            )
+            .withStaffName(
+              const LayerMark(
+                process: LayerProcess.key,
+                revise: LayerRevise.animationDirector,
+              ),
+              '作監',
+            ),
       );
-      expect(
-        {
-          for (final field in TimesheetHeaderField.values)
-            field: document.typedHeaderValue(field),
-        },
-        {
-          TimesheetHeaderField.episode: 'MV',
-          TimesheetHeaderField.title: 'YOASOBI',
-          TimesheetHeaderField.scene: 'S1',
-          TimesheetHeaderField.cut: null,
-          TimesheetHeaderField.time: null,
-          TimesheetHeaderField.name: 'MYOUN',
-          TimesheetHeaderField.sheet: null,
-        },
-      );
+      expect(document.artist, '大川');
     });
   });
 
@@ -672,7 +663,7 @@ void main() {
   });
 
   group('TimesheetDocument header fields', () {
-    test('scene passes through from info; the memo text is the cut note', () {
+    test('the memo text is the cut note', () {
       final document = TimesheetDocument.fromCut(
         cut: Cut(
           id: const CutId('cut-1'),
@@ -684,10 +675,8 @@ void main() {
         ),
         projectName: 'Project',
         fps: 24,
-        info: const TimesheetInfo(scene: 'S12'),
       );
 
-      expect(document.scene, 'S12');
       expect(document.memoText, 'カットO.L');
     });
 

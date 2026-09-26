@@ -6,18 +6,15 @@ import 'package:anicel/src/models/timesheet_info.dart';
 
 void main() {
   group('TimesheetInfo', () {
-    test('serializes scene and hidden header boxes round-trip', () {
+    test('serializes the hidden header boxes round-trip', () {
       const info = TimesheetInfo(
         title: 'YOASOBI',
         episode: 'MV',
-        scene: 'S12',
-        artist: 'MYOUN',
         hiddenFields: {TimesheetHeaderField.scene, TimesheetHeaderField.sheet},
       );
 
       final restored = TimesheetInfo.fromJson(info.toJson());
       expect(restored, info);
-      expect(restored.scene, 'S12');
       expect(restored.hiddenFields, {
         TimesheetHeaderField.scene,
         TimesheetHeaderField.sheet,
@@ -28,12 +25,24 @@ void main() {
       final restored = TimesheetInfo.fromJson({
         'title': 'YOASOBI',
         'episode': 'MV',
+      });
+
+      expect(restored.hiddenFields, isEmpty);
+      expect(restored.visibleFields, TimesheetHeaderField.values);
+    });
+
+    test('⛔an old file\'s scene and artist are not the work\'s any more', () {
+      // 유저 09-25: 「씬은 작품설정에선 필요없어」 · 「작품설정 작업자랑
+      // 원화랑 겹치니까 … 스태프의 원화 이름 인식하게하고」.
+      final restored = TimesheetInfo.fromJson({
+        'title': 'YOASOBI',
+        'scene': 'S12',
         'artist': 'MYOUN',
       });
 
-      expect(restored.scene, '');
-      expect(restored.hiddenFields, isEmpty);
-      expect(restored.visibleFields, TimesheetHeaderField.values);
+      expect(restored.toJson().keys, isNot(contains('scene')));
+      expect(restored.toJson().keys, isNot(contains('artist')));
+      expect(restored, const TimesheetInfo(title: 'YOASOBI'));
     });
 
     test('unknown hidden-field names from newer files drop silently', () {

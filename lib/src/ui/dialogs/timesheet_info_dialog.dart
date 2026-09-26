@@ -7,7 +7,7 @@ import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
 
-/// Edits the sheet-header text (title/episode/scene/artist) the paper
+/// Edits the sheet-header text (the title and the episode) the paper
 /// timesheet reads, and which header boxes the form prints. Pops the
 /// edited [TimesheetInfo], or null when cancelled.
 class TimesheetInfoDialog extends StatefulWidget {
@@ -25,12 +25,6 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
   );
   late final TextEditingController _episodeController = TextEditingController(
     text: widget.initialInfo.episode,
-  );
-  late final TextEditingController _sceneController = TextEditingController(
-    text: widget.initialInfo.scene,
-  );
-  late final TextEditingController _artistController = TextEditingController(
-    text: widget.initialInfo.artist,
   );
   late final Set<TimesheetHeaderField> _hiddenFields = {
     ...widget.initialInfo.hiddenFields,
@@ -75,8 +69,6 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
   void dispose() {
     _titleController.dispose();
     _episodeController.dispose();
-    _sceneController.dispose();
-    _artistController.dispose();
     _exposureBarThresholdController.dispose();
     for (final controller in _staffControllers.values) {
       controller.dispose();
@@ -103,8 +95,6 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
       staffed.copyWith(
         title: _titleController.text.trim(),
         episode: _episodeController.text.trim(),
-        scene: _sceneController.text.trim(),
-        artist: _artistController.text.trim(),
         hiddenFields: {..._hiddenFields},
         exposureBarThreshold: () => _exposureBarEnabled && threshold != null
             ? threshold.clamp(1, 999)
@@ -152,23 +142,6 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
               child: TextField(
                 key: const ValueKey<String>('timesheet-info-episode-field'),
                 controller: _episodeController,
-              ),
-            ),
-            const SizedBox(height: 12),
-            AppWindowField(
-              label: strings.sheetFieldScene,
-              child: TextField(
-                key: const ValueKey<String>('timesheet-info-scene-field'),
-                controller: _sceneController,
-              ),
-            ),
-            const SizedBox(height: 12),
-            AppWindowField(
-              label: strings.sheetArtist,
-              child: TextField(
-                key: const ValueKey<String>('timesheet-info-artist-field'),
-                controller: _artistController,
-                onSubmitted: (_) => _submit(),
               ),
             ),
             const SizedBox(height: 16),

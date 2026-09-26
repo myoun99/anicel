@@ -1148,10 +1148,6 @@ void main() {
         find.byKey(const ValueKey<String>('timesheet-info-episode-field')),
         'MV',
       );
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('timesheet-info-artist-field')),
-        'MYOUN',
-      );
       await tester.tap(
         find.byKey(const ValueKey<String>('timesheet-info-save-button')),
       );
@@ -1159,7 +1155,7 @@ void main() {
 
       expect(
         repository.requireProject().timesheetInfo,
-        const TimesheetInfo(title: 'YOASOBI', episode: 'MV', artist: 'MYOUN'),
+        const TimesheetInfo(title: 'YOASOBI', episode: 'MV'),
       );
     });
 

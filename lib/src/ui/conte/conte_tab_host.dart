@@ -274,7 +274,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
               conteCellTextSize,
               color: const Color(conteInkArgb),
             ),
-            multiline: true,
             onCommitted: (text) =>
                 _session.storyboardCursor.setStoryboardCellAction(
                   cutId: CutId(cell.cutId),

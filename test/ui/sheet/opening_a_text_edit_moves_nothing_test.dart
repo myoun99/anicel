@@ -249,7 +249,7 @@ void main() {
     });
   });
 
-  group('the timesheet\'s header and memo', () {
+  group('the timesheet\'s memo', () {
     late EditorSessionManager session;
 
     Future<void> pumpSheet(WidgetTester tester) async {
@@ -288,19 +288,6 @@ void main() {
     final field = find.byKey(
       const ValueKey<String>('timesheet-header-edit-field'),
     );
-
-    testWidgets('a header box: its value is typed on its printed glyphs', (
-      tester,
-    ) async {
-      await pumpSheet(tester);
-      final box = tester.getRect(
-        find.byKey(const ValueKey<String>('timesheet-header-edit-title-p0')),
-      );
-      expect(
-        await openAndCompare(tester, box: box, field: field),
-        isEmpty,
-      );
-    });
 
     testWidgets('the memo band: its lines are typed on their printed glyphs', (
       tester,

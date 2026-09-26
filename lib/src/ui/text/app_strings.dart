@@ -622,7 +622,6 @@ enum AppStrings {
   String get sheetFieldName => _s('sheetFieldName');
   String get sheetFieldSheet => _s('sheetFieldSheet');
   String get sheetTitleHint => _s('sheetTitleHint');
-  String get sheetArtist => _s('sheetArtist');
   String get sheetStaffByProcess => _s('sheetStaffByProcess');
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
   String get sheetNotation => _s('sheetNotation');
@@ -2048,7 +2047,6 @@ enum AppStrings {
     'sheetFieldName': 'Name',
     'sheetFieldSheet': 'Sheet',
     'sheetTitleHint': 'Project name when empty',
-    'sheetArtist': 'Artist',
     'sheetStaffByProcess': 'Staff by process',
     'sheetVisibleBoxes': 'Visible boxes',
     'sheetNotation': 'Notation',
@@ -3157,7 +3155,6 @@ enum AppStrings {
     'sheetFieldName': '作画者',
     'sheetFieldSheet': 'シート',
     'sheetTitleHint': '空欄ならプロジェクト名',
-    'sheetArtist': '作画者',
     'sheetStaffByProcess': '工程ごとの担当',
     'sheetVisibleBoxes': '表示する枠',
     'sheetNotation': '表記',
@@ -4485,7 +4482,6 @@ enum AppStrings {
     'sheetFieldName': '작화자',
     'sheetFieldSheet': '시트',
     'sheetTitleHint': '비우면 프로젝트 이름',
-    'sheetArtist': '작화자',
     'sheetStaffByProcess': '공정별 담당자',
     'sheetVisibleBoxes': '표시할 칸',
     'sheetNotation': '표기',
@@ -5841,7 +5837,6 @@ enum AppStrings {
     'sheetFieldName': 'Animateur',
     'sheetFieldSheet': 'Feuille',
     'sheetTitleHint': 'Nom du projet si vide',
-    'sheetArtist': 'Animateur',
     'sheetStaffByProcess': 'Équipe par étape',
     'sheetVisibleBoxes': 'Cases visibles',
     'sheetNotation': 'Notation',
@@ -7177,7 +7172,6 @@ enum AppStrings {
     'sheetFieldName': '作画',
     'sheetFieldSheet': '表号',
     'sheetTitleHint': '留空则用项目名',
-    'sheetArtist': '作画',
     'sheetStaffByProcess': '各工序负责人',
     'sheetVisibleBoxes': '显示的栏位',
     'sheetNotation': '标注',

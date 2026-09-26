@@ -2248,7 +2248,6 @@ void main() {
       const info = TimesheetInfo(
         title: 'YOASOBI',
         episode: 'MV',
-        artist: 'MYOUN',
       );
 
       fixture.coordinator.setTimesheetInfo(info);

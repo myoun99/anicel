@@ -9,16 +9,21 @@ import 'layer_mark.dart';
 /// [TimesheetInfo.hiddenFields].
 enum TimesheetHeaderField { episode, title, scene, cut, time, name, sheet }
 
-/// The sheet-header text the paper timesheet reads: production title
-/// (falls back to the project name when empty), episode label (話数),
-/// scene label and the artist name (作業者), plus which header boxes the
-/// form prints. Project-level — every cut's sheet shares it.
+/// The work's words every paper form prints — its title (the project's
+/// name while it has none), its episode (話数), who does each stage's work
+/// — plus how the timesheet prints its header. Project-level: every cut's
+/// sheets share it.
+///
+/// ⛔No scene: 유저 09-25 「씬은 작품설정에선 필요없어. 1500컷을 작업한다치면
+/// 콘티패널 내에서 컷들을 하나로 묶어서 씬/파트 이렇게 묶게할예정」 — a scene
+/// belongs to a group of cuts, not to the work.
+/// ⛔No artist of its own: a sheet's 作業者 is the 원화 worker in [staff]
+/// (유저 09-25 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든 스태프의
+/// 원화 이름 인식하게하고」).
 class TimesheetInfo {
   const TimesheetInfo({
     this.title = '',
     this.episode = '',
-    this.scene = '',
-    this.artist = '',
     this.hiddenFields = const {},
     this.exposureBarThreshold,
     this.seEmptyFill = true,
@@ -35,8 +40,6 @@ class TimesheetInfo {
 
   final String title;
   final String episode;
-  final String scene;
-  final String artist;
 
   /// Header boxes the form does NOT print; everything else stays visible.
   final Set<TimesheetHeaderField> hiddenFields;
@@ -95,8 +98,6 @@ class TimesheetInfo {
   TimesheetInfo copyWith({
     String? title,
     String? episode,
-    String? scene,
-    String? artist,
     Set<TimesheetHeaderField>? hiddenFields,
     int? Function()? exposureBarThreshold,
     bool? seEmptyFill,
@@ -108,8 +109,6 @@ class TimesheetInfo {
     return TimesheetInfo(
       title: title ?? this.title,
       episode: episode ?? this.episode,
-      scene: scene ?? this.scene,
-      artist: artist ?? this.artist,
       hiddenFields: hiddenFields ?? this.hiddenFields,
       exposureBarThreshold: exposureBarThreshold == null
           ? this.exposureBarThreshold
@@ -141,8 +140,6 @@ class TimesheetInfo {
   Map<String, dynamic> toJson() => {
     'title': title,
     'episode': episode,
-    'scene': scene,
-    'artist': artist,
     'hiddenFields': [for (final field in hiddenFields) field.name],
     if (exposureBarThreshold != null)
       'exposureBarThreshold': exposureBarThreshold,
@@ -158,8 +155,6 @@ class TimesheetInfo {
     return TimesheetInfo(
       title: json['title'] as String? ?? '',
       episode: json['episode'] as String? ?? '',
-      scene: json['scene'] as String? ?? '',
-      artist: json['artist'] as String? ?? '',
       hiddenFields: {
         // Unknown names (from newer files) drop silently.
         for (final name in json['hiddenFields'] as List<dynamic>? ?? const [])
@@ -188,8 +183,6 @@ class TimesheetInfo {
       other is TimesheetInfo &&
           other.title == title &&
           other.episode == episode &&
-          other.scene == scene &&
-          other.artist == artist &&
           other.exposureBarThreshold == exposureBarThreshold &&
           other.seEmptyFill == seEmptyFill &&
           other.logoAssetPath == logoAssetPath &&
@@ -203,8 +196,6 @@ class TimesheetInfo {
   int get hashCode => Object.hash(
     title,
     episode,
-    scene,
-    artist,
     exposureBarThreshold,
     seEmptyFill,
     logoAssetPath,
@@ -218,8 +209,8 @@ class TimesheetInfo {
 
   @override
   String toString() =>
-      'TimesheetInfo(title: $title, episode: $episode, scene: $scene, '
-      'artist: $artist, hiddenFields: $hiddenFields, '
+      'TimesheetInfo(title: $title, episode: $episode, staff: $staff, '
+      'hiddenFields: $hiddenFields, '
       'exposureBarThreshold: $exposureBarThreshold, '
       'seEmptyFill: $seEmptyFill)';
 }

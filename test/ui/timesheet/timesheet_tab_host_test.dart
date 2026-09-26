@@ -23,7 +23,6 @@ import '../../helpers/frame_census.dart';
 const _inkLayerKey = ValueKey<String>('timesheet-ink-layer');
 const _inkToggleKey = ValueKey<String>('timesheet-brush-toggle-button');
 const _editorKey = ValueKey<String>('timesheet-header-edit-field');
-const _titleZoneKey = ValueKey<String>('timesheet-header-edit-title-p0');
 const _memoZoneKey = ValueKey<String>('timesheet-memo-edit-p0');
 
 void main() {
@@ -162,31 +161,18 @@ void main() {
       expect(tester.getCenter(find.byKey(_inkToggleKey)), withCut);
     });
 
-    testWidgets('with the brush on, a tap on a header box draws instead of '
+    testWidgets('with the brush on, a tap on the memo band draws instead of '
         'opening the editor (pen-on-paper rule)', (tester) async {
       await pumpHost(tester);
 
-      await tester.tap(find.byKey(_titleZoneKey), warnIfMissed: false);
+      await tester.tap(find.byKey(_memoZoneKey), warnIfMissed: false);
       await tester.pumpAndSettle();
 
       expect(find.byKey(_editorKey), findsNothing);
     });
   });
 
-  group('TimesheetTabHost header editing (brush off)', () {
-    testWidgets('editing the TITLE box commits to the project timesheet '
-        'info', (tester) async {
-      await pumpHost(tester, brushAllowed: false);
-
-      await tester.tap(find.byKey(_titleZoneKey));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(_editorKey), 'YOASOBI');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
-
-      expect(session.timesheetInfo.title, 'YOASOBI');
-    });
-
+  group('TimesheetTabHost memo editing (brush off)', () {
     testWidgets('editing the memo band commits the cut note', (tester) async {
       await pumpHost(tester, brushAllowed: false);
 
