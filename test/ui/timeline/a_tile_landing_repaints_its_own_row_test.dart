@@ -329,6 +329,62 @@ void main() {
     await idle();
   });
 
+  test('a clear fences off a raster still out — its key is asked for again '
+      'at once, the store is idle, and the old pixels land nowhere', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final out = <({Completer<ui.Image> landing, int width, int height})>[];
+    debugRawRgbaUploader =
+        (
+          rgba, {
+          required width,
+          required height,
+          targetWidth,
+          targetHeight,
+        }) {
+          final landing = Completer<ui.Image>();
+          out.add((landing: landing, width: width, height: height));
+          return landing.future;
+        };
+    addTearDown(() => debugRawRgbaUploader = null);
+    void land(int index) {
+      final (:landing, :width, :height) = out[index];
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder);
+      landing.complete(recorder.endRecording().toImageSync(width, height));
+    }
+
+    Future<void> until(bool Function() done) async {
+      for (var wait = 0; wait < 500 && !done(); wait += 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+    }
+
+    final a = painterFor(rowLayer('a', frames: 4), frames: 4);
+    var landings = 0;
+    show(a, () => landings += 1);
+    paintRow(a, 4);
+    await until(() => out.isNotEmpty);
+    expect(out, hasLength(1), reason: 'premise: its one tile is out');
+
+    // What a test's tear-down does — a widget test's clock never lets that
+    // upload land.
+    store.clear();
+    expect(store.debugBusy, isFalse, reason: 'the raster out is not counted');
+    paintRow(a, 4);
+    await until(() => out.length > 1);
+    expect(out, hasLength(2), reason: 'its key is asked for again at once');
+
+    land(0);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(landings, 0, reason: 'the fenced raster lands nowhere');
+    land(1);
+    await idle();
+    expect(landings, 1, reason: 'the one asked for after it does');
+  });
+
   test('a row is come back to with its NEWEST painter — once a tile of its '
       'lands, its repaints ask for it and the store does not', () async {
     if (!available) {

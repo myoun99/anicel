@@ -92,11 +92,18 @@ class TimelineGridTileStore {
   bool _drainScheduled = false;
 
   /// The keys a drain has taken off the queue and not landed yet.
-  ///
-  /// ⛔Not emptied by [clear]: the raster is still out there, and a test
-  /// that asks for the same key would put a second one beside it — whose
-  /// landing the first would then overwrite with the old answers.
   final Set<String> _inFlight = <String>{};
+
+  /// Bumped by [clear]: what a drain begun before it was doing reaches
+  /// nothing after it — its key is free at once, it counts as no drain,
+  /// and its pixels land nowhere.
+  ///
+  /// 🚨A widget test's clock is fake, so a raster that awaits a real upload
+  /// never lands in it: without the fence its key stayed in [_inFlight]
+  /// into every later test of the file, and nothing there could ask for it
+  /// again (found by `layer_timeline_grid_test`, where the order the tiles
+  /// were baked in changed with it).
+  int _epoch = 0;
 
   /// The drains running: from the moment one takes a request off the queue
   /// until its upload lands (or is discarded). With [_pending] this is the
@@ -142,6 +149,9 @@ class TimelineGridTileStore {
     _entries.clear();
     _pending.clear();
     _starved.clear();
+    _inFlight.clear();
+    _drainsRunning = 0;
+    _epoch += 1;
   }
 
   /// What a painter of the row of [layerId] along [axis], in the world
@@ -310,6 +320,7 @@ class TimelineGridTileStore {
       _pending.clear();
       return;
     }
+    final epoch = _epoch;
     _drainsRunning += 1;
     try {
       while (_pending.isNotEmpty) {
@@ -329,7 +340,13 @@ class TimelineGridTileStore {
         try {
           rastered = await _raster(engine, request);
         } finally {
-          _inFlight.remove(key);
+          if (epoch == _epoch) {
+            _inFlight.remove(key);
+          }
+        }
+        if (epoch != _epoch) {
+          rastered?.image.dispose();
+          return;
         }
         if (rastered == null) {
           continue;
@@ -374,7 +391,9 @@ class TimelineGridTileStore {
       }
       _revisitStarved();
     } finally {
-      _drainsRunning -= 1;
+      if (epoch == _epoch) {
+        _drainsRunning -= 1;
+      }
     }
   }
 
