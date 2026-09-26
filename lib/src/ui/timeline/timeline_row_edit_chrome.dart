@@ -338,7 +338,7 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
     for (final cluster in chrome.clusters) {
       final rect = timelineRunClusterRect(
         cluster: cluster,
-        frameCellExtent: frameCellExtent,
+        geometry: geometry,
         crossAxisExtent: crossAxisExtent,
         axis: axis,
       );
@@ -554,7 +554,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
             text: '+',
             slot: target.rect,
             type: face.copyWith(
-              fontSize: glyphSize + 2,
+              fontSize: (glyphSize + 2) * _glyphFitIn(target.rect),
               color: timelineRunGlyphColor(
                 colorScheme,
                 hovered: target.id == hoveredId,
@@ -568,7 +568,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
             text: target.letter,
             slot: target.rect,
             type: face.copyWith(
-              fontSize: glyphSize,
+              fontSize: glyphSize * _glyphFitIn(target.rect),
               color: timelineRunGlyphColor(
                 colorScheme,
                 hovered: target.id == hoveredId,
@@ -579,6 +579,13 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       }
     }
   }
+
+  /// A run button's glyph keeps to its box ([timelineRunClusterGlyphFit]).
+  double _glyphFitIn(Rect slot) => timelineRunClusterGlyphFit(
+    slot,
+    axis: resolver.axis,
+    frameCellExtent: frameCellExtent,
+  );
 
   /// One grip, in the ink the ground law picks for each ground it stands on
   /// ([blockEdgeGripColor]): [gripGround] wherever [grounds] has nothing

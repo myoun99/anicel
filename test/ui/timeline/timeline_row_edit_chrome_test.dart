@@ -63,19 +63,22 @@ void main() {
     List<(LayerId, int, TimelineBlockEdge)>? gripBegins,
     List<(LayerId, int, bool)>? addBegins,
     TextStyle face = const TextStyle(),
+    Layer? layer,
+    double frameCellExtent = 48,
+    int frameEndIndexExclusive = 8,
   }) => MaterialApp(
     home: Scaffold(
       body: Material(
         child: DefaultTextStyle.merge(
           style: face,
           child: TimelineFrameCellsRow(
-            layer: twoRunLayer(),
+            layer: layer ?? twoRunLayer(),
             playbackFrameCount: 24,
             // Classic geometry: 48px cells put the grips at [0,12] / [84,96]
             // and run 0's end cluster at [96,120].
             geometry: testFrameGeometry(
-              frameCellExtent: 48,
-              frameEndIndexExclusive: 8,
+              frameCellExtent: frameCellExtent,
+              frameEndIndexExclusive: frameEndIndexExclusive,
             ),
             crossAxisExtent: 52,
             exposureStateForLayer: stateFor,
@@ -278,6 +281,51 @@ void main() {
         reason: '`${written[i].$1}` — set from scratch it named no face and '
             'wrote in the OS\'s',
       );
+    }
+  });
+
+  testWidgets('🗣️Q3: where a run is too short to hold its buttons they take '
+      'one cell, and what they write keeps to it — at the ten-minute floor '
+      'they all but vanish instead of covering the cells beside them', (
+    tester,
+  ) async {
+    const cell = 1 / 8;
+    await tester.pumpWidget(
+      harness(
+        seeks: [],
+        // Ten frames at 400: a pixel and a quarter, and the buttons are 7.
+        layer: Layer(
+          id: const LayerId('layer-a'),
+          name: 'A',
+          frames: [
+            Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            400: const TimelineExposure.drawing(FrameId('f1'), length: 10),
+          },
+        ),
+        frameCellExtent: cell,
+        frameEndIndexExclusive: 2000,
+      ),
+    );
+    final painter = timelineRowChromePainter(tester, 'layer-a')!;
+    final boxes = [
+      for (final target in painter.targets)
+        if (target is TimelineRowRunAddTarget)
+          target.rect
+        else if (target is TimelineRowRunTagTarget)
+          target.rect,
+    ];
+    expect(boxes, hasLength(4), reason: 'the premise: two edges, two each');
+    for (final box in boxes) {
+      expect(box.width, closeTo(cell, 1e-9));
+    }
+
+    final painted = _PaintedWidths();
+    painter.paint(painted, const Size(2000 * cell, 52));
+    expect(painted.widths, hasLength(boxes.length));
+    for (final width in painted.widths) {
+      expect(width, lessThan(1), reason: 'a glyph the size of its box');
     }
   });
 
