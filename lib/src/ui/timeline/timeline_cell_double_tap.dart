@@ -1,5 +1,5 @@
 import 'package:flutter/gestures.dart' show GestureTapDownCallback;
-import 'package:flutter/widgets.dart' show Offset;
+import 'package:flutter/widgets.dart' show Axis, Offset;
 
 import '../../models/layer_id.dart';
 
@@ -62,6 +62,28 @@ class TimelineCellDoubleTapGate {
   }
 }
 
+/// The frame axis a surface's cells lie along, and a cell's extent on it —
+/// read at the tap, since a zoom may have moved it since the build.
+typedef TimelineDoubleTapGrid = ({Axis axis, double Function() cellExtent});
+
+/// [localPosition] as a double tap aims it: where a cell is narrower than a
+/// pixel, the middle of the pixel it falls in, so two taps in one pixel are
+/// one cell whichever of its frames each landed on.
+///
+/// 🗣️유저 2026-09-26 (zoom-floor-fixed-marks-Q2, 「1px 보다 좁은 칸은 같은
+/// 픽셀이면 같은 칸」): at I-22's ten-minute floor a pixel is eight frames,
+/// and a pen or a finger that moved one pixel between the taps landed on
+/// another cell — the editors opened only for a mouse held still. From a
+/// pixel a cell up, nothing changes.
+Offset timelineDoubleTapAim(Offset localPosition, TimelineDoubleTapGrid grid) {
+  if (grid.cellExtent() >= 1) {
+    return localPosition;
+  }
+  return grid.axis == Axis.horizontal
+      ? Offset(localPosition.dx.floorToDouble() + 0.5, localPosition.dy)
+      : Offset(localPosition.dx, localPosition.dy.floorToDouble() + 0.5);
+}
+
 /// The RECORD half of the frame-block activation law, as the one closure
 /// every cell surface mounts on its press region's `onPressDown`.
 ///
@@ -76,10 +98,11 @@ class TimelineCellDoubleTapGate {
 void Function(Offset localPosition) timelineCellDoubleTapRecord({
   required LayerId layerId,
   String? laneId,
+  required TimelineDoubleTapGrid grid,
   required int? Function(Offset localPosition) frameAt,
 }) {
   return (localPosition) {
-    final frameIndex = frameAt(localPosition);
+    final frameIndex = frameAt(timelineDoubleTapAim(localPosition, grid));
     if (frameIndex != null) {
       TimelineCellDoubleTapGate.recordTapDown(
         layerId,
@@ -94,17 +117,20 @@ void Function(Offset localPosition) timelineCellDoubleTapRecord({
 /// when the gate agrees BOTH taps hit the same cell (R26 #37 — two taps on
 /// different frames of one block are two seeks, never an editor).
 ///
-/// [frameAt] must be the SAME resolver the record half uses, or the two
+/// [frameAt] and [grid] must be the SAME the record half uses, or the two
 /// halves describe two different grids and the gate compares apples to
 /// pears.
 GestureTapDownCallback timelineCellDoubleTapActivation({
   required LayerId layerId,
   String? laneId,
+  required TimelineDoubleTapGrid grid,
   required int? Function(Offset localPosition) frameAt,
   required void Function(int frameIndex) onActivate,
 }) {
   return (details) {
-    final frameIndex = frameAt(details.localPosition);
+    final frameIndex = frameAt(
+      timelineDoubleTapAim(details.localPosition, grid),
+    );
     if (frameIndex != null &&
         TimelineCellDoubleTapGate.acceptsActivation(
           layerId,

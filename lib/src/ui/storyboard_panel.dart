@@ -539,6 +539,11 @@ class StoryboardPanel extends StatefulWidget {
   /// width would make neighbours overlap when zoomed out. The tiny floor
   /// only keeps zero-length cuts visible.
   ///
+  /// ↩️At I-22's ten-minute floor "tiny" was 64 frames, and every shorter
+  /// cut lay over the next. The floor stops where the next cut starts now
+  /// (유저 2026-09-26, zoom-floor-fixed-marks-Q1 — the painter's `_widthFor`),
+  /// so a zero-length cut with a cut right behind it is not drawn at all.
+  ///
   /// Public since D15: the folded storyboard draws the same blocks and
   /// must not carry a floor of its own — a second `8` over there is a
   /// second answer the day this one moves.
@@ -3024,10 +3029,12 @@ bool _storyboardRangeCovers(
 Positioned _storyboardRowPressLayer({
   required Key key,
   required Layer layer,
+  required double cellExtent,
   required int? Function(Offset local) frameAt,
   required StoryboardRowFramePress? onRowFramePress,
   required void Function(int frame)? onEdit,
 }) {
+  final grid = (axis: Axis.horizontal, cellExtent: () => cellExtent);
   return Positioned.fill(
     key: key,
     child: InstantTapRegion(
@@ -3035,6 +3042,7 @@ Positioned _storyboardRowPressLayer({
       pressSeeksFor: AppInput.timelineCellPressSeeks,
       onPressDown: timelineCellDoubleTapRecord(
         layerId: layer.id,
+        grid: grid,
         frameAt: frameAt,
       ),
       onTap: (localPosition) {
@@ -3050,6 +3058,7 @@ Positioned _storyboardRowPressLayer({
             ? null
             : timelineCellDoubleTapActivation(
                 layerId: layer.id,
+                grid: grid,
                 frameAt: frameAt,
                 onActivate: onEdit,
               ),
@@ -3281,6 +3290,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
         _storyboardRowPressLayer(
           key: ValueKey<String>('storyboard-transition-press-${layer.id}'),
           layer: layer,
+          cellExtent: timelineScale.pixelsPerFrame,
           frameAt: frameAt,
           onRowFramePress: onRowFramePress,
           onEdit: onEditSpan,
@@ -3783,6 +3793,7 @@ class _StoryboardSeRow extends StatelessWidget {
   ) => _storyboardRowPressLayer(
     key: ValueKey<String>('storyboard-se-press-${layer.id}'),
     layer: layer,
+    cellExtent: timelineScale.pixelsPerFrame,
     frameAt: frameAt,
     onRowFramePress: onRowFramePress,
     onEdit: onEditSeEntry == null
