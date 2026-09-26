@@ -91,9 +91,16 @@ void main() {
   /// declared frames would now be measuring the empty answer and calling it
   /// the ladder, which is exactly the mistake the cel note above warns about
   /// one level up.
+  ///
+  /// ⚠️At the cels' own tile size: an editing session FOLLOWS the store
+  /// (`BrushFrameEditingCoordinator._storeMovedPast`), so what is baked here
+  /// IS the surface the verbs act on and [alphaAt] reads. Baked at 16 it was
+  /// a surface no cel of the app ever has, and the coordinator used to go on
+  /// drawing on the empty session it had seeded before this ran.
   void inkEveryCel(EditorSessionManager session) {
     final cut = session.requireActiveCut;
-    final pixels = Uint8List(16 * 16 * 4);
+    const size = defaultCelTileSize;
+    final pixels = Uint8List(size * size * 4);
     for (var i = 3; i < pixels.length; i += 4) {
       pixels[i] = 0xFF;
     }
@@ -103,12 +110,8 @@ void main() {
           session.brushFrameKeyForCut(cut, layer.id, frame.id),
           BitmapSurface(
             canvasSize: cut.canvasSize,
-            tileSize: 16,
             tiles: {
-              TileCoord(x: 0, y: 0): BitmapTile(
-                size: 16,
-                pixels: pixels,
-              ),
+              TileCoord(x: 0, y: 0): BitmapTile(size: size, pixels: pixels),
             },
           ),
         );
