@@ -1209,6 +1209,16 @@ class _CursorGatedStoryboardToolbarState
     widget.session.trackFrameRangeSelection,
     widget.session.frameRangeSelection,
     widget.session.laneRangeSelection,
+    // F-75: the token carries `canRunPixelVerb`, and a cel emptied in place
+    // (픽셀 비우기) moves that answer with no seek and no session notify —
+    // its one signal is the tint's crossing. Unheard, the token kept the
+    // answer from before the clear, and a seek onto a drawn cel then read
+    // "unchanged" and left the head dim. ↩️The thumbnail store's landing
+    // rebuilt this whole panel and re-derived the token by accident, until
+    // the store left the panel's merge. (The timeline's gate does not list
+    // it: that host rebuilds on the clear itself, measured, and its F-75 pin
+    // holds without it.)
+    widget.session.layerStack.celTintRevision,
   ];
 
   @override
