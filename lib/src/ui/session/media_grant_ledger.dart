@@ -94,72 +94,11 @@ class MediaGrantLedger {
     ];
   }
 
-  /// Hands every stored bookmark back to the OS, so the session may read
-  /// the media this project only REFERENCES.
-  ///
-  /// Resolved ALL AT ONCE on open rather than lazily at each read. There
-  /// is no single point where media bytes are asked for — audio decode,
-  /// image decode and thumbnails each reach for a file — so a lazy scheme
-  /// would need that point built first. References are few by design (the
-  /// kind rule keeps everything but video inside the archive), which is
-  /// what makes the simple answer affordable.
-  ///
-  /// 🚨 The answer REPLACES what was stored. Apple re-issues a bookmark on
-  /// every resolve, and a bookmark tracks the file rather than the path —
-  /// so this is also how a referenced movie that was moved or renamed is
-  /// followed instead of lost. Dropping the new token is a bug this
-  /// codebase has already had once (`_openRecent` overwrote a fresh
-  /// bookmark with the stale one it had in hand).
-  ///
-  /// ⛔ Never dirties the project. The re-issue is the OS's bookkeeping,
-  /// not an edit, and it rides along on the next save.
-  ///
-  /// ⛔ A grant that will not resolve is unusable THIS LAUNCH and is not
-  /// forgotten: it stays in [_storedGrants] so the next save writes it back
-  /// unchanged. Dropping it from the file would turn "the drive is
-  /// unplugged" into "the permission is gone", and plugging the drive back
-  /// in would no longer help.
-  ///
-  /// Returns {old path: new path} for every bookmark that came back
-  /// pointing somewhere else, so the caller can take the project with it.
-  Future<Map<String, String>> resolveMediaGrants(
-    List<Map<String, Object?>> stored,
-  ) async {
-    final parsed = [for (final json in stored) ?FolderGrant.fromJson(json)];
-    _storedGrants = parsed;
-    if (parsed.isEmpty || !FolderPicker.grantsAreScoped) {
-      // Nothing to hold, or a platform where a path is durable on its own
-      // — Windows and Linux never minted these in the first place.
-      _mediaGrants = parsed;
-      return const {};
-    }
-    final resolved = <FolderGrant>[];
-    final stillStored = <FolderGrant>[];
-    final moved = <String, String>{};
-    for (final grant in parsed) {
-      final answer = await FolderPicker.resolveBookmark(
-        grant.bookmark!,
-        kind: grant.kind,
-      );
-      if (!answer.isGranted || answer.path == null) {
-        stillStored.add(grant); // Unusable today. Not gone.
-        continue;
-      }
-      final fresh = FolderGrant.granted(
-        path: answer.path!,
-        // The freshly issued token, never the one we arrived with.
-        bookmark: answer.bookmark ?? grant.bookmark,
-        kind: grant.kind,
-      );
-      if (fresh.path != grant.path) {
-        moved[grant.path!] = fresh.path!;
-      }
-      resolved.add(fresh);
-      stillStored.add(fresh);
-    }
-    _mediaGrants = resolved;
-    _storedGrants = stillStored;
-    return moved;
+  /// Holds what an open resolved ([resolveStoredGrants]) — the grants
+  /// usable this launch, and the ones the next save writes back.
+  void hold(ResolvedGrants grants) {
+    _mediaGrants = grants.usable;
+    _storedGrants = grants.stored;
   }
 
   /// The grants worth writing into this save, as JSON.
@@ -179,4 +118,77 @@ class MediaGrantLedger {
         if (referenced.any(grant.covers)) ?grant.toJson(),
     ];
   }
+}
+
+/// What an open made of the grants a file stored: the ones [usable] this
+/// launch, the ones the next save writes back ([stored] — see
+/// [MediaGrantLedger.debugStoredGrants] for why the two differ), and every
+/// path a bookmark followed elsewhere ([moved], {old path: new path}).
+typedef ResolvedGrants = ({
+  List<FolderGrant> usable,
+  List<FolderGrant> stored,
+  Map<String, String> moved,
+});
+
+/// Hands every stored bookmark back to the OS, so the project may read the
+/// media it only REFERENCES — before any session holds it: an open reads the
+/// file first and the session is born for what it read (I-7), and a moved
+/// bookmark changes the project it is born with.
+///
+/// Resolved ALL AT ONCE on open rather than lazily at each read. There
+/// is no single point where media bytes are asked for — audio decode,
+/// image decode and thumbnails each reach for a file — so a lazy scheme
+/// would need that point built first. References are few by design (the
+/// kind rule keeps everything but video inside the archive), which is
+/// what makes the simple answer affordable.
+///
+/// 🚨 The answer REPLACES what was stored. Apple re-issues a bookmark on
+/// every resolve, and a bookmark tracks the file rather than the path —
+/// so this is also how a referenced movie that was moved or renamed is
+/// followed instead of lost. Dropping the new token is a bug this
+/// codebase has already had once (`_openRecent` overwrote a fresh
+/// bookmark with the stale one it had in hand).
+///
+/// ⛔ Never dirties the project. The re-issue is the OS's bookkeeping,
+/// not an edit, and it rides along on the next save.
+///
+/// ⛔ A grant that will not resolve is unusable THIS LAUNCH and is not
+/// forgotten: it stays in `stored` so the next save writes it back
+/// unchanged. Dropping it from the file would turn "the drive is
+/// unplugged" into "the permission is gone", and plugging the drive back
+/// in would no longer help.
+Future<ResolvedGrants> resolveStoredGrants(
+  List<Map<String, Object?>> stored,
+) async {
+  final parsed = [for (final json in stored) ?FolderGrant.fromJson(json)];
+  if (parsed.isEmpty || !FolderPicker.grantsAreScoped) {
+    // Nothing to hold, or a platform where a path is durable on its own
+    // — Windows and Linux never minted these in the first place.
+    return (usable: parsed, stored: parsed, moved: const <String, String>{});
+  }
+  final resolved = <FolderGrant>[];
+  final stillStored = <FolderGrant>[];
+  final moved = <String, String>{};
+  for (final grant in parsed) {
+    final answer = await FolderPicker.resolveBookmark(
+      grant.bookmark!,
+      kind: grant.kind,
+    );
+    if (!answer.isGranted || answer.path == null) {
+      stillStored.add(grant); // Unusable today. Not gone.
+      continue;
+    }
+    final fresh = FolderGrant.granted(
+      path: answer.path!,
+      // The freshly issued token, never the one we arrived with.
+      bookmark: answer.bookmark ?? grant.bookmark,
+      kind: grant.kind,
+    );
+    if (fresh.path != grant.path) {
+      moved[grant.path!] = fresh.path!;
+    }
+    resolved.add(fresh);
+    stillStored.add(fresh);
+  }
+  return (usable: resolved, stored: stillStored, moved: moved);
 }

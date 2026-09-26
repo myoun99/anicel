@@ -79,12 +79,12 @@ mintIndependentClip({
       continue;
     }
     final newId = minted.putIfAbsent(sourceId, () {
-      // 🚨Through the MINT. `nextFrameId` reads the sequence without
-      // advancing it, so two independent pastes inside one clock tick
-      // would come out as the SAME cel — which is not "two cels that look
-      // alike", it is one cel exposed twice, and the import round already
-      // paid for that lesson once. A band paste makes that risk ROUTINE:
-      // every swept row mints in the same tick as its neighbours.
+      // 🚨Through the MINT. An id formatted without advancing the count
+      // (`nextFrameId`, gone since 2026-09-26) made two independent pastes
+      // inside one clock tick the SAME cel — which is not "two cels that
+      // look alike", it is one cel exposed twice, and the import round
+      // already paid for that lesson once. A band paste makes that risk
+      // ROUTINE: every swept row mints in the same tick as its neighbours.
       final id = mint();
       final copy = duplicateFrameContent(frame: source, newFrameId: id);
       born.add(namesAreIdentity ? copy.copyWith(name: null) : copy);

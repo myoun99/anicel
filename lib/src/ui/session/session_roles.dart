@@ -116,7 +116,6 @@ abstract interface class ChangeSink {
 
 abstract interface class FrameIds {
   FrameId mintFrameId(LayerId layerId);
-  String nextFrameId(LayerId layerId);
 }
 
 abstract interface class TimelineAccess {

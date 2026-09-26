@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/session/project_resume.dart' show ToolChoiceBridge;
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// F-123: what the tools were holding rides with the save and is handed back
@@ -37,15 +38,14 @@ void main() {
     );
     s.dispose();
 
-    final reopened = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
     Map<String, Object?>? handed;
-    reopened.projectDoor.toolChoice = (
-      read: () => const {},
-      resume: (saved) => handed = saved,
+    final reopened = await openedSession(
+      projectPath,
+      before: (session) => session.projectDoor.toolChoice = (
+        read: () => const {},
+        resume: (saved) => handed = saved,
+      ),
     );
-    await reopened.projectDoor.openProjectFromFile(projectPath);
     expect(handed, {'tool': 'eraser', 'fillOpacity': 0.5});
     reopened.dispose();
   });
@@ -56,13 +56,14 @@ void main() {
       buildAnicelArchiveBytes(project: createDefaultProject(), cels: const []),
     );
 
-    final opened = EditorSessionManager(initialProject: createDefaultProject());
     Map<String, Object?>? handed;
-    opened.projectDoor.toolChoice = (
-      read: () => const {},
-      resume: (saved) => handed = saved,
+    final opened = await openedSession(
+      projectPath,
+      before: (session) => session.projectDoor.toolChoice = (
+        read: () => const {},
+        resume: (saved) => handed = saved,
+      ),
     );
-    await opened.projectDoor.openProjectFromFile(projectPath);
     expect(handed, isEmpty);
     opened.dispose();
   });
@@ -81,9 +82,8 @@ void main() {
     s.dispose();
 
     // Read with no bridge: the tab it will show in does not exist yet.
-    final read = EditorSessionManager(initialProject: createDefaultProject());
+    final read = await openedSession(projectPath);
     addTearDown(read.dispose);
-    await read.projectDoor.openProjectFromFile(projectPath);
 
     final handed = <Map<String, Object?>>[];
     ToolChoiceBridge bridge() => (

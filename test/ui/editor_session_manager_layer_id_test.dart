@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/opened_session.dart';
 import '../helpers/temp_dir.dart';
 
 /// Layer ids have to be unique across the project a session is editing, and
@@ -67,9 +68,8 @@ void main() {
 
     // A NEW session: its counter starts at 1 again, knowing nothing about
     // the ids in the file it is about to open.
-    final second = EditorSessionManager(initialProject: createDefaultProject());
+    final second = await openedSession(path);
     addTearDown(second.dispose);
-    await second.projectDoor.openProjectFromFile(path);
     expectNoDuplicateIds(second, reason: 'precondition: the file is sound');
 
     second.layerStack.addLayer();
@@ -85,9 +85,8 @@ void main() {
     await first.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     first.dispose();
 
-    final second = EditorSessionManager(initialProject: createDefaultProject());
+    final second = await openedSession(path);
     addTearDown(second.dispose);
-    await second.projectDoor.openProjectFromFile(path);
     // Several in a row: a fix that only skips the FIRST collision leaves the
     // second add colliding again.
     second.layerStack.addLayer();

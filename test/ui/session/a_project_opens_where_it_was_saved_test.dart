@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -10,6 +12,7 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★A PROJECT OPENS WHERE IT WAS SAVED (F-123).
@@ -52,11 +55,6 @@ void main() {
     );
   }
 
-  /// A session that has not been anywhere yet: whatever it stands on after
-  /// an open, the file put it there.
-  EditorSessionManager fresh() =>
-      EditorSessionManager(initialProject: createDefaultProject());
-
   test('the cut, the row and the frame come back — and coming back is not '
       'an edit', () async {
     final s = EditorSessionManager(initialProject: twoCuts());
@@ -71,11 +69,16 @@ void main() {
     );
     s.dispose();
 
-    final reopened = fresh();
-    await reopened.projectDoor.openProjectFromFile(projectPath);
+    final reopened = await openedSession(projectPath);
     expect(reopened.activeCutId, const CutId('c2'));
     expect(reopened.activeLayerId, row.id);
     expect(reopened.currentFrameIndex, 5);
+    expect(
+      reopened.cutUnderPlayhead.listenable.value,
+      const CutId('c2'),
+      reason: 'what shows the cut under the playhead hears the open — its '
+          'settle ends in a notify',
+    );
     expect(
       reopened.projectFile.hasUnsavedChanges,
       isFalse,
@@ -98,8 +101,7 @@ void main() {
     );
     s.dispose();
 
-    final reopened = fresh();
-    await reopened.projectDoor.openProjectFromFile(projectPath);
+    final reopened = await openedSession(projectPath);
     expect(reopened.activeCutId, const CutId('c2'));
     expect(reopened.currentFrameIndex, 7);
     reopened.dispose();
@@ -117,8 +119,7 @@ void main() {
       ),
     );
 
-    final opened = fresh();
-    await opened.projectDoor.openProjectFromFile(projectPath);
+    final opened = await openedSession(projectPath);
     final firstCut = twoCuts().tracks.first.cuts.first;
     expect(
       opened.activeCutId,
@@ -138,14 +139,63 @@ void main() {
     opened.dispose();
   });
 
+  test('🚨a saved row the FILE hides — its folder shut — opens standing on '
+      'the folder: the standing law asks at an open too (F-169)', () async {
+    const folder = LayerId('f');
+    const member = LayerId('m');
+    final base = createDefaultProject();
+    final track = base.tracks.first;
+    final cut = track.cuts.first;
+    final project = base.copyWith(
+      tracks: [
+        track.copyWith(
+          cuts: [
+            cut.copyWith(
+              layers: [
+                ...cut.layers,
+                Layer(
+                  id: member,
+                  name: 'm',
+                  frames: const [],
+                  timeline: const {},
+                  folderId: folder,
+                ),
+                createFolderLayer(id: folder, name: 'F').copyWith(
+                  collapsed: true,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    File(projectPath).writeAsBytesSync(
+      buildAnicelArchiveBytes(
+        project: project,
+        cels: const [],
+        sessionFields: AnicelSessionFields(
+          resume: {'cutId': cut.id.value, 'layerId': member.value},
+        ),
+      ),
+    );
+
+    final opened = await openedSession(projectPath);
+    expect(
+      opened.activeLayerId,
+      folder,
+      reason: 'the row the file names is off the screen, so the open stands '
+          'on the row that stands in for it — the shut folder',
+    );
+    opened.dispose();
+  });
+
   test('a file saved before the place was kept opens as it always did',
       () async {
     File(projectPath).writeAsBytesSync(
       buildAnicelArchiveBytes(project: twoCuts(), cels: const []),
     );
 
-    final opened = fresh();
-    await opened.projectDoor.openProjectFromFile(projectPath);
+    final opened = await openedSession(projectPath);
     final firstCut = twoCuts().tracks.first.cuts.first;
     expect(opened.activeCutId, firstCut.id);
     expect(opened.activeLayerId, firstCut.layers.first.id);

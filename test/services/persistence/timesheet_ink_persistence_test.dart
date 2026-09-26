@@ -12,6 +12,7 @@ import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// The timesheet's handwriting rides the .anicel archive like the conte's
@@ -69,11 +70,8 @@ void main() {
         asked: SaveAsked.byAPerson,
       );
 
-      final loaded = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
+      final loaded = await openedSession(path);
       addTearDown(loaded.dispose);
-      await loaded.projectDoor.openProjectFromFile(path);
       final opened = loaded.renderCaches;
 
       expect(

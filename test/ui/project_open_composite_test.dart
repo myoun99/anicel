@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../helpers/opened_session.dart';
 import '../helpers/temp_dir.dart';
 
 /// R19 P3a regression pins: a bake-only OPEN carries no paint commands —
@@ -79,13 +80,16 @@ void main() {
     );
     final path = '${directory.path}/scene.anicel';
     await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
-    await s.projectDoor.openProjectFromFile(path);
+    s.dispose();
+    // The session the file opens as: its cels come from the FILE, never
+    // from a store that drew them in memory.
+    final opened = await openedSession(path);
     // Sanity: the open restored the baked raster truth.
     expect(
-      s.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
+      opened.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
       isNotEmpty,
     );
-    return (s, drawnKey);
+    return (opened, drawnKey);
   }
 
   test('fill compose / eyedropper resolver serves the baked raster after '

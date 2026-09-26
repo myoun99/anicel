@@ -986,9 +986,9 @@ class _CopiedRow {
 ///
 /// ↩️And the project replaced (I-7): the board was the session's and went
 /// with the project it was copied in, back when the app held one project.
-/// It is the app's now, and opening, replacing or closing a project leaves
-/// it where it is — what it holds is by value, and [_CopiedFrameReference.
-/// from] says which project its ids are ids of.
+/// It is the app's now, and opening or closing a project leaves it where it
+/// is — what it holds is by value, and [_CopiedFrameReference.from] says
+/// which project its ids are ids of.
 class FrameBoard {
   _CopiedFrameReference? _copy;
 }

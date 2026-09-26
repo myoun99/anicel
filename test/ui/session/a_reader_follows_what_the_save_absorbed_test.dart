@@ -298,8 +298,8 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('a movie row let go of while its new answer opens — what '
-      'opened for nobody is closed, and holds nothing', (tester) async {
+  testWidgets('a project that closes while a movie row\'s new answer opens — '
+      'what opened for nobody is closed, and holds nothing', (tester) async {
     final (:session, path: _, :staged, closes: _) = await placedOnTheCanvas(
       tester,
     );
@@ -310,7 +310,7 @@ void main() {
     // is: one entry held means the follow is waiting at the decoder.
     await settle(tester, () => fileOf(session).heldArchiveEntries.isNotEmpty);
     expect(fileOf(session).heldArchiveEntries, hasLength(1));
-    await tester.runAsync(() => session.movieCels.reset());
+    await tester.runAsync(() => session.movieCels.dispose());
     opening.complete();
     await settle(tester, () => fileOf(session).heldArchiveEntries.isEmpty);
 

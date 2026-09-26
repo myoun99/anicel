@@ -7,6 +7,7 @@ import 'package:anicel/src/services/persistence/same_file.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -32,9 +33,8 @@ void main() {
     );
     OpenProjectFile.instance.releaseFor(path);
 
-    final reader = EditorSessionManager(initialProject: createDefaultProject());
+    final reader = await openedSession(path);
     addTearDown(reader.dispose);
-    await reader.projectDoor.openProjectFromFile(path);
 
     expect(OpenProjectFile.instance.isHolding(path), isTrue);
   });
@@ -75,53 +75,13 @@ void main() {
     );
   });
 
-  test('opening a different file lets go of the one this session held — '
-      'and only that one (I-7)', () async {
-    final directory = Directory.systemTemp.createTempSync('anicel-held-swap');
-    deleteAfterSessionEnds(directory);
-    final pathA = '${directory.path}${Platform.pathSeparator}a.anicel';
-    final pathB = '${directory.path}${Platform.pathSeparator}b.anicel';
-    final pathC = '${directory.path}${Platform.pathSeparator}c.anicel';
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
-    final other = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(other.dispose);
-    await session.projectDoor.saveProjectToFile(
-      pathA,
-      asked: SaveAsked.byAPerson,
-    );
-    await other.projectDoor.saveProjectToFile(
-      pathC,
-      asked: SaveAsked.byAPerson,
-    );
-    final writer = EditorSessionManager(initialProject: createDefaultProject());
-    await writer.projectDoor.saveProjectToFile(
-      pathB,
-      asked: SaveAsked.byAPerson,
-    );
-    writer.dispose();
+  // 🪦「Opening a different file lets go of the one this session held」
+  // lived here — a law of the open that REPLACED a project. A file opens as
+  // a session of its own now (I-7), so the file a session held is let go
+  // when that session closes: the test above.
 
-    await session.projectDoor.openProjectFromFile(pathB);
-
-    expect(OpenProjectFile.instance.isHolding(pathB), isTrue);
-    expect(
-      OpenProjectFile.instance.isHolding(pathA),
-      isFalse,
-      reason: 'the file this session moved on from, whether or not any cel '
-          'of it was ever read',
-    );
-    expect(
-      OpenProjectFile.instance.isHolding(pathC),
-      isTrue,
-      reason: 'another open project\'s file is not this open\'s to let go',
-    );
-  });
-
-  test('a SAVE AS lets go of the file it left — the same law as an open '
-      '(I-7: a handle per file, so binding elsewhere lets nothing go by '
-      'itself)', () async {
+  test('a SAVE AS lets go of the file it left (I-7: a handle per file, so '
+      'binding elsewhere lets nothing go by itself)', () async {
     final directory = Directory.systemTemp.createTempSync('anicel-held-as');
     deleteAfterSessionEnds(directory);
     final first = '${directory.path}${Platform.pathSeparator}first.anicel';

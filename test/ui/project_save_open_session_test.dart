@@ -12,10 +12,11 @@ import 'package:anicel/src/services/persistence/folder_grant.dart'
     show MaterializeCancelled;
 import 'package:anicel/src/ui/session/project_file_door.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/opened_session.dart';
 import '../helpers/temp_dir.dart';
 
 /// P3 through the session: save/open round-trip, the load→edit→undo
-/// lifecycle (both undo stacks clear on load), the dirty flag and the
+/// lifecycle (a file opens with no history), the dirty flag and the
 /// staged-copy binding.
 /// The save/open door itself — named so `tool/mutation_run.dart` has a
 /// suite to run for it.
@@ -31,32 +32,32 @@ void main() {
 
   tearDown(() => deleteTempQuietly(directory));
 
-  test('a Cancel pressed during the read is honoured before anything lands '
-      '— the session keeps what it had', () async {
+  test('a Cancel pressed during the read is honoured before anything is made '
+      'of the file', () async {
     // The open stands behind the wait window from its first frame
     // (2026-09-13), and that window has a Cancel: during the read it must
     // mean what it says. The read runs to its end — nothing can interrupt
-    // a parse — and the press is honoured at the last moment it still
-    // means「nothing changed」.
+    // a parse — and the press is honoured before anything is made of it:
+    // no bookmark handed back, no session born for it (I-7).
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    final door = s.projectDoor;
+    addTearDown(s.dispose);
     final path = '${directory.path}/cancel.anicel';
-    await door.saveProjectToFile(path, asked: SaveAsked.byAPerson);
-    final before = s.requireActiveCut;
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
     await expectLater(
-      door.openProjectFromFile(path, isCancelled: () => true),
+      readProjectFile(path, isCancelled: () => true),
       throwsA(isA<MaterializeCancelled>()),
     );
+    // The control: the same read with no press reads through.
     expect(
-      identical(s.requireActiveCut, before),
-      isTrue,
-      reason: 'the read happened, the press was honoured, nothing landed',
+      (await readProjectFile(path, isCancelled: () => false)).project.id,
+      s.repository.requireProject().id,
     );
   });
 
-  test('save → mutate → open restores the saved state; loading clears the '
-      'undo stacks and NEW edits undo cleanly (load→edit→undo)', () async {
+  test('save → mutate → open: the session the file opens as has the SAVED '
+      'state and no history, and NEW edits undo cleanly (load→edit→undo)',
+      () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     // A real stroke in the brush store (the canvas commit path) so the
@@ -103,73 +104,67 @@ void main() {
     expect(s.projectFile.path, path);
     expect(s.projectFile.hasUnsavedChanges, isFalse);
 
-    // Mutate past the save, then load the file back.
+    // Mutate past the save, then open the file: what opens is the FILE.
     s.cutVerbs.createCut();
     expect(s.projectFile.hasUnsavedChanges, isTrue);
-    await door.openProjectFromFile(path);
+    s.dispose();
+    final opened = await openedSession(path);
+    addTearDown(opened.dispose);
 
     expect(
-      s.repository.requireProject().tracks.first.cuts.length,
+      opened.repository.requireProject().tracks.first.cuts.length,
       savedCutCount,
     );
-    expect(s.projectFile.hasUnsavedChanges, isFalse);
+    expect(opened.projectFile.hasUnsavedChanges, isFalse);
     // Loaded state has NO history.
-    expect(s.canUndo, isFalse);
-    expect(s.canRedo, isFalse);
+    expect(opened.canUndo, isFalse);
+    expect(opened.canRedo, isFalse);
 
     // The saved drawing survived the round-trip as BAKED raster truth
     // (R19 bake-only: opens carry no commands — the picture is the file).
     expect(
-      s.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
+      opened.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
       isNotEmpty,
     );
 
     // New edits after the load are undoable and undo cleanly.
-    s.selectCut(s.repository.requireProject().tracks.first.cuts.first.id);
-    s.cutVerbs.createCut();
-    expect(s.canUndo, isTrue);
-    s.undo();
+    opened.selectCut(
+      opened.repository.requireProject().tracks.first.cuts.first.id,
+    );
+    opened.cutVerbs.createCut();
+    expect(opened.canUndo, isTrue);
+    opened.undo();
     expect(
-      s.repository.requireProject().tracks.first.cuts.length,
+      opened.repository.requireProject().tracks.first.cuts.length,
       savedCutCount,
     );
-    expect(s.canUndo, isFalse);
+    expect(opened.canUndo, isFalse);
   });
 
-  test('an OPEN clears the selections: a band naming the discarded '
-      'project\'s rows is drawn nowhere, so leaving it live darkens every '
-      'cell verb with nothing on screen to explain it', () async {
+  test('🚨a file settles only into the session born for it — never into one '
+      'that already holds a project of its own (I-7)', () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.createDrawingAtCurrentFrame();
-    final door = projectDoorOf(s);
     final path = '${directory.path}/scene.anicel';
-    await door.saveProjectToFile(path, asked: SaveAsked.byAPerson);
-
-    // A band naming a row of the project that is about to be replaced.
-    s.updateFrameRangeSelectionDrag(
-      layerId: s.activeLayer!.id,
-      anchorIndex: 0,
-      headIndex: 2,
-    );
-    expect(s.frameRangeSelection.value, isNotNull);
-
-    await door.openProjectFromFile(path);
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
+    final read = await readProjectFile(path);
 
     expect(
-      s.frameRangeSelection.value,
-      isNull,
-      reason:
-          'the load replaces the project, so the band pointing into the '
-          'old one goes with it',
+      () => s.projectDoor.settle(read),
+      throwsA(isA<AssertionError>()),
+      reason: 'a session bound to a file is not one born for this read — '
+          'settling into it would keep whatever it held beside the file',
     );
-    expect(s.cells.cellSelectionClaimsSubject, isFalse);
-    expect(
-      s.cells.canDeleteCellAtCurrentFrame,
-      isTrue,
-      reason: 'and the cell verbs are live again on the loaded project',
-    );
+    final born = EditorSessionManager(initialProject: read.project);
+    addTearDown(born.dispose);
+    born.projectDoor.settle(read);
+    expect(born.projectFile.path, path, reason: 'CONTROL: the born one takes it');
   });
+
+  // 🪦「An OPEN clears the selections」 lived here: a band naming the
+  // discarded project's rows was drawn nowhere and darkened every cell verb.
+  // It was a law of the open that REPLACED a project; a file opens as a
+  // session of its own now (I-7), born with no selection to clear.
 
   test('the atomic write leaves no temp residue and replaces an existing '
       'file in place', () async {
@@ -223,9 +218,8 @@ void main() {
     final copy = '${directory.path.replaceAll(r'\', '/')}/staged.anicel';
     File(copy).writeAsBytesSync(File(real).readAsBytesSync());
 
-    final opened = EditorSessionManager(initialProject: createDefaultProject());
+    final opened = await openedSession(copy, bindTo: real);
     addTearDown(opened.dispose);
-    await opened.projectDoor.openProjectFromFile(copy, bindTo: real);
 
     expect(
       opened.repository.requireProject().tracks.first.cuts.length,

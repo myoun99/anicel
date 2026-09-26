@@ -19,6 +19,7 @@ import 'session/editor_voice_recording.dart';
 import '../models/app_accents.dart';
 import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
+import '../services/editing/frame_id_mint.dart' as frame_ids;
 import '../services/editing/layer_standing_after_change.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/bitmap_surface.dart';
@@ -606,8 +607,6 @@ class EditorSessionManager extends ChangeNotifier
       _publishCutLocalLaneRange();
     },
   );
-
-  int _frameSequence = 0;
 
   // ── where a new row's id comes from: its own object ─────────────────
   //
@@ -2257,25 +2256,19 @@ class EditorSessionManager extends ChangeNotifier
   );
 
   // The TVPaint door (session/tvpp_import_door.dart). A .tvpp opens AS A
-  // PROJECT — it holds several cuts — so unlike its sibling doors it
-  // replaces the session's project the way an .anicel open does, and its
-  // constructor lists that: the reset touches the controllers and the file
-  // record, not just the landing. (The clipboards it once emptied are the
-  // app's now — I-7 — and a project's arrival leaves them alone.)
+  // PROJECT — it holds several cuts — so unlike its sibling doors it lands
+  // in a session born for it, as an .anicel does (I-7): what it does here
+  // is bake the pictures the conversion planned, into the stores this
+  // session was born with. (The clipboards it once emptied are the app's
+  // now, and a project's arrival leaves them alone.)
   late final TvppImportDoor tvppDoor = TvppImportDoor(
     project: this,
-    selection: this,
     changes: this,
-    timeline: this,
     internals: this,
     renderCaches: renderCaches,
-    landing: importLanding,
-    controllers: activeCutControllers,
-    playbackRig: playbackRig,
     file: projectFile,
     projectDoor: projectDoor,
     mediaPool: mediaPool,
-    frameSeekCommitted: frameSeekCommitted,
   );
 
   @override
@@ -2319,10 +2312,7 @@ class EditorSessionManager extends ChangeNotifier
     notify: notifyListeners,
   );
   @override
-  FrameId mintFrameId(LayerId layerId) {
-    _frameSequence += 1;
-    return FrameId(nextFrameId(layerId));
-  }
+  FrameId mintFrameId(LayerId layerId) => frame_ids.mintFrameId(layerId);
 
   @override
   Layer? get targetLayerForKindToggle => activeLayer;
@@ -2360,10 +2350,9 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
 
-    _frameSequence += 1;
     activeCutControllers.timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
-      frameId: FrameId(nextFrameId(layer.id)),
+      frameId: mintFrameId(layer.id),
     );
     notifyListeners();
   }
@@ -2408,17 +2397,6 @@ class EditorSessionManager extends ChangeNotifier
     selection.startIndex,
     selection.endIndexExclusive,
   );
-
-  /// ⚠️Formats an id from the CURRENT sequence — it does not advance it.
-  /// Call [mintFrameId] unless you have just incremented `_frameSequence`
-  /// yourself. The wall clock in here is decoration, not identity: its
-  /// resolution on Windows is coarser than a tight mint loop, so two ids
-  /// made in the same tick are equal, and equal frame ids are ONE drawing.
-  @override
-  String nextFrameId(LayerId layerId) {
-    final timestamp = DateTime.now().microsecondsSinceEpoch;
-    return 'ui-frame-${layerId.value}-$timestamp-$_frameSequence';
-  }
 
   // --- Comma edge drag ------------------------------------------------------
   //
@@ -3440,13 +3418,11 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     controllers: activeCutControllers,
-    playbackRig: playbackRig,
     renderCaches: renderCaches,
     staging: mediaStagingStore,
     grants: mediaGrants,
     fingerprints: mediaFingerprints,
     audioConformStore: audioConformStore,
-    frameSeekCommitted: frameSeekCommitted,
     mediaPool: mediaPool,
     liveStrokeLanding: liveStrokeLanding,
     solo: visibilitySolo,

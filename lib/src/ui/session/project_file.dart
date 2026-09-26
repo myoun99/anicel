@@ -243,10 +243,10 @@ class ProjectFile {
   ///
   /// ⚠️Invalidated by [invalidateConformStoredBytes] on two events and
   /// they are BOTH needed: a completed save (the carried entry's length
-  /// moved) and the conform store answering (a conform was just built, or
-  /// dropped by [AudioConformStore.releaseDiskBacked]). Keying on the file
-  /// generation alone ([_fileGeneration], what the media map does) would
-  /// leave a freshly conformed sound showing nothing until the next save.
+  /// moved) and the conform store answering (a conform was just built).
+  /// Keying on the file generation alone ([_fileGeneration], what the media
+  /// map does) would leave a freshly conformed sound showing nothing until
+  /// the next save.
   Map<String, int> get conformStoredBytes {
     final known = _conformStoredBytes;
     if (known != null) {

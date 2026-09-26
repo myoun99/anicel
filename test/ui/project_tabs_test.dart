@@ -37,6 +37,7 @@ import '../helpers/app_icon_button_probe.dart';
 import '../helpers/draw_on_current_frame.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart';
+import '../models/import/tvpp_test_builder.dart';
 
 /// I-7 through the window (유저 2026-09-26): 「여러 프로젝트 열수있게할거야 …
 /// 상단띠에 프로젝트 리스트있고 닫기버튼있고. 그래서 새 프로젝트는 현재 프로젝트
@@ -397,6 +398,98 @@ void main() {
       );
     }
     expect(tool.value.tool, CanvasTool.eraser);
+  });
+
+  /// Opens [path] through the File menu's Open and waits for a tab to join.
+  Future<void> openFromTheMenu(
+    WidgetTester tester,
+    OpenProjects projects,
+    String path,
+  ) async {
+    FolderPicker.debugFilePicker = ({
+      required List<XTypeGroup> acceptedTypeGroups,
+      required bool allowMultiple,
+    }) async => [
+      FolderGrant(
+        status: FolderPickStatus.granted,
+        path: path,
+        kind: GrantKind.file,
+      ),
+    ];
+    final before = projects.sessions.length;
+    await tapKey(tester, 'top-strip-project-button');
+    await tester.tap(find.byKey(const ValueKey<String>('menu-file-open')));
+    for (var attempt = 0; attempt < 200; attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (projects.sessions.length > before) {
+        break;
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+    }
+  }
+
+  testWidgets('a .tvpp opened from the menu opens in a tab of its own — a NEW '
+      'project, untitled and unsaved', (tester) async {
+    final folder = Directory.systemTemp.createTempSync('qa_project_tabs_');
+    deleteAfterSessionEnds(folder);
+    final path = '${folder.path.replaceAll(r'\', '/')}/next.tvpp';
+    final b = TvppBuilder()
+      ..projectProperties(cameraWidth: 64, cameraHeight: 48)
+      ..clipProperties('next')
+      ..clipHeader(width: 64, height: 48)
+      ..layerHead('A', end: 0, count: 1, layerId: 901)
+      ..layerExt(const {})
+      ..zchkSlot(srawRecord(List<int>.filled(64 * 48, 0), 64, 48))
+      ..clipConfig();
+    File(path).writeAsBytesSync(b.bytes);
+    final projects = await pumpApp(tester);
+    final first = projects.active;
+
+    await openFromTheMenu(tester, projects, path);
+
+    expect(projects.sessions, hasLength(2), reason: 'a tab of its own');
+    expect(projects.sessions.first, same(first), reason: 'nothing replaced');
+    final opened = projects.active;
+    expect(opened.repository.requireProject().name, 'next');
+    expect(opened.projectFile.path, isNull, reason: 'bound to no file');
+    expect(opened.projectFile.hasUnsavedChanges, isTrue);
+  });
+
+  testWidgets('a pick that will not read in place opens from a staged copy — '
+      'bound to the file the person picked, and unsaved until a save puts it '
+      'back there', (tester) async {
+    final folder = Directory.systemTemp.createTempSync('qa_project_tabs_');
+    deleteAfterSessionEnds(folder);
+    final real = '${folder.path.replaceAll(r'\', '/')}/Real.anicel';
+    // Nothing at this address reads directly — a provider's placeholder.
+    final picked = '${folder.path.replaceAll(r'\', '/')}/Placeholder.anicel';
+    final projects = await pumpApp(tester);
+    await tester.runAsync(
+      () => projects.active.projectDoor.saveProjectToFile(
+        real,
+        asked: SaveAsked.byAPerson,
+      ),
+    );
+    FolderPicker.debugCoordinatedReader = ({
+      required String sourcePath,
+      required String destinationPath,
+    }) async {
+      File(real).copySync(destinationPath);
+      return true;
+    };
+
+    await openFromTheMenu(tester, projects, picked);
+
+    expect(projects.sessions, hasLength(2), reason: 'CONTROL: it opened');
+    expect(
+      projects.active.projectFile.path,
+      picked,
+      reason: 'saves go back to the file the person picked, never into the '
+          'copy the app made',
+    );
+    expect(projects.active.projectFile.hasUnsavedChanges, isTrue);
   });
 
   testWidgets('a tab closed while the clock is writing its file is let go '

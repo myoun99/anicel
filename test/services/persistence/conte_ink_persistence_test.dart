@@ -14,6 +14,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// R5: the conte sheet ink rides the .anicel archive as a second cel
@@ -85,9 +86,8 @@ void main() {
     s.renderCaches.conteInkPageStore.storeBakedSurface(conteInkPageKey(0), inkSurface());
     await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
-    final loaded = EditorSessionManager(initialProject: createDefaultProject());
+    final loaded = await openedSession(path);
     addTearDown(loaded.dispose);
-    await loaded.projectDoor.openProjectFromFile(path);
 
     expect(
       loaded.renderCaches.conteInkRowStore.celHasRenderableContent(liveKey),
@@ -117,11 +117,8 @@ void main() {
       inkSurface(seed: 7),
     );
     await loaded.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
-    final reloaded = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
+    final reloaded = await openedSession(path);
     addTearDown(reloaded.dispose);
-    await reloaded.projectDoor.openProjectFromFile(path);
     expect(reloaded.renderCaches.conteInkRowStore.celHasRenderableContent(liveKey), isTrue);
     expect(
       reloaded.renderCaches.conteInkPageStore.celHasRenderableContent(conteInkPageKey(1)),

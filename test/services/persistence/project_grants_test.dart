@@ -4,12 +4,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/media_grant_ledger.dart';
+import '../../helpers/opened_session.dart';
 import '../../helpers/temp_dir.dart';
 
 /// PR-5: the security-scoped tokens a project needs to reopen the media it
@@ -134,8 +136,8 @@ void main() {
 
     tearDown(() => deleteTempQuietly(directory));
 
-    EditorSessionManager session() => EditorSessionManager(
-      initialProject: createDefaultProject(),
+    EditorSessionManager session([Project? project]) => EditorSessionManager(
+      initialProject: project ?? createDefaultProject(),
       audioConformStore: AudioConformStore(
         resolveConformPath: (_) => null,
         runner: (request) async => const ConformResult(
@@ -197,8 +199,7 @@ void main() {
       await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
-      final reopened = session();
-      await reopened.projectDoor.openProjectFromFile(projectPath);
+      final reopened = await openedSession(projectPath, make: session);
       // What the FILE kept — the round trip this test is named for.
       expect(reopened.mediaGrants.debugStoredGrants, hasLength(1));
       expect(reopened.mediaGrants.debugStoredGrants.single.path, path);
@@ -248,8 +249,7 @@ void main() {
       await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
-      final reopened = session();
-      await reopened.projectDoor.openProjectFromFile(projectPath);
+      final reopened = await openedSession(projectPath, make: session);
       // The FILE list: nothing was written, so nothing comes back. (The
       // usable list would also be empty here, but for a reason that
       // varies by host OS — see the pinning note above.)
@@ -328,8 +328,7 @@ void main() {
       s.dispose();
 
       // The launch where it will not resolve.
-      final refused = session();
-      await refused.projectDoor.openProjectFromFile(projectPath);
+      final refused = await openedSession(projectPath, make: session);
       expect(
         refused.mediaGrants.debugMediaGrants,
         isEmpty,
@@ -345,8 +344,7 @@ void main() {
 
       // The launch after the drive comes back.
       FolderPicker.debugBookmarkResolver = null;
-      final restored = session();
-      await restored.projectDoor.openProjectFromFile(projectPath);
+      final restored = await openedSession(projectPath, make: session);
       expect(
         restored.mediaGrants.debugStoredGrants,
         hasLength(1),
@@ -378,6 +376,10 @@ void main() {
           kind: GrantKind.file,
         ),
       ]);
+      s.mediaFingerprints.rememberMediaFingerprint(
+        oldPath,
+        movie.readAsBytesSync(),
+      );
       final projectPath = '${directory.path}/scene.anicel';
       await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
@@ -394,13 +396,19 @@ void main() {
           );
       addTearDown(() => FolderPicker.debugBookmarkResolver = null);
 
-      final reopened = session();
-      await reopened.projectDoor.openProjectFromFile(projectPath);
+      final reopened = await openedSession(projectPath, make: session);
 
       expect(
         reopened.mediaPool.mediaAssets.single.path,
         newPath,
         reason: 'the pool has to be told where the bookmark found it',
+      );
+      expect(
+        reopened.mediaFingerprints.recordedMediaIdentity(newPath)?.crc32,
+        isNotNull,
+        reason: 'and so does the fingerprint — the service narrowed it '
+            'against the relative remap alone, and a fact left under the '
+            'old path is deleted by the next save',
       );
       expect(reopened.mediaGrants.debugMediaGrants.single.path, newPath);
       expect(
@@ -413,8 +421,7 @@ void main() {
       await reopened.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       reopened.dispose();
 
-      final again = session();
-      await again.projectDoor.openProjectFromFile(projectPath);
+      final again = await openedSession(projectPath, make: session);
       expect(again.mediaGrants.debugStoredGrants, hasLength(1));
       again.dispose();
     });
@@ -440,8 +447,7 @@ void main() {
       await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
-      final reopened = session();
-      await reopened.projectDoor.openProjectFromFile(projectPath);
+      final reopened = await openedSession(projectPath, make: session);
       // ⚠️ What the FILE kept, not what this launch can use — the latter
       // depends on the host OS (see the pinning note above) and this test
       // is about the kind rule, not about resolving.

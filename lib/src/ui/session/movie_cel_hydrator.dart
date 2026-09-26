@@ -345,6 +345,14 @@ class MovieCelHydrator {
     if (fresh == null || _disposed || !identical(_opened[movie], was)) {
       // Nothing to move to — or [was] was let go meanwhile, by whoever
       // closed it.
+      //
+      // ⚠️MUTANT SURVIVES, the identity arm alone (2026-09-26). A close is
+      // [dispose] now, which the `_disposed` arm answers too; what the
+      // identity arm answers by itself is [_openAnew] letting go of another
+      // carry of this path while this follow waits — and the pool names a
+      // new carry for a path a row still shows only through a removal,
+      // which takes the row with it. It was pinned through the replace's
+      // `reset` until a file opened as a session of its own (I-7).
       await _close(opening);
       return;
     }
@@ -387,21 +395,19 @@ class MovieCelHydrator {
 
 
   /// Closes every movie this opened, each by the reader that opened it.
+  ///
+  /// 🪦A `reset` did the same for a session whose whole project was about
+  /// to be REPLACED, until a file opened as a session of its own (I-7,
+  /// 2026-09-26). 🚨A movie is kept by its path and carry ([_Movie]) — and
+  /// a file the pool points at has no carry, in this project or the next:
+  /// kept across a load, a row of the next project with the same path
+  /// decoded the LAST project's bytes and facts, and that project's file
+  /// stayed open until the app quit (audit 2026-09-24). A hydrator now
+  /// lives and goes with the one project its session holds.
   Future<void> dispose() {
     _disposed = true;
     return _closeEveryMovie();
   }
-
-  /// Lets go of every movie this opened and forgets what each turned out
-  /// to be — for a session whose whole project is about to be REPLACED
-  /// (`PlaybackRig.letGoOfTheProject`).
-  ///
-  /// 🚨A movie is kept by its path and carry ([_Movie]) — and a file the
-  /// pool points at has no carry, in this project or the next: kept across
-  /// a load, a row of the next project with the same path decoded the LAST
-  /// project's bytes and facts, and that project's file stayed open until
-  /// the app quit (audit 2026-09-24).
-  Future<void> reset() => _closeEveryMovie();
 
   Future<void> _closeEveryMovie() async {
     final opened = [..._opened.values];

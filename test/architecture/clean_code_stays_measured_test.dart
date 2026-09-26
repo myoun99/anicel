@@ -167,7 +167,16 @@ void main() {
   /// strips' window pass became one call (`TimelineRulerScale.paintWindow`,
   /// I-22). 🔬`clean_code_diff` between master (`0e6fd93f2`, at 433) and
   /// the lane named that one and nothing added.
-  const longBodies = 432;
+  ///
+  /// ⚠️432 → 430 on 2026-09-26 (I-7 ③, a file opens as a session of its
+  /// own): `ProjectFileDoor.openProjectFromFile` and
+  /// `TvppImportDoor.openAsProject` went — each replaced a live project and
+  /// carried the reset that went with it — and what took their place is
+  /// read, settle and bake, each in named steps (`_landCels`,
+  /// `_standWhereItWasSaved`, `_bakeEveryCel`, `_registerSounds`,
+  /// `_projectOf`). 🔬`clean_code_diff` between master (`2907ac360`, at 432)
+  /// and the lane: those two gone, nothing added.
+  const longBodies = 430;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

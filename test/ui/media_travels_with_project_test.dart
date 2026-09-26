@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -13,6 +14,7 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/opened_session.dart';
 import '../helpers/temp_dir.dart';
 
 /// The point of the whole media move: a project stops depending on files
@@ -29,8 +31,8 @@ void main() {
   });
   tearDown(() => deleteTempQuietly(directory));
 
-  EditorSessionManager session() => EditorSessionManager(
-    initialProject: createDefaultProject(),
+  EditorSessionManager session([Project? project]) => EditorSessionManager(
+    initialProject: project ?? createDefaultProject(),
     audioConformStore: AudioConformStore(
       resolveConformPath: (_) => null,
       runner: (request) async => const ConformResult(
@@ -63,8 +65,7 @@ void main() {
     // The whole point: the file the project was imported from is gone.
     File(source).deleteSync();
 
-    final reopened = session();
-    await reopened.projectDoor.openProjectFromFile(projectPath);
+    final reopened = await openedSession(projectPath, make: session);
     final asset = reopened.mediaPool.mediaAssets.single;
     final sources = projectMediaSources(
       project: reopened.repository.requireProject(),
@@ -97,8 +98,7 @@ void main() {
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     editor.dispose();
 
-    final reopened = session();
-    await reopened.projectDoor.openProjectFromFile(projectPath);
+    final reopened = await openedSession(projectPath, make: session);
     expect(reopened.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
     expect(
       reopened.projectFile.mediaInFile,
@@ -106,6 +106,29 @@ void main() {
       reason: 'nothing about a movie is carried',
     );
     reopened.dispose();
+  });
+
+  test('🚨RELINK-2: a project opened where its REFERENCED media is not says '
+      'so — the one moment nobody did anything to prompt it', () async {
+    final editor = session();
+    final projectPath = '${directory.path}/scene.anicel';
+    final movie = writeMedia('gone.mp4', 2048);
+    await editor.mediaPool.importMediaFiles([movie], copyIntoProject: false);
+    await editor.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    editor.dispose();
+    File(movie).deleteSync();
+
+    final reopened = await openedSession(projectPath, make: session);
+    addTearDown(reopened.dispose);
+
+    expect(
+      reopened.mediaPool.missingMediaPaths,
+      {reopened.mediaPool.mediaAssets.single.path},
+      reason: 'the banner reads this — a reference nothing answers at',
+    );
   });
 
   test('SAVE AS carries the media into the copy', () async {
@@ -136,8 +159,7 @@ void main() {
     // remains.
     File(first).deleteSync();
 
-    final reopened = session();
-    await reopened.projectDoor.openProjectFromFile(second);
+    final reopened = await openedSession(second, make: session);
     final asset = reopened.mediaPool.mediaAssets.single;
     final sources = projectMediaSources(
       project: reopened.repository.requireProject(),
@@ -188,8 +210,7 @@ void main() {
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     editor.dispose();
 
-    final reopened = session();
-    await reopened.projectDoor.openProjectFromFile(projectPath);
+    final reopened = await openedSession(projectPath, make: session);
     expect(reopened.projectFile.mediaInFile, isEmpty);
     // And it still resolves, by path, exactly as it always did.
     expect(reopened.mediaPool.mediaAssets.single.path, source.replaceAll('\\', '/'));
@@ -218,9 +239,8 @@ void main() {
     // that looked anywhere else would have nothing to write.
     File(source).deleteSync();
 
-    final reopened = session();
+    final reopened = await openedSession(projectPath, make: session);
     addTearDown(reopened.dispose);
-    await reopened.projectDoor.openProjectFromFile(projectPath);
     reopened.projectFile.markDirty();
     await reopened.projectDoor.saveProjectToFile(
       projectPath,

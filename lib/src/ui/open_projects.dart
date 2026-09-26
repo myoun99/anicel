@@ -52,11 +52,12 @@ class OpenProjects extends ChangeNotifier {
     return session;
   }
 
-  /// A session for [placeholder] that is NOT in a tab yet — what a file is
-  /// read into, so a read that fails or is cancelled leaves the tabs as
-  /// they were. [adopt] shows it; [discard] lets it go.
-  EditorSessionManager prepare(Project placeholder) =>
-      _openSession(placeholder);
+  /// A session born for [project] that is NOT in a tab yet — what an opened
+  /// file becomes before it shows: the file is read first, with no session,
+  /// and the session is born with what it read (`ProjectFileDoor.settle`,
+  /// `TvppImportDoor.bake`). [adopt] shows it; [discard] lets it go, for a
+  /// conversion that failed on the way or a window that went away.
+  EditorSessionManager prepare(Project project) => _openSession(project);
 
   /// Puts a [prepare]d session in a tab of its own after the others, and
   /// shows it.

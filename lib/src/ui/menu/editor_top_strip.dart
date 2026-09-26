@@ -49,7 +49,9 @@ import '../export/export_dialog.dart';
 import '../import/import_dialog.dart';
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
-import '../session/project_file_door.dart' show SaveAsked, StagedArchive;
+import '../session/project_file_door.dart'
+    show SaveAsked, StagedArchive, readProjectFile;
+import '../session/tvpp_import_door.dart' show readTvppProject;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
@@ -193,39 +195,39 @@ class EditorTopStrip extends StatelessWidget {
       projects.activate(open);
       return;
     }
-    // Read into a session no tab shows yet, so a file that fails or a wait
-    // that is cancelled leaves the tabs exactly as they were.
-    final target = projects.prepare(newUntitledProject());
-    final ({({bool staged}) value})? opened;
+    final ({({EditorSessionManager session, bool staged}) value})? opened;
     try {
-      opened = await _openBehindWindow<({bool staged})>(
-        context,
-        (wait, _) => _readProject(target, path, wait),
-      );
+      opened = await _openBehindWindow<
+        ({EditorSessionManager session, bool staged})
+      >(context, (wait, _) => _readProject(path, wait));
     } on Object catch (error) {
-      projects.discard(target);
       // The archive's own complaint — a file that would not parse.
       if (context.mounted) {
         showFileError(context, error);
       }
       return;
     }
-    if (opened == null || !context.mounted) {
-      projects.discard(target);
+    if (opened == null) {
       return;
     }
-    projects.adopt(target);
+    final session = opened.value.session;
+    if (!context.mounted) {
+      projects.discard(session);
+      return;
+    }
+    projects.adopt(session);
     await _afterOpened(context, pick, staged: opened.value.staged);
   }
 
-  /// The read itself, from wherever the bytes are, into [target].
+  /// The read itself, from wherever the bytes are, and the session born for
+  /// what it read — not in a tab yet, so a read that fails or a wait that is
+  /// cancelled leaves the tabs exactly as they were, with no session made.
   ///
   /// The same materializer every open uses: a File Provider pick can be a
   /// placeholder a plain read refuses, and the archive reader needs random
   /// access — so an unreadable pick opens from a staged local copy, and the
   /// session is bound back to the real file so saves land there.
-  Future<({bool staged})> _readProject(
-    EditorSessionManager target,
+  Future<({EditorSessionManager session, bool staged})> _readProject(
     String path,
     _CloudWait wait,
   ) async {
@@ -237,14 +239,21 @@ class EditorTopStrip extends StatelessWidget {
     );
     // The bytes are here; the read that follows is the app's own.
     wait.arrived();
-    await target.projectDoor.openProjectFromFile(
+    final read = await readProjectFile(
       source.path,
       // Only when they differ: binding is what says「saves go back THERE」,
       // and a session reading its own file has nowhere else.
       bindTo: source.staged ? path : null,
       isCancelled: wait.isCancelled,
     );
-    return (staged: source.staged);
+    final session = projects.prepare(read.project);
+    try {
+      session.projectDoor.settle(read);
+    } on Object {
+      projects.discard(session);
+      rethrow;
+    }
+    return (session: session, staged: source.staged);
   }
 
   /// The three things that follow a SUCCESSFUL open: Recents, the word
@@ -302,50 +311,73 @@ class EditorTopStrip extends StatelessWidget {
   /// several cuts), in a tab of its own like any open (I-7). No recents
   /// entry — the result is a NEW unsaved project until its first save.
   Future<void> _openTvppAsProject(BuildContext context, String path) async {
-    // Read into a session no tab shows yet — the .anicel open's reason.
-    final target = projects.prepare(newUntitledProject());
     // Decoding and baking a whole project is a save-sized wait; a frozen
     // screen before the cuts appear reads as a hang (hands-on, 288's 96
     // frames × 19 layers).
-    final ({List<ImportWarning>? value})? opened;
-    try {
-      opened = await _openBehindWindow<List<ImportWarning>?>(
-        context,
-        (wait, report) => target.tvppDoor.openAsProject(
-          tvppPath: path,
-          onProgress: (fraction) {
-            // Reading has started, so the waiting line has nothing left
-            // to say.
-            wait.arrived();
-            report(fraction);
-          },
-          onWaiting: wait.report,
-          isCancelled: wait.isCancelled,
-        ),
-      );
-    } on Object {
-      projects.discard(target);
-      rethrow;
+    final opened =
+        await _openBehindWindow<
+          ({EditorSessionManager session, List<ImportWarning> warnings})?
+        >(context, (wait, report) => _convertTvpp(path, wait, report));
+    if (opened == null) {
+      return;
     }
-    final warnings = opened?.value;
-    if (opened == null || warnings == null || !context.mounted) {
-      projects.discard(target);
-      if (opened != null && context.mounted) {
+    final converted = opened.value;
+    if (converted == null) {
+      if (context.mounted) {
         showFileError(context, AppText.strings.imNotTvpp);
       }
       return;
     }
-    projects.adopt(target);
-    if (warnings.isNotEmpty) {
+    if (!context.mounted) {
+      projects.discard(converted.session);
+      return;
+    }
+    projects.adopt(converted.session);
+    if (converted.warnings.isNotEmpty) {
       await showAppNotice(
         context,
         windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
         title: AppText.strings.commonNotice,
-        message: warnings
+        message: converted.warnings
             .take(6)
             .map((warning) => warning.textFor(AppText.language))
             .join('\n'),
       );
+    }
+  }
+
+  /// The .tvpp read and converted, and the session born for the project it
+  /// became with every cel baked into it — not in a tab yet, the .anicel
+  /// open's reason. Null when the file is not a TVPaint project.
+  Future<({EditorSessionManager session, List<ImportWarning> warnings})?>
+  _convertTvpp(
+    String path,
+    _CloudWait wait,
+    void Function(double) report,
+  ) async {
+    final read = await readTvppProject(
+      tvppPath: path,
+      onWaiting: wait.report,
+      isCancelled: wait.isCancelled,
+    );
+    if (read == null) {
+      return null;
+    }
+    final session = projects.prepare(read.project);
+    try {
+      final warnings = await session.tvppDoor.bake(
+        read,
+        onProgress: (fraction) {
+          // Baking has started, so the waiting line has nothing left to
+          // say.
+          wait.arrived();
+          report(fraction);
+        },
+      );
+      return (session: session, warnings: warnings);
+    } on Object {
+      projects.discard(session);
+      rethrow;
     }
   }
 

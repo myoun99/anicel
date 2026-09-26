@@ -1,18 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/brush_frame_key.dart';
-import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/conte/conte_ink_keys.dart';
-import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/models/timesheet_ink_keys.dart';
-import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart'
     show FolderPicker;
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -23,17 +13,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../models/import/tvpp_test_builder.dart';
 import 'package:anicel/src/ui/text/model_vocabulary.dart';
+import '../../helpers/opened_session.dart';
 import '../../helpers/temp_dir.dart';
 
-/// An import through the SESSION, which is where the ids come from.
+/// An open through the REAL mint, which is where the ids come from.
 ///
 /// The planner takes its minting seam as an argument, so every planner
 /// test supplies a counter of its own and gets unique ids for free. The
-/// session's real mint was the thing that collided, and nothing exercised
-/// it: a layer of ten drawings arrived as ten exposures of ONE drawing,
-/// because the id formatter reads a sequence it does not advance and the
+/// real mint was the thing that collided, and nothing exercised it: a layer
+/// of ten drawings arrived as ten exposures of ONE drawing, because an id
+/// formatter read a count it did not advance (gone since 2026-09-26) and the
 /// only other ingredient — the wall clock — does not tick fast enough to
-/// separate a mint loop on Windows.
+/// separate a mint loop on Windows. A .tvpp mints its ids before any session
+/// holds it now (I-7), through the process's one frame mint.
 /// The TVPaint door itself — named so `tool/mutation_run.dart` has a suite
 /// to run for it.
 TvppImportDoor tvppDoorOf(EditorSessionManager session) => session.tvppDoor;
@@ -90,18 +82,13 @@ void main() {
   test(
     'a .tvpp opens AS the project and every cel is its own drawing',
     () async {
-      final session = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
+      final opened = await openedTvpp(writeTvpp());
+      expect(opened, isNotNull, reason: 'the file parses');
+      final session = opened!.session;
       addTearDown(session.dispose);
-
-      final door = tvppDoorOf(session);
-      final warnings = await door.openAsProject(
-        tvppPath: writeTvpp(),
-      );
-      expect(warnings, isNotNull, reason: 'the file parses');
+      final warnings = opened.warnings;
       expect(
-        warnings!.where(
+        warnings.where(
           (w) => w.english.startsWith('The sound file is not at this address'),
         ),
         isNotEmpty,
@@ -135,11 +122,16 @@ void main() {
             'throw, so an import that "worked" can still have read nothing.',
       );
 
-      // The open REPLACES the project — the default cut is gone, the
-      // file's name is the project's, and so is its SHOOTING FRAME (288:
-      // fitting a layout camera into our 16:9 default framed wider than
-      // TVPaint did).
+      // The file IS the project — no default cut, the file's name is the
+      // project's, and so is its SHOOTING FRAME (288: fitting a layout
+      // camera into our 16:9 default framed wider than TVPaint did).
       final project = session.repository.requireProject();
+      expect(
+        session.canUndo,
+        isFalse,
+        reason: 'the file\'s sounds are registered as the file\'s — an open '
+            'is not an edit to undo',
+      );
       expect(project.name, '番号');
       expect(project.cameraSize.width, 960);
       expect(project.cameraSize.height, 540);
@@ -159,6 +151,20 @@ void main() {
         cuts.single.layers.where((l) => l.kind == LayerKind.se),
         isEmpty,
         reason: 'lifted onto the track, not left on the cut',
+      );
+
+      final layerIds = [for (final layer in cuts.single.layers) layer.id];
+      expect(
+        layerIds.toSet(),
+        hasLength(layerIds.length),
+        reason: 'two rows under one id are one row to every verb that looks '
+            'a row up — minted before any session holds the project',
+      );
+      expect(
+        session.mediaPool.mediaAssets.map((asset) => asset.path),
+        contains(endsWith('12.mp4')),
+        reason: 'the clip\'s sound is in the pool, so relink and the '
+            'existence check see it',
       );
 
       final ids = <FrameId>[];
@@ -232,18 +238,14 @@ void main() {
       programLanguage: AppLanguage.ja,
     );
     addTearDown(() => AppText.settings.value = const AppLanguageSettings());
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
 
-    final warnings = await session.tvppDoor.openAsProject(
-      tvppPath: writeTvpp(),
-    );
+    final opened = await openedTvpp(writeTvpp());
 
-    expect(warnings, isNotNull, reason: 'the file parses');
+    expect(opened, isNotNull, reason: 'the file parses');
+    addTearDown(opened!.session.dispose);
+    final warnings = opened.warnings;
     expect(
-      warnings!.where(
+      warnings.where(
         (w) => w.textFor(AppLanguage.ja).contains('ミュート'),
       ),
       isNotEmpty,
@@ -258,26 +260,17 @@ void main() {
     );
   });
 
+
   test('🚨the converted project is bound to NO file and is UNSAVED — the '
       'first save has to ask where the .anicel goes', () async {
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
+    // 🪦The session here used to be one already holding an .anicel, which
+    // the open had to let go of, or the first save wrote the conversion
+    // OVER the file opened before it. A .tvpp opens as a session of its own
+    // now (I-7): there is nothing bound to let go of.
+    final opened = await openedTvpp(writeTvpp());
+    expect(opened, isNotNull);
+    final session = opened!.session;
     addTearDown(session.dispose);
-    // A session that was already holding an .anicel: the open has to let
-    // go of it, or the first save writes the conversion OVER the file the
-    // user opened before it.
-    session.projectFile.bindToOpenedFile(
-      '${temp.path}${Platform.pathSeparator}held.anicel',
-      mediaInFile: const {},
-      unsaved: false,
-    );
-    final seeksBefore = session.frameSeekCommitted.value;
-
-    expect(
-      await session.tvppDoor.openAsProject(tvppPath: writeTvpp()),
-      isNotNull,
-    );
 
     expect(
       session.projectFile.path,
@@ -291,13 +284,6 @@ void main() {
           'a conversion is unsaved by definition — nothing on disk '
           'holds it, so the title dot and the exit gate have to say so',
     );
-    expect(
-      session.frameSeekCommitted.value,
-      greaterThan(seeksBefore),
-      reason:
-          'the playhead now stands in a different project, and the '
-          'seek-dependent panels only hear about it here',
-    );
   });
 
   test('an unreadable pick goes through the COORDINATED read; only a '
@@ -308,39 +294,51 @@ void main() {
     final real = writeTvpp();
     final ghost = '${temp.path}${Platform.pathSeparator}ghost.tvpp';
     var staged = 0;
+    String? stagedAt;
     FolderPicker.debugCoordinatedReader =
         ({required String sourcePath, required String destinationPath}) async {
           staged++;
           expect(sourcePath, ghost);
           File(real).copySync(destinationPath);
+          stagedAt = destinationPath;
           return true;
         };
     addTearDown(() => FolderPicker.debugCoordinatedReader = null);
 
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
-
-    final warnings = await session.tvppDoor.openAsProject(tvppPath: ghost);
+    final opened = await openedTvpp(ghost);
     expect(staged, 1);
     expect(
-      warnings,
+      opened,
       isNotNull,
       reason: 'the staged copy parses like the local file',
+    );
+    addTearDown(opened!.session.dispose);
+    expect(
+      opened.warnings.map((warning) => warning.key),
+      contains('stagedCopy'),
+      reason: '유저 2026-08-27: the last resort says so when it fires',
+    );
+    // The copy goes once the bake has read it (its delete is not waited
+    // for, so it gets its turn).
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(
+      File(stagedAt!).existsSync(),
+      isFalse,
+      reason: 'a staged copy is read-and-discard — left behind it is a '
+          'second copy of the project nobody will ever read',
     );
 
     // A file that READS but does not parse is the only null.
     final junk = '${temp.path}${Platform.pathSeparator}junk.tvpp';
     File(junk).writeAsBytesSync(List<int>.filled(64, 7));
-    expect(await session.tvppDoor.openAsProject(tvppPath: junk), isNull);
+    expect(await readTvppProject(tvppPath: junk), isNull);
 
     // Unreadable AND unstageable throws — access, not format.
     FolderPicker.debugCoordinatedReader =
         ({required String sourcePath, required String destinationPath}) async =>
             false;
     expect(
-      () => session.tvppDoor.openAsProject(
+      () => readTvppProject(
         tvppPath: '${temp.path}${Platform.pathSeparator}nowhere.tvpp',
       ),
       throwsA(isA<FileSystemException>()),
@@ -353,7 +351,7 @@ void main() {
   /// cel that will not decode leaves a WARNING naming the file rather
   /// than throwing the wave away, the planner's own warnings reach the
   /// caller, and a file that parses but holds no clip is refused instead
-  /// of replacing the session with an empty project.
+  /// of opening as an empty project.
   test('🚨a cel that will not decode names itself in the warnings — the '
       'import goes on, so silence here is a cel that vanished', () async {
     final b = TvppBuilder();
@@ -369,85 +367,70 @@ void main() {
     final path = '${temp.path}${Platform.pathSeparator}broken.tvpp';
     File(path).writeAsBytesSync(b.bytes);
 
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
+    final opened = await openedTvpp(path);
 
-    final warnings = await session.tvppDoor.openAsProject(tvppPath: path);
-
-    expect(warnings, isNotNull, reason: 'the STRUCTURE parses');
+    expect(opened, isNotNull, reason: 'the STRUCTURE parses');
+    addTearDown(opened!.session.dispose);
     expect(
-      warnings!.where(
+      opened.warnings.where(
         (w) => !w.english.startsWith('The sound file is not at this address'),
       ),
       isNotEmpty,
       reason: 'a cel the decoder refused has to be said out loud',
     );
+    expect(
+      opened.session.projectFile.hasUnsavedChanges,
+      isTrue,
+      reason: 'a conversion is unsaved by definition — with no sound to '
+          'register, nothing else says so but the door',
+    );
   });
 
-  test('🚨a file that parses but holds NO clip is refused — replacing the '
-      'session with an empty project is worse than not opening', () async {
+  test('🚨a file that parses but holds NO clip is refused — opening an EMPTY '
+      'project is worse than not opening', () async {
     final b = TvppBuilder();
     b.projectProperties(cameraWidth: 64, cameraHeight: 48);
     final path = '${temp.path}${Platform.pathSeparator}empty.tvpp';
     File(path).writeAsBytesSync(b.bytes);
 
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
-    final before = session.repository.requireProject().name;
+    expect(await readTvppProject(tvppPath: path), isNull);
+  });
 
-    expect(await session.tvppDoor.openAsProject(tvppPath: path), isNull);
+  test('every clip becomes a cut of its OWN id — the project is named before '
+      'any session holds it', () async {
+    final b = TvppBuilder();
+    b.projectProperties(cameraWidth: 64, cameraHeight: 48);
+    for (final name in ['A', 'B']) {
+      b.clipProperties(name);
+      b.clipHeader(width: 64, height: 48);
+      b.layerHead('L$name', end: 0, count: 1, layerId: 900);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List<int>.filled(64 * 48, 0), 64, 48));
+      b.clipConfig();
+    }
+    final path = '${temp.path}${Platform.pathSeparator}two.tvpp';
+    File(path).writeAsBytesSync(b.bytes);
+
+    final opened = await openedTvpp(path);
+
+    expect(opened, isNotNull, reason: 'the file parses');
+    addTearDown(opened!.session.dispose);
+    final cuts = [
+      for (final track in opened.session.repository.requireProject().tracks)
+        ...track.cuts,
+    ];
+    expect(cuts.map((cut) => cut.name), ['A', 'B']);
     expect(
-      session.repository.requireProject().name,
-      before,
-      reason: 'the session it refused to replace is still there',
+      cuts.map((cut) => cut.id).toSet(),
+      hasLength(2),
+      reason: 'two cuts under one id are one cut to every verb that finds it',
     );
   });
 
-  // 유저 2026-09-26: 「다 통일해줘」 — the timesheet's ink lived in stores
-  // of its own that no reset reached; the conte's and the envelope's
-  // were cleared by name, one line each.
-  test('🚨a .tvpp opened as the project leaves no sheet\'s ink of the '
-      'project it replaced', () async {
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
-    final caches = session.renderCaches;
-    final cutId = session.requireActiveCut.id;
-    final written = <BrushFrameStore, BrushFrameKey>{
-      caches.conteInkRowStore: conteInkRowKey(cutId, const FrameId('f')),
-      caches.conteInkPageStore: conteInkPageKey(0),
-      caches.envelopeInkStore: envelopeInkBoxKey(cutId, 'memo'),
-      caches.timesheetInkStripStore: timesheetInkStripKey(cutId, 0),
-      caches.timesheetInkPageStore: timesheetInkPageKey(cutId, 0),
-    };
-    for (final MapEntry(key: store, value: key) in written.entries) {
-      store.storeBakedSurface(key, _inkedSurface());
-      expect(store.bakedSurfaceOrNull(key), isNotNull, reason: 'fixture');
-    }
-
-    expect(
-      await session.tvppDoor.openAsProject(tvppPath: writeTvpp()),
-      isNotNull,
-    );
-    for (final MapEntry(key: store, value: key) in written.entries) {
-      expect(store.bakedSurfaceOrNull(key), isNull, reason: '$key');
-    }
-  });
+  // 🪦「A .tvpp opened as the project leaves no sheet's ink of the project it
+  // replaced」 lived here — 유저 2026-09-26: 「다 통일해줘」, when the
+  // timesheet's ink lived in stores no reset reached and the conte's and
+  // the envelope's were cleared by name, one line each. A .tvpp opens as a
+  // session of its own now (I-7): no project is replaced, and every store
+  // it bakes into was born empty with it.
 }
-
-/// A small inked surface — what a landed stroke leaves in a store.
-BitmapSurface _inkedSurface() => BitmapSurface(
-  canvasSize: const CanvasSize(width: 16, height: 16),
-  tileSize: 8,
-  tiles: {
-    TileCoord(x: 0, y: 0): BitmapTile(
-      size: 8,
-      pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 255),
-    ),
-  },
-);

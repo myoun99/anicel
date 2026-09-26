@@ -136,7 +136,7 @@ class LayerStack {
         Layer newLayerFor(Cut cut) => kind.coversWithoutGaps
             ? createCoveringLayer(
                 layerId: layerId,
-                frameId: FrameId(_frameIds.nextFrameId(layerId)),
+                frameId: _frameIds.mintFrameId(layerId),
                 cut: cut,
                 kind: kind,
               )

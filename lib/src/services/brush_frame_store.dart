@@ -735,15 +735,15 @@ class BrushFrameStore {
     // could not delete its own temp folder afterwards. That is exactly what
     // a user closing a project and then tidying the folder would hit.
     //
-    // ⚠️**FOUR stores share the one handle** — the main cel store plus the
-    // conté row, conté page and envelope ink stores, all holding refs into
-    // the SAME `.anicel` (one `open` fills all four:
-    // `project_file_door.dart`). So this is not「nothing can name the file
-    // any more」, it is「this store cannot」, and it is only the whole truth
-    // because the product always swaps the four together (project open, and
-    // `_resetSessionForImportedProject`). ⛔Nothing rests on that: letting
-    // go early costs one re-open on the next sibling's read, which is why
-    // the release is not counted.
+    // ⚠️**EVERY cel store of a session shares the one handle** — the main
+    // cel store and each sheet's ink store, all holding refs into the SAME
+    // `.anicel` (one open fills them all: `ProjectFileDoor.settle`). So
+    // this is not「nothing can name the file any more」, it is「this store
+    // cannot」, and it is only the whole truth because the product always
+    // fills them together — and, since a file opens as a session of its own
+    // (I-7), only once. ⛔Nothing rests on that: letting go early costs one
+    // re-open on the next sibling's read, which is why the release is not
+    // counted.
     //
     // ↩️It was UNCONDITIONAL — the one handle, whatever it held. With a
     // project per tab (I-7) that let go of every OTHER tab's file too, so it

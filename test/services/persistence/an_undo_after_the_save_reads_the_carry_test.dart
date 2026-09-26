@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart'
     show MediaFileBytes;
 import 'package:anicel/src/services/media/project_media_sources.dart'
@@ -18,6 +19,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/media_pool.dart';
 import 'package:anicel/src/ui/session/project_file.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
+import '../../helpers/opened_session.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -55,8 +57,9 @@ void main() {
     List<int>.generate(64 * 1024, (i) => (i ~/ 3 + 57) & 0xFF),
   );
 
-  EditorSessionManager aSession(String staged) => EditorSessionManager(
-    initialProject: createDefaultProject(),
+  EditorSessionManager aSession(String staged, [Project? project]) =>
+      EditorSessionManager(
+    initialProject: project ?? createDefaultProject(),
     mediaStagingStore: MediaStagingStore(
       directoryPath: '${root.path}/$staged',
     ),
@@ -150,9 +153,11 @@ void main() {
       isNull,
       reason: 'absorbed again — 「사본 남으면 진짜 용서안할게」',
     );
-    final reopened = aSession('Reopened');
+    final reopened = await openedSession(
+      projectPath,
+      make: (project) => aSession('Reopened', project),
+    );
     addTearDown(reopened.dispose);
-    await reopened.projectDoor.openProjectFromFile(projectPath);
     expect(reopened.projectFile.mediaByteSourceFor(path).readSync(), carried);
   });
 

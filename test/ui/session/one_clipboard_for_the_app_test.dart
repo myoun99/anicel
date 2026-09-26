@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/session/layer_clipboard.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/staged_carry.dart';
 
@@ -485,8 +486,17 @@ void main() {
     await a.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     a.copyFrameAtCurrentFrame();
 
-    final prepared = open();
-    await prepared.projectDoor.openProjectFromFile(path);
-    expect(prepared.canPasteIndependentFrameAtCurrentFrame, isTrue);
+    final opened = await openedSession(
+      path,
+      make: (project) {
+        final session = EditorSessionManager(
+          initialProject: project,
+          appClipboard: clipboard,
+        );
+        addTearDown(session.dispose);
+        return session;
+      },
+    );
+    expect(opened.canPasteIndependentFrameAtCurrentFrame, isTrue);
   });
 }

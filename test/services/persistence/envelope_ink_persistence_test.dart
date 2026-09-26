@@ -12,6 +12,7 @@ import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// The envelope's handwriting rides the .anicel archive as its own cel
@@ -71,11 +72,8 @@ void main() {
       );
       await session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
-      final loaded = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
+      final loaded = await openedSession(path);
       addTearDown(loaded.dispose);
-      await loaded.projectDoor.openProjectFromFile(path);
 
       expect(
         loaded.renderCaches.envelopeInkStore.celHasRenderableContent(liveKey),
