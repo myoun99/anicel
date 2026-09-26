@@ -44,9 +44,11 @@ enum ConteInkPlane {
 /// [BrushStrokeHistoryCommand] the drawing canvas uses.
 ///
 /// TWO planes (R5 — the timesheet's page/strip pair, said in conte): the
-/// row plane binds ink to its CELL (the user's contract: strokes belong to
-/// the cell they start on, clipped to its band), the page plane keeps the
-/// margins. The row/page stores may be handed in by the session so the
+/// row plane binds ink to its CELL, the page plane keeps the margins, and
+/// a stroke over both leaves each its own piece (유저 2026-09-25: 「진짜
+/// 하나의 용지처럼. 데이터는 나누더라도」). ↩️R5's contract was 「strokes
+/// belong to the cell they start on, clipped to its band」 — one paper
+/// replaced it. The row/page stores may be handed in by the session so the
 /// project archive can persist them ([BrushFrameStore] cels, the second
 /// namespace).
 class ConteInkController extends SheetInkController<ConteInkPlane> {
@@ -105,9 +107,9 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
 }
 
 /// The ink windows for one page, bottom-of-stack first: page ink lies
-/// under the row bands, so a stroke STARTING on a cell's band goes to that
-/// cell and everything else (header, margins, the hole) goes to the paper.
-/// A stroke keeps its start plane for its whole duration (pointer capture).
+/// under the row bands, so what a stroke draws on a cell's band goes to
+/// that cell and everything else (header, margins, the hole) goes to the
+/// paper — one stroke, split where it crosses ([sheetInkRegions]).
 /// A cell with no drawing block carries no band window — ink belongs to
 /// drawings ("그림 삭제 시 잉크 동반 삭제"), so a block-less cell offers
 /// only the paper behind it.
@@ -129,8 +131,7 @@ List<SheetInkWindow> conteInkWindows(ContePageLayout page) => [
 
 /// The conte's ink input/display stack: every window hosts the SAME
 /// interactive brush view the drawing canvas uses, windowed onto its ink
-/// surface by a derived viewport and clipped to its on-screen rect so
-/// pointer-downs outside it fall through to the window below.
+/// surface by a derived viewport ([SheetInkLayer]).
 class ConteInkLayer extends StatelessWidget {
   const ConteInkLayer({
     super.key,
@@ -156,8 +157,7 @@ class ConteInkLayer extends StatelessWidget {
   /// The live panel viewport (the same transform the page painter applies).
   final CanvasViewport viewport;
 
-  /// Raised while any window has a stroke in progress, so the panel's
-  /// gesture layer holds navigation exactly as it does for canvas strokes.
+  /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
 
   final CacheInvalidationSink? cacheInvalidationSink;
@@ -170,6 +170,7 @@ class ConteInkLayer extends StatelessWidget {
       viewport: viewport,
       brushToolState: brushToolState,
       strokeActive: strokeActive,
+      history: historyManager.gestures,
       // The plane axis stays HERE, with the controller that has one.
       sessionStateFor: (window) => controller.sessionStateFor(
         window.plane! as ConteInkPlane,

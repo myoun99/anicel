@@ -343,7 +343,7 @@ void main() {
       expect(painter.layout.form.id, CutEnvelopePresets.digitalId);
     });
 
-    testWidgets('a stroke lands on the box it started in and one undo '
+    testWidgets('a stroke lands on the box it is drawn over and one undo '
         'clears it', (tester) async {
       final (session, ink) = await pumpEnvelope(tester, brushAllowed: true);
 

@@ -7,11 +7,13 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
+import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -263,6 +265,97 @@ void main() {
         pixelCount: 2,
       );
       expect(pixels, before);
+    });
+  });
+
+  group('clipStrokeCommitToSelection — ONE funnel for a selection and a '
+      "sheet window's slice", () {
+    const canvas = CanvasSize(width: 64, height: 64);
+    BrushDab dab(double x, double y) => BrushDab(
+      center: CanvasPoint(x: x, y: y),
+      color: 0xFF0000FF,
+      size: 6,
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.square,
+      pressure: 1,
+      sequence: 0,
+    );
+    BrushStrokeCommitData promotedOn(
+      BitmapSurface base,
+      List<BrushDab> dabs, {
+      bool empty = false,
+    }) => BrushStrokeCommitData(
+      sourceDabs: dabs,
+      promotedBase: base,
+      promotedTiles: empty
+          ? const []
+          : [
+              (
+                coord: TileCoord(x: 0, y: 0),
+                tile: BitmapTile.blank(size: 32),
+              ),
+            ],
+    );
+
+    test('promoted tiles pass straight through on the surface they were '
+        'blended against — the kernel already masked them', () {
+      final surface = BitmapSurface(canvasSize: canvas, tileSize: 32);
+      final data = promotedOn(surface, [dab(10, 10)]);
+      expect(
+        clipStrokeCommitToSelection(
+          data,
+          region: regionRect(0, 0, 20, 64),
+          surface: surface,
+        ),
+        same(data),
+      );
+      expect(
+        clipStrokeCommitToSelection(
+          promotedOn(surface, [dab(10, 10)], empty: true),
+          region: regionRect(0, 0, 20, 64),
+          surface: surface,
+        ),
+        isNull,
+        reason: 'an empty promotion lands nothing',
+      );
+    });
+
+    test('once something has landed on the cel in between, the dabs are '
+        'clipped here — the whole stroke never lands', () {
+      final base = BitmapSurface(canvasSize: canvas, tileSize: 32);
+      final landedSince = BitmapSurface(canvasSize: canvas, tileSize: 32);
+      final landed = clipStrokeCommitToSelection(
+        promotedOn(base, [dab(10, 10), dab(18, 10), dab(40, 10)]),
+        region: regionRect(0, 0, 20, 64),
+        surface: landedSince,
+      )!;
+      expect(landed.promotedTiles, isNull);
+      final pixels = landed.strokePixels!;
+      final bounds = landed.strokeBounds!;
+      expect(alphaAt(pixels, bounds, 10, 10), 255);
+      expect(alphaAt(pixels, bounds, 19, 10), 255);
+      expect(
+        alphaAt(pixels, bounds, 20, 10),
+        0,
+        reason: 'the dab straddling the edge is cut at it',
+      );
+      expect(
+        bounds.rightExclusive,
+        lessThanOrEqualTo(21),
+        reason: 'the dab at x=40 cannot reach the selection, so it was '
+            'never rasterized',
+      );
+      expect(
+        clipStrokeCommitToSelection(
+          promotedOn(base, [dab(40, 10)]),
+          region: regionRect(0, 0, 20, 64),
+          surface: landedSince,
+        ),
+        isNull,
+        reason: 'nothing of it reaches the selection',
+      );
     });
   });
 }

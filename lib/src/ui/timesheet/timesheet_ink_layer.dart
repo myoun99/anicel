@@ -14,11 +14,10 @@ import 'timesheet_document_painter.dart';
 import 'timesheet_ink_controller.dart';
 
 /// Computes the ink windows for the current view mode, bottom-of-stack
-/// first: page ink lies under the strip windows, so a stroke STARTING on
+/// first: page ink lies under the strip windows, so what a stroke draws on
 /// the column grid goes to the frame-anchored strip plane and everything
-/// else (header, memo band, margins, gaps) goes to the page plane. A
-/// stroke keeps its start plane for its whole duration (pointer capture) —
-/// simpler than per-segment routing and closer to how a pen behaves.
+/// else (header, memo band, margins, gaps) goes to the page plane — one
+/// stroke, split where it crosses ([sheetInkRegions]).
 List<SheetInkWindow> timesheetInkWindows({
   required TimesheetDocumentLayout layout,
   required TimesheetDocumentLayout pagedLayout,
@@ -120,8 +119,7 @@ List<SheetInkWindow> timesheetInkWindows({
 /// The sheet's ink input/display stack: every window hosts the SAME
 /// interactive brush view the drawing canvas uses (current brush/eraser,
 /// live overlay, dab commit), windowed onto its ink surface by a derived
-/// viewport and clipped to its on-screen rect so pointer-downs outside it
-/// fall through to the window below.
+/// viewport ([SheetInkLayer]).
 class TimesheetInkLayer extends StatelessWidget {
   const TimesheetInkLayer({
     super.key,
@@ -148,8 +146,7 @@ class TimesheetInkLayer extends StatelessWidget {
   /// applies).
   final CanvasViewport viewport;
 
-  /// Raised while any window has a stroke in progress, so the panel's
-  /// gesture layer holds navigation exactly as it does for canvas strokes.
+  /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
 
   final CacheInvalidationSink? cacheInvalidationSink;
@@ -167,6 +164,7 @@ class TimesheetInkLayer extends StatelessWidget {
       viewport: viewport,
       brushToolState: brushToolState,
       strokeActive: strokeActive,
+      history: historyManager.gestures,
       // The plane axis stays HERE, with the controller that has one. The
       // shared layer hands the window back and asks nothing about it.
       sessionStateFor: (window) => controller.sessionStateFor(

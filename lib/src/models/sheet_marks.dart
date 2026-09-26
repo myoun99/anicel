@@ -252,6 +252,9 @@ class SheetInkPlacement {
   /// Where surface pixel [pixel] lands on the paper.
   Offset paperOf(Offset pixel) => window.topLeft + (pixel - origin) / scale;
 
+  /// The surface pixel under paper point [paper] — [paperOf] run backwards.
+  Offset pixelOf(Offset paper) => (paper - window.topLeft) * scale + origin;
+
   /// Where a raster [width]×[height] of the surface lands on the paper —
   /// at the ink's own scale, the window clipping it; never stretched to
   /// the window, which may show only part of its surface (a conte cell's

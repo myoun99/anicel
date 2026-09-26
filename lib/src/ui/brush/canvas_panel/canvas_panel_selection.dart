@@ -208,14 +208,15 @@ class _CanvasPanelSelection {
   }
 
   /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands
-  /// with a live selection is CLIPPED to it before it reaches the commit.
-  ///
-  /// The clip runs on the stroke's own straight-alpha buffer, where alpha
-  /// 0 is every commit kernel's "leave the destination alone" input — so
-  /// one pass covers brush, eraser, fill and every brush blend mode with
-  /// no per-mode branches. Null return = the whole stroke fell outside
-  /// the selection and there is nothing to commit.
-  BrushStrokeCommitData? clipStrokeToSelection(BrushStrokeCommitData data) {
+  /// with a live selection is CLIPPED to it before it reaches the commit —
+  /// on [surface], the cel it lands on ([clipStrokeCommitToSelection], the
+  /// one funnel a sheet window's slice of one paper takes too). Null
+  /// return = the whole stroke fell outside the selection and there is
+  /// nothing to commit.
+  BrushStrokeCommitData? clipStrokeToSelection(
+    BrushStrokeCommitData data, {
+    required BitmapSurface surface,
+  }) {
     final selection = _state.widget.selectionCommands?.region;
     if (selection == null) {
       return data;
@@ -227,45 +228,6 @@ class _CanvasPanelSelection {
     if (region == null) {
       return null;
     }
-    if (data.promotedTiles != null) {
-      // The stroke was pre-blended THROUGH the selection mask (R28): the
-      // promoted tiles are already clipped, and re-deriving them here
-      // would throw away the finished pixels to rasterize the dabs again.
-      // An empty list means the whole stroke fell outside the selection.
-      return data.promotedTiles!.isEmpty ? null : data;
-    }
-    final pixels = data.strokePixels;
-    final bounds = data.strokeBounds;
-    final clipped = pixels == null || bounds == null
-        // No live raster (programmatic strokes, a redo replaying dabs):
-        // the dabs are rasterized first so the clip has bytes to work on
-        // — the one door a fill's promotion takes too (`promoteFillDab`).
-        ? clipDabsToSelection(
-            dabs: data.sourceDabs,
-            canvasSize: _state.widget.canvasSize,
-            tileSize: _state.widget._editableCoordinator == null
-                ? BitmapSurface(canvasSize: _state.widget.canvasSize).tileSize
-                : _state.widget._editableCoordinator!
-                      .currentSurfaceOf(
-                        _state.widget._editableCoordinator!.activeFrameKey,
-                      )
-                      .tileSize,
-            region: region,
-          )
-        : clipStrokePixelsToSelection(
-            pixels: pixels,
-            bounds: bounds,
-            region: region,
-          );
-    if (clipped == null) {
-      return null;
-    }
-    return BrushStrokeCommitData(
-      sourceDabs: data.sourceDabs,
-      strokePixels: clipped.pixels,
-      strokeBounds: clipped.bounds,
-      blendMode: data.blendMode,
-      strokeOpacity: data.strokeOpacity,
-    );
+    return clipStrokeCommitToSelection(data, region: region, surface: surface);
   }
 }

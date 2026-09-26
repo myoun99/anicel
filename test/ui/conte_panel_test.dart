@@ -24,6 +24,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -33,6 +34,7 @@ import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
@@ -352,9 +354,9 @@ void main() {
     }
   });
 
-  testWidgets('R5: a stroke STARTING on a cell\'s row band lands on that '
-      'CELL\'s ink surface (block-FrameId key); the margins land on the '
-      'page plane — one undo clears each, through the app history', (
+  testWidgets('R5: a stroke on a cell\'s row band lands on that CELL\'s ink '
+      'surface (block-FrameId key); the margins land on the page plane — '
+      'one undo clears each, through the app history', (
     tester,
   ) async {
     final source = buildConteSheetSource(_project());
@@ -409,8 +411,8 @@ void main() {
     expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isFalse);
     expect(controller.hasInkFor(ConteInkPlane.page, page0), isFalse);
 
-    // (120,120) sits inside the first cell's row band: the stroke binds
-    // to ITS surface — the start cell owns the whole stroke.
+    // (120,120) → (180,150) lies inside the first cell's row band: the
+    // stroke lands on ITS surface.
     final layerBox = tester.getTopLeft(find.byType(ConteInkLayer));
     final gesture = await tester.startGesture(
       layerBox + const Offset(120, 120),
@@ -428,7 +430,7 @@ void main() {
     expect(
       controller.hasInkFor(ConteInkPlane.page, page0),
       isFalse,
-      reason: 'the band claimed the stroke; the paper got nothing',
+      reason: 'the band shows every spot of it; the paper got nothing',
     );
 
     // The band above the table: paper-anchored, the page plane's.
@@ -453,5 +455,99 @@ void main() {
     expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isFalse);
     historyManager.redo();
     expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isTrue);
+  });
+
+  // 🚨ONE PAPER (유저 2026-09-25: 「진짜 하나의 용지처럼. 데이터는
+  // 나누더라도」): the stroke used to belong to the window it started in
+  // and ran on over the cells below it, in the paper's ink.
+  testWidgets('one paper: a stroke from the band above the table down into '
+      'a cell leaves the paper and the cell each its piece — ONE undo', (
+    tester,
+  ) async {
+    final source = buildConteSheetSource(_project());
+    final page = layoutConteSheet(
+      source,
+      metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
+    ).first;
+    final metrics = page.metrics;
+    final controller = ConteInkController()..syncGeometry(metrics);
+    addTearDown(controller.dispose);
+    final historyManager = HistoryManager();
+    final strokeActive = ValueNotifier<bool>(false);
+    addTearDown(strokeActive.dispose);
+    await tester.binding.setSurfaceSize(
+      Size(metrics.pageWidth + 40, metrics.pageHeight + 40),
+    );
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: metrics.pageWidth,
+              height: metrics.pageHeight,
+              child: ConteInkLayer(
+                controller: controller,
+                page: page,
+                brushToolState: ValueNotifier(BrushToolState.defaults),
+                historyManager: historyManager,
+                viewport: CanvasViewport(),
+                strokeActive: strokeActive,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final firstCell = page.cells.first;
+    final windows = conteInkWindows(page);
+    final paper = windows.singleWhere(
+      (window) => window.key == conteInkPageKey(0),
+    );
+    final cell = windows.singleWhere(
+      (window) =>
+          window.key ==
+          conteInkRowKey(CutId(firstCell.cutId), firstCell.source.frameId!),
+    );
+    bool inkUnder(SheetInkWindow window, Offset at) {
+      final surface = controller
+          .sessionStateFor(window.plane! as ConteInkPlane, window.key)
+          .canvasState
+          .currentSurface;
+      final pixel = window.placement.pixelOf(at);
+      return (surfacePixelRgba(
+                surface,
+                pixel.dx.floor(),
+                pixel.dy.floor(),
+              ) ??
+              0) !=
+          0;
+    }
+
+    final start = Offset(120, metrics.topBandTop + 10);
+    const end = Offset(120, 120);
+    final layerBox = tester.getTopLeft(find.byType(ConteInkLayer));
+    final gesture = await tester.startGesture(layerBox + start, pointer: 7);
+    await tester.pump();
+    await gesture.moveTo(layerBox + (start + end) / 2);
+    await tester.pump();
+    await gesture.moveTo(layerBox + end);
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(inkUnder(paper, start), isTrue);
+    expect(inkUnder(cell, end), isTrue);
+    expect(
+      inkUnder(paper, end),
+      isFalse,
+      reason: 'the cell shows that spot, so the cell keeps it',
+    );
+
+    historyManager.undo();
+    expect(controller.hasInkFor(ConteInkPlane.page, paper.key), isFalse);
+    expect(controller.hasInkFor(ConteInkPlane.row, cell.key), isFalse);
   });
 }

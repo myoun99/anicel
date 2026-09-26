@@ -18,6 +18,7 @@ import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
+import 'brush_dab_dirty_region.dart';
 import 'brush_dab_kernel.dart';
 import 'canvas_selection_region.dart';
 import 'brush_stroke_blend.dart'
@@ -1073,6 +1074,17 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     // a solid blob until pen-up corrected it.
     if (dab.stamp != null) {
       assert(false, 'the live rasterizer has no stamp path');
+      return null;
+    }
+
+    // A dab the selection cannot reach is never accumulated: the mask
+    // would zero every pixel of it, so the tiles it would touch hold
+    // exactly what they hold without it. That is what keeps one stroke
+    // over a sheet's windows (each hearing it, each confined to its own
+    // slice) at the cost of one stroke rather than one per window.
+    final selection = selectionRegion;
+    final reach = selection == null ? null : dirtyRegionForBrushDab(dab);
+    if (selection != null && (reach == null || !selection.mayCover(reach))) {
       return null;
     }
 

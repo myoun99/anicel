@@ -20,10 +20,11 @@ import '../sheet/sheet_ink_controller.dart';
 /// so undo behaves identically.
 ///
 /// ONE plane, unlike the timesheet's and conte's pair: an envelope has no
-/// page plane because it has no margin — its boxes meet, and every stroke
-/// belongs to the box it started in. A box that stops existing takes its
-/// ink with it, which is exactly the contract that removes stray
-/// annotations from a form the user re-shapes.
+/// page plane because it has no margin — its boxes meet, and every box
+/// keeps the piece of a stroke drawn over it (one paper, 유저 2026-09-25;
+/// it was the whole stroke to the box it started in). A box that stops
+/// existing takes its ink with it, which is exactly the contract that
+/// removes stray annotations from a form the user re-shapes.
 class CutEnvelopeInkController extends SheetInkController<Null> {
   CutEnvelopeInkController({BrushFrameStore? store})
     : this._(
@@ -119,7 +120,7 @@ bool _mountable(
 /// One per box that takes ink, in FORM order — so a box drawn later (an
 /// inner cell over the one it sits on) is hit first, matching
 /// [CutEnvelopeLayout.inkBoxAt]. There is no page window: the form has no
-/// margin, its cells meet, and a stroke that starts outside every inking
+/// margin, its cells meet, and what a stroke draws outside every inking
 /// box simply has nowhere to go.
 List<SheetInkWindow> envelopeInkWindows(
   CutEnvelopeLayout layout,

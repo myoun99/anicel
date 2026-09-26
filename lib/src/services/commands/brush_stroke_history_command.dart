@@ -85,8 +85,12 @@ class BrushStrokeHistoryCommand
   void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) =>
       _surfaces?.visitHeldTiles(visit, undone: undone);
 
+  /// What history calls a stroke — this command, and the one step a
+  /// stroke's landings on several surfaces fold into (a sheet's windows).
+  static const String label = 'Brush stroke';
+
   @override
-  String get description => 'Brush stroke';
+  String get description => label;
 
   @override
   void execute() {

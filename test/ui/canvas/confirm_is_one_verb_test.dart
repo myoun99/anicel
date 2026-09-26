@@ -17,6 +17,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
@@ -207,6 +209,73 @@ void main() {
     }
     return worst;
   }
+
+  /// How many ink pixels [frameId]'s cel holds right of canvas x [edge].
+  int inkRightOf(WidgetTester tester, FrameId frameId, double edge) {
+    final coordinator = sessionOf(tester).pixelEditingCoordinator!;
+    final surface = coordinator.currentSurfaceOf(keyFor(frameId));
+    final size = surface.canvasSize;
+    var ink = 0;
+    for (var y = 0; y < size.height; y += 2) {
+      for (var x = edge.ceil() + 1; x < size.width; x += 1) {
+        if ((surfacePixelRgba(surface, x, y) ?? 0) != 0) {
+          ink += 1;
+        }
+      }
+    }
+    return ink;
+  }
+
+  // 🚨The live selection clips a stroke laid down again as it clips any
+  // stroke. It used to pass a PROMOTED stroke straight through — and the
+  // cel the stroke is laid on is never the surface those tiles were
+  // blended against, so the commit re-derived the WHOLE stroke there from
+  // its dabs, the selection forgotten.
+  testWidgets('with a selection the stroke comes back clipped as it was '
+      'drawn — not whole', (tester) async {
+    await pumpApp(tester);
+    await strokeAt(tester, Offset.zero);
+    final coordinator = sessionOf(tester).pixelEditingCoordinator!;
+    final surface = coordinator.currentSurfaceOf(keyFor(frameA));
+    final size = surface.canvasSize;
+    var left = size.width;
+    var right = -1;
+    for (var y = 0; y < size.height; y += 2) {
+      for (var x = 0; x < size.width; x += 2) {
+        if ((surfacePixelRgba(surface, x, y) ?? 0) != 0) {
+          left = x < left ? x : left;
+          right = x > right ? x : right;
+        }
+      }
+    }
+    expect(right, greaterThan(left + 16), reason: '⛔CONTROL: a line');
+    sessionOf(tester).undo();
+    await pumpFrames(tester);
+
+    final edge = (left + right) / 2;
+    final selection = workspaceOf(tester).canvasSelectionCommands!;
+    selection.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(
+          left: 0,
+          top: 0,
+          right: edge,
+          bottom: size.height.toDouble(),
+        ),
+      ),
+    );
+    await pumpFrames(tester);
+    await strokeAt(tester, Offset.zero);
+    expect(inkRightOf(tester, frameA, edge), 0, reason: '⛔전제: 잘려서 그려졌다');
+    final drawn = pixelsOf(tester, frameA);
+    expect(inkIn(drawn), greaterThan(0), reason: '⛔CONTROL: the rig draws');
+
+    await seekTo(tester, 1);
+    expect(selection.region, isNotNull, reason: '⛔전제: 선택은 그대로다');
+    await pressEnter(tester);
+    expect(inkRightOf(tester, frameB, edge), 0, reason: '선택 밖에는 안 놓인다');
+    expect(worstGap(pixelsOf(tester, frameB), drawn), lessThanOrEqualTo(1));
+  });
 
   testWidgets('a stroke drawn at 40% comes back at 40% — the tool\'s '
       'opacity travels with it', (tester) async {

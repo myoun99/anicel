@@ -288,8 +288,8 @@ class _InteractiveBrushEditCanvasViewState
 
   /// Per-stroke randomness for the dual-mask phase; each dab samples the
   /// dual texture at its own random offset (stored on the dab, so replay
-  /// is deterministic).
-  final math.Random _dualPhaseRandom = math.Random();
+  /// is deterministic). Rolled from the stroke's press ([_BrushEditStroke]).
+  math.Random _dualPhaseRandom = math.Random();
 
   /// Latest known stroke direction (visual CCW degrees); kept across
   /// stationary events so direction-following tips do not snap back.
@@ -409,6 +409,10 @@ class _InteractiveBrushEditCanvasViewState
     // rasterizer tiles. Nulling it is the only thing that says 「there is
     // no pen here any more」.
     widget.onStrokeLanderChanged?.call(null);
+    // A view taken away mid-stroke still hears the rest of the gesture —
+    // Flutter routes it along the path the press found — and must not land
+    // it: what it would land on is torn down right here.
+    _stroke.clearStrokeInputState();
     ShownCels.instance.hide(this);
     // Only OUR model — a host-owned one outlives this view (it survives
     // the layer switches that rebuild us).
@@ -600,7 +604,8 @@ class _InteractiveBrushEditCanvasViewState
   // The State keeps the entry points its pointer handlers call.
   late final _BrushEditPressure _pressure = _BrushEditPressure(this);
 
-  final math.Random _spacingRandom = math.Random();
+  /// Rolled from the stroke's press, as [_dualPhaseRandom] is.
+  math.Random _spacingRandom = math.Random();
 
   /// Creates or recycles the live stroke rasterizer for the current canvas.
   void _prepareLiveRasterizer() {

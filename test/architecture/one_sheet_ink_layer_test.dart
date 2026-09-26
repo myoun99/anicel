@@ -13,10 +13,16 @@ import '../helpers/dart_sources.dart';
 /// ⛔SO THIS SCANS SOURCE. A behaviour test says "the envelope mounts ink";
 /// only a scan says "and it does not have its own way of doing it".
 void main() {
-  test('there is exactly ONE window clipper in the app', () {
+  test('there is exactly ONE window clip in the app', () {
+    // ↩️It was the one `CustomClipper<Rect>`, which clips hits as well as
+    // paint. One paper (유저 2026-09-25) needs every window to hear the
+    // whole layer, so the clip moved into the window's frame, which clips
+    // what is painted alone — and a rect clipper anywhere is a new copy.
     final hits = <String>[];
     for (final file in dartFilesUnder('lib')) {
-      if (file.readAsStringSync().contains('extends CustomClipper<Rect>')) {
+      final source = file.readAsStringSync();
+      if (source.contains('extends CustomClipper<Rect>') ||
+          source.contains('class _RenderInkWindowFrame')) {
         hits.add(libPath(file));
       }
     }
@@ -25,7 +31,7 @@ void main() {
       ['lib/src/ui/sheet/sheet_ink_layer.dart'],
       reason:
           'three panels each grew their own byte-identical clipper once. '
-          'A rect clipper belongs to the shared ink layer',
+          'A window clip belongs to the shared ink layer',
     );
   });
 

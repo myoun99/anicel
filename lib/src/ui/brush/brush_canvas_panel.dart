@@ -2197,7 +2197,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // Only reachable from the interactive canvas, which requires the
     // coordinator to exist.
     final coordinator = widget._editableCoordinator!;
-    final strokeData = _selectionSeat.clipStrokeToSelection(rawStrokeData);
+    final strokeData = _selectionSeat.clipStrokeToSelection(
+      rawStrokeData,
+      surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+    );
     if (strokeData == null) {
       // Entirely outside the selection: nothing lands, nothing undoes.
       // The live overlay already showed it clipped, so the pen-up is
