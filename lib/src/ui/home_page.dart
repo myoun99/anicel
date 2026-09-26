@@ -1025,7 +1025,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _session,
       waitIn: context,
     ),
-    WorkingPanel.storyboard => StoryboardToolbarPanelContext(_session),
+    WorkingPanel.storyboard => StoryboardToolbarPanelContext(
+      _session,
+      waitIn: context,
+    ),
   };
 
   /// A 1/2/3/4 key: that button, on the panel being worked in.

@@ -395,7 +395,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// cut-local reads. Rebuilt per access (a stateless wrapper over the
   /// session), so it can never hold a stale answer.
   StoryboardToolbarPanelContext get _toolbarPanel =>
-      StoryboardToolbarPanelContext(_session);
+      StoryboardToolbarPanelContext(_session, waitIn: context);
 
   /// ③/B8 Edit Instance on THIS panel: THE BLOCK UNDER THE CURSOR, whatever
   /// the standing row holds — the cut's rename, the SE entry's dialog, the
@@ -421,6 +421,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         // Lane-key state is session-shared, so the shared cell entrance
         // serves it from this panel too.
         unawaited(editActiveInstance(context, _session));
+      case StoryboardEditCellBand():
+        // F-186: the timeline's band, so the timeline's Edit — the same
+        // subject its gate read.
+        unawaited(
+          editSelectionInstance(context, _session, cutsAreThisPanels: false),
+        );
       case null:
         break;
     }
@@ -1151,8 +1157,9 @@ class _CursorGatedStoryboardToolbarState
   List<Listenable> get _signals => _signalsOf(widget);
 
   /// Every value the toolbar's directly-rendered widgets read from THIS
-  /// panel's context. The constant-false gates (blank X, mark, the cell
-  /// clipboard four) are deliberately absent — a constant cannot change.
+  /// panel's context. ↩️The blank X, the mark, the cell clipboard four and
+  /// 링크 독립 were absent as constants — a cell band makes them the
+  /// timeline's answers now (F-186), and a band moves nothing else here.
   Object _deriveToken() {
     final panel = StoryboardToolbarPanelContext(widget.session);
     return (
@@ -1160,6 +1167,13 @@ class _CursorGatedStoryboardToolbarState
       panel.canSetComma,
       panel.canEditInstance,
       panel.deleteSubject,
+      panel.canBlankExposure,
+      panel.canToggleMark,
+      panel.canCutRun,
+      panel.canCopyFrame,
+      panel.canPasteIndependentFrame,
+      panel.canPasteLinkedFrame,
+      panel.canUnlink,
       // F-75: the 색 편집 head on this bar reads the session's own answer —
       // whether the cel under the playhead has a drawing — which none of the
       // entries above moves with.

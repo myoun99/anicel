@@ -35,6 +35,9 @@ import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 /// because that rail's standing row is separate state from the cut's
 /// drawing target (유저 2026-07-27) — the reason every session getter the
 /// toolbar used to read answered about the WRONG panel from over there.
+/// ↩️A CELL band on the storyboard — its conte-block selection — is the
+/// timeline's own band, and the storyboard answers it with the timeline's
+/// verbs (F-186, [StoryboardToolbarPanelContext]'s `_cellBand`).
 ///
 /// 🚨T25's law holds per member: a button's enablement and what its press
 /// DOES must come from one answer, so every `can*` here has its verb beside
@@ -332,15 +335,25 @@ class StoryboardEditLaneKey extends StoryboardEditTarget {
   const StoryboardEditLaneKey();
 }
 
+/// A CELL band — the strip's conte-block selection — is the timeline's band,
+/// so its Edit is the timeline's ([editSelectionInstance], F-186).
+class StoryboardEditCellBand extends StoryboardEditTarget {
+  const StoryboardEditCellBand();
+}
+
 /// The storyboard's context: the standing row crossed with the track-global
 /// playhead. Selections speak first, exactly as they do on the timeline's
 /// ladders — and the selections this panel writes (the cut range, the S-row
 /// range, the strip's cut-local range, lane spans) are the same session
 /// objects, so those rungs delegate.
 class StoryboardToolbarPanelContext implements ToolbarPanelContext {
-  const StoryboardToolbarPanelContext(this.session);
+  const StoryboardToolbarPanelContext(this.session, {this.waitIn});
 
   final EditorSessionManager session;
+
+  /// Where a cell band's paste puts up its wait window — the timeline's own
+  /// ([TimelineToolbarPanelContext.waitIn]), handed on with the band.
+  final BuildContext? waitIn;
 
   /// The rail's ONE addable kind: an S row (track-owned SE). V tracks and
   /// the transition row are fixtures nothing can add ("disable" is the
@@ -372,6 +385,22 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
 
   @override
   bool get servesActiveLayerVerbs => false;
+
+  /// 🗣️F-186 (유저 2026-09-26): 「타임라인 버튼은 기본적으로 선택안한상태에선
+  /// 컷블록을 대상으로 하고, 콘티블록 선택하면 지금 편집버튼같은거
+  /// 활성화안되는데 활성화시키고 로직작동가능하도록」.
+  ///
+  /// A CELL band here is the strip's conte-block selection — the SAME
+  /// object, on the same cut-local axis, the timeline's rows sweep (the
+  /// host's `stripSelect`) — and pressing the block stood the timeline on
+  /// its conte row (F-187). So the frame verbs this panel has no answer of
+  /// its own for — Edit, the clipboard, X, the mark, 링크 독립 — answer it
+  /// with the timeline's ([TimelineToolbarPanelContext]). With no band the
+  /// standing row answers, as it always has: on the V row, the cut block.
+  TimelineToolbarPanelContext? get _cellBand =>
+      session.cells.cellSelectionClaimsSubject
+      ? TimelineToolbarPanelContext(session, waitIn: waitIn)
+      : null;
 
   bool get _standingOnTransitionRow {
     final row = session.storyboardStandingRow;
@@ -437,18 +466,19 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
 
   // An exposure X and a cell mark are cut-local, active-layer notions with
   // no row-addressed verb on this axis — greyed out honestly rather than
-  // dispatched against the other panel's context.
+  // dispatched against the other panel's context. ↩️A cell band IS that
+  // axis, so they answer it (F-186, [_cellBand]).
   @override
-  bool get canBlankExposure => false;
+  bool get canBlankExposure => _cellBand?.canBlankExposure ?? false;
 
   @override
-  void blankExposure() {}
+  void blankExposure() => _cellBand?.blankExposure();
 
   @override
-  bool get canToggleMark => false;
+  bool get canToggleMark => _cellBand?.canToggleMark ?? false;
 
   @override
-  void toggleMark() {}
+  void toggleMark() => _cellBand?.toggleMark();
 
   @override
   bool get canSetComma => session.storyboardCursor.canSetCommaForStoryboardCursor;
@@ -552,7 +582,15 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     // that covers the standing row lets the press land there, at the
     // playhead; one that covers only other rows refuses it. There is no
     // band-wide rename to route to (board R8-c).
-    if (session.cells.cellSelectionClaimsSubject || _bandMissesTheStandingRow) {
+    //
+    // ↩️A CELL band is the timeline's own band, so it is the timeline's Edit
+    // that answers it — the same question asked of the same object, which
+    // lands on the band's row at the playhead or refuses (F-186).
+    final cellBand = _cellBand;
+    if (cellBand != null) {
+      return cellBand.canEditInstance ? const StoryboardEditCellBand() : null;
+    }
+    if (_bandMissesTheStandingRow) {
       return null;
     }
     switch (session.storyboardStandingRow) {
@@ -589,30 +627,32 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
 
   // The cell clipboard (cut / copy / the two pastes) addresses the active
   // layer at the cut-local playhead — the timeline panel's noun; no
-  // global-axis clipboard exists to dispatch instead.
+  // global-axis clipboard exists to dispatch instead. ↩️A cell band is on
+  // that axis, so the timeline's clipboard answers it (F-186, [_cellBand]).
   @override
-  bool get canCutRun => false;
+  bool get canCutRun => _cellBand?.canCutRun ?? false;
 
   @override
-  void cutRun() {}
+  void cutRun() => _cellBand?.cutRun();
 
   @override
-  bool get canCopyFrame => false;
+  bool get canCopyFrame => _cellBand?.canCopyFrame ?? false;
 
   @override
-  void copyFrame() {}
+  void copyFrame() => _cellBand?.copyFrame();
 
   @override
-  bool get canPasteIndependentFrame => false;
+  bool get canPasteIndependentFrame =>
+      _cellBand?.canPasteIndependentFrame ?? false;
 
   @override
-  void pasteIndependentFrame() {}
+  void pasteIndependentFrame() => _cellBand?.pasteIndependentFrame();
 
   @override
-  bool get canPasteLinkedFrame => false;
+  bool get canPasteLinkedFrame => _cellBand?.canPasteLinkedFrame ?? false;
 
   @override
-  void pasteLinkedFrame() {}
+  void pasteLinkedFrame() => _cellBand?.pasteLinkedFrame();
 
   /// Delete's ladder, said of this panel: the cut selection (the session's
   /// own cuts rung), the selection-borne cell rungs (lane keys, selected
