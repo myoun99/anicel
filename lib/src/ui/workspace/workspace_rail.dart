@@ -21,6 +21,17 @@ typedef _RailRoom = ({
   double dragCeiling,
 });
 
+/// Everything the head of the tool rail shows: whether each door is lit, and
+/// whether the active row wears its onion.
+typedef _RailAnswers = ({
+  bool canUndo,
+  bool canRedo,
+  bool onionOn,
+  bool canToggleOnion,
+  bool anySelection,
+  bool canConfirm,
+});
+
 class _WorkspaceRail {
   _WorkspaceRail(this._state);
 
@@ -74,7 +85,7 @@ class _WorkspaceRail {
     final selection = _state.widget.canvasSelectionCommands;
     final confirm = _state.widget.confirm;
     final history = _state.widget.history;
-    return ListenableBuilder(
+    return SlicedListenableBuilder<_RailAnswers>(
       listenable: Listenable.merge([
         session,
         session.historyManager,
@@ -100,13 +111,27 @@ class _WorkspaceRail {
         session.trackFrameRangeSelection,
         session.rowSelection,
       ]),
-      builder: (context, _) {
+      // 🚨The buttons rebuild when an ANSWER moves, not when news arrives
+      // (2026-09-26). The session notifies constantly and every stroke's
+      // commit announces itself on three of the channels above, while the
+      // five doors almost never change — each pen-up rebuilt all five.
+      slice: () {
         final layer = session.activeLayer;
-        // Onion is PER LAYER (the per-layer model retired the master
-        // switch), so this button is the active row's onion — the same
-        // thing the `O` action toggles, not the legend's bulk sweep.
-        final onionOn =
-            layer != null && session.onionSkin.layerIds.value.contains(layer.id);
+        return (
+          canUndo: history?.canUndo ?? false,
+          canRedo: history?.canRedo ?? false,
+          // Onion is PER LAYER (the per-layer model retired the master
+          // switch), so this button is the active row's onion — the same
+          // thing the `O` action toggles, not the legend's bulk sweep.
+          onionOn:
+              layer != null &&
+              session.onionSkin.layerIds.value.contains(layer.id),
+          canToggleOnion: session.onionSkin.canToggleOnionSkin,
+          anySelection: session.hasAnySelection,
+          canConfirm: confirm?.canConfirm ?? false,
+        );
+      },
+      builder: (context, answers) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -125,7 +150,7 @@ class _WorkspaceRail {
               shortcuts: const [EditorActionIds.undo],
               icon: Icons.undo,
               selected: false,
-              onPressed: history != null && history.canUndo
+              onPressed: history != null && answers.canUndo
                   ? () => scheduleMicrotask(history.undo)
                   : null,
             ),
@@ -136,7 +161,7 @@ class _WorkspaceRail {
               shortcuts: const [EditorActionIds.redo],
               icon: Icons.redo,
               selected: false,
-              onPressed: history != null && history.canRedo
+              onPressed: history != null && answers.canRedo
                   ? () => scheduleMicrotask(history.redo)
                   : null,
             ),
@@ -146,8 +171,8 @@ class _WorkspaceRail {
               tooltip: editorActionLabel(EditorActionIds.onionSkinToggle),
               shortcuts: const [EditorActionIds.onionSkinToggle],
               icon: Icons.filter_none_outlined,
-              selected: onionOn,
-              onPressed: session.onionSkin.canToggleOnionSkin
+              selected: answers.onionOn,
+              onPressed: answers.canToggleOnion
                   ? session.onionSkin.toggleOnionSkin
                   : null,
             ),
@@ -189,7 +214,7 @@ class _WorkspaceRail {
                 //
                 // ⚠️`hasRegion` alone was right while this cleared only the
                 // marquee. It would now light for half of what it does.
-                onPressed: session.hasAnySelection
+                onPressed: answers.anySelection
                     ? session.clearAllSelections
                     : null,
               ),
@@ -206,7 +231,7 @@ class _WorkspaceRail {
                 shortcuts: const [EditorActionIds.confirm],
                 icon: Icons.keyboard_return,
                 selected: false,
-                onPressed: confirm.canConfirm ? confirm.confirm : null,
+                onPressed: answers.canConfirm ? confirm.confirm : null,
               ),
             ],
           ],

@@ -138,4 +138,61 @@ void main() {
       reason: 'and it dims again when the region really is gone',
     );
   });
+
+  // 🚨The doors rebuild when an ANSWER moves, not when news arrives
+  // (2026-09-26): the rail hears the session, the history, the tool and the
+  // held stroke, and every one of them speaks far more often than a door
+  // lights or dims — every pen-up, every frame of a brush-size drag.
+  testWidgets('news that moves no door rebuilds none of them; a door that '
+      'moves rebuilds them', (tester) async {
+    await pumpHome(tester);
+    final workspace = tester.widget<EditorWorkspace>(
+      find.byType(EditorWorkspace),
+    );
+    final session = workspace.session;
+    final tool = workspace.brushTool!;
+
+    Future<int> railRebuildsAfter(void Function() act) async {
+      var rebuilds = 0;
+      debugOnRebuildDirtyWidget = (element, _) {
+        if (element.widget is RailButton) rebuilds += 1;
+      };
+      try {
+        act();
+        await tester.pump();
+      } finally {
+        debugOnRebuildDirtyWidget = null;
+      }
+      return rebuilds;
+    }
+
+    var toolNews = 0;
+    void heardTool() => toolNews += 1;
+    tool.addListener(heardTool);
+    addTearDown(() => tool.removeListener(heardTool));
+    final quietTool = await railRebuildsAfter(
+      () => tool.value = tool.value.copyWith(size: tool.value.size + 3),
+    );
+    expect(toolNews, 1, reason: 'premise: the tool did speak');
+    expect(quietTool, 0, reason: 'a brush size lights no door');
+
+    var sessionNews = 0;
+    void heardSession() => sessionNews += 1;
+    session.addListener(heardSession);
+    addTearDown(() => session.removeListener(heardSession));
+    final quietSession = await railRebuildsAfter(
+      () => session.selectFrameIndex(1),
+    );
+    expect(sessionNews, greaterThan(0), reason: 'premise: the session spoke');
+    expect(quietSession, 0, reason: 'a playhead step lights no door');
+
+    final moved = await railRebuildsAfter(
+      session.onionSkin.toggleOnionSkin,
+    );
+    expect(moved, greaterThan(0), reason: 'the onion door did move');
+    expect(
+      tester.widget<RailButton>(railButton('rail-onion-skin-button')).selected,
+      isTrue,
+    );
+  });
 }
