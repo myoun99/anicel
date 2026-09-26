@@ -11,6 +11,7 @@ import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/session/trimmed_pieces.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -93,6 +94,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   FolderPicker.debugArrival = null;
   FolderPicker.debugCoordinatedInPlaceReader = (_) async => true;
   FolderPicker.debugCoordinatedToucher = (_) async => true;
+  // PICK-7: the provider seam and the documents a run has been handed — a
+  // working copy left registered would make another suite's file hand
+  // itself back to a document that was never there.
+  ProviderDocuments.debugReset();
   // Back to the PRODUCTION default, not to false — a reset that quietly
   // put every test on the other shape would hide the one that ships.
   anicelAlwaysZip64 = true;

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/folder_grant.dart';
+import '../../services/persistence/provider_documents.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import 'open_file_flow.dart';
@@ -136,11 +137,17 @@ Future<FolderGrant?> pickFolderGrantForUser(
 ///
 /// Empty when the user backed out or was told why they cannot use what
 /// they chose.
+///
+/// [acceptsDocuments]: the caller can work on a file with no filesystem
+/// path through its provider (PICK-7 — a project opens one through a
+/// working copy, [ProviderDocuments]). Every other caller is told what a
+/// Drive folder is told, and keeps the real files picked beside it.
 Future<List<FolderGrant>> pickFileGrantsForUser(
   BuildContext context, {
   required List<String> supportedExtensions,
   bool allowMultiple = false,
   String? initialDirectory,
+  bool acceptsDocuments = false,
 }) async {
   // The same gate as the folder flow, for the same reason: Android resolves
   // the system document back to a real path, and that probe fails without
@@ -166,8 +173,10 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
     return const [];
   }
   // Never empty, and a failure arrives as ONE grant carrying the status —
-  // so the first entry answers for the batch.
-  if (await _spokenFor(context, grants.first) == null) {
+  // so the first entry answers for the batch. A document answers for
+  // itself below: a batch can hold real files beside it.
+  if (grants.first.document == null &&
+      await _spokenFor(context, grants.first) == null) {
     return const [];
   }
   if (!context.mounted) {
@@ -175,15 +184,28 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
   }
   final accepted = <FolderGrant>[];
   final refused = <String>[];
+  var documentsRefused = false;
   for (final grant in grants) {
-    final path = grant.path;
-    if (path == null) {
+    final document = grant.document;
+    if (document != null && !acceptsDocuments) {
+      documentsRefused = true;
       continue;
     }
-    if (fileIsSupported(path, supportedExtensions)) {
+    // A document's own name answers what it is — its URI says nothing.
+    final name = grant.path ?? document?.name;
+    if (name == null) {
+      continue;
+    }
+    if (fileIsSupported(name, supportedExtensions)) {
       accepted.add(grant);
     } else {
-      refused.add(path);
+      refused.add(name);
+    }
+  }
+  if (documentsRefused) {
+    await _showNoFilesystemPathNotice(context);
+    if (!context.mounted) {
+      return const [];
     }
   }
   if (refused.isNotEmpty) {
@@ -217,7 +239,9 @@ Future<FolderGrant?> exportFileForUser(
   if (!context.mounted) {
     return null;
   }
-  return _spokenFor(context, grant);
+  // A document is a place the bytes LANDED (PICK-7: poured in through the
+  // provider), not a refusal.
+  return _spokenFor(context, grant, acceptsDocuments: true);
 }
 
 /// The DESKTOP half of Save As: the system save dialog answers with a
@@ -268,10 +292,17 @@ Future<FolderGrant?> _spokenFor(
   BuildContext context,
   FolderGrant grant, {
   bool folderMode = false,
+  bool acceptsDocuments = false,
 }) async {
   switch (grant.status) {
     case FolderPickStatus.granted:
       return grant;
+    case FolderPickStatus.providerDocument:
+      if (acceptsDocuments) {
+        return grant;
+      }
+      await _showNoFilesystemPathNotice(context);
+      return null;
     case FolderPickStatus.cancelled:
       // Backing out is not an event — except in the one case the app cannot
       // see. Google Drive greys out Open in FOLDER mode, and a greyed-out
@@ -422,11 +453,14 @@ Future<String?> handWrittenFileToUser(
     _discardQuietly(File(picked));
     return null;
   }
-  return (await placeStagedFileForUser(
+  final grant = await placeStagedFileForUser(
     context,
     suggestedName: suggestedName,
     write: write,
-  ))?.path;
+  );
+  // A document (PICK-7) is where it landed too — by its URI, having no
+  // path.
+  return grant?.path ?? grant?.document?.uri;
 }
 
 /// THE SCOPED ROAD: writes a file called [suggestedName] into a staging
@@ -449,10 +483,18 @@ Future<String?> handWrittenFileToUser(
 /// with a path for the later atomic temp+rename save and asks the F-14
 /// replace question; an export desktop writes immediately. Two laws, and a
 /// flag choosing between them would be the invented kind.
+///
+/// [keepsSavingThere] answers ONE question — will the caller go on saving
+/// into what it placed? Only Save As does. Where the picker answered with a
+/// document that has no filesystem path (PICK-7, Drive on Android), the
+/// staged file is poured into it and then either becomes that document's
+/// working copy — moved, never copied, and answered as a path — or goes
+/// with the staging folder like any other placed file.
 Future<FolderGrant?> placeStagedFileForUser(
   BuildContext context, {
   required String suggestedName,
   required Future<bool> Function(String stagingPath) write,
+  bool keepsSavingThere = false,
 }) async {
   // Its own directory so the cleanup below cannot reach anything else.
   final stagingDirectory = Directory.systemTemp.createTempSync(
@@ -472,10 +514,18 @@ Future<FolderGrant?> placeStagedFileForUser(
     sourcePath: staged.path,
     suggestedName: suggestedName,
   );
+  final document = grant?.document;
+  final placed = keepsSavingThere && document != null
+      ? FolderGrant.granted(
+          path: ProviderDocuments.adoptAsWorkingCopy(document, staged.path),
+          kind: GrantKind.file,
+        )
+      : grant;
   // On success the staged file was MOVED out and only the empty directory
-  // is left; on cancel it is still in it. Same cleanup.
+  // is left; on cancel it is still in it — and poured into a document it
+  // is still in it too, unless it became the working copy. Same cleanup.
   _discardStaging(stagingDirectory);
-  return grant;
+  return placed;
 }
 
 /// A leaked file must never fail an export — or a cancel, which is the path

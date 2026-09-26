@@ -14,6 +14,7 @@ import '../../services/persistence/cel_places.dart';
 import '../../services/persistence/failed_save_copies.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart';
+import '../../services/persistence/provider_documents.dart';
 import '../../services/persistence/save_failure.dart';
 import '../../services/persistence/recent_projects.dart';
 import '../../services/persistence/recent_projects_store.dart';
@@ -189,13 +190,16 @@ class EditorTopStrip extends StatelessWidget {
     ProjectPick pick,
   ) async {
     final path = pick.path;
-    if (path.toLowerCase().endsWith('.tvpp')) {
+    // By NAME: a provider document's URI says nothing of what it is (PICK-7).
+    if (ProviderDocuments.nameOf(path).toLowerCase().endsWith('.tvpp')) {
       await _openTvppAsProject(context, path);
       return;
     }
     // A file already open is SHOWN, not opened again: two sessions on one
-    // file would be two writers on one archive.
-    if (projects.boundTo(path) case final open?) {
+    // file would be two writers on one archive. A document's session is
+    // bound to its working copy.
+    if (projects.boundTo(ProviderDocuments.workingCopyOf(path) ?? path)
+        case final open?) {
       projects.activate(open);
       return;
     }
@@ -295,7 +299,11 @@ class EditorTopStrip extends StatelessWidget {
     }
     // A project from a build that kept its media in a sibling folder.
     // Said AFTER the open, because a file that failed to parse has no
-    // media to absorb and the folder is still the only copy.
+    // media to absorb and the folder is still the only copy. A provider
+    // document (PICK-7) has no folder around it to hold one.
+    if (ProviderDocuments.isDocumentUri(path)) {
+      return;
+    }
     final layout = ProjectAssetLayout(path);
     if (layout.hasLegacyAssetsDirectory) {
       final name = layout.assetsDirectory.split('/').last;
@@ -470,9 +478,9 @@ class EditorTopStrip extends StatelessWidget {
             PanelFlyoutItem(
               keyValue: 'menu-recent-${entry.path}',
               label: entry.needsReconnect
-                  ? '${projectDisplayName(entry.path)} — '
+                  ? '${projectDisplayName(entry.name)} — '
                         '${strings.recentReconnect}'
-                  : projectDisplayName(entry.path),
+                  : projectDisplayName(entry.name),
               // ⛔Only the ones that need something: a broken link is news,
               // "this is a recent project" is what the list already is.
               icon: entry.needsReconnect ? Icons.link_off_outlined : null,
@@ -527,7 +535,12 @@ class EditorTopStrip extends StatelessWidget {
         bookmark = relinked.folderBookmark;
       }
     }
-    if (!File(path).existsSync()) {
+    if (ProviderDocuments.isDocumentUri(path)) {
+      // PICK-7: a document is reopened through its URI — the grant kept
+      // from the pick is what reads it — and the name comes from the row,
+      // the one place a new run has it.
+      ProviderDocuments.remember(ProviderDocument(uri: path, name: entry.name));
+    } else if (!File(path).existsSync()) {
       // No bookmark, or a bookmark that resolved to a folder the project has
       // since left. Offer the picker here too: without this the row wears a
       // "Reconnect" label that nothing honours, and on Android — where there
@@ -1655,8 +1668,15 @@ Future<ProjectPick?> pickProjectFile(
     context,
     supportedExtensions: supportedExtensions,
     initialDirectory: initialDirectory,
+    // A project opens from a document with no filesystem path through a
+    // working copy (PICK-7, Drive on Android).
+    acceptsDocuments: true,
   );
   final grant = grants.isEmpty ? null : grants.first;
+  if (grant?.document case final document?) {
+    ProviderDocuments.remember(document);
+    return (path: document.uri, folderBookmark: null, placed: false);
+  }
   final path = grant?.path;
   if (path == null) {
     return null;
@@ -1685,12 +1705,18 @@ Future<ProjectPick?> pickProjectFile(
 /// save meant to fill it (실측 iPhone+Drive, 08-26). What the picker
 /// places is a COMPLETE, CURRENT project — which is why the caller adopts
 /// it rather than writing over it (`placed: true`).
+///
+/// [keepsSavingThere]: whether the session goes on saving into what is
+/// placed — Save As does, a backup does not. On a scoped platform a
+/// destination with no filesystem path (PICK-7, Drive on Android) is then
+/// worked on through a working copy; see [placeStagedFileForUser].
 @visibleForTesting
 Future<ProjectPick?> pickProjectSaveTarget(
   BuildContext context,
   String suggestedName,
   String initialDirectory, {
   required Future<void> Function(String stagingPath) stageArchive,
+  required bool keepsSavingThere,
 }) async {
   var name = suggestedName;
   if (!name.toLowerCase().endsWith(anicelProjectSuffix)) {
@@ -1699,7 +1725,12 @@ Future<ProjectPick?> pickProjectSaveTarget(
   if (!FolderPicker.grantsAreScoped) {
     return _pickDesktopSaveTarget(context, name, initialDirectory);
   }
-  return _pickScopedSaveTarget(context, name, stageArchive);
+  return _pickScopedSaveTarget(
+    context,
+    name,
+    stageArchive,
+    keepsSavingThere: keepsSavingThere,
+  );
 }
 
 Future<ProjectPick?> _pickDesktopSaveTarget(
@@ -1759,11 +1790,13 @@ Future<ProjectPick?> _pickDesktopSaveTarget(
 Future<ProjectPick?> _pickScopedSaveTarget(
   BuildContext context,
   String name,
-  Future<void> Function(String stagingPath) stageArchive,
-) async {
+  Future<void> Function(String stagingPath) stageArchive, {
+  required bool keepsSavingThere,
+}) async {
   final grant = await placeStagedFileForUser(
     context,
     suggestedName: name,
+    keepsSavingThere: keepsSavingThere,
     write: (stagingPath) async {
       try {
         // WRITTEN, whole, from the live session — never copied from the
@@ -1793,7 +1826,9 @@ Future<ProjectPick?> _pickScopedSaveTarget(
       }
     },
   );
-  final placed = grant?.path;
+  // A document the bytes were poured into and that nothing saves into
+  // again (a backup) is where they landed by its URI (PICK-7).
+  final placed = grant?.path ?? grant?.document?.uri;
   if (placed == null) {
     return null;
   }
@@ -2116,6 +2151,9 @@ Future<void> backUpFailedCopy(
         running: strings.savePrepareRunning,
         done: strings.savePrepareDone,
       ),
+      // A backup is a copy to keep; the session goes on saving where it
+      // did.
+      keepsSavingThere: false,
     );
     if (pick == null || !context.mounted) {
       return;
@@ -2352,6 +2390,7 @@ Future<void> promptSaveProjectAs(
         staged = await write(stagingPath, report);
       },
     ),
+    keepsSavingThere: true,
   );
   if (pick == null || !context.mounted) {
     return;

@@ -1,21 +1,33 @@
 package com.myoun.anicel
 
+import android.content.ContentUris
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.provider.DocumentsContract
+import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 // SAVE-1c: the storage channel - the Android real-path model.
 //
 // The app works on REAL file paths (the desktop model): the app's
 // project home is the PUBLIC Documents folder (visible in 내 파일/Files
-// apps), and cloud folders arrive as sync-app mirror folders in shared
-// storage. Both need All-Files access, granted through the system
-// settings toggle this channel opens.
+// apps). Shared storage needs All-Files access, granted through the
+// system settings toggle this channel opens.
+//
+// PICK-7: a document with NO filesystem path behind it (Google Drive and
+// its kind) is no longer turned away. It is handed to Dart as its URI,
+// copied into the app to be worked on, and written back whole through the
+// provider after each save - see ProviderDocuments on the Dart side.
 class MainActivity : FlutterActivity() {
     // AUDIO-PRO R5: the mic grant is a system dialog whose answer arrives
     // in a callback; the channel result waits here for it.
@@ -54,6 +66,26 @@ class MainActivity : FlutterActivity() {
                     )
                 "resolveBookmark" ->
                     result.success(mapOf("status" to "unavailable"))
+                "copyDocument" ->
+                    copyDocument(
+                        call.argument<String>("uri"),
+                        call.argument<String>("destinationPath"),
+                        result,
+                    )
+                "cancelDocumentCopy" -> {
+                    call.argument<String>("destinationPath")?.let {
+                        cancelledTransfers.add(it)
+                    }
+                    result.success(null)
+                }
+                "writeDocument" ->
+                    writeDocument(
+                        call.argument<String>("uri"),
+                        call.argument<String>("sourcePath"),
+                        result,
+                    )
+                "documentTransferred" ->
+                    result.success(transfers[call.argument<String>("path") ?: ""])
                 else -> result.notImplemented()
             }
         }
@@ -123,8 +155,12 @@ class MainActivity : FlutterActivity() {
     //
     // This resolves the document Uri to the real file the way the folder
     // path already does, so a reference is a reference. MANAGE_EXTERNAL_STORAGE
-    // is what makes that path readable afterwards; a provider with no
-    // filesystem behind it (Drive) is reported rather than papered over.
+    // is what makes that path readable afterwards.
+    //
+    // PICK-7: a document with no filesystem path behind it (Drive) is no
+    // longer dropped. It comes back as its URI with the provider's name and
+    // size, and Dart decides: a project opens it through a working copy, a
+    // caller that needs a real file says why it cannot.
     private fun pickFiles(
         mimeTypes: List<String>,
         allowMultiple: Boolean,
@@ -137,7 +173,13 @@ class MainActivity : FlutterActivity() {
         pendingPickResult = result
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // WRITE as well: a project opened from a document with no path
+            // is saved back into it (PICK-7).
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
             // A single "*/*" with no EXTRA_MIME_TYPES is the "everything"
             // spelling; DocumentsUI greys out every file when the extra is
             // present but empty.
@@ -160,7 +202,8 @@ class MainActivity : FlutterActivity() {
     // ACTION_CREATE_DOCUMENT creates an empty document at the chosen spot;
     // the bytes are moved onto it below, through the real path, because the
     // save stack rewrites a ZIP in place and no content:// stream survives
-    // that.
+    // that. Where the document has no real path (PICK-7) they are poured
+    // into it through the provider instead.
     private var pendingExportSource: String? = null
 
     private fun exportFile(
@@ -193,6 +236,10 @@ class MainActivity : FlutterActivity() {
 
     // Moves the staged bytes onto the document the user just created, and
     // reports the real path the save stack will keep writing to.
+    //
+    // Off the main thread: a project is hundreds of megabytes, and a copy
+    // that long on the main thread is the system's "not responding". The
+    // channel is answered back on the main thread.
     private fun finishExport(waiting: MethodChannel.Result, uri: Uri?) {
         val source = pendingExportSource
         pendingExportSource = null
@@ -202,13 +249,17 @@ class MainActivity : FlutterActivity() {
         }
         takePersistable(uri, writable = true)
         val path = realPathFor(uri, isTree = false)
-        if (path == null) {
-            // A provider with no filesystem behind it (Drive). Reported
-            // rather than papered over: an in-place ZIP rewrite would fail
-            // later and silently.
-            waiting.success(mapOf("status" to "noFilesystemPath"))
-            return
-        }
+        Thread {
+            val answer = if (path != null) {
+                placeAtPath(source, path)
+            } else {
+                placeInDocument(source, uri)
+            }
+            answerOnMain(waiting, answer)
+        }.start()
+    }
+
+    private fun placeAtPath(source: String, path: String): Map<String, Any?> {
         val moved = try {
             // copy+delete rather than renameTo: the container and the
             // destination can be different volumes, and renameTo answers
@@ -220,15 +271,207 @@ class MainActivity : FlutterActivity() {
             false
         }
         if (!moved) {
-            waiting.success(mapOf("status" to "unavailable"))
+            return mapOf("status" to "unavailable")
+        }
+        return mapOf(
+            "status" to "granted",
+            "items" to listOf(mapOf("path" to path, "bookmark" to null)),
+        )
+    }
+
+    // PICK-7: a created document with no filesystem path behind it (Drive).
+    // The staged bytes are POURED into it through the provider, and the
+    // staged file STAYS where it is: Dart decides whether it becomes this
+    // document's working copy (Save As keeps saving there) or goes (an
+    // export never writes again).
+    private fun placeInDocument(source: String, uri: Uri): Map<String, Any?> {
+        return try {
+            pourIntoDocument(uri, java.io.File(source), source)
+            mapOf("status" to "granted", "items" to listOf(documentItem(uri)))
+        } catch (error: Exception) {
+            mapOf("status" to "unavailable", "error" to describe(error))
+        } finally {
+            transfers.remove(source)
+        }
+    }
+
+    // PICK-7: bytes moving between the app and a document with no
+    // filesystem path, by the local path they come from or go to - the
+    // count Dart polls for its progress line (`documentTransferred`).
+    private val transfers = ConcurrentHashMap<String, Long>()
+
+    // The copies Dart asked to stop, by destination path.
+    private val cancelledTransfers: MutableSet<String> =
+        Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+    private val mainThread = Handler(Looper.getMainLooper())
+
+    private fun answerOnMain(result: MethodChannel.Result, answer: Map<String, Any?>) {
+        mainThread.post { result.success(answer) }
+    }
+
+    private fun describe(error: Exception): String =
+        error.message ?: error.javaClass.simpleName
+
+    // PICK-7: brings a document with no filesystem path into the app - the
+    // working copy a project from Drive is opened and saved in. It lands in
+    // a `.part` beside the destination and takes the name only when whole,
+    // so a copy cut short never stands under it.
+    private fun copyDocument(
+        uri: String?,
+        destinationPath: String?,
+        result: MethodChannel.Result,
+    ) {
+        if (uri.isNullOrEmpty() || destinationPath.isNullOrEmpty()) {
+            result.success(mapOf("status" to "unavailable"))
             return
         }
-        waiting.success(
-            mapOf(
-                "status" to "granted",
-                "items" to listOf(mapOf("path" to path, "bookmark" to null)),
-            )
-        )
+        cancelledTransfers.remove(destinationPath)
+        transfers[destinationPath] = 0L
+        Thread {
+            val part = java.io.File("$destinationPath.part")
+            val answer = try {
+                val input = contentResolver.openInputStream(Uri.parse(uri))
+                    ?: throw java.io.FileNotFoundException(uri)
+                input.use { stream ->
+                    java.io.FileOutputStream(part).use { output ->
+                        pour(stream, output, destinationPath)
+                    }
+                }
+                when {
+                    cancelledTransfers.contains(destinationPath) ->
+                        mapOf("status" to "cancelled")
+                    part.renameTo(java.io.File(destinationPath)) ->
+                        mapOf("status" to "granted", "items" to listOf(mapOf("path" to destinationPath)))
+                    else -> mapOf("status" to "unavailable", "error" to "rename")
+                }
+            } catch (error: Exception) {
+                if (cancelledTransfers.contains(destinationPath)) {
+                    mapOf("status" to "cancelled")
+                } else {
+                    mapOf("status" to "unavailable", "error" to describe(error))
+                }
+            } finally {
+                // Gone already when the rename took it.
+                part.delete()
+                transfers.remove(destinationPath)
+                cancelledTransfers.remove(destinationPath)
+            }
+            answerOnMain(result, answer)
+        }.start()
+    }
+
+    // PICK-7: hands a saved working copy back to its document, whole.
+    private fun writeDocument(
+        uri: String?,
+        sourcePath: String?,
+        result: MethodChannel.Result,
+    ) {
+        if (uri.isNullOrEmpty() || sourcePath.isNullOrEmpty()) {
+            result.success(mapOf("status" to "unavailable"))
+            return
+        }
+        transfers[sourcePath] = 0L
+        Thread {
+            val document = Uri.parse(uri)
+            val answer = try {
+                pourIntoDocument(document, java.io.File(sourcePath), sourcePath)
+                mapOf("status" to "granted", "items" to listOf(documentItem(document)))
+            } catch (error: Exception) {
+                mapOf("status" to "unavailable", "error" to describe(error))
+            } finally {
+                transfers.remove(sourcePath)
+            }
+            answerOnMain(result, answer)
+        }.start()
+    }
+
+    // Replaces a document's content with [source]'s bytes.
+    //
+    // "wt" first: plain "w" does not truncate on every provider, and a
+    // shorter file written over a longer one keeps the old tail - for a
+    // ZIP, the OLD central directory at the very end, which is the first
+    // thing a reader finds. The length is cut to what was written as well,
+    // wherever the descriptor has one; a provider that streams through a
+    // pipe has none, and takes what arrived.
+    private fun pourIntoDocument(uri: Uri, source: java.io.File, key: String) {
+        val descriptor = openForReplacing(uri)
+        try {
+            // Not closed on its own: the descriptor below owns the fd, and
+            // the length is cut after the last byte.
+            val output = java.io.FileOutputStream(descriptor.fileDescriptor)
+            val written = java.io.FileInputStream(source).use { input ->
+                pour(input, output, key)
+            }
+            output.flush()
+            try {
+                android.system.Os.ftruncate(descriptor.fileDescriptor, written)
+            } catch (_: Exception) {
+                // A pipe has no length to cut.
+            }
+        } finally {
+            descriptor.close()
+        }
+    }
+
+    private fun openForReplacing(uri: Uri): android.os.ParcelFileDescriptor {
+        var refusal: Exception? = null
+        for (mode in listOf("wt", "w")) {
+            try {
+                contentResolver.openFileDescriptor(uri, mode)?.let { return it }
+            } catch (error: Exception) {
+                refusal = error
+            }
+        }
+        throw refusal ?: java.io.FileNotFoundException(uri.toString())
+    }
+
+    // Copies [input] into [output] a megabyte at a time, counting what has
+    // moved into [transfers] under [key], and stops at a cancel.
+    private fun pour(
+        input: java.io.InputStream,
+        output: java.io.OutputStream,
+        key: String,
+    ): Long {
+        val buffer = ByteArray(1 shl 20)
+        var moved = 0L
+        while (!cancelledTransfers.contains(key)) {
+            val read = input.read(buffer)
+            if (read < 0) {
+                break
+            }
+            output.write(buffer, 0, read)
+            moved += read
+            transfers[key] = moved
+        }
+        return moved
+    }
+
+    // A document with no filesystem path, as Dart receives it: the URI the
+    // provider answers to, and the name and size it gives. Either may be
+    // missing - a provider is not obliged to say.
+    private fun documentItem(uri: Uri): Map<String, Any?> {
+        var name: String? = null
+        var size: Long? = null
+        try {
+            contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    name = cursor.getString(0)
+                    if (!cursor.isNull(1)) {
+                        size = cursor.getLong(1)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // A provider that will not answer a query still hands out bytes.
+        }
+        return mapOf("uri" to uri.toString(), "name" to name, "size" to size)
     }
 
     private fun launch(intent: Intent, requestCode: Int, result: MethodChannel.Result) {
@@ -294,11 +537,17 @@ class MainActivity : FlutterActivity() {
         }
         val items = mutableListOf<Map<String, Any?>>()
         for (uri in uris) {
-            takePersistable(uri, writable = isFolder)
+            takePersistable(uri, writable = true)
             // No bookmark: an Android path is durable on its own, which is
             // exactly what the Apple runners have to mint a token for.
-            realPathFor(uri, isFolder)?.let {
-                items.add(mapOf("path" to it, "bookmark" to null))
+            val path = realPathFor(uri, isFolder)
+            if (path != null) {
+                items.add(mapOf("path" to path, "bookmark" to null))
+            } else if (!isFolder) {
+                // PICK-7: a FILE with no path behind it is still a file the
+                // provider reads and writes - handed over as the document.
+                // A folder is not: nothing works through a tree yet.
+                items.add(documentItem(uri))
             }
         }
         if (items.isEmpty()) {
@@ -315,25 +564,28 @@ class MainActivity : FlutterActivity() {
         return (0 until clip.itemCount).mapNotNull { clip.getItemAt(it)?.uri }
     }
 
-    // Keep the grant across restarts. It buys nothing TODAY - the app uses
-    // the real path and never touches the Uri again - and is taken only so a
-    // future content:// fallback has something to resume from. It is not, as
-    // an earlier comment here claimed, shown to the user anywhere in
+    // Keep the grant across restarts. A document with no filesystem path
+    // (PICK-7) is reopened from Recents through its URI, and this grant is
+    // what lets the next launch read it and save back into it. It is not,
+    // as an earlier comment here claimed, shown to the user anywhere in
     // Settings.
     //
-    // Read-only for files: ACTION_OPEN_DOCUMENT was not asked for write
-    // access, and persisting a flag the grant does not carry throws.
+    // Read AND write where the provider gave both; read alone where it
+    // did not - persisting a flag the grant does not carry throws.
     private fun takePersistable(uri: Uri, writable: Boolean) {
-        val flags = if (writable) {
-            Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val attempts = if (writable) {
+            listOf(read or Intent.FLAG_GRANT_WRITE_URI_PERMISSION, read)
         } else {
-            Intent.FLAG_GRANT_READ_URI_PERMISSION
+            listOf(read)
         }
-        try {
-            contentResolver.takePersistableUriPermission(uri, flags)
-        } catch (_: Exception) {
-            // Not every provider offers a persistable grant.
+        for (flags in attempts) {
+            try {
+                contentResolver.takePersistableUriPermission(uri, flags)
+                return
+            } catch (_: Exception) {
+                // Not every provider offers a persistable grant.
+            }
         }
     }
 
@@ -361,7 +613,7 @@ class MainActivity : FlutterActivity() {
     // that is the case that genuinely has no path.
     private fun realPathFor(uri: Uri, isTree: Boolean): String? {
         if (uri.authority != "com.android.externalstorage.documents") {
-            return null
+            return if (isTree) null else sharedStoragePathFor(uri)
         }
         val documentId = try {
             if (isTree) {
@@ -384,6 +636,74 @@ class MainActivity : FlutterActivity() {
         // fails here rather than at save (or at first decode) time.
         val matches = if (isTree) resolved.isDirectory else resolved.isFile
         return if (matches) resolved.absolutePath else null
+    }
+
+    // PICK-7: a file on shared storage that the picker handed out through
+    // ANOTHER provider. The picker's Recent, Downloads and category tabs
+    // answer through the downloads and media providers rather than through
+    // "internal storage", so a file in the tablet's own storage came back
+    // as "no folder path" - the Drive notice, for a local file (유저
+    // 2026-09-27, Galaxy Tab: 「로컬에 있는파일 열려고해도 같은메시지뜨고
+    // 안열려」). MediaStore knows where those files live, and the All-Files
+    // grant opens the path - no copy, and saves stay incremental.
+    //
+    // Asked of the document's own provider (MediaStore.getMediaUri) rather
+    // than read out of its ids, which are private to it. A provider with no
+    // file behind the document (Drive) cannot answer, and that document
+    // goes on as one (documentItem).
+    private fun sharedStoragePathFor(uri: Uri): String? {
+        val documentId = try {
+            DocumentsContract.getDocumentId(uri)
+        } catch (_: Exception) {
+            return null
+        }
+        if (uri.authority == "com.android.providers.downloads.documents" &&
+            documentId.startsWith("raw:")
+        ) {
+            return existingFile(documentId.removePrefix("raw:"))
+        }
+        val mediaUri = mediaUriFor(uri, documentId) ?: return null
+        val path = try {
+            // "_data" by name: the constant is deprecated for writing, and
+            // reading it is exactly what All-Files access is for.
+            contentResolver.query(mediaUri, arrayOf("_data"), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        } catch (_: Exception) {
+            null
+        }
+        return path?.let { existingFile(it) }
+    }
+
+    private fun mediaUriFor(uri: Uri, documentId: String): Uri? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return try {
+                MediaStore.getMediaUri(this, uri)
+            } catch (_: Exception) {
+                null
+            }
+        }
+        // Before Android 10 there is no such question, and the two system
+        // providers' ids are the only way in: "<type>:<id>" for media, a
+        // bare number for downloads.
+        return when (uri.authority) {
+            "com.android.providers.media.documents" -> {
+                val id = documentId.substringAfter(':').toLongOrNull() ?: return null
+                ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), id)
+            }
+            "com.android.providers.downloads.documents" -> {
+                val id = documentId.toLongOrNull() ?: return null
+                ContentUris.withAppendedId(
+                    Uri.parse("content://downloads/public_downloads"),
+                    id,
+                )
+            }
+            else -> null
+        }
+    }
+
+    private fun existingFile(path: String): String? {
+        val file = java.io.File(path)
+        return if (file.isFile) file.absolutePath else null
     }
 
     private fun rootForVolume(volume: String): java.io.File? {

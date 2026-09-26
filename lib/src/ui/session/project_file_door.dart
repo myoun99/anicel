@@ -35,6 +35,7 @@ import '../../services/persistence/failed_save_copies.dart';
 import '../../services/persistence/folder_grant.dart'
     show FolderPicker, MaterializeCancelled;
 import '../../services/persistence/media_staging_store.dart';
+import '../../services/persistence/provider_documents.dart';
 import '../../services/persistence/save_failure.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
@@ -272,11 +273,65 @@ class ProjectFileDoor {
     // at the next launch is the only thing that says otherwise.
     MemoryBlackBox.begin('save');
     try {
-      await _saveSomewhere(filePath, asked: asked, onProgress: onProgress);
+      // A working copy's save is half the save: the document behind it
+      // takes the other half, whole.
+      final handsBack = ProviderDocuments.documentBehind(filePath) != null;
+      await _saveSomewhere(
+        filePath,
+        asked: asked,
+        onProgress: !handsBack || onProgress == null
+            ? onProgress
+            : (done) => onProgress(done / 2),
+      );
+      if (handsBack) {
+        await _handBackToItsDocument(
+          filePath,
+          onProgress: onProgress == null
+              ? null
+              : (done) => onProgress(0.5 + done / 2),
+        );
+      }
     } finally {
       _file.endSave();
       MemoryBlackBox.end('save');
     }
+  }
+
+  /// 🚨★★★**A PROJECT FROM A PROVIDER DOCUMENT IS SAVED WHEN THE DOCUMENT
+  /// HAS IT** (PICK-7, 유저 2026-09-27: 「저장은 통째로 다시 쓴다」). The
+  /// save before this wrote [workingCopy] — incrementally, like any local
+  /// file — and this hands the whole file back to the document it was
+  /// opened from ([ProviderDocuments.publish]).
+  ///
+  /// A provider that will not take it leaves the work in the working copy,
+  /// in this run's room, and the session UNSAVED: the document does not
+  /// hold these edits, so the close still asks and the next save — the
+  /// clock's too — tries again. It is said the way any refused save is
+  /// said: why, and where the work is. The working copy IS the failed copy
+  /// here — the one place these edits are, gone when the run is — so it is
+  /// offered for backup, and a hand-back that lands withdraws the offer.
+  /// ⛔It is never retired the way a failed copy is: the session reads from
+  /// it.
+  Future<void> _handBackToItsDocument(
+    String workingCopy, {
+    void Function(double)? onProgress,
+  }) async {
+    if (_file.failedCopy != null) {
+      // The save went to a failed copy, not here: nothing new to hand on.
+      return;
+    }
+    try {
+      await ProviderDocuments.publish(workingCopy, onProgress: onProgress);
+    } on Object catch (error) {
+      _file.markDirty();
+      _failedCopies.record(workingCopy, workingCopy);
+      throw SaveFailure(
+        cause: SaveFailureCause.replaceRefused,
+        error: error,
+        failedCopy: workingCopy,
+      );
+    }
+    _failedCopies.forget(workingCopy);
   }
 
   /// Throws before anything is written when [filePath] is another open

@@ -200,6 +200,7 @@ void main() {
             folder.path,
             // Desktop stages nothing — the dialog answers with a path.
             stageArchive: (_) async => fail('desktop must not stage'),
+            keepsSavingThere: true,
           ),
         );
 
@@ -272,6 +273,7 @@ void main() {
                       'Typed Name',
                       folder.path,
                       stageArchive: (_) async => fail('desktop must not stage'),
+                      keepsSavingThere: true,
                     ),
                 child: const Text('go'),
               ),
@@ -353,6 +355,7 @@ void main() {
         suggested,
         folder.path,
         stageArchive: fakeStage,
+        keepsSavingThere: true,
       ),
     );
 

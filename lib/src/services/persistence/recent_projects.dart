@@ -20,6 +20,7 @@ class RecentProject {
     required String path,
     this.folderBookmark,
     this.needsReconnect = false,
+    this.displayName,
     // Normalized HERE rather than at the call sites, because the desktop
     // pickers hand back native separators: on Windows `getSaveLocation`
     // returns `C:\Users\…\Cut12.anicel`, and [name] — which splits on `/` —
@@ -56,19 +57,26 @@ class RecentProject {
   /// deleting the row would hide a project they may well still have.
   final bool needsReconnect;
 
-  String get name => fileNameOfPath(path);
+  /// What the project is called when [path] cannot say it — a provider
+  /// document's URI (PICK-7, Drive on Android), whose last segment is an
+  /// id. Null for a file, whose name is its path's.
+  final String? displayName;
+
+  String get name => displayName ?? fileNameOfPath(path);
 
   RecentProject copyWith({bool? needsReconnect, String? folderBookmark}) =>
       RecentProject(
         path: path,
         folderBookmark: folderBookmark ?? this.folderBookmark,
         needsReconnect: needsReconnect ?? this.needsReconnect,
+        displayName: displayName,
       );
 
   Map<String, dynamic> toJson() => {
     'path': path,
     'folderBookmark': folderBookmark,
     'needsReconnect': needsReconnect,
+    if (displayName != null) 'name': displayName,
   };
 
   static RecentProject? fromJson(Map<String, dynamic> json) {
@@ -77,10 +85,12 @@ class RecentProject {
       return null;
     }
     final bookmark = json['folderBookmark'] as String?;
+    final name = json['name'] as String?;
     return RecentProject(
       path: path,
       folderBookmark: bookmark != null && bookmark.isNotEmpty ? bookmark : null,
       needsReconnect: json['needsReconnect'] as bool? ?? false,
+      displayName: name != null && name.isNotEmpty ? name : null,
     );
   }
 
@@ -89,10 +99,12 @@ class RecentProject {
       other is RecentProject &&
       other.path == path &&
       other.folderBookmark == folderBookmark &&
-      other.needsReconnect == needsReconnect;
+      other.needsReconnect == needsReconnect &&
+      other.displayName == displayName;
 
   @override
-  int get hashCode => Object.hash(path, folderBookmark, needsReconnect);
+  int get hashCode =>
+      Object.hash(path, folderBookmark, needsReconnect, displayName);
 }
 
 /// What the chooser orders its rows by.

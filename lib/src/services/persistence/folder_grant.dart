@@ -26,6 +26,7 @@ import 'package:file_selector/file_selector.dart' as file_selector;
 import '../../core/path_names.dart';
 import 'app_documents.dart';
 import 'file_type_groups.dart';
+import 'provider_documents.dart';
 
 /// How a folder request ended.
 enum FolderPickStatus {
@@ -42,7 +43,17 @@ enum FolderPickStatus {
   /// a ZIP's central directory in place, which does not survive a
   /// `content://` URI. The user gets the sync-app guidance rather than a
   /// project that silently fails to save.
+  ///
+  /// ⚠️Since PICK-7 this is a FOLDER's answer: a file with no path comes
+  /// back as a [providerDocument].
   noFilesystemPath,
+
+  /// PICK-7: a FILE with no filesystem path behind it — a Drive or Dropbox
+  /// document on Android — that the provider reads and writes through its
+  /// URI ([FolderGrant.document]). A project opens one through a working
+  /// copy ([ProviderDocuments]); a caller that needs a real file says what
+  /// [noFilesystemPath] says.
+  providerDocument,
 
   /// The platform channel is missing or threw. Distinct from [cancelled] so
   /// a broken build says so instead of looking like a user who changed their
@@ -86,33 +97,47 @@ class FolderGrant {
     this.path,
     this.bookmark,
     this.kind = GrantKind.folder,
-  });
+  }) : document = null;
 
   const FolderGrant.cancelled()
     : status = FolderPickStatus.cancelled,
       path = null,
       bookmark = null,
+      document = null,
       kind = GrantKind.folder;
 
   const FolderGrant.noFilesystemPath()
     : status = FolderPickStatus.noFilesystemPath,
       path = null,
       bookmark = null,
+      document = null,
       kind = GrantKind.folder;
 
   const FolderGrant.unavailable()
     : status = FolderPickStatus.unavailable,
       path = null,
       bookmark = null,
+      document = null,
       kind = GrantKind.folder;
 
   const FolderGrant.granted({
     required String this.path,
     this.bookmark,
     this.kind = GrantKind.folder,
-  }) : status = FolderPickStatus.granted;
+  }) : status = FolderPickStatus.granted,
+       document = null;
+
+  const FolderGrant.providerDocument(ProviderDocument this.document)
+    : status = FolderPickStatus.providerDocument,
+      path = null,
+      bookmark = null,
+      kind = GrantKind.file;
 
   final FolderPickStatus status;
+
+  /// The document a [FolderPickStatus.providerDocument] names; null for
+  /// every other answer.
+  final ProviderDocument? document;
 
   /// Whether this grant was taken over a file or over a folder.
   final GrantKind kind;
@@ -921,6 +946,36 @@ abstract final class FolderPicker {
       }
     }
 
+    // 🚨★★★A DOCUMENT WITH NO FILESYSTEM PATH IS COPIED IN — AND THAT IS
+    // THIS WAIT TOO (PICK-7, 유저 2026-09-27). Drive on Android hands out a
+    // `content://` document, and the archive reader needs a file it can
+    // seek in, so the bytes come into the document's working copy
+    // ([ProviderDocuments]) under the same clock, the same cancel and the
+    // same arrival line as a cloud placeholder's wait: to the person
+    // watching it is the same wait. Not `staged` — the working copy is the
+    // road, not the alarmed last resort below.
+    if (ProviderDocuments.isDocumentUri(path)) {
+      final copy = ProviderDocuments.copyIn(path);
+      var answered = false;
+      final settled = copy.done.whenComplete(() => answered = true);
+      try {
+        while (!answered) {
+          if (!await tick(sooner: settled, settled: () => answered)) {
+            throw FileSystemException('파일을 읽지 못했습니다', path);
+          }
+          seen = await copy.moved() > 0
+              ? FileArrival.partway
+              : FileArrival.nothing;
+        }
+      } on Object {
+        copy.stop();
+        rethrow;
+      }
+      if (await copy.done) {
+        return (path: copy.destination, staged: false);
+      }
+      throw FileSystemException('파일을 읽지 못했습니다', path);
+    }
     // 🎯THE PROVIDER IS ASKED BEFORE THE FILE IS BELIEVED. A materialised
     // item reads at once — and it may be the copy the provider cached last
     // time, not what the cloud holds now (2026-09-13: twelve cuts on the
@@ -1104,7 +1159,8 @@ abstract final class FolderPicker {
   /// so no caller has to decide what an empty list would have meant.
   ///
   /// The payload shape is `{status, items: [{path, bookmark}]}` for one item
-  /// and for many alike. A single-item dialect would have been smaller here
+  /// and for many alike — and an item with no path but a `uri` (with the
+  /// provider's `name` and `size`) is a [FolderPickStatus.providerDocument]. A single-item dialect would have been smaller here
   /// and a standing hazard there — the channel has no compiler to notice
   /// when one of the three platform runners keeps speaking the old one.
   @visibleForTesting
@@ -1130,6 +1186,25 @@ abstract final class FolderPicker {
           }
           final path = item['path'];
           if (path is! String || path.isEmpty) {
+            // PICK-7: a file with no path the provider still reads and
+            // writes — the document, under its own status, so no caller
+            // can take it for a path.
+            final uri = item['uri'];
+            if (uri is String && uri.isNotEmpty) {
+              final name = item['name'];
+              final size = item['size'];
+              grants.add(
+                FolderGrant.providerDocument(
+                  ProviderDocument(
+                    uri: uri,
+                    name: name is String && name.isNotEmpty
+                        ? name
+                        : fileNameOfPath(uri),
+                    length: size is int ? size : null,
+                  ),
+                ),
+              );
+            }
             // Same rule per item: a granted entry with no path is dropped
             // rather than becoming a grant every caller would have to guard.
             continue;

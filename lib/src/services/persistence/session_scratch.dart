@@ -91,6 +91,16 @@ class SessionScratch {
     return '${thisRunsFolder()}/Unsaved';
   }
 
+  /// Where a document with no filesystem path is worked on (PICK-7) — a
+  /// project opened from Drive on Android is copied here, saved here, and
+  /// handed back whole after each save (`ProviderDocuments`). This run's
+  /// only, like everything else in the room: the next launch opens the
+  /// document again, not the copy.
+  static String openedFolder() {
+    ensureThisRunsFolder();
+    return '${thisRunsFolder()}/Opened';
+  }
+
   static String thisRunsFolder() => '${rootFolder()}/$_runId';
 
   /// This run's room NAME: the pid, and the moment this run first asked.
