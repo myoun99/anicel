@@ -872,6 +872,8 @@ enum AppStrings {
   String get cutDuplicateActive => _s('cutDuplicateActive');
   String get cutRename => _s('cutRename');
   String get cutEditNote => _s('cutEditNote');
+  String get cutSettings => _s('cutSettings');
+  String get cutSettingsTitle => _s('cutSettingsTitle');
   String get cutMoveLeft => _s('cutMoveLeft');
   String get cutMoveRight => _s('cutMoveRight');
   String get cutDelete => _s('cutDelete');
@@ -2100,6 +2102,8 @@ enum AppStrings {
     'cutDuplicateActive': 'Duplicate active cut',
     'cutRename': 'Rename cut…',
     'cutEditNote': 'Edit cut note…',
+    'cutSettings': 'Cut settings…',
+    'cutSettingsTitle': 'Cut settings',
     'cutMoveLeft': 'Move cut left',
     'cutMoveRight': 'Move cut right',
     'cutDelete': 'Delete cut',
@@ -3317,6 +3321,8 @@ enum AppStrings {
     'cutDuplicateActive': 'アクティブなカットを複製',
     'cutRename': 'カット名を変更…',
     'cutEditNote': 'カットメモを編集…',
+    'cutSettings': 'カット設定…',
+    'cutSettingsTitle': 'カット設定',
     'cutMoveLeft': 'カットを左へ',
     'cutMoveRight': 'カットを右へ',
     'cutDelete': 'カットを削除',
@@ -4651,6 +4657,8 @@ enum AppStrings {
     'cutDuplicateActive': '활성 컷 복제',
     'cutRename': '컷 이름 변경…',
     'cutEditNote': '컷 메모 편집…',
+    'cutSettings': '컷 설정…',
+    'cutSettingsTitle': '컷 설정',
     'cutMoveLeft': '컷 왼쪽으로',
     'cutMoveRight': '컷 오른쪽으로',
     'cutDelete': '컷 삭제',
@@ -6011,6 +6019,8 @@ enum AppStrings {
     'cutDuplicateActive': 'Dupliquer le plan actif',
     'cutRename': 'Renommer le plan…',
     'cutEditNote': 'Modifier la note du plan…',
+    'cutSettings': 'Réglages du plan…',
+    'cutSettingsTitle': 'Réglages du plan',
     'cutMoveLeft': 'Déplacer le plan à gauche',
     'cutMoveRight': 'Déplacer le plan à droite',
     'cutDelete': 'Supprimer le plan',
@@ -7348,6 +7358,8 @@ enum AppStrings {
     'cutDuplicateActive': '复制当前镜头',
     'cutRename': '重命名镜头…',
     'cutEditNote': '编辑镜头备注…',
+    'cutSettings': '镜头设置…',
+    'cutSettingsTitle': '镜头设置',
     'cutMoveLeft': '镜头左移',
     'cutMoveRight': '镜头右移',
     'cutDelete': '删除镜头',

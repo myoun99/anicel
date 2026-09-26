@@ -281,12 +281,13 @@ class CutVerbs {
   }
 
   /// The first addressed cut's own staff names — what 컷 설정 shows, as the
-  /// cut button shows the first addressed cut's 색 라벨.
-  Map<String, String> get addressedCutStaff {
+  /// cut button shows the first addressed cut's 색 라벨 — or null with no
+  /// cut to address, so the window stands down (the gap state).
+  Map<String, String>? get addressedCutStaff {
     final cutIds = addressedCutIds;
     return cutIds.isEmpty
-        ? const {}
-        : _project.cutById(cutIds.first)?.metadata.staff ?? const {};
+        ? null
+        : _project.cutById(cutIds.first)?.metadata.staff;
   }
 
   /// Names each stage of [names] on every addressed cut — and on each one's

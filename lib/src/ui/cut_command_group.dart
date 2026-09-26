@@ -4,7 +4,9 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../models/cut.dart';
+import '../models/layer_mark.dart';
 import 'cut/cut_note_dialog.dart';
+import 'dialogs/cut_settings_window.dart';
 import 'editor_command_actions.dart';
 import 'dialogs/app_progress_dialog.dart';
 import 'dialogs/dialog_verb.dart';
@@ -57,6 +59,19 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
     dialog: (note) => CutNoteDialog(initialNote: note),
     commit: session.cutVerbs.updateActiveCutNote,
   );
+
+  /// 컷 설정 on the cuts the pick is about — the range's, or the active cut
+  /// ([CutVerbs.addressedCutIds], as the 색 라벨 beside it).
+  Future<void> _editCutSettings() =>
+      askAboutThenCommit<Map<String, String>, Map<LayerMark, String>>(
+        context,
+        session.cutVerbs.addressedCutStaff,
+        dialog: (staff) => CutSettingsWindow(
+          cutStaff: staff,
+          workStaff: session.timesheetInfo.staff,
+        ),
+        commit: session.cutVerbs.setAddressedCutStaffNames,
+      );
 
   Future<void> _resizeActiveCutCanvas() =>
       askAboutThenCommit<Cut, CanvasResizeRequest>(
@@ -146,6 +161,12 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         submenuBuilder: () => layerMarkFlyoutEntries(
           onSelected: session.cutVerbs.setAddressedCutMark,
         ),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'cut-settings-button',
+        label: AppText.strings.cutSettings,
+        icon: Icons.tune,
+        onSelected: _editCutSettings,
       ),
       PanelFlyoutItem(
         keyValue: 'resize-cut-canvas-button',
