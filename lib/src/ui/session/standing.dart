@@ -210,12 +210,30 @@ class Standing {
 
   WorkingPanel get workingPanel => _working.value;
 
-  /// Rides beside [_internals.currentRowListenable]: a claim moves the panel
+  /// Rides beside [currentRowListenable]: a claim moves the panel
   /// without a session notify, and the flip's axis has to hear it — the
   /// X-sheet runs its frames down the page, the storyboard never does.
   ValueListenable<WorkingPanel> get workingPanelListenable => _working;
 
-  void dispose() => _working.dispose();
+  /// [currentRow] as a LISTENABLE — R10 #19's other half. The row you are
+  /// standing on is DRAWN now (the active layer's row, an fx header, a
+  /// property lane), and the rails have to learn it moved WITHOUT a
+  /// session notify: the claim that moves it fires on pointer-down, inside
+  /// gestures whose whole contract is silence until release.
+  ///
+  /// A [ValueNotifier] only notifies on a real change, so pressing again
+  /// in the row you are already standing on costs nothing — which is the
+  /// common case, and the reason this can be published eagerly.
+  ///
+  /// Held HERE, beside its one writer ([publishCurrentRow]) — the session
+  /// used to declare it for this object to reach (ARCH-session-state).
+  final ValueNotifier<TimelineRowAddress?> currentRowListenable =
+      ValueNotifier<TimelineRowAddress?>(null);
+
+  void dispose() {
+    _working.dispose();
+    currentRowListenable.dispose();
+  }
 
   /// The TIMELINE's own row, the way [_storyboardRow] is the rail's: the
   /// layer or property lane last engaged there. Kept so that returning to
@@ -326,7 +344,7 @@ class Standing {
   /// A claim never NOTIFIES the session. It fires on pointer-DOWN, and a
   /// ruler drag's whole contract is that it stays silent per move and
   /// commits once on release. What the rails DRAW rides
-  /// [_internals.currentRowListenable] instead, so the row that moved repaints its
+  /// [currentRowListenable] instead, so the row that moved repaints its
   /// own small cells and nothing else.
   void claimTimelineRow() => _engage(WorkingPanel.timeline);
 
@@ -497,7 +515,7 @@ class Standing {
     if (_internals.disposed || !_currentRowAnswers) {
       return;
     }
-    _internals.currentRowListenable.value = currentRow;
+    currentRowListenable.value = currentRow;
   }
 
   /// Whether [currentRow] can answer without a TRACK the film may not have

@@ -618,12 +618,14 @@ void main() {
       final layerId = session.layers.first.id;
 
       var notifications = 0;
-      session.currentRowListenable.addListener(() => notifications += 1);
+      session.standing.currentRowListenable.addListener(
+        () => notifications += 1,
+      );
 
       session.selectLayer(layerId);
       final afterLayer = notifications;
       expect(
-        session.currentRowListenable.value,
+        session.standing.currentRowListenable.value,
         LayerRowAddress(layerId),
         reason: 'the row you draw on is the row you stand on by default',
       );
@@ -634,7 +636,7 @@ void main() {
       // once; each panel stands on its own row now.
       session.standOnRow(LaneRowAddress(layerId, 'position'));
       expect(
-        session.currentRowListenable.value,
+        session.standing.currentRowListenable.value,
         LaneRowAddress(layerId, 'position'),
       );
       expect(notifications, greaterThan(afterLayer));
@@ -651,7 +653,10 @@ void main() {
       // Leaving the lane for its own layer row moves it back, even though
       // the active layer never changed (the notify-free path).
       session.selectLayer(layerId);
-      expect(session.currentRowListenable.value, LayerRowAddress(layerId));
+      expect(
+        session.standing.currentRowListenable.value,
+        LayerRowAddress(layerId),
+      );
       expect(notifications, greaterThan(settled));
     });
   });

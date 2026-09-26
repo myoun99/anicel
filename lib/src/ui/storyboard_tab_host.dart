@@ -868,7 +868,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // (and the active cut) exactly where they were — the
                     // band's press is the one that lands on a frame.
                     currentRowHooks: TimelineCurrentRowHooks(
-                      currentRow: _session.currentRowListenable,
+                      currentRow: _session.standing.currentRowListenable,
                       // T4: standing here clears too — 「어떤 행이든 액티브
                       // 바꾸면 풀리도록」 is not a timeline-only law.
                       onStandOnLane: (layerId, laneId) => _session.standOnRow(
@@ -1207,7 +1207,7 @@ class _CursorGatedStoryboardToolbarState
     // INSIDE the film left the bar answering about the frame the drag
     // began on — a committed seek fires on the release.
     widget.session.playheadMoved,
-    widget.session.currentRowListenable,
+    widget.session.standing.currentRowListenable,
     widget.session.languageSettings,
     // The selections the gates read are notifiers on purpose (they grow
     // per pointer move): the S-row/cut range, the strip's cut-local range,

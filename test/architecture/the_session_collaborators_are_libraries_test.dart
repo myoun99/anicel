@@ -97,7 +97,10 @@ const _mayNameTheSession = <String, String>{
 /// preview channel went — its grips and moves publish on the one channel
 /// the SE rows use, in their two forms (the cut's, the track's), so the
 /// session holds no second one (transition-row-open-in-the-cut).
-const _sessionInternalsMembers = 37;
+/// 37 → 36 (2026-09-26, the seventh family): the listenable of the row you
+/// stand on moved into `Standing`, beside its one writer
+/// (`publishCurrentRow`); the rails and the canvas read it there.
+const _sessionInternalsMembers = 36;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

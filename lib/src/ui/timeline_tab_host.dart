@@ -786,7 +786,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // R10 #19's rail half: the row you are standing on is DRAWN,
             // and a lane's label is a place you can stand.
             currentRowHooks: TimelineCurrentRowHooks(
-              currentRow: _session.currentRowListenable,
+              currentRow: _session.standing.currentRowListenable,
               onStandOnLane: _standOnLaneRow,
             ),
             // P2b: the rail row IS the handle. Pen and mouse move it; a
@@ -1221,7 +1221,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     widget.session.languageSettings.addListener(_handleExternalSignal);
     // Same story for the row you are STANDING on: it publishes on its own
     // notifier, and Edit Instance's enablement now reads it.
-    widget.session.currentRowListenable.addListener(_handleExternalSignal);
+    widget.session.standing.currentRowListenable.addListener(
+      _handleExternalSignal,
+    );
     // …and for the cut-local BAND, which grows per pointer move on its own
     // notifier. Seven gates read it now (the active-row verbs stand down
     // when it names other rows), so without this the enforcement lands
@@ -1237,7 +1239,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     if (!identical(oldWidget.session, widget.session)) {
       oldWidget.session.playheadMoved.removeListener(_handleExternalSignal);
       oldWidget.session.languageSettings.removeListener(_handleExternalSignal);
-      oldWidget.session.currentRowListenable.removeListener(
+      oldWidget.session.standing.currentRowListenable.removeListener(
         _handleExternalSignal,
       );
       oldWidget.session.frameRangeSelection.removeListener(
@@ -1245,7 +1247,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       );
       widget.session.playheadMoved.addListener(_handleExternalSignal);
       widget.session.languageSettings.addListener(_handleExternalSignal);
-      widget.session.currentRowListenable.addListener(_handleExternalSignal);
+      widget.session.standing.currentRowListenable.addListener(
+        _handleExternalSignal,
+      );
       widget.session.frameRangeSelection.addListener(_handleExternalSignal);
       _cachedActions = null;
     }
@@ -1256,7 +1260,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   void dispose() {
     widget.session.playheadMoved.removeListener(_handleExternalSignal);
     widget.session.languageSettings.removeListener(_handleExternalSignal);
-    widget.session.currentRowListenable.removeListener(_handleExternalSignal);
+    widget.session.standing.currentRowListenable.removeListener(
+      _handleExternalSignal,
+    );
     widget.session.frameRangeSelection.removeListener(_handleExternalSignal);
     super.dispose();
   }

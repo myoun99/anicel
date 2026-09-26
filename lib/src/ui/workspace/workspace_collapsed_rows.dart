@@ -458,7 +458,7 @@ class _WorkspaceCollapsedRows {
           frameCursor: session.editingFrameCursor,
           rows: [displayRow],
           activeLayerId: layer.id,
-          currentRow: session.currentRowListenable,
+          currentRow: session.standing.currentRowListenable,
           frameStartIndex: geometry.value.frameStartIndex,
           frameEndIndexExclusive: geometry.value.frameEndIndexExclusive,
           leadingFrameSpacerWidth: 0,

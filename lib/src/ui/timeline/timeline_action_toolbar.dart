@@ -824,7 +824,7 @@ class TimelineActionToolbar extends StatelessWidget {
   Widget _sharedPill() => ListenableBuilder(
     listenable: Listenable.merge([
       session.rowSelection,
-      session.currentRowListenable,
+      session.standing.currentRowListenable,
       session.frameRangeSelection,
       session.laneRangeSelection,
       session.trackFrameRangeSelection,

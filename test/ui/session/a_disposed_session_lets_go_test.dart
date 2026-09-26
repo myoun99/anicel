@@ -40,9 +40,8 @@ void main() {
   test('every notifier the session owns is released', () {
     final session = disposedSession();
     final owned = <String, void Function()>{
-      'currentRowListenable': () => session.currentRowListenable.addListener(
-        () {},
-      ),
+      'currentRowListenable': () =>
+          session.standing.currentRowListenable.addListener(() {}),
       'cutLocalLaneRangeSelection': () => session.cutLocalLaneRangeSelection
           .addListener(() {}),
       'revealSelectionTick': () => session.revealSelectionTick.addListener(

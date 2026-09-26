@@ -216,7 +216,7 @@ class _InteractiveCanvasBuild {
             slice: BrushCanvasPanel.structureOf,
             builder: (context, _) => ListenableBuilder(
               listenable: Listenable.merge([
-                session.currentRowListenable,
+                session.standing.currentRowListenable,
                 // D12: the playing cut's identity — fires once per cut
                 // crossing (never per tick), and only the host CONFIG
                 // changes, like everything else on this boundary.
@@ -263,7 +263,7 @@ class _InteractiveCanvasBuild {
     // published without a session notify, so a manipulator gate
     // computed above would answer the row you left. Same trap the
     // stroke gate two lines down was written to avoid.
-    final standing = session.currentRowListenable.value;
+    final standing = session.standing.currentRowListenable.value;
     final showPositionGizmo =
         canPoseActiveLayer &&
         standing is LaneRowAddress &&
@@ -304,7 +304,7 @@ class _InteractiveCanvasBuild {
     );
     return MainCanvasBrushHost(
       rowAcceptsStrokes: _EditorCanvasAreaState._rowAcceptsStrokes(
-        session.currentRowListenable.value,
+        session.standing.currentRowListenable.value,
       ),
       // MERGED canvas: we own the live-stroke overlay, so the
       // layer stack can paint the active layer inside the

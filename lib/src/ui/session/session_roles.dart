@@ -171,7 +171,6 @@ abstract interface class SessionInternals {
   bool Function()? get canvasHasSelection;
   void Function()? get clearCanvasSelection;
   TimelineRowAddress get currentRow;
-  ValueNotifier<TimelineRowAddress?> get currentRowListenable;
   PillSubject get deleteSubject;
   ValueNotifier<TimelineDragPreview?> get dragPreview;
   ValueNotifier<int> get editingFrameCursor;

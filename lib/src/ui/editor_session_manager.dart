@@ -837,18 +837,6 @@ class EditorSessionManager extends ChangeNotifier
   void clearStoryboardCutSelection() =>
       storyboardRows.clearStoryboardCutSelection();
 
-  /// [currentRow] as a LISTENABLE — R10 #19's other half. The row you are
-  /// standing on is DRAWN now (the active layer's row, an fx header, a
-  /// property lane), and the rails have to learn it moved WITHOUT a
-  /// session notify: the claim that moves it fires on pointer-down, inside
-  /// gestures whose whole contract is silence until release.
-  ///
-  /// A [ValueNotifier] only notifies on a real change, so pressing again
-  /// in the row you are already standing on costs nothing — which is the
-  /// common case, and the reason this can be published eagerly.
-  @override
-  final ValueNotifier<TimelineRowAddress?> currentRowListenable =
-      ValueNotifier<TimelineRowAddress?>(null);
 
   /// The role's face on [RowSelection.rowSelection] — the collaborator owns
   /// the notifier, the session plays the role every other collaborator
@@ -1293,7 +1281,6 @@ class EditorSessionManager extends ChangeNotifier
   List<void Function()> get _teardown => [
     () => AppMemory.settings.removeListener(_applyCacheBudgets),
     layerStack.dispose,
-    currentRowListenable.dispose,
     rowSelectionVerbs.dispose,
     // ⚠️Deleting this line alone survives the teardown test: the `disposed`
     // guard inside [_publishCutLocalLaneRange] already answers. It stays

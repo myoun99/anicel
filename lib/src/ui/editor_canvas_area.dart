@@ -542,7 +542,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // The layer-not-drawable wording is reused deliberately — the user
     // asked for that notice, and it is the true one: this row does not
     // accept strokes.
-    if (!_rowAcceptsStrokes(session.currentRowListenable.value)) {
+    if (!_rowAcceptsStrokes(session.standing.currentRowListenable.value)) {
       return strings.noticeLayerNotDrawable;
     }
     final activeLayer = session.activeLayer;
