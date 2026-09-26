@@ -146,8 +146,7 @@ class CutVerbs {
   /// (`_InkOwners`): a conte cell by its block, the others by their cut —
   /// the envelope's by the cut that OWNS the envelope, the representative
   /// when [from] shares one ([cutEnvelopeInkOwner]); the copy is no
-  /// sibling, so it owns its own. The conte's paper plane belongs to no cut
-  /// and stays where it is.
+  /// sibling, so it owns its own.
   void _carrySheetInk({required CutId from, required CutId to}) {
     void carry(
       BrushFrameStore store,

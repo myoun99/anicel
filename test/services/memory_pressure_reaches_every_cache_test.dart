@@ -109,7 +109,6 @@ void main() {
     final stores = {
       'drawings': caches.brushFrameStore,
       'conte row': caches.conteInkRowStore,
-      'conte page': caches.conteInkPageStore,
       'envelope': caches.envelopeInkStore,
     };
     // Above the floor, so a halving shows as a number.

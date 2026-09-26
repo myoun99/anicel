@@ -595,8 +595,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // window's key stands down so translucent ink never composites twice.
       inkImageFor: inkController == null
           ? null
-          : (key) =>
-                inkController.displayImageFor(ConteInkPlane.of(key), key),
+          : (key) => inkController.displayImageFor(null, key),
       liveInkKeys: liveInkKeys,
       dragPreview: dragPreview,
       repaint: repaint.isEmpty ? null : Listenable.merge(repaint),

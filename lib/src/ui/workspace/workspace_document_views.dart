@@ -97,10 +97,7 @@ class _WorkspaceDocumentViews {
       stripStore: caches.timesheetInkStripStore,
       pageStore: caches.timesheetInkPageStore,
     );
-    _conteInk = ConteInkController(
-      rowStore: caches.conteInkRowStore,
-      pageStore: caches.conteInkPageStore,
-    );
+    _conteInk = ConteInkController(rowStore: caches.conteInkRowStore);
     _contePictures = ContePictureInkController(cels: caches.brushFrameStore);
     _envelopeInk = CutEnvelopeInkController(store: caches.envelopeInkStore);
   }

@@ -69,27 +69,27 @@ void main() {
       'call — and the NEXT surface on the next ask, never the stale one', (
     tester,
   ) async {
-    final pageStore = BrushFrameStore();
-    final controller = ConteInkController(pageStore: pageStore);
+    final rowStore = BrushFrameStore();
+    final controller = ConteInkController(rowStore: rowStore);
     controller.syncGeometry(
       const ConteSheetMetrics(pageWidth: 200, pageHeight: 280),
     );
-    final key = conteInkPageKey(0);
-    pageStore.storeBakedSurface(key, freshSurface(red));
+    final key = conteInkRowKey(const CutId('c1'), 'ink-1');
+    rowStore.storeBakedSurface(key, freshSurface(red));
 
     await tester.runAsync(() async {
-      final first = controller.displayImageFor(ConteInkPlane.page, key);
+      final first = controller.displayImageFor(null, key);
       expect(first, isNotNull, reason: 'nothing to wait for');
       expect(await pixelAt(first!, 1, 1), [255, 0, 0, 255]);
       expect(
-        identical(controller.displayImageFor(ConteInkPlane.page, key), first),
+        identical(controller.displayImageFor(null, key), first),
         isTrue,
         reason: 'kept while the surface stands',
       );
 
       // An undo, a redo, another stroke: a new surface of new tiles.
-      pageStore.storeBakedSurface(key, freshSurface(blue));
-      final second = controller.displayImageFor(ConteInkPlane.page, key);
+      rowStore.storeBakedSurface(key, freshSurface(blue));
+      final second = controller.displayImageFor(null, key);
       expect(
         await pixelAt(second!, 1, 1),
         [0, 0, 255, 255],

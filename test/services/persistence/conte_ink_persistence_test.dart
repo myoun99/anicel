@@ -6,11 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -44,9 +47,9 @@ void main() {
     );
   }
 
-  test('row + page ink cels round-trip through save/open; a row entry '
-      'whose block is gone prunes at LOAD; the main store never sees the '
-      'namespace', () async {
+  test('ink cels round-trip through save/open; an entry whose block is '
+      'gone — or the paper plane an older file kept — prunes at LOAD; the '
+      'main store never sees the namespace', () async {
     final dir = Directory.systemTemp.createTempSync('anicel-conte-ink');
     deleteAfterSessionEnds(dir);
     final path = '${dir.path}/ink.anicel';
@@ -94,7 +97,16 @@ void main() {
       drawingKey,
       inkSurface(seed: 9),
     );
-    s.renderCaches.conteInkPageStore.storeBakedSurface(conteInkPageKey(0), inkSurface());
+    // The paper plane an older file kept — in the spelling it was saved
+    // under. Gone since the ink is the cells' alone (H44).
+    const paperKey = BrushFrameKey(
+      projectId: conteInkProjectId,
+      trackId: conteInkTrackId,
+      cutId: CutId('conte-ink'),
+      layerId: LayerId('conte-page'),
+      frameId: FrameId('conte-page-p0'),
+    );
+    s.renderCaches.conteInkRowStore.storeBakedSurface(paperKey, inkSurface());
     await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
     final loaded = await openedSession(path);
@@ -117,9 +129,10 @@ void main() {
           'the block shows',
     );
     expect(
-      loaded.renderCaches.conteInkPageStore.celHasRenderableContent(conteInkPageKey(0)),
-      isTrue,
-      reason: 'page-plane ink (margins) reopens too',
+      loaded.renderCaches.conteInkRowStore.celHasRenderableContent(paperKey),
+      isFalse,
+      reason: 'the paper takes no ink any more, and an older file\'s is '
+          'dropped at the load',
     );
     expect(
       loaded.renderCaches.brushFrameStore.fileCelKeys.where(isConteInkKey),
@@ -129,17 +142,13 @@ void main() {
 
     // A second save from the LOADED session (incremental path over the
     // same file) keeps the ink sound.
-    loaded.renderCaches.conteInkPageStore.storeBakedSurface(
-      conteInkPageKey(1),
+    loaded.renderCaches.conteInkRowStore.storeBakedSurface(
+      liveKey,
       inkSurface(seed: 7),
     );
     await loaded.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     final reloaded = await openedSession(path);
     addTearDown(reloaded.dispose);
     expect(reloaded.renderCaches.conteInkRowStore.celHasRenderableContent(liveKey), isTrue);
-    expect(
-      reloaded.renderCaches.conteInkPageStore.celHasRenderableContent(conteInkPageKey(1)),
-      isTrue,
-    );
   });
 }

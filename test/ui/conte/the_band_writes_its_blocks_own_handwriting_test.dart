@@ -136,7 +136,7 @@ void main() {
   /// Whether the band of the block opening at [start] shows handwriting —
   /// under its own id, or the name the pen would write it under.
   bool bandInked(int start) => ink.hasInkFor(
-    ConteInkPlane.row,
+    null,
     conteInkRowKey(
       cutId,
       switch (memoAt(start)?.inkId) {
@@ -177,7 +177,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(memoAt(0)?.inkId ?? '', isEmpty);
     expect(
-      ink.hasInkFor(ConteInkPlane.row, conteInkRowKey(cutId, inkId)),
+      ink.hasInkFor(null, conteInkRowKey(cutId, inkId)),
       isFalse,
     );
 

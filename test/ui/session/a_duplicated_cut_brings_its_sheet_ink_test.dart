@@ -84,21 +84,6 @@ void main() {
     );
   });
 
-  test('the paper\'s own ink belongs to no cut and is not doubled', () {
-    final page = conteInkPageKey(0);
-    write(page);
-    final store = storeOf(page);
-    expect(
-      store.bakedSurfacesForCut(conteInkCutId).keys,
-      [page],
-      reason: 'fixture premise',
-    );
-
-    session.cutVerbs.duplicateActiveCut();
-
-    expect(store.bakedSurfacesForCut(conteInkCutId).keys, [page]);
-  });
-
   test('a shared envelope\'s writing comes from the cut that owns it — the '
       'copy of a sibling starts with what that sibling showed', () {
     final owner = session.requireActiveCut.id;

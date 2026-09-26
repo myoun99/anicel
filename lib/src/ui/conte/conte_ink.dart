@@ -18,71 +18,44 @@ import '../sheet/sheet_ink_layer.dart';
 import '../sheet/sheet_ink_controller.dart';
 import 'conte_picture_ink.dart';
 
-/// Which conte ink plane a stroke lands on.
-enum ConteInkPlane {
-  /// CELL-anchored ink over a cell's whole ROW BAND (cut column through
-  /// the TIME column) — one surface per storyboard BLOCK, keyed by the
-  /// block's own handwriting id, which rides on its memo beside its ACTION
-  /// (`ExposureMemo.inkId`): the ink rides its block through moves and
-  /// repagination, saves with the project, and dies with the block.
-  row,
-
-  /// Paper-anchored ink over the whole page (header, margins, the hole's
-  /// X) — one surface per page (`conte-page-p<n>`), the original plane.
-  page;
-
-  /// The plane [key]'s ink lives on — its layer says; the ink walk and the
-  /// page's printing both ask here.
-  static ConteInkPlane of(BrushFrameKey key) =>
-      key.layerId == conteInkRowLayerId ? row : page;
-}
-
 /// Owns the conte's sheet ink (#16 — the conte panel is the timesheet's
-/// canvas shell with conte content): brush strokes on the conte pages,
-/// kept in coordinators/stores SEPARATE from the session's cel
+/// canvas shell with conte content): brush strokes on the conte's cells,
+/// kept in a coordinator/store SEPARATE from the session's cel
 /// [BrushFrameStore] so sheet ink can never leak into cel rendering or
 /// export, committed through the app [HistoryManager] with the same
 /// [BrushStrokeHistoryCommand] the drawing canvas uses.
 ///
-/// TWO planes (R5 — the timesheet's page/strip pair, said in conte): the
-/// row plane binds ink to its CELL, the page plane keeps the margins, and
-/// a stroke over both leaves each its own piece (유저 2026-09-25: 「진짜
-/// 하나의 용지처럼. 데이터는 나누더라도」). ↩️R5's contract was 「strokes
-/// belong to the cell they start on, clipped to its band」 — one paper
-/// replaced it. The row/page stores may be handed in by the session so the
-/// project archive can persist them ([BrushFrameStore] cels, the second
-/// namespace).
-class ConteInkController extends SheetInkController<ConteInkPlane> {
-  ConteInkController({BrushFrameStore? rowStore, BrushFrameStore? pageStore})
+/// ONE plane, the envelope's shape: ink over a cell's whole ROW BAND (cut
+/// column through the TIME column), one surface per storyboard BLOCK —
+/// keyed by the block's own handwriting id, which rides on its memo beside
+/// its ACTION (`ExposureMemo.inkId`) — so the ink rides its block through
+/// moves and repagination, saves with the project, and dies with the
+/// block. ↩️There was a paper plane too, for the header, the margins and
+/// the rows no cut stood in; ink kept there stayed where it was drawn
+/// while the cuts moved under it, and the user wanted ink in the cells
+/// alone (H44, 09-26 「칸에만 … 구조적으로 강제」). The store may be handed
+/// in by the session so the project archive can persist it
+/// ([BrushFrameStore] cels, the second namespace).
+class ConteInkController extends SheetInkController<Null> {
+  ConteInkController({BrushFrameStore? rowStore})
     : this._(
         InkPlaneSlot(
           store: rowStore ?? BrushFrameStore(),
-          initialFrameKey: _initKey,
-        ),
-        InkPlaneSlot(
-          store: pageStore ?? BrushFrameStore(),
-          initialFrameKey: _initKey,
+          initialFrameKey: const BrushFrameKey(
+            projectId: conteInkProjectId,
+            trackId: conteInkTrackId,
+            cutId: CutId('conte-ink-init'),
+            layerId: conteInkRowLayerId,
+            frameId: FrameId('conte-ink-init'),
+          ),
         ),
       );
 
-  ConteInkController._(this._row, this._page)
-    : super({ConteInkPlane.row: _row, ConteInkPlane.page: _page});
-
-  static const BrushFrameKey _initKey = BrushFrameKey(
-    projectId: conteInkProjectId,
-    trackId: conteInkTrackId,
-    cutId: CutId('conte-ink-init'),
-    layerId: conteInkPageLayerId,
-    frameId: FrameId('conte-ink-init'),
-  );
+  ConteInkController._(this._row) : super({null: _row});
 
   final InkPlaneSlot _row;
-  final InkPlaneSlot _page;
 
-  /// One conte page of paper, at [conteInkScale].
-  CanvasSize? get pageSurfaceSize => _page.size;
-
-  /// One row-plane surface, at [conteInkScale]: the page BODY's size for every
+  /// One cell surface, at [conteInkScale]: the page BODY's size for every
   /// cell (the coordinator shares one geometry per plane). A cell's window
   /// exposes only its own band's slice — the tile-sparse store makes the
   /// unused remainder free, and a cell that GROWS (rowSpan) simply reveals
@@ -92,12 +65,6 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
   /// Adopts the sheet geometry (every page shares one metrics). Never
   /// notifies: callers run this during build.
   void syncGeometry(ConteSheetMetrics metrics) {
-    _page.syncTo(
-      CanvasSize(
-        width: (metrics.pageWidth * conteInkScale).ceil(),
-        height: (metrics.pageHeight * conteInkScale).ceil(),
-      ),
-    );
     _row.syncTo(
       CanvasSize(
         width: (metrics.bodyWidth * conteInkScale).ceil(),
@@ -107,20 +74,17 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
   }
 }
 
-/// The ink windows for one page, bottom-of-stack first: page ink lies
-/// under the row bands, so what a stroke draws on a cell's band goes to
-/// that cell and everything else (header, margins, the hole) goes to the
-/// paper — one stroke, split where it crosses ([sheetInkRegions]).
-/// A block not yet written on writes under the name [unwrittenInkIdOf]
-/// gives it ahead.
+/// The ink windows for one page: a window per cell's band, so a stroke
+/// over several cells leaves each its own piece ([sheetInkRegions]) and a
+/// stroke outside every cell leaves nothing — ink is the cells' alone (유저
+/// 09-26, H44 「칸에만」). A block not yet written on writes under the name
+/// [unwrittenInkIdOf] gives it ahead.
 ///
 /// A cell with no block draws its band as its picture draws (유저 답
 /// conte-drawing-target-Q3 「그림 칸과 같이 (토글을 따른다)」): into the
 /// handwriting of the block its first stroke makes — or, while the
 /// canvas's 「프레임 자동 생성」 is off, into nothing, refusing the pen with
-/// [rowRefusal] as the picture does. ↩️It offered the paper behind it,
-/// and a stroke from the picture across the band split in two: the block's
-/// half moved with the block, the paper's stayed on the page.
+/// [rowRefusal] as the picture does.
 ///
 /// ⛔Made from the walk the page's printers read ([conteInkMarks]) — the
 /// brush writes through exactly the windows the paper shows.
@@ -143,12 +107,7 @@ List<SheetInkWindow> conteInkWindows(
     ))
       SheetInkWindow.of(
         ink,
-        id: switch (ConteInkPlane.of(ink.key)) {
-          ConteInkPlane.row =>
-            'row-${ink.key.cutId.value}-${ink.key.frameId.value}',
-          ConteInkPlane.page => 'page-${page.pageIndex}',
-        },
-        plane: ConteInkPlane.of(ink.key),
+        id: 'row-${ink.key.cutId.value}-${ink.key.frameId.value}',
         refusal: blockless.contains(ink.key) ? rowRefusal : null,
       ),
   ];
@@ -235,14 +194,11 @@ class ConteInkLayer extends StatelessWidget {
       brushToolState: brushToolState,
       strokeActive: strokeActive,
       history: historyManager.gestures,
-      // The plane axis stays HERE, with the controllers that have one: a
-      // picture's plane is its cel's canvas size, the ink's is its plane.
+      // The plane axis stays HERE, with the controller that has one: a
+      // picture's plane is its cel's canvas size; the ink has one plane.
       sessionStateFor: (window) => switch (window.plane) {
         final CanvasSize size => pictures!.sessionStateFor(size, window.key),
-        final plane => controller.sessionStateFor(
-          plane! as ConteInkPlane,
-          window.key,
-        ),
+        _ => controller.sessionStateFor(null, window.key),
       },
       onStrokeCommitted: (window, strokeData) {
         beforeLanding?.call(window);
@@ -257,7 +213,7 @@ class ConteInkLayer extends StatelessWidget {
           return;
         }
         controller.commitStroke(
-          plane: window.plane! as ConteInkPlane,
+          plane: null,
           key: window.key,
           strokeData: strokeData,
           historyManager: historyManager,

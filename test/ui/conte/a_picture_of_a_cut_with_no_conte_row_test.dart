@@ -339,12 +339,12 @@ void main() {
 
     expect(storyboardLayerForCut(cutOf(empty)), isNull);
     expect(
-      [
-        for (var page = 0; page < 4; page++)
-          if (ink.hasInkFor(ConteInkPlane.page, conteInkPageKey(page))) page,
-      ],
-      isEmpty,
-      reason: 'the paper under the picture keeps none of it either',
+      ink.hasInkFor(
+        null,
+        conteInkRowKey(empty, session.storyboardCursor.conteInkIdFor(empty, 0)),
+      ),
+      isFalse,
+      reason: 'the band under the picture keeps none of it either',
     );
     expect(
       find.byKey(const ValueKey<String>('conte-picture-live-picture-39-0')),

@@ -36,12 +36,13 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 /// or a row whose every block is gone — has no block. With the canvas's
 /// 「프레임 자동 생성」 on, a stroke on the band makes the block the picture
 /// would have made and lands in ITS handwriting; ONE undo takes the block
-/// and the stroke. With it off, the band takes nothing — not even onto the
-/// paper behind it — and the press says why, in the canvas's words.
+/// and the stroke. With it off, the band takes nothing, and the press says
+/// why, in the canvas's words.
 ///
 /// ↩️The band offered the paper behind it: a stroke from the picture across
 /// the band split in two, the block's half moving with the block and the
-/// paper's half staying on the page.
+/// paper's half staying on the page. (The paper itself takes no ink since
+/// H44 — the cells alone do.)
 void main() {
   const canvas = CanvasSize(width: 640, height: 360);
   const drawn = CutId('38');
@@ -212,12 +213,7 @@ void main() {
       storyboardLayerForCut(cutOf(cut))?.timeline[0]?.memo?.inkId;
 
   bool bandHasInk(CutId cut, String inkId) =>
-      ink.hasInkFor(ConteInkPlane.row, conteInkRowKey(cut, inkId));
-
-  bool paperHasInk() => [
-    for (var page = 0; page < 4; page++)
-      if (ink.hasInkFor(ConteInkPlane.page, conteInkPageKey(page))) page,
-  ].isNotEmpty;
+      ink.hasInkFor(null, conteInkRowKey(cut, inkId));
 
   for (final (of, what) in [(empty, 'no conte row'), (hollow, 'no block')]) {
     testWidgets('with 「프레임 자동 생성」 on, a stroke on the band of a cut with '
@@ -236,7 +232,6 @@ void main() {
       expect(inkId, isNotNull);
       expect(inkId, isNotEmpty);
       expect(bandHasInk(of, inkId!), isTrue);
-      expect(paperHasInk(), isFalse, reason: 'none of it on the paper');
 
       session.historyManager.undo();
       await tester.pumpAndSettle();
@@ -267,15 +262,14 @@ void main() {
     // The picture's middle is the camera's centre, the canvas's middle.
     expect(surfacePixelRgba(cel!, 320, 180) ?? 0, isNot(0));
     expect(bandHasInk(empty, inkIdOf(empty)!), isTrue);
-    expect(paperHasInk(), isFalse);
 
     session.historyManager.undo();
     await tester.pumpAndSettle();
     expect(storyboardLayerForCut(cutOf(empty)), isNull);
   });
 
-  testWidgets('with it off, the band takes nothing — not onto the paper '
-      'behind it either — and the press says why, in the canvas\'s words', (
+  testWidgets('with it off, the band takes nothing, and the press says '
+      'why, in the canvas\'s words', (
     tester,
   ) async {
     final cell = await pumpPanel(tester, autoCreates: false);
@@ -285,7 +279,11 @@ void main() {
     await strokeFrom(tester, at, at + const Offset(0, 8));
 
     expect(storyboardLayerForCut(cutOf(empty)), isNull);
-    expect(paperHasInk(), isFalse);
+    expect(
+      bandHasInk(empty, session.storyboardCursor.conteInkIdFor(empty, 0)),
+      isFalse,
+      reason: 'the band it would have written is blank',
+    );
     expect(cursorNotices.revision, greaterThan(notices));
     expect(
       cursorNotices.message,

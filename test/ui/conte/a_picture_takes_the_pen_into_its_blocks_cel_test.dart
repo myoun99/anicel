@@ -254,7 +254,7 @@ void main() {
         unwrittenInkIdOf: bandOf,
       ).singleWhere((window) => window.key == conteInkRowKey(cutId, 'band-0'));
       BitmapSurface rowSurface() => ink
-          .sessionStateFor(ConteInkPlane.row, row.key)
+          .sessionStateFor(null, row.key)
           .canvasState
           .currentSurface;
       // The picture's middle is the pose's centre: the camera at rest.
@@ -274,14 +274,14 @@ void main() {
         inkAt(store.bakedSurfaceOrNull(picture.window.key), underInside),
         isFalse,
       );
-      expect(ink.hasInkFor(ConteInkPlane.row, row.key), isFalse);
+      expect(ink.hasInkFor(null, row.key), isFalse);
 
       history.redo();
       expect(
         inkAt(store.bakedSurfaceOrNull(picture.window.key), underInside),
         isTrue,
       );
-      expect(ink.hasInkFor(ConteInkPlane.row, row.key), isTrue);
+      expect(ink.hasInkFor(null, row.key), isTrue);
     });
 
     testWidgets('🚨the slot\'s rounded corner is not the picture\'s: a stroke '
@@ -308,7 +308,7 @@ void main() {
       ]);
 
       final surface = ink
-          .sessionStateFor(ConteInkPlane.row, row.key)
+          .sessionStateFor(null, row.key)
           .canvasState
           .currentSurface;
       expect(
@@ -450,7 +450,7 @@ void main() {
     );
     expect(
       ink.hasInkFor(
-        ConteInkPlane.row,
+        null,
         conteInkRowKey(
           cutId,
           session.storyboardCursor.conteInkIdFor(cutId, 0),

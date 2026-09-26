@@ -9,6 +9,7 @@ import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -128,8 +129,8 @@ void main() {
                 imageRepaint: images,
               ),
               () => ink.commitStroke(
-                plane: ConteInkPlane.page,
-                key: conteInkPageKey(0),
+                plane: null,
+                key: conteInkRowKey(const CutId('39'), 'ink-0'),
                 strokeData: oneDab(),
                 historyManager: session.historyManager,
               ),
@@ -379,6 +380,8 @@ void main() {
   }
 }
 
+/// The block at the cut's start is written on: its band prints, and a live
+/// brush's window over it is what stands the print down.
 Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
   id: LayerId('$cutId-sb'),
   name: 'SB',
@@ -392,6 +395,7 @@ Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
       entry.key: TimelineExposure.drawing(
         FrameId('$cutId-${entry.key}'),
         length: entry.value,
+        memo: entry.key == 0 ? const ExposureMemo(inkId: 'ink-0') : null,
       ),
   },
 );

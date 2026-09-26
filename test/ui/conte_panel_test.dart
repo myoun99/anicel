@@ -415,9 +415,7 @@ void main() {
       CutId(firstCell.cutId),
       firstCell.source.inkId!,
     );
-    final page0 = conteInkPageKey(0);
-    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isFalse);
-    expect(controller.hasInkFor(ConteInkPlane.page, page0), isFalse);
+    expect(controller.hasInkFor(null, rowKey), isFalse);
 
     // (120,120) → (180,150) lies inside the first cell's row band: the
     // stroke lands on ITS surface.
@@ -434,14 +432,11 @@ void main() {
     await tester.pump();
     expect(strokeActive.value, isFalse);
 
-    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isTrue);
-    expect(
-      controller.hasInkFor(ConteInkPlane.page, page0),
-      isFalse,
-      reason: 'the band shows every spot of it; the paper got nothing',
-    );
+    expect(controller.hasInkFor(null, rowKey), isTrue);
 
-    // The band above the table: paper-anchored, the page plane's.
+    // ⛔The band above the table is no cell's, and nothing takes ink there
+    // (유저 09-26, H44 「칸에만 그려지도록」) — not even a step of history.
+    final steps = historyManager.undoCount;
     final headerStroke = await tester.startGesture(
       layerBox + Offset(120, metrics.topBandTop + 10),
       pointer: 8,
@@ -453,23 +448,20 @@ void main() {
     await tester.pump();
     await headerStroke.up();
     await tester.pump();
-    expect(controller.hasInkFor(ConteInkPlane.page, page0), isTrue);
+    expect(historyManager.undoCount, steps, reason: 'the paper takes none');
 
-    // App-history undo parity, per plane, newest first.
+    // App-history undo parity.
     historyManager.undo();
-    expect(controller.hasInkFor(ConteInkPlane.page, page0), isFalse);
-    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isTrue);
-    historyManager.undo();
-    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isFalse);
+    expect(controller.hasInkFor(null, rowKey), isFalse);
     historyManager.redo();
-    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isTrue);
+    expect(controller.hasInkFor(null, rowKey), isTrue);
   });
 
   // 🚨ONE PAPER (유저 2026-09-25: 「진짜 하나의 용지처럼. 데이터는
   // 나누더라도」): the stroke used to belong to the window it started in
   // and ran on over the cells below it, in the paper's ink.
   testWidgets('one paper: a stroke from the band above the table down into '
-      'a cell leaves the paper and the cell each its piece — ONE undo', (
+      'a cell leaves the cell its piece and the header none — ONE undo', (
     tester,
   ) async {
     final source = buildConteSheetSource(_project());
@@ -510,18 +502,14 @@ void main() {
     );
 
     final firstCell = page.cells.first;
-    final windows = conteInkWindows(page);
-    final paper = windows.singleWhere(
-      (window) => window.key == conteInkPageKey(0),
-    );
-    final cell = windows.singleWhere(
+    final cell = conteInkWindows(page).singleWhere(
       (window) =>
           window.key ==
           conteInkRowKey(CutId(firstCell.cutId), firstCell.source.inkId!),
     );
     bool inkUnder(SheetInkWindow window, Offset at) {
       final surface = controller
-          .sessionStateFor(window.plane! as ConteInkPlane, window.key)
+          .sessionStateFor(null, window.key)
           .canvasState
           .currentSurface;
       final pixel = window.placement.pixelOf(at);
@@ -546,16 +534,14 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(inkUnder(paper, start), isTrue);
     expect(inkUnder(cell, end), isTrue);
     expect(
-      inkUnder(paper, end),
+      inkUnder(cell, start),
       isFalse,
-      reason: 'the cell shows that spot, so the cell keeps it',
+      reason: 'the header is no cell\'s, so no surface keeps that piece',
     );
 
     historyManager.undo();
-    expect(controller.hasInkFor(ConteInkPlane.page, paper.key), isFalse);
-    expect(controller.hasInkFor(ConteInkPlane.row, cell.key), isFalse);
+    expect(controller.hasInkFor(null, cell.key), isFalse);
   });
 }

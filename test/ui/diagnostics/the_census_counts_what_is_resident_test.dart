@@ -66,7 +66,6 @@ void main() {
     final caches = session.renderCaches;
     final stores = [
       caches.conteInkRowStore,
-      caches.conteInkPageStore,
       caches.envelopeInkStore,
       caches.timesheetInkStripStore,
       caches.timesheetInkPageStore,
@@ -105,10 +104,10 @@ void main() {
     addTearDown(session.dispose);
     final caches = session.renderCaches;
     caches.brushFrameStore.restoreBaked({key('a'): parkedBlob(key('a'))});
-    caches.conteInkPageStore.restoreBaked({key('b'): parkedBlob(key('b'))});
+    caches.conteInkRowStore.restoreBaked({key('b'): parkedBlob(key('b'))});
     // Fixture: both stores really hold parked bytes.
     expect(caches.brushFrameStore.coldBakedBytes, greaterThan(0));
-    expect(caches.conteInkPageStore.coldBakedBytes, greaterThan(0));
+    expect(caches.conteInkRowStore.coldBakedBytes, greaterThan(0));
 
     final rows = censusRows(session);
     expect(
@@ -120,7 +119,6 @@ void main() {
     expect(
       rows['sheetInk'],
       caches.conteInkRowStore.hotBakedBytes +
-          caches.conteInkPageStore.hotBakedBytes +
           caches.envelopeInkStore.hotBakedBytes +
           caches.timesheetInkStripStore.hotBakedBytes +
           caches.timesheetInkPageStore.hotBakedBytes,

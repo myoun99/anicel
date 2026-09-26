@@ -34,8 +34,6 @@ String celPlaceLine(CelPlace place) {
       rowPlaceLine(ownerName: ownerName, layerName: layerName),
       if (celName.isNotEmpty) celName,
     ].join(' · '),
-    ContePageInkPlace(:final pageNumber) =>
-      '${strings.panelConte} · p$pageNumber',
     ConteRowInkPlace(:final cutName, :final celName) =>
       '${strings.panelConte} · $cutName · $celName',
     EnvelopeInkPlace(:final cutName) => '${strings.panelEnvelope} · $cutName',

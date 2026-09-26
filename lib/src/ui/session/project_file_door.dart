@@ -1117,9 +1117,10 @@ _sortLoadedCels(AnicelOpenResult result, RenderCaches caches) {
 /// Whether a loaded sheet-ink key's owner is still in the project — each
 /// set gathered once, on the first key that asks.
 ///
-/// A conte ROW entry belongs to its storyboard block ("ink dies with the
-/// block" — the block its `ExposureMemo.inkId` names, in its cut); a conte
-/// PAGE entry to nothing, the paper stays. An envelope's and a timesheet's
+/// A conte entry belongs to its storyboard block ("ink dies with the
+/// block" — the block its `ExposureMemo.inkId` names, in its cut); one that
+/// names no block — the paper plane an older file kept, gone since the ink
+/// is the cells' alone (H44) — holds nothing. An envelope's and a timesheet's
 /// belong to the cut the sheet describes — which box or band a stroke sits
 /// in is never pruned: swapping the envelope's form back has to bring the
 /// writing back with it.
@@ -1131,10 +1132,11 @@ class _InkOwners {
   late final Set<(CutId, String)> _blocks = writtenConteBlocks(_project);
 
   bool stillHold(BrushFrameKey key) {
-    if (conteInkRowIdOf(key) case final inkId?) {
-      return _blocks.contains((key.cutId, inkId));
+    if (isConteInkKey(key)) {
+      final inkId = conteInkRowIdOf(key);
+      return inkId != null && _blocks.contains((key.cutId, inkId));
     }
-    return isConteInkKey(key) || _cuts.contains(key.cutId);
+    return _cuts.contains(key.cutId);
   }
 }
 

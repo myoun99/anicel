@@ -106,14 +106,14 @@ void main() {
             ),
           commit: (controller, history) =>
               (controller as ConteInkController).commitStroke(
-                plane: ConteInkPlane.page,
-                key: conteInkPageKey(0),
+                plane: null,
+                key: conteInkRowKey(const CutId('conte-cut'), 'ink-0'),
                 strokeData: oneDab(),
                 historyManager: history,
               ),
           hasInk: (controller) => (controller as ConteInkController).hasInkFor(
-            ConteInkPlane.page,
-            conteInkPageKey(0),
+            null,
+            conteInkRowKey(const CutId('conte-cut'), 'ink-0'),
           ),
         ),
         'envelope': (
