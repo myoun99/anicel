@@ -397,10 +397,12 @@ void main() {
         final service = WintabPenService.instance;
 
         service.debugInjectPacket(_packet(pressure: 0.6, buttons: 1));
-        _down(tester, const Offset(4, 8), time: _ms(0));
+        _down(tester, const Offset(4, 8), time: _ms(0), force: 0.3);
         await tester.pump();
         queue = [_packet(pressure: 0, buttons: 0)];
-        _move(tester, const Offset(40, 8), time: _ms(8));
+        // The pointer still reports a pressure of its own: the driver's
+        // word is the one that stands mid-stroke (PEN-2), not the pointer's.
+        _move(tester, const Offset(40, 8), time: _ms(8), force: 0.3);
         await tester.pump();
         _up(tester, const Offset(40, 8), time: _ms(16));
         await tester.pump();
