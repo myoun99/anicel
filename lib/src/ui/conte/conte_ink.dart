@@ -111,32 +111,48 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
 /// under the row bands, so what a stroke draws on a cell's band goes to
 /// that cell and everything else (header, margins, the hole) goes to the
 /// paper — one stroke, split where it crosses ([sheetInkRegions]).
-/// A cell with no drawing block carries no band window — ink belongs to
-/// blocks ("그림 삭제 시 잉크 동반 삭제"), so a block-less cell offers
-/// only the paper behind it. A block not yet written on writes under the
-/// name [unwrittenInkIdOf] gives it ahead.
+/// A block not yet written on writes under the name [unwrittenInkIdOf]
+/// gives it ahead.
+///
+/// A cell with no block draws its band as its picture draws (유저 답
+/// conte-drawing-target-Q3 「그림 칸과 같이 (토글을 따른다)」): into the
+/// handwriting of the block its first stroke makes — or, while the
+/// canvas's 「프레임 자동 생성」 is off, into nothing, refusing the pen with
+/// [rowRefusal] as the picture does. ↩️It offered the paper behind it,
+/// and a stroke from the picture across the band split in two: the block's
+/// half moved with the block, the paper's stayed on the page.
 ///
 /// ⛔Made from the walk the page's printers read ([conteInkMarks]) — the
 /// brush writes through exactly the windows the paper shows.
 List<SheetInkWindow> conteInkWindows(
   ContePageLayout page, {
   String Function(ContePlacedCell cell)? unwrittenInkIdOf,
-}) => [
-  for (final ink in conteInkMarks(
-    page,
-    page.metrics,
-    unwrittenInkIdOf: unwrittenInkIdOf,
-  ))
-    SheetInkWindow.of(
-      ink,
-      id: switch (ConteInkPlane.of(ink.key)) {
-        ConteInkPlane.row =>
-          'row-${ink.key.cutId.value}-${ink.key.frameId.value}',
-        ConteInkPlane.page => 'page-${page.pageIndex}',
-      },
-      plane: ConteInkPlane.of(ink.key),
-    ),
-];
+  String? rowRefusal,
+}) {
+  final blockless = {
+    if (unwrittenInkIdOf != null)
+      for (final cell in page.cells)
+        if (cell.source.frameId == null)
+          conteInkRowKey(CutId(cell.cutId), unwrittenInkIdOf(cell)),
+  };
+  return [
+    for (final ink in conteInkMarks(
+      page,
+      page.metrics,
+      unwrittenInkIdOf: unwrittenInkIdOf,
+    ))
+      SheetInkWindow.of(
+        ink,
+        id: switch (ConteInkPlane.of(ink.key)) {
+          ConteInkPlane.row =>
+            'row-${ink.key.cutId.value}-${ink.key.frameId.value}',
+          ConteInkPlane.page => 'page-${page.pageIndex}',
+        },
+        plane: ConteInkPlane.of(ink.key),
+        refusal: blockless.contains(ink.key) ? rowRefusal : null,
+      ),
+  ];
+}
 
 /// The conte's ink input/display stack: every window hosts the SAME
 /// interactive brush view the drawing canvas uses, windowed onto its
@@ -156,6 +172,7 @@ class ConteInkLayer extends StatelessWidget {
     this.pictureWindows = const [],
     this.pictureInvalidationSink,
     this.unwrittenInkIdOf,
+    this.rowRefusal,
     this.beforeLanding,
   });
 
@@ -190,9 +207,14 @@ class ConteInkLayer extends StatelessWidget {
   /// The name a block not yet written on writes under ([conteInkWindows]).
   final String Function(ContePlacedCell cell)? unwrittenInkIdOf;
 
+  /// Why the band of a cell with no block takes no ink — the pictures'
+  /// refusal, word for word ([conteInkWindows]).
+  final String? rowRefusal;
+
   /// Told each piece of a stroke is landing, before it is kept — where what
-  /// it was drawn into is made or named: the conte row a picture of a cut
-  /// with none draws into, the id a block's first handwriting puts on it.
+  /// it was drawn into is made or named: the block a cell with none draws
+  /// into (its picture or its band), the id a block's first handwriting
+  /// puts on it.
   /// So the stroke lands in something its cut has, in the stroke's own undo
   /// step.
   final ValueChanged<SheetWindow>? beforeLanding;
@@ -201,7 +223,11 @@ class ConteInkLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     return SheetInkLayer(
       windows: [
-        ...conteInkWindows(page, unwrittenInkIdOf: unwrittenInkIdOf),
+        ...conteInkWindows(
+          page,
+          unwrittenInkIdOf: unwrittenInkIdOf,
+          rowRefusal: rowRefusal,
+        ),
         ...pictureWindows,
       ],
       keyPrefix: 'conte',

@@ -166,9 +166,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
   ActiveStrokeOverlayModel _strokeOf(String picture) =>
       _strokes.putIfAbsent(picture, ActiveStrokeOverlayModel.new);
 
-  // The pictures of cuts with no conte row take the pen or refuse it as the
-  // canvas's 「프레임 자동 생성」 says — so the page is laid again when it
-  // flips.
+  // The cells with no block — picture and band — take the pen or refuse it
+  // as the canvas's 「프레임 자동 생성」 says, so the page is laid again when
+  // it flips.
   @override
   void initState() {
     super.initState();
@@ -454,26 +454,36 @@ class _ConteTabHostState extends State<ConteTabHost> {
       cameraPoseOf: _session.camera.cameraPoseForCut,
       cameraFrameSize: _session.camera.cameraFrameSize,
       conteCelOf: autoFrame.conteCelFor,
-      // The canvas's notice, word for word, for a press on a cell it may
-      // not fill (`EditorCanvasArea._drawRefusalFor`).
-      rowRefusal: autoFrame.autoCreates
-          ? null
-          : AppStrings.of(
-              _session.languageSettings.value.programLanguage,
-            ).noticeNoFrameHere,
+      rowRefusal: _rowRefusal,
     ), _strokeOf);
   }
 
+  /// Why a cell with no block takes no ink, picture and band alike — the
+  /// canvas's notice, word for word, for a press on a cell it may not fill
+  /// (`EditorCanvasArea._drawRefusalFor`); null while its 「프레임 자동
+  /// 생성」 is on and the stroke makes the block.
+  String? get _rowRefusal => _session.autoFrame.autoCreates
+      ? null
+      : AppStrings.of(
+          _session.languageSettings.value.programLanguage,
+        ).noticeNoFrameHere;
+
   /// A piece of a stroke landing makes what it was drawn into, in the
-  /// stroke's own undo step: a picture of a cut with no conte row the row,
-  /// a block's first handwriting the block's id.
+  /// stroke's own undo step: a cell with no block the block — its picture
+  /// and its band alike (유저 답 conte-drawing-target-Q3 「그림 칸과 같이
+  /// (토글을 따른다)」) — and a block's first handwriting the block's id.
   void _makeWhatTheStrokeLandsIn(SheetWindow window) {
-    if (window is SheetPictureWindow) {
-      if (_session.cutById(window.key.cutId) case final cut?) {
-        _session.autoFrame.addConteCel(cut);
-      }
-    } else if (conteInkRowIdOf(window.key) case final inkId?) {
-      _session.storyboardCursor.writeConteBlockInk(window.key.cutId, inkId);
+    final inkId = conteInkRowIdOf(window.key);
+    if (window is! SheetPictureWindow && inkId == null) {
+      return;
+    }
+    final cut = _session.cutById(window.key.cutId);
+    if (cut == null) {
+      return;
+    }
+    _session.autoFrame.addConteCel(cut);
+    if (inkId != null) {
+      _session.storyboardCursor.writeConteBlockInk(cut.id, inkId);
     }
   }
 
@@ -504,6 +514,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         pictureWindows: [for (final picture in pictures) picture.window],
         pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
         unwrittenInkIdOf: _unwrittenInkIdOf,
+        rowRefusal: _rowRefusal,
         beforeLanding: _makeWhatTheStrokeLandsIn,
       ),
     );

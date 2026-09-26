@@ -395,8 +395,12 @@ void main() {
     expect(celInkAt(row, const Offset(320, 180), of: hollow), isTrue);
   });
 
-  testWidgets('a press on a refusing picture\'s rounded-off corner is the '
-      'paper\'s — no notice where no picture shows', (tester) async {
+  testWidgets('a press on a refusing picture\'s rounded-off corner is its '
+      'band\'s — which has no block either, and refuses as well', (
+    tester,
+  ) async {
+    // 유저 답 conte-drawing-target-Q3 「그림 칸과 같이 (토글을 따른다)」.
+    // ↩️The corner was the paper's, and said nothing.
     final picture = await pumpPanel(tester, autoCreates: false);
     final border = ConteSheetMetrics(
       cameraAspect: session.camera.cameraFrameAspect,
@@ -410,7 +414,9 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(cursorNotices.revision, notices);
+    expect(cursorNotices.revision, greaterThan(notices));
+    // The notice goes of itself.
+    await tester.pump(CursorNoticeController.defaultDuration);
   });
 
   testWidgets('with it off, a conte row with no block is left as it is',
