@@ -766,6 +766,49 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     );
   }
 
+  /// The style the sheet sets its words in: [face] at [fontSize], in
+  /// [color], bold or not.
+  ///
+  /// ONE spelling for the printer and the header's editor (F-188, 유저
+  /// 2026-09-26: 「최대한 안움직이게」): the editor types a box's words in
+  /// the style they were printed in, so opening it moves no glyph. ↩️The
+  /// editor had its own copy, and named no face — it typed in another font.
+  static TextStyle wordsStyle(
+    TextStyle face, {
+    required double fontSize,
+    Color color = _ink,
+    bool bold = false,
+  }) => face.copyWith(
+    color: color,
+    fontSize: fontSize,
+    fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+  );
+
+  /// A header box's value: set this size, bold, centred on the box, in
+  /// [headerValueRect] (R7-⑥ reference layout).
+  static const double headerValueSize = 14;
+
+  /// Where a header box's value is set: its top this far down the box, no
+  /// wider than the box less its margins.
+  static Rect headerValueRect(Rect box) => Rect.fromLTRB(
+    box.left + 6,
+    box.top + 26,
+    box.right - 6,
+    box.bottom - 4,
+  );
+
+  /// The Direction memo: set this size, from the top left of
+  /// [memoTextRect], wrapped at its width.
+  static const double memoSize = 11;
+
+  /// Where the memo is set in its band.
+  static Rect memoTextRect(Rect band) => Rect.fromLTRB(
+    band.left + 8,
+    band.top + 6,
+    band.right - 8,
+    band.bottom - 6,
+  );
+
   void _text(
     Canvas canvas,
     String text,
@@ -780,11 +823,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: face.copyWith(
-          color: color,
-          fontSize: fontSize,
-          fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
-        ),
+        style: wordsStyle(face, fontSize: fontSize, color: color, bold: bold),
       ),
       textDirection: TextDirection.ltr,
       maxLines: 1,

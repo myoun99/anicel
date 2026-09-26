@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_info.dart';
 import '../sheet/sheet_text_edit_layer.dart';
+import '../text/app_face.dart';
 import 'timesheet_document_painter.dart';
 
 /// Tap-to-edit for the sheet's typed header text: the TimesheetInfo-backed
@@ -34,11 +35,11 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
   /// Commits the edited Direction memo (the cut note).
   final ValueChanged<String> onMemoCommitted;
 
-  /// The sheet's ink (`TimesheetDocumentPainter`'s).
-  static const Color _ink = Color(0xFF33322F);
-
   @override
   Widget build(BuildContext context) {
+    // The face the sheet prints in — the strata's painter reads the same
+    // ambient style.
+    final face = appFaceOf(DefaultTextStyle.of(context).style);
     // The header repeats on every paper page; the continuous strip has
     // one, and page view (R26 #41) shows one at a time.
     return SheetTextEditLayer(
@@ -54,19 +55,12 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
               SheetTextTarget(
                 keyValue: 'timesheet-header-edit-${box.field.name}-p$page',
                 box: box.rect,
-                // Header values print CENTERED at y top+26 @14 w600 (R7-⑥
-                // reference layout) — the field lands on those glyphs.
-                textRect: Rect.fromLTRB(
-                  box.rect.left + 6,
-                  box.rect.top + 26,
-                  box.rect.right - 6,
-                  box.rect.bottom - 4,
-                ),
+                textRect: TimesheetDocumentPainter.headerValueRect(box.rect),
                 text: text,
-                style: const TextStyle(
-                  color: _ink,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                style: TimesheetDocumentPainter.wordsStyle(
+                  face,
+                  fontSize: TimesheetDocumentPainter.headerValueSize,
+                  bold: true,
                 ),
                 centred: true,
                 onCommitted: (text) => onHeaderFieldCommitted(box.field, text),
@@ -74,16 +68,14 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
           SheetTextTarget(
             keyValue: 'timesheet-memo-edit-p$page',
             box: layout.memoBandRect(page),
-            // The memo prints top-left at (left+8, top+6) @11 over the full
-            // open band (the framed memo box is retired — R7-⑥).
-            textRect: Rect.fromLTRB(
-              layout.memoBandRect(page).left + 8,
-              layout.memoBandRect(page).top + 6,
-              layout.memoBandRect(page).right - 8,
-              layout.memoBandRect(page).bottom - 6,
+            textRect: TimesheetDocumentPainter.memoTextRect(
+              layout.memoBandRect(page),
             ),
             text: layout.document.memoText,
-            style: const TextStyle(color: _ink, fontSize: 11),
+            style: TimesheetDocumentPainter.wordsStyle(
+              face,
+              fontSize: TimesheetDocumentPainter.memoSize,
+            ),
             multiline: true,
             onCommitted: onMemoCommitted,
           ),

@@ -52,14 +52,15 @@ class _TimesheetBandsPass {
         );
       }
       if (_painter._drawContent) {
+        final value = TimesheetDocumentPainter.headerValueRect(box.rect);
         _painter._text(
           canvas,
           headerFieldValue(box.field, pageIndex),
-          Offset(box.rect.center.dx, box.rect.top + 26),
-          fontSize: 14,
+          Offset(value.center.dx, value.top),
+          fontSize: TimesheetDocumentPainter.headerValueSize,
           bold: true,
           centeredAtX: true,
-          maxWidth: box.rect.width - 12,
+          maxWidth: value.width,
         );
       }
     }
@@ -113,21 +114,23 @@ class _TimesheetBandsPass {
   /// the top-right memo box frame are both retired). The cut's Direction
   /// memo (cut note) types into its top left, spanning the full width.
   void paintMemoBand(Canvas canvas, int pageIndex) {
-    final band = _painter.layout.memoBandRect(pageIndex);
+    final memo = TimesheetDocumentPainter.memoTextRect(
+      _painter.layout.memoBandRect(pageIndex),
+    );
     if (_painter.document.memoText.isNotEmpty) {
       final painter = TextPainter(
         text: TextSpan(
           text: _painter.document.memoText,
-          style: _painter.face.copyWith(
-            color: TimesheetDocumentPainter._ink,
-            fontSize: 11,
+          style: TimesheetDocumentPainter.wordsStyle(
+            _painter.face,
+            fontSize: TimesheetDocumentPainter.memoSize,
           ),
         ),
         textDirection: TextDirection.ltr,
         maxLines: 8,
         ellipsis: '…',
-      )..layout(maxWidth: band.width - 16);
-      painter.paint(canvas, Offset(band.left + 8, band.top + 6));
+      )..layout(maxWidth: memo.width);
+      painter.paint(canvas, memo.topLeft);
     }
     // NO derived instruction lines here anymore (R5-⑥): the shorthand
     // ('A→B PAN …') writes itself INTO the cut note once when the
