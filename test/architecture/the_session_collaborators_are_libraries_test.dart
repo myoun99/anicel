@@ -103,7 +103,12 @@ const _mayNameTheSession = <String, String>{
 /// 36 → 35 (2026-09-26, the eighth family): the reveal tick moved into
 /// `RangeSelections`, beside its one writer (`revealSelection`), which
 /// releases it; the rails' hosts read it there.
-const _sessionInternalsMembers = 35;
+/// 35 → 34 (2026-09-27, the ninth family): whether the active cut shows a
+/// row moved into `ActiveCutSpan`, beside the row list it asks. It was one
+/// of the cycle edges — the span reads what `ActiveCutControllers` builds —
+/// so its two askers take the QUESTION as a closure, the way the
+/// controllers already take the span's frame count.
+const _sessionInternalsMembers = 34;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

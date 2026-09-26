@@ -152,7 +152,6 @@ typedef PixelVerbCanvas = ({
 /// collaborator that uses it, becomes a role, or is injected as the
 /// sibling it really is. ⛔Nothing is added here.
 abstract interface class SessionInternals {
-  bool activeCutHasLayer(LayerId? layerId);
   EditorAppSettings get appSettings;
   bool blockMoveEligible(LayerId layerId);
   int commitBlockStart(LayerId layerId, int displayStart);

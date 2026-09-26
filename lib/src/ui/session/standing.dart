@@ -59,6 +59,7 @@ class Standing {
     required RangeSelections rangeSelections,
     required RailView railView,
     required bool Function(LayerId layerId) fxEnabledOf,
+    required bool Function(LayerId? layerId) activeCutHasLayer,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -71,7 +72,8 @@ class Standing {
        _trackSe = trackSe,
        _rangeSelections = rangeSelections,
        _railView = railView,
-       _fxEnabledOf = fxEnabledOf;
+       _fxEnabledOf = fxEnabledOf,
+       _activeCutHasLayer = activeCutHasLayer;
 
   final RangeSelections _rangeSelections;
 
@@ -79,6 +81,10 @@ class Standing {
   /// the standing law's two inputs besides the stack ([keepStandingShown]).
   final RailView _railView;
   final bool Function(LayerId layerId) _fxEnabledOf;
+
+  /// Whether the active cut SHOWS a row (`ActiveCutSpan.activeCutHasLayer`),
+  /// asked through the session for the construction cycle that note names.
+  final bool Function(LayerId? layerId) _activeCutHasLayer;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -713,7 +719,7 @@ class Standing {
   void _seatTimelineOnStoryboardStand({required LayerId? before}) {
     final seat = switch (storyboardStandingRow) {
       LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
-          when _internals.activeCutHasLayer(layerId) =>
+          when _activeCutHasLayer(layerId) =>
         layerId,
       TrackRowAddress() => layerACutStandSeats(before: before),
       _ => null,
@@ -737,7 +743,7 @@ class Standing {
     if (conte != null) {
       return conte.id;
     }
-    return _internals.activeCutHasLayer(before) ? before : null;
+    return _activeCutHasLayer(before) ? before : null;
   }
 
   /// Selects a row of the storyboard's rail by ADDRESS — the rail taps and
@@ -817,8 +823,8 @@ class Standing {
 
   /// Records the layer a cut is being LEFT on — one funnel instead of a
   /// hook on every path that can move the active layer. Stale ids need no
-  /// cleanup: [_internals.activeCutHasLayer] already drops a layer the cut no longer
-  /// has, and the rebuild falls back to the top row.
+  /// cleanup: `ActiveCutSpan.activeCutHasLayer` already drops a layer the cut
+  /// no longer has, and the rebuild falls back to the top row.
   ///
   /// SE rows are recorded like any other: what the timeline shows for them
   /// is a cut-local PROJECTION of the track layer, so "the row this cut was

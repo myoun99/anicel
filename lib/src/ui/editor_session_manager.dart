@@ -595,6 +595,7 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     internals: this,
     playbackFrameCount: () => activeCutSpan.activeCutPlaybackFrameCount,
+    activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId),
     trackSeDisplayLayers: () => trackSe.trackSeDisplayLayers,
     trackTransitionDisplayLayer: () => transitions.trackTransitionDisplayLayer,
     onRebuilt: () {
@@ -702,7 +703,7 @@ class EditorSessionManager extends ChangeNotifier
   final CanvasSelectionDocument canvasSelection = CanvasSelectionDocument();
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId));
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
 
   // I-41: every door that MOVES where the user stands — the cut, the row,
   // the frame, the gap — first settles the last edit where it left them
@@ -1399,21 +1400,6 @@ class EditorSessionManager extends ChangeNotifier
     trackSe: trackSe,
     transitions: transitions,
   );
-
-  /// ⛔THIS USED TO RE-DERIVE THE MEMBERSHIP BY KIND and knew only two of
-  /// the three sources (see [ActiveCutSpan.activeCutRowLayers] for H17 and
-  /// what it cost). It asks the composed list instead — and it stays HERE
-  /// rather than moving into [ActiveCutSpan] because
-  /// [ActiveCutControllers] is what asks it, and the span reads the
-  /// track-owned rows those controllers build: injecting it there would
-  /// close a construction cycle.
-  @override
-  bool activeCutHasLayer(LayerId? layerId) {
-    if (layerId == null) {
-      return false;
-    }
-    return activeCutSpan.activeCutRowLayers.any((layer) => layer.id == layerId);
-  }
 
   // --- Cut commands -------------------------------------------------------
 

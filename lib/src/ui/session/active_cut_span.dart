@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../../models/cut.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/transition_geometry.dart';
 import 'camera.dart';
 import 'editor_app_settings.dart';
@@ -75,6 +76,19 @@ class ActiveCutSpan {
       _transitions.trackTransitionDisplayLayer,
     ];
   }
+
+  /// Whether the active cut SHOWS [layerId] — one of [activeCutRowLayers],
+  /// whose note is this predicate's own H17 story.
+  ///
+  /// ↩️It lived on the session: [ActiveCutControllers] asks it, and this
+  /// span reads the track-owned rows those controllers build, so handing
+  /// the span to them would close a construction cycle. The askers take the
+  /// QUESTION instead — a closure the session hands them, the way the
+  /// controllers already take [activeCutPlaybackFrameCount]
+  /// (ARCH-session-state's ninth family, 2026-09-27).
+  bool activeCutHasLayer(LayerId? layerId) =>
+      layerId != null &&
+      activeCutRowLayers.any((layer) => layer.id == layerId);
 
   int get activeCutPlaybackFrameCount =>
       math.max(1, _project.activeCutOrNull?.duration ?? 1);
