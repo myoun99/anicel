@@ -74,7 +74,7 @@ void main() {
 
   /// The builder the floor is laid out by — the one the rebuild marks.
   String floorBuilder(WidgetTester tester) => describeIdentity(
-        (tester.renderObject(floorBox) as RenderProxyBox).child!,
+        (tester.renderObject(floorBox) as RenderProxyBox).child,
       );
 
   testWidgets('a pixel edit rebuilds the canvas panel and lays out nothing '
