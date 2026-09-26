@@ -86,6 +86,22 @@ void main() {
     ]);
   });
 
+  testWidgets('a cut answers only up to its own end — the next cut answers '
+      'for the frames after it', (tester) async {
+    final s = session();
+    addTearDown(s.dispose);
+
+    expect(
+      storyboardReadyRuns(s, 0, 12, layout: [at(empty, 0), at(drawn, 8)]),
+      [
+        (startIndex: 0, endIndexExclusive: 8),
+        (startIndex: 10, endIndexExclusive: 12),
+      ],
+      reason: '8..9 are the drawn cut\'s unbaked cel — the empty cut before '
+          'it ends at 8 and has no say there',
+    );
+  });
+
   testWidgets('a frame two entries cover belongs to the first', (
     tester,
   ) async {
