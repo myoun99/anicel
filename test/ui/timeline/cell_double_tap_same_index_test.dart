@@ -5,7 +5,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
@@ -26,7 +26,7 @@ void main() {
     timeline: {0: const TimelineExposure.drawing(FrameId('cel'), length: 6)},
   );
 
-  setUp(TimelineCellDoubleTapGate.reset);
+  setUp(TimelineDoubleTapGate.reset);
 
   Future<void> pumpRow(
     WidgetTester tester, {
@@ -177,30 +177,32 @@ void main() {
   // part of WHICH cell a tap hit.
   test("a layer's cell and its lane's cell at one frame are TWO cells", () {
     const layerId = LayerId('a');
-    TimelineCellDoubleTapGate.recordTapDown(layerId, 3);
-    expect(
-      TimelineCellDoubleTapGate.acceptsActivation(
-        layerId,
-        3,
-        laneId: 'position',
-      ),
-      isFalse,
-      reason: 'the cells row, then its lane: two seeks',
+    final TimelineDoubleTapCells cells = (
+      frameAt: (_) => 3,
+      axis: Axis.horizontal,
+      cellExtent: () => 10.0,
     );
-    TimelineCellDoubleTapGate.recordTapDown(layerId, 3, laneId: 'position');
-    expect(
-      TimelineCellDoubleTapGate.acceptsActivation(layerId, 3, laneId: 'scale'),
-      isFalse,
-      reason: 'two lanes of one layer: two cells',
-    );
-    TimelineCellDoubleTapGate.recordTapDown(layerId, 3, laneId: 'position');
-    expect(
-      TimelineCellDoubleTapGate.acceptsActivation(
-        layerId,
-        3,
-        laneId: 'position',
-      ),
-      isTrue,
-    );
+    var opened = 0;
+    void press({String? lane}) => timelineCellDoubleTapRecord(
+      layerId: layerId,
+      laneId: lane,
+      cells: cells,
+    )(Offset.zero);
+    void pressAgain({String? lane}) => timelineCellDoubleTapActivation(
+      layerId: layerId,
+      laneId: lane,
+      cells: cells,
+      onActivate: (_) => opened += 1,
+    )(TapDownDetails());
+
+    press();
+    pressAgain(lane: 'position');
+    expect(opened, 0, reason: 'the cells row, then its lane: two seeks');
+    press(lane: 'position');
+    pressAgain(lane: 'scale');
+    expect(opened, 0, reason: 'two lanes of one layer: two cells');
+    press(lane: 'position');
+    pressAgain(lane: 'position');
+    expect(opened, 1);
   });
 }

@@ -257,6 +257,7 @@ class _LayerGridRailRows {
       // T10: the rail row and the frame cells take the SAME settled-tap
       // clear, because 「행이든 뭐든 동일하게」.
       onSettledPress: _state.widget.hooks.onSettledPress,
+      labelDoubleClick: _state.widget.hooks.labelDoubleClick,
       onToggleLayerVisibility: _state.widget.hooks.onToggleLayerVisibility,
       onLayerOpacityChanged: _state.widget.hooks.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: _state.widget.hooks.onLayerOpacityChangeEnd,

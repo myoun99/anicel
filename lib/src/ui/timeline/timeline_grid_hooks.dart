@@ -11,6 +11,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import 'layer_label_controls.dart' show LayerMarkEdit;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
+import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cel_content_source.dart';
@@ -59,6 +60,7 @@ class TimelineGridHooks {
     this.frameNameForLayer,
     this.celContent,
     required this.onSelectLayer,
+    this.labelDoubleClick,
     required this.onSelectFrame,
     this.onSettledPress,
     this.onScrubFrame,
@@ -178,6 +180,10 @@ class TimelineGridHooks {
   final TimelineCelContentSource? celContent;
 
   final ValueChanged<LayerId> onSelectLayer;
+
+  /// A double click on a row's LABEL — the rename (I-48) — asked at its
+  /// first press ([TimelineLabelDoubleClick]). Null mounts none.
+  final TimelineLabelDoubleClick? labelDoubleClick;
 
   final ValueChanged<int> onSelectFrame;
 

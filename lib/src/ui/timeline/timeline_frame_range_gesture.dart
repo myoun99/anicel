@@ -12,7 +12,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
-import 'timeline_cell_double_tap.dart';
+import 'timeline_double_tap.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;

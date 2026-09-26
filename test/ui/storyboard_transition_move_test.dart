@@ -16,7 +16,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 
 /// 🚨C1 (2026-08-17): the storyboard's TRANSITION blocks MOVE by the frame
 /// blocks' own grammar — select the span, then a drag starting inside the
@@ -112,7 +112,7 @@ Future<void> _selectSpan(WidgetTester tester) async {
 }
 
 void main() {
-  setUp(TimelineCellDoubleTapGate.reset);
+  setUp(TimelineDoubleTapGate.reset);
 
   testWidgets('a REAL mouse drag starting INSIDE the selection MOVES the '
       'span — live mid-drag, committed once on release', (tester) async {

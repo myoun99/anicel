@@ -16,7 +16,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 
 /// 🚨C2 (2026-08-17): a storyboard SE block MOVE previews LIVE — mid-drag,
 /// pointer still down, the strip renders the block at its previewed spot,
@@ -109,7 +109,7 @@ Finder _paperAt(int startFrame) =>
     find.byKey(ValueKey<String>('storyboard-se-paper-$_seLayerId-$startFrame'));
 
 void main() {
-  setUp(TimelineCellDoubleTapGate.reset);
+  setUp(TimelineDoubleTapGate.reset);
 
   testWidgets('a REAL mouse drag inside the selection slides the sound — '
       'LIVE mid-drag on the track-global strip, one commit on release', (

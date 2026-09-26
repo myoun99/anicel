@@ -103,6 +103,7 @@ class _XSheetGridHeaders {
       mainExtent: naturalHeaderExtent,
       depth: entry.depth,
       onSettledPress: _state.widget.hooks.onSettledPress,
+      labelDoubleClick: _state.widget.hooks.labelDoubleClick,
       linkPartners:
           _state.widget.hooks.layerLinkPartnersOf?.call(layer.id) ?? const [],
       opacityOverride: _state.widget.hooks.layerOpacityOverrideOf?.call(

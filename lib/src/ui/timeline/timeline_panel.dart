@@ -34,6 +34,7 @@ import 'timeline_grid_metrics.dart';
 import 'layer_label_controls.dart' show LayerMarkEdit, layerRailColumnWidthsIn;
 import '../widgets/app_icon_button.dart';
 import 'timeline_command_bar.dart';
+import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_run_end_handles.dart';
 import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline_row_filter.dart';
@@ -63,6 +64,7 @@ class TimelinePanel extends StatefulWidget {
     this.frameNameForLayer,
     this.celContent,
     required this.onSelectLayer,
+    this.labelDoubleClick,
     required this.onSelectFrame,
     this.onSettledPress,
     this.onScrubFrame,
@@ -211,6 +213,9 @@ class TimelinePanel extends StatefulWidget {
   /// R26 #44: the unworked-block tint's fact and its event.
   final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
+
+  /// See [TimelineGridHooks.labelDoubleClick].
+  final TimelineLabelDoubleClick? labelDoubleClick;
   final ValueChanged<int> onSelectFrame;
 
   /// 🚨T10's second half: a press that turned out to be a TAP clears
@@ -595,6 +600,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       frameNameForLayer: widget.frameNameForLayer,
       celContent: widget.celContent,
       onSelectLayer: widget.onSelectLayer,
+      labelDoubleClick: widget.labelDoubleClick,
       onSelectFrame: widget.onSelectFrame,
       onSettledPress: widget.onSettledPress,
       onScrubFrame: widget.onScrubFrame,

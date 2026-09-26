@@ -20,7 +20,7 @@ import 'package:anicel/src/models/timeline_frame_range.dart'
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 
 /// 🗣️유저 2026-09-26 (zoom-floor-fixed-marks-Q2, 「1px 보다 좁은 칸은 같은
@@ -30,7 +30,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 void main() {
   const eighth = 1 / 8;
 
-  setUp(TimelineCellDoubleTapGate.reset);
+  setUp(TimelineDoubleTapGate.reset);
 
   Future<void> doubleTapAt(
     WidgetTester tester,

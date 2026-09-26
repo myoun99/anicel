@@ -28,7 +28,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineRowPaperExtent;
-import 'package:anicel/src/ui/timeline/timeline_cell_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show BlockEdgeGripInk, BlockEdgeGripPainter, TimelineBlockEdgeGrip;
 
@@ -148,7 +148,7 @@ Future<void> _doubleTapAt(
 }
 
 void main() {
-  setUp(TimelineCellDoubleTapGate.reset);
+  setUp(TimelineDoubleTapGate.reset);
 
   group('B5① the transition blocks take the frame blocks\' double-tap law', () {
     testWidgets('two taps on DIFFERENT cells of one span never open the '

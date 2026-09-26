@@ -88,7 +88,7 @@ import 'timeline/timeline_beat_lines.dart'
         TimelineGridSheet,
         timelineLaneGround,
         timelineRowPaperExtent;
-import 'timeline/timeline_cell_double_tap.dart'
+import 'timeline/timeline_double_tap.dart'
     show timelineCellDoubleTapActivation, timelineCellDoubleTapRecord;
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
@@ -3443,7 +3443,7 @@ class _StoryboardSeRow extends StatelessWidget {
 
   /// B6 (2026-08-17): double-tapping the SAME cell of a sound block opens
   /// its instance editor — the timeline SE row's entrance, gated by the
-  /// frame blocks' shared [TimelineCellDoubleTapGate]. Global frames,
+  /// frame blocks' shared [TimelineDoubleTapGate]. Global frames,
   /// because that is this row's axis. Null keeps the row press-only.
   final void Function(LayerId layerId, int globalFrame)? onEditSeEntry;
 

@@ -82,28 +82,38 @@ class LayerVerbs {
   /// and it is the one [canDeleteLayer] refuses for the same reason: it has
   /// no row verbs of its own on any surface.
   List<LayerId> renameableSelectedLayerIds() =>
-      _selectedLayerIdsWhere((layer) => !layer.kind.isTrackFixture);
+      _selectedLayerIdsWhere(_nameIsEditable);
+
+  /// Of [ids] — the rows a press acted on — the ones whose NAME may be
+  /// edited, by [renameableSelectedLayerIds]'s rule (I-48's double click).
+  List<LayerId> renameableOf(Iterable<LayerId> ids) =>
+      _layerIdsWhere(ids, _nameIsEditable);
+
+  static bool _nameIsEditable(Layer layer) => !layer.kind.isTrackFixture;
 
   /// The selected LAYER rows whose layer passes [keep], in selection order,
   /// once each — the one walk behind [deletableSelectedLayerIds] and
   /// [renameableSelectedLayerIds] (the audit's clone scan, 2026-09-03).
-  List<LayerId> _selectedLayerIdsWhere(bool Function(Layer layer) keep) {
-    final selection = _selection.rowSelection.value;
-    if (selection.isEmpty) {
-      return const [];
-    }
+  List<LayerId> _selectedLayerIdsWhere(bool Function(Layer layer) keep) =>
+      _layerIdsWhere([
+        for (final row in _selection.rowSelection.value)
+          if (row is LayerRowAddress) row.layerId,
+      ], keep);
+
+  /// Of [ids], the layers of the cut that pass [keep], in order, once each.
+  List<LayerId> _layerIdsWhere(
+    Iterable<LayerId> ids,
+    bool Function(Layer layer) keep,
+  ) {
     final byId = {for (final layer in _project.layers) layer.id: layer};
-    final ids = <LayerId>[];
-    for (final row in selection) {
-      if (row is! LayerRowAddress) {
-        continue;
-      }
-      final layer = byId[row.layerId];
-      if (layer != null && !ids.contains(layer.id) && keep(layer)) {
-        ids.add(layer.id);
+    final kept = <LayerId>[];
+    for (final id in ids) {
+      final layer = byId[id];
+      if (layer != null && !kept.contains(id) && keep(layer)) {
+        kept.add(id);
       }
     }
-    return ids;
+    return kept;
   }
 
   bool get canDeleteActiveLayer {
@@ -460,8 +470,14 @@ class LayerVerbs {
   /// One undo step, and the SAME name on every row — the user's words are
   /// "all of them to the same name", not "a numbered series", so nothing
   /// here invents suffixes.
-  void renameSelectedLayers(String name) => _eachRowAsOneStep(
-    renameableSelectedLayerIds(),
+  void renameSelectedLayers(String name) =>
+      renameRows(renameableSelectedLayerIds(), name);
+
+  /// [ids] renamed to [name] as ONE undo step — the selection's rename
+  /// above, and I-48's double click, whose rows are the ones its first
+  /// press acted on.
+  void renameRows(List<LayerId> ids, String name) => _eachRowAsOneStep(
+    ids,
     'Rename rows',
     (cutId, layerId) {
       _project.cutCommandCoordinator.renameLayer(

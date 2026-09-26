@@ -14,7 +14,7 @@ import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
 import 'axis_turn.dart' show extentAlong;
 import 'layer_label_controls.dart' show layerMarkColor;
-import 'timeline_cell_double_tap.dart';
+import 'timeline_double_tap.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_marker.dart';

@@ -18,6 +18,11 @@ import 'layer_opacity_field.dart';
 import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
 import 'rail_eyes.dart';
+import 'timeline_double_tap.dart'
+    show
+        TimelineLabelDoubleClick,
+        timelineLabelDoubleTapDetector,
+        timelineLabelDoubleTapRecord;
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
 import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
@@ -135,6 +140,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.metrics,
     required this.onSelectLayer,
     this.onSettledPress,
+    this.labelDoubleClick,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
@@ -201,6 +207,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// selected goes (유저: 「클릭하고 떼면 뭐든 비우게」). The SAME callback
   /// the frame cells take, because 「행이든 뭐든 동일하게」.
   final VoidCallback? onSettledPress;
+
+  /// A double click on this strip — the LABEL — asked at its first press
+  /// (I-48; see [TimelineLabelDoubleClick]). Null mounts none.
+  final TimelineLabelDoubleClick? labelDoubleClick;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
@@ -346,13 +356,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // 그만좀하자」). Both wear the same widget-level policy now, device gate
     // included. The sheet's columns read it through the same widget: an
     // `InkWell.onTap` fires on the RELEASE, which was F-26's report.
-    //
-    // ⛔The InkWell keeps a NO-OP `onTap`, which is not decoration: it holds
-    // a tap recognizer in the arena so scroll slop over a row behaves the
-    // way it always has. The painted cells do the identical thing for the
-    // identical reason.
+    final doubleClick = labelDoubleClick;
+    final surface = _surface(context, colorScheme);
     final strip = InstantTapRegion(
       pressSeeksFor: AppInput.timelineCellPressSeeks,
+      // I-48: the frame block's activation law, RECORD half — this press
+      // landed on this row's label. It runs BEFORE the pick below, so the
+      // host reads the selection as the press found it.
+      onPressDown: doubleClick == null
+          ? null
+          : timelineLabelDoubleTapRecord(layer.id, doubleClick),
       // The PICK. Whether it also CLEARS is the session's call — see
       // `standOnRow`, which holds the selection when the press landed inside
       // it, because that press is most likely the start of a move.
@@ -360,39 +373,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
       // And when the press turned out to be a tap, the selection goes —
       // 유저: 「클릭하고 떼면 뭐든 비우게」.
       onSettledTap: onSettledPress == null ? null : (_) => onSettledPress!(),
-      child: InkWell(
-        key: ValueKey<String>(_rowKey),
-        onTap: () {},
-        // No hover glow on the ROW surface (UI-R24 #6): selection speaks
-        // through the background alone; only the buttons may brighten.
-        hoverColor: Colors.transparent,
-        child: Container(
-          width: _width,
-          height: _height,
-          padding: _padding,
-          decoration: _plate(colorScheme),
-          child: Semantics(
-            key: active ? ValueKey<String>('$keyPrefix-selected-layer') : null,
-            label: active ? 'selected layer' : 'layer',
-            container: true,
-            explicitChildNodes: true,
-            // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
-            // shared skeleton in the shared order at the shared extents,
-            // running downward: the same list the rail's rows and the
-            // legend above read.
-            child: Flex(
-              direction: axis,
-              crossAxisAlignment: _crossAxisAlignment,
-              children: [
-                ..._leadingCells(),
-                ?_depthGuides(colorScheme),
-                _nameArea(context, colorScheme),
-                ..._trailingCells(colorScheme),
-              ],
-            ),
-          ),
-        ),
-      ),
+      // …and its ACTIVATION half, INSIDE this region: the deeper listener
+      // hears a press first, so the second press reads the first one's
+      // record before its own record replaces it — the cells' order.
+      child: doubleClick == null
+          ? surface
+          : timelineLabelDoubleTapDetector(layerId: layer.id, child: surface),
     );
 
     // R10 R3: a folder row used to carry rename + dissolve on a context
@@ -432,6 +418,46 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // instead of along its row — and 「헤더쪽은 손떼면」 does NOT mean it.
     return PressFireScope(fireOn: PressFire.down, child: strip);
   }
+
+  /// The strip itself — its plate and its twelve slots.
+  ///
+  /// ⛔The InkWell keeps a NO-OP `onTap`, which is not decoration: it holds
+  /// a tap recognizer in the arena so scroll slop over a row behaves the
+  /// way it always has. The painted cells do the identical thing for the
+  /// identical reason.
+  Widget _surface(BuildContext context, ColorScheme colorScheme) => InkWell(
+    key: ValueKey<String>(_rowKey),
+    onTap: () {},
+    // No hover glow on the ROW surface (UI-R24 #6): selection speaks
+    // through the background alone; only the buttons may brighten.
+    hoverColor: Colors.transparent,
+    child: Container(
+      width: _width,
+      height: _height,
+      padding: _padding,
+      decoration: _plate(colorScheme),
+      child: Semantics(
+        key: active ? ValueKey<String>('$keyPrefix-selected-layer') : null,
+        label: active ? 'selected layer' : 'layer',
+        container: true,
+        explicitChildNodes: true,
+        // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
+        // shared skeleton in the shared order at the shared extents,
+        // running downward: the same list the rail's rows and the
+        // legend above read.
+        child: Flex(
+          direction: axis,
+          crossAxisAlignment: _crossAxisAlignment,
+          children: [
+            ..._leadingCells(),
+            ?_depthGuides(colorScheme),
+            _nameArea(context, colorScheme),
+            ..._trailingCells(colorScheme),
+          ],
+        ),
+      ),
+    ),
+  );
 
   /// `timeline-folder-row-…` / `xsheet-layer-row-…`: the kind's word and the
   /// surface's word, one grammar.

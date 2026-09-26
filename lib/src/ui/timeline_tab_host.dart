@@ -333,6 +333,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         previewAxis: _previewAxis,
       );
 
+  /// I-48: a double click on a row's label renames the rows its first
+  /// press acted on.
+  VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
+      renameOnLabelDoubleClick(context, _session, pressed);
+
   /// 🚨T25 — the SELECTION's instance, not the playhead's.
   ///
   /// The button moved to the shared pill, so its subject moved with it:
@@ -558,6 +563,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // the move-from-inside drag working.
             onSelectLayer: (layerId) =>
                 _session.standOnRow(LayerRowAddress(layerId)),
+            labelDoubleClick: _renameOnLabelDoubleClick,
             // Ruler scrubs during playback SEEK the playback clock instead of
             // moving the (hidden) editing playhead.
             onSelectFrame: (frameIndex) {
