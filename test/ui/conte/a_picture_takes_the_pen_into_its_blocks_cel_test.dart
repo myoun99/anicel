@@ -295,7 +295,7 @@ void main() {
             listenable: Listenable.merge([session, ink, cels]),
             builder: (context, _) => ConteTabHost(
               session: session,
-              thumbnailFor: null,
+              thumbnails: null,
               viewport: seedFromRender(tester, CanvasViewport()),
               inkController: ink,
               pictures: cels,
@@ -491,10 +491,17 @@ void main() {
                 listenable: Listenable.merge([session, ink, cels, brushOn]),
                 builder: (context, _) => ConteTabHost(
                   session: session,
-                  thumbnailFor: printed == null
+                  thumbnails: printed == null
                       ? null
-                      : (cut, frame, {tier = StoryboardThumbnailTier.sheet}) =>
-                            printed,
+                      : (
+                          resolve:
+                              (
+                                cut,
+                                frame, {
+                                tier = StoryboardThumbnailTier.sheet,
+                              }) => printed,
+                          landed: const _NeverLands(),
+                        ),
                   viewport: seedFromRender(tester, CanvasViewport()),
                   inkController: ink,
                   pictures: cels,
@@ -677,4 +684,15 @@ class _Screen {
     }
     return count;
   }
+}
+
+/// A picture store whose one picture never changes.
+class _NeverLands implements Listenable {
+  const _NeverLands();
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
 }
