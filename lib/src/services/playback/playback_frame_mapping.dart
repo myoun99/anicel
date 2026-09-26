@@ -65,6 +65,7 @@ class TransitionContribution {
     required this.cut,
     required this.localFrameIndex,
     required this.opacity,
+    this.veils = const [],
   });
 
   final Cut cut;
@@ -78,13 +79,18 @@ class TransitionContribution {
   /// OWNS a frame, and every consumer asking that question keeps reading it.
   final int localFrameIndex;
 
-  /// 1 outside a transition; the ramp while one crosses this cut's boundary.
+  /// 1 outside a transition; the ramp while an O.L crosses this cut's
+  /// boundary.
   final double opacity;
+
+  /// The screens one-sided transitions lay over this cut's contribution,
+  /// in order ([cutTransitionVeilsAt], F-192) — empty outside them.
+  final List<TransitionVeil> veils;
 
   @override
   String toString() =>
       'TransitionContribution(cut: ${cut.id}, local: $localFrameIndex, '
-      'opacity: $opacity)';
+      'opacity: $opacity, veils: $veils)';
 }
 
 /// Everything visible at [globalFrameIndex] on ONE track, transitions
@@ -130,6 +136,12 @@ List<TransitionContribution> resolveTransitionContributions({
           spans: spans,
           globalFrame: globalFrameIndex,
         ),
+        veils: cutTransitionVeilsAt(
+          cutStart: entry.startFrame,
+          cutEnd: entry.endFrame,
+          spans: spans,
+          globalFrame: globalFrameIndex,
+        ),
       ),
     );
   }
@@ -146,6 +158,7 @@ class TrackStackContribution {
     required this.trackIndex,
     required this.opacity,
     required this.isBottomTrack,
+    this.veils = const [],
   });
 
   final Cut cut;
@@ -159,6 +172,9 @@ class TrackStackContribution {
   /// The share of the result this cut's picture should own — the transition
   /// ramp, before any track fade the caller multiplies in. 1 outside an O.L.
   final double opacity;
+
+  /// The screens laid over this contribution ([TransitionContribution.veils]).
+  final List<TransitionVeil> veils;
 
   /// Whether this contribution belongs to the bottom covered TRACK — the
   /// stage, which owns the paper, the letterbox and the pasteboard apron.
@@ -291,6 +307,7 @@ List<TrackStackContribution> resolveTrackStackContributions({
           trackIndex: trackIndex,
           opacity: contribution.opacity,
           isBottomTrack: trackIndex == bottomTrackIndex,
+          veils: contribution.veils,
         ),
       );
     }

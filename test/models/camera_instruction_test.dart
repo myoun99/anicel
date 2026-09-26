@@ -132,11 +132,14 @@ void main() {
 
       // The fades seed the sheet's wedge marks (wide where the screen is
       // covered), O.L the bowtie; every other term stays the straight
-      // duration line.
+      // duration line. ↩️F-192: W.I and W.O wear their OWN wedges now —
+      // the same shape on a white screen.
       for (final def in CameraInstructionSet.standard.defs) {
         expect(def.markType, switch (def.id) {
-          'fi' || 'wi' => CameraInstructionMarkType.fi,
-          'fo' || 'wo' => CameraInstructionMarkType.fo,
+          'fi' => CameraInstructionMarkType.fi,
+          'fo' => CameraInstructionMarkType.fo,
+          'wi' => CameraInstructionMarkType.wi,
+          'wo' => CameraInstructionMarkType.wo,
           'ol' => CameraInstructionMarkType.ol,
           _ => CameraInstructionMarkType.bar,
         }, reason: def.id);

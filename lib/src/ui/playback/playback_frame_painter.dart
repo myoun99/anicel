@@ -9,6 +9,7 @@ import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
+import '../../models/transition_geometry.dart' show TransitionVeil;
 import '../../services/se_name_tag_plan.dart';
 import '../../services/composite_effect_paint.dart'
     show alphaOnly, resolveCompositeEffectPlan;
@@ -20,6 +21,7 @@ import '../canvas/viewport_canvas_transform.dart';
 import '../text/se_name_tag_paint.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
+import 'transition_veil_paint.dart';
 
 /// Paints one cached composite frame inside the canvas panel viewport.
 ///
@@ -46,6 +48,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     this.cutEffects = const <ResolvedLayerEffect>[],
     this.fadeOpacity = 1,
     this.imageOpacity = 1,
+    this.veils = const [],
     // R28 #9: the one paper constant, not a repeated literal.
     this.paperColor = const Color(ProjectBackground.defaultPaperArgb),
     this.paperBackground,
@@ -103,7 +106,21 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// (the tracks below, then the backdrop), never a painted-on wash. The
   /// old per-cut FO/WO target color is gone with the wash; a white-out is
   /// a white cut on a lower track now. 1 costs nothing (no saveLayer).
+  ///
+  /// ↩️F-192 (유저 2026-09-27) took the one-sided transitions back out of
+  /// that sentence: 「컷의 페이드인은 애초에 쌩 검은화면에서 바뀐단거였음.
+  /// 화이트인은 쌩 흰화면에서 바뀌는거고 … 백그라운드색을 바꾸는거말고
+  /// 구조적으로」. An F.I/F.O/W.I/W.O no longer thins the unit — it lays its
+  /// own screen over it ([veils]). What this still carries is the O.L's
+  /// dissolve and the track's own opacity, which are transparency.
   final double fadeOpacity;
+
+  /// The screens one-sided transitions lay over this cut's WHOLE unit — the
+  /// camera frame, or the canvas without a camera — in order, each its
+  /// color at its opacity ([cutTransitionVeilsAt], F-192). They are part of
+  /// the unit, so the unit's own thinning ([fadeOpacity], or [imageOpacity]
+  /// above the stage) thins them with it.
+  final List<TransitionVeil> veils;
 
   /// Alpha on the composite draw itself. The stacked views fade a
   /// NON-bottom track through this instead of [fadeOpacity]: the bottom
@@ -384,6 +401,15 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     if (resolvedCutPose != null) {
       canvas.restore();
     }
+    // F-192: the transition's own screen over the whole unit, inside the
+    // unit's fade so the stage's thinning takes it along; a track above the
+    // stage thins it by its own weight, as it thins its picture.
+    paintTransitionVeils(
+      canvas,
+      frameRect ?? canvasRect,
+      veils,
+      thinnedBy: imageOpacity,
+    );
     if (fading) {
       canvas.restore();
     }
@@ -399,6 +425,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     cameraFrameSize,
     cutPose,
     ByList(cutEffects),
+    ByList(veils),
     fadeOpacity,
     imageOpacity,
     paperColor,

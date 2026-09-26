@@ -182,6 +182,9 @@ const Map<CameraInstructionMarkType, String> _markLabels = {
   CameraInstructionMarkType.bar: 'A⊢─⊣B',
   CameraInstructionMarkType.fi: 'FI ▷',
   CameraInstructionMarkType.fo: '◁ FO',
+  // F-192: the white screen is a choice a term makes, so a custom term can.
+  CameraInstructionMarkType.wi: 'WI ▷',
+  CameraInstructionMarkType.wo: '◁ WO',
   CameraInstructionMarkType.ol: 'O.L ⋈',
 };
 

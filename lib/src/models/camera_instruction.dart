@@ -22,10 +22,19 @@ import 'exposure_instruction.dart';
 /// the translucent bowtie the sheets draw for O.L / cross-dissolve spans.
 /// Lives on the def (not the event) so a term always looks the same and
 /// external formats (TDTS) can map it per term.
+///
+/// [wi] and [wo] are W.I and W.O: the fade wedges again, clearing from and
+/// closing to a WHITE screen where [fi] and [fo] use a black one. 🗣️F-192
+/// (유저 2026-09-27): 「컷의 페이드인은 애초에 쌩 검은화면에서 바뀐단거였음.
+/// 화이트인은 쌩 흰화면에서 바뀌는거고」 — so the screen is part of what the
+/// term IS, and the mark is where the term says what it is
+/// (`transitionScreenColorOf`).
 enum CameraInstructionMarkType {
   bar('bar'),
   fi('fi'),
   fo('fo'),
+  wi('wi'),
+  wo('wo'),
   ol('ol');
 
   const CameraInstructionMarkType(this.jsonValue);
@@ -113,14 +122,32 @@ class CameraInstructionDef {
   };
 
   factory CameraInstructionDef.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String;
     return CameraInstructionDef(
-      id: json['id'] as String,
+      id: id,
       name: json['name'] as String,
       iconKey: json['iconKey'] as String,
       colorValue: json['color'] as int?,
-      markType: CameraInstructionMarkType.fromJson(json['markType']),
+      markType: _theWhiteWedgeOf(
+        id,
+        CameraInstructionMarkType.fromJson(json['markType']),
+      ),
     );
   }
+
+  /// F-192: the standard W.I and W.O were stored wearing the BLACK wedges
+  /// ([CameraInstructionMarkType.fi]/[CameraInstructionMarkType.fo]) until
+  /// they had marks of their own, and a vocabulary is stored with the
+  /// project — so a file from before reads its W terms as the white ones
+  /// they always meant.
+  static CameraInstructionMarkType _theWhiteWedgeOf(
+    String id,
+    CameraInstructionMarkType stored,
+  ) => switch ((id, stored)) {
+    ('wi', CameraInstructionMarkType.fi) => CameraInstructionMarkType.wi,
+    ('wo', CameraInstructionMarkType.fo) => CameraInstructionMarkType.wo,
+    _ => stored,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -217,13 +244,13 @@ class CameraInstructionSet {
         id: 'wi',
         name: 'WI',
         iconKey: 'white-in',
-        markType: CameraInstructionMarkType.fi,
+        markType: CameraInstructionMarkType.wi,
       ),
       CameraInstructionDef(
         id: 'wo',
         name: 'WO',
         iconKey: 'white-out',
-        markType: CameraInstructionMarkType.fo,
+        markType: CameraInstructionMarkType.wo,
       ),
       CameraInstructionDef(
         id: 'ol',

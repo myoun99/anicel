@@ -417,6 +417,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             checkersAbsentPlanes: true,
             fadeOpacity: isStage ? weight : 1,
             imageOpacity: isStage ? 1 : weight,
+            veils: position.veils,
           ),
         ),
       );

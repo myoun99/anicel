@@ -320,12 +320,23 @@ void main() {
         isTrue,
         reason: '"must straddle" is the O.L rule; a wedge needs no partner',
       );
+      // ↩️F-192: it falls to its own BLACK SCREEN now — the picture stays
+      // whole under it rather than thinning to whatever lies below.
+      expect(
+        cutTransitionVeilsAt(
+          cutStart: c20Start,
+          cutEnd: c20End,
+          spans: const [foInside],
+          globalFrame: 47,
+        ),
+        [(color: 0xFF000000, opacity: 1.0)],
+      );
       expect(cutOpacityAt(
         cutStart: c20Start,
         cutEnd: c20End,
         spans: const [foInside],
         globalFrame: 47,
-      ), 0.0);
+      ), 1.0);
       // An O.L in the same place still does nothing, so the straddle rule is
       // relaxed for the wedges ONLY.
       expect(
@@ -396,19 +407,23 @@ void main() {
       );
     });
 
-    test('an F.I ramps its own cut UP', () {
+    // ↩️F-192: it used to ramp its cut's ALPHA up from 0; it clears its own
+    // black screen off a whole picture now.
+    test('an F.I clears its own cut\'s screen', () {
       const fi = (start: 48, length: 24, mark: CameraInstructionMarkType.fi);
+      List<TransitionVeil> veils(int frame) => cutTransitionVeilsAt(
+        cutStart: c21Start,
+        cutEnd: c21End,
+        spans: const [fi],
+        globalFrame: frame,
+      );
+      expect(veils(48), [(color: 0xFF000000, opacity: 1.0)]);
+      expect(veils(71), isEmpty);
       expect(cutOpacityAt(
         cutStart: c21Start,
         cutEnd: c21End,
         spans: const [fi],
         globalFrame: 48,
-      ), 0.0);
-      expect(cutOpacityAt(
-        cutStart: c21Start,
-        cutEnd: c21End,
-        spans: const [fi],
-        globalFrame: 71,
       ), 1.0);
     });
   });

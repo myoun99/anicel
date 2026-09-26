@@ -288,7 +288,8 @@ class _TimesheetInstructionPass {
     // and the writing — no hatching, no outline (user sketch).
     final fill = Paint()
       ..color = TimesheetDocumentPainter._ink.withValues(alpha: 0.15);
-    switch (cell.markType ?? CameraInstructionMarkType.bar) {
+    final mark = cell.markType ?? CameraInstructionMarkType.bar;
+    switch (mark) {
       case CameraInstructionMarkType.ol:
         canvas.drawPath(
           Path()..addPolygon([
@@ -308,9 +309,12 @@ class _TimesheetInstructionPass {
         );
       case CameraInstructionMarkType.fi:
       case CameraInstructionMarkType.fo:
+      case CameraInstructionMarkType.wi:
+      case CameraInstructionMarkType.wo:
         // The fade wedge follows the light: FI opens narrow → wide (the
-        // picture grows in), FO wide → narrow (R4 orientation fix).
-        final fadeIn = cell.markType == CameraInstructionMarkType.fi;
+        // picture grows in), FO wide → narrow (R4 orientation fix). W.I and
+        // W.O are the same wedges (F-192) — only their screen is white.
+        final fadeIn = transitionSidesOf(mark) == TransitionSides.fadesIn;
         final wideY = fadeIn ? spanBottom - 1 : spanTop + 1;
         final pointY = fadeIn ? spanTop + 1 : spanBottom - 1;
         canvas.drawPath(

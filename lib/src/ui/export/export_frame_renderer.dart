@@ -16,6 +16,8 @@ import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/movie_cel.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/transition_geometry.dart'
+    show TransitionVeil, cutTransitionVeilsAt;
 import '../../services/cut_frame_composite_plan.dart';
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
@@ -32,6 +34,7 @@ import '../../services/composite_effect_paint.dart'
 import '../canvas/subtree_image_composite.dart' show steppedForChain;
 import '../editor_session_manager.dart';
 import '../playback/playback_frame_painter.dart';
+import '../playback/transition_veil_paint.dart';
 import '../track_effect_paint_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'export_cel_group_plan.dart';
@@ -360,7 +363,11 @@ class ExportFrameRenderer {
       trackFrame,
       enabled: trackFxEnabled,
     );
-    if (fade >= 1 && trackEffects.isEmpty) {
+    // F-192: a lone F.I/F.O/W.I/W.O is ONE contribution, so it never reached
+    // the transition mix above — ↩️its fade was simply missing from a
+    // canvas-size export. Its screen lands here, on this one frame.
+    final veils = _veilsOf(task);
+    if (fade >= 1 && trackEffects.isEmpty && veils.isEmpty) {
       return image;
     }
     final bounds = ui.Rect.fromLTWH(
@@ -401,6 +408,7 @@ class ExportFrameRenderer {
           if (!identical(stepped, image)) {
             stepped.dispose();
           }
+          paintTransitionVeils(canvas, bounds, veils);
           if (fade < 1) {
             canvas.restore();
           }
@@ -409,6 +417,25 @@ class ExportFrameRenderer {
     } finally {
       image.dispose();
     }
+  }
+
+  /// The screens one-sided transitions lay over [task]'s cut at its frame
+  /// ([cutTransitionVeilsAt]) — the frame's place on the cut's own TRACK
+  /// axis, as [_sharedTransitionSpace] finds it.
+  List<TransitionVeil> _veilsOf(ExportFrameTask task) {
+    final layout = _stackLayout ??= buildStoryboardTimelineLayout(
+      session.repository.requireProject(),
+    );
+    final own = layout.where((entry) => entry.cutId == task.cut.id).firstOrNull;
+    if (own == null) {
+      return const [];
+    }
+    return cutTransitionVeilsAt(
+      cutStart: own.startFrame,
+      cutEnd: own.endFrame,
+      spans: session.transitions.transitionSpansOfTrack(own.trackId),
+      globalFrame: own.startFrame + task.frameIndex,
+    );
   }
 
   /// The cuts this frame is mixed from and the space they share — null when
@@ -530,6 +557,9 @@ class ExportFrameRenderer {
             if (!identical(steppedFrame, image)) {
               steppedFrame.dispose();
             }
+            // F-192: a one-sided transition's own screen, inside this
+            // contribution's weight — the painter's unit, in canvas space.
+            paintTransitionVeils(canvas, bounds, contribution.veils);
             if (weight < 1) {
               canvas.restore();
             }
@@ -691,6 +721,7 @@ class ExportFrameRenderer {
         paintLetterbox: false,
         fadeOpacity: isStage ? weight : 1,
         imageOpacity: isStage ? 1 : weight,
+        veils: position.veils,
       ).paint(
         canvas,
         ui.Size(size.width.toDouble(), size.height.toDouble()),
