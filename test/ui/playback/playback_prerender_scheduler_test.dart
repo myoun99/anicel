@@ -244,6 +244,52 @@ void main() {
     });
   });
 
+  // I-22: every report re-reads the green bar over the whole window — at
+  // the ten-minute floor every cut of the film — and a playhead crossing
+  // into a warmed cut queued it and the next again, a report a frame.
+  testWidgets('a report is a frame warmed — a pass over frames already warm '
+      'reports once', (tester) async {
+    await tester.runAsync(() async {
+      final f = fixture();
+      var warmed = 0;
+      final scheduler = PlaybackPrerenderScheduler(
+        composites: f.composites,
+        resolveCut: (_) => cut(),
+        afterFrameCached: () => warmed += 1,
+        idleDelay: Duration.zero,
+      );
+      var reports = 0;
+      scheduler.progress.addListener(() => reports += 1);
+      void warm() => scheduler.requestWarmCut(
+        cutId: const CutId('cut'),
+        quality: PlaybackQuality.quarter,
+      );
+
+      warm();
+      await scheduler.idle;
+      // The runway's empty frames share one picture, so fewer than four.
+      expect(warmed, greaterThan(1), reason: 'the premise: frames to warm');
+      expect(
+        reports,
+        greaterThanOrEqualTo(1 + warmed),
+        reason: 'the request, then every frame it warmed',
+      );
+
+      reports = 0;
+      final cold = warmed;
+      warm();
+      await scheduler.idle;
+      expect(warmed, cold, reason: 'the second pass warmed nothing');
+      expect(reports, 1 + 1, reason: 'the request, then the pass once');
+      expect(
+        scheduler.progress.value,
+        const PrerenderProgress(cached: 4, total: 4),
+      );
+      scheduler.dispose();
+      f.composites.dispose();
+    });
+  });
+
   testWidgets('edit activity pauses warming until the idle delay elapses', (
     tester,
   ) async {

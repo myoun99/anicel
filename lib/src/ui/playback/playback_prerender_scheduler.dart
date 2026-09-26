@@ -263,6 +263,7 @@ class PlaybackPrerenderScheduler {
     _forgetStaleFailures();
     var cached = 0;
     for (final (cutId, frameIndex) in queue) {
+      var warmed = false;
       // Retry loop: an input-interrupted composite is NOT skipped — the
       // frame waits behind the idle gate and warms when quiet returns.
       while (true) {
@@ -356,9 +357,18 @@ class PlaybackPrerenderScheduler {
           continue;
         }
         afterFrameCached?.call();
+        warmed = true;
         break;
       }
       cached += 1;
+      // A frame that needed nothing cost a lookup: the run passes it with no
+      // report and no yield of its own, and tells the whole pass once. Every
+      // report re-reads the green bar over the window — at I-22's ten-minute
+      // floor every cut of the film — and a playhead crossing into a warmed
+      // cut queued it and the next again, a report a frame.
+      if (!warmed && cached < queue.length) {
+        continue;
+      }
       _progress.value = PrerenderProgress(cached: cached, total: queue.length);
       // Yield so interactive work interleaves between frames.
       await _wait(Duration.zero);
