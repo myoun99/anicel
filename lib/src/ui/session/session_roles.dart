@@ -131,11 +131,6 @@ abstract interface class SessionInternals {
   int commitBlockStart(LayerId layerId, int displayStart);
   CutReorderPlanner get cutReorderPlanner;
   bool get disposed;
-  String drawingStartStatusForLayer(Layer layer, int frameIndex);
-  List<({int startIndex, int length})> emptyGapsInRange(
-    Layer layer,
-    TimelineFrameRangeSelection selection,
-  );
   Layer? get targetLayerForKindToggle;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
   TimelineRowAddress get currentRow;

@@ -1,6 +1,5 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/frame.dart' show inbetweenMark;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -11,7 +10,6 @@ import '../../services/cel_pixel_region.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/layer_pose_matrix.dart' show LayerPoseSample;
 import '../../services/commands/cel_pixel_overwrite_command.dart';
-import '../timeline/timeline_cell_exposure_state.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
@@ -55,7 +53,6 @@ class CellVerbs {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required RenderCaches renderCaches,
@@ -66,7 +63,6 @@ class CellVerbs {
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
        _controllers = controllers,
        _internals = internals,
        _renderCaches = renderCaches,
@@ -81,7 +77,6 @@ class CellVerbs {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final RenderCaches _renderCaches;
@@ -511,60 +506,4 @@ class CellVerbs {
 
   /// 링크 독립 on the frame axis ([FrameClipboard.unlinkRuns]).
   void unlinkCells() => _clipboard.unlinkRuns(_unlinkRuns());
-
-  String get currentCellStatusText {
-    final layer = _selection.activeLayer;
-    if (layer == null) {
-      return 'Cell: No layer';
-    }
-
-    return 'Cell: ${_cellStatusLabelForLayer(layer)}';
-  }
-
-  String get compactCellActionText {
-    final layer = _selection.activeLayer;
-    if (layer == null) {
-      return 'No layer';
-    }
-
-    final frameIndex = _controllers.timelineController.currentFrameIndex;
-    final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
-    final canPaste = _clipboard.canPasteLinkedFrameAtCurrentFrame;
-
-    switch (exposureState) {
-      case TimelineCellExposureState.drawingStart:
-        return 'Drawing: Copy / Rename / Delete';
-      case TimelineCellExposureState.held:
-        return canPaste
-            ? 'Held: Paste / Copy / Rename / Mark'
-            : 'Held: Copy / Rename / Mark';
-      case TimelineCellExposureState.markHeld:
-        return canPaste
-            ? 'Held + $inbetweenMark: Paste / Copy / Rename / Mark'
-            : 'Held + $inbetweenMark: Copy / Rename / Mark';
-      case TimelineCellExposureState.uncovered:
-        // Dots are block-owned: an empty cell offers no Mark (author an
-        // unnamed frame first).
-        return canPaste ? 'X: Paste / New Frame' : 'X: New Frame';
-      case TimelineCellExposureState.markUncovered:
-        return canPaste
-            ? 'X + $inbetweenMark: Paste / New Frame / Mark'
-            : 'X + $inbetweenMark: New Frame / Mark';
-    }
-  }
-
-  String _cellStatusLabelForLayer(Layer layer) {
-    final frameIndex = _controllers.timelineController.currentFrameIndex;
-    final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
-    return switch (exposureState) {
-      TimelineCellExposureState.drawingStart =>
-        _internals.drawingStartStatusForLayer(layer, frameIndex),
-      TimelineCellExposureState.held => 'Held drawing',
-      TimelineCellExposureState.markHeld =>
-        'Held drawing + Mark $inbetweenMark',
-      TimelineCellExposureState.uncovered => 'Empty (X)',
-      TimelineCellExposureState.markUncovered =>
-        'Empty (X) + Mark $inbetweenMark',
-    };
-  }
 }

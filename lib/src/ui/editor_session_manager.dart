@@ -45,7 +45,6 @@ import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
-import '../models/timeline_empty_gaps.dart';
 import '../models/pill_subject.dart';
 import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
@@ -1036,7 +1035,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions, internals: this, renderCaches: renderCaches);
+  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions, internals: this, renderCaches: renderCaches);
 
   TimelineRowAddress get selectedRow => standing.selectedRow;
 
@@ -2294,27 +2293,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, transitions: transitions, cells: cells, frameVerbs: frameVerbs, internals: this, storyboardRows: storyboardRows);
-
-  /// The selection range's maximal EMPTY runs on [layer]'s timeline.
-  ///
-  /// D20 (2026-08-18) rewrote the coverage half: GHOST coverage is
-  /// authoring room — 「고스트일 뿐이니 생성 허용」 — the same sentence
-  /// [TimelineController.canCreateDrawingAt] reads, so the single-cell
-  /// verb and the range verb cannot answer "is this cell free"
-  /// differently. (The old comment here said the opposite: "ghost
-  /// coverage counts as covered".) A range over a repeat/hold tail
-  /// therefore fills the projected cells with authored ones, and the
-  /// rederive pass re-clamps the projection around them.
-  @override
-  List<({int startIndex, int length})> emptyGapsInRange(
-    Layer layer,
-    TimelineFrameRangeSelection selection,
-  ) => emptyGapsBetween(
-    layer,
-    selection.startIndex,
-    selection.endIndexExclusive,
-  );
+  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, transitions: transitions, cells: cells, frameVerbs: frameVerbs, storyboardRows: storyboardRows);
 
   // --- Comma edge drag ------------------------------------------------------
   //
@@ -3454,21 +3433,6 @@ class EditorSessionManager extends ChangeNotifier
   // string rebuilt for every row on every pass, which forced a row REBUILD
   // and only when something else had already announced — which is exactly
   // why a freshly drawn block stayed grey until you switched layers.
-
-  // --- Status text --------------------------------------------------------
-
-  String get currentLayerStatusText {
-    final layer = activeLayer;
-    return 'Layer: ${layer?.name ?? 'None'}';
-  }
-
-  @override
-  String drawingStartStatusForLayer(Layer layer, int frameIndex) {
-    final celNumber = celNumberOf(
-      frameVerbs.frameNameForLayer(layer, frameIndex),
-    );
-    return celNumber == null ? 'Drawing start' : 'Drawing start: $celNumber';
-  }
 
   // --- Canvas selection labels -------------------------------------------
 

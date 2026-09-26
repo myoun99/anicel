@@ -4,6 +4,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/pill_subject.dart';
+import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../models/timeline_frame_range.dart';
 import '../../services/command.dart';
 import 'active_cut_controllers.dart';
@@ -31,7 +32,6 @@ class CellInstances {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required Camera camera,
     required Instructions instructionVerbs,
     required LaneVerbs laneVerbs,
@@ -46,7 +46,6 @@ class CellInstances {
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
-       _internals = internals,
        _camera = camera,
        _instructionVerbs = instructionVerbs,
        _laneVerbs = laneVerbs,
@@ -69,7 +68,6 @@ class CellInstances {
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
   final Camera _camera;
   final Instructions _instructionVerbs;
   final LaneVerbs _laneVerbs;
@@ -196,7 +194,11 @@ class CellInstances {
     }
     final layerFills =
         <({int startIndex, int length, FrameId frameId, String? name})>[];
-    for (final gap in _internals.emptyGapsInRange(layer, selection)) {
+    for (final gap in emptyGapsBetween(
+      layer,
+      selection.startIndex,
+      selection.endIndexExclusive,
+    )) {
       layerFills.add((
         startIndex: gap.startIndex,
         length: gap.length,

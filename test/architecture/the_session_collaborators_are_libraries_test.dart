@@ -123,7 +123,13 @@ const _mayNameTheSession = <String, String>{
 /// (the workspace hangs them there, as it hangs `projectDoor.toolChoice`) —
 /// and the fx-drop question is a sibling `LayerRowDrag` takes by
 /// constructor, which leaves it naming no internals at all.
-const _sessionInternalsMembers = 24;
+/// 24 → 22 (same family): two session methods ONE collaborator asked —
+/// the range's empty runs (a second name for the model's
+/// `emptyGapsBetween`, which the other walkers already call; deleted, and
+/// `CellInstances` names no internals now either) and the drawing-start
+/// status, which only a status-text chain nobody read any more asked
+/// (`currentCellStatusText` and two siblings had no caller; deleted whole).
+const _sessionInternalsMembers = 22;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())
