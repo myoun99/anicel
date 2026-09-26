@@ -1289,7 +1289,7 @@ class EditorSessionManager extends ChangeNotifier
     // the test reports the write to a disposed notifier).
     () => laneRangeSelection.removeListener(_publishCutLocalLaneRange),
     cutLocalLaneRangeSelection.dispose,
-    revealSelectionTick.dispose,
+    rangeSelections.dispose,
     memoryPressureTicks.dispose,
     () => playbackRig.playback.globalFrameIndexListenable.removeListener(
       followPlaybackCut,
@@ -2019,25 +2019,6 @@ class EditorSessionManager extends ChangeNotifier
   //
   // The caret has to SAY when a drop does something structural, because a
   // folder joined in silence is a change nobody asked for.
-
-  /// A tick the rails watch to bring the SELECTION back into view (user,
-  /// 2026-08-09: walking rows and frames with the arrow keys kept selecting
-  /// things that were off screen).
-  ///
-  /// A tick rather than a value, and a notifier rather than a session
-  /// notify: what to reveal is already readable — the current row and the
-  /// current frame — so the only thing that has to travel is "now". Every
-  /// surface answers it in its own geometry, which is the only way one
-  /// signal can serve a rail that runs down, a sheet that runs across, and
-  /// a storyboard on a global axis.
-  ///
-  /// ⚠️Deliberately NOT fired by every selection change. A cell tap already
-  /// puts the thing under your finger, and the playhead moves every frame
-  /// of playback — revealing on those would yank the view out from under
-  /// the hand that put it there. It fires where the selection moves without
-  /// the pointer: the arrow keys.
-  @override
-  final ValueNotifier<int> revealSelectionTick = ValueNotifier<int>(0);
 
   // ── the layer row drag: its own object, in its own file ─────────────
   //

@@ -100,7 +100,10 @@ const _mayNameTheSession = <String, String>{
 /// 37 → 36 (2026-09-26, the seventh family): the listenable of the row you
 /// stand on moved into `Standing`, beside its one writer
 /// (`publishCurrentRow`); the rails and the canvas read it there.
-const _sessionInternalsMembers = 36;
+/// 36 → 35 (2026-09-26, the eighth family): the reveal tick moved into
+/// `RangeSelections`, beside its one writer (`revealSelection`), which
+/// releases it; the rails' hosts read it there.
+const _sessionInternalsMembers = 35;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

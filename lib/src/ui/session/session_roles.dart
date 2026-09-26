@@ -182,7 +182,6 @@ abstract interface class SessionInternals {
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   PixelVerbSubject get pixelVerbSubject;
   bool resetLaneGroup(LayerId layerId, String headerLaneId);
-  ValueNotifier<int> get revealSelectionTick;
   bool rowIsSelected(TimelineRowAddress row);
   void selectLayer(LayerId layerId);
   void selectTrackCutAtPlayhead(TrackId trackId);

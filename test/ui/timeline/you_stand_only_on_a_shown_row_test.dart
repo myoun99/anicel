@@ -343,18 +343,18 @@ void main() {
       ]);
       s.selectLayer(plusOne);
       s.railView.collapsedAttachBaseIds.value = {_b};
-      final reveals = s.revealSelectionTick.value;
+      final reveals = s.rangeSelections.revealSelectionTick.value;
 
       s.standing.keepStandingShown();
 
       expect(s.activeLayerId, _b, reason: 'x is the row above, b the head');
       // ③: the row it hands to may sit past the scroll, and nothing was
       // pointing at it — the rails are asked to bring it into view.
-      expect(s.revealSelectionTick.value, reveals + 1);
+      expect(s.rangeSelections.revealSelectionTick.value, reveals + 1);
 
       s.standing.keepStandingShown();
       expect(
-        s.revealSelectionTick.value,
+        s.rangeSelections.revealSelectionTick.value,
         reveals + 1,
         reason: 'a row already on screen moves nothing, so asks no scroll',
       );
@@ -364,13 +364,13 @@ void main() {
       final s = session(_reported);
       s.selectLayer(_bMinus1);
       s.railView.collapsedAttachBaseIds.value = {_b};
-      final reveals = s.revealSelectionTick.value;
+      final reveals = s.rangeSelections.revealSelectionTick.value;
 
       s.standing.keepStandingShown(reveal: true);
 
       expect(s.activeLayerId, _bMinus1);
       expect(s.railView.collapsedAttachBaseIds.value, isEmpty);
-      expect(s.revealSelectionTick.value, reveals + 1);
+      expect(s.rangeSelections.revealSelectionTick.value, reveals + 1);
     });
 
     test('a head the filter hides hands on to the nearest shown row above IT',

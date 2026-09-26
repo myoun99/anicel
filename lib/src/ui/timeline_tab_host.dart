@@ -532,7 +532,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             dragPreview: _session.dragPreview,
             frameCursor: _frameCursor,
             frameReadySignal: _frameReadySignal,
-            revealSelectionTick: _session.revealSelectionTick,
+            revealSelectionTick: _session.rangeSelections.revealSelectionTick,
             // F-110: the page-turn tick. This is the same listenable
             // [_syncFrameCursor] reads playback out of — null while nothing
             // plays, which is what keeps a keyboard walk on the walk law.

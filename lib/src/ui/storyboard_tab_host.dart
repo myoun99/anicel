@@ -737,7 +737,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         .playbackRig
                         .playback
                         .globalFrameIndexListenable,
-                    revealSelectionTick: _session.revealSelectionTick,
+                    revealSelectionTick:
+                        _session.rangeSelections.revealSelectionTick,
                     frameReadySignal: _frameReadySignal,
                     onSeekGlobalFrame: (frame) =>
                         seekStoryboardGlobalFrame(_session, frame),

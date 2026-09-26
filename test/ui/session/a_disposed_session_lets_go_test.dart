@@ -44,9 +44,8 @@ void main() {
           session.standing.currentRowListenable.addListener(() {}),
       'cutLocalLaneRangeSelection': () => session.cutLocalLaneRangeSelection
           .addListener(() {}),
-      'revealSelectionTick': () => session.revealSelectionTick.addListener(
-        () {},
-      ),
+      'revealSelectionTick': () =>
+          session.rangeSelections.revealSelectionTick.addListener(() {}),
       'memoryPressureTicks': () => session.memoryPressureTicks.addListener(
         () {},
       ),

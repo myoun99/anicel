@@ -1,4 +1,7 @@
 import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/range_snap.dart';
@@ -233,7 +236,30 @@ class RangeSelections {
   }
 
   /// Asks the rails to scroll whatever is selected back into view.
-  void revealSelection() => _internals.revealSelectionTick.value += 1;
+  void revealSelection() => revealSelectionTick.value += 1;
+
+  /// A tick the rails watch to bring the SELECTION back into view (user,
+  /// 2026-08-09: walking rows and frames with the arrow keys kept selecting
+  /// things that were off screen).
+  ///
+  /// A tick rather than a value, and a notifier rather than a session
+  /// notify: what to reveal is already readable — the current row and the
+  /// current frame — so the only thing that has to travel is "now". Every
+  /// surface answers it in its own geometry, which is the only way one
+  /// signal can serve a rail that runs down, a sheet that runs across, and
+  /// a storyboard on a global axis.
+  ///
+  /// ⚠️Deliberately NOT fired by every selection change. A cell tap already
+  /// puts the thing under your finger, and the playhead moves every frame
+  /// of playback — revealing on those would yank the view out from under
+  /// the hand that put it there. It fires where the selection moves without
+  /// the pointer: the arrow keys.
+  ///
+  /// Held HERE, beside its one writer ([revealSelection]) — the session used
+  /// to declare it for this object to reach (ARCH-session-state).
+  final ValueNotifier<int> revealSelectionTick = ValueNotifier<int>(0);
+
+  void dispose() => revealSelectionTick.dispose();
 
   /// A span's real (non-ghost) drawing-block start keys on [layer], in
   /// order. Axis-free on purpose: the caller states the span in whichever
