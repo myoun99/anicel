@@ -11,6 +11,7 @@ import '../../models/media_asset.dart'
 import '../timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import '../timeline/layer_row_drag.dart'
     show LayerRowDragState, LayerRowDragSubject, MediaPlacementSubject;
+import 'attach_fx_confirm.dart';
 import 'session_roles.dart';
 import 'row_selection.dart';
 import 'effects_and_fx.dart';
@@ -28,20 +29,20 @@ class LayerRowDrag {
   LayerRowDrag({
     required ProjectAccess project,
     required ChangeSink changes,
-    required SessionInternals internals,
+    required AttachFxConfirmController attachFxConfirm,
     required EffectsAndFx effectsAndFx,
     required RowSelection rowSelectionVerbs,
     required TrackSeDisplay trackSe,
   }) : _project = project,
        _changes = changes,
-       _internals = internals,
+       _attachFxConfirm = attachFxConfirm,
        _effectsAndFx = effectsAndFx,
        _rowSelectionVerbs = rowSelectionVerbs,
        _trackSe = trackSe;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final SessionInternals _internals;
+  final AttachFxConfirmController _attachFxConfirm;
   final EffectsAndFx _effectsAndFx;
   final RowSelection _rowSelectionVerbs;
   final TrackSeDisplay _trackSe;
@@ -166,7 +167,7 @@ class LayerRowDrag {
     }
     // The drag stays held until the answer arrives: nothing is committed and
     // nothing is discarded while the question is on screen.
-    _internals.attachFxConfirm.ask(
+    _attachFxConfirm.ask(
       rowNames: [for (final layer in losing) layer.name],
       answer: (proceed) {
         _rowOrderDrag = null;

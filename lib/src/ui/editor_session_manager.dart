@@ -33,7 +33,6 @@ import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
-import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../models/layer_id.dart';
 import '../models/standing_place.dart';
@@ -1016,14 +1015,6 @@ class EditorSessionManager extends ChangeNotifier
     return ids.isEmpty ? const {} : inBand(ids, selection);
   }
 
-  /// Whether the artwork carries a marquee, published by whoever owns it.
-  @override
-  bool Function()? canvasHasSelection;
-
-  /// Lets go of the marquee, published by whoever owns it.
-  @override
-  void Function()? clearCanvasSelection;
-
   /// The live editing coordinator, published by the canvas host.
   ///
   /// 🚨Null before the canvas has built one — a fresh project, a gap parking,
@@ -1040,30 +1031,6 @@ class EditorSessionManager extends ChangeNotifier
   /// [SessionInternals], because that interface only shrinks. See
   /// [LiveStrokeLanding] for the rest of the reason.
   final LiveStrokeLanding liveStrokeLanding = LiveStrokeLanding();
-
-  /// The canvas-side facts a pixel-verb press needs, published by whoever
-  /// owns them — see [PixelVerbCanvas].
-  ///
-  /// ⛔A getter, not a copy. The marquee is a document-level fact that
-  /// survives tool switches (`CanvasSelectionCommands.region`), the colour
-  /// changes under the pointer, and the mask moves with the tool settings
-  /// panel — so a snapshot taken when the toolbar was built would act on a
-  /// selection the user has since redrawn, in a colour they have left.
-  ///
-  /// 🚨The colour's ALPHA is ignored downstream — RGB only (유저 확정).
-  @override
-  PixelVerbCanvas Function()? pixelVerbCanvas;
-
-  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
-  @override
-  PixelVerbSubject get pixelVerbSubject {
-    if (cells.pixelVerbCellKeys().isEmpty) {
-      return PixelVerbSubject.nothing;
-    }
-    return frameRangeSelection.value == null
-        ? PixelVerbSubject.standing
-        : PixelVerbSubject.range;
-  }
 
   // ── the cell verbs: their own object, in their own file ─────────────
   //
@@ -2006,7 +1973,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_row_drag.dart): the row picked up in the
   // rail and where it may land — on a row, a track or an effect lane.
-  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, internals: this);
+  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, attachFxConfirm: attachFxConfirm);
 
   // ── a file held over the timeline: its own object, in its own file ──
   //
@@ -2089,7 +2056,6 @@ class EditorSessionManager extends ChangeNotifier
   /// 🚨Owned here rather than by a surface: TWO of them end a row drag, and
   /// a dialog raised by whichever happened to be on screen is a second copy
   /// of the sentence waiting to drift ([AttachFxConfirmController]).
-  @override
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
 
   // --- SE mix controls (AUDIO-PRO R1) ---------------------------------------

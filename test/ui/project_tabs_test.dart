@@ -286,15 +286,19 @@ void main() {
   ) async {
     final projects = await pumpApp(tester);
     final first = projects.active;
-    expect(first.canvasHasSelection, isNotNull, reason: 'CONTROL');
+    expect(
+      first.rangeSelections.canvasHasSelection,
+      isNotNull,
+      reason: 'CONTROL',
+    );
     await newProject(tester);
-    expect(first.canvasHasSelection, isNull);
-    expect(first.clearCanvasSelection, isNull);
-    expect(first.pixelVerbCanvas, isNull);
+    expect(first.rangeSelections.canvasHasSelection, isNull);
+    expect(first.rangeSelections.clearCanvasSelection, isNull);
+    expect(first.cells.pixelVerbCanvas, isNull);
     final second = projects.active;
-    expect(second.canvasHasSelection, isNotNull);
-    expect(second.clearCanvasSelection, isNotNull);
-    expect(second.pixelVerbCanvas, isNotNull);
+    expect(second.rangeSelections.canvasHasSelection, isNotNull);
+    expect(second.rangeSelections.clearCanvasSelection, isNotNull);
+    expect(second.cells.pixelVerbCanvas, isNotNull);
   });
 
   testWidgets('a file that fails to open leaves the tabs as they were, and '

@@ -117,7 +117,13 @@ const _mayNameTheSession = <String, String>{
 /// above had counted a DOC COMMENT naming `_internals.x` as a call. The
 /// playback follow is the session's own listener, and the ＋'s answer was a
 /// second name for `CellInstances.canCreateInstance` (deleted).
-const _sessionInternalsMembers = 29;
+/// 29 → 24 (2026-09-27, the eleventh family): what the canvas publishes for
+/// ONE collaborator lives in that collaborator — the marquee's two hooks in
+/// `RangeSelections`, the pixel-verb canvas and its subject in `CellVerbs`
+/// (the workspace hangs them there, as it hangs `projectDoor.toolChoice`) —
+/// and the fx-drop question is a sibling `LayerRowDrag` takes by
+/// constructor, which leaves it naming no internals at all.
+const _sessionInternalsMembers = 24;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

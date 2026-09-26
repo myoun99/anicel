@@ -9,7 +9,6 @@
 // travel is narrower roles, and a member no collaborator uses is deleted.
 
 import 'package:flutter/foundation.dart';
-import 'attach_fx_confirm.dart';
 import 'editor_app_settings.dart';
 import '../../services/editing/editing_session_state.dart';
 import '../../models/brush_frame_key.dart';
@@ -20,10 +19,7 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
-import '../../models/pixel_verb_subject.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
-import '../../services/canvas_selection.dart' show SelectionMaskOptions;
-import '../../services/canvas_selection_region.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
@@ -124,26 +120,6 @@ abstract interface class TimelineAccess {
   TrackFrameAxis trackFrameAxis();
 }
 
-/// The canvas-side facts a PIXEL VERB press needs, read together at the
-/// moment of the press.
-///
-/// 🚨★★★**ONE MEMBER, NOT THREE.** They were three fields on
-/// [SessionInternals], published by one method and read by one collaborator
-/// — and the comment over the publisher already called them 「the canvas-side
-/// facts the PIXEL verbs need」, which is a name. Adding the mask as a fourth
-/// field would have widened the seam the ratchet below is closing; folding
-/// them narrows it by two.
-///
-/// ⚠️Read at the PRESS, all three at once: the marquee survives tool
-/// switches, the colour changes under the pointer, and the tool settings
-/// panel can move the mask while the popover is open, so a value captured
-/// when the editor opened would be none of them.
-typedef PixelVerbCanvas = ({
-  CanvasSelectionRegion? region,
-  int argb,
-  SelectionMaskOptions mask,
-});
-
 /// What collaborators still reach into the session for beyond the
 /// roles above — the measured remainder of the coupling, and a list
 /// that only shrinks: each member either moves into the one
@@ -161,10 +137,7 @@ abstract interface class SessionInternals {
     TimelineFrameRangeSelection selection,
   );
   Layer? get targetLayerForKindToggle;
-  AttachFxConfirmController get attachFxConfirm;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
-  bool Function()? get canvasHasSelection;
-  void Function()? get clearCanvasSelection;
   TimelineRowAddress get currentRow;
   ValueNotifier<TimelineDragPreview?> get dragPreview;
   ValueNotifier<int> get editingFrameCursor;
@@ -172,9 +145,7 @@ abstract interface class SessionInternals {
   bool get editingPlayheadInGap;
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
   double layerOpacityAtFrame(Layer layer, int frameIndex);
-  PixelVerbCanvas Function()? get pixelVerbCanvas;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
-  PixelVerbSubject get pixelVerbSubject;
   bool rowIsSelected(TimelineRowAddress row);
   void selectLayer(LayerId layerId);
   void selectTrackCutAtPlayhead(TrackId trackId);

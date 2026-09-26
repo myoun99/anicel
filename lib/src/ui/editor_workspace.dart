@@ -1079,17 +1079,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // publisher was missing it. 유저 확정 2026-09-09
     // (`pixel-verbs-mask-options` = 가): 「선택툴로 선택한채로 사용할때 …
     // 선택의 aa 따르게」.
-    session.pixelVerbCanvas = () => (
+    session.cells.pixelVerbCanvas = () => (
       region: widget.canvasSelectionCommands?.region,
       argb: _brushTool.value.color,
       mask: _views._selectionMaskOptions.value,
     );
     // The marquee, as the fifth selection kind — so one 선택 해제 can let go
     // of everything rather than half of it.
-    session.canvasHasSelection = () =>
-        widget.canvasSelectionCommands?.hasRegion ?? false;
-    session.clearCanvasSelection = () =>
-        widget.canvasSelectionCommands?.deselect();
+    session.rangeSelections
+      ..canvasHasSelection = () =>
+          widget.canvasSelectionCommands?.hasRegion ?? false
+      ..clearCanvasSelection = () =>
+          widget.canvasSelectionCommands?.deselect();
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
     // ⚠️Left on when the project goes behind: the clock saves a tab that is
@@ -1138,8 +1139,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
     // A project behind the one on screen has no canvas: its marquee is not
     // this window's to report or to clear.
-    session
-      ..pixelVerbCanvas = null
+    session.cells.pixelVerbCanvas = null;
+    session.rangeSelections
       ..canvasHasSelection = null
       ..clearCanvasSelection = null;
     session.memoryPressureTicks.removeListener(

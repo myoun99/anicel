@@ -23,6 +23,27 @@ import 'frame_clipboard.dart';
 import 'transition_range_hold.dart';
 import 'transitions.dart';
 
+/// The canvas-side facts a PIXEL VERB press needs, read together at the
+/// moment of the press.
+///
+/// 🚨★★★**ONE MEMBER, NOT THREE.** They were three fields on
+/// `SessionInternals`, published by one method and read by one collaborator
+/// — and the comment over the publisher already called them 「the canvas-side
+/// facts the PIXEL verbs need」, which is a name. Adding the mask as a fourth
+/// field would have widened the seam that ratchet was closing; folding them
+/// narrowed it by two. ↪ The member then moved here, into the one
+/// collaborator that reads it ([CellVerbs.pixelVerbCanvas]).
+///
+/// ⚠️Read at the PRESS, all three at once: the marquee survives tool
+/// switches, the colour changes under the pointer, and the tool settings
+/// panel can move the mask while the popover is open, so a value captured
+/// when the editor opened would be none of them.
+typedef PixelVerbCanvas = ({
+  CanvasSelectionRegion? region,
+  int argb,
+  SelectionMaskOptions mask,
+});
+
 /// The CELL VERBS — deleting the cell under the cursor or the selection,
 /// the status text a cell shows, and the pixel verbs (the keys they act
 /// on, whether one may run, running it) — as their own object.
@@ -66,6 +87,28 @@ class CellVerbs {
   final RenderCaches _renderCaches;
   final LaneVerbs _laneVerbs;
   final RangeSelections _rangeSelections;
+
+  /// The canvas-side facts a pixel-verb press needs, published by whoever
+  /// owns them — see [PixelVerbCanvas].
+  ///
+  /// ⛔A getter, not a copy. The marquee is a document-level fact that
+  /// survives tool switches (`CanvasSelectionCommands.region`), the colour
+  /// changes under the pointer, and the mask moves with the tool settings
+  /// panel — so a snapshot taken when the toolbar was built would act on a
+  /// selection the user has since redrawn, in a colour they have left.
+  ///
+  /// 🚨The colour's ALPHA is ignored downstream — RGB only (유저 확정).
+  PixelVerbCanvas Function()? pixelVerbCanvas;
+
+  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
+  PixelVerbSubject get pixelVerbSubject {
+    if (pixelVerbCellKeys().isEmpty) {
+      return PixelVerbSubject.nothing;
+    }
+    return _selection.frameRangeSelection.value == null
+        ? PixelVerbSubject.standing
+        : PixelVerbSubject.range;
+  }
 
   /// The cels a pixel verb would touch: a live frame range's whole block, or
   /// the one cel you are standing on.
@@ -153,7 +196,7 @@ class CellVerbs {
   /// same question the press runs (T25: one answer behind both).
   bool get canRunPixelVerb =>
       _internals.pixelEditingCoordinator != null &&
-      _internals.pixelVerbSubject != PixelVerbSubject.nothing;
+      pixelVerbSubject != PixelVerbSubject.nothing;
 
   /// 색 변환 (`CelPixelChannel.colour`) and 픽셀 비우기 (`.alpha`) — one
   /// operation with the channel swapped, which is why they are one method.
@@ -175,7 +218,7 @@ class CellVerbs {
       return;
     }
     // Read ONCE, at the moment of the press — see [PixelVerbCanvas].
-    final canvas = _internals.pixelVerbCanvas?.call();
+    final canvas = pixelVerbCanvas?.call();
     _project.historyManager.execute(
       CelPixelOverwriteCommand.forVerb(
         coordinator: coordinator,
