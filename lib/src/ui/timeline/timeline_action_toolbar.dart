@@ -424,8 +424,7 @@ class TimelineActionToolbar extends StatelessWidget {
           pasteWithItsMedia(
             context,
             title: session.layerClipboard.layerClipboardName ?? 'Paste layer',
-            mustHold: session.layerClipboard.pasteMustHoldMedia,
-            hold: session.layerClipboard.holdWhatThePasteBrings,
+            board: session.layerClipboard,
             paste: session.layerClipboard.pasteLayerFromClipboard,
           ),
         ),

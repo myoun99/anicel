@@ -266,8 +266,7 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
       pasteWithItsMedia(
         context,
         title: editorActionLabel(EditorActionIds.editPasteIndependent),
-        mustHold: session.clipboard.pasteMustHoldMedia,
-        hold: session.clipboard.holdWhatThePasteBrings,
+        board: session.clipboard,
         paste: session.pasteIndependentFrameAtCurrentFrame,
       ),
     );

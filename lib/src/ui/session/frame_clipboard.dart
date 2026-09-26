@@ -28,7 +28,7 @@ import 'what_a_copy_brings.dart';
 ///
 /// ⛔The LAYER board left in G0-2 (2026-09-06): see [LayerClipboard]. Two
 /// payloads, two sets of verbs, one object holding both is not a reason.
-class FrameClipboard {
+class FrameClipboard implements BringsMedia {
   FrameClipboard({
     required FrameBoard board,
     required ProjectAccess project,
@@ -225,11 +225,9 @@ class FrameClipboard {
       return const {};
     }
     return picturesShownBy(
-      internals: _internals,
       store: _renderCaches.brushFrameStore,
-      cut: cut,
-      row: row.id,
       cels: cels,
+      keyOf: (cel) => _internals.brushFrameKeyForCut(cut, row.id, cel),
     );
   }
 
@@ -438,31 +436,18 @@ class FrameClipboard {
   /// Whether a paste here must first HOLD the bytes of media the copy
   /// carries from another project — the UI's cue for its wait window
   /// (F-53: every wait has one).
-  bool get pasteMustHoldMedia {
-    final copied = _copiedFrame;
-    return copied != null &&
-        !identical(copied.from, this) &&
-        _held.mustHold(
-          copied,
-          copied.names,
-          _project.repository.requireProject(),
-        );
-  }
+  @override
+  bool get pasteMustHoldMedia =>
+      _held.mustHold(_copiedFrame, _project.repository.requireProject());
 
   /// Holds them — as carries of THIS project's own, staged before anything
   /// records them ([holdCarriedMediaOf]) — for the next paste of the copy.
-  Future<void> holdWhatThePasteBrings() async {
-    final copied = _copiedFrame;
-    if (copied == null || identical(copied.from, this)) {
-      return;
-    }
-    await _held.hold(
-      copied,
-      copied.names,
-      _project.repository.requireProject(),
-      _staging,
-    );
-  }
+  @override
+  Future<void> holdWhatThePasteBrings() => _held.hold(
+    _copiedFrame,
+    _project.repository.requireProject(),
+    _staging,
+  );
 
   /// ㉕: the copied cel's content here, as a cel of its own.
   ///
@@ -583,16 +568,14 @@ class FrameClipboard {
     required bool independent,
   }) {
     final clip = copied.clip;
-    // From ANOTHER project (I-7) a paste lands with what the copy names
-    // there — its media, its terms — and spells those terms as this project
-    // does. At home there is nothing to bring.
-    final arrival = identical(copied.from, this)
-        ? null
-        : arrivalOf(
-            copied.names,
-            _project.repository.requireProject(),
-            held: _held.forCopy(copied),
-          );
+    // A paste lands with what the copy names and this project lacks — its
+    // media, its terms, spelled as this project spells them (I-7). From
+    // another project that is what makes the row whole; at home it is, as a
+    // rule, nothing ([HeldArrival]).
+    final arrival = _held.arrivalFor(
+      copied,
+      _project.repository.requireProject(),
+    );
     final run = spliceRunOnActiveRow();
     // ⛔A selection REPLACES what it covers; with none, nothing comes out.
     // 「뭘 선택하든 덮어써버리면 선택범위를 조절하는 의미가 통째로 사라지잖아」
@@ -669,7 +652,7 @@ class FrameClipboard {
       final placed = placedClipFor(
         layer: target,
         row: (
-          clip: _respelled(mine, arrival?.respell),
+          clip: _respelled(mine, arrival.respell),
           cels: mineCels,
           sounds: mineSounds,
         ),
@@ -692,11 +675,9 @@ class FrameClipboard {
       ));
     }
     final description = independent ? 'Paste frames' : 'Paste linked frames';
-    // ONE undo for the paste and what it brought from another project.
+    // ONE undo for the paste and what it brought.
     _project.historyManager.runAsOneStep(description, () {
-      if (arrival != null) {
-        landArrival(_project, arrival);
-      }
+      landArrival(_project, arrival);
       _controllers.timelineController.spliceRunsForLayers(
         runs: runs,
         description: description,
@@ -726,9 +707,9 @@ class FrameClipboard {
   /// another project spells its custom terms that project's way ([Arrival]).
   static TimelineClipRow _respelled(
     TimelineClipRow clip,
-    Map<String, String>? respell,
+    Map<String, String> respell,
   ) {
-    if (respell == null || respell.isEmpty) {
+    if (respell.isEmpty) {
       return clip;
     }
     return TimelineClipRow(
@@ -1012,7 +993,7 @@ class FrameBoard {
   _CopiedFrameReference? _copy;
 }
 
-class _CopiedFrameReference {
+class _CopiedFrameReference implements BoardCopy {
   const _CopiedFrameReference({
     required this.from,
     required this.names,
@@ -1043,6 +1024,7 @@ class _CopiedFrameReference {
 
   /// What the copy names in that project besides its ids — the media its
   /// sounds play, the terms its blocks spell — for a paste elsewhere.
+  @override
   final CopiedNames names;
 
   final LayerId layerId;

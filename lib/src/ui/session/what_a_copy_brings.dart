@@ -12,12 +12,13 @@ import 'session_roles.dart';
 /// sound, a reference row's movie), the instruction terms its blocks and
 /// spans spell — and where that project keeps those media's bytes.
 ///
-/// A paste at home needs none of it: the project already holds them. A
-/// paste into ANOTHER project (유저 2026-09-26: 「탭사이에 복사나 붙여넣기
-/// 뭐든 가능」) brings them — or the pasted row names a medium the pool does
-/// not list, and a term that sheet cannot print or, worse, prints as another
-/// word: custom terms are numbered per project (`custom-1`, …), so one id in
-/// two vocabularies can be two different terms.
+/// A paste brings what the project it lands in LACKS ([HeldArrival]) — at
+/// home, as a rule, nothing. Into ANOTHER project (유저 2026-09-26: 「탭사이에
+/// 복사나 붙여넣기 뭐든 가능」) it brings them, or the pasted row names a
+/// medium the pool does not list, and a term that sheet cannot print or,
+/// worse, prints as another word: custom terms are numbered per project
+/// (`custom-1`, …), so one id in two vocabularies can be two different
+/// terms.
 ///
 /// Read at the COPY ([namesOfACopy]), for the board's reason (F-161): the
 /// paste may come after the source was edited, or closed.
@@ -179,41 +180,64 @@ Future<List<MediaAsset>> holdCarriedMediaOf(
   ];
 }
 
-/// What a wait held for the next paste of ONE copy: the carried media it
-/// staged as this project's own ([holdCarriedMediaOf]). A board's next copy
-/// makes it stale — it answers for the copy it was held for, and nothing
-/// else.
+/// What a board holds, as far as bringing it along goes: what it names in
+/// the project it was copied in. Both boards' copies are one.
+abstract interface class BoardCopy {
+  CopiedNames get names;
+}
+
+/// A board whose paste can bring media from another project — what the
+/// UI's one door for such a paste asks (`pasteWithItsMedia`): whether to
+/// put its wait window up, and what to wait for.
+abstract interface class BringsMedia {
+  bool get pasteMustHoldMedia;
+  Future<void> holdWhatThePasteBrings();
+}
+
+/// A board's arrivals in ONE project: what a paste of a copy lands with
+/// there ([arrivalFor]), and what a wait held for the next paste of one
+/// copy — the carried media it staged as this project's own
+/// ([holdCarriedMediaOf]). A board's next copy makes that stale.
 ///
-/// One per board per project: the frame board's and the layer board's
-/// pastes both hold and land through it.
+/// ONE law for every paste, at home or not: it lands with what its copy
+/// names and this project LACKS. At home that is nothing, as a rule — the
+/// project holds what it copied — and no exception says so: a medium
+/// removed from the pool since the copy, or a term deleted, comes back
+/// with the paste that needs it, as it would into any other project. The
+/// frame board's and the layer board's pastes both land through here.
 class HeldArrival {
-  Object? _copy;
+  BoardCopy? _copy;
   List<MediaAsset> _media = const [];
 
-  /// What was held for [copy] — nothing, for any other.
-  List<MediaAsset> forCopy(Object copy) =>
-      identical(_copy, copy) ? _media : const [];
+  /// What a paste of [copy] into [project] lands with.
+  Arrival arrivalFor(BoardCopy copy, Project project) => arrivalOf(
+    copy.names,
+    project,
+    held: identical(_copy, copy) ? _media : const [],
+  );
 
   /// Whether a paste of [copy] into [project] has carried media to hold
   /// first — what the UI puts its wait window up for (F-53).
-  bool mustHold(Object copy, CopiedNames names, Project project) {
-    if (identical(_copy, copy)) {
+  bool mustHold(BoardCopy? copy, Project project) {
+    if (copy == null || identical(_copy, copy)) {
       return false;
     }
     final known = {for (final asset in project.mediaAssets) asset.path};
-    return names.assets.values.any(
+    return copy.names.assets.values.any(
       (asset) => asset.carried && !known.contains(asset.path),
     );
   }
 
-  /// Holds them, for the next paste of [copy].
+  /// Holds them, for the next paste of [copy] into [project].
   Future<void> hold(
-    Object copy,
-    CopiedNames names,
+    BoardCopy? copy,
     Project project,
     MediaStagingStore staging,
   ) async {
-    final media = await holdCarriedMediaOf(names, project, staging);
+    if (copy == null) {
+      return;
+    }
+    final media = await holdCarriedMediaOf(copy.names, project, staging);
     _copy = copy;
     _media = media;
   }

@@ -1,5 +1,6 @@
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
@@ -223,23 +224,19 @@ void carryBakedPictures({
   }
 }
 
-/// The pictures [cels] show on [row] in [cut] as they are NOW — what a copy
-/// takes BY VALUE (F-161): a paste may land in another cut, or another
-/// project (I-7), whose store has no picture under the source's key, and a
-/// source drawn over or cut away after the copy is not what was copied.
+/// The pictures [cels] show as they are NOW, each under the key [keyOf]
+/// names — what a copy takes BY VALUE (F-161): a paste may land in another
+/// cut, or another project (I-7), whose store has no picture under the
+/// source's key, and a source drawn over or cut away after the copy is not
+/// what was copied.
 ///
 /// ⚠️Surfaces are immutable with structural tile sharing, so holding one is
 /// holding a reference, not a second set of pixels — until the source is
 /// drawn over, when the copy keeps the tiles it took.
 Map<FrameId, BitmapSurface> picturesShownBy({
-  required SessionInternals internals,
   required BrushFrameStore store,
-  required Cut cut,
-  required LayerId row,
   required Iterable<Frame> cels,
+  required BrushFrameKey Function(FrameId cel) keyOf,
 }) => {
-  for (final cel in cels)
-    cel.id: ?store.bakedSurfaceOrNull(
-      internals.brushFrameKeyForCut(cut, row, cel.id),
-    ),
+  for (final cel in cels) cel.id: ?store.bakedSurfaceOrNull(keyOf(cel.id)),
 };

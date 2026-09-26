@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'dialogs/app_progress_dialog.dart';
+import 'session/what_a_copy_brings.dart' show BringsMedia;
 import 'text/app_strings.dart';
 
 /// A paste that may bring media from ANOTHER project (I-7): when the copy
@@ -15,11 +16,10 @@ import 'text/app_strings.dart';
 Future<void> pasteWithItsMedia(
   BuildContext context, {
   required String title,
-  required bool mustHold,
-  required Future<void> Function() hold,
+  required BringsMedia board,
   required void Function() paste,
 }) async {
-  if (mustHold) {
+  if (board.pasteMustHoldMedia) {
     await runWithAppProgress<void>(
       context: context,
       title: title,
@@ -27,7 +27,7 @@ Future<void> pasteWithItsMedia(
       runningLabel: AppText.strings.pasteProgressRunning,
       doneLabel: AppText.strings.pasteProgressDone,
       windowKey: const ValueKey<String>('paste-media-progress'),
-      task: (_) => hold(),
+      task: (_) => board.holdWhatThePasteBrings(),
     );
     if (!context.mounted) {
       return;

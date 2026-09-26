@@ -362,6 +362,24 @@ void main() {
       );
     });
 
+    test('at home too a paste brings what the project LACKS — a term deleted '
+        'since the copy comes back with the row that spells it', () {
+      final a = open();
+      spell(a, 'SHAKE');
+      aTermRow(a, 'custom-1');
+      a.layerClipboard.copyActiveLayer();
+      a.cutCommandCoordinator.updateCameraInstructionSet(
+        CameraInstructionSet.standard,
+      );
+      a.layerClipboard.pasteLayerFromClipboard();
+      expect(
+        a.repository.requireProject().cameraInstructions
+            .defById('custom-1')
+            ?.name,
+        'SHAKE',
+      );
+    });
+
     test('a STANDARD term is its id — a project that labels it otherwise '
         'keeps its label, and gains no second term', () {
       final a = open();

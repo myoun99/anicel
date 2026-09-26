@@ -1,5 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../services/clipboard/layer_copy_payload.dart';
 import '../../services/commands/cut_command_coordinator.dart' show PastedLayer;
@@ -19,7 +20,7 @@ import 'what_a_copy_brings.dart';
 /// different verbs, and the only thing they shared was the object that
 /// happened to hold both. What kept them together was that one class held
 /// them, which is not a reason.
-class LayerClipboard {
+class LayerClipboard implements BringsMedia {
   LayerClipboard({
     required LayerBoard board,
     required ProjectAccess project,
@@ -77,16 +78,17 @@ class LayerClipboard {
 
     final payload = copyLayerToPayload(activeLayer);
     _board._copy = _CopiedLayer(
-      from: this,
       payload: payload,
       // A non-null active layer implies an active cut (gap state has no
       // rows at all).
       pictures: picturesShownBy(
-        internals: _internals,
         store: _renderCaches.brushFrameStore,
-        cut: _project.requireActiveCut,
-        row: activeLayer.id,
         cels: activeLayer.frames,
+        keyOf: (cel) => _internals.brushFrameKeyForCut(
+          _project.requireActiveCut,
+          activeLayer.id,
+          cel,
+        ),
       ),
       names: namesOfACopy(
         project: _project.repository.requireProject(),
@@ -107,27 +109,18 @@ class LayerClipboard {
   /// Whether a paste here must first HOLD the bytes of media the copy
   /// carries from another project — the UI's cue for its wait window
   /// (F-53: every wait has one).
-  bool get pasteMustHoldMedia {
-    final copy = _board._copy;
-    return copy != null &&
-        !identical(copy.from, this) &&
-        _held.mustHold(copy, copy.names, _project.repository.requireProject());
-  }
+  @override
+  bool get pasteMustHoldMedia =>
+      _held.mustHold(_board._copy, _project.repository.requireProject());
 
   /// Holds them — as carries of THIS project's own, staged before anything
   /// records them ([holdCarriedMediaOf]) — for the next paste of the copy.
-  Future<void> holdWhatThePasteBrings() async {
-    final copy = _board._copy;
-    if (copy == null || identical(copy.from, this)) {
-      return;
-    }
-    await _held.hold(
-      copy,
-      copy.names,
-      _project.repository.requireProject(),
-      _staging,
-    );
-  }
+  @override
+  Future<void> holdWhatThePasteBrings() => _held.hold(
+    _board._copy,
+    _project.repository.requireProject(),
+    _staging,
+  );
 
   void pasteLayerFromClipboard() {
     final copy = _board._copy;
@@ -154,31 +147,16 @@ class LayerClipboard {
       // for the day some kind is both copyable and singleton.
       return;
     }
-    final activeLayer = _selection.activeLayer;
-    final targetLayers = cut.layers;
-    final activeLayerIndex = activeLayer == null
-        ? -1
-        : targetLayers.indexWhere((layer) => layer.id == activeLayer.id);
-    final insertionIndex = activeLayerIndex == -1
-        ? targetLayers.length
-        : activeLayerIndex + 1;
+    final insertionIndex = _rowBelowTheActiveOne(cut);
 
-    // From ANOTHER project (I-7) the row lands with what it names there —
-    // its media, its terms — spelling those terms as this project does.
-    final arrival = identical(copy.from, this)
-        ? null
-        : arrivalOf(
-            copy.names,
-            _project.repository.requireProject(),
-            held: _held.forCopy(copy),
-          );
-    final payload = _respelled(copy.payload, arrival?.respell);
+    // The row lands with what it names and this project lacks — its media,
+    // its terms, spelled as this project spells them (I-7, [HeldArrival]).
+    final arrival = _held.arrivalFor(copy, _project.repository.requireProject());
+    final payload = _respelled(copy.payload, arrival.respell);
     late final PastedLayer pasted;
     // ONE undo for the row and what it brought.
     _project.historyManager.runAsOneStep('Paste layer ${payload.name}', () {
-      if (arrival != null) {
-        landArrival(_project, arrival);
-      }
+      landArrival(_project, arrival);
       pasted = _project.cutCommandCoordinator.pasteLayer(
         cutId: cut.id,
         payload: payload,
@@ -202,12 +180,22 @@ class LayerClipboard {
     _changes.notifyChanged();
   }
 
+  /// Where a pasted row goes in [cut]: right below the active row, and at
+  /// the bottom when none is active there.
+  int _rowBelowTheActiveOne(Cut cut) {
+    final activeLayer = _selection.activeLayer;
+    final activeIndex = activeLayer == null
+        ? -1
+        : cut.layers.indexWhere((layer) => layer.id == activeLayer.id);
+    return activeIndex == -1 ? cut.layers.length : activeIndex + 1;
+  }
+
   /// [payload] with its terms spelled as [respell] says ([Arrival]).
   static LayerCopyPayload _respelled(
     LayerCopyPayload payload,
-    Map<String, String>? respell,
+    Map<String, String> respell,
   ) {
-    if (respell == null || respell.isEmpty) {
+    if (respell.isEmpty) {
       return payload;
     }
     return payload.copyWith(
@@ -230,16 +218,12 @@ class LayerBoard {
 }
 
 /// A layer on the board.
-class _CopiedLayer {
+class _CopiedLayer implements BoardCopy {
   const _CopiedLayer({
-    required this.from,
     required this.payload,
     required this.pictures,
     required this.names,
   });
-
-  /// The clipboard that took it — the PROJECT its row came from.
-  final LayerClipboard from;
 
   /// The row, as [copyLayerToPayload] carries it.
   final LayerCopyPayload payload;
@@ -253,5 +237,6 @@ class _CopiedLayer {
 
   /// What the row names in its project besides its ids — the medium it
   /// shows, the terms it spells — for a paste elsewhere.
+  @override
   final CopiedNames names;
 }
