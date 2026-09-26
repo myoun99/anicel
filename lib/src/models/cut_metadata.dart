@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'layer_mark.dart';
 
 class CutMetadata {
@@ -5,12 +6,14 @@ class CutMetadata {
     this.note = '',
     this.thumbnailFrameIndex,
     this.mark = LayerMark.none,
+    this.staff = const {},
   });
 
   const CutMetadata.empty()
     : note = '',
       thumbnailFrameIndex = null,
-      mark = LayerMark.none;
+      mark = LayerMark.none,
+      staff = const {};
 
   final String note;
 
@@ -29,12 +32,28 @@ class CutMetadata {
   /// label ([UpdateCutMarkCommand] writes every sibling).
   final LayerMark mark;
 
+  /// Who does each stage's work on THIS cut, where it is not the work's —
+  /// by the label's [LayerMark.keySlug], as the work's staff is
+  /// (`TimesheetInfo.staff`); a stage with no name here takes the work's
+  /// (`TimesheetInfo.staffForCut`). 🗣️유저 09-25: 작품 설정에는 기본값,
+  /// 컷 설정에는 컷별 이름 ([[project-settings-window]]).
+  final Map<String, String> staff;
+
+  /// [mark]'s name on this cut itself, or empty when it takes the work's.
+  String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
+
+  /// [mark]'s name on this cut replaced ([staffWithName]) — an empty one
+  /// gives the stage back to the work's.
+  CutMetadata withStaffName(LayerMark mark, String name) =>
+      copyWith(staff: staffWithName(staff, mark, name));
+
   /// [thumbnailFrameIndex] passes as a closure so callers can CLEAR the pin
   /// (`() => null`) — the plain-nullable convention cannot express that.
   CutMetadata copyWith({
     String? note,
     int? Function()? thumbnailFrameIndex,
     LayerMark? mark,
+    Map<String, String>? staff,
   }) {
     return CutMetadata(
       note: note ?? this.note,
@@ -42,6 +61,7 @@ class CutMetadata {
           ? this.thumbnailFrameIndex
           : thumbnailFrameIndex(),
       mark: mark ?? this.mark,
+      staff: staff ?? this.staff,
     );
   }
 
@@ -49,6 +69,7 @@ class CutMetadata {
     'note': note,
     if (thumbnailFrameIndex != null) 'thumbnailFrame': thumbnailFrameIndex,
     if (!mark.isNone) 'mark': mark.toJson(),
+    if (staff.isNotEmpty) 'staff': {...staff},
     // The per-cut fade TARGET (FO/WO) is gone (R3b): the fade is
     // transparency toward the project backdrop, and a white-out is a
     // white cut on a lower track — legacy 'fadeTarget' keys are ignored
@@ -60,6 +81,7 @@ class CutMetadata {
       note: json['note'] as String? ?? '',
       thumbnailFrameIndex: json['thumbnailFrame'] as int?,
       mark: LayerMark.fromJson(json['mark']),
+      staff: staffFromJson(json['staff']),
     );
   }
 
@@ -69,13 +91,21 @@ class CutMetadata {
       other is CutMetadata &&
           other.note == note &&
           other.thumbnailFrameIndex == thumbnailFrameIndex &&
-          other.mark == mark;
+          other.mark == mark &&
+          mapEquals(other.staff, staff);
 
   @override
-  int get hashCode => Object.hash(note, thumbnailFrameIndex, mark);
+  int get hashCode => Object.hash(
+    note,
+    thumbnailFrameIndex,
+    mark,
+    Object.hashAllUnordered(
+      staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
+    ),
+  );
 
   @override
   String toString() =>
       'CutMetadata(note: $note, thumbnailFrame: $thumbnailFrameIndex, '
-      'mark: $mark)';
+      'mark: $mark, staff: $staff)';
 }

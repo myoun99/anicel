@@ -280,6 +280,30 @@ class CutVerbs {
     _changes.notifyChanged();
   }
 
+  /// The first addressed cut's own staff names — what 컷 설정 shows, as the
+  /// cut button shows the first addressed cut's 색 라벨.
+  Map<String, String> get addressedCutStaff {
+    final cutIds = addressedCutIds;
+    return cutIds.isEmpty
+        ? const {}
+        : _project.cutById(cutIds.first)?.metadata.staff ?? const {};
+  }
+
+  /// Names each stage of [names] on every addressed cut — and on each one's
+  /// 겸용 siblings — as ONE undo step; every other stage keeps each cut's
+  /// own (컷 설정).
+  void setAddressedCutStaffNames(Map<LayerMark, String> names) {
+    final cutIds = addressedCutIds;
+    if (cutIds.isEmpty || names.isEmpty) {
+      return;
+    }
+    _project.cutCommandCoordinator.setCutStaffNames(
+      cutIds: cutIds,
+      names: names,
+    );
+    _changes.notifyChanged();
+  }
+
   /// Whether the active cut's storyboard thumbnail is pinned to the
   /// playhead frame (drives the toolbar toggle's state).
   bool get isActiveCutThumbnailPinnedHere =>

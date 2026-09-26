@@ -385,7 +385,7 @@ class TimesheetDocument {
     return TimesheetDocument._(
       title: info.title.isEmpty ? projectName : info.title,
       episode: info.episode,
-      artist: info.staffNameFor(sheetArtistMark),
+      artist: info.staffNameForCut(cut.metadata, sheetArtistMark),
       memoText: cut.metadata.note,
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,

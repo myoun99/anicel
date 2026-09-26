@@ -205,3 +205,29 @@ List<LayerMark> everyLayerMark() => [
       LayerMark(process: process, revise: revise),
   ],
 ];
+
+/// [staff] — who does each stage's work, by its label's [LayerMark.keySlug]
+/// — with [mark]'s name set to [name]; an empty one drops the entry, so the
+/// map never holds a blank. ONE rule for the work's staff (작품 설정) and a
+/// cut's own (컷 설정).
+Map<String, String> staffWithName(
+  Map<String, String> staff,
+  LayerMark mark,
+  String name,
+) {
+  final next = {...staff};
+  if (name.isEmpty) {
+    next.remove(mark.keySlug);
+  } else {
+    next[mark.keySlug] = name;
+  }
+  return next;
+}
+
+/// A staff map as a file holds it: a value that is not a name (a file from
+/// before the labels vocabulary kept a name-and-stamp object) drops
+/// silently.
+Map<String, String> staffFromJson(Object? json) => {
+  for (final entry in (json as Map<String, dynamic>? ?? const {}).entries)
+    if (entry.value case final String name) entry.key: name,
+};

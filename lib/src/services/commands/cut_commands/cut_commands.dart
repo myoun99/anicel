@@ -255,6 +255,38 @@ class _CutCommands {
   /// Sets the 색 라벨 of [cutIds] — and of each one's 겸용 siblings — as ONE
   /// undo step ([UpdateCutMarkCommand]); nothing at all when every one of
   /// them already wears [mark].
+  /// 컷 설정: each stage of [names] named on [cutIds] and their 겸용
+  /// siblings, as ONE undo step — the stages it does not name keep each
+  /// cut's own, and a stage every cut already has so is no step at all.
+  void setCutStaffNames({
+    required List<CutId> cutIds,
+    required Map<LayerMark, String> names,
+  }) {
+    final project = _coordinator.repository.requireProject();
+    final cuts = [
+      for (final cutId in LinkedCutFieldCommand.linkedCutsOf(project, cutIds))
+        requireCut(project, cutId),
+    ];
+    final commands = [
+      for (final MapEntry(key: mark, value: name) in names.entries)
+        if (cuts.any((cut) => cut.metadata.staffNameFor(mark) != name))
+          UpdateCutStaffNameCommand(
+            repository: _coordinator.repository,
+            cutIds: cutIds,
+            mark: mark,
+            name: name,
+          ),
+    ];
+    if (commands.isEmpty) {
+      return;
+    }
+    _coordinator.historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(description: 'Set cut staff', commands: commands),
+    );
+  }
+
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) {
     final project = _coordinator.repository.requireProject();
     if (LinkedCutFieldCommand.linkedCutsOf(project, cutIds).every(
