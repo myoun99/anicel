@@ -21,22 +21,31 @@ class _StoryboardRailRows {
       _state.widget.railExtent ??
       (_state._ownedRailExtent ??= LayerRailExtent());
 
-  /// Rebuilds [builder] whenever the storyboard playhead moves — the
-  /// cursor-layer subscription the ruler and the playhead overlay already
-  /// take (F-19).
+  /// Rebuilds [builder] with the cut under the storyboard playhead on track
+  /// [trackIndex] whenever THAT cut changes — the cursor-layer subscription
+  /// the ruler and the playhead overlay already take (F-19), asking only
+  /// what the row shows of it.
+  ///
+  /// I-22 ③: it rebuilt on every move of the playhead, so the row — its
+  /// buttons, their faces and tooltips — was rebuilt at the playback rate
+  /// while a cut of 96 frames kept the same subject for four seconds.
   ///
   /// Returns the built widget UNWRAPPED when there is no playhead channel:
   /// a host that never publishes one has nothing for the subscription to
   /// listen to, and a builder that never fires is a rebuild boundary paid
   /// for nothing.
-  Widget _playheadFollowing(Widget Function(int? globalFrame) builder) {
+  Widget _cutAtPlayheadFollowing(
+    int trackIndex,
+    Widget Function(Cut? subject) builder,
+  ) {
     final playhead = _state.widget.playheadFrame;
     if (playhead == null) {
       return builder(null);
     }
-    return ValueListenableBuilder<int?>(
-      valueListenable: playhead,
-      builder: (context, globalFrame, _) => builder(globalFrame),
+    return _FollowsTheCutUnderThePlayhead(
+      playhead: playhead,
+      cutAt: () => _state._standing.cutAtPlayheadOn(trackIndex),
+      builder: builder,
     );
   }
 
@@ -664,8 +673,9 @@ class _StoryboardRailRows {
           // preview machinery (D6's no-flash rules, the territory flag) exists
           // because the active cut does not follow a drag — and switching it
           // per move would put a cut activation on every pointer move.
-          _playheadFollowing(
-            (_) => StoryboardTrackLabelRow(
+          _cutAtPlayheadFollowing(
+            index,
+            (subject) => StoryboardTrackLabelRow(
               track: track,
               trackLabel: _vRowName(index),
               laneHeight: _state.widget.trackLaneHeight,
@@ -689,7 +699,7 @@ class _StoryboardRailRows {
               // global index (each track independently) — no stand-down, no
               // parked look. A gap simply means no cut exists there: the
               // buttons stay normal and a press is a no-op.
-              subjectCut: _state._standing.cutAtPlayheadOn(index) ?? activeCut,
+              subjectCut: subject ?? activeCut,
               cutPictureVisibleOf: _state.widget.cutPictureVisibleOf,
               onToggleCutPictureVisibility:
                   _state.widget.onToggleCutPictureVisibility,
@@ -1564,4 +1574,60 @@ class _StoryboardRailRows {
         ],
     ];
   }
+}
+
+/// Rebuilds [builder] when the cut under the playhead changes — never on a
+/// playhead move that stays inside it ([_StoryboardRailRows.
+/// _cutAtPlayheadFollowing]).
+class _FollowsTheCutUnderThePlayhead extends StatefulWidget {
+  const _FollowsTheCutUnderThePlayhead({
+    required this.playhead,
+    required this.cutAt,
+    required this.builder,
+  });
+
+  final ValueListenable<int?> playhead;
+  final Cut? Function() cutAt;
+  final Widget Function(Cut? subject) builder;
+
+  @override
+  State<_FollowsTheCutUnderThePlayhead> createState() =>
+      _FollowsTheCutUnderThePlayheadState();
+}
+
+class _FollowsTheCutUnderThePlayheadState
+    extends State<_FollowsTheCutUnderThePlayhead> {
+  late Cut? _subject = widget.cutAt();
+
+  void _moved() {
+    final subject = widget.cutAt();
+    if (!identical(subject, _subject)) {
+      setState(() => _subject = subject);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.playhead.addListener(_moved);
+  }
+
+  @override
+  void didUpdateWidget(_FollowsTheCutUnderThePlayhead oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.playhead, widget.playhead)) {
+      oldWidget.playhead.removeListener(_moved);
+      widget.playhead.addListener(_moved);
+    }
+    _subject = widget.cutAt();
+  }
+
+  @override
+  void dispose() {
+    widget.playhead.removeListener(_moved);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(_subject);
 }

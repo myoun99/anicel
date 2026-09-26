@@ -118,4 +118,52 @@ void main() {
           'shown — which is the whole complaint, inverted',
     );
   });
+
+  /// I-22 ③: the row follows the cut under the playhead, not the playhead —
+  /// it was rebuilt, buttons, faces and tooltips, on every frame a playback
+  /// or a scrub moved, while a cut kept the same subject for its whole
+  /// length.
+  testWidgets('a move that stays inside the cut rebuilds no V row; a move '
+      'into the next one does', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: project())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+
+    StoryboardTrackLabelRow row() => tester.widget<StoryboardTrackLabelRow>(
+      find.byType(StoryboardTrackLabelRow).first,
+    );
+    final perFrame = tester
+        .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+        .pixelsPerFrame;
+    final ruler = tester.getRect(
+      find.byKey(const ValueKey<String>('storyboard-ruler')),
+    );
+    final gesture = await tester.startGesture(
+      Offset(ruler.left + 2 * perFrame + 2, ruler.center.dy),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    final atTwo = row();
+
+    // Frame 2 → 12: still cut-0.
+    await gesture.moveBy(Offset(10 * perFrame, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(row().subjectCut?.id.value, 'cut-0', reason: 'premise');
+    expect(identical(row(), atTwo), isTrue, reason: 'the same subject');
+
+    // Frame 12 → 32: cut-1.
+    await gesture.moveBy(Offset(20 * perFrame, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(row().subjectCut?.id.value, 'cut-1');
+    expect(identical(row(), atTwo), isFalse, reason: 'a new subject');
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
 }
