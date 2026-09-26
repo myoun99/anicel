@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_second.dart';
 
 void main() {
   group('TimelineGridMetrics', () {
@@ -71,6 +72,17 @@ void main() {
         1536,
         reason: 'no top rung: the ten-minute floor needs the ladder to go on',
       );
+    });
+
+    test('the seconds climb a pro editor\'s ruler, doubling on past ten '
+        'minutes (I-22)', () {
+      expect(
+        timelineSecondStrideLadder,
+        [1, 2, 5, 10, 15, 30, 60, 120, 300, 600],
+      );
+      expect(timelineSecondsHolding(3, 3), 1);
+      expect(timelineSecondsHolding(3.5, 3), 2);
+      expect(timelineSecondsHolding(1000, 1), 1200);
     });
 
     test('custom metrics can be created', () {

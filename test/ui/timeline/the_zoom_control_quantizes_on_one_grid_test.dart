@@ -22,6 +22,7 @@ void main() {
 
     test('under one pixel it rounds to whole FRAMES per pixel', () {
       expect(TimelineZoomLimits.quantize(0.8, framesPerSecond: fps), 1);
+      expect(TimelineZoomLimits.quantize(0.55, framesPerSecond: fps), 1 / 2);
       expect(TimelineZoomLimits.quantize(0.45, framesPerSecond: fps), 1 / 2);
       expect(TimelineZoomLimits.quantize(0.3, framesPerSecond: fps), 1 / 3);
       expect(TimelineZoomLimits.quantize(0.16, framesPerSecond: fps), 1 / 6);
@@ -169,6 +170,15 @@ void main() {
       expect(await press(tester, from: 1, zoomIn: false), 1 / 2);
       expect(await press(tester, from: 1 / 2, zoomIn: true), 1);
       expect(await press(tester, from: 1, zoomIn: true), 2);
+    });
+
+    testWidgets('at the floor the − button stands down', (tester) async {
+      final floor = TimelineZoomLimits.minPixelsPerFrameAt(fps);
+      final zooms = await pump(tester, pixelsPerFrame: floor);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-zoom-out-button')),
+      );
+      expect(zooms, isEmpty, reason: 'nothing wider to go to');
     });
 
     testWidgets('a step never leaves the range', (tester) async {

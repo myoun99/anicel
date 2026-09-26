@@ -85,9 +85,6 @@ abstract final class TimelineZoomLimits {
     if (pixelsPerFrame >= 1) {
       return pixelsPerFrame.roundToDouble();
     }
-    if (pixelsPerFrame <= 0) {
-      return 0;
-    }
     return 1 / (1 / pixelsPerFrame).roundToDouble();
   }
 

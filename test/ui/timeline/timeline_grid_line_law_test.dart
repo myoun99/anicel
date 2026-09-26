@@ -150,6 +150,12 @@ void main() {
       const cell = 1 / 8; // 24fps: a second is 3px
       expect(timelineSixLinesHold(cell), isFalse);
       expect(
+        timelineSixLinesHold(0.5),
+        isTrue,
+        reason: 'six half-pixel cells hold a beat and its ground, just',
+      );
+      expect(timelineSixLinesHold(0.49), isFalse);
+      expect(
         timelineSecondLineEverySeconds(cell, 24),
         2,
         reason: 'a second line and its ground need 3.5px; two seconds are 6',
