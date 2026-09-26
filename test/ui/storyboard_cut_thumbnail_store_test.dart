@@ -162,9 +162,12 @@ void main() {
       invalidationHub: hub,
     );
     addTearDown(store.dispose);
+    // ONE cut: a stroke leaves the model as it was — the pixels live
+    // outside it — so the same instance is asked before and after.
+    final shown = cut();
 
     await tester.runAsync(() async {
-      store.thumbnailFor(cut(), 0);
+      store.thumbnailFor(shown, 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     expect(renderCount, 1);
@@ -182,12 +185,56 @@ void main() {
     );
 
     await tester.runAsync(() async {
-      store.thumbnailFor(cut(), 0);
+      store.thumbnailFor(shown, 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     await tester.pump();
 
     expect(renderCount, 2);
+  });
+
+  // I-22: at the ten-minute floor every panel of the film is asked for on
+  // every paint.
+  testWidgets('a cut is spelled once per edit, however many panels and '
+      'paints ask', (tester) async {
+    final hub = EditorCacheInvalidationHub();
+    final store = StoryboardCutThumbnailStore(
+      render: (_, _, _) => tinyImage(),
+      invalidationHub: hub,
+    );
+    addTearDown(store.dispose);
+    final shown = cut();
+
+    await tester.runAsync(() async {
+      for (var paint = 0; paint < 5; paint += 1) {
+        for (final panel in [0, 8, 16]) {
+          store.thumbnailFor(shown, panel);
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    expect(store.debugSignaturesSpelled, 1);
+
+    hub.invalidateBrushFrame(
+      BrushFrameCacheInvalidation.wholeFrame(
+        const BrushFrameKey(
+          projectId: ProjectId('project'),
+          trackId: TrackId('track'),
+          cutId: CutId('cut'),
+          layerId: LayerId('layer'),
+          frameId: FrameId('f1'),
+        ),
+      ),
+    );
+    store.thumbnailFor(shown, 0);
+    expect(
+      store.debugSignaturesSpelled,
+      2,
+      reason: 'a stroke moves the edit generation, and nothing else',
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
   });
 
   testWidgets('a null render result is cached, not retried per build', (
