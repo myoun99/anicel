@@ -610,6 +610,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
       // app's (「앱은 한 글꼴」, 08-28).
       baseTextStyle: DefaultTextStyle.of(context).style,
       axis: axis,
+      // The cells' window: the labels print the blocks it reaches (I-22).
+      windowBucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
     );
   }
 
