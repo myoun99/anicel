@@ -170,6 +170,18 @@ void main() {
     expect(c.cacheShare, OpenProjects.backgroundCacheShare);
   });
 
+  test('a tab behind the one on screen caches with its SHARE: its own '
+      'caches\' budgets shrink with it, and come back when it is shown', () {
+    final projects = make();
+    final a = projects.active;
+    int playback() => a.playbackRig.playbackCache.playbackCacheByteBudget;
+    final whole = playback();
+    projects.open(createDefaultProject());
+    expect(playback(), lessThan(whole), reason: 'behind: a share');
+    projects.activate(a);
+    expect(playback(), whole, reason: 'on screen: the whole allowance');
+  });
+
   test('a tab going behind stops every transport it has — and one closed '
       'while shown stops too', () {
     final projects = make();

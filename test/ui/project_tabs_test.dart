@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
@@ -12,6 +15,8 @@ import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/services/persistence/volatile_scratch_files.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/canvas_selection_commands.dart'
+    show CanvasSelectionDocument;
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -22,7 +27,11 @@ import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart'
+    show TimesheetInkPlane;
+import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
+import '../helpers/draw_on_current_frame.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// I-7 through the window (유저 2026-09-26): 「여러 프로젝트 열수있게할거야 …
@@ -407,5 +416,143 @@ void main() {
       lessThan(withIt),
       reason: 'let go once the write ended',
     );
+  });
+
+  testWidgets('a lift the canvas is holding LANDS in its own project before '
+      'another comes on screen — it is never carried into the next', (
+    tester,
+  ) async {
+    final projects = await pumpApp(tester);
+    final first = projects.active;
+    final channel = workspaceOf(tester).canvasSelectionCommands!;
+    // Stands in for a mounted selection layer holding a lift: the brush
+    // (the default tool) mounts none, so nothing takes this binding over.
+    final landedOn = <CanvasSelectionDocument>[];
+    final owner = Object();
+    channel.bind(
+      owner,
+      hasSelection: () => false,
+      deselect: () {},
+      movePending: () => true,
+      confirmPendingMove: () => landedOn.add(channel.document),
+    );
+    addTearDown(() => channel.unbind(owner));
+
+    await newProject(tester);
+    expect(
+      landedOn,
+      [same(first.canvasSelection)],
+      reason: 'landed once, while the channel still showed its project',
+    );
+  });
+
+  testWidgets('the held keys follow the stroke of the project ON SCREEN', (
+    tester,
+  ) async {
+    final projects = await pumpApp(tester);
+    await newProject(tester);
+    final tool = workspaceOf(tester).brushTool!;
+    projects.active.setBrushInputActive(true);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    expect(
+      tool.value.tool,
+      CanvasTool.brush,
+      reason: 'a stroke is live in the project on screen: the switch waits',
+    );
+    projects.active.setBrushInputActive(false);
+    await tester.pump();
+    expect(tool.value.tool, CanvasTool.eyedropper);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+  });
+
+  testWidgets('the timesheet shows ITS project\'s ink — one tab\'s memos '
+      'are not on another\'s sheet, and are there again when it comes back', (
+    tester,
+  ) async {
+    // The sheet ships open in the right dock (R26 #31).
+    final projects = await pumpApp(tester);
+    final first = projects.active;
+    // Real ink to write the memo with: the drawing a stroke leaves.
+    drawOnCurrentFrame(first);
+    final drawn = first.editingCanvas.activeBrushEditorSelection!;
+    final ink = first.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+      first.brushFrameKeyForCut(
+        first.requireActiveCut,
+        drawn.layerId,
+        drawn.frameId,
+      ),
+    )!;
+    final key = timesheetInkStripKey(first.requireActiveCut.id, 0);
+    first.renderCaches.timesheetInkStripStore.storeBakedSurface(key, ink);
+    await tester.pump();
+    bool sheetShowsMemo() => tester
+        .widget<TimesheetTabHost>(find.byType(TimesheetTabHost))
+        .inkController!
+        .hasInkFor(TimesheetInkPlane.strip, key);
+    expect(sheetShowsMemo(), isTrue, reason: 'CONTROL: its own sheet');
+
+    await newProject(tester);
+    expect(
+      sheetShowsMemo(),
+      isFalse,
+      reason: 'the same cut id in another project is another sheet',
+    );
+
+    await tapKey(tester, 'project-tab-0');
+    expect(sheetShowsMemo(), isTrue);
+  });
+
+  testWidgets('leaving asks EVERY project with unsaved work, each with its '
+      'own tab on screen — and Cancel on any one keeps the window', (
+    tester,
+  ) async {
+    final projects = await pumpApp(tester);
+    final first = projects.active;
+    first.cutVerbs.createCut();
+    await newProject(tester);
+    final second = projects.active;
+    second.cutVerbs.createCut();
+    await tester.pumpAndSettle();
+
+    unawaited(tester.binding.handlePopRoute());
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('system-exit-dialog')),
+      findsOneWidget,
+    );
+    expect(identical(projects.active, first), isTrue, reason: 'its own tab');
+    await tapKey(tester, 'system-exit-close');
+    expect(
+      find.byKey(const ValueKey<String>('system-exit-dialog')),
+      findsOneWidget,
+      reason: 'the next project with unsaved work is asked too',
+    );
+    expect(identical(projects.active, second), isTrue, reason: 'its own tab');
+    await tapKey(tester, 'system-exit-cancel');
+    expect(
+      find.byKey(const ValueKey<String>('system-exit-dialog')),
+      findsNothing,
+    );
+    expect(projects.sessions, [first, second], reason: 'the window stays');
+  });
+
+  testWidgets('a project whose file went while it was behind says so when '
+      'its tab comes back', (tester) async {
+    final folder = Directory.systemTemp.createTempSync('qa_project_tabs_');
+    deleteAfterSessionEnds(folder);
+    final projects = await pumpApp(tester);
+    projects.active.projectFile.bindToSavedFile(
+      '${folder.path.replaceAll(r'\', '/')}/Gone.anicel',
+      mediaInFile: {},
+      cleanAsOf: 0,
+    );
+    await newProject(tester);
+    const notice = ValueKey<String>('project-file-vanished-notice');
+    expect(find.byKey(notice), findsNothing);
+
+    await tapKey(tester, 'project-tab-0');
+    expect(find.byKey(notice), findsOneWidget);
   });
 }

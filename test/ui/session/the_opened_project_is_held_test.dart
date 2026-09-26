@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
+import 'package:anicel/src/services/persistence/same_file.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**AN OPENED PROJECT IS HELD FROM THE MOMENT IT OPENS.** The session's
@@ -146,5 +148,39 @@ void main() {
       reason: 'every cel moved onto the new file; nothing reads the old one',
     );
     File(first).deleteSync();
+  });
+
+  test('a file a cel still READS from stays held when the session binds '
+      'elsewhere — a placed archive leaves every ref where it was', () async {
+    final directory = Directory.systemTemp.createTempSync('anicel-held-placed');
+    deleteAfterSessionEnds(directory);
+    final first = '${directory.path}${Platform.pathSeparator}first.anicel';
+    final placed = '${directory.path}${Platform.pathSeparator}placed.anicel';
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    drawOnCurrentFrame(session);
+    await session.projectDoor.saveProjectToFile(
+      first,
+      asked: SaveAsked.byAPerson,
+    );
+    expect(
+      session.renderCaches.brushFrameStore.filesReadFrom.any(
+        (path) => namesTheSameFile(path, first),
+      ),
+      isTrue,
+      reason: 'CONTROL: the drawing now reads from the file it was saved to',
+    );
+
+    session.projectDoor.adoptPlacedArchive(
+      placed,
+      staged: (mediaInFile: const <String>{}, cleanAsOf: 0),
+    );
+    expect(
+      OpenProjectFile.instance.isHolding(first),
+      isTrue,
+      reason: 'a cel still reads there, so it is still held',
+    );
   });
 }
