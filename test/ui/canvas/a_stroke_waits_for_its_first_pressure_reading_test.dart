@@ -48,19 +48,20 @@ void main() {
     (tester) async {
       final results = await _strokes(tester, _pressureBrush, [
         // The estimate on the down and on the first move, then the
-        // Bluetooth catches up with a light touch.
+        // Bluetooth catches up with a light touch. Each sample leans its
+        // own way, and the lean and the speed must stay each sample's own.
         _pencil([
-          (at: const Offset(4, 8), force: _estimate, time: _ms(0)),
-          (at: const Offset(20, 8), force: _estimate, time: _ms(8)),
-          (at: const Offset(40, 8), force: 0.25, time: _ms(16)),
-          (at: const Offset(70, 8), force: 0.25, time: _ms(24)),
+          _s(const Offset(4, 8), _estimate, 0, tilt: 0.2),
+          _s(const Offset(20, 8), _estimate, 8, tilt: 0.4),
+          _s(const Offset(40, 8), 0.25, 20, tilt: 0.6),
+          _s(const Offset(70, 8), 0.25, 24, tilt: 0.8),
         ]),
         // The same hand, measured from the start.
         _pencil([
-          (at: const Offset(4, 8), force: 0.25, time: _ms(0)),
-          (at: const Offset(20, 8), force: 0.25, time: _ms(8)),
-          (at: const Offset(40, 8), force: 0.25, time: _ms(16)),
-          (at: const Offset(70, 8), force: 0.25, time: _ms(24)),
+          _s(const Offset(4, 8), 0.25, 0, tilt: 0.2),
+          _s(const Offset(20, 8), 0.25, 8, tilt: 0.4),
+          _s(const Offset(40, 8), 0.25, 20, tilt: 0.6),
+          _s(const Offset(70, 8), 0.25, 24, tilt: 0.8),
         ]),
       ]);
 
@@ -85,18 +86,18 @@ void main() {
         _pressureBrush.copyWith(stabilizerStrength: 40),
         [
           _pencil([
-            (at: const Offset(4, 8), force: _estimate, time: _ms(0)),
-            (at: const Offset(30, 20), force: _estimate, time: _ms(8)),
-            (at: const Offset(60, 4), force: _estimate, time: _ms(16)),
-            (at: const Offset(90, 24), force: 0.5, time: _ms(24)),
-            (at: const Offset(120, 8), force: 0.5, time: _ms(32)),
+            _s(const Offset(4, 8), _estimate, 0),
+            _s(const Offset(30, 20), _estimate, 8),
+            _s(const Offset(60, 4), _estimate, 16),
+            _s(const Offset(90, 24), 0.5, 24),
+            _s(const Offset(120, 8), 0.5, 32),
           ]),
           _pencil([
-            (at: const Offset(4, 8), force: 0.5, time: _ms(0)),
-            (at: const Offset(30, 20), force: 0.5, time: _ms(8)),
-            (at: const Offset(60, 4), force: 0.5, time: _ms(16)),
-            (at: const Offset(90, 24), force: 0.5, time: _ms(24)),
-            (at: const Offset(120, 8), force: 0.5, time: _ms(32)),
+            _s(const Offset(4, 8), 0.5, 0),
+            _s(const Offset(30, 20), 0.5, 8),
+            _s(const Offset(60, 4), 0.5, 16),
+            _s(const Offset(90, 24), 0.5, 24),
+            _s(const Offset(120, 8), 0.5, 32),
           ]),
         ],
       );
@@ -107,11 +108,41 @@ void main() {
   );
 
   testWidgets(
+    'a stand-in in the middle of a stroke keeps the last reading',
+    (tester) async {
+      final results = await _strokes(tester, _pressureBrush, [
+        // Read at the press itself...
+        _pencil([
+          _s(const Offset(4, 8), 0.25, 0),
+          _s(const Offset(60, 8), _estimate, 8),
+          _s(const Offset(90, 8), 0.25, 16),
+        ]),
+        // ...or only after waiting for it.
+        _pencil([
+          _s(const Offset(4, 24), _estimate, 100),
+          _s(const Offset(30, 24), 0.25, 108),
+          _s(const Offset(60, 24), _estimate, 116),
+          _s(const Offset(90, 24), 0.25, 124),
+        ]),
+      ]);
+
+      expect(results, hasLength(2));
+      for (final stroke in results) {
+        expect(
+          stroke.map((dab) => dab.pressure).toSet(),
+          {closeTo(0.25 / _pencilMax, 1e-9)},
+        );
+      }
+    },
+    variant: ipad,
+  );
+
+  testWidgets(
     'a tap too short to be measured still leaves its dot, at what the '
     'device reported',
     (tester) async {
       final results = await _strokes(tester, _pressureBrush, [
-        _pencil([(at: const Offset(10, 8), force: _estimate, time: _ms(0))]),
+        _pencil([_s(const Offset(10, 8), _estimate, 0)]),
       ]);
 
       expect(results.single, hasLength(1));
@@ -130,12 +161,12 @@ void main() {
     (tester) async {
       final results = await _strokes(tester, _pressureBrush, [
         _pencil([
-          (at: const Offset(4, 8), force: _estimate, time: _ms(0)),
-          (at: const Offset(20, 8), force: _estimate, time: _ms(20)),
-          (at: const Offset(36, 8), force: _estimate, time: _ms(40)),
+          _s(const Offset(4, 8), _estimate, 0),
+          _s(const Offset(20, 8), _estimate, 20),
+          _s(const Offset(36, 8), _estimate, 40),
           // Past the patience, still the estimate: the stroke stops waiting.
-          (at: const Offset(52, 8), force: _estimate, time: _ms(60)),
-          (at: const Offset(90, 8), force: 2.0, time: _ms(80)),
+          _s(const Offset(52, 8), _estimate, 60),
+          _s(const Offset(90, 8), 2.0, 80),
         ]),
       ]);
 
@@ -153,10 +184,10 @@ void main() {
   testWidgets('within the patience the stroke keeps waiting', (tester) async {
     final results = await _strokes(tester, _pressureBrush, [
       _pencil([
-        (at: const Offset(4, 8), force: _estimate, time: _ms(0)),
-        (at: const Offset(20, 8), force: _estimate, time: _ms(25)),
-        (at: const Offset(36, 8), force: _estimate, time: _ms(50)),
-        (at: const Offset(60, 8), force: 1.0, time: _ms(58)),
+        _s(const Offset(4, 8), _estimate, 0),
+        _s(const Offset(20, 8), _estimate, 25),
+        _s(const Offset(36, 8), _estimate, 50),
+        _s(const Offset(60, 8), 1.0, 58),
       ]),
     ]);
 
@@ -183,8 +214,8 @@ void main() {
         ),
         [
           _pencil([
-            (at: const Offset(4, 8), force: _estimate, time: _ms(0)),
-            (at: const Offset(40, 8), force: 0.25, time: _ms(8)),
+            _s(const Offset(4, 8), _estimate, 0),
+            _s(const Offset(40, 8), 0.25, 8),
           ]),
         ],
       );
@@ -202,8 +233,8 @@ void main() {
     (tester) async {
       final results = await _strokes(tester, _pressureBrush, [
         _pen(pressureMax: 1, [
-          (at: const Offset(4, 8), force: 1 / 3, time: _ms(0)),
-          (at: const Offset(40, 8), force: 0.9, time: _ms(8)),
+          _s(const Offset(4, 8), 1 / 3, 0),
+          _s(const Offset(40, 8), 0.9, 8),
         ]),
       ]);
 
@@ -221,16 +252,16 @@ void main() {
       await _drive(
         tester,
         _pencil([
-          (at: const Offset(4, 20), force: _estimate, time: _ms(0)),
-          (at: const Offset(30, 20), force: _estimate, time: _ms(8)),
+          _s(const Offset(4, 20), _estimate, 0),
+          _s(const Offset(30, 20), _estimate, 8),
         ]),
         end: _End.cancel,
       );
       await _drive(
         tester,
         _pencil([
-          (at: const Offset(50, 8), force: 0.25, time: _ms(100)),
-          (at: const Offset(80, 8), force: 0.25, time: _ms(108)),
+          _s(const Offset(50, 8), 0.25, 100),
+          _s(const Offset(80, 8), 0.25, 108),
         ]),
       );
 
@@ -259,30 +290,36 @@ void main() {
       service.start();
     }
 
+    /// HID already reports the tip down — the press is a press — while
+    /// Wintab's queue still ends with the pen above the tablet.
+    RawPenInputService hidTipDown() {
+      final hid = RawPenInputService.instance;
+      RawPenInputService.debugClockOverride = () => DateTime(2024);
+      hid.debugPollOverride = () =>
+          const QaPenRawState(flags: 0x01, sequence: 1);
+      hid.start();
+      return hid;
+    }
+
     testWidgets(
       'a packet the driver took while the pen still hovered is not the '
-      'contact\'s first reading',
+      'contact\'s first reading — a pen the OS calls a mouse waits for one',
       (tester) async {
         final results = <List<BrushDab>>[];
         await _pump(tester, _pressureBrush, results);
         live();
         final service = WintabPenService.instance;
-        // HID already reports the tip down — the press is a press — while
-        // Wintab's queue still ends with the pen above the tablet.
-        final hid = RawPenInputService.instance;
-        RawPenInputService.debugClockOverride = () => DateTime(2024);
-        hid.debugPollOverride = () =>
-            const QaPenRawState(flags: 0x01, sequence: 1);
-        hid.start();
+        final hid = hidTipDown();
 
         service.debugInjectPacket(_packet(pressure: 0, buttons: 0));
-        _down(tester, const Offset(4, 8), time: _ms(0));
+        const mouse = PointerDeviceKind.mouse;
+        _down(tester, const Offset(4, 8), time: _ms(0), kind: mouse);
         await tester.pump();
         // The contact's packet reaches the queue before the first move.
         queue = [_packet(pressure: 0.6, buttons: 1)];
-        _move(tester, const Offset(40, 8), time: _ms(8));
+        _move(tester, const Offset(40, 8), time: _ms(8), kind: mouse);
         await tester.pump();
-        _up(tester, const Offset(40, 8), time: _ms(16));
+        _up(tester, const Offset(40, 8), time: _ms(16), kind: mouse);
         await tester.pump();
 
         expect(results.single.first.center.x, 4);
@@ -292,6 +329,32 @@ void main() {
         );
         // The poll timers must die BEFORE the binding's pending-timer
         // invariant check (which runs ahead of tearDown callbacks).
+        service.debugReset();
+        hid.debugReset();
+      },
+    );
+
+    testWidgets(
+      'while Wintab has not reached the contact, an Ink stylus opens with '
+      'its own reading — it has one',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _pressureBrush, results);
+        live();
+        final service = WintabPenService.instance;
+        final hid = hidTipDown();
+
+        service.debugInjectPacket(_packet(pressure: 0, buttons: 0));
+        _down(tester, const Offset(4, 8), time: _ms(0), force: 0.3);
+        await tester.pump();
+        queue = [_packet(pressure: 0.6, buttons: 1)];
+        _move(tester, const Offset(40, 8), time: _ms(8), force: 0.3);
+        await tester.pump();
+        _up(tester, const Offset(40, 8), time: _ms(16));
+        await tester.pump();
+
+        expect(results.single.first.pressure, closeTo(0.3, 1e-9));
+        expect(results.single.last.pressure, closeTo(0.6, 1e-9));
         service.debugReset();
         hid.debugReset();
       },
@@ -365,7 +428,12 @@ final BrushEditCanvasInputSettings _pressureBrush =
 
 Duration _ms(int milliseconds) => Duration(milliseconds: milliseconds);
 
-typedef _Sample = ({Offset at, double force, Duration time});
+typedef _Sample = ({Offset at, double force, Duration time, double tilt});
+
+/// One pen sample: where, the RAW force the device reported, when (in ms),
+/// and how far the pen leans from upright (radians, Flutter's `tilt`).
+_Sample _s(Offset at, double force, int ms, {double tilt = 0}) =>
+    (at: at, force: force, time: _ms(ms), tilt: tilt);
 
 typedef _Stroke = ({List<_Sample> samples, double pressureMax});
 
@@ -375,11 +443,19 @@ _Stroke _pencil(List<_Sample> samples) =>
 _Stroke _pen(List<_Sample> samples, {required double pressureMax}) =>
     (samples: samples, pressureMax: pressureMax);
 
-/// What a landed dab looks like on the cel — where, how big, how opaque —
-/// in the order it was laid.
-List<(double, double, double, double)> _look(List<BrushDab> dabs) => [
+/// What a landed dab is — where, how big, how opaque, and every input it
+/// was drawn with — in the order it was laid.
+List<Object?> _look(List<BrushDab> dabs) => [
   for (final dab in dabs)
-    (dab.center.x, dab.center.y, dab.size, dab.opacity),
+    (
+      dab.center.x,
+      dab.center.y,
+      dab.size,
+      dab.opacity,
+      dab.pressure,
+      dab.speed,
+      dab.tiltAltitude,
+    ),
 ];
 
 Future<List<List<BrushDab>>> _strokes(
@@ -443,6 +519,7 @@ Future<void> _drive(
     first.at,
     time: first.time,
     force: first.force,
+    tilt: first.tilt,
     pressureMax: stroke.pressureMax,
   );
   await tester.pump();
@@ -452,6 +529,7 @@ Future<void> _drive(
       sample.at,
       time: sample.time,
       force: sample.force,
+      tilt: sample.tilt,
       pressureMax: stroke.pressureMax,
     );
     await tester.pump();
@@ -481,16 +559,19 @@ void _down(
   Offset at, {
   required Duration time,
   double force = 0,
+  double tilt = 0,
   double pressureMax = 1,
+  PointerDeviceKind kind = PointerDeviceKind.stylus,
 }) => tester.binding.handlePointerEvent(
   PointerDownEvent(
     pointer: 1,
-    kind: PointerDeviceKind.stylus,
+    kind: kind,
     position: canvasGlobalOffset(tester, at),
     timeStamp: time,
     pressure: force,
     pressureMin: 0,
     pressureMax: pressureMax,
+    tilt: tilt,
   ),
 );
 
@@ -499,28 +580,35 @@ void _move(
   Offset at, {
   required Duration time,
   double force = 0,
+  double tilt = 0,
   double pressureMax = 1,
+  PointerDeviceKind kind = PointerDeviceKind.stylus,
 }) => tester.binding.handlePointerEvent(
   PointerMoveEvent(
     pointer: 1,
-    kind: PointerDeviceKind.stylus,
+    kind: kind,
     position: canvasGlobalOffset(tester, at),
     timeStamp: time,
     pressure: force,
     pressureMin: 0,
     pressureMax: pressureMax,
+    tilt: tilt,
   ),
 );
 
-void _up(WidgetTester tester, Offset at, {required Duration time}) =>
-    tester.binding.handlePointerEvent(
-      PointerUpEvent(
-        pointer: 1,
-        kind: PointerDeviceKind.stylus,
-        position: canvasGlobalOffset(tester, at),
-        timeStamp: time,
-      ),
-    );
+void _up(
+  WidgetTester tester,
+  Offset at, {
+  required Duration time,
+  PointerDeviceKind kind = PointerDeviceKind.stylus,
+}) => tester.binding.handlePointerEvent(
+  PointerUpEvent(
+    pointer: 1,
+    kind: kind,
+    position: canvasGlobalOffset(tester, at),
+    timeStamp: time,
+  ),
+);
 
 QaTabletPacket _packet({required double pressure, required int buttons}) =>
     QaTabletPacket(

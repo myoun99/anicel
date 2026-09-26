@@ -51,15 +51,18 @@ class _BrushEditPressure {
   /// pressure anyway. Stale/absent stream falls through unchanged.
   ///
   /// 🚨NOT A READING (H43, 유저 2026-09-26: 「필압있는 브러시 쓸때 첫
-  /// 펜다운한 부분? 만 입력한 필압보다 센게나와」) — two stand-ins the
-  /// device hands over in place of a pressure it has not measured yet:
+  /// 펜다운한 부분? 만 입력한 필압보다 센게나와」) — what the device hands
+  /// over in place of a pressure it has not measured yet:
   ///
-  /// * a driver packet taken while the pen was still HOVERING, when it is
-  ///   asked for the [opening] of a contact. Once the contact has read,
-  ///   the same packet means the pen has lifted, and 0 is the reading;
-  /// * UIKit's force ESTIMATE ([_isUIKitForceEstimate]).
+  /// * UIKit's force ESTIMATE ([_isUIKitForceEstimate]);
+  /// * a driver packet taken while the pen was still HOVERING, asked for
+  ///   the [opening] of a contact. Once the contact has read, the same
+  ///   packet means the pen has lifted, and 0 is the reading. Until then
+  ///   the pointer's own word stands in: a stylus's is itself a reading of
+  ///   this contact, and a mouse's or a finger's full pressure is only a
+  ///   reading when no sidecar is left to read the pen it might be.
   ///
-  /// The stroke waits for a reading instead of painting either (see
+  /// The stroke waits for a reading instead of painting a stand-in (see
   /// `_BrushEditStroke.takeSample`).
   ({double pressure, bool read}) pressureOf(
     PointerEvent event, {
@@ -68,19 +71,20 @@ class _BrushEditPressure {
     // The response curve (PEN-3) shapes REAL pressure from either source
     // — the full-pressure fallbacks stay 1.0 through any gamma.
     final sidecar = PenSidecars.freshReading();
-    if (sidecar != null) {
+    if (sidecar != null && (sidecar.touching || !opening)) {
       return (
         pressure: AppInput.applyPressureCurve(sidecar.pressure),
-        read: sidecar.touching || !opening,
+        read: true,
       );
     }
-    if (event.kind != PointerDeviceKind.stylus &&
-        event.kind != PointerDeviceKind.invertedStylus) {
-      return (pressure: 1.0, read: true);
-    }
     final range = event.pressureMax - event.pressureMin;
-    if (!range.isFinite || range <= 0.0) {
-      return (pressure: 1.0, read: true);
+    final measures =
+        (event.kind == PointerDeviceKind.stylus ||
+            event.kind == PointerDeviceKind.invertedStylus) &&
+        range.isFinite &&
+        range > 0.0;
+    if (!measures) {
+      return (pressure: 1.0, read: sidecar == null);
     }
     return (
       pressure: AppInput.applyPressureCurve(

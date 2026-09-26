@@ -32,6 +32,12 @@ class _BrushEditStroke {
   /// wait is the few samples it takes the device to catch up; nothing is
   /// on screen until then.
   ///
+  /// ⚠️That pairs one sample's lean with another sample's pressure — what
+  /// [_BrushEditPressure.noteSample] is one call to prevent — and it does
+  /// so knowingly: those samples carry no pressure of their own, and the
+  /// nearest measurement is closer to the hand than the stand-in the
+  /// device put there.
+  ///
   /// ⛔NOT 「paint the stand-in and repaint when the reading comes」 — what
   /// is shown once is seen ([[no-optimistic-commit-then-revert]]).
   ///
@@ -191,44 +197,42 @@ class _BrushEditStroke {
       _opening = false;
     }
     if (waiting != null) {
-      _paintWaiting(withThisReading: read);
+      _paintWaiting();
     }
     paint();
   }
 
   /// The contact ended before its first reading: what waited lands with
-  /// what the device reported for it — a tap too short for the device to
-  /// measure still leaves its dot.
+  /// what the device reported — a tap too short for the device to measure
+  /// still leaves its dot.
   void stopWaiting() {
     if (_waiting != null) {
-      _paintWaiting(withThisReading: false);
+      _paintWaiting();
     }
   }
 
-  /// Paints every sample that waited — each with the reading the current
-  /// sample just brought, or, [withThisReading] false, with the stand-in it
-  /// came with — and leaves the current readings as they were.
-  void _paintWaiting({required bool withThisReading}) {
+  /// Paints every sample that waited, each with its own lean and speed and
+  /// the pressure the stroke holds now — the reading the current sample
+  /// just brought or, when the stroke stops waiting without one, what the
+  /// device last reported in its place — and leaves the current readings
+  /// as they were.
+  void _paintWaiting() {
     final samples = _waiting!.samples;
     _waiting = null;
-    final pressure = _state._currentPressure;
     final tilt = _state._currentTilt;
     final speed = _state._currentSpeed;
     for (final sample in samples) {
-      _state._currentPressure = withThisReading ? pressure : sample.standIn;
       _state._currentTilt = sample.tilt;
       _state._currentSpeed = sample.speed;
       sample.paint();
     }
-    _state._currentPressure = pressure;
     _state._currentTilt = tilt;
     _state._currentSpeed = speed;
   }
 
-  /// The sample just noted, as it waits: its own lean and speed, the
-  /// device's stand-in for its pressure, and what it paints.
+  /// The sample just noted, as it waits: its own lean and speed, and what
+  /// it paints.
   _WaitingSample _waitingSample(void Function() paint) => (
-    standIn: _state._currentPressure,
     tilt: _state._currentTilt,
     speed: _state._currentSpeed,
     paint: paint,
@@ -548,7 +552,6 @@ class _BrushEditStroke {
     _state._previousRawCanvasPosition = null;
     _state._activeStrokeInputSettings = null;
     _waiting = null;
-    _opening = false;
     _state._pressure.restInput();
     _state._strokeDynamics = null;
     _state._lastDirectionDegrees = null;
@@ -570,7 +573,6 @@ class _BrushEditStroke {
 /// One sample a stroke holds while it waits for its first pressure reading
 /// ([_BrushEditStroke._waiting]).
 typedef _WaitingSample = ({
-  double standIn,
   ({double azimuthDegrees, double altitude})? tilt,
   double speed,
   void Function() paint,
