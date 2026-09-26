@@ -82,6 +82,21 @@ void main() {
     );
   });
 
+  test('the conte\'s live pictures are the canvas\'s painter, so their '
+      'buffers are on the canvas buffer\'s row', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final before = censusRows(session)['panelRasters']!;
+
+    session.renderCaches.livePictureBufferBytes
+      ..['picture-a'] = 1000
+      ..['picture-b'] = 2000;
+
+    expect(censusRows(session)['panelRasters'], before + 3000);
+  });
+
   test('🚨cels parked on disk are not RAM — the drawings and sheet-ink '
       'rows count what is resident', () {
     final session = EditorSessionManager(

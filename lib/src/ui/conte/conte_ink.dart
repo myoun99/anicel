@@ -168,7 +168,7 @@ class ConteInkLayer extends StatelessWidget {
   final CacheInvalidationSink? cacheInvalidationSink;
 
   /// The cels the pictures draw into, and the windows they draw through
-  /// ([contePictureWindows]).
+  /// ([contePictures]).
   final ContePictureInkController? pictures;
   final List<SheetPictureWindow> pictureWindows;
 

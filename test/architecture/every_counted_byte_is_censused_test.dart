@@ -189,7 +189,8 @@ const _notCensused = <String, String>{
   'lib/src/ui/canvas/display_buffer_cache.dart → heldBytes':
       'via:canvasBufferBytes — the census PULLS from holders the session '
       'owns and this lives in a widget State, so the view pushes it onto '
-      'RenderCaches, the way the media viewers already do',
+      'RenderCaches, the way the media viewers already do — a live conte '
+      'picture\'s view onto livePictureBufferBytes, the same census row',
   'lib/src/native/native_upload_cache.dart → residentBytes':
       'via:nativeUploadBytes — the engine keeps two of these (stamp bytes, '
       'mask alphas) and sums them; ALSO ledgered because the bare name is '

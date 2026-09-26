@@ -34,6 +34,7 @@ import 'conte_fonts.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
 import 'conte_picture_ink.dart';
+import 'conte_picture_live.dart';
 import 'conte_sheet_builder.dart';
 import 'conte_words_in.dart';
 
@@ -313,6 +314,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
       inkController.syncGeometry(metrics);
     }
     final ink = _inkMount(page);
+    final pictures = ink == null
+        ? const <ContePicture>[]
+        : _picturesOf(ink.page);
 
     final panel = SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -366,8 +370,36 @@ class _ConteTabHostState extends State<ConteTabHost> {
                   barrierKey: 'conte-action-edit-barrier',
                 ),
               ),
+            // Under the pen, over the page: the pictures the brush draws
+            // into, composited live while it is on.
+            if (ink != null && pictures.isNotEmpty)
+              Positioned.fill(
+                child: ContePictureLive(
+                  pictures: pictures,
+                  session: _session,
+                  surfaceOf: (picture) => widget.pictures!
+                      .sessionStateFor(
+                        picture.window.plane! as CanvasSize,
+                        picture.window.key,
+                      )
+                      .canvasState
+                      .currentSurface,
+                  viewport: viewport,
+                  effectiveRatio: EffectiveDevicePixelRatio.of(context),
+                  paper: Size(
+                    ink.page.metrics.pageWidth,
+                    ink.page.metrics.pageHeight,
+                  ),
+                ),
+              ),
             if (ink != null)
-              _inkLayer(ink.tool, ink.controller, ink.page, viewport),
+              _inkLayer(
+                ink.tool,
+                ink.controller,
+                ink.page,
+                viewport,
+                pictures,
+              ),
           ],
         );
       },
@@ -379,11 +411,27 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
+  /// The pictures [page]'s brush draws into — none without the cels'
+  /// controller.
+  List<ContePicture> _picturesOf(ContePageLayout page) {
+    final cels = widget.pictures;
+    if (cels == null) {
+      return const [];
+    }
+    return contePictures(page, (
+      cutOf: _session.cutById,
+      celKeyOf: _session.brushFrameKeyForCut,
+      cameraPoseOf: _session.camera.cameraPoseForCut,
+      cameraFrameSize: _session.camera.cameraFrameSize,
+    ), cels);
+  }
+
   Positioned _inkLayer(
     ValueListenable<BrushToolState> brushToolState,
     ConteInkController inkController,
     ContePageLayout page,
     CanvasViewport viewport,
+    List<ContePicture> pictures,
   ) {
     return Positioned.fill(
       // The tool-state boundary (R18 UI-3) went one step further down (H40
@@ -399,14 +447,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         strokeActive: _strokeHold,
         cacheInvalidationSink: _cacheInvalidationSink,
         pictures: widget.pictures,
-        pictureWindows: widget.pictures == null
-            ? const []
-            : contePictureWindows(page, (
-                cutOf: _session.cutById,
-                celKeyOf: _session.brushFrameKeyForCut,
-                cameraPoseOf: _session.camera.cameraPoseForCut,
-                cameraFrameSize: _session.camera.cameraFrameSize,
-              )),
+        pictureWindows: [for (final picture in pictures) picture.window],
         pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
       ),
     );

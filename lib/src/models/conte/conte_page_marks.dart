@@ -362,6 +362,27 @@ Iterable<SheetMark> _content(
 Rect contePictureSlot(ContePlacedCell cell, ConteSheetMetrics m) =>
     cell.pictureRect.deflate(m.silhouetteBorder);
 
+/// [cell]'s picture as the page prints it — and as a live picture shows
+/// its corner while the brush draws into it.
+SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) =>
+    SheetPicture(
+      SheetPaintLayer.picture,
+      cutId: cell.cutId,
+      pictureFrame: cell.source.pictureFrame,
+      slot: contePictureSlot(cell, m),
+      cornerRadius: m.windowRadius,
+    );
+
+/// The camera's labels written on [cell]'s picture — printed over the
+/// picture, and over a live picture again, where it covers them.
+Iterable<SheetMark> conteCameraLabelsOf(
+  ContePlacedCell cell,
+  ConteSheetMetrics m,
+) => _cameraLabels(
+  cell.source.cameraLabels,
+  contePictureSlot(cell, m).deflate(2),
+);
+
 /// One cell: its window grown with its camera work, its picture, the
 /// camera's labels and its two text columns.
 Iterable<SheetMark> _cell(
@@ -371,14 +392,8 @@ Iterable<SheetMark> _cell(
 ) sync* {
   final window = contePictureSlot(cell, m);
   yield* _cameraWork(m, cell, window);
-  yield SheetPicture(
-    SheetPaintLayer.picture,
-    cutId: cell.cutId,
-    pictureFrame: cell.source.pictureFrame,
-    slot: window,
-    cornerRadius: m.windowRadius,
-  );
-  yield* _cameraLabels(cell.source.cameraLabels, window.deflate(2));
+  yield contePictureOf(cell, m);
+  yield* conteCameraLabelsOf(cell, m);
   yield SheetWords(
     SheetPaintLayer.content,
     text: cell.source.action,

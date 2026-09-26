@@ -275,7 +275,16 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
           // `DisplayBufferCache._maxChainBytes` — it read one image until
           // 2026-09-12, and the canvases it was not counting showed up in
           // 「엔진·폰트·프레임워크」 as 10GB nothing would own.
-          sum((session) => session.renderCaches.canvasBufferBytes),
+          sum(
+            (session) =>
+                session.renderCaches.canvasBufferBytes +
+                // The conte's live pictures are the same painter, one
+                // buffer each.
+                session.renderCaches.livePictureBufferBytes.values.fold(
+                  0,
+                  (total, bytes) => total + bytes,
+                ),
+          ),
     ),
     // Pushed by the mounted viewers rather than read off a holder the
     // session owns — see [RenderCaches.viewerRasterBytesByViewer].

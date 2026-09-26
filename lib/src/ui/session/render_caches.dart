@@ -115,10 +115,16 @@ class RenderCaches {
   ///
   /// 🚨PUSHED, for the reason above it: the buffer lives in a widget State
   /// the session does not own. ⚠️A plain int rather than the viewers' map
-  /// because `CanvasLayerStackView` has exactly ONE construction site (the
-  /// editing canvas). A second one would need the map — and would silently
-  /// overwrite this until someone noticed, which is why it is written down.
+  /// because it is the EDITING CANVAS's alone; the second
+  /// `CanvasLayerStackView` site keeps its own map below
+  /// ([livePictureBufferBytes]) rather than overwriting this.
   int canvasBufferBytes = 0;
+
+  /// What each LIVE picture's display buffer holds — the conte's pictures,
+  /// composited live while its brush is on (유저 답 conte-picture-display-Q1
+  /// 「실시간 합성」), by picture: several are live at once. The same census
+  /// row as [canvasBufferBytes], pushed for the same reason.
+  final Map<String, int> livePictureBufferBytes = {};
 
   /// What the storyboard's and the conte's thumbnails hold — every panel
   /// picture still inside its budget (one viewer's share of this device).

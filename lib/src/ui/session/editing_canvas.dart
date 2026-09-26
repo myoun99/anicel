@@ -98,27 +98,14 @@ class EditingCanvas {
         ? cut
         : cut.copyWith(layers: _withOpacityPreview(cut.layers, preview));
 
-    final walk = EditingStackMap(
-      opacityVerbs: _opacityVerbs,
-      internals: _internals,
+    final drawn = stackAt(
       cut: cut,
       stackCut: stackCut,
       frameIndex: frameIndex,
-      activeLayerId: activeLayerId,
+      drawingLayerId: activeLayerId,
     );
     final nodes = <CompositeNode<CanvasStackRow>>[
-      ...walk.mapTree(
-        resolveCutFrameCompositeTree(
-          cut: stackCut,
-          frameIndex: frameIndex,
-          liveLayerId:
-              activeLayerId != null &&
-                  stackCut.layers.byId(activeLayerId) != null &&
-                  layerAcceptsBrushInput(stackCut.layers.byId(activeLayerId)!)
-              ? activeLayerId
-              : null,
-        ),
-      ),
+      ...drawn.nodes,
       // Track-owned SE rows join as their cut-local display clones — they
       // composite read-only like before the ownership move (their
       // transform tracks are stripped, so the plain resolve path
@@ -128,6 +115,53 @@ class EditingCanvas {
     ];
     return (
       nodes: List.unmodifiable(nodes),
+      activeLayerOpacity: drawn.activeLayerOpacity,
+      activeSourceEffects: drawn.activeSourceEffects,
+    );
+  }
+
+  /// [cut]'s composite tree at [frameIndex] with [drawingLayerId] standing
+  /// in it as the live row — the editing canvas's at the playhead ([stack])
+  /// and a conte picture's while its brush is on, one walk for both: the
+  /// row a pen draws on is drawn where the composite puts it.
+  ///
+  /// [stackCut] is [cut] as it composites right now (the canvas's opacity
+  /// drag preview). The live row stands in the tree only when it takes
+  /// brush input; otherwise it composites like any other.
+  ({
+    List<CompositeNode<CanvasStackRow>> nodes,
+    double activeLayerOpacity,
+    List<ResolvedLayerEffect> activeSourceEffects,
+  })
+  stackAt({
+    required Cut cut,
+    Cut? stackCut,
+    required int frameIndex,
+    required LayerId? drawingLayerId,
+  }) {
+    final shown = stackCut ?? cut;
+    final walk = EditingStackMap(
+      opacityVerbs: _opacityVerbs,
+      internals: _internals,
+      cut: cut,
+      stackCut: shown,
+      frameIndex: frameIndex,
+      activeLayerId: drawingLayerId,
+    );
+    final drawing = drawingLayerId == null
+        ? null
+        : shown.layers.byId(drawingLayerId);
+    final nodes = walk.mapTree(
+      resolveCutFrameCompositeTree(
+        cut: shown,
+        frameIndex: frameIndex,
+        liveLayerId: drawing != null && layerAcceptsBrushInput(drawing)
+            ? drawingLayerId
+            : null,
+      ),
+    );
+    return (
+      nodes: nodes,
       activeLayerOpacity: walk.activeLayerOpacity,
       activeSourceEffects: walk.activeSourceEffects,
     );

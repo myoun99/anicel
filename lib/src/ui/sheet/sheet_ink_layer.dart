@@ -18,6 +18,7 @@ import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../../services/viewport_transform_matrix.dart';
 import '../brush/brush_tool_state.dart';
+import '../canvas/active_stroke_overlay.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 
 /// A window the sheet's brush draws through: where it sits on the paper,
@@ -60,6 +61,11 @@ sealed class SheetWindow {
   /// Which of its surface's pixels this window shows at all, before the
   /// windows stacked above it take theirs ([sheetInkRegions]).
   CanvasSelectionRegion? get shows;
+
+  /// The live stroke's overlay when SOMEONE ELSE paints this window's
+  /// surface, in its place in a composite — a picture's cel inside the
+  /// cut's composite. Null when the window's own view paints it.
+  ActiveStrokeOverlayModel? get overlay => null;
 
   /// The window's on-screen rect under the panel transform — what its view
   /// is clipped to on screen.
@@ -165,10 +171,18 @@ class SheetPictureWindow extends SheetWindow {
     required this.canvasToPaper,
     required this.artworkToCanvas,
     required this.canvasSize,
+    required this.overlay,
   });
 
   /// Where the picture sits on the paper.
   final Rect slot;
+
+  /// The picture is painted live in the cut's composite while the brush is
+  /// on, its stroke in the cel's place there (유저 답 conte-picture-display-Q1
+  /// 「실시간 합성 (정확)」) — so its view hands the painter this and paints
+  /// nothing itself.
+  @override
+  final ActiveStrokeOverlayModel overlay;
 
   /// The cut's canvas → the paper.
   final Matrix4 canvasToPaper;
@@ -440,6 +454,10 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
                     // The sheet paper is painted below this stack; an
                     // opaque background here would cover it.
                     showTransparentBackground: false,
+                    // The canvas's MERGED pairing: a surface painted in its
+                    // place in a composite leaves its view input only.
+                    overlayModel: window.overlay,
+                    paintsContent: window.overlay == null,
                     onActiveStrokeChanged: (active) =>
                         _windowStroking(window.id, active: active),
                     onSourceStrokeCommitted: (strokeData) =>
