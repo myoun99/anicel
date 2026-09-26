@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
@@ -201,12 +202,37 @@ class SessionRowButtonPresses {
         : layerRailEyeIsOn(layer, live: session.layerSwitches.isLayerEyeOn);
   }
 
+  /// 🚨F-184 (유저 2026-09-26): 「어태치 레이어가 접혀있을때의 기준레이어의
+  /// 비지블 버튼은 내부 어태치레이어 전체에 적용. 즉 비지블on하면 어태치레이어들
+  /// 다 on됨. 다시말하지만 어태치 접혀있을때만. 펼치기 상태에선 지금처럼
+  /// 각각」. The eye of a FOLDED group's base sets every attach layer riding
+  /// it to what it set the base to — a rider that already shows it is passed
+  /// by, the column swipe's rule. Unfolded, each row keeps its own eye. The
+  /// group's organizer folders keep theirs: a folder's eye is its own value,
+  /// which the composite hides by, and that is F-185's law, not this one.
   void _flipEye(LayerId id) {
     if (_isCamera(id) && cameraView != null) {
       cameraView!.value = !cameraView!.value;
       return;
     }
+    final shown = _eyeOf(id);
     session.layerSwitches.toggleLayerVisibility(id);
+    for (final rider in _foldedRidersOf(id)) {
+      if (_eyeOf(rider.id) == shown) {
+        session.layerSwitches.toggleLayerVisibility(rider.id);
+      }
+    }
+  }
+
+  /// The attach layers riding [base] while its group is folded on the rail
+  /// — none while it is open.
+  List<Layer> _foldedRidersOf(LayerId base) {
+    final layers = session.activeCutOrNull?.layers;
+    if (layers == null ||
+        !session.railView.collapsedAttachBaseIds.value.contains(base)) {
+      return const [];
+    }
+    return attachedLayersOf(base, layers);
   }
 
   bool _isCamera(LayerId id) => _row(id)?.kind == LayerKind.camera;
