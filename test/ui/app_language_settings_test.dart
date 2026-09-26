@@ -10,7 +10,7 @@ import 'package:anicel/src/ui/dialogs/language_settings_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
-import 'package:anicel/src/ui/timesheet/timesheet_notation.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// UI-R10 #7: TWO language settings — program (app chrome) and notation
@@ -58,7 +58,7 @@ void main() {
     expect(
       TimesheetDocumentPainter.headerFieldLabel(
         TimesheetHeaderField.episode,
-        TimesheetNotation.of(AppLanguage.ja),
+        timesheetWordsIn(AppLanguage.ja),
       ),
       '話数',
     );
@@ -66,39 +66,42 @@ void main() {
     expect(
       TimesheetDocumentPainter.headerFieldLabel(
         TimesheetHeaderField.title,
-        TimesheetNotation.of(AppLanguage.ja),
+        timesheetWordsIn(AppLanguage.ja),
       ),
       'タイトル',
     );
     expect(
       TimesheetDocumentPainter.headerFieldLabel(
         TimesheetHeaderField.time,
-        TimesheetNotation.of(AppLanguage.ja),
+        timesheetWordsIn(AppLanguage.ja),
       ),
       'タイム',
     );
     expect(
       TimesheetDocumentPainter.headerFieldLabel(
         TimesheetHeaderField.name,
-        TimesheetNotation.of(AppLanguage.ja),
+        timesheetWordsIn(AppLanguage.ja),
       ),
       '原画',
     );
     expect(
       TimesheetDocumentPainter.headerFieldLabel(
         TimesheetHeaderField.sheet,
-        TimesheetNotation.of(AppLanguage.ja),
+        timesheetWordsIn(AppLanguage.ja),
       ),
       'シート',
     );
-    expect(TimesheetNotation.of(AppLanguage.ja).hold, '止め');
-    // The default stays the reference forms' English wording.
+    expect(timesheetWordsIn(AppLanguage.ja).hold, '止め');
+    // The English table keeps the reference forms' wording.
     expect(
-      TimesheetDocumentPainter.headerFieldLabel(TimesheetHeaderField.episode),
+      TimesheetDocumentPainter.headerFieldLabel(
+        TimesheetHeaderField.episode,
+        timesheetWordsIn(AppLanguage.en),
+      ),
       'Ep.no',
     );
-    expect(TimesheetNotation.of(AppLanguage.ja).repeat, 'リピート');
-    expect(TimesheetNotation.of(AppLanguage.ko).repeat, '리피트');
+    expect(timesheetWordsIn(AppLanguage.ja).repeat, 'リピート');
+    expect(timesheetWordsIn(AppLanguage.ko).repeat, '리피트');
   });
 
   testWidgets('the section switches the notation language on the session', (

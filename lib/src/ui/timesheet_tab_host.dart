@@ -21,7 +21,7 @@ import 'widgets/page_turn_strip.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
 import 'effective_device_pixel_ratio.dart';
-import 'timesheet/timesheet_notation.dart';
+import 'timesheet/timesheet_words_in.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet/timesheet_ink_layer.dart';
 import 'timesheet/timesheet_strata.dart';
@@ -521,7 +521,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               layout: layout,
                               pagedLayout: pagedLayout,
                               viewport: viewport,
-                              notation: TimesheetNotation.of(
+                              words: timesheetWordsIn(
                                 session.languageSettings.value.notationLanguage,
                               ),
                               dragPreview: session.dragPreview,

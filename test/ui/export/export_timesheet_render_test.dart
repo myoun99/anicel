@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart' show TextStyle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -14,7 +15,7 @@ import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/export/export_timesheet_render.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
-import 'package:anicel/src/ui/timesheet/timesheet_notation.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 
 void main() {
   Frame frame(String id) =>
@@ -56,7 +57,7 @@ void main() {
         document: document,
         layout: layout,
         pageIndex: index,
-        notation: TimesheetNotation.english,
+        words: timesheetWordsIn(AppLanguage.en),
         scale: 1,
       );
 
@@ -89,7 +90,7 @@ void main() {
         document: document,
         layout: layout,
         pageIndex: 0,
-        notation: TimesheetNotation.english,
+        words: timesheetWordsIn(AppLanguage.en),
         scale: 2,
       );
       expect(scaled.width, rect.width.round() * 2);
@@ -102,7 +103,7 @@ void main() {
         document: document,
         layout: layout,
         pageIndex: 0,
-        notation: TimesheetNotation.english,
+        words: timesheetWordsIn(AppLanguage.en),
         scale: 2,
         outputSize: const CanvasSize(width: 64, height: 40),
       );

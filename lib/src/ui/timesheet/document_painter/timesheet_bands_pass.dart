@@ -44,7 +44,7 @@ class _TimesheetBandsPass {
       if (_painter._drawForm) {
         _painter._text(
           canvas,
-          headerFieldLabel(box.field, _painter.notation),
+          headerFieldLabel(box.field, _painter.words),
           Offset(box.rect.center.dx, box.rect.top + 5),
           fontSize: 8,
           color: TimesheetDocumentPainter._gridMedium,
@@ -67,17 +67,17 @@ class _TimesheetBandsPass {
 
   /// The printed box label in the sheet's notation language (UI-R10 #7).
   static String headerFieldLabel(
-    TimesheetHeaderField field, [
-    TimesheetNotation notation = TimesheetNotation.english,
-  ]) {
+    TimesheetHeaderField field,
+    TimesheetWords words,
+  ) {
     return switch (field) {
-      TimesheetHeaderField.episode => notation.episode,
-      TimesheetHeaderField.title => notation.title,
-      TimesheetHeaderField.scene => notation.scene,
-      TimesheetHeaderField.cut => notation.cut,
-      TimesheetHeaderField.time => notation.duration,
-      TimesheetHeaderField.name => notation.name,
-      TimesheetHeaderField.sheet => notation.page,
+      TimesheetHeaderField.episode => words.episode,
+      TimesheetHeaderField.title => words.title,
+      TimesheetHeaderField.scene => words.scene,
+      TimesheetHeaderField.cut => words.cut,
+      TimesheetHeaderField.time => words.duration,
+      TimesheetHeaderField.name => words.name,
+      TimesheetHeaderField.sheet => words.page,
     };
   }
 

@@ -819,6 +819,21 @@ enum AppStrings {
   String get cnCoverCuts => _s('cnCoverCuts');
   String get cnCoverArtist => _s('cnCoverArtist');
 
+  /// What the timesheet PRINTS — read from the NOTATION language's table,
+  /// not the program's (`timesheetWordsIn`): its header boxes' labels, and
+  /// the words a repeat (UI-R10 #6) and a whole-cut hold (UI-R11 #15) print
+  /// down their column. Not the info dialog's field names (`sheetField*`):
+  /// those are the program's, and the paper keeps its forms' own shorthand.
+  String get sheetPrintEpisode => _s('sheetPrintEpisode');
+  String get sheetPrintTitle => _s('sheetPrintTitle');
+  String get sheetPrintScene => _s('sheetPrintScene');
+  String get sheetPrintCut => _s('sheetPrintCut');
+  String get sheetPrintDuration => _s('sheetPrintDuration');
+  String get sheetPrintName => _s('sheetPrintName');
+  String get sheetPrintPage => _s('sheetPrintPage');
+  String get sheetPrintRepeat => _s('sheetPrintRepeat');
+  String get sheetPrintHold => _s('sheetPrintHold');
+
   /// '{n}' is the comma count.
   String get tlSetCommaTemplate => _s('tlSetCommaTemplate');
   String get tlProjectAudioRate => _s('tlProjectAudioRate');
@@ -2701,6 +2716,15 @@ enum AppStrings {
     'cnHeadSeconds': 'TIME',
     'cnCoverCuts': ' cuts',
     'cnCoverArtist': 'Storyboard',
+    'sheetPrintEpisode': 'Ep.no',
+    'sheetPrintTitle': 'Title',
+    'sheetPrintScene': 'Scene',
+    'sheetPrintCut': 'Cut.no',
+    'sheetPrintDuration': 'Duration',
+    'sheetPrintName': 'Name',
+    'sheetPrintPage': 'Page',
+    'sheetPrintRepeat': 'REPEAT',
+    'sheetPrintHold': 'HOLD',
     'tlBlankX': 'Blank / X',
     'tlMark': 'Mark $inbetweenMark',
     'tlSetCommasN': 'Set N commas',
@@ -4020,6 +4044,15 @@ enum AppStrings {
     'cnHeadSeconds': '秒',
     'cnCoverCuts': 'cut',
     'cnCoverArtist': 'コンテ',
+    'sheetPrintEpisode': '話数',
+    'sheetPrintTitle': 'タイトル',
+    'sheetPrintScene': 'シーン',
+    'sheetPrintCut': 'カット',
+    'sheetPrintDuration': 'タイム',
+    'sheetPrintName': '原画',
+    'sheetPrintPage': 'シート',
+    'sheetPrintRepeat': 'リピート',
+    'sheetPrintHold': '止め',
     'tlBlankX': '中割なし / ×',
     'tlMark': 'マーク $inbetweenMark',
     'tlSetCommasN': 'Nコマに設定',
@@ -5334,6 +5367,15 @@ enum AppStrings {
     'cnHeadSeconds': '초',
     'cnCoverCuts': '컷',
     'cnCoverArtist': '콘티',
+    'sheetPrintEpisode': '화수',
+    'sheetPrintTitle': '제목',
+    'sheetPrintScene': '씬',
+    'sheetPrintCut': '컷',
+    'sheetPrintDuration': '타임',
+    'sheetPrintName': '원화',
+    'sheetPrintPage': '시트',
+    'sheetPrintRepeat': '리피트',
+    'sheetPrintHold': '홀드',
     'tlBlankX': '중간 없음 / ×',
     'tlMark': '마크 $inbetweenMark',
     'tlSetCommasN': 'N코마로 설정',
@@ -6723,6 +6765,15 @@ enum AppStrings {
     'cnHeadSeconds': 'DURÉE',
     'cnCoverCuts': ' plans',
     'cnCoverArtist': 'Storyboard',
+    'sheetPrintEpisode': 'Ép.',
+    'sheetPrintTitle': 'Titre',
+    'sheetPrintScene': 'Scène',
+    'sheetPrintCut': 'Plan',
+    'sheetPrintDuration': 'Durée',
+    'sheetPrintName': 'Animateur',
+    'sheetPrintPage': 'Feuille',
+    'sheetPrintRepeat': 'RÉPÉT.',
+    'sheetPrintHold': 'FIXE',
     'tlBlankX': 'Vide / X',
     'tlMark': 'Repère $inbetweenMark',
     'tlSetCommasN': 'Régler sur N commas',
@@ -7963,6 +8014,15 @@ enum AppStrings {
     'cnHeadSeconds': '秒',
     'cnCoverCuts': '个镜头',
     'cnCoverArtist': '分镜',
+    'sheetPrintEpisode': '话数',
+    'sheetPrintTitle': '标题',
+    'sheetPrintScene': '场景',
+    'sheetPrintCut': '镜头',
+    'sheetPrintDuration': '时间',
+    'sheetPrintName': '原画',
+    'sheetPrintPage': '摄影表',
+    'sheetPrintRepeat': '重复',
+    'sheetPrintHold': '停格',
     'tlBlankX': '空 / ×',
     'tlMark': '标记 $inbetweenMark',
     'tlSetCommasN': '设为 N 格',

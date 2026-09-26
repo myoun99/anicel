@@ -75,10 +75,11 @@ import 'png_sequence_export_service.dart';
 import 'video_export_service.dart';
 import '../../models/cut_id.dart';
 import '../../models/timesheet_document.dart';
+import '../../models/timesheet_words.dart';
 import '../timesheet/timesheet_document_painter.dart'
     show TimesheetDocumentLayout;
 import '../timesheet/timesheet_ink_layer.dart' show timesheetInkWindows;
-import '../timesheet/timesheet_notation.dart';
+import '../timesheet/timesheet_words_in.dart';
 import '../widgets/app_window.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
@@ -858,8 +859,7 @@ class ExportDialogState extends State<ExportDialog> {
   AppLanguage get _notationLanguage =>
       _session.languageSettings.value.notationLanguage;
 
-  TimesheetNotation get _sheetNotation =>
-      TimesheetNotation.of(_notationLanguage);
+  TimesheetWords get _sheetWords => timesheetWordsIn(_notationLanguage);
 
   ConteWords get _conteWords => conteWordsIn(_notationLanguage);
 
@@ -1140,7 +1140,7 @@ class ExportDialogState extends State<ExportDialog> {
         document: document,
         layout: layout,
         pageIndex: task.pageIndex,
-        notation: _sheetNotation,
+        words: _sheetWords,
         face: face,
         scale: scale,
         outputSize: outputSize,

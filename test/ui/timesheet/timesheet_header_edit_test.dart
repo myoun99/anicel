@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -157,6 +159,7 @@ void main() {
       await pumpLayer(tester);
       final document = _document();
       final printed = TimesheetDocumentPainter(
+        words: timesheetWordsIn(AppLanguage.en),
         document: document,
         layout: TimesheetDocumentLayout(document: document),
         face: const TextStyle(),

@@ -19,7 +19,7 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/sheet/sheet_strata.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
-import 'package:anicel/src/ui/timesheet/timesheet_notation.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 
 import '../../helpers/app_faces.dart';
 
@@ -90,7 +90,7 @@ void main() {
         fontFamilyFallback: AppTypography.bundledFallback,
       ),
       layers: SheetStratum.form.layers,
-      notation: TimesheetNotation.of(language),
+      words: timesheetWordsIn(language),
     );
   }
 

@@ -2,6 +2,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -43,6 +45,7 @@ void main() {
     List<(double, double)> writtenIn(String family) {
       final painted = _Paragraphs();
       TimesheetDocumentPainter(
+        words: timesheetWordsIn(AppLanguage.en),
         document: document,
         layout: layout,
         face: TextStyle(fontFamily: family),
@@ -109,6 +112,7 @@ void main() {
     final document = _sheet();
     final layout = TimesheetDocumentLayout(document: document);
     TimesheetDocumentPainter sheetIn(String family) => TimesheetDocumentPainter(
+      words: timesheetWordsIn(AppLanguage.en),
       document: document,
       layout: layout,
       face: TextStyle(fontFamily: family),

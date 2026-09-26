@@ -13,6 +13,7 @@ import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
+import '../../models/timesheet_words.dart';
 import '../text/dialogue_fit_layout.dart' show dialogueGlyphCenters;
 import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
@@ -26,7 +27,6 @@ import '../timeline/timeline_instruction_row_visual.dart'
 import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount, timelineDrawnEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
-import 'timesheet_notation.dart';
 import '../repaint_props.dart';
 import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
 import '../timeline/memo_token.dart';
@@ -433,7 +433,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     required this.layout,
     required this.face,
     this.viewport,
-    this.notation = TimesheetNotation.english,
+    required this.words,
     this.layers,
     this.dragPreview,
     this.cutId,
@@ -480,9 +480,10 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   final TimesheetDocumentLayout layout;
   final CanvasViewport? viewport;
 
-  /// The NOTATION-language vocabulary the sheet prints in (UI-R10 #7);
-  /// focused tests keep the pre-R10 English default.
-  final TimesheetNotation notation;
+  /// The words the sheet prints, in the NOTATION language (UI-R10 #7) —
+  /// the caller's table (`timesheetWordsIn`). ⛔No default: an English one
+  /// stood here for focused tests, the painter's own copy of a table.
+  final TimesheetWords words;
 
   /// The app's face (`appFaceOf`) every word on the sheet is set in — the
   /// panel's and the export window's ambient style. 🗣️유저 2026-09-24
@@ -716,9 +717,9 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   late final _TimesheetBandsPass _bands = _TimesheetBandsPass(this);
 
   static String headerFieldLabel(
-    TimesheetHeaderField field, [
-    TimesheetNotation notation = TimesheetNotation.english,
-  ]) => _TimesheetBandsPass.headerFieldLabel(field, notation);
+    TimesheetHeaderField field,
+    TimesheetWords words,
+  ) => _TimesheetBandsPass.headerFieldLabel(field, words);
 
   // ── the SE pass: its own object, in its own file ────────────────────
   //
@@ -836,7 +837,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     document.pageFrameCount,
     document.fps,
     ByList(document.visibleHeaderFields),
-    ByIdentity(notation),
+    words,
   );
 
   /// What the values print from.
@@ -848,7 +849,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   /// which is a coincidence and not a contract.
   Object get _contentInputs => (
     ByIdentity(document),
-    ByIdentity(notation),
+    words,
     accent,
     cutId,
     ByIdentity(dragPreview),

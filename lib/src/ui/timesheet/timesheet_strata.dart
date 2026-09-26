@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
+import '../../models/timesheet_words.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_ink_layer.dart' show SheetInkWindow;
 import '../sheet/sheet_strata.dart';
@@ -14,7 +15,6 @@ import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timesheet_document_painter.dart';
 import 'timesheet_ink_controller.dart';
 import 'timesheet_ink_layer.dart' show timesheetInkWindows;
-import 'timesheet_notation.dart';
 
 /// The timesheet through the sheets' one shell ([SheetStrata]): the
 /// printed form, the values and the saved ink, each baked on its own.
@@ -31,7 +31,7 @@ class TimesheetStrata extends StatelessWidget {
     required this.layout,
     required this.pagedLayout,
     required this.viewport,
-    required this.notation,
+    required this.words,
     required this.dragPreview,
     required this.cutId,
     required this.stroking,
@@ -44,8 +44,8 @@ class TimesheetStrata extends StatelessWidget {
   /// The panel's pan/zoom.
   final CanvasViewport viewport;
 
-  /// The sheet prints in the NOTATION language (UI-R10 #7).
-  final TimesheetNotation notation;
+  /// The words the sheet prints, in the NOTATION language (UI-R10 #7).
+  final TimesheetWords words;
 
   /// The session's drag channel: the values follow a drag through it.
   final ValueListenable<TimelineDragPreview?> dragPreview;
@@ -95,7 +95,7 @@ class TimesheetStrata extends StatelessWidget {
       viewport: viewport,
       effectiveRatio: ratio,
       layers: stratum.layers,
-      notation: notation,
+      words: words,
       dragPreview: dragPreview,
       cutId: cutId,
       ink: [for (final window in ink) window.mark],

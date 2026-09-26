@@ -194,6 +194,35 @@ void main() {
     await tester.pump();
   }
 
+  /// The preview [tab] shows in the face [family], its bytes.
+  Future<List<int>> previewIn(
+    WidgetTester tester, {
+    required String tab,
+    required String family,
+  }) async {
+    final state = await pumpDialog(
+      tester,
+      exportSession(),
+      face: TextStyle(fontFamily: family),
+      dialogKey: ValueKey<String>(
+        'preview-$tab-$family-'
+        '${AppText.settings.value.notationLanguage.name}',
+      ),
+    );
+    await switchTab(tester, tab);
+    await tester.runAsync(state.debugFlushPreview);
+    await tester.pump();
+    final image = tester
+        .widget<RawImage>(
+          find.byKey(const ValueKey<String>('export-preview-image')),
+        )
+        .image!;
+    final bytes = await tester.runAsync(
+      () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+    );
+    return bytes!.buffer.asUint8List().toList();
+  }
+
   bool exportEnabled(WidgetTester tester) {
     final button = tester.widget<FilledButton>(
       find.byKey(const ValueKey<String>('export-run-button')),
@@ -1200,6 +1229,30 @@ void main() {
     });
   });
 
+  group('the sheets export in the notation language (UI-R10 #7)', () {
+    // What prints follows the NOTATION language — the timesheet's words from
+    // the string tables since 2026-09-26, the conte's before them — and a
+    // render handed the program's, or none, comes out the same both times.
+    tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+    for (final tab in ['timesheet', 'conte']) {
+      testWidgets('$tab: the preview', (tester) async {
+        await loadTheAppFaces();
+        Future<List<int>> printedIn(AppLanguage notation) {
+          AppText.settings.value = AppLanguageSettings(
+            notationLanguage: notation,
+          );
+          return previewIn(tester, tab: tab, family: 'BIZ UDPGothic');
+        }
+
+        expect(
+          await printedIn(AppLanguage.ja),
+          isNot(await printedIn(AppLanguage.ko)),
+        );
+      });
+    }
+  });
+
   group('the documents export in the window\'s face '
       '(documents-in-which-face-Q1)', () {
     // 🗣️유저 2026-09-24 「둘다 앱글꼴로 통일」: the export window hands the
@@ -1230,31 +1283,6 @@ void main() {
         for (final name in filesIn(folder))
           name: File('${folder.path}/$name').readAsBytesSync(),
       };
-    }
-
-    Future<List<int>> previewIn(
-      WidgetTester tester, {
-      required String tab,
-      required String family,
-    }) async {
-      final state = await pumpDialog(
-        tester,
-        exportSession(),
-        face: TextStyle(fontFamily: family),
-        dialogKey: ValueKey<String>('preview-$tab-$family'),
-      );
-      await switchTab(tester, tab);
-      await tester.runAsync(state.debugFlushPreview);
-      await tester.pump();
-      final image = tester
-          .widget<RawImage>(
-            find.byKey(const ValueKey<String>('export-preview-image')),
-          )
-          .image!;
-      final bytes = await tester.runAsync(
-        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
-      );
-      return bytes!.buffer.asUint8List().toList();
     }
 
     for (final tab in ['timesheet', 'envelope']) {

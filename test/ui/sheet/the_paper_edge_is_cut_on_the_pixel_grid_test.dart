@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -140,6 +141,7 @@ void main() {
       final size = Size(page.right + 16, page.bottom + 16).ceilToSize();
       final rgba = await rasterize(
         TimesheetDocumentPainter(
+          words: timesheetWordsIn(AppLanguage.en),
           document: document,
           layout: layout,
           face: const TextStyle(),

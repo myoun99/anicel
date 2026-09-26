@@ -11,6 +11,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -70,6 +72,7 @@ class _Form {
 Future<_Form> _paintForm(TimesheetDocument document) async {
   final layout = TimesheetDocumentLayout(document: document);
   final painter = TimesheetDocumentPainter(
+    words: timesheetWordsIn(AppLanguage.en),
     face: const TextStyle(),
     document: document,
     layout: layout,

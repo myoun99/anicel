@@ -8,8 +8,8 @@ import '../../models/cut.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
+import '../../models/timesheet_words.dart';
 import '../timesheet/timesheet_document_painter.dart';
-import '../timesheet/timesheet_notation.dart';
 import 'offscreen_raster.dart';
 
 /// One sheet PAGE exporting as an image (EX6): the same B4 paper the
@@ -49,7 +49,7 @@ Future<ui.Image> renderTimesheetPageImage({
   required TimesheetDocument document,
   required TimesheetDocumentLayout layout,
   required int pageIndex,
-  required TimesheetNotation notation,
+  required TimesheetWords words,
   required TextStyle face,
   double scale = 2,
   CanvasSize? outputSize,
@@ -71,7 +71,7 @@ Future<ui.Image> renderTimesheetPageImage({
         layout: layout,
         face: face,
         layers: stratum.layers,
-        notation: notation,
+        words: words,
         ink: ink?.windows ?? const [],
         inkImageFor: ink?.imageFor,
       );
