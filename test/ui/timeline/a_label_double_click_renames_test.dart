@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -327,11 +328,40 @@ void main() {
       await answer(tester, 'Z');
       expect([nameOf(a), nameOf(b), nameOf(c)], ['Z', 'B', 'C']);
     });
+
+    testWidgets('a track\'s fixture row stands its rename down here too — '
+        'the rule the selection\'s rename already keeps', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
+      await tester.pumpAndSettle();
+      session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      Layer ofKind(LayerKind kind) =>
+          session.layers.firstWhere((layer) => layer.kind == kind);
+      final transition = ofKind(LayerKind.transition);
+
+      await doubleClick(tester, transition.id);
+
+      expect(find.byKey(_dialog), findsNothing);
+
+      await doubleClick(tester, ofKind(LayerKind.animation).id);
+
+      expect(
+        find.byKey(_dialog),
+        findsOneWidget,
+        reason: 'CONTROL: a double click reaches this rail\'s rows',
+      );
+    });
   });
 }
 
 const _textField = ValueKey<String>('rename-layer-text-field');
 const _okButton = ValueKey<String>('rename-layer-ok-button');
+const _dialog = ValueKey<String>('rename-layer-dialog');
 
 
 Layer _drawing(LayerId id, String name) => Layer(
