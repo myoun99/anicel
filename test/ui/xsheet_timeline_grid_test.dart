@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
@@ -15,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 
+import '../helpers/exposure_of.dart';
 import '../helpers/vertical_text_finder.dart';
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
@@ -216,10 +218,10 @@ void main() {
   testWidgets('shows drawing marker', (tester) async {
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.uncovered,
+        layer2Blocks: const {
+          2: TimelineExposure.drawing(FrameId('frame-2'), length: 1),
+        },
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -229,10 +231,10 @@ void main() {
   testWidgets('shows held exposure marker', (tester) async {
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.held
-            : TimelineCellExposureState.uncovered,
+        layer2Blocks: const {
+          1: TimelineExposure.drawing(FrameId('frame-2'), length: 2),
+        },
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -256,10 +258,8 @@ void main() {
   ) async {
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.markHeld
-            : TimelineCellExposureState.uncovered,
+        layer2Blocks: _dotAtTwo,
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -322,10 +322,10 @@ void main() {
   ) async {
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.uncovered,
+        layer2Blocks: const {
+          2: TimelineExposure.drawing(FrameId('frame-2'), length: 1),
+        },
+        exposureStateForLayer: exposureOf,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? 'A1'
@@ -337,10 +337,8 @@ void main() {
 
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.markHeld
-            : TimelineCellExposureState.uncovered,
+        layer2Blocks: _dotAtTwo,
+        exposureStateForLayer: exposureOf,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? 'A1'
@@ -618,6 +616,9 @@ Widget _grid({
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
   ReadyRunsIn? readyRunsIn,
   TextStyle face = const TextStyle(),
+  // Layer 2's blocks — on the layer, which is where a row reads where its
+  // cells change (I-22); a test reads them back with [exposureOf].
+  Map<int, TimelineExposure> layer2Blocks = const {},
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -643,13 +644,25 @@ Widget _grid({
               onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
               readyRunsIn: readyRunsIn,
             ),
-            layers: _layers,
+            layers: [
+              _layers.first,
+              _layers.last.copyWith(timeline: layer2Blocks),
+            ],
           ),
         ),
       ),
     ),
   );
 }
+
+/// A block over 1-3 on layer 2 with a dot at 2 — the in-between mark.
+const _dotAtTwo = {
+  1: TimelineExposure.drawing(
+    FrameId('frame-2'),
+    length: 3,
+    breakdownOffsets: [1],
+  ),
+};
 
 final _layers = [
   Layer(

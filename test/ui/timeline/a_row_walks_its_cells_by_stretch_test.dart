@@ -54,7 +54,7 @@ void main() {
     breakdownOffsets: dots,
   );
 
-  // Every way a cell differs from the one before: an empty first frame,
+  // Every way a cell differs from the one before: empty first frames,
   // blocks of one, two and three frames glued on, an unnamed cel, dots —
   // two of them side by side — and an empty tail.
   final blocks = Layer(
@@ -68,9 +68,9 @@ void main() {
       cel('e', '5'),
     ],
     timeline: {
-      2: block('a', 1),
-      3: block('b', 2),
-      5: block('c', 3),
+      3: block('a', 1),
+      4: block('b', 2),
+      6: block('c', 3),
       10: block('d+', 6, dots: [1, 3, 4]),
       16: block('e', 1),
       20: block('a', 4),

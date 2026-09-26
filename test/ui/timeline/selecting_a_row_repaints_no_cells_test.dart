@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+
+import '../../helpers/exposure_of.dart';
 
 /// 🚨THE SELECTION'S HALF OF THE PLAYBACK-PERFORMANCE INVARIANT.
 ///
@@ -31,15 +35,27 @@ import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 /// axis can move at all. ⛔Without it, 「12/12 unchanged」 is 「빈 것을 쟀다」
 /// wearing a number.
 void main() {
+  // Four one-frame drawings on every row, on the LAYER: a row walks its
+  // cells by where its layer's blocks change (I-22).
   List<Layer> twelveLayers() => [
         for (var i = 1; i <= 12; i++)
-          Layer(id: LayerId('layer-$i'), name: 'L$i', frames: const []),
+          Layer(
+            id: LayerId('layer-$i'),
+            name: 'L$i',
+            frames: [
+              Frame(id: const FrameId('cel'), duration: 1, strokes: const []),
+            ],
+            timeline: {
+              for (var frame = 0; frame < 4; frame++)
+                frame: const TimelineExposure.drawing(
+                  FrameId('cel'),
+                  length: 1,
+                ),
+            },
+          ),
       ];
 
-  TimelineCellExposureState stateFor(Layer layer, int frameIndex) =>
-      frameIndex < 4
-          ? TimelineCellExposureState.drawingStart
-          : TimelineCellExposureState.uncovered;
+  const stateFor = exposureOf;
 
   Widget grid(
     List<Layer> layers,

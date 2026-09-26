@@ -42,6 +42,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
+import '../../helpers/exposure_of.dart';
 import '../../helpers/run_edge_fixtures.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -52,19 +53,27 @@ void main() {
   const rowExtent = 28.0;
   const frames = 8;
 
-  // An UNNAMED block over 0-3 with a dot at 2, then a named one over 4-7.
-  TimelineCellExposureState stateFor(Layer layer, int frame) =>
-      switch (frame) {
-        0 || 4 => TimelineCellExposureState.drawingStart,
-        2 => TimelineCellExposureState.markHeld,
-        _ => TimelineCellExposureState.held,
-      };
+  // An UNNAMED block over 0-3 with a dot at 2, then a named one over 4-7 —
+  // on the layer, which is where a row reads where its cells change (I-22).
+  final cels = [
+    Frame(id: const FrameId('unnamed'), duration: 1, strokes: const []),
+    Frame(id: const FrameId('named'), duration: 1, strokes: const []),
+  ];
+  const blocks = {
+    0: TimelineExposure.drawing(
+      FrameId('unnamed'),
+      length: 4,
+      breakdownOffsets: [2],
+    ),
+    4: TimelineExposure.drawing(FrameId('named'), length: 4),
+  };
+  const stateFor = exposureOf;
 
   final layer = Layer(
     id: const LayerId('row'),
     name: 'A',
-    frames: const [],
-    timeline: const {},
+    frames: cels,
+    timeline: blocks,
   );
 
   TimelineRowCellsPainter rowPainter(
@@ -383,8 +392,8 @@ void main() {
       id: const LayerId('bg'),
       name: 'BG',
       kind: LayerKind.image,
-      frames: const [],
-      timeline: const {},
+      frames: cels,
+      timeline: blocks,
     );
 
     for (final axis in Axis.values) {

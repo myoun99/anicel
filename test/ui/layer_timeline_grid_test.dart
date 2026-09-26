@@ -8,6 +8,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart'
     show TimelineRowsGridSheet;
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
+import '../helpers/exposure_of.dart';
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -1672,10 +1674,8 @@ void main() {
   testWidgets('shows drawing marker', (tester) async {
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.uncovered,
+        layers: _layersWith(layer2: {2: _block('layer-2', 1)}),
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -1686,10 +1686,8 @@ void main() {
   testWidgets('shows held exposure marker', (tester) async {
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.held
-            : TimelineCellExposureState.uncovered,
+        layers: _layersWith(layer2: {1: _block('layer-2', 2)}),
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -1711,10 +1709,12 @@ void main() {
   testWidgets('shows inbetween mark inside a hold', (tester) async {
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.markHeld
-            : TimelineCellExposureState.uncovered,
+        layers: _layersWith(
+          layer2: {
+            1: _block('layer-2', 3, dots: [1]),
+          },
+        ),
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -2083,11 +2083,11 @@ void main() {
   testWidgets('block cells keep divider-safe radius rules', (tester) async {
     await tester.pumpWidget(
       _grid(
-        exposureStateForLayer: (_, frameIndex) => switch (frameIndex) {
-          4 => TimelineCellExposureState.drawingStart,
-          5 || 6 => TimelineCellExposureState.held,
-          _ => TimelineCellExposureState.uncovered,
-        },
+        layers: _layersWith(
+          layer1: {4: _block('layer-1', 3)},
+          layer2: {4: _block('layer-2', 3)},
+        ),
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -2359,16 +2359,8 @@ void main() {
           metrics: metrics,
           currentFrameIndex: 26,
           playbackFrameCount: 24,
-          exposureStateForLayer: (layer, frameIndex) {
-            if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.uncovered;
-            }
-            return switch (frameIndex) {
-              2 => TimelineCellExposureState.drawingStart,
-              >= 3 && <= 47 => TimelineCellExposureState.held,
-              _ => TimelineCellExposureState.uncovered,
-            };
-          },
+          layers: _layersWith(layer1: {2: _block('layer-1', 46)}),
+          exposureStateForLayer: exposureOf,
         ),
       );
 
@@ -2539,16 +2531,8 @@ void main() {
         width: 953,
         currentFrameIndex: 28,
         playbackFrameCount: 24,
-        exposureStateForLayer: (layer, frameIndex) {
-          if (layer.id != const LayerId('layer-1')) {
-            return TimelineCellExposureState.uncovered;
-          }
-          return switch (frameIndex) {
-            28 => TimelineCellExposureState.drawingStart,
-            >= 29 && <= 32 => TimelineCellExposureState.held,
-            _ => TimelineCellExposureState.uncovered,
-          };
-        },
+        layers: _layersWith(layer1: {28: _block('layer-1', 5)}),
+        exposureStateForLayer: exposureOf,
       ),
     );
 
@@ -2939,6 +2923,28 @@ final _layers = [
   _layer(id: 'layer-1', name: 'Layer 1'),
   _layer(id: 'layer-2', name: 'Layer 2', opacity: 0.5),
 ];
+
+/// The two rows with [layer1] and [layer2] as their blocks — on the
+/// layers, which is where a row reads where its cells change (I-22); a test
+/// reads them back with [exposureOf].
+List<Layer> _layersWith({
+  Map<int, TimelineExposure> layer1 = const {},
+  Map<int, TimelineExposure> layer2 = const {},
+}) => [
+  _layers.first.copyWith(timeline: layer1),
+  _layers.last.copyWith(timeline: layer2),
+];
+
+/// A block of [layer]'s one cel ([_layer] names it `frame-<n>`).
+TimelineExposure _block(
+  String layer,
+  int length, {
+  List<int> dots = const [],
+}) => TimelineExposure.drawing(
+  FrameId('frame-${layer.split('-').last}'),
+  length: length,
+  breakdownOffsets: dots,
+);
 
 Layer _layer({
   required String id,

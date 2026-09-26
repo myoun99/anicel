@@ -2,7 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart'
-    show breakdownMark, unnamedDrawingMark;
+    show Frame, breakdownMark, unnamedDrawingMark;
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -17,6 +17,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
+import '../helpers/exposure_of.dart';
 import 'timeline/timeline_cell_probe.dart';
 
 void main() {
@@ -111,13 +112,17 @@ void main() {
         'here (they live on the grid cursor layer)', (tester) async {
       const activeLayerId = LayerId('layer-active');
 
+      const drawing = {
+        1: TimelineExposure.drawing(FrameId('cel'), length: 1),
+      };
       await tester.pumpWidget(
         _body(
-          layers: [_layer(activeLayerId.value), _layer('layer-inactive')],
+          layers: [
+            _layer(activeLayerId.value, blocks: drawing),
+            _layer('layer-inactive', blocks: drawing),
+          ],
           currentFrameIndex: 1,
-          exposureStateForLayer: (layer, frameIndex) => frameIndex == 1
-              ? TimelineCellExposureState.drawingStart
-              : TimelineCellExposureState.uncovered,
+          exposureStateForLayer: exposureOf,
         ),
       );
 
@@ -162,16 +167,25 @@ void main() {
     testWidgets('forwards exposure, mark, and frame name providers to cells', (
       tester,
     ) async {
-      final layer = _layer('layer-a');
+      // An unnamed drawing at 0, then a named one at 1 with a dot at 2.
+      final layer = _layer(
+        'layer-a',
+        blocks: const {
+          0: TimelineExposure.drawing(FrameId('cel'), length: 1),
+          1: TimelineExposure.drawing(
+            FrameId('cel'),
+            length: 2,
+            breakdownOffsets: [1],
+          ),
+        },
+      );
 
       await tester.pumpWidget(
         _body(
           layers: [layer],
           frameStartIndex: 0,
           frameEndIndexExclusive: 3,
-          exposureStateForLayer: (_, frameIndex) => frameIndex == 2
-              ? TimelineCellExposureState.markUncovered
-              : TimelineCellExposureState.drawingStart,
+          exposureStateForLayer: exposureOf,
           frameNameForLayer: (_, frameIndex) =>
               frameIndex == 1 ? 'Pose A' : null,
         ),
@@ -411,6 +425,16 @@ Widget _body({
   );
 }
 
-Layer _layer(String id) {
-  return Layer(id: LayerId(id), name: 'Layer $id', frames: const []);
+/// A row with [blocks] — on the layer, where a row reads where its cells
+/// change (I-22); every cel of them is one unnamed frame.
+Layer _layer(String id, {Map<int, TimelineExposure> blocks = const {}}) {
+  return Layer(
+    id: LayerId(id),
+    name: 'Layer $id',
+    frames: [
+      if (blocks.isNotEmpty)
+        Frame(id: const FrameId('cel'), duration: 1, strokes: const []),
+    ],
+    timeline: blocks,
+  );
 }

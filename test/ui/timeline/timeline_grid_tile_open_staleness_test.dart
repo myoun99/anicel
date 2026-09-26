@@ -79,8 +79,9 @@ void main() {
     return TimelineCellExposureState.uncovered;
   }
 
-  // One drawing block covering cells 0..7 — both probed spans sit inside
-  // one hold, so every cell asks the content question.
+  // One drawing block covering cells 0..7 — the probed span sits inside one
+  // hold, and asks the content question of its first cell, then of the
+  // stretch after it (I-22: a row asks a stretch once, not every cell).
   Layer blockLayer({String id = 'layer-a'}) => Layer(
     id: LayerId(id),
     name: 'A',
@@ -135,7 +136,7 @@ void main() {
       hasContent: (layer, frameIndex) {
         if (frameIndex == flipAtFrame && !hasContent) {
           // The crossing lands while the drain is INSIDE `_raster`:
-          // cells 0..2 of the span already answered "empty" into the op
+          // cell 0 of the span already answered "empty" into the op
           // stream, and the store bumps its revision exactly as
           // BrushFrameStore._noteCelContent does. The entry stamp is
           // read only after the raster's awaits, so it will carry the
@@ -164,7 +165,7 @@ void main() {
       substrateGeneration: 'p:cut-a',
     );
 
-    flipAtFrame = 3; // the LAST cell of the probed span [0, 4)
+    flipAtFrame = 1; // the stretch after the first cell of [0, 4)
     expect(
       store.tileFor(
         painter: painterA,
