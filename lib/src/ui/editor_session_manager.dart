@@ -126,6 +126,7 @@ import 'session/auto_frame_for_stroke.dart';
 import 'session/track_se_display.dart';
 import 'session/storyboard_cursor.dart';
 import 'session/storyboard_rows.dart';
+import 'session/app_clipboard.dart';
 import 'session/frame_clipboard.dart';
 import 'session/layer_clipboard.dart';
 import 'session/active_cut_controllers.dart';
@@ -179,12 +180,14 @@ class EditorSessionManager extends ChangeNotifier
     MediaStagingStore? mediaStagingStore,
     ImageCache? frameworkImageCache,
     FailedSaveCopies? failedSaveCopies,
+    AppClipboard? appClipboard,
     bool Function(String path)? fileIsOpenElsewhere,
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _injectedMediaStagingStore = mediaStagingStore,
        _frameworkImageCache = frameworkImageCache,
        failedSaveCopies = failedSaveCopies ?? FailedSaveCopies(),
+       _appClipboard = appClipboard ?? AppClipboard(),
        _fileIsOpenElsewhere = fileIsOpenElsewhere,
        _ownsAppSettings = appSettings == null,
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
@@ -616,14 +619,19 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_clipboard.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final FrameClipboard clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
-  late final LayerClipboard layerClipboard = LayerClipboard(project: this, selection: this, changes: this, layerStack: layerStack);
+  late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
+  late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, internals: this, renderCaches: renderCaches);
+
+  /// What the boards above hold — the APP's, handed to every open project
+  /// by the shell (I-7, 유저 2026-09-26: 「탭사이에 복사나 붙여넣기 뭐든
+  /// 가능. 앱 전체에 하나」). A session built without one keeps its own.
+  final AppClipboard _appClipboard;
 
   // ── the layer verbs: their own object, in their own file ────────────
   //
   // A collaborator (session/layer_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
+  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits, internals: this, renderCaches: renderCaches);
 
   // ── the cut's row stack: its own object ─────────────────────────────
   //
@@ -1454,6 +1462,7 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     activeCut: _activeCutEdits,
     placement: cutPlacement,
+    renderCaches: renderCaches,
   );
 
   @override
@@ -2250,8 +2259,9 @@ class EditorSessionManager extends ChangeNotifier
   // The TVPaint door (session/tvpp_import_door.dart). A .tvpp opens AS A
   // PROJECT — it holds several cuts — so unlike its sibling doors it
   // replaces the session's project the way an .anicel open does, and its
-  // constructor lists that: the reset touches the clipboards, the
-  // controllers and the file record, not just the landing.
+  // constructor lists that: the reset touches the controllers and the file
+  // record, not just the landing. (The clipboards it once emptied are the
+  // app's now — I-7 — and a project's arrival leaves them alone.)
   late final TvppImportDoor tvppDoor = TvppImportDoor(
     project: this,
     selection: this,
@@ -2265,8 +2275,6 @@ class EditorSessionManager extends ChangeNotifier
     file: projectFile,
     projectDoor: projectDoor,
     mediaPool: mediaPool,
-    clipboard: clipboard,
-    layerClipboard: layerClipboard,
     frameSeekCommitted: frameSeekCommitted,
   );
 
@@ -3437,8 +3445,6 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     grants: mediaGrants,
     fingerprints: mediaFingerprints,
-    clipboard: clipboard,
-    layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,
     frameSeekCommitted: frameSeekCommitted,
     mediaPool: mediaPool,

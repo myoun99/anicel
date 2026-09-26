@@ -14,6 +14,8 @@ import '../../services/commands/cut_reorder_planner.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'cut_placement.dart';
+import 'independent_clip_mint.dart' show carryBakedPictures;
+import 'render_caches.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
@@ -37,6 +39,7 @@ class CutVerbs {
     required StoryboardRows storyboardRows,
     required ActiveCutEdits activeCut,
     required CutPlacement placement,
+    required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -45,7 +48,11 @@ class CutVerbs {
        _internals = internals,
        _storyboardRows = storyboardRows,
        _activeCut = activeCut,
-       _placement = placement;
+       _placement = placement,
+       _renderCaches = renderCaches;
+
+  /// Where a duplicated cut's pictures are, and go.
+  final RenderCaches _renderCaches;
 
   final ActiveCutEdits _activeCut;
 
@@ -93,12 +100,32 @@ class CutVerbs {
     ),
   );
 
-  void duplicateActiveCut() => _activeCut.onActiveCut(
-    (cutId) => _project.cutCommandCoordinator.duplicateCut(
+  /// Duplicates the active cut, pictures and all: the copy mints every row
+  /// and cel afresh, and a picture lives under its cel's key, so each one
+  /// follows its cel over (F-62's law at the cut's scale). ↩️Nothing did
+  /// until 2026-09-26 — a duplicated cut came out with every drawing blank
+  /// (measured; card `duplicates-lose-their-pictures`).
+  void duplicateActiveCut() => _activeCut.onActiveCut((cutId) {
+    final source = _project.requireActiveCut;
+    final copy = _project.cutCommandCoordinator.duplicateCut(
       sourceCutId: cutId,
       targetTrackId: _selection.selectedTrackId,
-    ),
-  );
+    );
+    final into = _project.cutById(copy.cutId)!;
+    final store = _renderCaches.brushFrameStore;
+    for (final row in source.layers) {
+      carryBakedPictures(
+        internals: _internals,
+        store: store,
+        cut: into,
+        to: copy.rows[row.id]!,
+        minted: {for (final cel in row.frames) cel.id: copy.minted[cel.id]!},
+        pictureOf: (cel) => store.bakedSurfaceOrNull(
+          _internals.brushFrameKeyForCut(source, row.id, cel),
+        ),
+      );
+    }
+  });
 
   void deleteActiveCut() {
     // With a cut RANGE selection live, the delete command acts on the

@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart'
     show TimesheetInkPlane;
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
+import '../helpers/app_icon_button_probe.dart';
 import '../helpers/draw_on_current_frame.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart';
@@ -632,6 +633,29 @@ void main() {
       findsNothing,
     );
     expect(projects.sessions, [first, second], reason: 'the window stays');
+  });
+
+  testWidgets('🗣️I-7: what one tab copies, another pastes — its pill lights '
+      'for the app\'s copy, the linked paste stays home, and the paste is '
+      'that project\'s own cel', (tester) async {
+    final projects = await pumpApp(tester);
+    final first = projects.active;
+    drawOnCurrentFrame(first);
+    first.copyFrameAtCurrentFrame();
+    await newProject(tester);
+    final second = projects.active;
+    final before = second.activeLayer!.frames.length;
+
+    const paste = ValueKey<String>('shared-paste-independent-button');
+    const link = ValueKey<String>('shared-paste-linked-button');
+    expect(tester.appIconButton(find.byKey(paste)).onPressed, isNotNull);
+    expect(
+      tester.appIconButton(find.byKey(link)).onPressed,
+      isNull,
+      reason: 'a link is the same cel, and that cel is the first project\'s',
+    );
+    await tapKey(tester, paste.value);
+    expect(second.activeLayer!.frames, hasLength(before + 1));
   });
 
   testWidgets('a project whose file went while it was behind says so when '

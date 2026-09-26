@@ -1981,7 +1981,7 @@ void main() {
       final copyId = fixture.coordinator.duplicateLayer(
         cutId: cutA.id,
         sourceLayerId: instruction.id,
-      );
+      ).layerId;
 
       final copy = requireLayerAnywhere(fixture.project, copyId);
       expect(copy.kind, LayerKind.instruction);
@@ -2097,7 +2097,7 @@ void main() {
       final copyId = fixture.coordinator.duplicateLayer(
         cutId: cutA.id,
         sourceLayerId: se.id,
-      );
+      ).layerId;
 
       final copy = requireLayerAnywhere(fixture.project, copyId);
       expect(copy.kind, LayerKind.se);
@@ -2393,7 +2393,7 @@ void main() {
           cutId: cut.id,
           payload: copyLayerToPayload(layerA),
           insertionIndex: 2,
-        );
+        ).layerId;
 
         expect(
           requireCut(fixture.project, cut.id).layers.map((layer) => layer.name),

@@ -10,6 +10,8 @@ import '../../models/timeline_row_address.dart';
 import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
+import 'independent_clip_mint.dart' show carryBakedPictures;
+import 'render_caches.dart';
 import 'session_roles.dart';
 import '../text/place_lines.dart' show linkPartnerLines;
 
@@ -29,16 +31,24 @@ class LayerVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required ActiveCutEdits activeCut,
+    required SessionInternals internals,
+    required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _activeCutEdits = activeCut;
+       _activeCutEdits = activeCut,
+       _internals = internals,
+       _renderCaches = renderCaches;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
+
+  /// Where a duplicate's pictures are, and the keys they go under.
+  final SessionInternals _internals;
+  final RenderCaches _renderCaches;
 
   /// The active-row cut-command envelope — the session's one instance,
   /// handed in (see [ActiveCutEdits]).
@@ -181,11 +191,33 @@ class LayerVerbs {
   void duplicateSelectedLayers() => _eachRowAsOneStep(
     duplicatableSelectedLayerIds(),
     'Duplicate rows',
-    (cutId, layerId) => _project.cutCommandCoordinator.duplicateLayer(
+    _duplicate,
+  );
+
+  /// Duplicates [layerId] in [cutId] and brings its pictures over: the copy
+  /// mints every cel afresh, and a picture lives under its cel's id (F-62's
+  /// law at the layer's scale). ↩️Nothing did until 2026-09-26 — a
+  /// duplicated row came out with no drawing at all (measured; card
+  /// `duplicates-lose-their-pictures`).
+  LayerId _duplicate(CutId cutId, LayerId layerId) {
+    final copy = _project.cutCommandCoordinator.duplicateLayer(
       cutId: cutId,
       sourceLayerId: layerId,
-    ),
-  );
+    );
+    final cut = _project.requireActiveCut;
+    final store = _renderCaches.brushFrameStore;
+    carryBakedPictures(
+      internals: _internals,
+      store: store,
+      cut: cut,
+      to: copy.layerId,
+      minted: copy.minted,
+      pictureOf: (source) => store.bakedSurfaceOrNull(
+        _internals.brushFrameKeyForCut(cut, layerId, source),
+      ),
+    );
+    return copy.layerId;
+  }
 
   /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and
   /// falls back to the row you are standing on. Every caller — the pill
@@ -207,11 +239,11 @@ class LayerVerbs {
       return;
     }
 
-    final duplicatedLayerId = _project.cutCommandCoordinator.duplicateLayer(
+    final duplicatedLayerId = _duplicate(
       // A non-null active layer implies an active cut (gap state has no
       // rows at all).
-      cutId: _project.requireActiveCut.id,
-      sourceLayerId: activeLayer.id,
+      _project.requireActiveCut.id,
+      activeLayer.id,
     );
     _changes.refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
     _changes.notifyChanged();

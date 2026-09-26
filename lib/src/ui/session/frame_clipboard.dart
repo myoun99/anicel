@@ -27,6 +27,7 @@ import 'session_roles.dart';
 /// payloads, two sets of verbs, one object holding both is not a reason.
 class FrameClipboard {
   FrameClipboard({
+    required FrameBoard board,
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
@@ -34,7 +35,8 @@ class FrameClipboard {
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required RenderCaches renderCaches,
-  }) : _project = project,
+  }) : _board = board,
+       _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
@@ -42,6 +44,9 @@ class FrameClipboard {
        _internals = internals,
        _renderCaches = renderCaches;
 
+  /// The app's frame board ([FrameBoard]) — every open project's clipboard
+  /// reads and writes the same one (I-7).
+  final FrameBoard _board;
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
@@ -50,7 +55,7 @@ class FrameClipboard {
   final SessionInternals _internals;
   final RenderCaches _renderCaches;
 
-  _CopiedFrameReference? _copiedFrame;
+  _CopiedFrameReference? get _copiedFrame => _board._copy;
 
   /// The rows the last copy BANKED, as layer ids in the order they were
   /// taken — empty when the frame board holds nothing.
@@ -62,24 +67,6 @@ class FrameClipboard {
   List<LayerId> get bankedRowLayerIds => [
     for (final row in _copiedFrame?.rows ?? const <_CopiedRow>[]) row.layerId,
   ];
-
-  /// The board goes when the project itself is replaced — and only then;
-  /// until then it is replaced by the next copy.
-  ///
-  /// 🚨★★THE COPY IS ALWAYS IN HAND (F-161, 유저 2026-09-17): 「복붙은
-  /// 어디서든 가능하게 … 복사는 항상 언제든 들고있게. 컷2의 레이어에서
-  /// 붙여넣기 가능. 복사는 언제나 하나 들고있음. 보통 프로그램이 그러니까」.
-  /// F-152 (09-16) had asked it inside one cut first: 「복사하고 무언가
-  /// 붙혀넣는다고 해서 복사한게 사라지지않게. 복사한거는 들고있음」.
-  ///
-  /// ↩️What threw it away: every cut switch, gap park and cut-command
-  /// refresh — so an UNDO after a paste emptied it too (measured, F-152).
-  /// That drop predates the board carrying its cels, its sounds and now its
-  /// PICTURES by value ([_CopiedRow.pictures]); nothing it holds names a
-  /// place in one cut any more, so no cut change can make it stale.
-  void clear() {
-    _copiedFrame = null;
-  }
 
   bool get canCopyFrameAtCurrentFrame {
     // 복사 and 잘라내기 are ONE pair by the user's own definition
@@ -108,6 +95,12 @@ class FrameClipboard {
     final copiedFrame = _copiedFrame;
     if (layer == null ||
         copiedFrame == null ||
+        // 🚨I-7 — a link is 「the same cel」, and no cel of another project
+        // is a cel of this one: its ids were minted THERE, so the same
+        // spelling here names another drawing, or nothing (유저 2026-09-26:
+        // 「레이어 id가 다른거?라던가 … 알아서 조심하고」). From another
+        // project the copy pastes independent only.
+        !identical(copiedFrame.from, this) ||
         layer.id != copiedFrame.layerId ||
         !rowHoldsLinks(layer)) {
       return false;
@@ -207,26 +200,20 @@ class FrameClipboard {
     );
   }
 
-  /// The pictures [cels] show on [row], as they are NOW — taken at the copy,
-  /// for the reason [_celsCarriedBy] gives and F-161's: a paste may land in
-  /// another cut, whose store has no picture under the source's key, and a
-  /// source drawn over or cut away after the copy is not what was copied.
-  ///
-  /// ⚠️Surfaces are immutable with structural tile sharing, so holding one is
-  /// holding a reference, not a second set of pixels — until the source is
-  /// drawn over, when the board keeps the tiles it copied.
+  /// The pictures [cels] show on [row], as they are NOW ([picturesShownBy])
+  /// — taken at the copy, for the reason [_celsCarriedBy] gives.
   Map<FrameId, BitmapSurface> _picturesCarriedBy(Layer row, List<Frame> cels) {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return const {};
     }
-    final store = _renderCaches.brushFrameStore;
-    return {
-      for (final cel in cels)
-        cel.id: ?store.bakedSurfaceOrNull(
-          _internals.brushFrameKeyForCut(cut, row.id, cel.id),
-        ),
-    };
+    return picturesShownBy(
+      internals: _internals,
+      store: _renderCaches.brushFrameStore,
+      cut: cut,
+      row: row.id,
+      cels: cels,
+    );
   }
 
   /// The sounds [cels] carry on [row] — BY VALUE for the reason
@@ -405,7 +392,8 @@ class FrameClipboard {
     required TimelineClipRow clip,
   }) {
     final cels = _celsCarriedBy(layer, clip);
-    _copiedFrame = _CopiedFrameReference(
+    _board._copy = _CopiedFrameReference(
+      from: this,
       layerId: layer.id,
       frameId: frame.id,
       frameName: frame.name,
@@ -900,8 +888,35 @@ class _CopiedRow {
   final Map<FrameId, BitmapSurface> pictures;
 }
 
+/// What the app holds from the last FRAME copy — ONE board for every open
+/// project (I-7, `AppClipboard`); each project's [FrameClipboard] reads and
+/// writes it.
+///
+/// 🚨★★THE COPY IS ALWAYS IN HAND (F-161, 유저 2026-09-17): 「복붙은
+/// 어디서든 가능하게 … 복사는 항상 언제든 들고있게. 컷2의 레이어에서
+/// 붙여넣기 가능. 복사는 언제나 하나 들고있음. 보통 프로그램이 그러니까」.
+/// F-152 (09-16) had asked it inside one cut first: 「복사하고 무언가
+/// 붙혀넣는다고 해서 복사한게 사라지지않게. 복사한거는 들고있음」. Only the
+/// next copy replaces it.
+///
+/// ↩️What threw it away: every cut switch, gap park and cut-command
+/// refresh — so an UNDO after a paste emptied it too (measured, F-152).
+/// That drop predates the board carrying its cels, its sounds and now its
+/// PICTURES by value ([_CopiedRow.pictures]); nothing it holds names a
+/// place in one cut any more, so no cut change can make it stale.
+///
+/// ↩️And the project replaced (I-7): the board was the session's and went
+/// with the project it was copied in, back when the app held one project.
+/// It is the app's now, and opening, replacing or closing a project leaves
+/// it where it is — what it holds is by value, and [_CopiedFrameReference.
+/// from] says which project its ids are ids of.
+class FrameBoard {
+  _CopiedFrameReference? _copy;
+}
+
 class _CopiedFrameReference {
   const _CopiedFrameReference({
+    required this.from,
     required this.layerId,
     required this.frameId,
     required this.frameName,
@@ -921,6 +936,11 @@ class _CopiedFrameReference {
   /// band writes ONE entry, so the single-row clipboard is this list of
   /// length one rather than a second shape standing beside it.
   final List<_CopiedRow> rows;
+
+  /// The clipboard that banked it — the PROJECT whose ids [layerId], [frameId]
+  /// and every cel below are. A linked paste serves only that project
+  /// ([FrameClipboard.canPasteLinkedFrameAtCurrentFrame]).
+  final FrameClipboard from;
 
   final LayerId layerId;
 

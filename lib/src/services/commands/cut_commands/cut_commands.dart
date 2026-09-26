@@ -389,7 +389,7 @@ class _CutCommands {
     );
   }
 
-  void duplicateCut({
+  DuplicatedCut duplicateCut({
     required CutId sourceCutId,
     required TrackId targetTrackId,
     String? newName,
@@ -412,6 +412,11 @@ class _CutCommands {
         layerIdMap: plan.layerIdMap,
         frameIdMap: plan.frameIdMap,
       ),
+    );
+    return (
+      cutId: plan.newCutId,
+      rows: plan.layerIdMap,
+      minted: plan.frameIdMap,
     );
   }
 }

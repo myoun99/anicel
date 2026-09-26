@@ -69,6 +69,7 @@ import 'text/app_strings.dart';
 import 'canvas/flip_hud_controller.dart' show FlipHudController;
 import 'layout/device_grid.dart';
 import 'layout/device_grid_safe_area.dart';
+import 'session/app_clipboard.dart';
 import 'session/editor_app_settings.dart';
 import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
@@ -151,6 +152,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// The run's failed copies — ONE list, handed to every open project
   /// ([EditorSessionManager.failedSaveCopies]).
   final FailedSaveCopies _failedSaveCopies = FailedSaveCopies();
+
+  /// What the last copy put in hand — ONE clipboard for every open project
+  /// (I-7, 유저 2026-09-26: 「탭사이에 복사나 붙여넣기 뭐든 가능. 앱 전체에
+  /// 하나」).
+  final AppClipboard _clipboard = AppClipboard();
 
   /// The tool a temporary hold sprang from — the app's, beside the tool
   /// ([ToolHoldMemory]).
@@ -439,6 +445,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       appSettings: _appSettings,
       frameworkImageCache: PaintingBinding.instance.imageCache,
       failedSaveCopies: _failedSaveCopies,
+      appClipboard: _clipboard,
       // ONE FILE, ONE WRITER — see [ProjectFile.isOpenElsewhere].
       fileIsOpenElsewhere: (path) {
         final bound = _projects.boundTo(path);

@@ -36,9 +36,7 @@ import '../../services/import/tvpp_raster_decoder.dart';
 import '../../services/persistence/folder_grant.dart'
     show FileArrival, FolderPicker;
 import 'active_cut_controllers.dart';
-import 'frame_clipboard.dart';
 import 'import_landing.dart';
-import 'layer_clipboard.dart';
 import 'media_pool.dart';
 import 'playback_rig.dart';
 import 'project_file.dart';
@@ -62,8 +60,6 @@ class TvppImportDoor {
     required ProjectFile file,
     required ProjectFileDoor projectDoor,
     required MediaPool mediaPool,
-    required FrameClipboard clipboard,
-    required LayerClipboard layerClipboard,
     required ValueNotifier<int> frameSeekCommitted,
   }) : _project = project,
        _selection = selection,
@@ -77,8 +73,6 @@ class TvppImportDoor {
        _file = file,
        _projectDoor = projectDoor,
        _mediaPool = mediaPool,
-       _clipboard = clipboard,
-       _layerClipboard = layerClipboard,
        _frameSeekCommitted = frameSeekCommitted;
 
   final ProjectAccess _project;
@@ -93,8 +87,6 @@ class TvppImportDoor {
   final ProjectFile _file;
   final ProjectFileDoor _projectDoor;
   final MediaPool _mediaPool;
-  final FrameClipboard _clipboard;
-  final LayerClipboard _layerClipboard;
   final ValueNotifier<int> _frameSeekCommitted;
 
   /// The bytes of every slot in [wave], read by OFFSET one at a time.
@@ -273,8 +265,6 @@ class TvppImportDoor {
       store.restoreFromFile(const {});
     }
     _project.historyManager.clear();
-    _clipboard.clear();
-    _layerClipboard.clear();
     _selection.clearAllSelections();
     _selection.trackFrameRangeSelection.value = null;
     _timeline.editingSession.setActiveCutId(firstCutId);

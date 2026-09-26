@@ -12,6 +12,7 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
@@ -94,6 +95,20 @@ part 'cut_commands/link_commands.dart';
 part 'cut_commands/track_commands.dart';
 part 'cut_commands/folder_and_attachment_commands.dart';
 part 'cut_commands/project_setting_commands.dart';
+
+/// A pasted (or duplicated) layer: its id, and which cel of the copy each
+/// of its cels was minted from — what the pictures follow, since they live
+/// in a store keyed by the ids the paste just changed (F-62's lesson, at the
+/// layer's scale).
+typedef PastedLayer = ({LayerId layerId, Map<FrameId, FrameId> minted});
+
+/// A duplicated cut: its id, which row of it each source row became, and
+/// which cel each source cel became — [PastedLayer]'s answer for a whole cut.
+typedef DuplicatedCut = ({
+  CutId cutId,
+  Map<LayerId, LayerId> rows,
+  Map<FrameId, FrameId> minted,
+});
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -186,7 +201,7 @@ class CutCommandCoordinator {
   void deleteCut({required CutId cutId}) => _cuts.deleteCut(cutId: cutId);
   void deleteCuts({required List<CutId> cutIds}) =>
       _cuts.deleteCuts(cutIds: cutIds);
-  void duplicateCut({
+  DuplicatedCut duplicateCut({
     required CutId sourceCutId,
     required TrackId targetTrackId,
     String? newName,
@@ -576,7 +591,7 @@ class CutCommandCoordinator {
     );
   }
 
-  LayerId duplicateLayer({
+  PastedLayer duplicateLayer({
     required CutId cutId,
     required LayerId sourceLayerId,
   }) {
@@ -599,7 +614,7 @@ class CutCommandCoordinator {
     );
   }
 
-  LayerId pasteLayer({
+  PastedLayer pasteLayer({
     required CutId cutId,
     required LayerCopyPayload payload,
     required int insertionIndex,
@@ -626,7 +641,7 @@ class CutCommandCoordinator {
       ),
     );
 
-    return plan.layer.id;
+    return (layerId: plan.layer.id, minted: plan.frameIdMap);
   }
 
   /// RASTERIZE (§6-f): nulls the layer's media reference — the pixels are

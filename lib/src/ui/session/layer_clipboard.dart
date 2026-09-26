@@ -1,6 +1,10 @@
 import '../../models/attached_layer_resolve.dart';
+import '../../models/bitmap_surface.dart';
+import '../../models/frame_id.dart';
 import '../../services/clipboard/layer_copy_payload.dart';
+import 'independent_clip_mint.dart';
 import 'layer_stack.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 
 /// The LAYER CLIPBOARD — the layer the user copied, and pasting it into a
@@ -13,31 +17,34 @@ import 'session_roles.dart';
 /// them, which is not a reason.
 class LayerClipboard {
   LayerClipboard({
+    required LayerBoard board,
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
     required LayerStack layerStack,
-  }) : _project = project,
+    required SessionInternals internals,
+    required RenderCaches renderCaches,
+  }) : _board = board,
+       _project = project,
        _selection = selection,
        _changes = changes,
+       _layerStack = layerStack,
+       _internals = internals,
+       _renderCaches = renderCaches;
 
-       _layerStack = layerStack;
-
+  /// The app's layer board ([LayerBoard]) — every open project's clipboard
+  /// reads and writes the same one (I-7).
+  final LayerBoard _board;
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final LayerStack _layerStack;
+  final SessionInternals _internals;
+  final RenderCaches _renderCaches;
 
-  LayerCopyPayload? _layerClipboard;
+  String? get layerClipboardName => _board._copy?.payload.name;
 
-  String? get layerClipboardName => _layerClipboard?.name;
-
-  bool get hasLayerClipboard => _layerClipboard != null;
-
-  /// The board goes when the project itself is replaced.
-  void clear() {
-    _layerClipboard = null;
-  }
+  bool get hasLayerClipboard => _board._copy != null;
 
   void copyActiveLayer() {
     final activeLayer = _selection.activeLayer;
@@ -51,13 +58,24 @@ class LayerClipboard {
       return;
     }
 
-    _layerClipboard = copyLayerToPayload(activeLayer);
+    _board._copy = (
+      payload: copyLayerToPayload(activeLayer),
+      // A non-null active layer implies an active cut (gap state has no
+      // rows at all).
+      pictures: picturesShownBy(
+        internals: _internals,
+        store: _renderCaches.brushFrameStore,
+        cut: _project.requireActiveCut,
+        row: activeLayer.id,
+        cels: activeLayer.frames,
+      ),
+    );
     _changes.notifyChanged();
   }
 
   void pasteLayerFromClipboard() {
-    final payload = _layerClipboard;
-    if (payload == null) {
+    final copy = _board._copy;
+    if (copy == null) {
       return;
     }
 
@@ -65,7 +83,7 @@ class LayerClipboard {
     if (cut == null) {
       return;
     }
-    if (!_layerStack.canAddLayerOfKind(payload.kind)) {
+    if (!_layerStack.canAddLayerOfKind(copy.payload.kind)) {
       // R9 #7: this cut already holds its one row of that kind.
       // ⚠️NEVER APPLIED by any test (mutation, 2026-09-06): nothing copies a
       // single-instance row and pastes it into a cut that already has one.
@@ -89,12 +107,43 @@ class LayerClipboard {
         ? targetLayers.length
         : activeLayerIndex + 1;
 
-    final pastedLayerId = _project.cutCommandCoordinator.pasteLayer(
+    final pasted = _project.cutCommandCoordinator.pasteLayer(
       cutId: cut.id,
-      payload: payload,
+      payload: copy.payload,
       insertionIndex: insertionIndex,
     );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: pastedLayerId);
+    // The paste minted every cel afresh, and a picture lives under its
+    // cel's id — so the pictures the copy took follow them over (F-62's
+    // law, at the layer's scale). ↩️Nothing did until 2026-09-26: a pasted
+    // layer, and a duplicated one, came out with no drawing at all
+    // (measured; card `duplicates-lose-their-pictures`).
+    carryBakedPictures(
+      internals: _internals,
+      store: _renderCaches.brushFrameStore,
+      cut: cut,
+      to: pasted.layerId,
+      minted: pasted.minted,
+      pictureOf: (source) => copy.pictures[source],
+    );
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: pasted.layerId);
     _changes.notifyChanged();
   }
 }
+
+/// What the app holds from the last LAYER copy — one board for every open
+/// project (I-7), the frame board's twin (`FrameBoard`). Only the next copy
+/// replaces it.
+class LayerBoard {
+  _CopiedLayer? _copy;
+}
+
+/// A layer on the board: the row as [copyLayerToPayload] carries it, and
+/// the pictures its cels showed when it was copied, by cel id — BY VALUE,
+/// for the frame board's reason ([picturesShownBy], F-161): the paste may
+/// land in another cut or another project, whose store has nothing under
+/// the source's keys, and a source drawn over after the copy is not what
+/// was copied.
+typedef _CopiedLayer = ({
+  LayerCopyPayload payload,
+  Map<FrameId, BitmapSurface> pictures,
+});

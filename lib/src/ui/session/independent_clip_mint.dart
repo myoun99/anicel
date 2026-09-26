@@ -7,6 +7,8 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_splice.dart';
+import '../../services/bitmap_surface_geometry.dart'
+    show resizeBitmapSurfaceCanvas;
 import '../../services/brush_frame_store.dart';
 import '../../services/editing/cut_duplicate_helpers.dart'
     show duplicateFrameContent;
@@ -152,24 +154,26 @@ placedClipFor({
       minted: const {},
     );
   }
-  // 🚨THE CLIPBOARD IS THE SECOND PLACE TO LOOK, and after a 잘라내기
-  // it is the ONLY one (유저 #3, 2026-08-14).
+  // 🚨THE CLIPBOARD IS THE PLACE TO LOOK — the only one.
   //
-  // A cut orphans the cels it lifted, so they are gone from
-  // `layer.frames` by the time this runs. Reading only the layer found
-  // nothing, minted an id anyway, and authored an exposure pointing at a
-  // cel that does not exist: a white block, `?` where the name goes, and
-  // every verb that resolves the cel refusing — 「완전한 버그상태」.
+  // It was the SECOND place, after the row, and after a 잘라내기 already
+  // the only one (유저 #3, 2026-08-14): a cut orphans the cels it lifted,
+  // so they are gone from `layer.frames` by the time this runs. Reading
+  // only the layer found nothing, minted an id anyway, and authored an
+  // exposure pointing at a cel that does not exist: a white block, `?`
+  // where the name goes, and every verb that resolves the cel refusing —
+  // 「완전한 버그상태」. A band paste then reached rows the clip never came
+  // from, where the row misses the source every time.
   //
-  // ⚠️It matters MORE now: a band paste reaches rows the clip never came
-  // from, so `layer.frames` misses the source on every one of them and
-  // the clipboard is the only place the picture lives.
+  // ↩️And a copy from ANOTHER PROJECT (I-7) made the row-first order WRONG
+  // rather than empty: that project's ids were minted there, so a cel of
+  // THIS row can carry the very id that was copied — and asked first, the
+  // row answered with its own drawing, its own name and its own sound for
+  // the one on the board. The board holds every cel its clip points at, as
+  // they were when copied (F-161), so it is the whole answer.
   return mintIndependentClip(
     clip: row.clip,
-    from: [
-      (cels: layer.frames, sounds: layer.audioClips),
-      (cels: row.cels, sounds: row.sounds),
-    ],
+    from: [(cels: row.cels, sounds: row.sounds)],
     namesAreIdentity: layer.kind.celNameIsIdentity,
     mint: mint,
   );
@@ -208,7 +212,34 @@ void carryBakedPictures({
     }
     store.storeBakedSurface(
       internals.brushFrameKeyForCut(cut, to, entry.value),
-      surface,
+      // 🚨A picture is kept at ITS CUT's canvas size, or its cel opens BLANK
+      // and the first stroke saves the blank over it — the D5 loss the load
+      // heal exists for (`_healStaleCelSizes`). A copy can come from a cut,
+      // or a project (I-7), of another size. It keeps its canvas numbers,
+      // as a pasted layer's transform does (`LayerCopyPayload.transformTrack`
+      // — 「the numbers travel」).
+      resizeBitmapSurfaceCanvas(surface, cut.canvasSize),
     );
   }
 }
+
+/// The pictures [cels] show on [row] in [cut] as they are NOW — what a copy
+/// takes BY VALUE (F-161): a paste may land in another cut, or another
+/// project (I-7), whose store has no picture under the source's key, and a
+/// source drawn over or cut away after the copy is not what was copied.
+///
+/// ⚠️Surfaces are immutable with structural tile sharing, so holding one is
+/// holding a reference, not a second set of pixels — until the source is
+/// drawn over, when the copy keeps the tiles it took.
+Map<FrameId, BitmapSurface> picturesShownBy({
+  required SessionInternals internals,
+  required BrushFrameStore store,
+  required Cut cut,
+  required LayerId row,
+  required Iterable<Frame> cels,
+}) => {
+  for (final cel in cels)
+    cel.id: ?store.bakedSurfaceOrNull(
+      internals.brushFrameKeyForCut(cut, row, cel.id),
+    ),
+};

@@ -44,8 +44,6 @@ import '../../services/project_lookup.dart'
     show cutPositionOf, projectAudioSourcePaths;
 import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
-import 'frame_clipboard.dart';
-import 'layer_clipboard.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
 import 'media_pool.dart';
@@ -110,8 +108,6 @@ class ProjectFileDoor {
     required MediaStagingStore staging,
     required MediaGrantLedger grants,
     required MediaFingerprintLedger fingerprints,
-    required FrameClipboard clipboard,
-    required LayerClipboard layerClipboard,
     required AudioConformStore audioConformStore,
     required ValueNotifier<int> frameSeekCommitted,
     required MediaPool mediaPool,
@@ -132,8 +128,6 @@ class ProjectFileDoor {
        _staging = staging,
        _grants = grants,
        _fingerprints = fingerprints,
-       _clipboard = clipboard,
-       _layerClipboard = layerClipboard,
        _audioConformStore = audioConformStore,
        _frameSeekCommitted = frameSeekCommitted,
        _mediaPool = mediaPool,
@@ -159,8 +153,6 @@ class ProjectFileDoor {
   final MediaStagingStore _staging;
   final MediaGrantLedger _grants;
   final MediaFingerprintLedger _fingerprints;
-  final FrameClipboard _clipboard;
-  final LayerClipboard _layerClipboard;
   final AudioConformStore _audioConformStore;
   final ValueNotifier<int> _frameSeekCommitted;
   final LiveStrokeLanding _liveStrokeLanding;
@@ -1011,8 +1003,6 @@ class ProjectFileDoor {
     // [OpenProjectFile.hold] for the gap that left.
     OpenProjectFile.instance.hold(filePath);
     _project.historyManager.clear();
-    _clipboard.clear();
-    _layerClipboard.clear();
     // The selections name rows of the project being discarded, so no grid
     // can draw them — and a band nothing shows still CLAIMS the cell verbs
     // ([cellSelectionClaimsSubject]), which would leave Delete and the
