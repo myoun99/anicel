@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
 import '../../models/frame.dart' show InbetweenMark;
+import '../../models/layer_id.dart';
 import '../../native/qa_native_engine.dart';
 import '../text/word_condensation.dart';
 import 'timeline_frame_window.dart';
@@ -58,10 +59,27 @@ class TimelineGridTileStore {
 
   static final TimelineGridTileStore instance = TimelineGridTileStore._();
 
-  /// Bumped when a tile upload lands — the row painters merge this into
-  /// their repaint listenable, so the landed tile paints on the next
-  /// frame (cold spans show the classic paint meanwhile: no flash).
+  /// Bumped when a tile upload lands, whichever row it is — a count for
+  /// tests to wait on. ⛔No painter listens to it: a row repaints on ITS
+  /// OWN landings ([noticesFor]).
+  ///
+  /// 🚨I-22 ③: every row painter used to merge this into its repaint, so ONE
+  /// landing repainted EVERY row — and a row with cold spans repaints the
+  /// classic way. A zoom past the stale tiles' reach leaves every visible
+  /// span cold at once (~480 at 0.8px/frame over 24 rows), so the ~50
+  /// frames after it each repainted all 24 rows by hand (p50 84ms, debug).
+  @visibleForTesting
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  /// The rows shown now, each with the listeners of the painters that show
+  /// it: they come as those painters are attached and go as they are
+  /// detached ([noticesFor]), so a row nothing shows is not here.
+  final Map<String, List<VoidCallback>> _shown = <String, List<VoidCallback>>{};
+
+  /// The rows the queue turned a request of away, each with the latest one
+  /// it turned away — see [_revisitStarved].
+  final LinkedHashMap<String, _TileRequest> _starved =
+      LinkedHashMap<String, _TileRequest>();
 
   /// LRU cap. A span tile at 96px × a 28px row × DPR 2 ≈ 42KB; 768
   /// covers dozens of rows × the whole scroll neighborhood before
@@ -73,10 +91,22 @@ class TimelineGridTileStore {
   final Map<String, _TileRequest> _pending = <String, _TileRequest>{};
   bool _drainScheduled = false;
 
-  /// A raster in flight: from the moment the drain takes a request off the
-  /// queue until its upload lands (or is discarded). With [_pending] this is
-  /// the store's whole notion of "busy".
-  bool _draining = false;
+  /// The keys a drain has taken off the queue and not landed yet.
+  ///
+  /// ⛔Not emptied by [clear]: the raster is still out there, and a test
+  /// that asks for the same key would put a second one beside it — whose
+  /// landing the first would then overwrite with the old answers.
+  final Set<String> _inFlight = <String>{};
+
+  /// The drains running: from the moment one takes a request off the queue
+  /// until its upload lands (or is discarded). With [_pending] this is the
+  /// store's whole notion of "busy".
+  ///
+  /// ⚠️A COUNT, not a flag: a request made while a drain is suspended in a
+  /// raster schedules another drain beside it, and the first to finish used
+  /// to clear the flag while the other still had a raster in flight — idle
+  /// by this word, busy in fact.
+  int _drainsRunning = 0;
 
   /// Whether anything is queued or in flight. ⚠️TEST ONLY — the quiescence
   /// signal for tests that wait on tiles: waiting for SILENCE (no landing
@@ -84,7 +114,7 @@ class TimelineGridTileStore {
   /// which is how `timeline_viewport_resize_test` went red in bulk runs and
   /// green alone (2026-09-03). Idle is the store's word, not a timer's.
   @visibleForTesting
-  bool get debugBusy => _draining || _pending.isNotEmpty;
+  bool get debugBusy => _drainsRunning > 0 || _pending.isNotEmpty;
 
   /// The substrate generation the LIVE paints carry — the newest
   /// [TimelineTileRasterSource.substrateGeneration] a [tileFor] call has
@@ -111,6 +141,25 @@ class TimelineGridTileStore {
     }
     _entries.clear();
     _pending.clear();
+    _starved.clear();
+  }
+
+  /// What a painter of the row of [layerId] along [axis], in the world
+  /// [substrateGeneration], listens to for its tiles: a landing of one of
+  /// THAT row's tiles, never another row's.
+  Listenable noticesFor({
+    required String substrateGeneration,
+    required LayerId layerId,
+    required Axis axis,
+  }) => _RowNotices(this, _rowKey(substrateGeneration, layerId, axis));
+
+  static String _rowKey(String generation, LayerId layerId, Axis axis) =>
+      '$generation|${layerId.value}:${axis.index}';
+
+  void _noticeLanding(String row) {
+    for (final listener in [...?_shown[row]]) {
+      listener();
+    }
   }
 
   /// The fresh substrate tile for [painter]'s span starting at
@@ -134,9 +183,12 @@ class TimelineGridTileStore {
     // generation, cut B's row was served cut A's pixels whenever the
     // geometry happened to match, which after a mid-drain poisoning is
     // exactly how a grey block went from "flicker" to "stays".
-    final key =
-        '${painter.substrateGeneration}|${painter.layer.id.value}:'
-        '${painter.axis.index}:$spanStartIndex';
+    final row = _rowKey(
+      painter.substrateGeneration,
+      painter.layer.id,
+      painter.axis,
+    );
+    final key = '$row:$spanStartIndex';
     final entry = _entries.remove(key);
     if (entry != null) {
       _entries[key] = entry;
@@ -158,22 +210,26 @@ class TimelineGridTileStore {
     // CAPPED (UI-R20 #4): a scrollbar teleport requests dozens of spans
     // per frame and most are passed before their raster would land —
     // dropping the OLDEST keeps the drain working on what is actually
-    // on screen now.
-    _pending.remove(key);
-    _pending[key] = _TileRequest(
-      painter: painter,
-      spanStartIndex: spanStartIndex,
-      spanEndIndexExclusive: spanEndIndexExclusive,
-      devicePixelRatio: devicePixelRatio,
-    );
-    while (_pending.length > 32) {
-      _pending.remove(_pending.keys.first);
-    }
-    if (!_drainScheduled) {
-      _drainScheduled = true;
-      // Off the paint phase; microtasks run before the next frame, so a
-      // tile can land within a frame or two.
-      scheduleMicrotask(_drain);
+    // on screen now. A row it turns away is not forgotten, though
+    // ([_revisitStarved]).
+    //
+    // 🚨A tile being rastered is NOT asked for again ([_inFlight]): a row
+    // repaints on each of its landings, and every repaint asked afresh for
+    // the tiles still in flight — each ask a second raster, each landing
+    // another repaint. Measured in the pin: 900 rasters of 19 tiles, 450
+    // drains beside each other. Its landing repaints the row, which asks
+    // then if the look moved meanwhile.
+    if (!_inFlight.contains(key)) {
+      _enqueue(
+        key,
+        _TileRequest(
+          row: row,
+          painter: painter,
+          spanStartIndex: spanStartIndex,
+          spanEndIndexExclusive: spanEndIndexExclusive,
+          devicePixelRatio: devicePixelRatio,
+        ),
+      );
     }
     // Stale-while-revalidate (UI-R20 #6, widened for R26 #27): WHATEVER
     // went stale — a look flip or a content edit (a new layer instance) —
@@ -222,6 +278,21 @@ class TimelineGridTileStore {
     return null;
   }
 
+  void _enqueue(String key, _TileRequest request) {
+    _pending.remove(key);
+    _pending[key] = request;
+    while (_pending.length > 32) {
+      final turnedAway = _pending.remove(_pending.keys.first)!;
+      _starved[turnedAway.row] = turnedAway;
+    }
+    if (!_drainScheduled) {
+      _drainScheduled = true;
+      // Off the paint phase; microtasks run before the next frame, so a
+      // tile can land within a frame or two.
+      scheduleMicrotask(_drain);
+    }
+  }
+
   /// How far a stale tile may be stretched before the classic pass is the
   /// better answer.
   static bool _withinRescaleBand(double from, double to) {
@@ -239,7 +310,7 @@ class TimelineGridTileStore {
       _pending.clear();
       return;
     }
-    _draining = true;
+    _drainsRunning += 1;
     try {
       while (_pending.isNotEmpty) {
         final key = _pending.keys.first;
@@ -253,7 +324,13 @@ class TimelineGridTileStore {
         if (request.painter.substrateGeneration != _liveGeneration) {
           continue;
         }
-        final rastered = await _raster(engine, request);
+        _inFlight.add(key);
+        final _Rastered? rastered;
+        try {
+          rastered = await _raster(engine, request);
+        } finally {
+          _inFlight.remove(key);
+        }
         if (rastered == null) {
           continue;
         }
@@ -290,9 +367,50 @@ class TimelineGridTileStore {
           _entries.remove(_entries.keys.first)!.image.dispose();
         }
         revision.value += 1;
+        // A row whose tile lands asks again for itself when it repaints —
+        // coming back to it could only find an older painter.
+        _starved.remove(request.row);
+        _noticeLanding(request.row);
       }
+      _revisitStarved();
     } finally {
-      _draining = false;
+      _drainsRunning -= 1;
+    }
+  }
+
+  /// Once the queue has run dry, asks again for the first row it turned
+  /// away that is still shown — through the latest request it turned away,
+  /// for the spans that row's painter shows NOW
+  /// ([TimelineTileRasterSource.tileSpans]), not the ones it was showing.
+  ///
+  /// Every landing used to repaint every row, and those repaints asked again
+  /// for whatever the cap had dropped. A landing repaints its own row now,
+  /// and a row whose every request was turned away has none coming — so
+  /// without this it kept the classic paint until something else repainted
+  /// it (and then paid the classic pass again).
+  ///
+  /// One row at a time, and never by repainting it: a painter that is
+  /// shown but not being painted (an offstage tab) would never ask.
+  void _revisitStarved() {
+    while (_starved.isNotEmpty) {
+      final row = _starved.keys.first;
+      final request = _starved.remove(row)!;
+      final painter = request.painter;
+      if (!_shown.containsKey(row) ||
+          painter.substrateGeneration != _liveGeneration) {
+        continue;
+      }
+      for (final (start, end) in painter.tileSpans) {
+        tileFor(
+          painter: painter,
+          spanStartIndex: start,
+          spanEndIndexExclusive: end,
+          devicePixelRatio: request.devicePixelRatio,
+        );
+      }
+      if (_pending.isNotEmpty) {
+        return;
+      }
     }
   }
 
@@ -749,16 +867,46 @@ class TimelineGridTileStore {
 
 class _TileRequest {
   const _TileRequest({
+    required this.row,
     required this.painter,
     required this.spanStartIndex,
     required this.spanEndIndexExclusive,
     required this.devicePixelRatio,
   });
 
+  /// The row the tile belongs to — whose painters hear it land.
+  final String row;
   final TimelineTileRasterSource painter;
   final int spanStartIndex;
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
+}
+
+/// A row's side of the store's landing notices ([TimelineGridTileStore.
+/// noticesFor]): its painter adds a listener when it is attached and
+/// removes it when it is detached, so the store holds a row only while
+/// something shows it.
+class _RowNotices implements Listenable {
+  const _RowNotices(this._store, this._row);
+
+  final TimelineGridTileStore _store;
+  final String _row;
+
+  @override
+  void addListener(VoidCallback listener) =>
+      _store._shown.putIfAbsent(_row, () => <VoidCallback>[]).add(listener);
+
+  @override
+  void removeListener(VoidCallback listener) {
+    final listeners = _store._shown[_row];
+    if (listeners == null) {
+      return;
+    }
+    listeners.remove(listener);
+    if (listeners.isEmpty) {
+      _store._shown.remove(_row);
+    }
+  }
 }
 
 /// What `_raster` hands the drain: the pixels, and the revision and the

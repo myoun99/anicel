@@ -112,7 +112,12 @@ class TimelineRowCellsPainter extends CustomPainter
          repaint: Listenable.merge([
            geometry,
            ?windowBucket,
-           ?tileStore?.revision,
+           // Its OWN row's landings — never every row's (I-22 ③).
+           ?tileStore?.noticesFor(
+             substrateGeneration: substrateGeneration,
+             layerId: layer.id,
+             axis: axis,
+           ),
            ?celContent?.revision,
          ]),
        );
@@ -657,19 +662,9 @@ class TimelineRowCellsPainter extends CustomPainter
     TimelineGridTileStore store,
   ) {
     final tiledSpans = <(int, int)>[];
-    // TILE substrate pass (UI-R18 O7 T2): the span grid rides the
-    // SHARED window policy — a fresh tile is one drawImageRect; a
-    // cold/stale span keeps the classic paint underneath (no flash)
-    // while its raster lands off-frame.
-    final span = timelineFrameWindowSpanFor(frameCellExtent);
+    final grid = _tileGridIn(window);
     final tilePaint = Paint()..filterQuality = FilterQuality.low;
-    var tile = window.startIndex < 0 ? 0 : window.startIndex ~/ span;
-    for (; tile * span < window.endIndexExclusive; tile += 1) {
-      final spanStart = tile * span;
-      final spanEnd = math.min(spanStart + span, frameEndIndexExclusive);
-      if (spanEnd <= spanStart) {
-        continue;
-      }
+    for (final (spanStart, spanEnd) in grid.shown) {
       final image = store.tileFor(
         painter: this,
         spanStartIndex: spanStart,
@@ -707,15 +702,7 @@ class TimelineRowCellsPainter extends CustomPainter
     // PREFETCH one span beyond both window edges (scroll warm-up):
     // requesting is enough — the raster lands before the crossing
     // reveals it, so steady scrolling never hits the fallback.
-    for (final neighbor in [
-      (window.startIndex ~/ span) - 1,
-      tile, // one past the loop's last drawn tile
-    ]) {
-      final spanStart = neighbor * span;
-      final spanEnd = math.min(spanStart + span, frameEndIndexExclusive);
-      if (spanStart < 0 || spanEnd <= spanStart) {
-        continue;
-      }
+    for (final (spanStart, spanEnd) in grid.ahead) {
       store.tileFor(
         painter: this,
         spanStartIndex: spanStart,
@@ -724,6 +711,36 @@ class TimelineRowCellsPainter extends CustomPainter
       );
     }
     return tiledSpans;
+  }
+
+  /// The tile grid's spans under [window], in order (`shown`), and the one
+  /// past each edge a paint keeps warm (`ahead`) — the grid rides the SHARED
+  /// window policy ([timelineFrameWindowSpanFor], UI-R18 O7 T2).
+  ({List<(int, int)> shown, List<(int, int)> ahead}) _tileGridIn(
+    ({int startIndex, int endIndexExclusive}) window,
+  ) {
+    final span = timelineFrameWindowSpanFor(frameCellExtent);
+    (int, int)? spanAt(int tile) {
+      final start = tile * span;
+      final end = math.min(start + span, frameEndIndexExclusive);
+      return start < 0 || end <= start ? null : (start, end);
+    }
+
+    final first = window.startIndex < 0 ? 0 : window.startIndex ~/ span;
+    var past = first;
+    while (past * span < window.endIndexExclusive) {
+      past += 1;
+    }
+    return (
+      shown: [for (var tile = first; tile < past; tile += 1) ?spanAt(tile)],
+      ahead: [?spanAt((window.startIndex ~/ span) - 1), ?spanAt(past)],
+    );
+  }
+
+  @override
+  List<(int, int)> get tileSpans {
+    final grid = _tileGridIn(visibleFrameWindow());
+    return [...grid.shown, ...grid.ahead];
   }
 
   /// The Dart glyph/dash pass over every cell in [window] whose span no
