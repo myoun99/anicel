@@ -42,6 +42,7 @@ import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
+import '../helpers/fixed_thumbnails.dart';
 import 'storyboard_cut_block_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
@@ -1960,7 +1961,9 @@ Future<void> _pumpStoryboardPanel(
           onSeekGlobalFrame: onSeekGlobalFrame,
           onScrubGlobalFrame: onScrubGlobalFrame,
           onScrubEnd: onScrubEnd,
-          thumbnailFor: thumbnailFor,
+          thumbnails: thumbnailFor == null
+              ? null
+              : fixedThumbnails(thumbnailFor),
           pixelsPerFrame: pixelsPerFrame,
           showSeconds: showSeconds,
           projectFrameRate: projectFrameRate,

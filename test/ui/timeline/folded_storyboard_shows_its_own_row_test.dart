@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -130,7 +131,15 @@ void main() {
         tester.widget<CustomPaint>(_cutBlocks()).painter!
             as StoryboardCutBlocksPainter;
     expect(painter.showThumbnails, isTrue);
-    expect(painter.thumbnailFor, isNotNull);
+    expect(painter.thumbnails, isNotNull);
+
+    // …and a picture that lands repaints it, as it does the open row.
+    // ↩️The folded row took the resolver alone and heard nothing: its
+    // pictures showed whenever something else happened to repaint it.
+    final render = tester.renderObject<RenderCustomPaint>(_cutBlocks());
+    expect(render.debugNeedsPaint, isFalse, reason: 'the premise: settled');
+    (painter.thumbnails!.landed as ChangeNotifier).notifyListeners();
+    expect(render.debugNeedsPaint, isTrue, reason: 'the folded row heard it');
   });
 
   testWidgets('a folded TIMELINE is untouched — it still shows its own rail '

@@ -24,7 +24,7 @@ import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
 import 'panels/working_panel_surface.dart';
-import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
+import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
@@ -61,7 +61,7 @@ class StoryboardTabHost extends StatefulWidget {
     this.frameAxisOffset,
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
     this.onResizeTrackLanes,
-    required this.thumbnailFor,
+    required this.thumbnails,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.rowsChannel,
@@ -121,9 +121,9 @@ class StoryboardTabHost extends StatefulWidget {
   /// The V rows' splitter ([StoryboardPanel.onResizeTrackLanes]).
   final double Function(double delta)? onResizeTrackLanes;
 
-  /// Build-time thumbnail resolver, owned above the tabs so the cache
-  /// survives tab switches.
-  final StoryboardThumbnailResolver? thumbnailFor;
+  /// The panel pictures, owned above the tabs so the cache survives tab
+  /// switches — a landed one repaints the blocks, never this host.
+  final StoryboardThumbnails? thumbnails;
 
   /// A media-browser row let go on the storyboard — the host opens the place
   /// window with the drop's answer: a NEW cut on a track's frames
@@ -747,7 +747,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       end,
                       layout: _activeTrackLayout(),
                     ),
-                    thumbnailFor: widget.thumbnailFor,
+                    thumbnails: widget.thumbnails,
                     audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
                     // The tooltip string doubles as the clip-marker switch
                     // (REC1-D), matching the timeline host: null while the

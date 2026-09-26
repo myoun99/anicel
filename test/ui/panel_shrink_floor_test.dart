@@ -98,7 +98,7 @@ void main() {
     onPixelsPerFrameChanged: (_) {},
     showSeconds: false,
     onShowSecondsChanged: (_) {},
-    thumbnailFor: null,
+    thumbnails: null,
   );
 
   Rect rectOf(WidgetTester tester, String key) =>
@@ -483,7 +483,7 @@ void main() {
       for (final height in [sliver, ...heights]) {
         session = await pumpAt(
           tester,
-          (s) => ConteTabHost(session: s, thumbnailFor: null),
+          (s) => ConteTabHost(session: s, thumbnails: null),
           height: height,
           reuse: session,
         );

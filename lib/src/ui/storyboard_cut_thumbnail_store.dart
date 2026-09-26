@@ -49,16 +49,34 @@ typedef StoryboardThumbnailKey = ({
   StoryboardThumbnailTier tier,
 });
 
-/// The build-time resolver the panel and the conte call.
+/// The resolver the storyboard's rows and the conte's page ask while they
+/// PAINT — only for what their window shows.
 typedef StoryboardThumbnailResolver =
     ui.Image? Function(Cut cut, int frameIndex, {StoryboardThumbnailTier tier});
 
+/// A surface's panel pictures: [resolve] asked while it paints, and
+/// [landed] told when a render lands or a picture is let go — ONE value,
+/// so no surface can draw the pictures without hearing when they change.
+///
+/// ↩️The storyboard and the conte heard a landing by REBUILDING their
+/// whole tab (the store sat in each tab's listenable merge) — at I-22's
+/// ten-minute zoom every cut on the film lands one, and each rebuilt the
+/// storyboard's ruler, rows and chrome. The folded storyboard row took the
+/// resolver alone and heard nothing: its pictures showed whenever
+/// something else happened to repaint it. The painters that ask are the
+/// ones that repaint now.
+typedef StoryboardThumbnails = ({
+  StoryboardThumbnailResolver resolve,
+  Listenable landed,
+});
+
 /// Renders and caches the small composites the storyboard's panels show.
 ///
-/// [thumbnailFor] is a synchronous build-time resolver: it returns whatever
+/// [thumbnailFor] is a synchronous paint-time resolver: it returns whatever
 /// is cached (possibly stale, possibly null) and kicks one async render at
 /// thumbnail resolution when the panel's signature changed. Renders finish
-/// → [notifyListeners] → the panel rebuilds with the fresh image.
+/// → [notifyListeners] → the painters that asked repaint with the fresh
+/// image ([thumbnails]).
 ///
 /// Invalidation: a structural signature (canvas size, duration, per-layer
 /// visibility/opacity/frames/EXPOSURES, camera track, layer transforms and
@@ -118,6 +136,13 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   /// What the held pictures cost resident, 4 bytes a pixel.
   int get thumbnailBytes => _heldBytes;
 
+  /// What a surface takes to draw these pictures: [thumbnailFor], and this
+  /// store as what says one landed.
+  late final StoryboardThumbnails thumbnails = (
+    resolve: thumbnailFor,
+    landed: this,
+  );
+
   /// The cached thumbnail for [cut] at [frameIndex]; kicks an async
   /// (re)render when the signature changed, returning the stale image
   /// meanwhile.
@@ -158,7 +183,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
               _images[key] = image;
               _heldBytes += ViewerRasterBudget.costOf(image);
             }
-            // A signature change DURING the render re-kicks on the rebuild
+            // A signature change DURING the render re-kicks on the repaint
             // this notify triggers.
             _renderedSignatures[key] = signature;
             _evictBeyondBudget();
@@ -213,9 +238,9 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     _evictBeyondBudget();
     if (_images.length != before) {
       _reportHeldBytes();
-      // Panels still showing an evicted picture must rebuild before it is
+      // Panels still showing an evicted picture must repaint before it is
       // disposed — [_retire] waits for the next frame, and this notify is
-      // what puts a rebuild into that frame.
+      // what puts a repaint into that frame.
       notifyListeners();
     }
   }
@@ -233,7 +258,8 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     // signature) but the notify must fire HERE: brush strokes never notify
     // the session, so without it nothing rebuilt a visible storyboard and
     // freshly drawn artwork never reached its thumbnail (the R5-⑩
-    // "thumbnails never show up" device report).
+    // "thumbnails never show up" device report). It repaints the painters
+    // that ask now, which is what asks again.
     if (_invalidationNotifyScheduled || _disposed) {
       return;
     }

@@ -187,7 +187,7 @@ class _WorkspaceCollapsedRows {
                 // D15 ③: the thumbnails come from the store the panel
                 // draws from, so a picture rendered for one is already
                 // rendered for the other.
-                thumbnailFor: _state._storyboardThumbnails.thumbnailFor,
+                thumbnails: _state._storyboardThumbnails.thumbnails,
               ),
             ),
     );

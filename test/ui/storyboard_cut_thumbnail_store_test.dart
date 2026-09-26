@@ -74,6 +74,24 @@ void main() {
     expect(renderCount, 1, reason: 'unchanged signature must not re-render');
   });
 
+  testWidgets('what a surface is handed asks this store and hears its '
+      'landings', (tester) async {
+    final store = StoryboardCutThumbnailStore(render: (_, _, _) => tinyImage());
+    addTearDown(store.dispose);
+    final thumbnails = store.thumbnails;
+    var landed = 0;
+    thumbnails.landed.addListener(() => landed += 1);
+
+    await tester.runAsync(() async {
+      expect(thumbnails.resolve(cut(), 0), isNull, reason: 'kicks a render');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+
+    expect(landed, 1, reason: 'the render that landed said so');
+    expect(thumbnails.resolve(cut(), 0), same(store.thumbnailFor(cut(), 0)));
+    expect(store.thumbnails, same(thumbnails), reason: 'one value, kept');
+  });
+
   testWidgets('the SIZE is part of the key: the conte gets its own render '
       'at sheet resolution, and the strip keeps its small one', (tester) async {
     final widths = <int>[];

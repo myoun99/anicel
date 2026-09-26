@@ -146,7 +146,7 @@ Future<EditorSessionManager> _rail(WidgetTester tester) async {
             onPixelsPerFrameChanged: (_) {},
             showSeconds: false,
             onShowSecondsChanged: (_) {},
-            thumbnailFor: null,
+            thumbnails: null,
           ),
         ),
       ),

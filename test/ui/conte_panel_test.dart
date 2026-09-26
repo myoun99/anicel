@@ -117,7 +117,7 @@ Future<EditorSessionManager> _pumpConte(
       home: Scaffold(
         body: ConteTabHost(
           session: session,
-          thumbnailFor: null,
+          thumbnails: null,
           // ⚠️An EXPLICIT render 1.0 — this file maps document coordinates
           // to screen offsets one for one, and an uncontrolled panel now
           // opens at the IDENTITY (one document px per DEVICE px), which

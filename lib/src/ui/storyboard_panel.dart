@@ -32,7 +32,7 @@ import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import 'audio/waveform_painter.dart';
 import 'storyboard_cut_blocks_painter.dart';
-import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
+import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_layer_policy.dart';
 import '../models/storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
@@ -476,7 +476,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onScrubGlobalFrame,
     this.onScrubEnd,
     this.readyRunsIn,
-    this.thumbnailFor,
+    this.thumbnails,
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.seLanePreview,
@@ -837,11 +837,11 @@ class StoryboardPanel extends StatefulWidget {
   /// strip (same look as the timeline header's).
   final ReadyRunsIn? readyRunsIn;
 
-  /// Build-time resolver for the cut blocks' first-frame thumbnails (the
-  /// store behind it kicks async renders and re-notifies). The image stays
+  /// The cut blocks' panel pictures ([StoryboardThumbnails]: asked while
+  /// the blocks paint, and a landed one repaints them). The image stays
   /// OWNED BY THE RESOLVER — blocks paint it without disposing. Null hides
   /// the thumbnail strip.
-  final StoryboardThumbnailResolver? thumbnailFor;
+  final StoryboardThumbnails? thumbnails;
 
   /// Waveform peaks per audio file for the SE rows (null hides waveforms).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
@@ -4424,7 +4424,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.cutMove,
     required this.cutSelect,
     required this.stripSelect,
-    required this.thumbnailFor,
+    required this.thumbnails,
     required this.timelineScale,
     required this.frameGeometry,
     required this.hoveredCutId,
@@ -4475,7 +4475,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// Range selection on the STRIP — the cut's own panels, on the cut's own
   /// axis. Null keeps the strip display-only.
   final StoryboardStripSelectCallbacks? stripSelect;
-  final StoryboardThumbnailResolver? thumbnailFor;
+  final StoryboardThumbnails? thumbnails;
   final TimelineScale timelineScale;
 
   /// The panel's live frame-axis geometry — what the SHARED range gesture
@@ -4900,7 +4900,7 @@ class _StoryboardTrackRow extends StatelessWidget {
           DefaultTextStyle.of(context).style,
       showSeconds: showSeconds,
       countingBase: projectFrameRate.countingBase,
-      thumbnailFor: thumbnailFor,
+      thumbnails: thumbnails,
       windowBucket: windowBucket,
       viewportMainExtent: viewportWidth,
     );

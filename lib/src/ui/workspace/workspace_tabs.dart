@@ -915,12 +915,15 @@ class _WorkspaceTabs {
             // arrow press — measured at 38ms a step (12 build / 22 layout /
             // 3 paint) with a six-cut project. Panel-aware (R12-①):
             // offstage notifies defer to one catch-up on re-activation.
+            // ↩️The thumbnail store sat here too, so every picture that
+            // landed rebuilt the whole panel — at I-22's ten-minute zoom,
+            // one per cut on the film. The blocks that ask repaint on it
+            // now ([StoryboardThumbnails]).
             listenable: Listenable.merge([
               _state.widget.session,
               _state._storyboardPixelsPerFrame,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
-              _state._storyboardThumbnails,
             ]),
             builder: (context) => StoryboardTabHost(
               session: _state.widget.session,
@@ -958,7 +961,7 @@ class _WorkspaceTabs {
                 );
                 return height.value - before;
               },
-              thumbnailFor: _state._storyboardThumbnails.thumbnailFor,
+              thumbnails: _state._storyboardThumbnails.thumbnails,
               // The rows the ↑/↓ walk and the flip window read while the
               // storyboard is the panel being worked in.
               rowsChannel: _state._storyboardRows,
@@ -986,7 +989,6 @@ class _WorkspaceTabs {
           builder: (context) => PanelAwareListenableBuilder(
             listenable: Listenable.merge([
               _state.widget.session,
-              _state._storyboardThumbnails,
               _state._views._conteViewport,
               _state._views._conteBrushAllowed,
               _state._views._conteInk,
@@ -995,11 +997,11 @@ class _WorkspaceTabs {
             ]),
             builder: (context) => ConteTabHost(
               session: _state.widget.session,
-              thumbnailFor: _state._storyboardThumbnails.thumbnailFor,
               // A landed thumbnail render repaints the page painter
               // directly (its compared fields don't change for async
-              // pictures).
-              thumbnailRepaint: _state._storyboardThumbnails,
+              // pictures) — and only it: the store left this tab's merge,
+              // which rebuilt the whole sheet for every picture as well.
+              thumbnails: _state._storyboardThumbnails.thumbnails,
               // The notifier ITSELF — the panel writes into this one, so
               // there is no copy to echo and nothing to go stale while the
               // panel is unmounted.

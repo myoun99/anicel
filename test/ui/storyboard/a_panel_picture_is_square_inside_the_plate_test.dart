@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 
+import '../../helpers/fixed_thumbnails.dart';
 import '../storyboard_cut_block_probe.dart';
 
 /// 🚨유저 2026-09-26: 「블록이 모서리 둥근건 블록 자체잖아. 근데 … 지금
@@ -95,8 +96,9 @@ void main() {
             ),
             activeCutId: const CutId('C1'),
             pixelsPerFrame: ppf,
-            thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
-                picture,
+            thumbnails: fixedThumbnails(
+              (cut, frame, {tier = StoryboardThumbnailTier.strip}) => picture,
+            ),
           ),
         ),
       ),

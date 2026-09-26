@@ -84,7 +84,7 @@ void main() {
             return (
               ConteTabHost(
                 session: session,
-                thumbnailFor: null,
+                thumbnails: null,
                 inkController: ink,
               ),
               () => ink.commitStroke(

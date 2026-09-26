@@ -251,7 +251,7 @@ Future<(EditorSessionManager, LayerId, LayerId)> _storyboardRail(
             onPixelsPerFrameChanged: (_) {},
             showSeconds: false,
             onShowSecondsChanged: (_) {},
-            thumbnailFor: null,
+            thumbnails: null,
           ),
         ),
       ),

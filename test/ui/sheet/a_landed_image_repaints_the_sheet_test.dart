@@ -53,7 +53,7 @@ void main() {
       'the conte',
       (session, imageFor, landed) => ConteTabHost(
         session: session,
-        thumbnailFor: null,
+        thumbnails: null,
         imageFor: imageFor,
         imageRepaint: landed,
       ),

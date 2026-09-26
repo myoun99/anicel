@@ -25,7 +25,7 @@ import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailResolver, StoryboardThumbnailTier;
+    show StoryboardThumbnailTier, StoryboardThumbnails;
 import '../text/app_strings.dart';
 import '../timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview, TimelineDragPreview;
@@ -52,8 +52,7 @@ class ConteTabHost extends StatefulWidget {
   const ConteTabHost({
     super.key,
     required this.session,
-    required this.thumbnailFor,
-    this.thumbnailRepaint,
+    required this.thumbnails,
     this.viewport,
     this.viewportController,
     this.onViewportChanged,
@@ -76,14 +75,11 @@ class ConteTabHost extends StatefulWidget {
   /// page's inputs do not change for it, so this is what repaints it.
   final Listenable? imageRepaint;
 
-  /// The panels' picture resolver — the SAME store the storyboard strip
-  /// draws from, so a cell and its strip panel are one render.
-  final StoryboardThumbnailResolver? thumbnailFor;
-
-  /// The picture store's change signal: a landed thumbnail render must
+  /// The panels' pictures — the SAME store the storyboard strip draws
+  /// from, so a cell and its strip panel are one render. A landed one must
   /// REPAINT the page (the painter's compared fields don't change when an
-  /// async picture arrives). Usually the thumbnail store itself.
-  final Listenable? thumbnailRepaint;
+  /// async picture arrives), which is what its `landed` is for.
+  final StoryboardThumbnails? thumbnails;
 
   /// Owned above the tab group so zoom/pan survive tab switches.
   final CanvasViewport? viewport;
@@ -256,7 +252,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   }
 
   ui.Image? _pictureFor(String cutId, int frame) {
-    final resolver = widget.thumbnailFor;
+    final resolver = widget.thumbnails?.resolve;
     if (resolver == null) {
       return null;
     }
@@ -525,7 +521,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
           // A landed thumbnail or cover picture, likewise.
           SheetStratum.picture: painterOf(
             SheetStratum.picture,
-            repaint: [widget.thumbnailRepaint, widget.imageRepaint],
+            repaint: [widget.thumbnails?.landed, widget.imageRepaint],
           ),
           if (inkController != null)
             SheetStratum.ink: painterOf(

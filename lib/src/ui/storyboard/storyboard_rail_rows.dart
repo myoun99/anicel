@@ -1338,7 +1338,7 @@ class _StoryboardRailRows {
         cutMove: _state.widget.cutMove,
         cutSelect: _state.widget.cutSelect,
         stripSelect: _state.widget.stripSelect,
-        thumbnailFor: _state.widget.thumbnailFor,
+        thumbnails: _state.widget.thumbnails,
         timelineScale: scale,
         frameGeometry: _state._frameGeometry,
         hoveredCutId: _state._hoveredCutId,

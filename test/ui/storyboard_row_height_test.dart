@@ -71,7 +71,7 @@ Future<void> _openStoryboardAtFloor(WidgetTester tester) async {
             showSeconds: false,
             onShowSecondsChanged: (_) {},
             trackLaneHeight: StoryboardPanel.minTrackLaneHeight,
-            thumbnailFor: null,
+            thumbnails: null,
           ),
         ),
       ),

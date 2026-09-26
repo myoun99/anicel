@@ -35,6 +35,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
         storyboardPanelPictureGroundColor;
+import '../helpers/fixed_thumbnails.dart';
 import 'storyboard_cut_block_probe.dart';
 
 /// The cut block is FIVE BANDS, top to bottom: the CUT's, the CONTE
@@ -137,7 +138,9 @@ Future<void> _pump(
           project: _project(storyboardLayer: storyboardLayer, cutMark: cutMark),
           activeCutId: activeCutId,
           pixelsPerFrame: pixelsPerFrame,
-          thumbnailFor: thumbnailFor,
+          thumbnails: thumbnailFor == null
+              ? null
+              : fixedThumbnails(thumbnailFor),
         ),
       ),
     ),
@@ -784,11 +787,14 @@ void main() {
               activeCutId: const CutId('cut-1'),
               pixelsPerFrame: 12,
               trackLaneHeight: laneHeight,
-              thumbnailFor:
-                  (cut, frame, {tier = StoryboardThumbnailTier.strip}) {
-                    asked.add(tier);
-                    return null;
-                  },
+              thumbnails: fixedThumbnails((
+                cut,
+                frame, {
+                tier = StoryboardThumbnailTier.strip,
+              }) {
+                asked.add(tier);
+                return null;
+              }),
             ),
           ),
         ),

@@ -11,7 +11,7 @@ import '../models/frame_id.dart';
 import '../models/layer_kind.dart';
 import '../models/storyboard_coverage.dart';
 import 'storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailResolver, StoryboardThumbnailTier;
+    show StoryboardThumbnailTier, StoryboardThumbnails;
 import '../models/timeline_row_address.dart';
 import '../models/track_frame_range.dart';
 import 'storyboard_layer_policy.dart';
@@ -229,7 +229,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   required int countingBase,
   ValueListenable<TrackFrameRangeSelection?>? selectedRange,
   ValueListenable<CutId?>? hoveredCutId,
-  StoryboardThumbnailResolver? thumbnailFor,
+  StoryboardThumbnails? thumbnails,
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
 }) => StoryboardCutBlocksPainter(
@@ -256,8 +256,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   baseTextStyle: baseTextStyle,
   showSeconds: showSeconds,
   countingBase: countingBase,
-  thumbnailFor: thumbnailFor,
-  showThumbnails: thumbnailFor != null,
+  thumbnails: thumbnails,
   windowBucket: windowBucket,
   viewportMainExtent: viewportMainExtent,
 );
@@ -296,8 +295,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     required this.baseTextStyle,
     required this.showSeconds,
     required this.countingBase,
-    this.thumbnailFor,
-    this.showThumbnails = false,
+    this.thumbnails,
     this.windowBucket,
     this.viewportMainExtent = 0,
   }) : super(
@@ -306,6 +304,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
            ?selectedRange,
            hoveredCutId,
            ?windowBucket,
+           ?thumbnails?.landed,
          ]),
        );
 
@@ -353,9 +352,11 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   final int countingBase;
 
   /// Painted, never disposed here: the thumbnail store owns the image.
-  /// Asked ONLY for blocks inside the window, which is the point.
-  final StoryboardThumbnailResolver? thumbnailFor;
-  final bool showThumbnails;
+  /// Asked ONLY for blocks inside the window, which is the point — and a
+  /// landed one repaints this painter alone, never the row that built it.
+  final StoryboardThumbnails? thumbnails;
+
+  bool get showThumbnails => thumbnails != null;
 
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
@@ -583,7 +584,8 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     StoryboardTimelineLayoutEntry entry,
     List<StoryboardCoverageCell> cells,
   ) {
-    if (!showThumbnails || thumbnailFor == null) {
+    final thumbnails = this.thumbnails;
+    if (thumbnails == null) {
       return const [];
     }
     final tier = thumbnailTierFor(
@@ -593,7 +595,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     );
     return [
       for (final cell in cells)
-        thumbnailFor!(
+        thumbnails.resolve(
           entry.cut,
           storyboardCellPictureFrame(
             cell,
@@ -623,7 +625,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// Every block this row would draw, in track order — THE probe surface.
   ///
   /// Off-window cuts are absent by construction, which is also what keeps
-  /// [thumbnailFor] from being asked for pictures nobody can see.
+  /// [thumbnails] from being asked for pictures nobody can see.
   List<StoryboardCutBlockVisual> blocks() {
     final window = visibleFrameWindow();
     final selectionValue = selectedRange?.value;
@@ -1103,8 +1105,8 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   }
 
   @override
-  // Geometry, selection and hover are absent on purpose — they arrive
-  // through `repaint`.
+  // Geometry, selection, hover and a landed picture are absent on purpose —
+  // they arrive through `repaint`.
   Object get props => (
     ByIdentity(entries),
     ByMap(storyboardLayerNames),
