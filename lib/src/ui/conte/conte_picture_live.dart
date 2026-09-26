@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/sheet_marks.dart';
 import '../../services/cel_source_effect_pass.dart'
     show celSurfaceWithSourceEffects;
@@ -86,7 +87,7 @@ class ContePictureLive extends StatelessWidget {
       drawingLayerId: picture.layer.id,
     );
     final canvas = picture.cut.canvasSize;
-    final buffers = session.renderCaches.livePictureBufferBytes;
+    final corners = canvas.canvasRect;
     return ClipPath(
       clipper: _Shot(
         slot: window.screenRect(viewport),
@@ -100,10 +101,10 @@ class ContePictureLive extends StatelessWidget {
             child: ClipPath(
               clipper: _Outline([
                 for (final corner in [
-                  Offset.zero,
-                  Offset(canvas.width.toDouble(), 0),
-                  Offset(canvas.width.toDouble(), canvas.height.toDouble()),
-                  Offset(0, canvas.height.toDouble()),
+                  corners.topLeft,
+                  corners.topRight,
+                  corners.bottomRight,
+                  corners.bottomLeft,
                 ])
                   MatrixUtils.transformPoint(canvasToScreen, corner),
               ]),
@@ -122,20 +123,24 @@ class ContePictureLive extends StatelessWidget {
                   showTransparentBackground: false,
                   lineage: (window.key.layerId, window.key.frameId),
                 ),
-                // The census cannot reach a widget State; the session can.
-                onBufferBytes: (bytes) {
-                  if (bytes == 0) {
-                    buffers.remove(window.id);
-                  } else {
-                    buffers[window.id] = bytes;
-                  }
-                },
+                onBufferBytes: (bytes) => _count(window.id, bytes),
               ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// Picture [id]'s display buffer, on the census — pushed: the census
+  /// cannot reach a widget State; the session can.
+  void _count(String id, int bytes) {
+    final buffers = session.renderCaches.livePictureBufferBytes;
+    if (bytes == 0) {
+      buffers.remove(id);
+    } else {
+      buffers[id] = bytes;
+    }
   }
 }
 

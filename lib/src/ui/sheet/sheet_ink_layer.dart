@@ -7,6 +7,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -228,15 +229,7 @@ class SheetPictureWindow extends SheetWindow {
   CanvasSelectionRegion? get shows => refusal != null
       ? null
       : CanvasSelectionRegion.shape(surfaceShapeOf(slot)).combinedWith(
-          _mappedRect(
-            Matrix4.inverted(artworkToCanvas),
-            Rect.fromLTWH(
-              0,
-              0,
-              canvasSize.width.toDouble(),
-              canvasSize.height.toDouble(),
-            ),
-          ),
+          _mappedRect(Matrix4.inverted(artworkToCanvas), canvasSize.canvasRect),
           SelectionCombineMode.intersect,
         );
 }

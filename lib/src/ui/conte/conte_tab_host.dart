@@ -124,6 +124,14 @@ class ConteTabHost extends StatefulWidget {
   State<ConteTabHost> createState() => _ConteTabHostState();
 }
 
+/// What the ink windows are mounted with: the sheet's ink, the brush in
+/// hand, and the page on screen.
+typedef _InkMount = ({
+  ConteInkController controller,
+  ValueListenable<BrushToolState> tool,
+  ContePageLayout page,
+});
+
 class _ConteTabHostState extends State<ConteTabHost> {
   EditorSessionManager get _session => widget.session;
 
@@ -305,12 +313,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// drawing is off. ONE gate: the ink layer, the panel's [drawingOn] and
   /// the painter's live keys all ask this, so none can say 「drawing」
   /// while another says not.
-  ({
-    ConteInkController controller,
-    ValueListenable<BrushToolState> tool,
-    ContePageLayout page,
-  })?
-  _inkMount(ContePageLayout? page) {
+  _InkMount? _inkMount(ContePageLayout? page) {
     final controller = widget.inkController;
     final tool = widget.brushToolState;
     if (page == null ||
@@ -425,14 +428,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
                   ),
                 ),
               ),
-            if (ink != null)
-              _inkLayer(
-                ink.tool,
-                ink.controller,
-                ink.page,
-                viewport,
-                pictures,
-              ),
+            if (ink != null) _inkLayer(ink, viewport, pictures),
           ],
         );
       },
@@ -477,9 +473,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   }
 
   Positioned _inkLayer(
-    ValueListenable<BrushToolState> brushToolState,
-    ConteInkController inkController,
-    ContePageLayout page,
+    _InkMount ink,
     CanvasViewport viewport,
     List<ContePicture> pictures,
   ) {
@@ -489,9 +483,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // its windows read it when a stroke starts.
       child: ConteInkLayer(
         key: const ValueKey<String>('conte-ink-layer'),
-        controller: inkController,
-        page: page,
-        brushToolState: brushToolState,
+        controller: ink.controller,
+        page: ink.page,
+        brushToolState: ink.tool,
         historyManager: _session.historyManager,
         viewport: viewport,
         strokeActive: _strokeHold,
