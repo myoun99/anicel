@@ -312,15 +312,13 @@ class _BrushEditPress {
       _state._touchStrokeCommitted = true;
     }
 
-    _state._pressure.noteSample(event);
+    final read = _state._pressure.noteSample(
+      event,
+      opening: _state._stroke._opening,
+    );
     final penPosition = _state._canvasPositionFromLocal(event.localPosition);
     _state._lastPenPosition = penPosition;
-    // The stabilizer smooths BEFORE clipping/interpolation, so every
-    // downstream consumer (overlay, commit, replay) sees one chain — the
-    // three-route parity holds by construction (P7).
-    _state._stroke.advanceStrokeThroughGuides(
-      _state._stabilizer?.follow(penPosition) ?? penPosition,
-    );
+    _state._stroke.takeSample(penPosition, at: event.timeStamp, read: read);
   }
 
   void pointerUp(PointerUpEvent event) {
@@ -376,6 +374,9 @@ class _BrushEditPress {
     if (_state._activeDrawingPointer == null) {
       return false;
     }
+    // Whatever still waits for the contact's first pressure reading lands
+    // before the catch-up that follows it (H43).
+    _state._stroke.stopWaiting();
     // Stabilizer catch-up (P7): the brush trails the pen by up to a rope
     // length — pen-up closes the gap with one straight segment through
     // the normal pipeline, so line ends land where the pen lifted.

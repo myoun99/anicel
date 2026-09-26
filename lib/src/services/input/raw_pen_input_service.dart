@@ -123,10 +123,18 @@ class RawPenInputService {
     latest.value = state;
   }
 
+  /// The newest report as of THIS call, or null when none is fresh.
+  ///
+  /// 🚨READ AT THE ASK, not at the last tick (H43, 2026-09-26). The native
+  /// side holds the newest report the moment HID delivers it; the timer's
+  /// copy can be a whole [pollInterval] older. At a pen's down that older
+  /// copy is the pen still hovering — tip up — and the canvas, reading the
+  /// press's buttons off it, would not have drawn.
   QaPenRawState? _freshState(DateTime? now) {
     if (_timer == null) {
       return null;
     }
+    _pump();
     final state = latest.value;
     if (state == null) {
       return null;

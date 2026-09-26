@@ -12,6 +12,45 @@ class _BrushEditStroke {
 
   final _InteractiveBrushEditCanvasViewState _state;
 
+  /// Whether this contact has not read a pressure yet — what
+  /// [_BrushEditPressure.noteSample] is told as `opening`.
+  bool _opening = false;
+
+  /// The samples a stroke took before its first pressure READING, in the
+  /// order they came, each with what it will paint — null while nothing
+  /// waits.
+  ///
+  /// 🚨★★★H43 (유저 2026-09-26, iPad: 「필압있는 브러시 쓸때 첫 펜다운한
+  /// 부분? 만 입력한 필압보다 센게나와. 최대치가 나오는거같기도하고」). The
+  /// first samples of a contact can carry a value the device has not
+  /// measured yet ([_BrushEditPressure.pressureOf]), and the stroke painted
+  /// it: UIKit's estimate on an iPad, a hovering packet under Wintab.
+  ///
+  /// ★THE STROKE WAITS FOR ITS FIRST READING, and every sample that waited
+  /// is painted with it — the nearest measurement there is, exactly as a
+  /// sample that cannot measure speed keeps the last one that could. The
+  /// wait is the few samples it takes the device to catch up; nothing is
+  /// on screen until then.
+  ///
+  /// ⛔NOT 「paint the stand-in and repaint when the reading comes」 — what
+  /// is shown once is seen ([[no-optimistic-commit-then-revert]]).
+  ///
+  /// Only a brush whose curves READ pressure waits: for any other the
+  /// value changes nothing it draws.
+  ({Duration since, List<_WaitingSample> samples})? _waiting;
+
+  /// How long a stroke waits for its first reading before it takes the
+  /// device's word.
+  ///
+  /// The longest wait on record is UIKit's: seven coalesced samples at
+  /// 240 Hz, 29 ms (the 2018 CSV cited at `_isUIKitForceEstimate`), plus
+  /// the one event interval it takes Flutter to deliver the next main touch.
+  /// A pen that never measures — one without a force sensor may report the
+  /// estimate for good — would otherwise hold its whole stroke off screen
+  /// until it lifted; past this bound it paints what it reports, as it
+  /// always did.
+  static const Duration _patience = Duration(milliseconds: 50);
+
   /// A stroke begins under [event]: the pointer is ours, the settings are
   /// the tool's (or the eraser's on a mapped tail), the stabiliser, the
   /// snap session, the symmetry, the dynamics and the ground mixer are
@@ -44,7 +83,8 @@ class _BrushEditStroke {
           )
         : _state.widget.inputSettings();
     _state._activeStrokeInputSettings = strokeSettings;
-    _state._pressure.noteSample(event);
+    final read = _state._pressure.noteSample(event, opening: true);
+    _opening = !read;
     _state.widget.onActiveStrokeChanged?.call(true);
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
@@ -111,9 +151,91 @@ class _BrushEditStroke {
     _state._overlay._overlayModel.preBlendBase = strokeSurface;
     _state._collectedDabs.clear();
     _state._prepareLiveRasterizer();
-    if (!startsInsidePasteboard) {
+    // A press off the pasteboard lays nothing down; the stroke's first dab
+    // comes where a move crosses in.
+    final paintPress = startsInsidePasteboard
+        ? () => _paintPress(canvasPosition)
+        : () {};
+    if (!read && strokeSettings.shape.reads(BrushInputSource.pressure)) {
+      _waiting = (
+        since: event.timeStamp,
+        samples: [_waitingSample(paintPress)],
+      );
       return;
     }
+    paintPress();
+  }
+
+  /// One pen sample for the stroke: painted now — or, while the stroke
+  /// waits for its first pressure reading ([_waiting]), held with the
+  /// others until one comes. [read] is what
+  /// [_BrushEditPressure.noteSample] answered for it.
+  void takeSample(
+    CanvasPoint penPosition, {
+    required Duration at,
+    required bool read,
+  }) {
+    // The stabilizer smooths BEFORE clipping/interpolation, so every
+    // downstream consumer (overlay, commit, replay) sees one chain — the
+    // three-route parity holds by construction (P7). A held sample reaches
+    // it when it is painted, in the order it came.
+    void paint() => advanceStrokeThroughGuides(
+      _state._stabilizer?.follow(penPosition) ?? penPosition,
+    );
+    final waiting = _waiting;
+    if (waiting != null && !read && at - waiting.since <= _patience) {
+      waiting.samples.add(_waitingSample(paint));
+      return;
+    }
+    if (read) {
+      _opening = false;
+    }
+    if (waiting != null) {
+      _paintWaiting(withThisReading: read);
+    }
+    paint();
+  }
+
+  /// The contact ended before its first reading: what waited lands with
+  /// what the device reported for it — a tap too short for the device to
+  /// measure still leaves its dot.
+  void stopWaiting() {
+    if (_waiting != null) {
+      _paintWaiting(withThisReading: false);
+    }
+  }
+
+  /// Paints every sample that waited — each with the reading the current
+  /// sample just brought, or, [withThisReading] false, with the stand-in it
+  /// came with — and leaves the current readings as they were.
+  void _paintWaiting({required bool withThisReading}) {
+    final samples = _waiting!.samples;
+    _waiting = null;
+    final pressure = _state._currentPressure;
+    final tilt = _state._currentTilt;
+    final speed = _state._currentSpeed;
+    for (final sample in samples) {
+      _state._currentPressure = withThisReading ? pressure : sample.standIn;
+      _state._currentTilt = sample.tilt;
+      _state._currentSpeed = sample.speed;
+      sample.paint();
+    }
+    _state._currentPressure = pressure;
+    _state._currentTilt = tilt;
+    _state._currentSpeed = speed;
+  }
+
+  /// The sample just noted, as it waits: its own lean and speed, the
+  /// device's stand-in for its pressure, and what it paints.
+  _WaitingSample _waitingSample(void Function() paint) => (
+    standIn: _state._currentPressure,
+    tilt: _state._currentTilt,
+    speed: _state._currentSpeed,
+    paint: paint,
+  );
+
+  /// The stroke's FIRST dab, under the press.
+  void _paintPress(CanvasPoint canvasPosition) {
     final initialDabs = _state._pressure.withPressureDynamics(
       const BrushDabInterpolator().interpolate(
         previous: null,
@@ -425,6 +547,8 @@ class _BrushEditStroke {
     _state._breakCurrentVisibleSegment = false;
     _state._previousRawCanvasPosition = null;
     _state._activeStrokeInputSettings = null;
+    _waiting = null;
+    _opening = false;
     _state._pressure.restInput();
     _state._strokeDynamics = null;
     _state._lastDirectionDegrees = null;
@@ -442,3 +566,12 @@ class _BrushEditStroke {
     _state._pendingOverlayDabs.clear();
   }
 }
+
+/// One sample a stroke holds while it waits for its first pressure reading
+/// ([_BrushEditStroke._waiting]).
+typedef _WaitingSample = ({
+  double standIn,
+  ({double azimuthDegrees, double altitude})? tilt,
+  double speed,
+  void Function() paint,
+});

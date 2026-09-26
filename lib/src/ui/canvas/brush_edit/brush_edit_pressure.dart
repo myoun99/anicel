@@ -36,7 +36,8 @@ class _BrushEditPressure {
     ];
   }
 
-  /// Normalizes a pointer's pressure into 0..1.
+  /// A pointer's pressure normalized into 0..1 — and whether it READ this
+  /// contact, or is only what the device put in the reading's place.
   ///
   /// Only stylus devices report meaningful pressure. A mouse claims a 0..1
   /// pressure range on some platforms while always reporting 0.0 — trusting
@@ -48,39 +49,86 @@ class _BrushEditPressure {
   /// EVERY kind — that is the point of the switch: a pen the OS pipeline
   /// misreports (touch, or mouse with Ink unchecked) paints with real
   /// pressure anyway. Stale/absent stream falls through unchanged.
-  double normalizedPressure(PointerEvent event) {
+  ///
+  /// 🚨NOT A READING (H43, 유저 2026-09-26: 「필압있는 브러시 쓸때 첫
+  /// 펜다운한 부분? 만 입력한 필압보다 센게나와」) — two stand-ins the
+  /// device hands over in place of a pressure it has not measured yet:
+  ///
+  /// * a driver packet taken while the pen was still HOVERING, when it is
+  ///   asked for the [opening] of a contact. Once the contact has read,
+  ///   the same packet means the pen has lifted, and 0 is the reading;
+  /// * UIKit's force ESTIMATE ([_isUIKitForceEstimate]).
+  ///
+  /// The stroke waits for a reading instead of painting either (see
+  /// `_BrushEditStroke.takeSample`).
+  ({double pressure, bool read}) pressureOf(
+    PointerEvent event, {
+    required bool opening,
+  }) {
     // The response curve (PEN-3) shapes REAL pressure from either source
     // — the full-pressure fallbacks stay 1.0 through any gamma.
-    final wintab = PenSidecars.freshContactPressure();
-    if (wintab != null) {
-      return AppInput.applyPressureCurve(wintab);
+    final sidecar = PenSidecars.freshReading();
+    if (sidecar != null) {
+      return (
+        pressure: AppInput.applyPressureCurve(sidecar.pressure),
+        read: sidecar.touching || !opening,
+      );
     }
     if (event.kind != PointerDeviceKind.stylus &&
         event.kind != PointerDeviceKind.invertedStylus) {
-      return 1.0;
+      return (pressure: 1.0, read: true);
     }
     final range = event.pressureMax - event.pressureMin;
     if (!range.isFinite || range <= 0.0) {
-      return 1.0;
+      return (pressure: 1.0, read: true);
     }
-    return AppInput.applyPressureCurve(
-      ((event.pressure - event.pressureMin) / range).clamp(0.0, 1.0),
+    return (
+      pressure: AppInput.applyPressureCurve(
+        ((event.pressure - event.pressureMin) / range).clamp(0.0, 1.0),
+      ),
+      read: !_isUIKitForceEstimate(event),
     );
   }
 
-  /// Reads every input the next dab will carry off one pointer sample.
+  /// 🚨UIKIT'S STAND-IN FORCE. Apple Pencil's force travels over Bluetooth
+  /// and lands after the touch does, so UIKit reports an ESTIMATE for the
+  /// first samples of a contact and sends the measured value later through
+  /// `touchesEstimatedPropertiesUpdated` — which Flutter's engine does not
+  /// implement (its iOS view controller, checked 2026-09-26 on 3.47). The
+  /// estimate is therefore all this app ever sees for those samples.
+  ///
+  /// Developers who logged it found exactly 1/3, whatever the pressure and
+  /// whatever the device: Apple Developer Forums thread 96700 (2018, a CSV
+  /// of five strokes, the first 2–7 coalesced points of each) and 734203
+  /// (2023, iPad Pro M2 + Apple Pencil 2, the first 2–6 touches). A sensor
+  /// reading does not land within a millionth of 1/3 by chance.
+  static bool _isUIKitForceEstimate(PointerEvent event) =>
+      defaultTargetPlatform == TargetPlatform.iOS &&
+      (event.pressure - 1.0 / 3.0).abs() < 1e-6;
+
+  /// Reads every input the next dab will carry off one pointer sample, and
+  /// answers whether the sample READ this contact's pressure ([pressureOf]).
   ///
   /// 🚨ONE CALL, because pressure and tilt come off the SAME event and a
   /// dab that mixed one sample's pressure with another's lean would be a
   /// reading that never happened. Three call sites set pressure today; they
   /// all go through here so a fourth input cannot be added to two of them.
-  void noteSample(PointerEvent event) {
-    _state._currentPressure = normalizedPressure(event);
+  ///
+  /// A sample that did not read keeps the stroke's LAST reading once there
+  /// is one — the rule speed already has for a sample it cannot measure.
+  /// Before the first, the device's stand-in is kept as the value the
+  /// sample lands with if no reading ever comes.
+  bool noteSample(PointerEvent event, {required bool opening}) {
+    final pressure = pressureOf(event, opening: opening);
+    if (pressure.read || opening) {
+      _state._currentPressure = pressure.pressure;
+    }
     // ⚠️ONE FIELD for the tilt READING, because azimuth without altitude is a
     // lean in a direction nothing reported — and `BrushDab` refuses that pair
     // outright. The same shape as `_travelled` below, and for the same reason.
     _state._currentTilt = penTilt(event);
     _noteSpeed(event);
+    return pressure.read;
   }
 
   /// 速度 off the same event — the one input that needs TWO readings, so it
