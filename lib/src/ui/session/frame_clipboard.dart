@@ -991,6 +991,13 @@ class _CopiedRow {
 /// which project its ids are ids of.
 class FrameBoard {
   _CopiedFrameReference? _copy;
+
+  /// The pictures the copy holds, every swept row's — the memory census's
+  /// to weigh.
+  Iterable<BitmapSurface> get heldPictures => [
+    for (final row in _copy?.rows ?? const <_CopiedRow>[])
+      ...row.pictures.values,
+  ];
 }
 
 class _CopiedFrameReference implements BoardCopy {

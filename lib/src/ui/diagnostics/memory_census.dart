@@ -164,7 +164,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             // moment the tool lets go, and a row of its own would need a
             // fifth string in five languages to say "usually nothing".
             session.renderCaches.brushFrameStore.reclaimableViewBytes,
-      ),
+      ) + _clipboardOnlyBytes(sessions),
     ),
     MemoryCensusItem(
       id: 'sheetInk',
@@ -324,4 +324,38 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     deviceBytes: QaNativeEngine.instance?.physicalMemoryBytes,
     items: items,
   );
+}
+
+/// The pictures the app's clipboard holds ON ITS OWN — the tiles of its
+/// copies that no open project's store holds hot — for the drawings row.
+///
+/// 🔎clipboard-held-pictures-uncounted (2026-09-26): a copy holds its cels'
+/// pictures BY VALUE (F-161; a layer copy since I-7), and while its source
+/// stands untouched it shares every tile with it — structural sharing, so
+/// counting the copy whole would bill one picture twice. Drawn over or cut
+/// away, the source lets go and the copy alone keeps those tiles; they fell
+/// to `untrackedBytes`, which the panel reads out as the engine's.
+///
+/// ⚠️A tile ONCE, however many holders reach it: the app's one clipboard
+/// is every session's, and both of its boards may hold one picture. Folded
+/// into `drawings`, the lifted pixels' reason: the same user's artwork, and
+/// a row of its own would be a string in five languages for what is
+/// usually nothing.
+int _clipboardOnlyBytes(Iterable<EditorSessionManager> sessions) {
+  final hot = Set<Object>.identity();
+  for (final session in sessions) {
+    session.renderCaches.brushFrameStore.addHotTilesTo(hot);
+  }
+  final counted = Set<Object>.identity();
+  var bytes = 0;
+  for (final session in sessions) {
+    for (final picture in session.appClipboard.heldPictures) {
+      for (final tile in picture.tiles.values) {
+        if (!hot.contains(tile) && counted.add(tile)) {
+          bytes += picture.tileBytes;
+        }
+      }
+    }
+  }
+  return bytes;
 }

@@ -684,6 +684,16 @@ class BrushFrameStore {
     _scheduleCooling();
   }
 
+  /// Every tile the HOT surfaces hold, into [tiles] (an identity set) — what
+  /// a holder that shares tiles with this store must not count again (the
+  /// app's clipboard, in the memory census). Cold and file cels hold no
+  /// tile objects.
+  void addHotTilesTo(Set<Object> tiles) {
+    for (final surface in _bakedSurfaces.values) {
+      tiles.addAll(surface.tiles.values);
+    }
+  }
+
   /// Whether a cel's HOT surface holds [tile] at [coord] — the question a
   /// copy-on-write fork makes necessary (undo-held-tile-pictures, stage 2).
   /// An independent paste or duplicate (`carryBakedPictures`) and an unlink

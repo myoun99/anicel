@@ -1,3 +1,4 @@
+import '../../models/bitmap_surface.dart';
 import 'frame_clipboard.dart' show FrameBoard;
 import 'layer_clipboard.dart' show LayerBoard;
 
@@ -24,4 +25,11 @@ import 'layer_clipboard.dart' show LayerBoard;
 class AppClipboard {
   final FrameBoard frames = FrameBoard();
   final LayerBoard layers = LayerBoard();
+
+  /// Every picture the two boards hold — by value, so they stay in memory
+  /// for as long as the copy does (`collectMemoryCensus` weighs them).
+  Iterable<BitmapSurface> get heldPictures => [
+    ...frames.heldPictures,
+    ...layers.heldPictures,
+  ];
 }

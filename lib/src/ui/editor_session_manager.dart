@@ -626,6 +626,9 @@ class EditorSessionManager extends ChangeNotifier
   /// 가능. 앱 전체에 하나」). A session built without one keeps its own.
   final AppClipboard _appClipboard;
 
+  /// [_appClipboard], for the memory census to weigh what it holds.
+  AppClipboard get appClipboard => _appClipboard;
+
   // ── the layer verbs: their own object, in their own file ────────────
   //
   // A collaborator (session/layer_verbs.dart). Callers name it: a forwarder here

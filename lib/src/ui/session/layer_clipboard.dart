@@ -215,6 +215,10 @@ class LayerClipboard implements BringsMedia {
 /// replaces it.
 class LayerBoard {
   _CopiedLayer? _copy;
+
+  /// The pictures the copy holds — the memory census's to weigh.
+  Iterable<BitmapSurface> get heldPictures =>
+      _copy?.pictures.values ?? const [];
 }
 
 /// A layer on the board.
