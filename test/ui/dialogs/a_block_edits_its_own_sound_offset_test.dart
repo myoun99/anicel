@@ -169,6 +169,14 @@ void main() {
       final result = await open(tester, [link(0), link(1, offsetFrames: 2)]);
 
       await slide(tester, 1, 4);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('se-offset-strip-1')),
+          matching: find.text('6f'),
+        ),
+        findsOneWidget,
+        reason: 'the strip keeps what it was moved to until OK',
+      );
       await slide(tester, 0, 3);
       await tester.tap(find.byKey(const ValueKey<String>('se-unlink-audio-0')));
       await tester.pumpAndSettle();
