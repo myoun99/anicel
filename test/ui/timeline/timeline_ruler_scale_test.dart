@@ -578,11 +578,11 @@ void main() {
       final canvas = _Rects();
       strip.paintPaperIn(canvas, 0, 100, fill: Paint(), line: Paint());
 
-      expect(canvas.rects.map((rect) => rect.color), [
-        strip.modelAt(0).background,
-        strip.modelAt(10).background,
-        strip.modelAt(11).background,
-        strip.modelAt(50).background,
+      expect(canvas.rects.map((rect) => rect.color.toARGB32()), [
+        strip.modelAt(0).background.toARGB32(),
+        strip.modelAt(10).background.toARGB32(),
+        strip.modelAt(11).background.toARGB32(),
+        strip.modelAt(50).background.toARGB32(),
       ]);
       expect(canvas.rects.first.rect, strip.cellRectFor(0).expandToInclude(
         strip.cellRectFor(9),
