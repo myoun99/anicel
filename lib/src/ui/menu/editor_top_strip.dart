@@ -19,6 +19,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_pressure_curve.dart';
+import '../../models/brush_shape.dart';
 import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
@@ -34,6 +35,7 @@ import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/preferences_dialog.dart';
 import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
+import '../sliced_value_listenable_builder.dart';
 import '../widgets/static_raster.dart';
 import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -912,9 +914,28 @@ class _BrushValueBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<BrushToolState>(
+    // 🚨Sliced to what the bars SHOW (2026-09-26): the whole state moved them
+    // on every colour-wheel frame and every other bar's drag, two bars and
+    // two curve buttons rebuilt for news none of them draws. The curves are
+    // the shape's, so the shape stands for them — with its COLOUR set aside,
+    // because the colour lives in the shape too and is the one field that
+    // moves every frame of a colour-wheel drag.
+    // ⛔Every write reads the notifier when it happens, never the builder's
+    // state — a field outside the slice may have moved since it was built.
+    return SlicedValueListenableBuilder<
+      BrushToolState,
+      (bool, bool, bool, double, double, BrushShape)
+    >(
       valueListenable: brushTool,
-      builder: (context, state, _) {
+      slice: (state) => (
+        state.supports(ToolParameter.size),
+        state.supports(ToolParameter.opacity),
+        state.supports(ToolParameter.pressure),
+        BrushToolState.clampSize(state.size),
+        BrushToolState.clampOpacity(state.activeOpacity),
+        state.shape.copyWith(color: 0),
+      ),
+      builder: (context, state) {
         // TP2: one group, and each member is DIMMED rather than hidden when
         // the armed tool has no use for it (유저: 뭐가 적용되고 뭐가
         // 적용안되는지 몰라할거같으니까 … 적용안되는툴이나 모드면
@@ -933,8 +954,8 @@ class _BrushValueBars extends StatelessWidget {
             title: title,
             curves: state.targetCurves(target),
             enabled: pressureOn,
-            onChanged: (curves) =>
-                brushTool.value = state.withTargetCurves(target, curves),
+            onChanged: (curves) => brushTool.value = brushTool.value
+                .withTargetCurves(target, curves),
           );
         }
 
@@ -1038,9 +1059,19 @@ class _BlendModeControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<BrushToolState>(
+    // Sliced to what the button SHOWS, like the bars beside it — and its
+    // pick reads the notifier when it happens, never the builder's state.
+    return SlicedValueListenableBuilder<
+      BrushToolState,
+      (bool, CanvasTool, BrushBlendMode)
+    >(
       valueListenable: brushTool,
-      builder: (context, state, _) {
+      slice: (state) => (
+        state.supports(ToolParameter.blend),
+        state.tool,
+        state.activeBlendMode,
+      ),
+      builder: (context, state) {
         final theme = Theme.of(context);
         final language = AppText.settings.value.programLanguage;
         // TP2: tools that composite nothing get the control DIMMED, not an
@@ -1115,7 +1146,8 @@ class _BlendModeControl extends StatelessWidget {
               // never names a tool (유저 확정: 블렌드모드 선택도 툴에
               // 산다).
               onPicked: (candidate) =>
-                  brushTool.value = state.withActiveBlendMode(candidate),
+                  brushTool.value =
+                      brushTool.value.withActiveBlendMode(candidate),
             ),
           ),
         );

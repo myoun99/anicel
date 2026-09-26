@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/settings_flyout.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 
 /// The top strip that replaced the seven-menu bar: a Project button, a
 /// Settings button, and the work's name.
@@ -641,4 +645,71 @@ void main() {
     await tapEntry(tester, 'menu-edit-frame-timing-overlay');
     expect(MeasurementMode.frameTimingOverlay.value, isFalse);
   });
+
+  // 🚨The bars and the blend button move with what they SHOW (2026-09-26):
+  // a colour-wheel drag changes the tool state every frame, and none of them
+  // draws a colour.
+  group('the strip hears only its own answers', () {
+    PaintToolStateNotifier toolOf(WidgetTester tester) => tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .brushTool!;
+
+    testWidgets('a colour change rebuilds none of the bars, curve buttons or '
+        'the blend button', (tester) async {
+      await pumpHome(tester);
+      final tool = toolOf(tester);
+      var news = 0;
+      void heard() => news += 1;
+      tool.addListener(heard);
+      addTearDown(() => tool.removeListener(heard));
+      var rebuilt = 0;
+      debugOnRebuildDirtyWidget = (element, _) {
+        final widget = element.widget;
+        if (widget is FieldSlider ||
+            widget is PressureCurveButton ||
+            widget.key == _blendButton) {
+          rebuilt += 1;
+        }
+      };
+      try {
+        tool.value = tool.value.copyWith(color: 0xFF3366CC);
+        await tester.pump();
+      } finally {
+        debugOnRebuildDirtyWidget = null;
+      }
+      expect(news, 1, reason: 'premise: the tool did speak');
+      expect(rebuilt, 0);
+    });
+
+    testWidgets('a curve change keeps a colour picked after the strip was '
+        'built', (tester) async {
+      await pumpHome(tester);
+      final tool = toolOf(tester);
+      tool.value = tool.value.copyWith(color: 0xFF3366CC);
+      await tester.pump();
+      final button = tester.widget<PressureCurveButton>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is PressureCurveButton &&
+              widget.keyValue == 'brush-tool-pressure-size',
+        ),
+      );
+      button.onChanged(button.curves);
+      expect(tool.value.color, 0xFF3366CC);
+    });
+
+    testWidgets('a blend pick keeps a colour picked after the strip was '
+        'built', (tester) async {
+      await pumpHome(tester);
+      final tool = toolOf(tester);
+      tool.value = tool.value.copyWith(color: 0xFF3366CC);
+      await tester.pump();
+      await openStrip(tester, 'brush-tool-blend-menu-button');
+      await tapEntry(tester, 'brush-tool-blend-multiply');
+      expect(tool.value.activeBlendMode, BrushBlendMode.multiply);
+      expect(tool.value.color, 0xFF3366CC);
+    });
+  });
 }
+
+const _blendButton = ValueKey<String>('brush-tool-blend-menu-button');
