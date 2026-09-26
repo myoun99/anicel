@@ -89,7 +89,11 @@ import 'timeline/timeline_beat_lines.dart'
         timelineLaneGround,
         timelineRowPaperExtent;
 import 'timeline/timeline_double_tap.dart'
-    show timelineCellDoubleTapActivation, timelineCellDoubleTapRecord;
+    show
+        TimelineLabelDoubleClick,
+        timelineCellDoubleTapActivation,
+        timelineCellDoubleTapRecord,
+        timelineLabelDoubleTapDetector;
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
@@ -453,6 +457,7 @@ class StoryboardPanel extends StatefulWidget {
     this.activeLayerId,
     this.selectedRow,
     this.onSelectLayer,
+    this.labelDoubleClick,
     this.onSelectTrack,
     this.stripEdges,
     this.cutMove,
@@ -735,6 +740,10 @@ class StoryboardPanel extends StatefulWidget {
   /// Tapping an S-row label selects its TRACK layer (the same session
   /// selection a timeline row tap makes). Null keeps labels display-only.
   final ValueChanged<LayerId>? onSelectLayer;
+
+  /// A double click on a layer's label — the timeline rail's, the same
+  /// widget (I-48). Null mounts none.
+  final TimelineLabelDoubleClick? labelDoubleClick;
 
   /// Tapping a V-row label selects its TRACK (UI-R18 #6): the session
   /// promotes that track's cut under the shared global playhead to the
@@ -2578,6 +2587,8 @@ class _StoryboardLabelShell extends StatelessWidget {
     required this.height,
     required this.active,
     this.chromeless = false,
+    this.layerId,
+    this.labelDoubleClick,
     required this.semanticsLabel,
     required this.child,
   });
@@ -2588,11 +2599,39 @@ class _StoryboardLabelShell extends StatelessWidget {
   final double height;
   final bool active;
   final bool chromeless;
+
+  /// The layer this label is, for its double click — the timeline rail's
+  /// (I-48). Null on a label that is no layer's: the V row, a track's.
+  final LayerId? layerId;
+  final TimelineLabelDoubleClick? labelDoubleClick;
   final String semanticsLabel;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
+    final select = onTap;
+    final layer = layerId;
+    final doubleClick = labelDoubleClick;
+    final surface = _surface(context);
+    // The PICK rides the raw pointer, as the strips' and the timeline rows'
+    // do (T10) — off the arena, so the label's double click inside it cannot
+    // make a single click wait out the double tap's window. ↩️It was the
+    // InkWell's tap: on the release, and 300ms late once a double-tap
+    // recognizer joined its arena ([InstantTapRegion] names that delay).
+    return InstantTapRegion(
+      pressSeeksFor: AppInput.timelineCellPressSeeks,
+      onTap: (_) => select?.call(),
+      child: layer == null || doubleClick == null
+          ? surface
+          : timelineLabelDoubleTapDetector(
+              layerId: layer,
+              doubleClick: doubleClick,
+              child: surface,
+            ),
+    );
+  }
+
+  Widget _surface(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
       // The row BODY, not a control: 'storyboard-se-label-',
@@ -2600,7 +2639,11 @@ class _StoryboardLabelShell extends StatelessWidget {
       // decided in every_button_claims_its_press_test (a drag from here is
       // the row's reorder, not a scroll).
       key: selectKey,
-      onTap: onTap,
+      // ⛔A NO-OP, the timeline row's own: the pick is the region's above,
+      // and this holds a tap recognizer in the arena so scroll slop over a
+      // row behaves the way it always has. Null keeps a display-only row
+      // inert, as it was.
+      onTap: onTap == null ? null : () {},
       child: Container(
         key: rowKey,
         width: StoryboardPanel.railWidthIn(context),
@@ -2662,6 +2705,7 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.activeLayer,
     this.active = false,
     this.onSelectLayer,
+    this.labelDoubleClick,
     this.onToggleLayerVisibility,
     this.onOpenLayerMixer,
     this.isLayerSoloed,
@@ -2695,6 +2739,9 @@ class _StoryboardSeLabel extends StatelessWidget {
   /// Tapping the row selects its track layer, like tapping a timeline
   /// row label. Null keeps the row display-only.
   final ValueChanged<LayerId>? onSelectLayer;
+
+  /// Its double click — the timeline rail's (I-48).
+  final TimelineLabelDoubleClick? labelDoubleClick;
   final ValueChanged<LayerId>? onToggleLayerVisibility;
 
   /// The SE row's speaker, which opens the row's mixer anchored under
@@ -2740,6 +2787,8 @@ class _StoryboardSeLabel extends StatelessWidget {
       onTap: trackLayer == null || onSelect == null
           ? null
           : () => onSelect(trackLayer.id),
+      layerId: trackLayer?.id,
+      labelDoubleClick: labelDoubleClick,
       height: height,
       active: active,
       semanticsLabel: active
@@ -2903,6 +2952,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
     required this.active,
     required this.height,
     this.onSelectLayer,
+    this.labelDoubleClick,
     this.onToggleLayerVisibility,
     this.onLayerMarkSelected,
     this.onToggleLayerTimesheet,
@@ -2918,6 +2968,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
   /// ([_StoryboardRowHeights.transition]).
   final double height;
   final ValueChanged<LayerId>? onSelectLayer;
+  final TimelineLabelDoubleClick? labelDoubleClick;
 
   /// B5③: the timeline row's three controls, same verbs (see class doc).
   final ValueChanged<LayerId>? onToggleLayerVisibility;
@@ -2932,6 +2983,8 @@ class _StoryboardTransitionLabel extends StatelessWidget {
         'storyboard-transition-label-${track.id.value}',
       ),
       onTap: onSelect == null ? null : () => onSelect(layer.id),
+      layerId: layer.id,
+      labelDoubleClick: labelDoubleClick,
       height: height,
       active: active,
       semanticsLabel: active

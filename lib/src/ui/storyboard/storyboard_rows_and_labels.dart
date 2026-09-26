@@ -165,6 +165,7 @@ class _StoryboardRowsAndLabels {
       active: _state.widget.selectedRow == LayerRowAddress(layer.id),
       height: _state._rowHeights.transition,
       onSelectLayer: _state.widget.onSelectLayer,
+      labelDoubleClick: _state.widget.labelDoubleClick,
       onToggleLayerVisibility: _state.widget.onToggleLayerVisibility,
       onLayerMarkSelected: _state.widget.onLayerMarkSelected,
       onToggleLayerTimesheet: _state.widget.onToggleLayerTimesheet,
@@ -272,6 +273,7 @@ class _StoryboardRowsAndLabels {
           trackLayer != null &&
           _state.widget.selectedRow == LayerRowAddress(trackLayer.id),
       onSelectLayer: _state.widget.onSelectLayer,
+      labelDoubleClick: _state.widget.labelDoubleClick,
       laneExpanded: _state.widget.expandedSeAudioRows.contains(
         StoryboardPanel.seRowKey(track, slot),
       ),

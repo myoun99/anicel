@@ -338,6 +338,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// ↩️The fork moved out of the Edit door into the double tap's own
   /// ([activateTransitionSpanCell]; F-105, 유저 2026-09-15 「통일 — 편집 버튼은
   /// 빈 칸에서 꺼진다」): the button edits, the double tap forks, ＋ creates.
+  /// I-48: a double click on a layer's label renames the rows its first
+  /// press acted on — the timeline rail's door, on this rail's rows.
+  VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
+      renameOnLabelDoubleClick(context, _session, pressed);
+
   Future<void> _editTransitionSpan(int globalFrame) =>
       activateTransitionSpanCell(context, _session, globalFrame: globalFrame);
 
@@ -625,6 +630,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         seekStoryboardGlobalFrame(_session, frame);
                       }
                     },
+                    labelDoubleClick: _renameOnLabelDoubleClick,
                     onSelectTrack: (trackId) =>
                         _session.standOnRow(TrackRowAddress(trackId)),
                     pixelsPerFrame: widget.pixelsPerFrame,
