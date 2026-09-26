@@ -216,9 +216,25 @@ class _StoryboardRailRows {
   /// labels alone, so every row under a hidden one parted from its strip by
   /// a row (storyboard-filter-leaves-the-strips, measured 94 over 124).
   List<int> _shownSeSlots(Track track) => [
-    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
-      if (_filterAllowsSeRow(track, slot)) slot,
+    if (_sectionShown(TimelineSection.se))
+      for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
+        if (_filterAllowsSeRow(track, slot)) slot,
   ];
+
+  /// Whether the rail shows [section] — the set the timeline's grids read
+  /// (F-199: 「콘티패널도 타임라인이랑 동일하게 se나 카메라섹션 접을수있게
+  /// 로직통일」). The V row belongs to no section and always shows.
+  bool _sectionShown(TimelineSection section) =>
+      !_state.widget.hiddenSections.contains(section);
+
+  /// Whether the rail shows [track]'s transition row: its section is the one
+  /// the timeline puts that row's kind in — the camera section.
+  ///
+  /// ⚠️ONE question for the three places that lay the row out — the row
+  /// table, the rail's labels and the strips — or a hidden row would part a
+  /// label from its strip by a row, the filter's lesson below.
+  bool _showsTransitionRow(Track track) =>
+      _sectionShown(timelineSectionForLayerKind(track.transitionLayer.kind));
 
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
   /// rows (each with its twirled-down Audio lane and Transform group)
@@ -545,11 +561,12 @@ class _StoryboardRailRows {
       // ([timelineSectionForLayerKind]) — the label comes from that policy
       // rather than being typed here, so the two rails cannot start naming
       // the same section differently.
-      _sectionZoneGroup(
-        keyValue: 'storyboard-section-zone-${track.id.value}-transition',
-        label: timelineSectionLabel(TimelineSection.camera),
-        rows: [_state._rows.transitionLabelRow(track)],
-      ),
+      if (_showsTransitionRow(track))
+        _sectionZoneGroup(
+          keyValue: 'storyboard-section-zone-${track.id.value}-transition',
+          label: timelineSectionLabel(TimelineSection.camera),
+          rows: [_state._rows.transitionLabelRow(track)],
+        ),
       // A section with no rows left draws no zone: an empty SE band would
       // be a label over nothing once the filter took its rows.
       if (seRows.isNotEmpty)
@@ -1251,14 +1268,16 @@ class _StoryboardRailRows {
     // Index 0 is the TOP of the group ([_trackRowBand] accumulates y from
     // here), and the transition row heads it — above the S rows, the way the
     // camera section heads the cut timeline's rows.
-    slots.add((
-      row: LayerRowAddress(track.transitionLayer.id),
-      laneRow: null,
-      bandRow: false,
-      lane: false,
-      railRow: (track: track, layer: track.transitionLayer, seSlot: null),
-      height: heights.transition,
-    ));
+    if (_showsTransitionRow(track)) {
+      slots.add((
+        row: LayerRowAddress(track.transitionLayer.id),
+        laneRow: null,
+        bandRow: false,
+        lane: false,
+        railRow: (track: track, layer: track.transitionLayer, seSlot: null),
+        height: heights.transition,
+      ));
+    }
     for (final slot in _shownSeSlots(track)) {
       final layer = _trackSeAt(track, slot);
       slots.add((
@@ -1567,11 +1586,12 @@ class _StoryboardRailRows {
       for (var index = 0; index < _state.widget.project.tracks.length; index++)
         [
           // Heads the group, matching the rail's row order.
-          _state._rows.transitionStripRow(
-            _state.widget.project.tracks[index],
-            contentWidth,
-            scale,
-          ),
+          if (_showsTransitionRow(_state.widget.project.tracks[index]))
+            _state._rows.transitionStripRow(
+              _state.widget.project.tracks[index],
+              contentWidth,
+              scale,
+            ),
           ..._seStripRowsForTrack(
             _state.widget.project.tracks[index],
             index,

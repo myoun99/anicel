@@ -159,7 +159,7 @@ import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_scale.dart';
 import 'timeline/timeline_section_policy.dart'
-    show TimelineSection, timelineSectionLabel;
+    show TimelineSection, timelineSectionForLayerKind, timelineSectionLabel;
 import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
 import 'timeline/timeline_selected_exposure_outline.dart'
@@ -536,6 +536,8 @@ class StoryboardPanel extends StatefulWidget {
     this.dragPreview,
     this.legend,
     this.rowFilter = TimelineRowFilter.none,
+    this.hiddenSections = const {},
+    this.onToggleSection,
     this.visibilitySoloEnabled = false,
     this.opacityDragPreview,
     this.legendOpacityValue = 1.0,
@@ -1012,6 +1014,17 @@ class StoryboardPanel extends StatefulWidget {
   /// The alternative was to fail the fields a track lacks, and that is not
   /// a filter: any mark would empty the storyboard whatever the mark was.
   final TimelineRowFilter rowFilter;
+
+  /// The SE and camera sections left off the rail — the set the timeline's
+  /// grids read, toggled from the same legend menu ([onToggleSection]).
+  ///
+  /// 🗣️F-199 (유저 2026-09-27): 「콘티패널도 타임라인이랑 동일하게 se나
+  /// 카메라섹션 접을수있게 로직통일」. The S rows are the SE section and the
+  /// transition row the camera section's ([timelineSectionForLayerKind]); the
+  /// V row belongs to none and always shows. ↩️The legend here carried the
+  /// menu all along, greyed: it was never handed the toggle.
+  final Set<TimelineSection> hiddenSections;
+  final ValueChanged<TimelineSection>? onToggleSection;
 
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
@@ -2132,6 +2145,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               ),
               legend: widget.legend,
               rowFilter: widget.rowFilter,
+              hiddenSections: widget.hiddenSections,
+              onToggleSection: widget.onToggleSection,
               showRowSolos: true,
               marksInUse: _legendMarksInUse(),
               kindsInUse: _legendKindsInUse(),

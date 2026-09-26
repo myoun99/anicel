@@ -819,6 +819,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     timeline: this,
     projectSettings: projectSettings,
+    railView: railView,
   );
 
   void claimStoryboardRow() => standing.claimStoryboardRow();

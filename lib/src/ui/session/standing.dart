@@ -8,6 +8,7 @@ import '../../models/standing_place.dart';
 import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
+import '../../models/track.dart' show Track;
 import '../../models/track_transform_lane_carrier.dart'
     show trackIdOfTransformLaneCarrier;
 import '../../models/working_panel.dart';
@@ -1080,6 +1081,7 @@ class Standing {
     bool reveal = false,
     bool filterSparesStanding = true,
   }) {
+    _keepStoryboardStandingShown();
     final activeId = _selection.activeLayerId;
     final stack = _project.layers;
     final activeIndex = stack.indexWhere((layer) => layer.id == activeId);
@@ -1119,6 +1121,50 @@ class Standing {
       _seatLayer(standIn.id);
       _rangeSelections.revealSelection();
     }
+  }
+
+  /// 🗣️F-199 (유저 2026-09-27): 「콘티패널도 타임라인이랑 동일하게 se나
+  /// 카메라섹션 접을수있게 로직통일」. The storyboard's rail leaves a hidden
+  /// section out by the set the timeline's grids read, so a storyboard
+  /// standing on one of its rows goes where the fold law sends a row that
+  /// vanished — its track's V row ([handOffOnFold]). F-169's hand-off, said
+  /// of the other rail.
+  void _keepStoryboardStandingShown() {
+    final hidden = _railView.hiddenSections.value;
+    if (hidden.isEmpty) {
+      return;
+    }
+    Track? hiddenRowTrack(TimelineRowAddress address) {
+      final layerId = switch (address) {
+        LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId) =>
+          layerId,
+        TrackRowAddress() => null,
+      };
+      final track = layerId == null
+          ? null
+          : _trackSe.trackOwnedRailOwner(layerId);
+      if (track == null) {
+        return null;
+      }
+      final layer = [
+        track.transitionLayer,
+        ...track.seLayers,
+      ].where((candidate) => candidate.id == layerId).firstOrNull;
+      return layer != null &&
+              hidden.contains(timelineSectionForLayerKind(layer.kind))
+          ? track
+          : null;
+    }
+
+    final track = hiddenRowTrack(storyboardStandingRow);
+    if (track == null) {
+      return;
+    }
+    handOffOnFold(
+      swallower: TrackRowAddress(track.id),
+      vanished: (address) => hiddenRowTrack(address) != null,
+      panel: WorkingPanel.storyboard,
+    );
   }
 
   /// [keepStandingShown]'s reveal: the section [layer] sits in shows, and

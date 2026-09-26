@@ -922,6 +922,8 @@ class _WorkspaceTabs {
             listenable: Listenable.merge([
               _state.widget.session,
               _state._storyboardPixelsPerFrame,
+              // F-199: a section toggle is not a session notify.
+              _state.widget.session.railView.hiddenSections,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),
@@ -939,6 +941,11 @@ class _WorkspaceTabs {
               // wherever the legend appears.
               rowFilter: _state.widget.session.railView.rowFilter.value,
               onSetRowFilter: _state._setTimelineRowFilter,
+              // F-199: the sections too — hidden and toggled with the
+              // timeline's.
+              hiddenSections:
+                  _state.widget.session.railView.hiddenSections.value,
+              onToggleSection: _state._toggleTimelineSection,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: (value) {
                 _state._storyboardPixelsPerFrame.value = value;

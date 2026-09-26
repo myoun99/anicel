@@ -28,6 +28,7 @@ import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
+import 'timeline/timeline_section_policy.dart' show TimelineSection;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
 import 'timeline/property_lane_model.dart'
@@ -64,6 +65,8 @@ class StoryboardTabHost extends StatefulWidget {
     required this.thumbnails,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
+    this.hiddenSections = const {},
+    this.onToggleSection,
     this.rowsChannel,
   });
 
@@ -71,6 +74,11 @@ class StoryboardTabHost extends StatefulWidget {
   /// (R5 #9). Null [onSetRowFilter] leaves the chips inert.
   final TimelineRowFilter rowFilter;
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
+
+  /// The hidden SE and camera sections, shared with the timeline — the same
+  /// toggles, from the same legend menu (F-199).
+  final Set<TimelineSection> hiddenSections;
+  final ValueChanged<TimelineSection>? onToggleSection;
 
   /// Where the panel hands its stacked rows to the shell's walkers — see
   /// [StoryboardPanel.rowsChannel].
@@ -566,6 +574,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   builder: (context, _) => StoryboardPanel(
                     project: _session.repository.requireProject(),
                     rowFilter: widget.rowFilter,
+                    hiddenSections: widget.hiddenSections,
+                    onToggleSection: widget.onToggleSection,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _session.dragPreview,
                     // While playing, the highlight follows the PLAYING cut
