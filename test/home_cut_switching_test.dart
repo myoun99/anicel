@@ -25,17 +25,17 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
-    await createSecondCut(tester);
+    final second = await createSecondCut(tester);
     await switchToCut(tester, 'default-cut-1');
 
     await expectCutName(tester, 'default-cut-1', '1');
-    await expectCutName(tester, 'cut-1', '2');
+    await expectCutName(tester, second, '2');
     await expectCutsNamed(tester, 'Cut 2', 0);
     await expectActiveCutName(tester, '1');
     expectActiveLayerName('A');
     expect(await activeCutIdOf(tester), const CutId('default-cut-1'));
 
-    await tapStoryboardCutBlock(tester, 'cut-1');
+    await tapStoryboardCutBlock(tester, second);
 
     await expectActiveCutName(tester, '2');
     expectActiveLayerName('A');
@@ -46,12 +46,12 @@ void main() {
       findsOneWidget,
     );
     expectCellText('layer-1', 0, 'X');
-    expect(await activeCutIdOf(tester), const CutId('cut-1'));
+    expect(await activeCutIdOf(tester), CutId(second));
 
     await tapStoryboardCutBlock(tester, 'default-cut-1');
 
     await expectActiveCutName(tester, '1');
-    await expectCutName(tester, 'cut-1', '2');
+    await expectCutName(tester, second, '2');
     expectActiveLayerName('A');
     expect(await activeCutIdOf(tester), const CutId('default-cut-1'));
   });
@@ -64,7 +64,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
-    await createSecondCut(tester);
+    final second = await createSecondCut(tester);
     await switchToCut(tester, 'default-cut-1');
     await showStoryboardPanel(tester);
 
@@ -81,13 +81,13 @@ void main() {
     await tester.tapAt(
       cutBlockScreenRect(
         tester,
-        'cut-1',
+        second,
       ).intersect(tester.getRect(find.byType(StoryboardPanel))).center,
     );
     await tester.pumpAndSettle();
 
     await expectActiveCutName(tester, '2');
-    expect(await activeCutIdOf(tester), const CutId('cut-1'));
+    expect(await activeCutIdOf(tester), CutId(second));
 
     await showTimelinePanel(tester);
 
@@ -105,10 +105,10 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    await createSecondCut(tester);
+    final second = await createSecondCut(tester);
     await showStoryboardPanel(tester);
 
-    expect(await activeCutIdOf(tester), const CutId('cut-1'));
+    expect(await activeCutIdOf(tester), CutId(second));
 
     await switchToCut(tester, 'default-cut-1');
 
@@ -120,9 +120,9 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    await createSecondCut(tester);
+    final second = await createSecondCut(tester);
 
-    await switchToCut(tester, 'cut-1');
+    await switchToCut(tester, second);
     await expectActiveCutName(tester, '2');
     expectActiveLayerName('A');
     expectCellText('layer-1', 0, 'X');
@@ -144,7 +144,7 @@ void main() {
     expectCellText('default-layer-1', 0, 'X');
     expectNoCellMark('default-layer-1', 1, unnamedDrawingMark);
 
-    await switchToCut(tester, 'cut-1');
+    await switchToCut(tester, second);
 
     await expectActiveCutName(tester, '2');
     expectCellMark('layer-1', 1, unnamedDrawingMark);
@@ -154,9 +154,9 @@ void main() {
     'blank and mark edits after switching to Cut 2 do not affect Cut 1',
     (WidgetTester tester) async {
       await tester.pumpWidget(const AnicelApp());
-      await createSecondCut(tester);
+      final second = await createSecondCut(tester);
 
-      await switchToCut(tester, 'cut-1');
+      await switchToCut(tester, second);
       await tapHomeTimelineCell(
         tester,
         const ValueKey<String>('timeline-cell-layer-1-1'),
@@ -209,9 +209,9 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    await createSecondCut(tester);
+    final second = await createSecondCut(tester);
 
-    await switchToCut(tester, 'cut-1');
+    await switchToCut(tester, second);
     await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
     await dragBlockEndGrip(tester, 'layer-1', 0, 1);
@@ -326,7 +326,7 @@ void main() {
     'cut switching clears copied frame before cross-cut linked paste',
     (WidgetTester tester) async {
       await tester.pumpWidget(const AnicelApp());
-      await createSecondCut(tester);
+      final second = await createSecondCut(tester);
       await switchToCut(tester, 'default-cut-1');
 
       await tapToolbarButton(
@@ -338,7 +338,7 @@ void main() {
         const ValueKey<String>('shared-copy-button'),
       );
 
-      await switchToCut(tester, 'cut-1');
+      await switchToCut(tester, second);
 
       await expectActiveCutName(tester, '2');
       expect(
@@ -369,9 +369,9 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    await createSecondCut(tester);
+    final second = await createSecondCut(tester);
 
-    await switchToCut(tester, 'cut-1');
+    await switchToCut(tester, second);
     await tapHomeTimelineCell(
       tester,
       const ValueKey<String>('timeline-cell-layer-1-1'),
