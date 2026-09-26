@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -181,10 +182,10 @@ void main() {
     session.addListener(heardSession);
     addTearDown(() => session.removeListener(heardSession));
     final quietSession = await railRebuildsAfter(
-      () => session.selectFrameIndex(1),
+      () => session.selectedGuideId = const GuideId('rail-quiet-news'),
     );
     expect(sessionNews, greaterThan(0), reason: 'premise: the session spoke');
-    expect(quietSession, 0, reason: 'a playhead step lights no door');
+    expect(quietSession, 0, reason: 'a guide pick lights no door');
 
     final moved = await railRebuildsAfter(
       session.onionSkin.toggleOnionSkin,
