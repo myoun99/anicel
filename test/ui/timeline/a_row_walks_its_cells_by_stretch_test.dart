@@ -336,7 +336,8 @@ void main() {
           return model.mark != null || model.glyph.isNotEmpty;
         }
 
-        for (final (from, to) in [(0, frames), (5, 13)]) {
+        // [6, 8) ends inside the hold ghost's dashes, a stretch that writes.
+        for (final (from, to) in [(0, frames), (5, 13), (6, 8)]) {
           expect(painter.writingCellsIn(from, to).toList(), [
             for (var frameIndex = from; frameIndex < to; frameIndex += 1)
               if (writes(frameIndex)) frameIndex,
