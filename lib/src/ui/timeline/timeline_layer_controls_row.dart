@@ -579,15 +579,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// text there (A6) — the chip reads the axis.
   ///
   /// Its plate dims with the eye (F-56), so it reads the eye the way the eye
-  /// does — [_visibilityToggle].
+  /// does — [_visibilityToggle] — a folder above that hides the row included
+  /// (F-185: 「색라벨도 동일하게 비활성화색」).
   Widget _markChip() => RailEyeBuilder(
     layer: layer,
-    builder: (context, eyeOn) => LayerMarkChip.forLayer(
+    builder: (context, eye) => LayerMarkChip.forLayer(
       layer,
       keyPrefix: keyPrefix,
       onMarkSelected: onLayerMarkSelected,
       axis: axis,
-      isVisible: eyeOn,
+      isVisible: eye.on && !eye.hiddenAbove,
     ),
   );
 
@@ -837,9 +838,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget _visibilityToggle() => RailSwipeColumnPointer(
     child: RailEyeBuilder(
       layer: layer,
-      builder: (context, eyeOn) => LayerVisibilityToggleButton(
+      builder: (context, eye) => LayerVisibilityToggleButton(
         keyValue: '$keyPrefix-layer-visibility-${layer.id}',
-        isVisible: eyeOn,
+        isVisible: eye.on,
+        hiddenAbove: eye.hiddenAbove,
         onToggle: () => onToggleLayerVisibility(layer.id),
       ),
     ),

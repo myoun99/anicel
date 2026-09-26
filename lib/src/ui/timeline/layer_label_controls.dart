@@ -595,11 +595,17 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     required this.keyValue,
     required this.isVisible,
     required this.onToggle,
+    this.hiddenAbove = false,
     this.subject = RailSubject.layer,
     this.tooltip,
     this.size = layerVisibilitySlotWidth,
     this.iconSize = 18,
   });
+
+  /// Whether a folder above the row has hidden it whatever its own switch
+  /// says (`RailEye.hiddenAbove`) — the eye keeps its glyph and wears the
+  /// off colour (F-185).
+  final bool hiddenAbove;
 
   /// The row this eye stands on — what its tooltip names.
   final RailSubject subject;
@@ -649,7 +655,10 @@ class LayerVisibilityToggleButton extends StatelessWidget {
           // edits. ⚠️[AppColors.offAlpha] is the app's ONE off language —
           // the alpha the onion and fx icons already wear — so a hidden row
           // reads as off in one language rather than in three.
-          color: isVisible
+          //
+          // F-185: a row a folder above has hidden keeps its own glyph and
+          // wears that same off colour — 「on인채로 두되, 색만 비활성화색으로」.
+          color: isVisible && !hiddenAbove
               ? null
               : IconTheme.of(
                   context,

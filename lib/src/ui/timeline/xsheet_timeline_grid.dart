@@ -66,6 +66,7 @@ import 'timeline_grid_sheet.dart';
 import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
+import 'rail_eyes.dart';
 import 'timeline_swipe_columns.dart';
 import '../input/wheel_law.dart';
 import '../repaint_props.dart';
@@ -666,18 +667,28 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             columns: _columns.swipeColumns(),
                             rowsIn: (from, to) =>
                                 _columns.columnsIn(from, to, entries),
-                            child: Row(
-                              children: [
-                                for (
-                                  var index = 0;
-                                  index < entries.length;
-                                  index += 1
-                                )
-                                  _headers.draggableHeader(
-                                    entries[index],
-                                    _headers.headerFor(entries[index]),
-                                  ),
+                            // The rail's eyes, turned on their side with it
+                            // — a folder's flip dims its members' eyes here
+                            // as it does there (F-185).
+                            child: RailEyes.forLayers(
+                              [
+                                for (final entry in entries)
+                                  if (!entry.isLane) entry.layer,
                               ],
+                              stack: widget.layers,
+                              child: Row(
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < entries.length;
+                                    index += 1
+                                  )
+                                    _headers.draggableHeader(
+                                      entries[index],
+                                      _headers.headerFor(entries[index]),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                           Positioned.fill(

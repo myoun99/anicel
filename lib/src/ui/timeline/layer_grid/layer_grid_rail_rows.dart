@@ -364,6 +364,7 @@ class _LayerGridRailRows {
                 for (final row in rows)
                   if (!row.isLane) row.layer,
               ],
+              stack: _state.widget.layers,
               child: Stack(
                 children: [
                   Column(

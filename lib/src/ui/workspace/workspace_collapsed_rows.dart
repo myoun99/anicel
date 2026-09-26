@@ -218,7 +218,7 @@ class _WorkspaceCollapsedRows {
     if (layer == null) {
       return null;
     }
-    return TimelineLayerControlsRow(
+    final controls = TimelineLayerControlsRow(
       chromeless: true,
       layer: layer,
       active: true,
@@ -271,6 +271,9 @@ class _WorkspaceCollapsedRows {
       onOpenLayerReference: (_, _) async {},
       onLayerBlendModeSelected: (_, _) {},
     );
+    // Its eye is the rail's, a folder above that hides the row included
+    // (F-185).
+    return RailEyes.forLayers([layer], stack: session.layers, child: controls);
   }
 
   /// The metrics BOTH halves of the collapsed row are built from.
