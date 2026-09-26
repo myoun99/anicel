@@ -14,7 +14,8 @@ import 'package:anicel/src/services/commands/cut_command_input_planner.dart';
 
 void main() {
   group('planCreateCutCommandInput', () {
-    test('returns deterministic first-available IDs without mutation', () {
+    test('mints a cut id no other in this run has, and the first free layer '
+        'id, without mutation', () {
       final project = _projectWithCuts([
         _cut(
           id: 'cut-1',
@@ -29,11 +30,22 @@ void main() {
 
       final plan = planCreateCutCommandInput(project);
 
-      expect(plan.cutId, const CutId('cut-3'));
-      expect(plan.layerId, const LayerId('layer-2'));
       expect(_allCutIds(project), isNot(contains(plan.cutId)));
-      expect(_allLayerIds(project), isNot(contains(plan.layerId)));
+      expect(plan.layerId, const LayerId('layer-2'));
       expect(project.toJson(), before);
+    });
+
+    test('🚨two cuts planned on the SAME project are two ids — an id free in '
+        'the project is not free in the session', () {
+      // An undone or deleted cut gives its id back to the project while the
+      // session keeps its sheets' handwriting under it (card
+      // `undone-paste-reuses-ids`).
+      final project = _projectWithCuts([_cut(id: 'cut-1', layers: const [])]);
+
+      expect(
+        planCreateCutCommandInput(project).cutId,
+        isNot(planCreateCutCommandInput(project).cutId),
+      );
     });
   });
 
@@ -63,7 +75,6 @@ void main() {
         sourceCut: source,
       );
 
-      expect(plan.newCutId, const CutId('cut-3'));
       expect(_allCutIds(project), isNot(contains(plan.newCutId)));
       expect(
         plan.layerIdMap.keys,
@@ -85,18 +96,6 @@ void main() {
         plan.layerIdMap[const LayerId('layer-3')],
         const LayerId('layer-5'),
       );
-      expect(
-        plan.frameIdMap[const FrameId('frame-1')],
-        const FrameId('frame-5'),
-      );
-      expect(
-        plan.frameIdMap[const FrameId('frame-3')],
-        const FrameId('frame-6'),
-      );
-      expect(
-        plan.frameIdMap[const FrameId('frame-4')],
-        const FrameId('frame-7'),
-      );
       for (final newLayerId in plan.layerIdMap.values) {
         expect(_allLayerIds(project), isNot(contains(newLayerId)));
       }
@@ -114,6 +113,36 @@ void main() {
       expect(project.toJson(), before);
     });
 
+    test('🚨the same cut duplicated twice on the SAME project is two cuts of '
+        'two sets of drawings', () {
+      // A duplicate undone keeps its cels' pictures and its sheets'
+      // handwriting in the session under its ids (card
+      // `undone-paste-reuses-ids`).
+      final source = _cut(
+        id: 'cut-1',
+        layers: [
+          _layer(id: 'layer-1', frames: [_frame('frame-1')]),
+        ],
+      );
+      final project = _projectWithCuts([source]);
+      final first = planDuplicateCutCommandInput(
+        project: project,
+        sourceCut: source,
+      );
+      final second = planDuplicateCutCommandInput(
+        project: project,
+        sourceCut: source,
+      );
+
+      expect(second.newCutId, isNot(first.newCutId));
+      expect(
+        second.frameIdMap.values.toSet().intersection(
+          first.frameIdMap.values.toSet(),
+        ),
+        isEmpty,
+      );
+    });
+
     test('plans an empty source cut without throwing', () {
       final source = _cut(id: 'cut-1', layers: const []);
       final project = _projectWithCuts([source]);
@@ -124,7 +153,7 @@ void main() {
         sourceCut: source,
       );
 
-      expect(plan.newCutId, const CutId('cut-2'));
+      expect(_allCutIds(project), isNot(contains(plan.newCutId)));
       expect(plan.layerIdMap, isEmpty);
       expect(plan.frameIdMap, isEmpty);
       expect(project.toJson(), before);
@@ -146,7 +175,7 @@ void main() {
         sourceCut: source,
       );
 
-      expect(plan.newCutId, const CutId('cut-2'));
+      expect(_allCutIds(project), isNot(contains(plan.newCutId)));
       expect(
         plan.layerIdMap.keys,
         unorderedEquals([const LayerId('layer-1'), const LayerId('layer-2')]),
