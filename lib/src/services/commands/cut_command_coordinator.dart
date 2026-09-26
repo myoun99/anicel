@@ -319,8 +319,8 @@ class CutCommandCoordinator {
     // layer-flag updates: 「track-owned SE layers must reach the same
     // commands」). ↩️A cut-scoped lookup here threw on a track's SE row —
     // found by I-48's label double click, and the menu's rename with it.
-    final layer = _requireLayerAnywhere(layerId);
-    if (layer.name == trimmedName) {
+    final renamed = _requireLayerAnywhere(layerId);
+    if (renamed.name == trimmedName) {
       return;
     }
 
@@ -347,7 +347,7 @@ class CutCommandCoordinator {
     // (demand a separator, demand the default shape) would put back the
     // very "my own name stopped following" surprise this removes.
     final followers = <Command>[];
-    final ownerPrefix = layer.name;
+    final ownerPrefix = renamed.name;
     for (final attached in attachedLayersOf(
       layerId,
       _requireCut(cutId).layers,
