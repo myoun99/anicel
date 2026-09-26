@@ -218,6 +218,7 @@ void main() {
       reason: 'on top: nothing is selected on a cut the canvas is not on',
     );
     expect(row.frames, hasLength(1), reason: 'born covering the cut');
+    expect(row.name, 'Conte', reason: 'named as the layer panel names it');
     // The picture's middle is the camera's centre, the canvas's middle.
     expect(celInkAt(row, const Offset(320, 180)), isTrue);
     expect(

@@ -90,12 +90,13 @@ Layer createCoveringLayer({
   final cel = coveringCelFor(frameId: frameId, cutDuration: cut.duration);
   return Layer(
     id: layerId,
-    // A picture row takes a picture's name, a conte row a cel's. ⛔Not
+    // A picture row takes a picture's name, a conte row its own — 🗣️F-76
+    // (유저 2026-09-11): 「스토리보드레이어의 레이어생성시 이름, 셀 이름
+    // 규칙따르는게아니라 Conte 라고 되도록」. A cut holds one conte row
+    // ([LayerKind.isSingletonPerCut]), so the name needs no number. ⛔Not
     // [LayerKind.unnamedCelIsTheLayer]: what a row is CALLED and what its
     // unnamed cel IS are two questions, whatever answers them alike today.
-    name: kind == LayerKind.image
-        ? nextImageLayerNameForCut(cut)
-        : nextCelLayerNameForCut(cut),
+    name: kind == LayerKind.image ? nextImageLayerNameForCut(cut) : 'Conte',
     kind: kind,
     frames: [cel.frame],
     timeline: cel.timeline,
