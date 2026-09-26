@@ -111,9 +111,9 @@ class PlaybackTransportControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
+    return _OnWhatTheRowShows(
+      controller: controller,
+      builder: (context) {
         final controlsThisScope =
             controller.isActive && controller.scope == scope;
         final isPlayingHere = controlsThisScope && controller.isPlaying;
@@ -330,4 +330,78 @@ class PlaybackTransportControls extends StatelessWidget {
           : null,
     );
   }
+}
+
+/// What the transport row shows of the playback — the buttons' states and
+/// the drop count, and nothing else it reads.
+typedef _TransportShows = ({
+  bool active,
+  PlaybackScope scope,
+  bool playing,
+  PlaybackLoopMode loop,
+  int dropped,
+});
+
+/// Rebuilds the row when what it shows moves, never on a tick.
+///
+/// I-22 ③: the controller notifies on every frame it plays, and the row
+/// listened to all of it — every button, its face and its tooltip were
+/// rebuilt at the playback rate, in the timeline's transport and the
+/// storyboard's both, while not one of them reads the frame. The level
+/// meter follows the frame on its own listenable.
+class _OnWhatTheRowShows extends StatefulWidget {
+  const _OnWhatTheRowShows({required this.controller, required this.builder});
+
+  final CanvasPlaybackController controller;
+  final WidgetBuilder builder;
+
+  @override
+  State<_OnWhatTheRowShows> createState() => _OnWhatTheRowShowsState();
+}
+
+class _OnWhatTheRowShowsState extends State<_OnWhatTheRowShows> {
+  late _TransportShows _shown = _read();
+
+  _TransportShows _read() {
+    final controller = widget.controller;
+    return (
+      active: controller.isActive,
+      scope: controller.scope,
+      playing: controller.isPlaying,
+      loop: controller.loopMode,
+      dropped: controller.droppedFrames,
+    );
+  }
+
+  void _moved() {
+    final shown = _read();
+    if (shown != _shown) {
+      setState(() => _shown = shown);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_moved);
+  }
+
+  @override
+  void didUpdateWidget(_OnWhatTheRowShows oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller.removeListener(_moved);
+      widget.controller.addListener(_moved);
+      _shown = _read();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_moved);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context);
 }
