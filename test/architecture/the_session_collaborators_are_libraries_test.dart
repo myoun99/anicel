@@ -113,7 +113,11 @@ const _mayNameTheSession = <String, String>{
 /// and tests read it there), the lane-group reset and the SE window (two
 /// second names for their owners' verbs, deleted: callers say
 /// `session.laneVerbs` and `session.trackSe`).
-const _sessionInternalsMembers = 31;
+/// 31 → 29 (same day, the same family): two more nobody asked — the census
+/// above had counted a DOC COMMENT naming `_internals.x` as a call. The
+/// playback follow is the session's own listener, and the ＋'s answer was a
+/// second name for `CellInstances.canCreateInstance` (deleted).
+const _sessionInternalsMembers = 29;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

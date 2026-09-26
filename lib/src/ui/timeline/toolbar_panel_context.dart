@@ -203,7 +203,7 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   bool get servesActiveLayerVerbs => true;
 
   @override
-  bool get canCreateInstance => session.canCreateInstance;
+  bool get canCreateInstance => session.cellInstances.canCreateInstance;
 
   @override
   void createInstance() => createActiveInstance(session);

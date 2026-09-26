@@ -80,7 +80,7 @@ void main() {
     addTearDown(s.dispose);
 
     expect(
-      s.canCreateInstance,
+      s.cellInstances.canCreateInstance,
       isFalse,
       reason: 'the old toolbar switch said true here (`_ => true`) while '
           'the dispatch no-opped — lit and useless',
@@ -100,7 +100,7 @@ void main() {
     addTearDown(s.dispose);
     s.trackFrameRangeSelection.value = range();
 
-    expect(s.canCreateInstance, isTrue);
+    expect(s.cellInstances.canCreateInstance, isTrue);
     createActiveInstance(s);
     expect(
       s.repository
@@ -130,7 +130,7 @@ void main() {
     s.trackFrameRangeSelection.value = range();
 
     expect(
-      s.canCreateInstance,
+      s.cellInstances.canCreateInstance,
       isFalse,
       reason: 'nothing to author in [10,14) — a lit button here would be '
           'the same lie with a selection on',

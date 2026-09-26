@@ -108,7 +108,7 @@ void main() {
       final (session, _) = conteScene();
       session.selectFrameIndex(5);
 
-      expect(session.canCreateInstance, isFalse);
+      expect(session.cellInstances.canCreateInstance, isFalse);
     });
 
     test('pressed anyway on that cell, makes nothing', () {
@@ -126,7 +126,7 @@ void main() {
       final (session, id) = conteScene();
       session.selectFrameIndex(8);
 
-      expect(session.canCreateInstance, isTrue);
+      expect(session.cellInstances.canCreateInstance, isTrue);
       createActiveInstance(session);
       expect(rowOf(session, id), {0: 5, 5: 3, 8: 16});
     });
@@ -141,19 +141,31 @@ void main() {
       final (session, _) = conteScene();
       session.selectLayer(animationRowOf(session));
       session.selectFrameIndex(0);
-      expect(session.canCreateInstance, isTrue, reason: 'an empty cell');
+      expect(
+        session.cellInstances.canCreateInstance,
+        isTrue,
+        reason: 'an empty cell',
+      );
       session.createDrawingAtCurrentFrame();
       session.exposureVerbs.setCommaForSelectionOrCurrent(4);
 
       expect(
-        session.canCreateInstance,
+        session.cellInstances.canCreateInstance,
         isTrue,
         reason: 'the block\'s first cell — its press pushes now',
       );
       session.selectFrameIndex(2);
-      expect(session.canCreateInstance, isTrue, reason: 'inside the hold');
+      expect(
+        session.cellInstances.canCreateInstance,
+        isTrue,
+        reason: 'inside the hold',
+      );
       session.selectFrameIndex(10);
-      expect(session.canCreateInstance, isTrue, reason: 'an empty cell');
+      expect(
+        session.cellInstances.canCreateInstance,
+        isTrue,
+        reason: 'an empty cell',
+      );
     });
 
     test('stays dark on a picture row whose one cel exists (D22)', () {
@@ -165,7 +177,11 @@ void main() {
 
       for (final frameIndex in [0, 3]) {
         session.selectFrameIndex(frameIndex);
-        expect(session.canCreateInstance, isFalse, reason: 'at $frameIndex');
+        expect(
+          session.cellInstances.canCreateInstance,
+          isFalse,
+          reason: 'at $frameIndex',
+        );
       }
     });
   });

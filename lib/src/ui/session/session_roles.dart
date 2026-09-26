@@ -160,11 +160,9 @@ abstract interface class SessionInternals {
     Layer layer,
     TimelineFrameRangeSelection selection,
   );
-  void followPlaybackCut();
   Layer? get targetLayerForKindToggle;
   AttachFxConfirmController get attachFxConfirm;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
-  bool get canCreateInstance;
   bool Function()? get canvasHasSelection;
   void Function()? get clearCanvasSelection;
   TimelineRowAddress get currentRow;

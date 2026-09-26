@@ -91,8 +91,8 @@ class FrameScrub {
   /// [_selection.selectGlobalFrame] on a boundary cross ran selectCut + a committed
   /// seek per move, rebuilding every visible panel — the cut-boundary
   /// crossing lag — and the gap branch's immediate deselect was the same
-  /// hitch on gap entry. [_internals.followPlaybackCut] keeps playback's crossings
-  /// quiet for exactly this reason; the release ([commitFrameScrub])
+  /// hitch on gap entry. The session's `followPlaybackCut` keeps playback's
+  /// crossings quiet for exactly this reason; the release ([commitFrameScrub])
   /// lands the ONE full seek, where cut activation and gap deselection
   /// now both live (UI-R10 #13's live empty-out moved there on purpose).
   void scrubGlobalFrame(int globalFrame) {

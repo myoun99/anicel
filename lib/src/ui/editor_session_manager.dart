@@ -530,7 +530,6 @@ class EditorSessionManager extends ChangeNotifier
   /// mid-playback (that stutter was audible as the cut-transition lag).
   /// Live position display rides the playback listenables; activeCut
   /// consumers catch up on the stop notify.
-  @override
   void followPlaybackCut() {
     if (playbackRig.playback.globalFrameIndexListenable.value == null) {
       return;
@@ -2331,8 +2330,6 @@ class EditorSessionManager extends ChangeNotifier
   // would be a second name for the same verb (round 8, G4).
   late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, transitions: transitions, cells: cells, frameVerbs: frameVerbs, internals: this, storyboardRows: storyboardRows);
 
-  @override
-  bool get canCreateInstance => cellInstances.canCreateInstance;
   /// The selection range's maximal EMPTY runs on [layer]'s timeline.
   ///
   /// D20 (2026-08-18) rewrote the coverage half: GHOST coverage is

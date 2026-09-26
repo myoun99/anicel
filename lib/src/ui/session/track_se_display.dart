@@ -183,8 +183,8 @@ class TrackSeDisplay {
 
   /// The PLAN half of the track rung, mutation-free: which S rows the
   /// range names and which uncovered runs they hold. Split out so the
-  /// button's enabled ([_internals.canCreateInstance]) and the verb read the SAME
-  /// walk — a twin implementation is how enabled and dispatch drift.
+  /// button's enabled (`CellInstances.canCreateInstance`) and the verb read
+  /// the SAME walk — a twin implementation is how enabled and dispatch drift.
   Map<Layer, List<({int startIndex, int length})>> trackSeCreationGaps(
     TrackFrameRangeSelection range,
   ) {
