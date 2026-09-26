@@ -89,6 +89,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.canvasSelectionCommands,
     this.cutPieceSlot,
     this.lastStroke,
+    this.toolHold,
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
@@ -137,6 +138,11 @@ class EditorCanvasArea extends StatefulWidget {
   /// again — shell-owned for the same reason as [cutPieceSlot].
   final LastStrokeSlot? lastStroke;
 
+  /// The tool a hold sprang from — shell-owned for the same reason as
+  /// [cutPieceSlot]: the tool is the app's, and a tab switch remounts this
+  /// canvas mid-hold. Null keeps one of this canvas's own.
+  final ToolHoldMemory? toolHold;
+
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueListenable<bool> cameraViewEnabled;
   final ValueListenable<double> cameraDimOpacity;
@@ -171,13 +177,17 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// rather than one per build. See the probe in [build].
   String? _lastCanvasProbe;
 
+  /// See [EditorCanvasArea.toolHold].
+  late final ToolHoldMemory _toolHold = widget.toolHold ?? ToolHoldMemory();
+
   /// The brush size at the start of a 3-finger size drag (PEN-7b); the
   /// drag maps EXPONENTIALLY from here (120px per doubling) so the feel
   /// is uniform at every size.
   double? _brushSizeDragStartSize;
 
-  /// Null until something frames the canvas — the user, playback fit, or a
-  /// camera restore.
+  /// The project's framing ([EditorSessionManager.canvasViewport]) — null
+  /// until something frames the canvas: the user, playback fit, or a camera
+  /// restore.
   ///
   /// 🚨It used to be a bare `CanvasViewport()`: a render zoom of 1.0, which
   /// under R11's convention is `ratio × 100%`. The canvas opened at 150% on
@@ -188,7 +198,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// Resolved at the READ site instead, so an untouched view re-derives the
   /// identity whenever the ratio moves — no hold and no notify, which is
   /// exactly the invariant this round wants.
-  final ValueNotifier<CanvasViewport?> _canvasViewport = ValueNotifier(null);
+  ValueNotifier<CanvasViewport?> get _canvasViewport =>
+      widget.session.canvasViewport;
 
   /// [nodes] with the onion ghosts inserted directly UNDER the active
   /// layer — where they belong visually, and (since the merge) inside

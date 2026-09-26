@@ -49,11 +49,23 @@ class ProjectFile {
   ProjectFile({
     required ProjectAccess project,
     required MediaStagingStore staging,
+    bool Function(String path)? openElsewhere,
   }) : _project = project,
-       _staging = staging;
+       _staging = staging,
+       _openElsewhere = openElsewhere;
 
   final ProjectAccess _project;
   final MediaStagingStore _staging;
+  final bool Function(String path)? _openElsewhere;
+
+  /// Whether ANOTHER open project is bound to the file at [path] (I-7).
+  ///
+  /// 🚨ONE FILE, ONE WRITER. Two sessions bound to one archive each append
+  /// to a tail the other is also extending, and each one's next save
+  /// rewrites what the other just wrote. Opening a file already open shows
+  /// its tab instead ([OpenProjects.boundTo]); this is the other door in —
+  /// a Save As pointed at it — and every save asks it before writing.
+  bool isOpenElsewhere(String path) => _openElsewhere?.call(path) ?? false;
 
   Project _requireProject() => _project.repository.requireProject();
 
@@ -944,4 +956,15 @@ final class _LiveHold {
   final moves = StreamController<HeldBytesMove>();
 
   final released = Completer<void>();
+}
+
+/// A save refused because [path] is another open project's file (I-7) —
+/// see [ProjectFile.isOpenElsewhere].
+final class FileOpenInAnotherProject implements Exception {
+  const FileOpenInAnotherProject(this.path);
+
+  final String path;
+
+  @override
+  String toString() => 'FileOpenInAnotherProject: $path';
 }

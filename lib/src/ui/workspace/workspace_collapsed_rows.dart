@@ -26,9 +26,15 @@ class _WorkspaceCollapsedRows {
         tabId != EditorWorkspace.storyboardTabId) {
       return const SizedBox.shrink();
     }
-    return ListenableBuilder(
-      listenable: _collapsedRowStructure,
-      builder: (context, _) => _collapsedRow(),
+    // Keyed by the project, like every panel ([_WorkspaceTabs.tabFor]): the
+    // row mounts the timeline's own row widgets, whose State is the
+    // project's.
+    return KeyedSubtree(
+      key: ObjectKey(_state.widget.session),
+      child: ListenableBuilder(
+        listenable: _collapsedRowStructure,
+        builder: (context, _) => _collapsedRow(),
+      ),
     );
   }
 
@@ -237,9 +243,9 @@ class _WorkspaceCollapsedRows {
       hasLanes: timelineLanesForLayer(
         layer: layer,
         session: session,
-        expandedGroupKeys: _state._expandedLaneGroupKeys.value,
+        expandedGroupKeys: _state.widget.session.railView.expandedLaneGroupKeys.value,
       ).isNotEmpty,
-      lanesExpanded: _state._expandedLaneLayerIds.value.contains(layer.id),
+      lanesExpanded: _state.widget.session.railView.expandedLaneLayerIds.value.contains(layer.id),
       // 🚨A NULL CALLBACK IS NOT "no handler", IT IS "NO COLUMN": this row
       // reads `onToggleLayerOnionSkin != null` and friends as whether the
       // slot exists at all. Leaving them out to mean "nothing can be pressed
@@ -298,36 +304,45 @@ class _WorkspaceCollapsedRows {
   /// the index never comes through here — it is the cursor layer's value
   /// channel, one layer down.
   ///
-  /// Bound ONCE: a merge rebuilt per pass re-subscribes on every build.
+  /// Bound ONCE per project on screen ([bindSession]): a merge rebuilt per
+  /// pass re-subscribes on every build.
   ///
   /// ⚠️BOTH panels' channels are in here, because either can be the folded
   /// row (D15). A storyboard-only zoom or a V-splitter drag changes this
   /// row's shape exactly as the timeline's own do, and a merge that knew
   /// only the timeline's would leave the folded track row showing the
   /// build it was born with — the very symptom ⑩ was.
-  late final Listenable _collapsedRowStructure = Listenable.merge([
-    _state.widget.session,
-    _state._expandedLaneLayerIds,
-    _state._expandedLaneGroupKeys,
-    _state.widget.session.railView.hiddenSections,
-    _state.widget.session.railView.rowFilter,
-    _state.widget.session.railView.collapsedAttachBaseIds,
-    _state._timelinePixelsPerFrame,
-    _state._railExtents[LayerRailId.timeline],
-    _state._storyboardPixelsPerFrame,
-    _state._storyboardTrackLaneHeight,
-    _state._showSecondsDisplay,
-    _state._railExtents[LayerRailId.storyboard],
-  ]);
+  late Listenable _collapsedRowStructure;
 
-  /// R26 #44's fact bundle for the collapsed row — bound ONCE, exactly like
-  /// the timeline tab's own: a fresh bundle per build re-subscribes the row
-  /// painters every pass and defeats the repaint gating it exists for.
-  late final TimelineCelContentSource _collapsedCelContent =
-      TimelineCelContentSource(
-        hasContent: _state.widget.session.layerStack.celHasContentForLayer,
-        revision: _state.widget.session.layerStack.celTintRevision,
-      );
+  /// R26 #44's fact bundle for the collapsed row — bound ONCE per project,
+  /// exactly like the timeline tab's own: a fresh bundle per build
+  /// re-subscribes the row painters every pass and defeats the repaint
+  /// gating it exists for.
+  late TimelineCelContentSource _collapsedCelContent;
+
+  /// Binds both to [session] — the workspace's door for the project coming
+  /// on screen (I-7). They read the project's own notifiers, so a pair
+  /// made once for the window would go on hearing the first project.
+  void bindSession(EditorSessionManager session) {
+    _collapsedRowStructure = Listenable.merge([
+      session,
+      session.railView.expandedLaneLayerIds,
+      session.railView.expandedLaneGroupKeys,
+      session.railView.hiddenSections,
+      session.railView.rowFilter,
+      session.railView.collapsedAttachBaseIds,
+      _state._timelinePixelsPerFrame,
+      _state._railExtents[LayerRailId.timeline],
+      _state._storyboardPixelsPerFrame,
+      _state._storyboardTrackLaneHeight,
+      _state._showSecondsDisplay,
+      _state._railExtents[LayerRailId.storyboard],
+    ]);
+    _collapsedCelContent = TimelineCelContentSource(
+      hasContent: session.layerStack.celHasContentForLayer,
+      revision: session.layerStack.celTintRevision,
+    );
+  }
 
   /// The FRAME half of the collapsed row: the REAL row the timeline draws.
   ///
@@ -368,7 +383,7 @@ class _WorkspaceCollapsedRows {
         ? timelineLanesForLayer(
             layer: layer,
             session: session,
-            expandedGroupKeys: _state._expandedLaneGroupKeys.value,
+            expandedGroupKeys: _state.widget.session.railView.expandedLaneGroupKeys.value,
           ).where((candidate) => candidate.laneId == row.laneId).firstOrNull
         : null;
     if (row is LaneRowAddress && lane == null) {

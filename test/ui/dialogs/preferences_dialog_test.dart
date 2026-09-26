@@ -34,6 +34,7 @@ void main() {
               onPressed: () => showPreferencesDialog(
                 context,
                 session: session,
+                openSessions: [session],
                 initialSection: initialSection,
               ),
               child: const Text('open'),

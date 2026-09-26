@@ -200,13 +200,12 @@ const _notCensused = <String, String>{
       'State the session does not own, so the workspace pushes it onto '
       'RenderCaches, the way the canvas buffer and the viewers are',
   'lib/src/services/cut_piece_slot.dart → pieceBytes':
-      'via:cutPieceBytes — the slot lives in the workspace State the '
-      'session does not own, so the workspace pushes it onto RenderCaches, '
-      'the way the storyboard thumbnails are',
+      'via:allPieceBytes — the slot is the APP\'s, one for every open '
+      'project (I-7), so the census reads the class-level total once '
+      'rather than a number pushed onto one tab\'s session',
   'lib/src/services/last_stroke_slot.dart → strokeBytes':
-      'via:lastStrokeBytes — the slot lives in the shell State the session '
-      'does not own, so the shell pushes it onto RenderCaches, the way the '
-      'cut piece is',
+      'via:allStrokeBytes — the app\'s one slot, read once, for the cut '
+      'piece\'s reason',
   'lib/src/ui/canvas/static_composite_bake.dart → heldBytes':
       'via:canvasBufferBytes — the view that owns the bake reports it '
       'together with its display buffer: both are the view holding a '

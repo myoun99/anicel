@@ -251,7 +251,7 @@ void main() {
       await turnTo(tester, 1);
 
       final item = collectMemoryCensus(
-        session,
+        [session],
       ).items.firstWhere((entry) => entry.id == 'viewerPages');
       expect(
         item.bytes,

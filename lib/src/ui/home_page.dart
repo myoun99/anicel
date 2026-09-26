@@ -11,10 +11,12 @@ import 'dialogs/app_confirm_dialog.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../models/working_panel.dart';
+import '../native/qa_native_engine.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/persistence/app_language_settings_store.dart';
+import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_frame_grid_settings_store.dart';
@@ -40,7 +42,6 @@ import 'brush/temporary_tool.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import 'brush/tool_press.dart';
 import 'brush/transform_tool_options.dart';
-import '../models/app_workspace_colors.dart';
 import 'debug/input_inspector.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
@@ -69,6 +70,7 @@ import 'canvas/flip_hud_controller.dart' show FlipHudController;
 import 'layout/device_grid.dart';
 import 'layout/device_grid_safe_area.dart';
 import 'session/editor_app_settings.dart';
+import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'widgets/cursor_notice.dart';
@@ -124,8 +126,35 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  late final EditorSessionManager _session;
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  // ── the projects open in this window (I-7) ──────────────────────────
+
+  /// The projects open in this window, one tab each — see [OpenProjects].
+  late final OpenProjects _projects;
+
+  /// The project on screen. Everything this shell does to 「the project」 —
+  /// a key, a save, an undo — it does to this one.
+  EditorSessionManager get _session => _projects.active;
+
+  /// What this shell hangs on each open project, by project — see
+  /// [_ProjectHooks].
+  final Map<EditorSessionManager, _ProjectHooks> _hooks = {};
+
+  /// Sessions closed while their tab was still on screen, waiting for the
+  /// frame that takes them off it ([_letGo]).
+  final Set<EditorSessionManager> _goingAway = {};
+
+  /// The project the per-screen objects were last pointed at
+  /// ([_followProjectOnScreen]).
+  EditorSessionManager? _onScreen;
+
+  /// The run's failed copies — ONE list, handed to every open project
+  /// ([EditorSessionManager.failedSaveCopies]).
+  final FailedSaveCopies _failedSaveCopies = FailedSaveCopies();
+
+  /// The tool a temporary hold sprang from — the app's, beside the tool
+  /// ([ToolHoldMemory]).
+  final ToolHoldMemory _toolHold = ToolHoldMemory();
 
   /// The app's settings — ONE for every open project, restored once here
   /// (I-7; see [EditorAppSettings]). FLUTTER_TEST keeps widget tests off the
@@ -226,6 +255,8 @@ class _HomePageState extends State<HomePage> {
   );
 
   /// The selection channel (P9): Ctrl+D, Enter and Escape call in here.
+  /// The WINDOW's; what it shows is the project on screen's
+  /// ([CanvasSelectionDocument]).
   final CanvasSelectionCommands _canvasSelectionCommands =
       CanvasSelectionCommands();
 
@@ -242,12 +273,9 @@ class _HomePageState extends State<HomePage> {
   );
 
   /// Undo and redo — the keys, the finger taps and a mapped button here,
-  /// the rail's ↶ ↷ in the workspace. The census is [_pointersDown].
-  late final HistoryVerbs _history = HistoryVerbs(
-    selection: _canvasSelectionCommands,
-    session: _session,
-    contactIsDown: () => _pointersDown.isNotEmpty,
-  );
+  /// the rail's ↶ ↷ in the workspace. The census is [_pointersDown]. Made
+  /// for the project on screen ([_followProjectOnScreen]).
+  late HistoryVerbs _history;
 
   /// The ↑/↓ layer-nav channel (UI-R20 #14): the arrows that cross the
   /// frame axis walk the timeline's DISPLAYED layer rows, selection or no
@@ -269,27 +297,32 @@ class _HomePageState extends State<HomePage> {
 
   /// The keys that are HELD (I-15) — 「이동」 on Space and the eyedropper's
   /// Alt — taken on the same road as every shortcut; see [EditorKeyHolds].
+  /// The window's: it follows the stroke of the project on screen.
   late final EditorKeyHolds _keyHolds = EditorKeyHolds(
     bindings: _shortcuts,
     tool: _brushTool,
     temporaryTool: TemporaryTool(
-      session: _session,
+      memory: _toolHold,
       current: () => _brushTool.value,
       change: (next) => _brushTool.value = next,
     ),
     strokeLive: _session.brushInputActive,
   );
 
-  /// Autosave (P3): dirty-session snapshots into the recovery folder. The
-  /// service decides WHETHER; the two triggers below decide WHEN.
-  ProjectAutosaveService? _autosave;
-
   /// 🚨F-1: THE autosave trigger. The clock's rule (count from the last
   /// snapshot, hold a fire until the pen lifts) lives in the clock rather
   /// than here, because a policy held as fields on a State is a policy
   /// nothing can test.
+  ///
+  /// ONE clock for every open project (I-7): a tick saves each one that
+  /// needs it — autosave is the app's setting, so a tab behind the one on
+  /// screen follows it too.
   late final AutosaveClock _autosaveClock = AutosaveClock(
-    onSnapshot: () => unawaited(_autosave?.saveNow()),
+    onSnapshot: () {
+      for (final session in _projects.sessions) {
+        unawaited(_hooks[session]?.autosave.saveNow());
+      }
+    },
   );
 
   /// Pointer ids currently down. A count rather than a bool because a
@@ -302,14 +335,13 @@ class _HomePageState extends State<HomePage> {
   /// the framework before tearing the window down).
   AppLifecycleListener? _lifecycle;
 
-  /// PEN-12 #8: the never-saved autosave prompt fires once per session —
-  /// a declined prompt must not nag every tick.
-  bool _unsavedAutosavePromptShown = false;
-
   // NO whole-page session setState: rebuilding the app bar and every dock
   // and panel on every session notify was the editing jank's biggest
   // multiplier. Each panel host subscribes to the session itself; the app
   // bar's undo/redo buttons carry their own ListenableBuilder below.
+  //
+  // ⚠️The one whole-page rebuild left is a project TAB changing (I-7): the
+  // workspace is handed another session, and that is a new screen.
   @override
   void initState() {
     super.initState();
@@ -321,34 +353,12 @@ class _HomePageState extends State<HomePage> {
     // that opens a project gets its own list rather than the developer's.
     // Sync, because the menu reads this while BUILDING.
     AppRecent.projects.value = RecentProjectsStore().load();
-    // A NEW project seeds its pasteboard from the app-level default —
-    // all that remains of the old app-state pasteboard (R3b promotion,
-    // R28 #9 reversed): the color is project data now, and this is where
-    // the "default for the next project" lands in one.
-    final project =
-        widget.initialProject ??
-        createDefaultProject().copyWith(
-          pasteboardArgb: AppWorkspaceColors.settings.value.pasteboardArgb,
-        );
-    _session = EditorSessionManager(
-      initialProject: project,
-      appSettings: _appSettings,
-      frameworkImageCache: PaintingBinding.instance.imageCache,
-    );
-    // The census cannot reach this State; the session can be reached — the
-    // same push the workspace makes for the cut piece.
-    _lastStroke.addListener(
-      () => _session.renderCaches.lastStrokeBytes = _lastStroke.strokeBytes,
-    );
-    // R16-①: undo/redo over a PENDING move session adopts it into history
-    // first — an undo never pops out from under the unadopted lift.
-    _session.historyManager.onBeforeUndoRedo =
-        _canvasSelectionCommands.confirmPendingMove;
-    // ...and a step that WAITED for its pictures asks first whether there
-    // is anything to adopt: work begun after the press is the user's.
-    _session.historyManager.pendingBeforeUndoRedo = () =>
-        _canvasSelectionCommands.movePending ||
-        _canvasSelectionCommands.transformActive;
+    _projects = OpenProjects(
+      first: widget.initialProject ?? newUntitledProject(),
+      openSession: _openSession,
+      letGo: _letGo,
+    )..addListener(_followProjectOnScreen);
+    _pointAtProjectOnScreen();
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
     _paletteService = _unlessTesting(ColorPaletteFileService.new);
@@ -359,7 +369,6 @@ class _HomePageState extends State<HomePage> {
         }
       }),
     );
-    _session.historyManager.addListener(_recordRecentColor);
     // Apple Pencil double-tap (PEN-5): honor the user's SYSTEM Pencil
     // preference — the switch actions toggle brush↔eraser; the palette/
     // ink-attribute actions stay no-ops for now (no matching surface).
@@ -377,10 +386,10 @@ class _HomePageState extends State<HomePage> {
           break;
       }
     };
-    // SAVE-1: the autosave service follows the LIVE policy — on/off and
-    // the interval rebuild it; the settings notifier is the one source.
-    _syncAutosaveService();
-    AppSave.settings.addListener(_syncAutosaveService);
+    // SAVE-1: the autosave clock follows the LIVE policy — on/off and the
+    // interval; the settings notifier is the one source.
+    _syncAutosaveClock();
+    AppSave.settings.addListener(_syncAutosaveClock);
     // The one answer a launch owes the app container: the room of every run
     // that is no longer here goes, whole, now. 유저 확정 2026-09-10 — there
     // is no recovery to hold anything back for, because a room only ever
@@ -402,10 +411,10 @@ class _HomePageState extends State<HomePage> {
       // [_noteUserActivity]. The exit GATE stays: leaving with unsaved
       // work still asks.
     );
-    // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
-    // through this channel — the toggle button was not the caller, so its
-    // snackbar path never runs.
-    _session.voiceRecording.voiceRecordingNotice.addListener(_showVoiceRecordingNotice);
+    // The memory warning and coming back to the app — heard HERE since
+    // I-7: both are for every open project, and the workspace that used to
+    // hear them is the window's, not a project's.
+    WidgetsBinding.instance.addObserver(this);
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with
@@ -420,13 +429,152 @@ class _HomePageState extends State<HomePage> {
     // too (2026-09-16).
   }
 
-  void _showVoiceRecordingNotice() {
-    final message = _session.voiceRecording.voiceRecordingNotice.value;
-    if (message == null || !mounted) {
+  /// Makes a session for [project] and hangs this shell's hooks on it — the
+  /// one way a project comes to be open ([OpenProjects.open] and
+  /// [OpenProjects.prepare] call it).
+  EditorSessionManager _openSession(Project project) {
+    late final EditorSessionManager session;
+    session = EditorSessionManager(
+      initialProject: project,
+      appSettings: _appSettings,
+      frameworkImageCache: PaintingBinding.instance.imageCache,
+      failedSaveCopies: _failedSaveCopies,
+      // ONE FILE, ONE WRITER — see [ProjectFile.isOpenElsewhere].
+      fileIsOpenElsewhere: (path) {
+        final bound = _projects.boundTo(path);
+        return bound != null && !identical(bound, session);
+      },
+    );
+    _hooks[session] = _ProjectHooks(
+      session,
+      autosave: ProjectAutosaveService(
+        // Stands down while a manual save runs: a tick that started its own
+        // write inside one would be a SECOND writer appending to the same
+        // archive, which tears the tail both of them are extending — and
+        // stands down for a session the user closed WITHOUT saving, so the
+        // way down cannot put back what they just threw away.
+        isDirty: () =>
+            session.projectFile.hasUnsavedChanges &&
+            !session.projectFile.autosaveShouldStandDown,
+        // 🚨★★★**THE TICK SAVES THE PROJECT FILE — the same writer the Save
+        // button uses, minus the window nobody is watching.**
+        //
+        // 유저 2026-09-07, on being asked what happens to 「저장 안 하고 닫기
+        // = 버리기」: 「기존 결정대로 자동저장이 파일갱신. 그게 싫으면 자동
+        // 저장 off하면된다고 말했는데 안바꿧나보네」. So the discard rule is
+        // not abolished, it is the OFF position of a switch the user owns:
+        // autosave on and the file follows the work every n minutes;
+        // autosave off and the file changes on an explicit save alone.
+        saveProject: (path) => session.projectDoor.saveProjectToFile(
+          path,
+          // The clock, not a person — so the pen is left alone.
+          asked: SaveAsked.byTheClock,
+        ),
+        // Only called once needsProjectFile says a real file exists.
+        projectPath: () => session.projectFile.path!,
+        // PEN-12 #8: a NEVER-SAVED project snapshots nowhere — instead of
+        // piling files into hidden app-data dirs for a document with no
+        // identity yet, the first dirty pass asks the user to pick a real
+        // file (OpenToonz-style).
+        needsProjectFile: () => session.projectFile.path == null,
+        onUnsavedProject: () => _promptUnsavedAutosave(session),
+        onFailed: (error) => _tellWhatTheClockCouldNotSave(session, error),
+      ),
+    )..hang(this);
+    return session;
+  }
+
+  /// Takes this shell's hooks off [session] and lets it go — once nothing
+  /// on screen is showing it.
+  ///
+  /// ⚠️A tab closed while it was ON SCREEN is still the workspace's session
+  /// until the rebuild this frame makes, and the workspace takes its own
+  /// hooks off in that rebuild: disposing it now would have the workspace
+  /// unhook from a disposed session. So it goes after the frame; a window
+  /// that is closing (this State's dispose, after the workspace's own) lets
+  /// every one go at once.
+  void _letGo(EditorSessionManager session) {
+    _hooks.remove(session)?.unhang(this);
+    if (!mounted) {
+      session.dispose();
       return;
     }
-    unawaited(
-      showAppNotice(
+    _goingAway.add(session);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_goingAway.remove(session)) {
+        session.dispose();
+      }
+    });
+  }
+
+  /// Points what the shell keeps for the project ON SCREEN at the one that
+  /// is there now — and rebuilds, because the workspace and the strip show
+  /// it.
+  ///
+  /// 🚨Before it points anything, the canvas LANDS what it was holding in
+  /// the project going behind: a lift or an open box is that project's, and
+  /// once the selection shows the next project's document a landing would
+  /// write its region there. The same move an undo makes first (R16-①).
+  void _followProjectOnScreen() {
+    // Rebuilt either way: a tab added behind, or one closed, changes the
+    // row even when the project on screen stays.
+    final changed = _pointAtProjectOnScreen();
+    setState(() {});
+    if (changed) {
+      // What waited for this project to be on screen says itself now.
+      _hooks[_session]?.sayWhatWaited(this);
+      unawaited(_warnIfProjectFileVanished(_session));
+    }
+  }
+
+  /// [_followProjectOnScreen]'s pointing, without the rebuild — the first
+  /// project is pointed at before there is anything to rebuild. Whether
+  /// the project on screen changed.
+  bool _pointAtProjectOnScreen() {
+    final session = _session;
+    if (identical(session, _onScreen)) {
+      return false;
+    }
+    if (_onScreen != null) {
+      _canvasSelectionCommands.confirmPendingMove();
+    }
+    _onScreen = session;
+    _canvasSelectionCommands.document = session.canvasSelection;
+    _history = HistoryVerbs(
+      selection: _canvasSelectionCommands,
+      session: session,
+      contactIsDown: () => _pointersDown.isNotEmpty,
+    );
+    _keyHolds.strokeLive = session.brushInputActive;
+    return true;
+  }
+
+  /// A notice or a question about [session], with [session] on screen.
+  ///
+  /// 🚨★★★A PROJECT SPEAKS WHEN IT IS ON SCREEN (I-7). A tab behind the one
+  /// in front can fail a save on the clock, finish a take, lose its file —
+  /// and a window about it over another project's canvas would leave the
+  /// person guessing which one it means. So it waits for its tab, and is
+  /// said the moment that tab is shown ([_followProjectOnScreen]).
+  void _sayAbout(EditorSessionManager session, Future<void> Function() say) {
+    if (!mounted) {
+      return;
+    }
+    if (identical(session, _session)) {
+      unawaited(say());
+      return;
+    }
+    _hooks[session]?.waiting.add(say);
+  }
+
+  void _showVoiceRecordingNotice(EditorSessionManager session) {
+    final message = session.voiceRecording.voiceRecordingNotice.value;
+    if (message == null) {
+      return;
+    }
+    _sayAbout(
+      session,
+      () => showAppNotice(
         context,
         title: AppText.strings.commonNotice,
         message: message,
@@ -437,50 +585,19 @@ class _HomePageState extends State<HomePage> {
   /// SAVE-1: follows the live policy. F-1 made the CLOCK the only trigger,
   /// so the policy is one number — [_autosaveClock] gets the interval (or
   /// stands down on null) and that is the whole sync.
-  void _syncAutosaveService() {
+  ///
+  /// ⛔Each project's service is made ONCE, with the project
+  /// ([_openSession]), and never rebuilt here: nothing in it is
+  /// settings-derived (five closures reading live session state), and this
+  /// listener fires on ANY settings change — a rebuild here dropped the
+  /// in-flight `_writing` guard with it, so a tick mid-write plus a
+  /// recordings-folder pick equalled two concurrent writers racing for the
+  /// same archive.
+  void _syncAutosaveClock() {
     final settings = AppSave.settings.value;
     final minutes = settings.periodicSnapshotMinutes;
     _autosaveClock.configure(
       interval: minutes == null ? null : Duration(minutes: minutes),
-    );
-    // ONE service for the page's life, never rebuilt: nothing below is
-    // settings-derived (five closures reading live session state), and
-    // this listener fires on ANY settings change — a rebuild here dropped
-    // the in-flight `_writing` guard with it, so a tick mid-write plus
-    // a recordings-folder pick equalled two concurrent writers racing for
-    // the same archive.
-    _autosave ??= ProjectAutosaveService(
-      // Stands down while a manual save runs: a tick that started its own
-      // write inside one would be a SECOND writer appending to the same
-      // archive, which tears the tail both of them are extending — and stands
-      // down for a session the user closed WITHOUT saving, so the way down
-      // cannot put back what they just threw away.
-      isDirty: () =>
-          _session.projectFile.hasUnsavedChanges &&
-          !_session.projectFile.autosaveShouldStandDown,
-      // 🚨★★★**THE TICK SAVES THE PROJECT FILE — the same writer the Save
-      // button uses, minus the window nobody is watching.**
-      //
-      // 유저 2026-09-07, on being asked what happens to 「저장 안 하고 닫기
-      // = 버리기」: 「기존 결정대로 자동저장이 파일갱신. 그게 싫으면 자동
-      // 저장 off하면된다고 말했는데 안바꿧나보네」. So the discard rule is
-      // not abolished, it is the OFF position of a switch the user owns:
-      // autosave on and the file follows the work every n minutes; autosave
-      // off and the file changes on an explicit save alone.
-      saveProject: (path) => _session.projectDoor.saveProjectToFile(
-        path,
-        // The clock, not a person — so the pen is left alone.
-        asked: SaveAsked.byTheClock,
-      ),
-      // Only called once needsProjectFile says a real file exists.
-      projectPath: () => _session.projectFile.path!,
-      // PEN-12 #8: a NEVER-SAVED project snapshots nowhere — instead of
-      // piling files into hidden app-data dirs for a document with no
-      // identity yet, the first dirty pass asks the user to pick a real
-      // file (OpenToonz-style).
-      needsProjectFile: () => _session.projectFile.path == null,
-      onUnsavedProject: _promptUnsavedAutosave,
-      onFailed: _tellWhatTheClockCouldNotSave,
     );
   }
 
@@ -514,18 +631,100 @@ class _HomePageState extends State<HomePage> {
     _autosaveClock.noteActivity(strokeInFlight: _pointersDown.isNotEmpty);
   }
 
+  /// The OS says memory is tight: EVERY open project stands its caches
+  /// down — hot cels halve and cool, playback re-runs its budget — the tabs
+  /// behind the one on screen as much as it (I-7).
+  @override
+  void didHaveMemoryPressure() {
+    for (final session in _projects.sessions) {
+      session.respondToMemoryPressure();
+    }
+    // The drawing engine is the process's, not a project's: its parked
+    // tile blocks and scratch buffers hear the warning here too.
+    QaNativeEngine.respondToMemoryPressure();
+  }
+
+  /// 🚨★★★**COMING BACK IS WHEN THE FILE MAY HAVE GONE.**
+  ///
+  /// 유저 2026-08-31, having lost 94 cels: 「이 문제 발생시 **해결법이
+  /// 없기때문**」. A save turns every clean cel into a ref into the project
+  /// file and drops its cold blob, so deleting that file — in Explorer, in
+  /// the Files app, in Drive — takes those pixels with it. The app only
+  /// found out at the next save, by which time the recycle bin had usually
+  /// been emptied and the person had done an hour of work on a project
+  /// that could no longer be written whole.
+  ///
+  /// What CAN be recovered is the FILE, and only while it is still in a
+  /// trash somewhere — which is exactly the window this notice exists to
+  /// open. ⚠️It no longer says the bytes are unrecoverable, because since
+  /// the session started holding the file open that depends on the
+  /// platform: on POSIX an `unlink` leaves our handle readable and a save
+  /// carries those cels into a new file, on Windows the file can only
+  /// vanish while nothing is held and then it does lose them. The app
+  /// reports the MEASURED answer after a save instead, by count.
+  ///
+  /// 🚨This notice is HALF the answer. It opens the restore window; the
+  /// other half is [ensureUnsavedWorkSettled] refusing to let the session
+  /// close in silence, because closing the app is when a POSIX session's
+  /// last descriptor on those bytes goes.
+  ///
+  /// The observer was already here for memory pressure; resuming is the
+  /// moment a person comes back from the file manager they just used. With
+  /// a project per tab (I-7) it asks for the project on SCREEN — a tab
+  /// behind it is asked when it is shown, which is when its person comes
+  /// back to it.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_warnIfProjectFileVanished(_session));
+    }
+  }
+
+  /// Said ONCE per disappearance, not once per resume: a person who has
+  /// read it and chosen to carry on must not be asked again every time
+  /// they alt-tab.
+  Future<void> _warnIfProjectFileVanished(EditorSessionManager session) async {
+    final hooks = _hooks[session];
+    if (hooks == null) {
+      return;
+    }
+    if (!session.projectFile.hasVanished()) {
+      // Back again — restored from a trash, or re-synced. The next
+      // disappearance is worth saying out loud too.
+      hooks.toldProjectFileVanished = false;
+      return;
+    }
+    if (hooks.toldProjectFileVanished || !mounted) {
+      return;
+    }
+    hooks.toldProjectFileVanished = true;
+    await showAppNotice(
+      context,
+      windowKey: const ValueKey<String>('project-file-vanished-notice'),
+      title: AppText.strings.commonNotice,
+      message: AppText.strings.projectFileVanished,
+    );
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // The pan flag is app-wide: a shell that goes away must not keep it.
     _keyHolds.dispose();
     PencilInteractionService.instance.onPencilTap = null;
-    _session.historyManager.removeListener(_recordRecentColor);
-    _session.voiceRecording.voiceRecordingNotice.removeListener(_showVoiceRecordingNotice);
-    AppSave.settings.removeListener(_syncAutosaveService);
+    AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
     _autosaveClock.dispose();
     _lifecycle?.dispose();
-    _session.dispose();
+    // Every open project goes with the window — and any closed one still
+    // waiting for its frame, which is not coming now.
+    _projects
+      ..removeListener(_followProjectOnScreen)
+      ..dispose();
+    for (final session in _goingAway) {
+      session.dispose();
+    }
+    _goingAway.clear();
     _appSettings.dispose();
     _panelsMenu.dispose();
     _brushTool.dispose();
@@ -985,15 +1184,21 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                     ),
                                     // Re-reads per notify: the panels bridge
-                                    // drives the visibility checks, the session
-                                    // the project name and the export gate.
+                                    // drives the visibility checks, the open
+                                    // projects their tabs — every one of them,
+                                    // since a tab behind this one is renamed
+                                    // by its own save — and the session on
+                                    // screen the export gate.
                                     child: ListenableBuilder(
                                       listenable: Listenable.merge([
-                                        _session,
+                                        _projects,
+                                        ..._projects.sessions,
                                         _panelsMenu,
                                       ]),
                                       builder: (context, _) => EditorTopStrip(
-                                        session: _session,
+                                        projects: _projects,
+                                        onCloseProject: (session) =>
+                                            unawaited(_closeProject(session)),
                                         panelsMenu: _panelsMenu,
                                         brushTool: _brushTool,
                                         colorBackground: _colorWheelBackground,
@@ -1021,6 +1226,7 @@ class _HomePageState extends State<HomePage> {
                                     canvasSelectionCommands:
                                         _canvasSelectionCommands,
                                     lastStroke: _lastStroke,
+                                    toolHold: _toolHold,
                                     confirm: _confirm,
                                     history: _history,
                                     layerNav: _timelineLayerNav,
@@ -1043,6 +1249,7 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
 
   /// The gate, and then the ONE thing that has to happen between 「yes」 and
   /// the process going away.
@@ -1078,6 +1285,9 @@ class _HomePageState extends State<HomePage> {
 
   bool _exitDialogOpen = false;
 
+  /// Asks about every open project that has something to lose, each with
+  /// its own tab on screen — the window closing closes all of them (I-7).
+  /// Cancel on any one of them keeps the window open.
   Future<bool> _showExitDialog() async {
     if (_exitDialogOpen) {
       return false;
@@ -1089,11 +1299,57 @@ class _HomePageState extends State<HomePage> {
     // [ensureUnsavedWorkSettled]'s first statement, not this one.
     //
     // The question itself lives in [ensureUnsavedWorkSettled] now, shared
-    // with the OPEN flow — which closes the current project just as surely
-    // as this button and used to do it with no gate at all.
+    // with a tab's close button — which closes a project just as surely as
+    // this one.
     _exitDialogOpen = true;
     try {
-      return await ensureUnsavedWorkSettled(context, _session);
+      for (final session in _projects.sessions) {
+        if (!mounted) {
+          return false;
+        }
+        if (!await _settleWithItOnScreen(session)) {
+          return false;
+        }
+      }
+      return true;
+    } finally {
+      _exitDialogOpen = false;
+    }
+  }
+
+  /// [ensureUnsavedWorkSettled] for [session], asked with [session] on
+  /// screen when there is anything to ask (A PROJECT SPEAKS WHEN IT IS ON
+  /// SCREEN — see [_sayAbout]). One with nothing to lose is not brought
+  /// forward just to be let go.
+  Future<bool> _settleWithItOnScreen(EditorSessionManager session) async {
+    if (!session.projectFile.hasUnsavedChanges &&
+        !session.projectFile.hasVanished()) {
+      return true;
+    }
+    if (!identical(session, _session)) {
+      _projects.activate(session);
+      // The question waits for the frame that shows its project.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) {
+        return false;
+      }
+    }
+    return ensureUnsavedWorkSettled(context, session);
+  }
+
+  /// A tab's close button: the same question the window asks, for that
+  /// project, and then the tab goes — leaving an untitled project when it
+  /// was the last ([OpenProjects.close]).
+  Future<void> _closeProject(EditorSessionManager session) async {
+    if (_exitDialogOpen) {
+      return;
+    }
+    _exitDialogOpen = true;
+    try {
+      if (!await _settleWithItOnScreen(session) || !mounted) {
+        return;
+      }
+      _projects.close(session, fresh: newUntitledProject);
     } finally {
       _exitDialogOpen = false;
     }
@@ -1103,29 +1359,40 @@ class _HomePageState extends State<HomePage> {
   /// why, and the failed copy the work went to (유저 2026-09-23,
   /// whole-write-temp-beside-the-file). The service tells once per run of
   /// failures, so a file that stays locked is not announced every tick.
-  void _tellWhatTheClockCouldNotSave(Object error) {
-    if (!mounted) {
-      return;
-    }
-    if (error is SaveFailure) {
-      unawaited(showSaveFailure(context, _session, error));
-    } else {
-      showFileError(context, error);
-    }
+  /// A project behind the one on screen says it when it is shown.
+  void _tellWhatTheClockCouldNotSave(
+    EditorSessionManager session,
+    Object error,
+  ) {
+    _sayAbout(session, () async {
+      if (error is SaveFailure) {
+        await showSaveFailure(context, session, error);
+      } else {
+        showFileError(context, error);
+      }
+    });
   }
 
   /// PEN-12 #8: a dirty NEVER-SAVED project asked for its first real
   /// file — offer the Save As picker right here; declining stops the
   /// asking for the rest of the session (the user chose to live risky).
-  Future<void> _promptUnsavedAutosave() async {
+  ///
+  /// Asked only with that project ON SCREEN (I-7): the picker saves the
+  /// project it is asked about, and a tab behind the one in front is asked
+  /// at a tick after it is shown — its question is not spent meanwhile.
+  Future<void> _promptUnsavedAutosave(EditorSessionManager session) async {
     // Every platform prompts. PICK-2: the Save As flow behind this is the
     // OS file dialog on Windows and Linux, and a folder grant plus a name
     // prompt on iPadOS, macOS and Android — the in-app browser it used to
     // reach on mobile is gone.
-    if (_unsavedAutosavePromptShown || !mounted) {
+    final hooks = _hooks[session];
+    if (hooks == null ||
+        hooks.unsavedAutosavePromptShown ||
+        !mounted ||
+        !identical(session, _session)) {
       return;
     }
-    _unsavedAutosavePromptShown = true;
+    hooks.unsavedAutosavePromptShown = true;
     final save = await askConfirm(
       context,
       ConfirmQuestion(
@@ -1142,10 +1409,79 @@ class _HomePageState extends State<HomePage> {
       accept: ConfirmChoice(AppText.strings.commonSaveAs),
     );
     if ((save ?? false) && mounted) {
-      await promptSaveProjectAs(context, _session);
+      await promptSaveProjectAs(context, session);
     }
   }
 }
 
+/// What the shell hangs on ONE open project, held so it can be taken off
+/// again when the project closes (I-7) — and what the shell keeps for it:
+/// its autosave, the questions it has already asked, and what it has to
+/// say once it is on screen.
+final class _ProjectHooks {
+  _ProjectHooks(this.session, {required this.autosave});
+
+  final EditorSessionManager session;
+
+  /// Autosave (P3): dirty-session snapshots into the project's file. The
+  /// service decides WHETHER; the shell's one clock decides WHEN.
+  final ProjectAutosaveService autosave;
+
+  /// PEN-12 #8: the never-saved autosave prompt fires once per project — a
+  /// declined prompt must not nag every tick.
+  bool unsavedAutosavePromptShown = false;
+
+  /// Whether the vanished-file notice was said for the current
+  /// disappearance — see `_warnIfProjectFileVanished`.
+  bool toldProjectFileVanished = false;
+
+  /// What came up while the project was behind another — said when it is
+  /// on screen, in the order it came.
+  final List<Future<void> Function()> waiting = [];
+
+  VoidCallback? _voiceNotice;
+
+  void hang(_HomePageState shell) {
+    final history = session.historyManager;
+    // R16-①: undo/redo over a PENDING move session adopts it into history
+    // first — an undo never pops out from under the unadopted lift.
+    history.onBeforeUndoRedo =
+        shell._canvasSelectionCommands.confirmPendingMove;
+    // ...and a step that WAITED for its pictures asks first whether there
+    // is anything to adopt: work begun after the press is the user's.
+    history.pendingBeforeUndoRedo = () =>
+        shell._canvasSelectionCommands.movePending ||
+        shell._canvasSelectionCommands.transformActive;
+    history.addListener(shell._recordRecentColor);
+    // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
+    // through this channel — the toggle button was not the caller, so its
+    // snackbar path never runs.
+    _voiceNotice = () => shell._showVoiceRecordingNotice(session);
+    session.voiceRecording.voiceRecordingNotice.addListener(_voiceNotice!);
+  }
+
+  void unhang(_HomePageState shell) {
+    session.historyManager.removeListener(shell._recordRecentColor);
+    if (_voiceNotice case final notice?) {
+      session.voiceRecording.voiceRecordingNotice.removeListener(notice);
+    }
+    waiting.clear();
+  }
+
+  /// Says, in order, what waited for this project to be on screen.
+  void sayWhatWaited(_HomePageState shell) {
+    final said = [...waiting];
+    waiting.clear();
+    unawaited(() async {
+      for (final say in said) {
+        if (!shell.mounted) {
+          return;
+        }
+        await say();
+      }
+    }());
+  }
+}
+
 /// R26 #43's four answers live in [UnsavedWorkChoice] now, shared with the
-// open flow's gate.
+// window's gate and a tab's close button.

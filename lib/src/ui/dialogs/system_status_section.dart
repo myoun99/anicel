@@ -18,9 +18,10 @@ import '../theme/app_theme.dart';
 /// them up. Fallback rows tint amber — a packaging problem becomes a
 /// visible state instead of a mystery slowdown.
 class SystemStatusSection extends StatelessWidget {
-  const SystemStatusSection({super.key, required this.session});
+  const SystemStatusSection({super.key, required this.openSessions});
 
-  final EditorSessionManager session;
+  /// Every open project — the census adds them all up (I-7).
+  final Iterable<EditorSessionManager> openSessions;
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +50,7 @@ class SystemStatusSection extends StatelessWidget {
         // ⛔The line STAYS, because "which subsystem is running and what is
         // it costing" is still one question. It just reads the same census
         // the tab does now, so the two can never disagree.
-        _MemoryRow(session: session),
+        _MemoryRow(openSessions: openSessions),
         const SizedBox(height: 10),
         for (final entry in entries) ...[
           _EntryRow(entry: entry),
@@ -73,9 +74,9 @@ class SystemStatusSection extends StatelessWidget {
 /// say so rather than substituting the device's RAM, which is a
 /// different question and the one that has been standing in for this.
 class _MemoryRow extends StatelessWidget {
-  const _MemoryRow({required this.session});
+  const _MemoryRow({required this.openSessions});
 
-  final EditorSessionManager session;
+  final Iterable<EditorSessionManager> openSessions;
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +88,7 @@ class _MemoryRow extends StatelessWidget {
     // here" on Windows and Linux, because ABI v29 answered only on Apple.
     // The engine answers everywhere now (2026-09-10) and the census stays
     // the ONE place that decides which number this is.
-    final census = collectMemoryCensus(session);
+    final census = collectMemoryCensus(openSessions);
     final footprint = census.footprintBytes;
     final available = census.availableBytes;
     final interrupted = MemoryBlackBox.lastUnfinished;

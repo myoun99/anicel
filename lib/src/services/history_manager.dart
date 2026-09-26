@@ -157,7 +157,7 @@ class HistoryManager extends ChangeNotifier {
   /// question that was not asked of it.
   set byteBudget(int value) {
     _budget.bytes = value;
-    VolatileScratchFiles.ceilingBytes = value;
+    VolatileScratchFiles.allow(this, value);
   }
 
   /// Bytes the snapshot entries currently report — BOTH stacks
@@ -334,6 +334,7 @@ class HistoryManager extends ChangeNotifier {
     // the run ends.
     dropPayloadsOf(_undoStack);
     dropPayloadsOf(_redoStack);
+    VolatileScratchFiles.forget(this);
     super.dispose();
   }
 

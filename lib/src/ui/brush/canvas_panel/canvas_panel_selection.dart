@@ -32,9 +32,30 @@ class _CanvasPanelSelection {
     );
   }
 
+  /// The recorder [bindSelectionHistoryRecorder] last put on the channel.
+  void Function(CanvasSelectionRegion? before, CanvasSelectionRegion? after)?
+  _installedRecorder;
+
   void bindSelectionHistoryRecorder() {
+    _installedRecorder = recordSelectionChange;
     _state.widget.selectionCommands?.regionHistoryRecorder =
-        recordSelectionChange;
+        _installedRecorder;
+  }
+
+  /// Takes off the recorder THIS panel installed, and only that one.
+  ///
+  /// 🚨The canvas built for a tab coming on screen installs its own BEFORE
+  /// the one it replaces is disposed (I-7: the canvas is rebuilt per
+  /// project, and a new element mounts in the build that retires the old),
+  /// so an unconditional null here left the new project's marquee with no
+  /// history. The paste and re-input handlers already guard the same way.
+  void unbindSelectionHistoryRecorder() {
+    final commands = _state.widget.selectionCommands;
+    if (commands != null &&
+        identical(commands.regionHistoryRecorder, _installedRecorder)) {
+      commands.regionHistoryRecorder = null;
+    }
+    _installedRecorder = null;
   }
 
   void handleSelectionChannelChanged() {

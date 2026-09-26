@@ -169,7 +169,19 @@ class _WorkspaceTabs {
     );
   }
 
-  EditorPanelTab tabFor(String tabId) {
+  /// [tabId]'s tab, built for the project on screen.
+  ///
+  /// 🚨★★★EVERY PANEL IS BUILT FOR ONE PROJECT (I-7, a project per tab). A
+  /// panel host takes the session into its State — listeners, stores,
+  /// caches made from it — and a project tab switch hands this window another
+  /// session. Keyed by the session, each panel is made again for the
+  /// project that came on screen instead of carrying the last one's State
+  /// into it: one key here rather than a switch handler in every host,
+  /// which is the shape that forgets one.
+  EditorPanelTab tabFor(String tabId) =>
+      _tabForId(tabId).builtFor(_state.widget.session);
+
+  EditorPanelTab _tabForId(String tabId) {
     final locked = _state._lockedTabIds.contains(tabId);
     switch (tabId) {
       case EditorWorkspace.toolsTabId:
@@ -252,9 +264,10 @@ class _WorkspaceTabs {
                 canvasSelectionCommands: _state.widget.canvasSelectionCommands,
                 cutPieceSlot: _state._cutPieceSlot,
                 lastStroke: _state.widget.lastStroke,
+                toolHold: _state.widget.toolHold,
                 cameraViewEnabled: _state._views._cameraViewEnabled,
                 cameraDimOpacity: _state._views._cameraDimOpacity,
-                expandedLaneLayerIds: _state._expandedLaneLayerIds,
+                expandedLaneLayerIds: _state.widget.session.railView.expandedLaneLayerIds,
                 fillOptions: _state._views._fillOptions,
                 selectionMaskOptions: _state._views._selectionMaskOptions,
                 transformOptions: _state._transformOptions,
@@ -765,8 +778,8 @@ class _WorkspaceTabs {
               // #4): the host scopes it to the panel subtree, so a zoom
               // step skips this whole tab rebuild.
               _state._showSecondsDisplay,
-              _state._expandedLaneLayerIds,
-              _state._expandedLaneGroupKeys,
+              _state.widget.session.railView.expandedLaneLayerIds,
+              _state.widget.session.railView.expandedLaneGroupKeys,
               _state.widget.session.railView.hiddenSections,
               _state.widget.session.railView.collapsedAttachBaseIds,
               _state.widget.session.railView.rowFilter,
@@ -841,9 +854,9 @@ class _WorkspaceTabs {
               timelineFrameAxisOffset:
                   _state._frameAxisOffsets[LayerRailId.timeline],
               xsheetFrameAxisOffset: _state._frameAxisOffsets[LayerRailId.xsheet],
-              expandedLaneLayerIds: _state._expandedLaneLayerIds.value,
+              expandedLaneLayerIds: _state.widget.session.railView.expandedLaneLayerIds.value,
               onToggleLayerLanes: _state._toggleLayerLanes,
-              expandedLaneGroupKeys: _state._expandedLaneGroupKeys.value,
+              expandedLaneGroupKeys: _state.widget.session.railView.expandedLaneGroupKeys.value,
               onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
               hiddenSections:
                   _state.widget.session.railView.hiddenSections.value,

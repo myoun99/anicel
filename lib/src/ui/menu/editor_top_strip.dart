@@ -3,6 +3,8 @@ import 'dart:io' show File, FileSystemException;
 
 import 'package:flutter/material.dart';
 
+import '../../controllers/default_project_helpers.dart'
+    show newUntitledProject;
 import '../../core/path_names.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ProjectAssetLayout;
@@ -28,6 +30,10 @@ import '../text/app_strings.dart';
 import '../../models/import/import_warning.dart';
 import '../text/model_vocabulary.dart';
 import '../text/place_lines.dart' show celPlaceLine;
+import '../input/control_press_claim.dart';
+import '../open_projects.dart';
+import '../widgets/app_icon_button.dart';
+import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
@@ -66,7 +72,8 @@ import '../theme/app_theme.dart';
 class EditorTopStrip extends StatelessWidget {
   const EditorTopStrip({
     super.key,
-    required this.session,
+    required this.projects,
+    required this.onCloseProject,
     required this.panelsMenu,
     this.brushTool,
     this.colorBackground,
@@ -74,7 +81,16 @@ class EditorTopStrip extends StatelessWidget {
     this.onColorPaletteChanged,
   });
 
-  final EditorSessionManager session;
+  /// The projects open in the window — the strip's tabs (I-7).
+  final OpenProjects projects;
+
+  /// A tab's ✕ — the shell's, because closing asks about unsaved work with
+  /// the project on screen, and lets its session go.
+  final ValueChanged<EditorSessionManager> onCloseProject;
+
+  /// The project on screen: what every entry in the project popover acts on.
+  EditorSessionManager get session => projects.active;
+
   final WorkspacePanelsMenuController panelsMenu;
 
   /// The active tool's settings. The size and opacity bars ride the strip's
@@ -147,8 +163,8 @@ class EditorTopStrip extends StatelessWidget {
     await _openPickedProject(context, pick);
   }
 
-  /// Opens [pick] behind the unsaved-work gate, from a staged copy if the
-  /// file will not read in place, and records it in Recents afterwards.
+  /// Opens [pick] in a tab of its own, from a staged copy if the file will
+  /// not read in place, and records it in Recents afterwards.
   ///
   /// Shared with the Recent-projects rows on purpose: opening from Recent is
   /// the ONE-TAP common case PICK-4 exists to make, and every guard this
@@ -156,6 +172,12 @@ class EditorTopStrip extends StatelessWidget {
   ///
   /// 🪦It offered autosave RECOVERY first until 2026-09-08, and that is the
   /// whole of what it lost.
+  ///
+  /// 🪦And the UNSAVED-WORK GATE stood here while opening REPLACED the
+  /// project on screen — 「opening ANOTHER project closes this one as surely
+  /// as the window's X」. 유저 2026-09-26 (I-7): 「프로젝트 열기로 열면 지금
+  /// 프로젝트가 교체되는데 새로 여는걸로」. Opening closes nothing now, so
+  /// there is nothing to ask; the question went to the tab's ✕.
   Future<void> _openPickedProject(
     BuildContext context,
     ProjectPick pick,
@@ -165,28 +187,23 @@ class EditorTopStrip extends StatelessWidget {
       await _openTvppAsProject(context, path);
       return;
     }
-    // Opening ANOTHER project closes this one as surely as the window's X,
-    // and this was the one door with no gate: a single Recents tap
-    // silently discarded a dirty session. Same question, same window, same
-    // keys as the exit gate.
-    //
-    // 🪦**AND REOPENING THE CURRENT PROJECT NO LONGER SKIPS IT.** The
-    // exception was written for recovery: the reload threw the live edits
-    // away on its own, and answering Recover on a re-open was the one way
-    // back to them — so a gate that retired the sidecar first would have
-    // closed that door. With no sidecar to reach, the exception is a
-    // silent discard with nothing behind it, and「reload from disk」is
-    // still reachable by answering Discard at the gate.
-    if (!await ensureUnsavedWorkSettled(context, session) || !context.mounted) {
+    // A file already open is SHOWN, not opened again: two sessions on one
+    // file would be two writers on one archive.
+    if (projects.boundTo(path) case final open?) {
+      projects.activate(open);
       return;
     }
+    // Read into a session no tab shows yet, so a file that fails or a wait
+    // that is cancelled leaves the tabs exactly as they were.
+    final target = projects.prepare(newUntitledProject());
     final ({({bool staged}) value})? opened;
     try {
       opened = await _openBehindWindow<({bool staged})>(
         context,
-        (wait, _) => _readProject(path, wait),
+        (wait, _) => _readProject(target, path, wait),
       );
     } on Object catch (error) {
+      projects.discard(target);
       // The archive's own complaint — a file that would not parse.
       if (context.mounted) {
         showFileError(context, error);
@@ -194,18 +211,24 @@ class EditorTopStrip extends StatelessWidget {
       return;
     }
     if (opened == null || !context.mounted) {
+      projects.discard(target);
       return;
     }
+    projects.adopt(target);
     await _afterOpened(context, pick, staged: opened.value.staged);
   }
 
-  /// The read itself, from wherever the bytes are.
+  /// The read itself, from wherever the bytes are, into [target].
   ///
   /// The same materializer every open uses: a File Provider pick can be a
   /// placeholder a plain read refuses, and the archive reader needs random
   /// access — so an unreadable pick opens from a staged local copy, and the
   /// session is bound back to the real file so saves land there.
-  Future<({bool staged})> _readProject(String path, _CloudWait wait) async {
+  Future<({bool staged})> _readProject(
+    EditorSessionManager target,
+    String path,
+    _CloudWait wait,
+  ) async {
     final source = await FolderPicker.materializeOpenedFile(
       path,
       within: null,
@@ -214,7 +237,7 @@ class EditorTopStrip extends StatelessWidget {
     );
     // The bytes are here; the read that follows is the app's own.
     wait.arrived();
-    await session.projectDoor.openProjectFromFile(
+    await target.projectDoor.openProjectFromFile(
       source.path,
       // Only when they differ: binding is what says「saves go back THERE」,
       // and a session reading its own file has nowhere else.
@@ -276,37 +299,44 @@ class EditorTopStrip extends StatelessWidget {
   }
 
   /// A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp holds
-  /// several cuts): everything current is replaced, so the same
-  /// unsaved-work gate as any open guards it. No recents entry — the
-  /// result is a NEW unsaved project until its first save.
+  /// several cuts), in a tab of its own like any open (I-7). No recents
+  /// entry — the result is a NEW unsaved project until its first save.
   Future<void> _openTvppAsProject(BuildContext context, String path) async {
-    if (!await ensureUnsavedWorkSettled(context, session) || !context.mounted) {
-      return;
-    }
+    // Read into a session no tab shows yet — the .anicel open's reason.
+    final target = projects.prepare(newUntitledProject());
     // Decoding and baking a whole project is a save-sized wait; a frozen
     // screen before the cuts appear reads as a hang (hands-on, 288's 96
     // frames × 19 layers).
-    final opened = await _openBehindWindow<List<ImportWarning>?>(
-      context,
-      (wait, report) => session.tvppDoor.openAsProject(
-        tvppPath: path,
-        onProgress: (fraction) {
-          // Reading has started, so the waiting line has nothing left
-          // to say.
-          wait.arrived();
-          report(fraction);
-        },
-        onWaiting: wait.report,
-        isCancelled: wait.isCancelled,
-      ),
-    );
-    if (opened == null || !context.mounted) {
+    final ({List<ImportWarning>? value})? opened;
+    try {
+      opened = await _openBehindWindow<List<ImportWarning>?>(
+        context,
+        (wait, report) => target.tvppDoor.openAsProject(
+          tvppPath: path,
+          onProgress: (fraction) {
+            // Reading has started, so the waiting line has nothing left
+            // to say.
+            wait.arrived();
+            report(fraction);
+          },
+          onWaiting: wait.report,
+          isCancelled: wait.isCancelled,
+        ),
+      );
+    } on Object {
+      projects.discard(target);
+      rethrow;
+    }
+    final warnings = opened?.value;
+    if (opened == null || warnings == null || !context.mounted) {
+      projects.discard(target);
+      if (opened != null && context.mounted) {
+        showFileError(context, AppText.strings.imNotTvpp);
+      }
       return;
     }
-    final warnings = opened.value;
-    if (warnings == null) {
-      showFileError(context, AppText.strings.imNotTvpp);
-    } else if (warnings.isNotEmpty) {
+    projects.adopt(target);
+    if (warnings.isNotEmpty) {
       await showAppNotice(
         context,
         windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
@@ -528,6 +558,14 @@ class EditorTopStrip extends StatelessWidget {
   /// a once-a-session verb, so it belongs behind the same button as saving
   /// rather than costing a permanent slot.
   List<PanelFlyoutEntry> _projectEntries(BuildContext context) => [
+    // 🗣️유저 2026-09-26 (I-7): 「새 프로젝트는 현재 프로젝트 냅두고 새로
+    // 여는거야」 — a tab of its own beside the ones already open.
+    _item(
+      id: 'file-new',
+      label: 'New project',
+      icon: Icons.note_add_outlined,
+      onPressed: () => projects.open(newUntitledProject()),
+    ),
     _item(
       id: 'file-open',
       label: 'Open…',
@@ -643,7 +681,13 @@ class EditorTopStrip extends StatelessWidget {
       label: 'Preferences…',
       icon: Icons.tune,
       onPressed: () {
-        unawaited(showPreferencesDialog(context, session: session));
+        unawaited(
+          showPreferencesDialog(
+            context,
+            session: session,
+            openSessions: projects.sessions,
+          ),
+        );
       },
     ),
     const PanelFlyoutDivider(),
@@ -819,20 +863,6 @@ class EditorTopStrip extends StatelessWidget {
     ),
   ];
 
-  /// What the strip calls the work: the saved file's name without its
-  /// extension, and nothing at all before the first save. A placeholder
-  /// like "Untitled" would be a label that never changes into anything —
-  /// the empty middle is honest, and it is where the project SWITCHER goes
-  /// once more than one project can be open at a time.
-  ///
-  /// ⛔It spelled the strip-the-extension walk out here, and the recent
-  /// list spelled a different one — [projectDisplayName] is the sentence
-  /// both ask now (F-146).
-  String get _projectLabel {
-    final path = session.projectFile.path;
-    return path == null ? '' : projectDisplayName(path);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -855,18 +885,9 @@ class EditorTopStrip extends StatelessWidget {
         const _StripGroupRule(),
         const SizedBox(width: 6),
         _FloorSwitch(panelsMenu: panelsMenu),
+        const SizedBox(width: 6),
         Expanded(
-          child: Center(
-            child: Text(
-              _projectLabel,
-              key: const ValueKey<String>('top-strip-project-name'),
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+          child: _ProjectTabRow(projects: projects, onClose: onCloseProject),
         ),
         // 유저 확정 order, left to right: blend + its lock, a rule, then
         // size and opacity each with their pressure curve, then the colour.
@@ -1152,6 +1173,225 @@ class _BlendModeControl extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// What a project tab says: the saved file's name without its extension,
+/// or 「Untitled n」 for a project never saved — the one label the tab row
+/// and its overflow list both show.
+///
+/// ↩️The strip's middle used to be BLANK before the first save: 「a
+/// standing "Untitled" would be a label that never becomes anything; the
+/// empty middle is where the project switcher goes when more than one can
+/// be open」 (472c99d0b — this code's own reasoning, not a ruling). The
+/// switcher came (I-7), and a blank tab is one nobody can tell from the
+/// next; 「Untitled n」 does become something — the file's name, at the
+/// first save.
+///
+/// ⛔[projectDisplayName] is the sentence the recent list asks too (F-146).
+String projectTabLabel(OpenProjects projects, EditorSessionManager session) {
+  final path = session.projectFile.path;
+  if (path != null) {
+    return projectDisplayName(path);
+  }
+  return AppText.strings.untitledProjectTab.replaceAll(
+    '{n}',
+    '${projects.untitledNumberOf(session) ?? 1}',
+  );
+}
+
+/// The open projects, one tab each — the strip's middle (I-7).
+///
+/// 🗣️유저 2026-09-26: 「상단띠에 프로젝트 리스트있고 닫기버튼있고」, and
+/// 「닫기버튼은 프로젝트 탭에 닫기버튼있으니 필요없을거같다」 — a tab is how a
+/// project is both shown and closed. Its ✕ is always there, not on hover:
+/// a control that appears under the pointer is UI this app does not make.
+///
+/// ⛔Selection is COLOUR only — the shown tab wears the raised fill and the
+/// accent label. The tabs share the row and shrink with it, their names cut
+/// short; what cannot fit at [_minTabWidth] waits in a list at the row's
+/// end, in a tab's place — the panel strips' law for a row too full
+/// (「넘치면 오버플로로 넘긴다」), and with it their other half: the tabs
+/// shown never depend on which one is selected (tabs jumping under the
+/// pointer when you pick one), so a selected tab in the list is spoken for
+/// by the list's button instead.
+class _ProjectTabRow extends StatelessWidget {
+  const _ProjectTabRow({required this.projects, required this.onClose});
+
+  final OpenProjects projects;
+  final ValueChanged<EditorSessionManager> onClose;
+
+  static const double _minTabWidth = 96;
+  static const double _maxTabWidth = 200;
+
+  @override
+  Widget build(BuildContext context) {
+    final sessions = projects.sessions;
+    final active = projects.active;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        var room = sessions.length;
+        if (room * _minTabWidth > constraints.maxWidth) {
+          // The list's button takes one tab's place.
+          room = (constraints.maxWidth / _minTabWidth).floor() - 1;
+          room = room < 0 ? 0 : room;
+        }
+        final shown = sessions.take(room).toList();
+        final hidden = sessions.skip(room).toList();
+        return Row(
+          children: [
+            for (final session in shown)
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: _maxTabWidth),
+                  child: _ProjectTab(
+                    index: sessions.indexOf(session),
+                    label: projectTabLabel(projects, session),
+                    selected: identical(session, active),
+                    onSelected: () => projects.activate(session),
+                    onClose: () => onClose(session),
+                  ),
+                ),
+              ),
+            if (hidden.isNotEmpty)
+              SizedBox(
+                width: _minTabWidth,
+                child: _ProjectTabOverflow(
+                  projects: projects,
+                  hidden: hidden,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// One project's tab: its name, and its ✕.
+class _ProjectTab extends StatelessWidget {
+  const _ProjectTab({
+    required this.index,
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+    required this.onClose,
+  });
+
+  final int index;
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final shape = AppShapes.control(AppShapes.controlSmall);
+    // Pressing the shown tab does nothing, so it takes no press at all.
+    final press = selected ? null : onSelected;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+      child: AppTooltip(
+        message: label,
+        child: Material(
+          color: selected ? colorScheme.surfaceContainerHigh : null,
+          shape: shape,
+          type: selected ? MaterialType.canvas : MaterialType.transparency,
+          child: ControlPressClaim(
+            onPressed: press,
+            child: InkWell(
+              key: ValueKey<String>('project-tab-$index'),
+              customBorder: shape,
+              onTap: silentPress(press),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 10, right: 3),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        label,
+                        // The key the strip's name has always worn, on the
+                        // name of the project on screen.
+                        key: selected
+                            ? const ValueKey<String>('top-strip-project-name')
+                            : null,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: selected
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    // The window's own ✕ — the same button, the same size.
+                    AppIconButton(
+                      keyValue: 'project-tab-close-$index',
+                      tooltip: AppText.strings.commonClose,
+                      size: AppIconButtonSize.micro,
+                      icon: const Icon(Icons.close),
+                      onPressed: onClose,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The tabs that did not fit, in a list — and, while the project on screen
+/// is one of them, its name, since no tab is lit anywhere else.
+class _ProjectTabOverflow extends StatelessWidget {
+  const _ProjectTabOverflow({required this.projects, required this.hidden});
+
+  final OpenProjects projects;
+  final List<EditorSessionManager> hidden;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final sessions = projects.sessions;
+    final active = projects.active;
+    final activeHidden = hidden.any((session) => identical(session, active));
+    return PanelFlyoutTrigger(
+      key: const ValueKey<String>('project-tab-overflow'),
+      tooltip: '+${hidden.length}',
+      padding: EdgeInsets.zero,
+      entriesBuilder: () => [
+        for (final session in hidden)
+          PanelFlyoutItem(
+            keyValue: 'project-tab-overflow-${sessions.indexOf(session)}',
+            label: projectTabLabel(projects, session),
+            // ⛔NOT a check: the open one accents, as a tab does.
+            selected: identical(session, active),
+            onSelected: () => projects.activate(session),
+          ),
+      ],
+      child: Center(
+        child: Text(
+          activeHidden ? projectTabLabel(projects, active) : '+${hidden.length}',
+          key: activeHidden
+              ? const ValueKey<String>('top-strip-project-name')
+              : null,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            color: activeHidden
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2057,6 +2297,20 @@ Future<void> promptSaveProjectAs(
   // F-14: the suffix is the PICK's answer now — it is the only place that
   // can also answer for the placeholder it left at the un-suffixed name.
   final path = pick.path;
+  // ONE FILE, ONE WRITER (I-7): another tab's file is refused here, in
+  // words, before a byte is written to it — the door refuses the same path
+  // on its own ([ProjectFile.isOpenElsewhere]). ⚠️A platform whose picker
+  // PLACES the archive has written it by now; refusing still keeps this
+  // session from binding there, which is the second writer.
+  if (session.projectFile.isOpenElsewhere(path)) {
+    await showAppNotice(
+      context,
+      windowKey: const ValueKey<String>('file-open-in-another-tab-notice'),
+      title: AppText.strings.commonNotice,
+      message: AppText.strings.fileOpenInAnotherTab,
+    );
+    return;
+  }
   final written = staged;
   if (pick.placed && written != null) {
     // 🚨NO SECOND WRITE. The picker MOVED the archive this session just

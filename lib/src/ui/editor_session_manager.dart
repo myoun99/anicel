@@ -11,7 +11,6 @@ import '../services/project_lookup.dart' show cutPositionOf;
 import '../models/app_language.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_memory_settings.dart';
-import 'brush/brush_tool_state.dart' show CanvasTool;
 import '../models/app_input_settings.dart';
 import 'session/drags/media_placement_drag.dart';
 import 'session/attach_fx_confirm.dart';
@@ -25,6 +24,7 @@ import '../controllers/timeline_controller.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
+import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
 import '../models/drawing_guide.dart';
 import '../models/transform_track.dart';
@@ -84,6 +84,7 @@ import '../services/history_places.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
+import 'brush/canvas_selection_commands.dart' show CanvasSelectionDocument;
 // ⑨: the row selection grows through the SAME span law the cell selection
 // uses — the rail's own drawn row list.
 import 'timeline/timeline_cell_exposure_state.dart';
@@ -177,10 +178,14 @@ class EditorSessionManager extends ChangeNotifier
     AudioConformStore? audioConformStore,
     MediaStagingStore? mediaStagingStore,
     ImageCache? frameworkImageCache,
+    FailedSaveCopies? failedSaveCopies,
+    bool Function(String path)? fileIsOpenElsewhere,
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _injectedMediaStagingStore = mediaStagingStore,
        _frameworkImageCache = frameworkImageCache,
+       failedSaveCopies = failedSaveCopies ?? FailedSaveCopies(),
+       _fileIsOpenElsewhere = fileIsOpenElsewhere,
        _ownsAppSettings = appSettings == null,
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
@@ -279,6 +284,29 @@ class EditorSessionManager extends ChangeNotifier
   void setMemorySettings(AppMemorySettings settings) =>
       appSettings.setMemorySettings(settings);
 
+  /// How much of the device's allowance this project's own caches may take:
+  /// all of it on screen, a share in a background tab — the shell says
+  /// which ([OpenProjects], I-7). What it scales is what can be rebuilt or
+  /// is kept whole elsewhere: the hot cels cool to the scratch room, the
+  /// playback frames render again.
+  ///
+  /// ⛔NOT the undo stack. Its entries are the user's history, and a
+  /// smaller budget parks them into a room that shrinks with it — the room
+  /// weighs what the stack was allowed to (유저 확정 2026-09-10) — and past
+  /// a full room the stack DROPS entries. A tab left in the background must
+  /// not cost its history.
+  double get cacheShare => _cacheShare;
+
+  double _cacheShare = 1;
+
+  set cacheShare(double share) {
+    if (share == _cacheShare) {
+      return;
+    }
+    _cacheShare = share;
+    _applyCacheBudgets();
+  }
+
   /// Every cache's budget at the automatic allowance, on this device's
   /// laws — what the memory tab's slider scales.
   late final CacheBudgets deviceCacheBudgets = CacheBudgets.forDevice(
@@ -311,10 +339,15 @@ class EditorSessionManager extends ChangeNotifier
         AppMemory.settings.value.allowanceBytes ?? automaticAllowance;
     final by = deviceCacheBudgets.factorFor(allowance);
     final budgets = deviceCacheBudgets.scaledBy(by);
+    // This project's OWN caches take its share of the allowance ([cacheShare]);
+    // the lines below them are the process's and take it whole.
+    final own = _cacheShare == 1
+        ? budgets
+        : deviceCacheBudgets.scaledBy(by * _cacheShare);
     MemoryAllowance.factor.value = by;
-    renderCaches.applyCacheBudgets(budgets);
+    renderCaches.applyCacheBudgets(own);
     historyManager.byteBudget = budgets.undo;
-    playbackRig.playbackCache.playbackCacheByteBudget = budgets.playback;
+    playbackRig.playbackCache.playbackCacheByteBudget = own.playback;
     QaNativeEngine.instance?.nativeUploadByteBudget = budgets.nativeUploads;
     BrushTipStampCache.instance.byteBudget = budgets.brushTips;
     BrushLiveStrokeRasterizer.residentResultByteBudget = budgets.liveStroke;
@@ -348,16 +381,6 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
   );
 
-  /// The tool a temporary hold sprang FROM; null = no hold live.
-  ///
-  /// It lives here rather than in the canvas area's State because the PEN
-  /// TAIL holds for as long as the pen stays flipped — across strokes,
-  /// panel rebuilds and tab switches — where a barrel hold lasted one
-  /// press. A State that unmounted mid-hold would lose the tool to spring
-  /// back to, and leave the user holding an eraser with nothing to undo
-  /// it. Not a listenable: only the release path reads it.
-  CanvasTool? heldOriginalTool;
-
   // ── every pixel this session is holding: its own object ─────────────
   //
   // A collaborator (session/render_caches.dart): the cel stores the
@@ -377,8 +400,8 @@ class EditorSessionManager extends ChangeNotifier
     onEditActivity: () => playbackRig.prerenderScheduler.notifyEditActivity(),
   );
 
-  /// The OS memory-pressure signal, forwarded by the workspace's binding
-  /// observer: the hot cel tier halves and cools, and the playback caches
+  /// The OS memory-pressure signal, forwarded by the shell to every open
+  /// project: the hot cel tier halves and cools, and the playback caches
   /// re-run their budget against the shrunken world. Standing down is
   /// lossless by construction — cels encode to cold, dirty ones stay.
   void respondToMemoryPressure() {
@@ -648,8 +671,25 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   /// What the rail leaves off the screen (sections, the row filter, folded
-  /// attach groups) — held here because the standing law reads it (F-169).
+  /// attach groups) and what it twirls open — held here because the
+  /// standing law reads it (F-169), and the rows it names are this
+  /// project's (I-7).
   late final RailView railView = RailView();
+
+  /// Where this project's CANVAS is framed — its zoom, pan and turn; null
+  /// until something frames it, which the canvas resolves to the identity
+  /// at read time.
+  ///
+  /// 🚨The PROJECT's since I-7 (a project per tab). The canvas is rebuilt
+  /// for the tab on screen, so a framing kept in its State went with every
+  /// switch, and a tab came back at the identity rather than where it was
+  /// left.
+  final ValueNotifier<CanvasViewport?> canvasViewport = ValueNotifier(null);
+
+  /// This project's marquee and polygon trace — the app's selection channel
+  /// shows it while this project is on screen (I-7; see
+  /// [CanvasSelectionDocument]).
+  final CanvasSelectionDocument canvasSelection = CanvasSelectionDocument();
 
   // Where the user stands (Round 6): cut, row and layer.
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId));
@@ -1293,6 +1333,7 @@ class EditorSessionManager extends ChangeNotifier
     cutVerbs.dispose,
     trackFrameRangeSelection.dispose,
     railView.dispose,
+    canvasViewport.dispose,
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
     standing.dispose,
@@ -3365,6 +3406,7 @@ class EditorSessionManager extends ChangeNotifier
   late final ProjectFile projectFile = ProjectFile(
     project: this,
     staging: mediaStagingStore,
+    openElsewhere: _fileIsOpenElsewhere,
   );
 
   // ── the media pool: its own object ───────────────────────────────────
@@ -3411,7 +3453,14 @@ class EditorSessionManager extends ChangeNotifier
   /// whole-write-temp-beside-the-file). Here rather than on the project
   /// file because it outlives any one binding: a person who opened another
   /// project can still back up the last one's.
-  late final FailedSaveCopies failedSaveCopies = FailedSaveCopies();
+  ///
+  /// 🚨ONE per app, handed to every open project by the shell (I-7): the
+  /// list is the RUN's, so a tab that closed leaves its copy on the list the
+  /// other tabs offer. A session built without one keeps its own.
+  final FailedSaveCopies failedSaveCopies;
+
+  /// See [ProjectFile.isOpenElsewhere] — the shell's answer, handed down.
+  final bool Function(String path)? _fileIsOpenElsewhere;
 
   // ── the project-wide audio settings: their own object ────────────────
   //

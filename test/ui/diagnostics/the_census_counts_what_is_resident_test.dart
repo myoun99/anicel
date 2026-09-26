@@ -50,7 +50,8 @@ void main() {
       AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, inked()));
 
   Map<String, int> censusRows(EditorSessionManager session) => {
-    for (final item in collectMemoryCensus(session).items) item.id: item.bytes,
+    for (final item in collectMemoryCensus([session]).items)
+      item.id: item.bytes,
   };
 
   // The other half of the row: what IS resident counts, in every sheet's

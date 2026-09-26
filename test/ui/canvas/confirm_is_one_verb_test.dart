@@ -20,6 +20,7 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/last_stroke_slot.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
@@ -320,7 +321,7 @@ void main() {
     final filled = pixelsOf(tester, frameA);
     expect(inkIn(filled), greaterThan(0), reason: '⛔CONTROL: the bucket filled');
     expect(
-      sessionOf(tester).renderCaches.lastStrokeBytes,
+      LastStrokeSlot.allStrokeBytes,
       greaterThan(0),
       reason: '들고 있는 그림은 메모리 집계에 보인다',
     );

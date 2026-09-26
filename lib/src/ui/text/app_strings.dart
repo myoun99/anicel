@@ -374,6 +374,12 @@ enum AppStrings {
 
   // --- Project lifecycle confirmations ---
   String get closeProjectTitle => _s('closeProjectTitle');
+
+  /// A never-saved project's tab (I-7); `{n}` is its number this run.
+  String get untitledProjectTab => _s('untitledProjectTab');
+
+  /// Save As pointed at a file another tab has open (I-7).
+  String get fileOpenInAnotherTab => _s('fileOpenInAnotherTab');
   String get closeProjectBody => _s('closeProjectBody');
   String get closeProjectVanishedBody => _s('closeProjectVanishedBody');
   String get commonSaveAs => _s('commonSaveAs');
@@ -1797,6 +1803,8 @@ enum AppStrings {
     'guideAddVanishingPoint': 'Add vanishing point',
     'guideMakeVertical': 'Make exactly vertical',
     'closeProjectTitle': 'Close project?',
+    'untitledProjectTab': 'Untitled {n}',
+    'fileOpenInAnotherTab': 'That file is already open in another tab.',
     'closeProjectBody': 'Your changes are not saved. Close anyway?',
     'closeProjectVanishedBody':
         "This project's file is gone. Closing now takes the drawings that "
@@ -2889,6 +2897,8 @@ enum AppStrings {
     'guideAddVanishingPoint': '消失点を追加',
     'guideMakeVertical': '完全な垂直にする',
     'closeProjectTitle': 'プロジェクトを閉じますか？',
+    'untitledProjectTab': '無題 {n}',
+    'fileOpenInAnotherTab': 'そのファイルは別のタブで開いています。',
     'closeProjectBody': '変更は保存されていません。閉じますか？',
     'closeProjectVanishedBody':
         'このプロジェクトのファイルがなくなっています。このまま閉じると、その中にしか'
@@ -2923,6 +2933,7 @@ enum AppStrings {
     'menuBarHelp': 'ヘルプ',
     'menuPlay': '再生',
     'menuPause': '一時停止',
+    'menuAction.file-new': '新規プロジェクト',
     'menuAction.file-open': '開く…',
     'menuAction.file-import': '読み込み／配置…',
     'menuAction.file-export': '書き出し…',
@@ -4218,6 +4229,8 @@ enum AppStrings {
     'guideAddVanishingPoint': '소실점 추가',
     'guideMakeVertical': '정확히 수직으로',
     'closeProjectTitle': '프로젝트를 닫을까요?',
+    'untitledProjectTab': '제목 없음 {n}',
+    'fileOpenInAnotherTab': '그 파일은 다른 탭에서 열려 있습니다.',
     'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
     'closeProjectVanishedBody':
         '이 프로젝트의 파일이 사라졌습니다. 지금 닫으면 그 안에만 있던 그림도 함께 '
@@ -4252,6 +4265,7 @@ enum AppStrings {
     'menuBarHelp': '도움말',
     'menuPlay': '재생',
     'menuPause': '일시정지',
+    'menuAction.file-new': '새 프로젝트',
     'menuAction.file-open': '열기…',
     'menuAction.file-import': '가져오기/배치…',
     'menuAction.file-export': '내보내기…',
@@ -5549,6 +5563,8 @@ enum AppStrings {
     'guideAddVanishingPoint': 'Ajouter un point de fuite',
     'guideMakeVertical': 'Rendre exactement vertical',
     'closeProjectTitle': 'Fermer le projet ?',
+    'untitledProjectTab': 'Sans titre {n}',
+    'fileOpenInAnotherTab': 'Ce fichier est déjà ouvert dans un autre onglet.',
     'closeProjectBody':
         'Vos modifications ne sont pas enregistrées. Fermer quand même ?',
     'closeProjectVanishedBody':
@@ -5581,6 +5597,7 @@ enum AppStrings {
     'menuBarHelp': 'Aide',
     'menuPlay': 'Lire',
     'menuPause': 'Pause',
+    'menuAction.file-new': 'Nouveau projet',
     'menuAction.file-open': 'Ouvrir…',
     'menuAction.file-import': 'Importer / Placer…',
     'menuAction.file-export': 'Exporter…',
@@ -6932,6 +6949,8 @@ enum AppStrings {
     'guideAddVanishingPoint': '添加消失点',
     'guideMakeVertical': '设为完全垂直',
     'closeProjectTitle': '关闭项目？',
+    'untitledProjectTab': '未命名 {n}',
+    'fileOpenInAnotherTab': '该文件已在另一个标签页中打开。',
     'closeProjectBody': '你的更改尚未保存。仍要关闭吗？',
     'closeProjectVanishedBody':
         '此项目的文件已不在。现在关闭会一并失去只存在于该文件中的画稿。'
@@ -6961,6 +6980,7 @@ enum AppStrings {
     'menuBarHelp': '帮助',
     'menuPlay': '播放',
     'menuPause': '暂停',
+    'menuAction.file-new': '新建项目',
     'menuAction.file-open': '打开…',
     'menuAction.file-import': '导入/放置…',
     'menuAction.file-export': '导出…',

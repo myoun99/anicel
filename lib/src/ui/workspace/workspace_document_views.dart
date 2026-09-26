@@ -10,12 +10,9 @@ part of '../editor_workspace.dart';
 ///
 /// 🚨A collaborator carved out of `_EditorWorkspaceState` (the audit's SRP
 /// cut, Round 6, 2026-09-03). Measured before cutting: nineteen fields the
-/// workspace held only to hand to its tabs and dispose. It reaches the
-/// workspace through `_state`.
+/// workspace held only to hand to its tabs and dispose.
 class _WorkspaceDocumentViews {
-  _WorkspaceDocumentViews(this._state);
-
-  final _EditorWorkspaceState _state;
+  _WorkspaceDocumentViews();
 
   /// The fill tool's flood options (Tool Settings knobs).
   final ValueNotifier<FloodFillOptions> _fillOptions = ValueNotifier(
@@ -51,14 +48,6 @@ class _WorkspaceDocumentViews {
   /// alone used to start on.
   final ValueNotifier<bool> _timesheetBrushAllowed = ValueNotifier(false);
 
-  /// The timesheet's ink (S2 annotations): the coordinators owned here so
-  /// freehand memos survive tab switches, the cel stores the SESSION's so
-  /// the archive saves them — the conte's arrangement (R5), below.
-  late final TimesheetInkController _timesheetInk = TimesheetInkController(
-    stripStore: _state.widget.session.renderCaches.timesheetInkStripStore,
-    pageStore: _state.widget.session.renderCaches.timesheetInkPageStore,
-  );
-
   /// Conte tab view state (#16 — the conte rides the same canvas shell):
   /// the sheet viewport and its brush switch, owned here like the
   /// timesheet's. The brush starts OFF: the conte's first verb is reading
@@ -82,20 +71,45 @@ class _WorkspaceDocumentViews {
   /// switch and would drop their images each time.
   final SheetImageCache _sheetImages = SheetImageCache();
 
+  /// The three sheets' ink — each controller over the project on screen's
+  /// stores, made again for each project that comes on screen
+  /// ([bindSession]).
+  ///
   /// The cel stores are the SESSION's (R5): the archive saves and loads
-  /// them with the project; this controller owns only the edit sessions.
-  late final ConteInkController _conteInk = ConteInkController(
-    rowStore: _state.widget.session.renderCaches.conteInkRowStore,
-    pageStore: _state.widget.session.renderCaches.conteInkPageStore,
-  );
+  /// them with the project; a controller owns only the edit sessions. The
+  /// timesheet's joined them with I-7 — its controller made its own, so its
+  /// memos were the window's and showed on every project's sheet.
+  late TimesheetInkController _timesheetInk;
 
-  late final CutEnvelopeInkController _envelopeInk = CutEnvelopeInkController(
-    store: _state.widget.session.renderCaches.envelopeInkStore,
-  );
+  late ConteInkController _conteInk;
 
-  /// Disposes every notifier and controller the views own; the workspace's
-  /// `dispose` calls this once. (`_selectionMaskOptions` was never disposed
-  /// while it lived on the workspace — it is now.)
+  late CutEnvelopeInkController _envelopeInk;
+
+  /// Makes the ink controllers over [session]'s stores — the workspace's
+  /// door for the project coming on screen.
+  void bindSession(EditorSessionManager session) {
+    final caches = session.renderCaches;
+    _timesheetInk = TimesheetInkController(
+      stripStore: caches.timesheetInkStripStore,
+      pageStore: caches.timesheetInkPageStore,
+    );
+    _conteInk = ConteInkController(
+      rowStore: caches.conteInkRowStore,
+      pageStore: caches.conteInkPageStore,
+    );
+    _envelopeInk = CutEnvelopeInkController(store: caches.envelopeInkStore);
+  }
+
+  /// Lets the ink controllers go — the stores stay with their project.
+  void unbindSession() {
+    _timesheetInk.dispose();
+    _conteInk.dispose();
+    _envelopeInk.dispose();
+  }
+
+  /// Disposes every notifier the views own; the workspace's `dispose` calls
+  /// this once, after [unbindSession]. (`_selectionMaskOptions` was never
+  /// disposed while it lived on the workspace — it is now.)
   void dispose() {
     _fillOptions.dispose();
     _selectionMaskOptions.dispose();
@@ -106,13 +120,10 @@ class _WorkspaceDocumentViews {
     _timesheetPage.dispose();
     _timesheetViewport.dispose();
     _timesheetBrushAllowed.dispose();
-    _timesheetInk.dispose();
     _conteViewport.dispose();
     _conteBrushAllowed.dispose();
-    _conteInk.dispose();
     _envelopeViewport.dispose();
     _envelopeBrushAllowed.dispose();
     _sheetImages.dispose();
-    _envelopeInk.dispose();
   }
 }

@@ -120,14 +120,6 @@ class RenderCaches {
   /// at once stayed resident until the workspace closed.
   int storyboardThumbnailBytes = 0;
 
-  /// What the cut tool's held piece costs (`CutPieceSlot.pieceBytes`) —
-  /// PUSHED for the same reason: the slot lives in the workspace's State.
-  int cutPieceBytes = 0;
-
-  /// What 확정's held stroke costs (`LastStrokeSlot.strokeBytes`) — PUSHED
-  /// by the shell, which owns the slot.
-  int lastStrokeBytes = 0;
-
   /// What the media viewers hold between them.
   int get viewerRasterBytes {
     var total = 0;

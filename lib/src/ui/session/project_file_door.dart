@@ -272,6 +272,7 @@ class ProjectFileDoor {
       // point asking a file that refused this session again on a timer.
       return;
     }
+    _refuseAFileOpenElsewhere(filePath);
     // Raised for the WHOLE save, so a tick that comes due inside one stands
     // down instead of starting a SECOND write of the same file — an
     // incremental append reads the tail it is about to extend, and two of
@@ -291,6 +292,16 @@ class ProjectFileDoor {
     } finally {
       _file.endSave();
       MemoryBlackBox.end('save');
+    }
+  }
+
+  /// Throws before anything is written when [filePath] is another open
+  /// project's file — see [ProjectFile.isOpenElsewhere]. The Save As window
+  /// asks first and says so in words; this is the wall behind it, for
+  /// every save that did not come through that window.
+  void _refuseAFileOpenElsewhere(String filePath) {
+    if (_file.isOpenElsewhere(filePath)) {
+      throw FileOpenInAnotherProject(filePath);
     }
   }
 
@@ -497,6 +508,7 @@ class ProjectFileDoor {
     String placedPath, {
     required StagedArchive staged,
   }) {
+    _refuseAFileOpenElsewhere(placedPath);
     _file.bindToSavedFile(
       placedPath,
       mediaInFile: staged.mediaInFile,

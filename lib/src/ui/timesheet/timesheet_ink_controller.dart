@@ -29,7 +29,7 @@ enum TimesheetInkPlane {
       key.layerId == timesheetInkStripLayerId ? strip : page;
 }
 
-/// Owns the sheet ink stores: brush strokes on the timesheet, kept in
+/// The timesheet's ink: brush strokes on the timesheet, kept in
 /// coordinators/stores fully SEPARATE from the session's cel
 /// [BrushFrameStore] so sheet ink can never leak into cel rendering or
 /// export. Strokes commit through the app [HistoryManager] with the same

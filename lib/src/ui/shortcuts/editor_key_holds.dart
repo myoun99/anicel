@@ -34,8 +34,8 @@ final class EditorKeyHolds {
     required this.bindings,
     required this.tool,
     required this.temporaryTool,
-    required this.strokeLive,
-  }) {
+    required ValueListenable<bool> strokeLive,
+  }) : _strokeLive = strokeLive {
     HardwareKeyboard.instance.addHandler(_onKey);
     strokeLive.addListener(_onStrokeLive);
   }
@@ -48,7 +48,23 @@ final class EditorKeyHolds {
   /// — the pen's own law: a barrel button that rises mid-stroke never
   /// hijacks the live line. The pan needs no wait: a press already down
   /// keeps its route, so the pan only ever takes the NEXT press.
-  final ValueListenable<bool> strokeLive;
+  ValueListenable<bool> get strokeLive => _strokeLive;
+  ValueListenable<bool> _strokeLive;
+
+  /// Hears [next] instead — the stroke of the project that came on screen.
+  ///
+  /// 🚨The holds are the WINDOW's and outlive a project tab switch (I-7):
+  /// a key held across one must still let go of what it took, so the
+  /// shell points this at the new project rather than making another.
+  set strokeLive(ValueListenable<bool> next) {
+    if (identical(next, _strokeLive)) {
+      return;
+    }
+    _strokeLive.removeListener(_onStrokeLive);
+    _strokeLive = next;
+    next.addListener(_onStrokeLive);
+    _onStrokeLive();
+  }
 
   final Map<LogicalKeyboardKey, _KeyHold> _held = {};
 
@@ -145,7 +161,7 @@ final class EditorKeyHolds {
   /// it back would rebuild a tree that is being taken down.
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
-    strokeLive.removeListener(_onStrokeLive);
+    _strokeLive.removeListener(_onStrokeLive);
     _waiting.clear();
     _held.clear();
     CanvasPanHold.held.value = false;

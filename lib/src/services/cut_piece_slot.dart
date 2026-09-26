@@ -19,6 +19,10 @@ import '../models/cut_piece.dart';
 /// reference into the project it came from — [CutPiece] is a raw pixel copy
 /// for exactly that reason.
 class CutPieceSlot extends ChangeNotifier {
+  CutPieceSlot() {
+    census.add(this);
+  }
+
   CutPiece? _piece;
 
   CutPiece? get piece => _piece;
@@ -28,9 +32,32 @@ class CutPieceSlot extends ChangeNotifier {
 
   /// What the held piece costs resident — its straight RGBA. A cut from the
   /// media viewer holds its source at full size (I-14), so this can be the
-  /// largest single picture the app keeps; the workspace reports it to the
-  /// memory census.
+  /// largest single picture the app keeps.
   int get pieceBytes => _piece?.image.rgba.lengthInBytes ?? 0;
+
+  /// Every slot alive — one per app — for [allPieceBytes].
+  static final Set<CutPieceSlot> census = <CutPieceSlot>{};
+
+  /// What every held piece costs, read by the memory census directly.
+  ///
+  /// 🚨The slot is the APP's, shared by every open project (I-7), so it is
+  /// counted once, the way the process-wide holders are
+  /// (`StaticRaster.censusBytes`). It used to be PUSHED onto the session,
+  /// the one thing the census could reach — with a session per tab that is
+  /// one tab's row, or every tab's.
+  static int get allPieceBytes {
+    var total = 0;
+    for (final slot in census) {
+      total += slot.pieceBytes;
+    }
+    return total;
+  }
+
+  @override
+  void dispose() {
+    census.remove(this);
+    super.dispose();
+  }
 
   /// Fills the slot, replacing whatever was held.
   ///

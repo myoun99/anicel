@@ -9,11 +9,11 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
-import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -27,10 +27,14 @@ import '../../helpers/temp_dir.dart';
 /// function now, with the exit tests' own `system-exit-*` keys, so the
 /// matrix cell cannot re-open by one door forgetting.
 ///
+/// ↩️I-7 (a project per tab, 유저 2026-09-26): opening no longer closes
+/// anything, so the open doors lost the question and a tab's ✕ took it —
+/// the two open tests at the end pin that the open door asks NOTHING now.
+///
 /// 🚨And the question is no longer 「are there unsaved edits」: a saved
 /// cel is a ref into the `.anicel`, so a session with nothing unsaved
 /// still has drawings that only exist while it holds that file open.
-/// The last two tests are that half.
+/// The two vanished-file tests are that half.
 void main() {
   late Directory folder;
   /// ONE mouse per test (see `editor_top_strip_test`): a second
@@ -254,63 +258,6 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('the OPEN door is wired to the gate — a recents tap on a '
-      'dirty session asks before discarding', (tester) async {
-    // The WIRING, with real taps, because the function test above survives
-    // the open flow simply not calling it — the exact hole this closes: a
-    // one-tap recent open silently discarded the whole dirty session.
-    final path = '${folder.path.replaceAll('\\', '/')}/Elsewhere.anicel';
-    File(path).writeAsStringSync('stub — the gate fires before any open');
-    final seeded = const RecentProjects().withOpened(
-      RecentProject(path: path),
-    );
-    AppRecent.projects.value = seeded;
-    RecentProjectsStore().save(seeded);
-    addTearDown(() {
-      AppRecent.projects.value = const RecentProjects();
-      RecentProjectsStore().save(const RecentProjects());
-    });
-
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.pump();
-    // Any command dirties the session; the new-frame button is the
-    // cheapest one on the toolbar (the exit-gate test's idiom).
-    final newFrame = find.byKey(const ValueKey<String>('new-frame-button'));
-    await tester.ensureVisible(newFrame);
-    await tester.pumpAndSettle();
-    await tester.tap(newFrame);
-    await tester.pumpAndSettle();
-
-    final projectButton = find.byKey(
-      const ValueKey<String>('top-strip-project-button'),
-    );
-    await tester.ensureVisible(projectButton);
-    await tester.pumpAndSettle();
-    await tester.tap(projectButton);
-    await tester.pumpAndSettle();
-    await hoverRecents(tester);
-    await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const ValueKey<String>('system-exit-dialog')),
-      findsOneWidget,
-      reason: 'opening another project closes this one as surely as the '
-          'window\'s X — same question, same window',
-    );
-    await tester.tap(find.byKey(const ValueKey<String>('system-exit-cancel')));
-    await tester.pumpAndSettle();
-    // 🪦This used to look for the recovery prompt's absence. The stub file
-    // is the better witness and always was: it is not a `.anicel`, so an
-    // open that started at all fails loudly, and cancel means it never did.
-    expect(
-      find.text(AppText.strings.commonNotice),
-      findsNothing,
-      reason: 'cancel stops the open before it starts — the stub at that '
-          'path would raise a read error the moment anything tried',
-    );
-  });
-
   testWidgets('🚨 a CLEAN session whose FILE has vanished is caught too — '
       'closing is when those pixels really go', (tester) async {
     // The gate used to ask only「are there unsaved edits」, and a saved
@@ -380,19 +327,13 @@ void main() {
     expect(await settled, isFalse);
   });
 
-  testWidgets('🚨 REOPENING the project you are ALREADY editing asks too — '
-      'the reload discards the live edits either way', (tester) async {
-    // 🪦**THIS DOOR HAD AN EXCEPTION UNTIL 2026-09-08.** Reopening the
-    // current project skipped the gate on purpose: the reload threw the
-    // live edits away on its own, and answering Recover on that reopen was
-    // the ONE way back to them — so a gate in front of it would have
-    // retired the very sidecar the reopen existed to reach. With no sidecar
-    // to reach, the exception was a silent discard with nothing behind it.
-    // 「Reload from disk」 is still reachable: answer Discard.
-    final path = '${folder.path.replaceAll(r'\', '/')}/Cut 12.anicel';
+  /// A `.anicel` on disk at [name], its project named [projectName], and in
+  /// the recents list — what the two open tests below tap.
+  String seedRecentProject(String name, String projectName) {
+    final path = '${folder.path.replaceAll(r'\', '/')}/$name';
     File(path).writeAsBytesSync(
       buildAnicelArchiveBytes(
-        project: createDefaultProject().copyWith(name: 'Opened From Disk'),
+        project: createDefaultProject().copyWith(name: projectName),
         cels: const [],
       ),
     );
@@ -403,38 +344,33 @@ void main() {
       AppRecent.projects.value = const RecentProjects();
       RecentProjectsStore().save(const RecentProjects());
     });
+    return path;
+  }
 
-    ProjectRepository? repository;
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(onRepositoryCreated: (r) => repository = r)),
+  /// Taps [path]'s recents row, then lends the real loop until the project
+  /// on screen is bound to [path] and the open's window is gone.
+  Future<void> openFromRecents(WidgetTester tester, String path) async {
+    final button = find.byKey(
+      const ValueKey<String>('top-strip-project-button'),
     );
+    await tester.ensureVisible(button);
     await tester.pumpAndSettle();
-
-    Future<void> tapRecent() async {
-      final button = find.byKey(
-        const ValueKey<String>('top-strip-project-button'),
-      );
-      await tester.ensureVisible(button);
-      await tester.pumpAndSettle();
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-      await hoverRecents(tester);
-      await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-      // Frames, not a settle: the open stands behind the wait window from
-      // its first frame (2026-09-13), and a turning spinner never settles.
-      // Two frames build whatever the tap raised — the window on the first
-      // open, the gate on the second — and the loop below lends the real
-      // loop for the read itself.
-      await tester.pump();
-      await tester.pump();
-    }
-
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    await hoverRecents(tester);
+    await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
+    // Frames, not a settle: the open stands behind the wait window from
+    // its first frame (2026-09-13), and a turning spinner never settles.
+    await tester.pump();
+    await tester.pump();
     // The open hops to a background isolate, which the fake clock never
-    // advances — lend the real loop until the repository holds the fixture.
-    await tapRecent();
+    // advances — lend the real loop until the tab on screen holds it.
     for (var attempt = 0; attempt < 200; attempt += 1) {
       await tester.pump();
-      if (repository?.currentProject?.name == 'Opened From Disk') {
+      final shown = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      if (shown.projectFile.path == path) {
         break;
       }
       await tester.runAsync(
@@ -442,11 +378,8 @@ void main() {
       );
     }
     // The window lingers with its check for `appProgressDoneLinger`, and a
-    // window still up would swallow the next tap. A settle does not end
-    // the linger: once the check is up nothing schedules a frame, so
-    // `pumpAndSettle` returns with the timer still pending. Both clocks
-    // are advanced — the fake one when the open landed on a pump, real
-    // time when it landed under `runAsync` — until the window is gone.
+    // window still up would swallow the next tap. Both clocks are advanced
+    // until it is gone.
     final window = find.byKey(const ValueKey<String>('open-progress-dialog'));
     for (var attempt = 0;
         attempt < 40 && window.evaluate().isNotEmpty;
@@ -457,24 +390,85 @@ void main() {
       );
     }
     await tester.pumpAndSettle();
-    final session = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
-    expect(
-      session.projectFile.path,
-      path,
-      reason: 'the rest of this test is meaningless without the first open',
-    );
+  }
 
-    session.cutVerbs.createCut();
-    expect(session.projectFile.hasUnsavedChanges, isTrue);
+  OpenProjects openProjects(WidgetTester tester) =>
+      tester.widget<EditorTopStrip>(find.byType(EditorTopStrip)).projects;
 
-    await tapRecent();
+  // 🪦「the OPEN door is wired to the gate」 stood here: opening REPLACED the
+  // project on screen, so a recents tap on a dirty session had to ask first
+  // or discard it in silence. 유저 2026-09-26 (I-7): 「프로젝트 열기로 열면
+  // 지금 프로젝트가 교체되는데 새로 여는걸로」 — opening closes nothing now,
+  // and the question moved to the one door that does: a tab's ✕.
+  testWidgets('opening from the recents on a DIRTY project asks nothing: '
+      'the file opens in a tab of its own, and the dirty one stays open '
+      'behind it, still dirty', (tester) async {
+    final path = seedRecentProject('Elsewhere.anicel', 'Elsewhere');
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pump();
+    // Any command dirties the session; the new-frame button is the
+    // cheapest one on the toolbar (the exit-gate test's idiom).
+    final newFrame = find.byKey(const ValueKey<String>('new-frame-button'));
+    await tester.ensureVisible(newFrame);
+    await tester.pumpAndSettle();
+    await tester.tap(newFrame);
+    await tester.pumpAndSettle();
+    final dirty = openProjects(tester).active;
+    expect(dirty.projectFile.hasUnsavedChanges, isTrue, reason: 'CONTROL');
+
+    await openFromRecents(tester, path);
 
     expect(
       find.byKey(const ValueKey<String>('system-exit-dialog')),
-      findsOneWidget,
-      reason: 'the same file is still a reload, and a reload is a discard',
+      findsNothing,
+      reason: 'opening closes nothing, so it has nothing to ask',
+    );
+    final projects = openProjects(tester);
+    expect(projects.sessions, hasLength(2));
+    expect(identical(projects.sessions.first, dirty), isTrue);
+    expect(projects.active.projectFile.path, path);
+    expect(
+      dirty.projectFile.hasUnsavedChanges,
+      isTrue,
+      reason: 'the project behind the new tab keeps its unsaved work',
+    );
+  });
+
+  // 🪦「REOPENING the project you are ALREADY editing asks too」 stood here:
+  // the reload discarded the live edits, so it had to ask. A file already
+  // open is SHOWN now — nothing is reloaded, so nothing is lost or asked.
+  testWidgets('reopening a project that is already open shows its tab — no '
+      'second tab, no reload, its live edits stay', (tester) async {
+    final path = seedRecentProject('Cut 12.anicel', 'Opened From Disk');
+    // A desktop window, so the two tabs stand in the strip rather than in
+    // its overflow list.
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
+    await openFromRecents(tester, path);
+    final opened = openProjects(tester).active;
+    expect(opened.projectFile.path, path, reason: 'CONTROL: the first open');
+    opened.cutVerbs.createCut();
+    expect(opened.projectFile.hasUnsavedChanges, isTrue);
+
+    // Another tab in front, then the same file again.
+    await tester.tap(find.byKey(const ValueKey<String>('project-tab-0')));
+    await tester.pumpAndSettle();
+    expect(identical(openProjects(tester).active, opened), isFalse);
+    await openFromRecents(tester, path);
+
+    expect(
+      find.byKey(const ValueKey<String>('system-exit-dialog')),
+      findsNothing,
+    );
+    final projects = openProjects(tester);
+    expect(projects.sessions, hasLength(2), reason: 'no second tab');
+    expect(identical(projects.active, opened), isTrue, reason: 'its tab');
+    expect(
+      opened.projectFile.hasUnsavedChanges,
+      isTrue,
+      reason: 'nothing was reloaded over the live edits',
     );
   });
 }

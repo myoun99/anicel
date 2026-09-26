@@ -27,9 +27,16 @@ import '../session/cache_budgets.dart' show CacheBudgetLine, CacheBudgets;
 /// bar shows the WHOLE process, splits it into what we can account for and
 /// what we cannot, and breaks items out inside ours.
 class MemorySettingsSection extends StatefulWidget {
-  const MemorySettingsSection({super.key, required this.session});
+  const MemorySettingsSection({
+    super.key,
+    required this.session,
+    required this.openSessions,
+  });
 
   final EditorSessionManager session;
+
+  /// Every open project — the census adds them all up (I-7).
+  final Iterable<EditorSessionManager> openSessions;
 
   @override
   State<MemorySettingsSection> createState() => _MemorySettingsSectionState();
@@ -74,7 +81,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
     if (!mounted) {
       return;
     }
-    final census = collectMemoryCensus(widget.session);
+    final census = collectMemoryCensus(widget.openSessions);
     setState(() {
       _census = census;
       if (census.footprintBytes > _peakBytes) {

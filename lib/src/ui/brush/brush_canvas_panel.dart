@@ -1207,7 +1207,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     CanvasPanHold.held.removeListener(_onPanHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
     widget.brushToolState?.removeListener(_handleBrushChanged);
-    widget.selectionCommands?.regionHistoryRecorder = null;
+    _selectionSeat.unbindSelectionHistoryRecorder();
     // Leave no verb pointing at a dead State: the buttons must go dead
     // with the canvas rather than throw when pressed after it is gone.
     if (identical(

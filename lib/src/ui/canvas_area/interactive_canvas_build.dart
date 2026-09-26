@@ -17,8 +17,8 @@ class _InteractiveCanvasBuild {
 
   /// The held-tool road (PEN-7a, I-15) over this canvas's tool channel —
   /// the same [TemporaryTool] the shell's held keys switch through.
-  TemporaryTool _temporaryTool(EditorSessionManager session) => TemporaryTool(
-    session: session,
+  TemporaryTool get _temporaryTool => TemporaryTool(
+    memory: _state._toolHold,
     current: () => _state.widget.brushToolState.value,
     change: _state.widget.onBrushToolStateChanged,
   );
@@ -455,8 +455,8 @@ class _InteractiveCanvasBuild {
       // Release springs back (default) or keeps the switched
       // tool, per the mapping. I-15: a held KEY switches through
       // the same [TemporaryTool] from the shell.
-      onTemporaryToolHold: _temporaryTool(session).hold,
-      onTemporaryToolRelease: _temporaryTool(session).release,
+      onTemporaryToolHold: _temporaryTool.hold,
+      onTemporaryToolRelease: _temporaryTool.release,
       // PEN-7b: the control-mode touch slots — the flip funnel
       // comes from the shell; the brush-size drag lands here
       // (this widget owns the tool state channel).

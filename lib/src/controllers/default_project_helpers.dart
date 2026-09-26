@@ -1,3 +1,4 @@
+import '../models/app_workspace_colors.dart';
 import '../models/cut_id.dart';
 import '../models/layer_section_defaults.dart';
 import '../models/project.dart';
@@ -15,6 +16,22 @@ Project createDefaultProject({DateTime? createdAt}) {
     tracks: [createDefaultTrack()],
   );
 }
+
+/// A NEW project — the one the app opens with and the one New Project opens
+/// in a tab of its own (I-7): the default project under an id no other open
+/// project has, its pasteboard seeded from the app-level default (all that
+/// remains of the old app-state pasteboard — R3b promotion, R28 #9
+/// reversed: the colour is project data now, and this is where「the default
+/// for the next project」lands in one).
+Project newUntitledProject() {
+  final now = DateTime.now().toUtc();
+  return createDefaultProject(createdAt: now).copyWith(
+    id: ProjectId('project-${now.microsecondsSinceEpoch}-${_minted++}'),
+    pasteboardArgb: AppWorkspaceColors.settings.value.pasteboardArgb,
+  );
+}
+
+int _minted = 0;
 
 Track createDefaultTrack({
   TrackId trackId = const TrackId('default-track'),
