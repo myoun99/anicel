@@ -153,10 +153,22 @@ void main() {
     final session = workspace.session;
     final tool = workspace.brushTool!;
 
-    Future<int> railRebuildsAfter(void Function() act) async {
-      var rebuilds = 0;
+    // The five doors of the head — the rail's group buttons below them are
+    // other widgets with other news.
+    const doors = {
+      'undo-button',
+      'redo-button',
+      'rail-onion-skin-button',
+      'rail-deselect-button',
+      'rail-confirm-button',
+    };
+    Future<List<String>> railRebuildsAfter(void Function() act) async {
+      final rebuilt = <String>[];
       debugOnRebuildDirtyWidget = (element, _) {
-        if (element.widget is RailButton) rebuilds += 1;
+        final widget = element.widget;
+        if (widget is RailButton && doors.contains(widget.keyValue)) {
+          rebuilt.add(widget.keyValue);
+        }
       };
       try {
         act();
@@ -164,7 +176,7 @@ void main() {
       } finally {
         debugOnRebuildDirtyWidget = null;
       }
-      return rebuilds;
+      return rebuilt;
     }
 
     var toolNews = 0;
@@ -175,7 +187,7 @@ void main() {
       () => tool.value = tool.value.copyWith(size: tool.value.size + 3),
     );
     expect(toolNews, 1, reason: 'premise: the tool did speak');
-    expect(quietTool, 0, reason: 'a brush size lights no door');
+    expect(quietTool, isEmpty, reason: 'a brush size lights no door');
 
     var sessionNews = 0;
     void heardSession() => sessionNews += 1;
@@ -185,12 +197,16 @@ void main() {
       () => session.selectedGuideId = const GuideId('rail-quiet-news'),
     );
     expect(sessionNews, greaterThan(0), reason: 'premise: the session spoke');
-    expect(quietSession, 0, reason: 'a guide pick lights no door');
+    expect(quietSession, isEmpty, reason: 'a guide pick lights no door');
 
     final moved = await railRebuildsAfter(
       session.onionSkin.toggleOnionSkin,
     );
-    expect(moved, greaterThan(0), reason: 'the onion door did move');
+    expect(
+      moved,
+      containsAll(doors),
+      reason: 'the onion door moved, so the head is built again',
+    );
     expect(
       tester.widget<RailButton>(railButton('rail-onion-skin-button')).selected,
       isTrue,
