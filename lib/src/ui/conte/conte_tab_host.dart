@@ -16,7 +16,6 @@ import '../../models/conte/conte_page_marks.dart'
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
@@ -208,8 +207,14 @@ class _ConteTabHostState extends State<ConteTabHost> {
 
   /// A cell press: the cut, its storyboard row and the frame — the
   /// design's "칸 클릭 = selectCut + selectLayer + selectFrameIndex".
+  ///
+  /// ↩️F-187 (유저 2026-09-26): the row is what every door that stands on a
+  /// cut seats ([Standing.layerACutStandSeats]) — its storyboard row, or,
+  /// when it has none, the layer you stood on if the cut shows it
+  /// (「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥 그대로둠」).
   void _selectCell(ContePlacedCell cell) {
     final cutId = CutId(cell.cutId);
+    final before = _session.activeLayerId;
     if (_session.activeCutOrNull?.id != cutId) {
       _session.selectCut(cutId);
     }
@@ -222,18 +227,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
     // law asks whether you are landing inside the current selection, and
     // asking that about the frame you are LEAVING answers the wrong
     // question.
-    var stood = false;
-    for (final layer in _session.layers) {
-      if (layer.kind == LayerKind.storyboard) {
-        _session.standOnRow(
-          LayerRowAddress(layer.id),
-          frameIndex: cell.source.startFrame,
-        );
-        stood = true;
-        break;
-      }
-    }
-    if (!stood) {
+    final seat = _session.standing.layerACutStandSeats(before: before);
+    if (seat != null) {
+      _session.standOnRow(
+        LayerRowAddress(seat),
+        frameIndex: cell.source.startFrame,
+      );
+    } else {
       _session.selectFrameIndex(cell.source.startFrame);
     }
   }

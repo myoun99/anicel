@@ -335,13 +335,19 @@ void main() {
     test('standing on an SE row the storyboard way records on THAT row — '
         'the drawing layer staying active does not refuse it', () async {
       final manager = session();
+      final drawing = manager.activeLayerId!;
       final laneId = manager.activeTrack.seLayers.first.id;
       // The storyboard's rails stand on a row without taking the layer you
       // draw on (유저 2026-07-27): this is the stand the refusal missed.
+      // ↩️F-187: a storyboard stand seats the timeline too now, so the
+      // drawing layer is taken back in the timeline — which leaves the
+      // storyboard's row where it was — and the storyboard is touched again.
       manager.standing.standOnRow(
         LayerRowAddress(laneId),
         panel: WorkingPanel.storyboard,
       );
+      manager.selectLayer(drawing);
+      manager.claimStoryboardRow();
       expect(manager.activeLayerId, isNot(laneId), reason: 'fixture');
       final lanesBefore = laneIdsOf(manager);
       manager.voiceRecording.debugVoiceRecorderFactory =

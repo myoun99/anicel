@@ -324,6 +324,42 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   PropertyLaneEditCallbacks get _layerLaneEdit =>
       sessionLaneEditCallbacks(_session, frameIsGlobal: true);
 
+  /// THE cells' press (the timeline's cell contract): pick the row, then
+  /// seek to the frame under the pointer. The seek is the ruler's own, so a
+  /// press in a GAP parks there — an empty cell is still a cell, and the two
+  /// paths cannot disagree about what a frame means.
+  ///
+  /// The row half comes FIRST and does only the row: a track row that
+  /// promoted the playhead's cut here would switch cuts twice, since the
+  /// pressed frame decides the cut.
+  void _pressRowFrame(TimelineRowAddress row, int globalFrame) {
+    switch (row) {
+      case LayerRowAddress():
+        _session.selectRow(row);
+        // ⑭: the INDEX decides the active cut, whichever row was pressed.
+        // This used to park — an SE row owns no cuts, so pressing one said
+        // where you ARE without saying which cut you edit (feedback #7) —
+        // but that sentence was written while SEVERAL tracks could cover one
+        // frame and "which cut did you mean" had no answer. One track later
+        // there is exactly one cut under the press, so every row lands the
+        // same seek and a gap still parks (the seek's own gap branch).
+        seekStoryboardGlobalFrame(_session, globalFrame);
+      case LaneRowAddress():
+        // A property strip lands the way its layer row does: the row you
+        // pressed was never what chose the cut.
+        _session.selectRow(row);
+        seekStoryboardGlobalFrame(_session, globalFrame);
+      case TrackRowAddress(:final trackId):
+        _session.selectTrackRow(trackId);
+        seekStoryboardGlobalFrame(_session, globalFrame);
+    }
+  }
+
+  /// I-48: a double click on a layer's label renames the rows its first
+  /// press acted on — the timeline rail's door, on this rail's rows.
+  VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
+      renameOnLabelDoubleClick(context, _session, pressed);
+
   /// The row's double-tap: the SHARED transition instance editor at the tapped
   /// frame. The implementation moved to [editTransitionSpanInstance] so this
   /// gesture and the Edit Instance verb cannot drift apart — a second copy here
@@ -338,11 +374,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// ↩️The fork moved out of the Edit door into the double tap's own
   /// ([activateTransitionSpanCell]; F-105, 유저 2026-09-15 「통일 — 편집 버튼은
   /// 빈 칸에서 꺼진다」): the button edits, the double tap forks, ＋ creates.
-  /// I-48: a double click on a layer's label renames the rows its first
-  /// press acted on — the timeline rail's door, on this rail's rows.
-  VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
-      renameOnLabelDoubleClick(context, _session, pressed);
-
   Future<void> _editTransitionSpan(int globalFrame) =>
       activateTransitionSpanCell(context, _session, globalFrame: globalFrame);
 
@@ -572,39 +603,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           },
                     acceptsMediaAssetOnRail: (path) =>
                         _session.storyboardRailDropSpotFor(path) != null,
-                    // THE cells' press (the timeline's cell contract): pick the
-                    // row, then seek to the frame under the pointer. The seek
-                    // is the ruler's own, so a press in a GAP parks there — an
-                    // empty cell is still a cell, and the two paths cannot
-                    // disagree about what a frame means.
-                    //
-                    // The row half comes FIRST and does only the row: a track
-                    // row that promoted the playhead's cut here would switch
-                    // cuts twice, since the pressed frame decides the cut.
-                    onRowFramePress: (row, globalFrame) {
-                      switch (row) {
-                        case LayerRowAddress():
-                          _session.selectRow(row);
-                          // ⑭: the INDEX decides the active cut, whichever row
-                          // was pressed. This used to park — an SE row owns no
-                          // cuts, so pressing one said where you ARE without
-                          // saying which cut you edit (feedback #7) — but that
-                          // sentence was written while SEVERAL tracks could
-                          // cover one frame and "which cut did you mean" had no
-                          // answer. One track later there is exactly one cut
-                          // under the press, so every row lands the same seek
-                          // and a gap still parks (the seek's own gap branch).
-                          seekStoryboardGlobalFrame(_session, globalFrame);
-                        case LaneRowAddress():
-                          // A property strip lands the way its layer row does:
-                          // the row you pressed was never what chose the cut.
-                          _session.selectRow(row);
-                          seekStoryboardGlobalFrame(_session, globalFrame);
-                        case TrackRowAddress(:final trackId):
-                          _session.selectTrackRow(trackId);
-                          seekStoryboardGlobalFrame(_session, globalFrame);
-                      }
-                    },
+                    // THE cells' press ([_pressRowFrame]) stands without the
+                    // verb, so it names the timeline's seat itself (F-187).
+                    onRowFramePress: (row, globalFrame) =>
+                        _session.standing.standInStoryboard(
+                          () => _pressRowFrame(row, globalFrame),
+                        ),
                     activeLayerId: _session.activeLayerId,
                     // The rail speaks ROW ADDRESSES, and selecting one lands
                     // the editing focus on it (user 2026-07-29, superseding
@@ -617,9 +621,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // A CLICK CLEARS (유저 확정) — this rail's taps too, through
                     // the same verb since T4. Standing on THIS panel is this
                     // panel's own rule: the row you stand on and the layer you
-                    // draw on are separate states here (유저 2026-07-27). The
-                    // seek afterwards is the storyboard's — a row press says
-                    // where you ARE on the global axis.
+                    // draw on are separate states here (유저 2026-07-27) —
+                    // ↩️and the verb seats the timeline once it has stood
+                    // (F-187). The seek afterwards is the storyboard's — a row
+                    // press says where you ARE on the global axis.
                     onSelectLayer: (layerId) {
                       _session.standOnRow(
                         LayerRowAddress(layerId),
@@ -840,6 +845,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // difference (유저 2026-07-27) — it also keeps a V
                       // row's SYNTHETIC carrier id out of the layer
                       // selection, which was the old shape's whole reason.
+                      // ↩️The verb seats the timeline after it (F-187): a
+                      // carrier id is no row of the cut, so it seats none.
                       onTapAt: (layerId, laneId, globalFrame) =>
                           _session.standOnRow(
                             LaneRowAddress(layerId, laneId),

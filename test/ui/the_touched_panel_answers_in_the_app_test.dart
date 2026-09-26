@@ -266,7 +266,6 @@ void main() {
     await showStoryboardPanel(tester);
     final track = session.repository.requireProject().tracks.single;
     session.standOnRow(TrackRowAddress(track.id));
-    final drawingTarget = session.activeLayerId;
 
     await key(tester, LogicalKeyboardKey.arrowUp);
     expect(
@@ -275,7 +274,12 @@ void main() {
       reason: '「v행에 서있다가 위 키 누르면 S1행으로」 — it used to step to the '
           'layer above the active one, inside the cut',
     );
-    expect(session.activeLayerId, drawingTarget, reason: '유저 2026-07-27');
+    expect(
+      session.activeLayerId,
+      track.seLayers.first.id,
+      reason: '↩️F-187 (was 유저 2026-07-27): a walk is a stand, and the '
+          'timeline stands where it lands',
+    );
 
     await key(tester, LogicalKeyboardKey.arrowUp);
     expect(session.currentRow, LayerRowAddress(track.seLayers[1].id));
