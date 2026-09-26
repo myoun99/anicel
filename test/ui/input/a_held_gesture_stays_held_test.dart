@@ -146,6 +146,42 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // The pencil does not only hover: 「터치중 펜 호버하면」 is a pencil close
+  // enough to TOUCH, and flutter/flutter#122784 names that one — a pencil
+  // tip landing during a finger gesture ended the finger's.
+  testWidgets('a pencil tip touching down mid-pinch leaves the pinch the '
+      'fingers\'', (tester) async {
+    final area = await pumpHome(tester);
+    final (a, b, zoom) = await pinchUnderway(tester, area);
+
+    final tip = await tester.startGesture(
+      onTheCanvas(tester, area) + const Offset(0, 60),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await tip.moveBy(const Offset(3, 2));
+    await tester.pump();
+    await spreadAgain(tester, a, b);
+    final whileTheTipIsDown = live()!.zoom;
+    await tip.up();
+    await tester.pump();
+    await spreadAgain(tester, a, b);
+
+    expect(
+      whileTheTipIsDown,
+      greaterThan(zoom),
+      reason: 'the fingers still zoom while the tip is down',
+    );
+    expect(
+      live()!.zoom,
+      greaterThan(whileTheTipIsDown),
+      reason: 'and after it lifts',
+    );
+    await a.up();
+    await b.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a palm landing and lifting mid-pinch leaves the pinch the '
       'fingers\'', (tester) async {
     final area = await pumpHome(tester);
