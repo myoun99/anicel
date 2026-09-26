@@ -195,9 +195,11 @@ class PlaybackCacheBudget {
   /// out to ten minutes the per-frame read was 94% of a playback tick. The
   /// spans come from [compositeStructureSpansIn]; each structure's full
   /// signature is taken once per pixel revision, and the cache is asked
-  /// with [CutFrameCompositeCache.holdsComposite] — a pure read, where the
+  /// with [CutFrameCompositeCache.heldSignature] — a pure read, where the
   /// per-frame bar filed an index key and touched the entry as used for
-  /// every frame on screen.
+  /// every frame on screen. The key the cache hands back is kept, so the
+  /// next ask of a held picture is `identical` rather than a walk over
+  /// every layer node (measured: that walk was most of what was left).
   List<({int startIndex, int endIndexExclusive})> playbackReadyRunsForCut(
     Cut cut,
     int start,
@@ -206,23 +208,31 @@ class PlaybackCacheBudget {
     final composites = _renderCaches.cutFrameCompositeCache;
     final quality = _run.playbackQuality;
     final signed = _signedStructuresOf(cut, quality);
+    bool isReady(CutFrameCompositeSignature structure, int frameIndex) {
+      if (structure.nodes.isEmpty) {
+        return true;
+      }
+      final held = composites.heldSignature(
+        signed[structure] ??= composites.signatureOf(
+          cut: cut,
+          frameIndex: frameIndex,
+          quality: quality,
+        ),
+      );
+      if (held == null) {
+        return false;
+      }
+      signed[structure] = held;
+      return true;
+    }
+
     final runs = <({int startIndex, int endIndexExclusive})>[];
     for (final span in compositeStructureSpansIn(
       cut,
       start: start,
       end: end,
     )) {
-      final structure = span.signature;
-      final ready =
-          structure.nodes.isEmpty ||
-          composites.holdsComposite(
-            signed[structure] ??= composites.signatureOf(
-              cut: cut,
-              frameIndex: span.start,
-              quality: quality,
-            ),
-          );
-      if (!ready) {
+      if (!isReady(span.signature, span.start)) {
         continue;
       }
       final last = runs.isEmpty ? null : runs.last;

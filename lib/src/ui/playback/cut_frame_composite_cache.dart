@@ -48,9 +48,13 @@ class PlaybackProtectedRange {
 }
 
 class _CompositeEntry {
-  _CompositeEntry({required this.image});
+  _CompositeEntry({required this.image, required this.signature});
 
   final ui.Image image;
+
+  /// The key this entry is filed under — what
+  /// [CutFrameCompositeCache.heldSignature] hands back.
+  final CutFrameCompositeSignature signature;
 
   /// The index keys pointing at this image — the reference count AND the
   /// reverse index in one. Eviction used to rediscover these by scanning
@@ -164,10 +168,11 @@ class CutFrameCompositeCache {
     return entry.image;
   }
 
-  /// Whether a composite for [signature] is held: a pure read — no index
-  /// key filed, no entry touched as used — for the green bar's spans.
-  bool holdsComposite(CutFrameCompositeSignature signature) =>
-      _images.containsKey(signature);
+  /// The key a held composite for [signature] is filed under, or null: a
+  /// pure read (no index key filed, no entry touched) for the green bar.
+  CutFrameCompositeSignature? heldSignature(
+    CutFrameCompositeSignature signature,
+  ) => _images[signature]?.signature;
 
   /// The lookup both prepare paths share: the signature this (cut, frame,
   /// quality) composites to, the index key that points at it, and the
@@ -261,7 +266,8 @@ class CutFrameCompositeCache {
       _pointIndexAt(indexKey, signature);
       return landed.image;
     }
-    final entry = _CompositeEntry(image: image)..lastUsed = ++_useCounter;
+    final entry = _CompositeEntry(image: image, signature: signature)
+      ..lastUsed = ++_useCounter;
     _images[signature] = entry;
     _estimatedBytes += estimatedImageBytes(image.width, image.height);
     _pointIndexAt(indexKey, signature);

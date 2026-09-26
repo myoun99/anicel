@@ -4,6 +4,8 @@
 /// (playhead clamp on tab switch) share one implementation.
 library;
 
+import 'dart:math' as math;
+
 import '../models/track_frame_axis.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
@@ -138,6 +140,10 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
     end,
     for (final entry in entries) ...[entry.startFrame, entry.endFrame],
   }.where((frame) => frame >= start && frame <= end).toList()..sort();
+  if (edges.length < 2) {
+    return const [];
+  }
+  final owners = _firstOwners(entries, edges);
   final runs = <({int startIndex, int endIndexExclusive})>[];
   void ready(int from, int to) {
     final last = runs.isEmpty ? null : runs.last;
@@ -148,10 +154,10 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
     }
   }
 
-  for (var edge = 0; edge + 1 < edges.length; edge += 1) {
-    final from = edges[edge];
-    final to = edges[edge + 1];
-    final owner = _firstEntryHolding(entries, from);
+  for (var stretch = 0; stretch < owners.length; stretch += 1) {
+    final from = edges[stretch];
+    final to = edges[stretch + 1];
+    final owner = owners[stretch];
     if (owner == null) {
       ready(from, to);
       continue;
@@ -171,16 +177,27 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
   return runs;
 }
 
-StoryboardTimelineLayoutEntry? _firstEntryHolding(
+/// Each stretch between two [edges] with the FIRST of [entries] covering
+/// it: painted in layout order, a stretch keeps the owner it got first.
+List<StoryboardTimelineLayoutEntry?> _firstOwners(
   List<StoryboardTimelineLayoutEntry> entries,
-  int globalFrame,
+  List<int> edges,
 ) {
+  final edgeAt = {for (var i = 0; i < edges.length; i += 1) edges[i]: i};
+  final owners = List<StoryboardTimelineLayoutEntry?>.filled(
+    edges.length - 1,
+    null,
+  );
   for (final entry in entries) {
-    if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
-      return entry;
+    for (
+      var stretch = edgeAt[math.max(entry.startFrame, edges.first)]!;
+      stretch < owners.length && edges[stretch] < entry.endFrame;
+      stretch += 1
+    ) {
+      owners[stretch] ??= entry;
     }
   }
-  return null;
+  return owners;
 }
 
 /// Ruler seeks: playback seeks the clock; EDITING seeks are the session's

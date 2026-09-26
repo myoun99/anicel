@@ -23,6 +23,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -351,8 +352,8 @@ void main() {
     });
   });
 
-  testWidgets('holdsComposite is a pure read — it files no index key, so a '
-      'frame it answered for is not protected by it', (tester) async {
+  testWidgets('heldSignature hands back the key the composite is filed '
+      'under, and files none of its own', (tester) async {
     await tester.runAsync(() async {
       final (store, _) = storeWithStroke();
       final cache = cacheFor(store);
@@ -362,18 +363,25 @@ void main() {
         frameIndex: 0,
         quality: PlaybackQuality.full,
       );
-      bool holdsFrame5() => cache.holdsComposite(
-        cache.signatureOf(
-          cut: held,
-          frameIndex: 5,
-          quality: PlaybackQuality.full,
-        ),
-      );
+      CutFrameCompositeSignature? heldAt(int frameIndex) =>
+          cache.heldSignature(
+            cache.signatureOf(
+              cut: held,
+              frameIndex: frameIndex,
+              quality: PlaybackQuality.full,
+            ),
+          );
 
       expect(
-        holdsFrame5(),
-        isTrue,
+        heldAt(5),
+        isNotNull,
         reason: 'frame 5 holds the same cel — the one image answers it',
+      );
+      expect(
+        identical(heldAt(5), heldAt(7)),
+        isTrue,
+        reason: 'two fresh signatures of one picture get the ONE filed key '
+            'back — what lets the green bar\'s next ask be `identical`',
       );
       cache.enforceBudget(
         maxBytes: 0,
@@ -388,8 +396,8 @@ void main() {
       );
 
       expect(
-        holdsFrame5(),
-        isFalse,
+        heldAt(5),
+        isNull,
         reason: 'only frame 0 filed a key — a read that filed frame 5 '
             'would have let the range keep the image',
       );

@@ -247,6 +247,9 @@ class CutFrameCompositeSignature {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CutFrameCompositeSignature &&
+          // Hashed once (below): two different pictures part here, before
+          // any walk over the layer nodes.
+          other.hashCode == hashCode &&
           other.canvasSize == canvasSize &&
           other.quality == quality &&
           listEquals(other.nodes, nodes);
