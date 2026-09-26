@@ -21,8 +21,9 @@ typedef _RailRoom = ({
   double dragCeiling,
 });
 
-/// Everything the head of the tool rail shows: whether each door is lit, and
-/// whether the active row wears its onion.
+/// Everything the head of the tool rail shows: whether each door is lit,
+/// whether the active row wears its onion, and whether the active layer is
+/// soloed.
 typedef _RailAnswers = ({
   bool canUndo,
   bool canRedo,
@@ -30,6 +31,7 @@ typedef _RailAnswers = ({
   bool canToggleOnion,
   bool anySelection,
   bool canConfirm,
+  bool soloOn,
 });
 
 class _WorkspaceRail {
@@ -69,9 +71,9 @@ class _WorkspaceRail {
     _state._layoutPersistence.scheduleLayoutSave();
   }
 
-  /// The head of the tool rail: undo, redo, the onion toggle, 선택 해제 and
-  /// 확정 — what a hand reaches for BETWEEN strokes, which is the rail's
-  /// whole job.
+  /// The head of the tool rail: undo, redo, the onion toggle, 선택 해제, 확정
+  /// and the solo — what a hand reaches for BETWEEN strokes, which is the
+  /// rail's whole job.
   ///
   /// Undo and redo keep the keys they wore in the top strip
   /// (`undo-button` / `redo-button`); they are old keys and a good number
@@ -129,6 +131,7 @@ class _WorkspaceRail {
           canToggleOnion: session.onionSkin.canToggleOnionSkin,
           anySelection: session.hasAnySelection,
           canConfirm: confirm?.canConfirm ?? false,
+          soloOn: session.visibilitySolo.layerVisibilitySoloEnabled,
         );
       },
       builder: (context, answers) {
@@ -234,6 +237,20 @@ class _WorkspaceRail {
                 onPressed: answers.canConfirm ? confirm.confirm : null,
               ),
             ],
+            // 🗣️I-51 (유저 2026-09-26): 「비지블 솔로 버튼, 자주쓰니까 왼쪽띠의
+            // 확정버튼 밑에 두번째 입구 두기. 로직은 정확히 똑같으니
+            // 재사용/통일」 — the legend eye's 활성 레이어 솔로, a second door:
+            // its verb, its registry name and keys, its glyph, and its state
+            // in colour.
+            const SizedBox(height: 4),
+            RailButton(
+              keyValue: 'rail-visibility-solo-button',
+              tooltip: editorActionLabel(EditorActionIds.layerVisibilitySolo),
+              shortcuts: const [EditorActionIds.layerVisibilitySolo],
+              icon: Icons.center_focus_strong_outlined,
+              selected: answers.soloOn,
+              onPressed: session.visibilitySolo.toggleLayerVisibilitySolo,
+            ),
           ],
         );
       },

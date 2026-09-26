@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/session/session_legend_callbacks.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show editorActionLabel;
+import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 /// Undo, redo and the onion toggle moved from the top strip to the head of
 /// the tool rail — the verbs a hand reaches for BETWEEN strokes belong
@@ -153,7 +159,7 @@ void main() {
     final session = workspace.session;
     final tool = workspace.brushTool!;
 
-    // The five doors of the head — the rail's group buttons below them are
+    // The six doors of the head — the rail's group buttons below them are
     // other widgets with other news.
     const doors = {
       'undo-button',
@@ -161,6 +167,7 @@ void main() {
       'rail-onion-skin-button',
       'rail-deselect-button',
       'rail-confirm-button',
+      'rail-visibility-solo-button',
     };
     Future<List<String>> railRebuildsAfter(void Function() act) async {
       final rebuilt = <String>[];
@@ -211,5 +218,68 @@ void main() {
       tester.widget<RailButton>(railButton('rail-onion-skin-button')).selected,
       isTrue,
     );
+  });
+
+  // 🗣️I-51 (유저 2026-09-26): 「비지블 솔로 버튼, 자주쓰니까 왼쪽띠의
+  // 확정버튼 밑에 두번째 입구 두기. 로직은 정확히 똑같으니 재사용/통일」.
+  group('the solo — a second door under 확정', () {
+    testWidgets('it stands right under 확정, named and keyed as the legend '
+        'eye\'s solo', (tester) async {
+      await pumpHome(tester);
+
+      final solo = railButton('rail-visibility-solo-button');
+      final confirm = railButton('rail-confirm-button');
+      expect(solo, findsOneWidget);
+      expect(
+        tester.getTopLeft(solo).dy,
+        greaterThan(tester.getBottomLeft(confirm).dy - 1),
+        reason: '「확정버튼 밑에」',
+      );
+      expect(tester.getTopLeft(solo).dx, tester.getTopLeft(confirm).dx);
+      final button = tester.widget<RailButton>(solo);
+      expect(
+        button.tooltip,
+        editorActionLabel(EditorActionIds.layerVisibilitySolo),
+      );
+      expect(button.shortcuts, [EditorActionIds.layerVisibilitySolo]);
+    });
+
+    testWidgets('it is the legend\'s verb, and it shows the mode whichever '
+        'door set it', (tester) async {
+      await pumpHome(tester);
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      RailButton solo() =>
+          tester.widget<RailButton>(railButton('rail-visibility-solo-button'));
+      final legend = sessionLegendCallbacks(
+        session,
+        rowFilter: TimelineRowFilter.none,
+        onSetRowFilter: null,
+      );
+      expect(
+        solo().onPressed,
+        legend.onToggleVisibilitySolo,
+        reason: '「로직은 정확히 똑같으니」 — one verb, two doors',
+      );
+      Map<LayerId, bool> eyes() => {
+        for (final layer in session.layers) layer.id: layer.isVisible,
+      };
+      final before = eyes();
+      expect(solo().selected, isFalse);
+
+      await tester.tap(railButton('rail-visibility-solo-button'));
+      await tester.pumpAndSettle();
+
+      expect(session.visibilitySolo.layerVisibilitySoloEnabled, isTrue);
+      expect(eyes(), isNot(before), reason: 'CONTROL: the solo hid rows');
+      expect(solo().selected, isTrue);
+
+      legend.onToggleVisibilitySolo();
+      await tester.pumpAndSettle();
+
+      expect(eyes(), before, reason: 'the legend\'s door let go of it');
+      expect(solo().selected, isFalse);
+    });
   });
 }
