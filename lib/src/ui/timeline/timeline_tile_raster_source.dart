@@ -140,6 +140,11 @@ abstract interface class TimelineTileRasterSource {
   /// queue had no room for this row.
   List<(int, int)> get tileSpans;
 
+  /// Runs [reads] as ONE pass: however often they ask for a cell, it is
+  /// resolved once — what a paint does, and what a tile bakes of a span.
+  /// ⛔Never across an `await`: the answers come from the live session.
+  T readInOnePass<T>(T Function() reads);
+
   /// What frames [from, to) lay down UNDER their ink, row-local — the
   /// classic pass paints exactly this and the tile bakes exactly this.
   TimelineRowSubstrate substrateIn(int from, int to);

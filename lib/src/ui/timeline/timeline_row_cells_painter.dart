@@ -287,8 +287,24 @@ class TimelineRowCellsPainter extends CustomPainter
   /// `timeline_frame_cursor_layer`, which is what a range selection
   /// measures — so a row could DRAW a block it would not SELECT the day the
   /// two drifted ([[no-copy-to-share]]).
-  TimelineCellExposureState _stateAt(int frameIndex) =>
-      bandExposureState(layer, frameIndex, ownCels: exposureStateForLayer);
+  ///
+  /// Read once a pass ([readInOnePass]): a cell's model asks its own state
+  /// and both its neighbours', the models beside it ask them again, and a
+  /// word's room walks them once more.
+  TimelineCellExposureState _stateAt(int frameIndex) {
+    final pass = _passStates;
+    final read = pass?[frameIndex];
+    if (read != null) {
+      return read;
+    }
+    final state = bandExposureState(
+      layer,
+      frameIndex,
+      ownCels: exposureStateForLayer,
+    );
+    pass?[frameIndex] = state;
+    return state;
+  }
 
   /// The cell's rect in the ROW's local coordinates — the probe geometry
   /// tests and the row's hit-testing share (single source of truth).
@@ -331,6 +347,30 @@ class TimelineRowCellsPainter extends CustomPainter
   /// exact lifetime this may live for: the layer and the cel revision cannot
   /// move inside one paint, and holding it longer would serve stale cells.
   Map<int, TimelineRowCellModel>? _passModels;
+
+  /// The exposure states of the CURRENT pass's cells ([_stateAt]) — the same
+  /// lifetime as [_passModels], for the same reason.
+  Map<int, TimelineCellExposureState>? _passStates;
+
+  /// Runs [reads] as ONE pass: however often they ask for a cell, it is
+  /// resolved once. A paint is one; so is what a tile bakes of a span.
+  ///
+  /// ⛔Never across an `await`: the resolvers answer from the live session,
+  /// which may move between two turns of the event loop.
+  @override
+  T readInOnePass<T>(T Function() reads) {
+    if (_passModels != null) {
+      return reads();
+    }
+    _passModels = {};
+    _passStates = {};
+    try {
+      return reads();
+    } finally {
+      _passModels = null;
+      _passStates = null;
+    }
+  }
 
   /// [timelineRowCellEdges] of this painter's layer — found once: a layer
   /// is immutable, and an edited one is a new painter.
@@ -501,19 +541,10 @@ class TimelineRowCellsPainter extends CustomPainter
   /// classic pass paints and the tile emitter bakes (the probe-the-painter
   /// rule): the paper, one piece per run, and the frame lines across it.
   @override
-  TimelineRowSubstrate substrateIn(int from, int to) {
-    // One resolution per cell for the whole answer — every cell is asked
-    // for its style, its segment and its line.
-    if (_passModels != null) {
-      return _substrateIn(from, to);
-    }
-    _passModels = {};
-    try {
-      return _substrateIn(from, to);
-    } finally {
-      _passModels = null;
-    }
-  }
+  TimelineRowSubstrate substrateIn(int from, int to) =>
+      // One resolution per cell for the whole answer — every cell is asked
+      // for its style, its segment and its line.
+      readInOnePass(() => _substrateIn(from, to));
 
   TimelineRowSubstrate _substrateIn(int from, int to) {
     final paper = <({Rect rect, Color color, BorderRadius? radius})>[];
@@ -597,8 +628,12 @@ class TimelineRowCellsPainter extends CustomPainter
   /// The frame line at [frameIndex]'s leading boundary, where it crosses
   /// the block's paper — an interior boundary only: a block's first
   /// boundary is its edge, and the run starts there.
+  ///
+  /// Asked of its STRETCH's first cell, which the cell paints as (I-22): a
+  /// line inside a block asks no cell of its own.
   ({Rect rect, Color color})? _blockFrameLineAt(int frameIndex) {
-    final segment = cellModelAt(frameIndex).segment;
+    final stretch = _stretchStartOf(frameIndex);
+    final segment = cellModelAt(stretch).segment;
     if (!segment.isBlock || !segment.continuesFromPrevious) {
       return null;
     }
@@ -614,19 +649,13 @@ class TimelineRowCellsPainter extends CustomPainter
       frameCellExtent: frameCellExtent,
       framesPerSecond: framesPerSecond,
       colorScheme: colorScheme,
-      paper: resolvedCellStyleFor(frameIndex).background,
+      paper: resolvedCellStyleFor(stretch).background,
     );
   }
 
   @override
-  void paint(Canvas canvas, Size size) {
-    _passModels = {};
-    try {
-      _paint(canvas, size);
-    } finally {
-      _passModels = null;
-    }
-  }
+  void paint(Canvas canvas, Size size) =>
+      readInOnePass(() => _paint(canvas, size));
 
   void _paint(Canvas canvas, Size size) {
     // Self-windowing (UI-R15): only the cells under the live viewport

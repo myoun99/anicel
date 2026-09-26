@@ -619,20 +619,27 @@ class TimelineGridTileStore {
     // and nothing can bump the revision inside one block. This value is
     // what the pixels actually describe; the drain stamps it verbatim.
     final sampledCelContentRevision = painter.celContentRevision;
-    final substrate = timelineGridEmitSubstrate(
-      writer,
-      painter: painter,
-      spanStartIndex: request.spanStartIndex,
-      spanEndIndexExclusive: request.spanEndIndexExclusive,
-      devicePixelRatio: dpr,
+    // ONE pass over the span's cells for the paper and the ink both — every
+    // cell the two ask for is resolved once, as in a paint.
+    final (:substrate, :glyphs) = painter.readInOnePass(
+      () => (
+        substrate: timelineGridEmitSubstrate(
+          writer,
+          painter: painter,
+          spanStartIndex: request.spanStartIndex,
+          spanEndIndexExclusive: request.spanEndIndexExclusive,
+          devicePixelRatio: dpr,
+        ),
+        glyphs: _emitForeground(
+          writer,
+          painter: painter,
+          spanStartIndex: request.spanStartIndex,
+          spanEndIndexExclusive: request.spanEndIndexExclusive,
+          devicePixelRatio: dpr,
+        ),
+      ),
     );
-    final atlas = await _emitForeground(
-      writer,
-      painter: painter,
-      spanStartIndex: request.spanStartIndex,
-      spanEndIndexExclusive: request.spanEndIndexExclusive,
-      devicePixelRatio: dpr,
-    );
+    final atlas = await _bakeGlyphs(writer, glyphs, devicePixelRatio: dpr);
 
     final ops = writer.build();
     final pixels = Uint8List(tileWidth * tileHeight * 4);
@@ -669,42 +676,38 @@ class TimelineGridTileStore {
     required double devicePixelRatio,
   }) async {
     final writer = TimelineGridTileOpWriter();
-    await _emitForeground(
+    final glyphs = _emitForeground(
       writer,
       painter: painter,
       spanStartIndex: spanStartIndex,
       spanEndIndexExclusive: spanEndIndexExclusive,
       devicePixelRatio: devicePixelRatio,
     );
+    await _bakeGlyphs(writer, glyphs, devicePixelRatio: devicePixelRatio);
     return writer.build();
   }
 
-  /// Bakes and emits the span's FOREGROUND ink (T3): hold-dash capsules and
-  /// in-between marks inline, glyph text through the A8 atlas — geometry and
-  /// ink probed from the painter (the substrate's fidelity rule). Returns
-  /// the transient atlas the GLYPH ops reference, or null (no glyphs).
-  Future<_TileAtlas?> _emitForeground(
+  /// Emits the span's FOREGROUND ink (T3) — hold-dash capsules and
+  /// in-between marks inline — and answers the words it writes, for
+  /// [_bakeGlyphs] to set through the A8 atlas: geometry and ink probed from
+  /// the painter (the substrate's fidelity rule).
+  ///
+  /// ⛔SYNCHRONOUS, so it can run inside the painter's one pass
+  /// ([TimelineTileRasterSource.readInOnePass]) — every answer it reads is
+  /// the session's, and the bake after it awaits.
+  List<_TileGlyph> _emitForeground(
     TimelineGridTileOpWriter writer, {
     required TimelineTileRasterSource painter,
     required int spanStartIndex,
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
-  }) async {
+  }) {
     final dpr = devicePixelRatio;
     final horizontal = painter.axis == Axis.horizontal;
     final originRect = painter.cellRectFor(spanStartIndex);
     final originMain = horizontal ? originRect.left : originRect.top;
 
-    final glyphCells =
-        <
-          ({
-            String text,
-            TextStyle style,
-            int rgba,
-            String key,
-            ({Offset origin, WordFit fit}) layout,
-          })
-        >[];
+    final glyphCells = <_TileGlyph>[];
     // F-96: a word may start before the span and grow into it, so the
     // nearest earlier word is baked too — the tile's own edge cuts what lies
     // outside it, the way it cuts a word that grows past the span's end.
@@ -776,22 +779,37 @@ class TimelineGridTileStore {
         style: style,
         rgba: timelineGridPackRgba(ink),
         key: _glyphKey(model.glyph, style, (dpr: dpr, fit: layout.fit)),
-        layout: layout,
+        fit: layout.fit,
+        origin: horizontal
+            ? layout.origin.translate(-originMain, 0)
+            : layout.origin.translate(0, -originMain),
       ));
     }
-    if (glyphCells.isEmpty) {
+    return glyphCells;
+  }
+
+  /// Bakes the [glyphs] [_emitForeground] answered into A8 coverage and
+  /// writes their GLYPH ops — returns the transient atlas those ops
+  /// reference, or null (no glyphs).
+  Future<_TileAtlas?> _bakeGlyphs(
+    TimelineGridTileOpWriter writer,
+    List<_TileGlyph> glyphs, {
+    required double devicePixelRatio,
+  }) async {
+    final dpr = devicePixelRatio;
+    if (glyphs.isEmpty) {
       return null;
     }
 
     final baked = <String, _BakedGlyph>{};
-    for (final cell in glyphCells) {
+    for (final cell in glyphs) {
       if (baked.containsKey(cell.key)) {
         continue;
       }
       final glyph = await _glyphA8(
         cell.text,
         cell.style,
-        (dpr: dpr, fit: cell.layout.fit),
+        (dpr: dpr, fit: cell.fit),
       );
       if (glyph != null) {
         baked[cell.key] = glyph;
@@ -826,18 +844,14 @@ class TimelineGridTileStore {
       }
     }
 
-    for (final cell in glyphCells) {
+    for (final cell in glyphs) {
       final glyph = baked[cell.key];
       if (glyph == null) {
         continue;
       }
       // The bake pads 1 physical px on each side.
-      final origin = cell.layout.origin;
-      final local = horizontal
-          ? origin.translate(-originMain, 0)
-          : origin.translate(0, -originMain);
-      final destX = (local.dx * dpr).round() - 1;
-      final destY = (local.dy * dpr).round() - 1;
+      final destX = (cell.origin.dx * dpr).round() - 1;
+      final destY = (cell.origin.dy * dpr).round() - 1;
       writer.glyph(
         destX,
         destY,
@@ -927,6 +941,18 @@ class _RowNotices implements Listenable {
     }
   }
 }
+
+/// A word a tile writes: its text and type, its ink, its bake key, how far it
+/// is narrowed, and where it lands in the tile (logical px from the span's
+/// start).
+typedef _TileGlyph = ({
+  String text,
+  TextStyle style,
+  int rgba,
+  String key,
+  WordFit fit,
+  Offset origin,
+});
 
 /// What `_raster` hands the drain: the pixels, and the revision and the
 /// substrate they describe.
