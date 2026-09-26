@@ -325,6 +325,7 @@ class _BrushEditPress {
     final read = _state._pressure.noteSample(
       event,
       opening: _state._stroke._opening,
+      tiltOpening: !_state._stroke._tiltMeasured,
     );
     final penPosition = _state._canvasPositionFromLocal(event.localPosition);
     _state._lastPenPosition = penPosition;
@@ -384,8 +385,8 @@ class _BrushEditPress {
     if (_state._activeDrawingPointer == null) {
       return false;
     }
-    // Whatever still waits for the contact's first pressure reading lands
-    // before the catch-up that follows it (H43).
+    // Whatever still waits for the contact's first readings lands before the
+    // catch-up that follows it (H43).
     _state._stroke.stopWaiting();
     // Stabilizer catch-up (P7): the brush trails the pen by up to a rope
     // length — pen-up closes the gap with one straight segment through

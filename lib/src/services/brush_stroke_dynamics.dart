@@ -30,10 +30,21 @@ class BrushStrokeDynamics {
       settings.roundnessJitter > 0.0 ||
       (settings.scatterRadiusRatio > 0.0 || settings.scatterCount > 1);
 
+  /// Whether a dab's placement turns on the stroke's DIRECTION — a tip that
+  /// follows it, or scatter thrown across it rather than all around — so a
+  /// press, which has no direction yet, waits for the first move's (H43:
+  /// the press is drawn with every input its brush reads).
+  bool get readsDirection =>
+      settings.rotationMode == BrushTipRotationMode.direction ||
+      (_scatters && !settings.scatterBothAxes);
+
+  bool get _scatters =>
+      settings.scatterRadiusRatio > 0.0 && settings.scatterCount >= 1;
+
   /// Transforms [dabs] (renumbering from [firstSequence]) using the stroke
   /// direction at this step, in degrees of visual counterclockwise rotation
   /// from the horizontal (`null` while the direction is still unknown, e.g.
-  /// the very first dab of a stroke).
+  /// a tap that never moved).
   List<BrushDab> apply(
     List<BrushDab> dabs, {
     required int firstSequence,
@@ -42,8 +53,7 @@ class BrushStrokeDynamics {
     if (!isActive || dabs.isEmpty) {
       return dabs;
     }
-    final scatterActive =
-        settings.scatterRadiusRatio > 0.0 && settings.scatterCount >= 1;
+    final scatterActive = _scatters;
     final emitted = <BrushDab>[];
     var sequence = firstSequence;
 

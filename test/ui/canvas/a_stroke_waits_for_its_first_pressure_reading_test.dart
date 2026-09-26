@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,15 +12,18 @@ import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/native/qa_pen_ledger.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart';
 
 import '../brush_canvas_test_helpers.dart';
 
@@ -25,11 +31,12 @@ import '../brush_canvas_test_helpers.dart';
 /// 입력한 필압보다 센게나와. 최대치가 나오는거같기도하고」.
 ///
 /// The first samples of a contact can carry a value the device has not
-/// measured yet — UIKit's force estimate for Apple Pencil (exactly 1/3,
-/// corrected later through a callback Flutter's engine never implements),
-/// or a Wintab packet the driver took while the pen still hovered. The
-/// stroke painted it. It now waits for the contact's first READING and
-/// paints every sample that waited with it.
+/// measured yet — UIKit's force estimate for Apple Pencil (a constant the
+/// press repeats until the Pencil measures, corrected later through a
+/// callback Flutter's engine never implements), or a Wintab packet the
+/// driver took while the pen still hovered. The stroke painted it. It now
+/// waits for the contact's first READING and paints every sample that
+/// waited with it.
 void main() {
   setUp(() {
     CanvasTouchContacts.reset();
@@ -46,32 +53,27 @@ void main() {
     'the iPad stroke that waited lands exactly as the same stroke would '
     'have if every sample had read its first reading',
     (tester) async {
-      final results = await _strokes(tester, _pressureBrush, [
-        // The estimate on the down and on the first move, then the
+      final results = await _parity(
+        tester,
+        _pressureBrush,
+        // The stand-in on the press and on the first move, then the
         // Bluetooth catches up with a light touch. Each sample leans its
         // own way, and the lean and the speed must stay each sample's own.
-        _pencil([
-          _s(const Offset(4, 8), _estimate, 0, tilt: 0.2),
-          _s(const Offset(20, 8), _estimate, 8, tilt: 0.4),
+        waited: [
+          _s(const Offset(4, 8), _stand, 0, tilt: 0.2),
+          _s(const Offset(20, 8), _stand, 8, tilt: 0.4),
           _s(const Offset(40, 8), 0.25, 20, tilt: 0.6),
           _s(const Offset(70, 8), 0.25, 24, tilt: 0.8),
-        ]),
-        // The same hand, measured from the start.
-        _pencil([
-          _s(const Offset(4, 8), 0.25, 0, tilt: 0.2),
-          _s(const Offset(20, 8), 0.25, 8, tilt: 0.4),
-          _s(const Offset(40, 8), 0.25, 20, tilt: 0.6),
-          _s(const Offset(70, 8), 0.25, 24, tilt: 0.8),
-        ]),
-      ]);
+        ],
+        reading: _ipad(0.25),
+      );
 
-      expect(results, hasLength(2));
       final waited = results.first;
       expect(waited.first.center.x, 4, reason: 'the press still lands');
       expect(
         waited.map((dab) => dab.pressure).toSet(),
-        {closeTo(0.25 / _pencilMax, 1e-9)},
-        reason: 'no dab carries the estimate',
+        {closeTo(_ipad(0.25), 1e-9)},
+        reason: 'no dab carries the stand-in',
       );
       expect(_look(waited), _look(results.last));
     },
@@ -81,25 +83,17 @@ void main() {
   testWidgets(
     'the wait holds the stabiliser to the order the pen moved in',
     (tester) async {
-      final results = await _strokes(
+      final results = await _parity(
         tester,
         _pressureBrush.copyWith(stabilizerStrength: 40),
-        [
-          _pencil([
-            _s(const Offset(4, 8), _estimate, 0),
-            _s(const Offset(30, 20), _estimate, 8),
-            _s(const Offset(60, 4), _estimate, 16),
-            _s(const Offset(90, 24), 0.5, 24),
-            _s(const Offset(120, 8), 0.5, 32),
-          ]),
-          _pencil([
-            _s(const Offset(4, 8), 0.5, 0),
-            _s(const Offset(30, 20), 0.5, 8),
-            _s(const Offset(60, 4), 0.5, 16),
-            _s(const Offset(90, 24), 0.5, 24),
-            _s(const Offset(120, 8), 0.5, 32),
-          ]),
+        waited: [
+          _s(const Offset(4, 8), _stand, 0),
+          _s(const Offset(30, 20), _stand, 8),
+          _s(const Offset(60, 4), _stand, 16),
+          _s(const Offset(90, 24), 0.5, 24),
+          _s(const Offset(120, 8), 0.5, 32),
         ],
+        reading: _ipad(0.5),
       );
 
       expect(_look(results.first), _look(results.last));
@@ -108,31 +102,51 @@ void main() {
   );
 
   testWidgets(
-    'a stand-in in the middle of a stroke keeps the last reading',
+    '🔬the stroke the user drew on build 1064 — the press and three moves '
+    'repeat one force, then the Pencil measures',
     (tester) async {
+      // 유저 2026-09-27: 「펜 다운 0.33이 1개, 펜 무브 0.33이 3개, 무브 0.16
+      // 1개, 무브 0.0 1개, 업 0.0 1개」 — the first start that stayed big.
       final results = await _strokes(tester, _pressureBrush, [
-        // Read at the press itself...
         _pencil([
-          _s(const Offset(4, 8), 0.25, 0),
-          _s(const Offset(60, 8), _estimate, 8),
-          _s(const Offset(90, 8), 0.25, 16),
-        ]),
-        // ...or only after waiting for it.
-        _pencil([
-          _s(const Offset(4, 24), _estimate, 100),
-          _s(const Offset(30, 24), 0.25, 108),
-          _s(const Offset(60, 24), _estimate, 116),
-          _s(const Offset(90, 24), 0.25, 124),
+          _s(const Offset(4, 8), _stand, 0),
+          _s(const Offset(20, 8), _stand, 8),
+          _s(const Offset(36, 8), _stand, 17),
+          _s(const Offset(52, 8), _stand, 25),
+          _s(const Offset(68, 8), 0.16, 33),
+          _s(const Offset(84, 8), 0.0, 42),
         ]),
       ]);
 
-      expect(results, hasLength(2));
-      for (final stroke in results) {
-        expect(
-          stroke.map((dab) => dab.pressure).toSet(),
-          {closeTo(0.25 / _pencilMax, 1e-9)},
-        );
-      }
+      final dabs = results.single;
+      expect(dabs.first.center.x, 4);
+      expect(
+        dabs.where((dab) => dab.center.x <= 68).map((dab) => dab.pressure),
+        everyElement(closeTo(_ipad(0.16), 1e-9)),
+      );
+      expect(dabs.last.pressure, 0.0);
+    },
+    variant: ipad,
+  );
+
+  testWidgets(
+    'a stand-in in the middle of a stroke keeps the last reading',
+    (tester) async {
+      final results = await _strokes(tester, _pressureBrush, [
+        _pencil([
+          _s(const Offset(4, 24), _stand, 0),
+          _s(const Offset(30, 24), 0.25, 8),
+          // Once the stroke has read, the press's force coming back is
+          // still not a reading.
+          _s(const Offset(60, 24), _stand, 16),
+          _s(const Offset(90, 24), 0.25, 24),
+        ]),
+      ]);
+
+      expect(
+        results.single.map((dab) => dab.pressure).toSet(),
+        {closeTo(_ipad(0.25), 1e-9)},
+      );
     },
     variant: ipad,
   );
@@ -142,15 +156,12 @@ void main() {
     'device reported',
     (tester) async {
       final results = await _strokes(tester, _pressureBrush, [
-        _pencil([_s(const Offset(10, 8), _estimate, 0)]),
+        _pencil([_s(const Offset(10, 8), _stand, 0)]),
       ]);
 
       expect(results.single, hasLength(1));
       expect(results.single.single.center.x, 10);
-      expect(
-        results.single.single.pressure,
-        closeTo(_estimate / _pencilMax, 1e-9),
-      );
+      expect(results.single.single.pressure, closeTo(_ipad(_stand), 1e-9));
     },
     variant: ipad,
   );
@@ -161,12 +172,12 @@ void main() {
     (tester) async {
       final results = await _strokes(tester, _pressureBrush, [
         _pencil([
-          _s(const Offset(4, 8), _estimate, 0),
-          _s(const Offset(20, 8), _estimate, 20),
-          _s(const Offset(36, 8), _estimate, 40),
-          // Past the patience, still the estimate: the stroke stops waiting.
-          _s(const Offset(52, 8), _estimate, 60),
-          _s(const Offset(90, 8), 2.0, 80),
+          _s(const Offset(4, 8), _stand, 0),
+          _s(const Offset(20, 8), _stand, 40),
+          _s(const Offset(36, 8), _stand, 80),
+          // Past the patience, still the stand-in: the stroke stops waiting.
+          _s(const Offset(52, 8), _stand, 120),
+          _s(const Offset(90, 8), 2.0, 140),
         ]),
       ]);
 
@@ -174,9 +185,9 @@ void main() {
       expect(dabs.first.center.x, 4);
       expect(
         dabs.where((dab) => dab.center.x <= 52).map((dab) => dab.pressure),
-        everyElement(closeTo(_estimate / _pencilMax, 1e-9)),
+        everyElement(closeTo(_ipad(_stand), 1e-9)),
       );
-      expect(dabs.last.pressure, closeTo(2.0 / _pencilMax, 1e-9));
+      expect(dabs.last.pressure, closeTo(_ipad(2.0), 1e-9));
     },
     variant: ipad,
   );
@@ -184,16 +195,16 @@ void main() {
   testWidgets('within the patience the stroke keeps waiting', (tester) async {
     final results = await _strokes(tester, _pressureBrush, [
       _pencil([
-        _s(const Offset(4, 8), _estimate, 0),
-        _s(const Offset(20, 8), _estimate, 25),
-        _s(const Offset(36, 8), _estimate, 50),
-        _s(const Offset(60, 8), 1.0, 58),
+        _s(const Offset(4, 8), _stand, 0),
+        _s(const Offset(20, 8), _stand, 50),
+        _s(const Offset(36, 8), _stand, 100),
+        _s(const Offset(60, 8), 1.0, 108),
       ]),
     ]);
 
     expect(
       results.single.map((dab) => dab.pressure).toSet(),
-      {closeTo(1.0 / _pencilMax, 1e-9)},
+      {closeTo(_ipad(1.0), 1e-9)},
     );
   }, variant: ipad);
 
@@ -208,37 +219,36 @@ void main() {
         BrushEditCanvasInputSettings(
           size: 8,
           curves: {
-            (BrushPressureTarget.size, BrushInputSource.speed):
+            (BrushPressureTarget.size, BrushInputSource.tilt):
                 BrushPressureCurve.identity(),
           },
         ),
         [
           _pencil([
-            _s(const Offset(4, 8), _estimate, 0),
+            _s(const Offset(4, 8), _stand, 0),
             _s(const Offset(40, 8), 0.25, 8),
           ]),
         ],
       );
 
-      expect(
-        results.single.first.pressure,
-        closeTo(_estimate / _pencilMax, 1e-9),
-      );
+      expect(results.single.first.pressure, closeTo(_ipad(_stand), 1e-9));
     },
     variant: ipad,
   );
 
   testWidgets(
-    'only UIKit hands over the estimate — elsewhere a third is a reading',
+    'only UIKit repeats a stand-in — elsewhere a force the press repeats is '
+    'a reading',
     (tester) async {
       final results = await _strokes(tester, _pressureBrush, [
         _pen(pressureMax: 1, [
-          _s(const Offset(4, 8), 1 / 3, 0),
-          _s(const Offset(40, 8), 0.9, 8),
+          _s(const Offset(4, 8), 0.5, 0),
+          _s(const Offset(20, 8), 0.5, 8),
+          _s(const Offset(40, 8), 0.9, 16),
         ]),
       ]);
 
-      expect(results.single.first.pressure, closeTo(1 / 3, 1e-9));
+      expect(results.single.first.pressure, closeTo(0.5, 1e-9));
     },
     variant: TargetPlatformVariant.only(TargetPlatform.android),
   );
@@ -252,15 +262,15 @@ void main() {
       await _drive(
         tester,
         _pencil([
-          _s(const Offset(4, 20), _estimate, 0),
-          _s(const Offset(30, 20), _estimate, 8),
+          _s(const Offset(4, 20), _stand, 0),
+          _s(const Offset(30, 20), _stand, 8),
         ]),
         end: _End.cancel,
       );
       await _drive(
         tester,
         _pencil([
-          _s(const Offset(50, 8), 0.25, 100),
+          _s(const Offset(50, 8), _stand, 100),
           _s(const Offset(80, 8), 0.25, 108),
         ]),
       );
@@ -274,6 +284,438 @@ void main() {
     },
     variant: ipad,
   );
+
+  testWidgets(
+    'an iPad pencil\'s force reads in Apple\'s unit — the average touch is '
+    'half pressure, twice it is full',
+    (tester) async {
+      final results = await _strokes(tester, _pressureBrush, [
+        _pencil([
+          _s(const Offset(4, 8), _stand, 0),
+          _s(const Offset(20, 8), 1.0, 8),
+          _s(const Offset(40, 8), 1.0, 16),
+        ]),
+        _pencil([
+          _s(const Offset(4, 24), _stand, 100),
+          _s(const Offset(20, 24), 3.0, 108),
+          _s(const Offset(40, 24), 3.0, 116),
+        ]),
+      ]);
+
+      expect(
+        results.first.map((dab) => dab.pressure),
+        everyElement(closeTo(0.5, 1e-9)),
+      );
+      expect(
+        results.last.map((dab) => dab.pressure),
+        everyElement(closeTo(1.0, 1e-9)),
+      );
+    },
+    variant: ipad,
+  );
+
+  testWidgets(
+    'a pencil that measures no force still paints at full pressure',
+    (tester) async {
+      final results = await _strokes(tester, _pressureBrush, [
+        _pen(pressureMax: 0, [
+          _s(const Offset(4, 8), 0, 0),
+          _s(const Offset(40, 8), 0, 8),
+        ]),
+      ]);
+
+      expect(
+        results.single.map((dab) => dab.pressure),
+        everyElement(1.0),
+      );
+    },
+    variant: ipad,
+  );
+
+  group('the platform\'s own record decides (the pen ledger)', () {
+    // What the native ledger would hold, keyed by the pointer's timestamp.
+    late Map<Duration, PenLedgerReading> ledger;
+
+    setUp(() {
+      ledger = {};
+      QaPenLedger.debugForce = (at) => ledger[at];
+    });
+    tearDown(() {
+      QaPenLedger.debugForce = null;
+      InputInspector.reset();
+    });
+
+    PenLedgerReading measured(double value) =>
+        (state: PenLedgerState.measured, value: value);
+
+    testWidgets(
+      'UIKit\'s word decides: a sample it calls an estimate waits, whatever '
+      'force it carries',
+      (tester) async {
+        // Forces that change from the first sample on — the fallback would
+        // take the second as a reading. UIKit says otherwise.
+        ledger[_ms(0)] = _estimatedReading;
+        ledger[_ms(8)] = _estimatedReading;
+        ledger[_ms(16)] = measured(0.8);
+        ledger[_ms(24)] = measured(0.8);
+        final results = await _strokes(tester, _pressureBrush, [
+          _pencil([
+            _s(const Offset(4, 8), 0.5, 0),
+            _s(const Offset(20, 8), 0.6, 8),
+            _s(const Offset(40, 8), 0.8, 16),
+            _s(const Offset(70, 8), 0.8, 24),
+          ]),
+        ]);
+
+        expect(results.single.first.center.x, 4);
+        expect(
+          results.single.map((dab) => dab.pressure).toSet(),
+          {closeTo(_ipad(0.8), 1e-9)},
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'a sample that waited is painted with the force UIKit later measured '
+      'for IT',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _pressureBrush, results);
+        ledger[_ms(0)] = _estimatedReading;
+        ledger[_ms(8)] = _estimatedReading;
+        _down(
+          tester,
+          const Offset(4, 8),
+          time: _ms(0),
+          force: 0.5,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _move(
+          tester,
+          const Offset(20, 8),
+          time: _ms(8),
+          force: 0.5,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        // The Bluetooth report lands: UIKit measures the two estimates...
+        ledger[_ms(0)] = measured(1.2);
+        ledger[_ms(8)] = measured(1.0);
+        // ...and the next sample is measured from the start.
+        ledger[_ms(16)] = measured(0.8);
+        _move(
+          tester,
+          const Offset(36, 8),
+          time: _ms(16),
+          force: 0.8,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _up(tester, const Offset(36, 8), time: _ms(20));
+        await tester.pump();
+
+        final dabs = results.single;
+        expect(dabs.first.center.x, 4);
+        expect(dabs.first.pressure, closeTo(_ipad(1.2), 1e-9));
+        expect(
+          dabs.where((dab) => dab.center.x == 20).single.pressure,
+          closeTo(_ipad(1.0), 1e-9),
+        );
+        expect(dabs.last.pressure, closeTo(_ipad(0.8), 1e-9));
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'on a Mac the event\'s own record decides — a tablet\'s pressure, or '
+      'full pressure for a mouse',
+      (tester) async {
+        // Flutter's macOS embedder calls every pen a mouse.
+        for (final at in [0, 8, 16]) {
+          ledger[_ms(at)] = measured(0.3);
+        }
+        for (final at in [100, 108, 116]) {
+          ledger[_ms(at)] = (state: PenLedgerState.noPressure, value: 0.0);
+        }
+        final results = await _strokes(tester, _pressureBrush, [
+          _pen(pressureMax: 1, kind: PointerDeviceKind.mouse, [
+            _s(const Offset(4, 8), 0, 0),
+            _s(const Offset(20, 8), 0, 8),
+            _s(const Offset(36, 8), 0, 16),
+          ]),
+          _pen(pressureMax: 1, kind: PointerDeviceKind.mouse, [
+            _s(const Offset(4, 24), 0, 100),
+            _s(const Offset(20, 24), 0, 108),
+            _s(const Offset(36, 24), 0, 116),
+          ]),
+        ]);
+
+        expect(
+          results.first.map((dab) => dab.pressure),
+          everyElement(closeTo(0.3, 1e-9)),
+        );
+        expect(results.last.map((dab) => dab.pressure), everyElement(1.0));
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    );
+
+    testWidgets(
+      'the stroke puts how the ledger answered on the inspector\'s ledger line',
+      (tester) async {
+        InputInspector.visible.value = true;
+        ledger[_ms(0)] = _estimatedReading;
+        ledger[_ms(8)] = _estimatedReading;
+        ledger[_ms(16)] = measured(0.8);
+        await _strokes(tester, _pressureBrush, [
+          _pencil([
+            _s(const Offset(4, 8), 0.5, 0),
+            _s(const Offset(20, 8), 0.6, 8),
+            _s(const Offset(40, 8), 0.8, 16),
+            // A sample the ledger never saw.
+            _s(const Offset(70, 8), 0.8, 24),
+          ]),
+        ]);
+
+        expect(
+          InputInspector.notes['ledger'],
+          'ledger measured=1 estimated=2 none=1',
+        );
+      },
+      variant: ipad,
+    );
+  });
+
+  group('the lean and the direction wait like pressure', () {
+    tearDown(() {
+      QaPenLedger.debugAltitude = null;
+    });
+
+    testWidgets(
+      'where Flutter carries no lean, a pen is not made up to stand upright',
+      (tester) async {
+        final results = await _strokes(tester, _tiltBrush, [
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 8), 0.5, 0, tilt: 0.5),
+            _s(const Offset(40, 8), 0.5, 8, tilt: 0.5),
+          ]),
+        ]);
+
+        expect(
+          results.single.map((dab) => dab.tiltAltitude),
+          everyElement(isNull),
+        );
+      },
+      variant: const TargetPlatformVariant({
+        TargetPlatform.windows,
+        TargetPlatform.macOS,
+        TargetPlatform.linux,
+      }),
+    );
+
+    testWidgets(
+      'a lean UIKit still estimates waits too — each sample is drawn with '
+      'the lean measured for it, or the first measured after it',
+      (tester) async {
+        final altitudes = <Duration, PenLedgerReading>{
+          _ms(0): _estimatedReading,
+          _ms(8): _estimatedReading,
+          _ms(16): (state: PenLedgerState.measured, value: 0.6),
+        };
+        QaPenLedger.debugAltitude = (at) => altitudes[at];
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _tiltBrush, results);
+        _down(
+          tester,
+          const Offset(4, 8),
+          time: _ms(0),
+          force: 1.0,
+          tilt: 0.1,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _move(
+          tester,
+          const Offset(20, 8),
+          time: _ms(8),
+          force: 1.1,
+          tilt: 0.1,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        // UIKit measures the press's lean; the first move's stays an
+        // estimate, and the next sample is measured from the start.
+        altitudes[_ms(0)] = (state: PenLedgerState.measured, value: 0.9);
+        _move(
+          tester,
+          const Offset(36, 8),
+          time: _ms(16),
+          force: 1.2,
+          tilt: 0.1,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _up(tester, const Offset(36, 8), time: _ms(20));
+        await tester.pump();
+
+        final dabs = results.single;
+        expect(dabs.first.center.x, 4);
+        expect(dabs.first.tiltAltitude, closeTo(0.9 / (math.pi / 2), 1e-9));
+        expect(
+          dabs.where((dab) => dab.center.x == 20).single.tiltAltitude,
+          closeTo(0.6 / (math.pi / 2), 1e-9),
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'a tip that follows the stroke is laid at the press along the way the '
+      'stroke set off',
+      (tester) async {
+        final results = await _strokes(tester, _directionBrush, [
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 4), 0.5, 0),
+            // Down and to the right: 315° on the screen.
+            _s(const Offset(24, 24), 0.5, 8),
+            _s(const Offset(44, 24), 0.5, 16),
+          ]),
+        ]);
+
+        final press = results.single.first;
+        expect((press.center.x, press.center.y), (4, 4));
+        // The tip-stamp cache bakes the turn into the dab's mask; the
+        // mask's key ends with it in whole degrees.
+        expect(press.tipMask?.id, endsWith('|315'));
+      },
+    );
+
+    testWidgets(
+      'once measured, a lean UIKit estimates again keeps the last one — and '
+      'a tap never measured lands with its own',
+      (tester) async {
+        final altitudes = <Duration, PenLedgerReading>{
+          _ms(0): (state: PenLedgerState.measured, value: 0.9),
+          _ms(8): _estimatedReading,
+          _ms(16): (state: PenLedgerState.measured, value: 0.9),
+          _ms(100): _estimatedReading,
+        };
+        QaPenLedger.debugAltitude = (at) => altitudes[at];
+        final results = await _strokes(tester, _tiltBrush, [
+          _pencil([
+            _s(const Offset(4, 8), 1.0, 0, tilt: 0.1),
+            // Its own lean differs, and UIKit calls it an estimate.
+            _s(const Offset(20, 8), 1.1, 8, tilt: 0.7),
+            _s(const Offset(36, 8), 1.2, 16, tilt: 0.1),
+          ]),
+          _pencil([_s(const Offset(60, 24), 1.0, 100, tilt: 0.7)]),
+        ]);
+
+        expect(
+          results.first.map((dab) => dab.tiltAltitude),
+          everyElement(closeTo(0.9 / (math.pi / 2), 1e-9)),
+        );
+        expect(
+          results.last.single.tiltAltitude,
+          closeTo(1 - 0.7 / (math.pi / 2), 1e-9),
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'scatter thrown across the stroke throws the press across the way it '
+      'set off',
+      (tester) async {
+        final results = await _strokes(tester, _acrossScatterBrush, [
+          _pen(pressureMax: 1, [
+            _s(const Offset(20, 16), 0.5, 0),
+            // Straight to the right: across is straight up and down.
+            _s(const Offset(60, 16), 0.5, 8),
+          ]),
+        ]);
+
+        expect(results.single.first.center.x, closeTo(20, 1e-9));
+      },
+    );
+
+    testWidgets('a tap that never moved has no direction to follow', (
+      tester,
+    ) async {
+      final results = await _strokes(tester, _directionBrush, [
+        _pen(pressureMax: 1, [_s(const Offset(10, 10), 0.5, 0)]),
+      ]);
+
+      expect(results.single.single.tipMask?.id, endsWith('|0'));
+    });
+  });
+
+  group('speed waits like pressure (opening-dab-speed-Q1)', () {
+    setUp(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+        speedReferencePixelsPerSecond: 1000,
+      );
+    });
+
+    testWidgets(
+      'a press that read its pressure keeps it while it waits for a speed',
+      (tester) async {
+        final results = await _strokes(tester, _speedAndPressureBrush, [
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 8), 0.4, 0),
+            // 100 canvas px in 200 ms: 500 px/s, half the reference.
+            _s(const Offset(104, 8), 0.6, 200),
+          ]),
+        ]);
+
+        final press = results.single.first;
+        expect(press.center.x, 4);
+        expect(press.speed, closeTo(0.5, 1e-9), reason: 'the first move');
+        expect(press.pressure, closeTo(0.4, 1e-9), reason: 'its own');
+      },
+    );
+
+    testWidgets(
+      'each input is filled by ITS first reading — the first speed measured '
+      'and the first real force, whichever came first',
+      (tester) async {
+        final results = await _strokes(tester, _speedAndPressureBrush, [
+          _pencil([
+            _s(const Offset(4, 8), _stand, 0),
+            // 20 px in 8 ms: past the reference, so 1.
+            _s(const Offset(24, 8), _stand, 8),
+            // 5 px in 8 ms: 625 px/s.
+            _s(const Offset(29, 8), 0.8, 16),
+            _s(const Offset(54, 8), 0.8, 24),
+          ]),
+        ]);
+
+        final press = results.single.first;
+        expect(press.center.x, 4);
+        expect(press.speed, closeTo(1.0, 1e-9));
+        expect(press.pressure, closeTo(_ipad(0.8), 1e-9));
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'a move on the press\'s own clock tick measures nothing — the press '
+      'waits for one that does',
+      (tester) async {
+        final results = await _strokes(tester, _speedAndPressureBrush, [
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 8), 0.5, 0),
+            _s(const Offset(20, 8), 0.5, 0),
+            // 50 px in 100 ms: 500 px/s.
+            _s(const Offset(70, 8), 0.5, 100),
+          ]),
+        ]);
+
+        expect(results.single.first.speed, closeTo(0.5, 1e-9));
+      },
+    );
+  });
 
   group('Wintab', () {
     late List<QaTabletPacket> queue;
@@ -416,16 +858,60 @@ void main() {
 }
 
 /// Apple Pencil's `maximumPossibleForce`, which the iOS engine hands over
-/// as the pointer's `pressureMax`.
+/// as the pointer's `pressureMax` — and which the app does not divide by.
 const double _pencilMax = 25 / 6;
 
-/// UIKit's stand-in force for a sample whose force has not arrived.
-const double _estimate = 1 / 3;
+/// The pressure an iPad pencil's force lands as: Apple's average touch
+/// (1.0) is half pressure (유저 2026-09-27, `ipad-pencil-pressure-scale-Q1`).
+double _ipad(double force) => (force / 2.0).clamp(0.0, 1.0);
+
+/// A stand-in force, as the user's inspector showed it on build 1064. The
+/// rule does not read the value — only that the press's force repeats — so
+/// it is deliberately not the 1/3 the forums logged.
+const double _stand = 0.33;
 
 final BrushEditCanvasInputSettings _pressureBrush =
     BrushEditCanvasInputSettings(
       size: 40,
       sizePressureCurve: BrushPressureCurve.identity(),
+    );
+
+final BrushEditCanvasInputSettings _tiltBrush = BrushEditCanvasInputSettings(
+  size: 40,
+  curves: {
+    (BrushPressureTarget.size, BrushInputSource.tilt):
+        BrushPressureCurve.identity(),
+  },
+);
+
+final BrushEditCanvasInputSettings _directionBrush =
+    BrushEditCanvasInputSettings(
+      size: 10,
+      roundness: 0.5,
+      rotationMode: BrushTipRotationMode.direction,
+    );
+
+final BrushEditCanvasInputSettings _acrossScatterBrush =
+    BrushEditCanvasInputSettings(
+      size: 10,
+      scatterRadiusRatio: 1.0,
+      scatterBothAxes: false,
+    );
+
+const PenLedgerReading _estimatedReading = (
+  state: PenLedgerState.estimated,
+  value: 0.0,
+);
+
+final BrushEditCanvasInputSettings _speedAndPressureBrush =
+    BrushEditCanvasInputSettings(
+      size: 40,
+      curves: {
+        (BrushPressureTarget.size, BrushInputSource.pressure):
+            BrushPressureCurve.identity(),
+        (BrushPressureTarget.size, BrushInputSource.speed):
+            BrushPressureCurve.identity(),
+      },
     );
 
 Duration _ms(int milliseconds) => Duration(milliseconds: milliseconds);
@@ -437,13 +923,20 @@ typedef _Sample = ({Offset at, double force, Duration time, double tilt});
 _Sample _s(Offset at, double force, int ms, {double tilt = 0}) =>
     (at: at, force: force, time: _ms(ms), tilt: tilt);
 
-typedef _Stroke = ({List<_Sample> samples, double pressureMax});
+typedef _Stroke = ({
+  List<_Sample> samples,
+  double pressureMax,
+  PointerDeviceKind kind,
+});
 
 _Stroke _pencil(List<_Sample> samples) =>
     _pen(samples, pressureMax: _pencilMax);
 
-_Stroke _pen(List<_Sample> samples, {required double pressureMax}) =>
-    (samples: samples, pressureMax: pressureMax);
+_Stroke _pen(
+  List<_Sample> samples, {
+  required double pressureMax,
+  PointerDeviceKind kind = PointerDeviceKind.stylus,
+}) => (samples: samples, pressureMax: pressureMax, kind: kind);
 
 /// What a landed dab is — where, how big, how opaque, and every input it
 /// was drawn with — in the order it was laid.
@@ -459,6 +952,31 @@ List<Object?> _look(List<BrushDab> dabs) => [
       dab.tiltAltitude,
     ),
 ];
+
+/// Draws [waited] on an iPad, then the same hand where nothing ever stands
+/// in — on Android, every sample already at the [reading] the wait filled
+/// in — and returns both strokes.
+Future<List<List<BrushDab>>> _parity(
+  WidgetTester tester,
+  BrushEditCanvasInputSettings settings, {
+  required List<_Sample> waited,
+  required double reading,
+}) async {
+  final results = <List<BrushDab>>[];
+  await _pump(tester, settings, results);
+  await _drive(tester, _pencil(waited));
+  debugDefaultTargetPlatformOverride = TargetPlatform.android;
+  await _drive(
+    tester,
+    _pen(pressureMax: 1, [
+      for (final sample in waited)
+        (at: sample.at, force: reading, time: sample.time, tilt: sample.tilt),
+    ]),
+  );
+  debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+  expect(results, hasLength(2));
+  return results;
+}
 
 Future<List<List<BrushDab>>> _strokes(
   WidgetTester tester,
@@ -523,6 +1041,7 @@ Future<void> _drive(
     force: first.force,
     tilt: first.tilt,
     pressureMax: stroke.pressureMax,
+    kind: stroke.kind,
   );
   await tester.pump();
   for (final sample in stroke.samples.skip(1)) {
@@ -533,6 +1052,7 @@ Future<void> _drive(
       force: sample.force,
       tilt: sample.tilt,
       pressureMax: stroke.pressureMax,
+      kind: stroke.kind,
     );
     await tester.pump();
   }
@@ -541,14 +1061,14 @@ Future<void> _drive(
     end == _End.lift
         ? PointerUpEvent(
             pointer: 1,
-            kind: PointerDeviceKind.stylus,
+            kind: stroke.kind,
             position: canvasGlobalOffset(tester, last.at),
             timeStamp: last.time + _ms(4),
             pressureMax: stroke.pressureMax,
           )
         : PointerCancelEvent(
             pointer: 1,
-            kind: PointerDeviceKind.stylus,
+            kind: stroke.kind,
             position: canvasGlobalOffset(tester, last.at),
             timeStamp: last.time + _ms(4),
           ),

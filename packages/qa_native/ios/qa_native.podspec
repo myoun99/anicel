@@ -15,10 +15,10 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   # miniaudio needs the CoreAudio stack at LINK time (it dlopens nothing
   # on Apple); AVFoundation/CoreMedia/CoreVideo carry the video writer
-  # (AUDIO-PRO R7).
+  # (AUDIO-PRO R7); UIKit carries the pen ledger (H43).
   s.frameworks       = 'CoreFoundation', 'CoreAudio', 'AudioToolbox',
                        'AVFoundation', 'CoreMedia', 'CoreVideo',
-                       'CoreGraphics'
+                       'CoreGraphics', 'UIKit'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
   # -ffp-contract=off must be repeated here, NOT only in

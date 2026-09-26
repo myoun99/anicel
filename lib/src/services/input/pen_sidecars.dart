@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show kPrimaryButton, kPrimaryStylusButton, kSecondaryStylusButton;
 
+import '../../native/qa_pen_ledger.dart';
 import 'pencil_interaction_service.dart';
 import 'platform_pen_channel_service.dart';
 import 'raw_pen_input_service.dart';
@@ -38,6 +39,9 @@ abstract final class PenSidecars {
     WintabPenService.instance.bind();
     RawPenInputService.instance.bind();
     PencilInteractionService.instance.bind();
+    // The per-event record comes first where the platform keeps one (H43);
+    // started here so the very first stroke is on it.
+    QaPenLedger.start();
     if (Platform.isMacOS) {
       channelServices.add(PlatformPenChannelService.macos()..start());
     } else if (Platform.isLinux) {
