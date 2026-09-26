@@ -160,6 +160,11 @@ abstract interface class TimelineTileRasterSource {
   /// word that may grow into [frameIndex]'s cell from before it (F-96). A
   /// tile lays it at its first cell, as the classic pass does at a window's.
   int? wordCellBefore(int frameIndex);
+
+  /// The cells of [from, to) that write — a word, a mark or a hold dash — in
+  /// order. The tile emitter bakes exactly these, as the classic pass inks
+  /// exactly these.
+  Iterable<int> writingCellsIn(int from, int to);
 }
 
 /// #29: THE spelling of [TimelineTileRasterSource.substrateGeneration] — the

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:collection/collection.dart' show lowerBound;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'frame_window_semantics.dart';
@@ -45,6 +46,45 @@ const String _holdDashGlyph = timelineHoldDashGlyph;
 /// frame numbers and markers repeat heavily across rows and repaints.
 TextPainter _glyphPainter(String text, TextStyle style) =>
     timelineGlyphPainter(text, style);
+
+/// Where a cell of [layer]'s row can paint differently from the cell before
+/// it, ascending — the edges of its STRETCHES: between two edges every cell
+/// paints as the one before it, so a row walks a stretch in one step.
+/// I-22's ten-minute floor puts ~10,000 frames in a window, and a cut's own
+/// frames are a few hundred of them; the rest is one stretch.
+///
+/// A cell paints its exposure and its two neighbours' (its corners, whether
+/// it starts an empty run) and its block's own facts (its cel's name and
+/// picture, whether it is a ghost). Those move only where a block starts,
+/// where one ends, at a dot, at a span's edges (a band that is spans only
+/// paints its spans) and at frame 0, which has no cell before it. Each of
+/// those is an edge, and so is the frame on either side of it.
+///
+/// ⚠️A camera row's keys are not among them: they live on the cut (㉘), and
+/// a camera cell PAINTS the same on a key and off one — its keys are the
+/// lane key markers (B4). Its exposure state does change inside a stretch,
+/// so nothing that reads the state rather than the paint (the semantics)
+/// may walk these.
+List<int> timelineRowCellEdges(Layer layer) {
+  final changes = <int>{0};
+  for (final MapEntry(key: start, value: block) in layer.timeline.entries) {
+    changes
+      ..add(start)
+      ..add(start + (block.length ?? 1));
+    for (final offset in block.breakdownOffsets) {
+      changes.add(start + offset);
+    }
+  }
+  for (final MapEntry(key: from, value: span)
+      in layer.instructions.entries) {
+    changes
+      ..add(from)
+      ..add(from + span.length);
+  }
+  return {
+    for (final change in changes) ...[change - 1, change, change + 1],
+  }.toList()..sort();
+}
 
 class TimelineRowCellsPainter extends CustomPainter
     with RepaintOnProps
@@ -140,6 +180,13 @@ class TimelineRowCellsPainter extends CustomPainter
 
   @override
   final double crossAxisExtent;
+
+  /// What a cell exposes — and with the cel names and pictures below, it may
+  /// change only where [layer]'s blocks, dots and spans do
+  /// ([timelineRowCellEdges]): the row walks its cells by stretch (I-22) and
+  /// asks a stretch's first cell for all of it. Every host's answers are
+  /// read off the layer (a camera row's keys live on the cut, and a camera
+  /// cell paints the same on a key and off one).
   @override
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
@@ -279,6 +326,31 @@ class TimelineRowCellsPainter extends CustomPainter
   /// exact lifetime this may live for: the layer and the cel revision cannot
   /// move inside one paint, and holding it longer would serve stale cells.
   Map<int, TimelineRowCellModel>? _passModels;
+
+  /// [timelineRowCellEdges] of this painter's layer — found once: a layer
+  /// is immutable, and an edited one is a new painter.
+  late final List<int> _cellEdges = timelineRowCellEdges(layer);
+
+  /// [from, to) as its stretches, in order, each from [from] or an edge to
+  /// the next edge — every cell of one paints as its first.
+  Iterable<({int start, int end})> _stretchesIn(int from, int to) sync* {
+    var start = from;
+    for (
+      var edge = lowerBound(_cellEdges, from + 1);
+      start < to;
+      edge += 1
+    ) {
+      final end = edge < _cellEdges.length
+          ? math.min(_cellEdges[edge], to)
+          : to;
+      yield (start: start, end: end);
+      start = end;
+    }
+  }
+
+  /// The first cell of the stretch that holds [frameIndex].
+  int _stretchStartOf(int frameIndex) =>
+      _cellEdges[lowerBound(_cellEdges, frameIndex + 1) - 1];
 
   /// The resolved per-cell model — THE probe surface for tests (glyphs,
   /// dim/ghost flags, exposure states live here, not in widget trees).
@@ -470,12 +542,18 @@ class TimelineRowCellsPainter extends CustomPainter
       runColor = null;
     }
 
-    for (var frame = from; frame < to; frame += 1) {
+    // By stretch (I-22): the rest of a stretch is its first cell again, so
+    // it joins the run that cell joined or started, or lays nothing.
+    for (final (start: frame, :end) in _stretchesIn(from, to)) {
       final color = resolvedCellStyleFor(frame).background;
+      final continues = cellModelAt(frame).segment.continuesFromPrevious;
+      assert(
+        end - frame == 1 || continues || color.a == 0,
+        'a stretch that starts a block is that one cell',
+      );
       // A cell joins the run before it when no corner stands between them
       // and it is the same paper.
-      if (color == runColor &&
-          cellModelAt(frame).segment.continuesFromPrevious) {
+      if (color == runColor && continues) {
         continue;
       }
       close(frame);
@@ -687,10 +765,29 @@ class TimelineRowCellsPainter extends CustomPainter
     if (lead != null) {
       _paintCellForeground(canvas, lead);
     }
-    for (var frameIndex = from; frameIndex < to; frameIndex += 1) {
+    for (final frameIndex in writingCellsIn(from, to)) {
       _paintCellForeground(canvas, frameIndex);
     }
     canvas.restore();
+  }
+
+  /// The cells of [from, to) that WRITE — a word, a mark or a hold dash — in
+  /// order; every other cell inks nothing. The classic pass inks these and
+  /// the tile emitter bakes these, so the two cannot disagree on which.
+  ///
+  /// By stretch (I-22): a stretch whose first cell writes nothing is passed
+  /// in one step, and one that writes is a hold ghost's dashes, a cell each.
+  @override
+  Iterable<int> writingCellsIn(int from, int to) sync* {
+    for (final (:start, :end) in _stretchesIn(from, to)) {
+      final model = cellModelAt(start);
+      if (model.mark == null && model.glyph.isEmpty) {
+        continue;
+      }
+      for (var frameIndex = start; frameIndex < end; frameIndex += 1) {
+        yield frameIndex;
+      }
+    }
   }
 
   /// The row's dense, mostly-static part over frames [from, to) — exactly
@@ -841,14 +938,19 @@ class TimelineRowCellsPainter extends CustomPainter
   ///
   /// A mark is no word: it keeps to its own cell, so it neither grows into
   /// [frameIndex] nor stands in the way of a word before it that does.
+  ///
+  /// Walked back by stretch (I-22): a stretch whose first cell writes no
+  /// word is passed in one step.
   @override
   int? wordCellBefore(int frameIndex) {
-    for (var index = frameIndex - 1; index >= frameStartIndex; index -= 1) {
-      final model = cellModelAt(index);
-      if (model.glyph.isEmpty) {
-        continue;
+    var index = frameIndex - 1;
+    while (index >= frameStartIndex) {
+      final start = _stretchStartOf(index);
+      final model = cellModelAt(start);
+      if (model.glyph.isNotEmpty) {
+        return model.ghost && model.glyph == _holdDashGlyph ? null : index;
       }
-      return model.ghost && model.glyph == _holdDashGlyph ? null : index;
+      index = start - 1;
     }
     return null;
   }
