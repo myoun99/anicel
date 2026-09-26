@@ -116,7 +116,7 @@ class _WorkspaceRail {
       // 🚨The buttons rebuild when an ANSWER moves, not when news arrives
       // (2026-09-26). The session notifies constantly and every stroke's
       // commit announces itself on three of the channels above, while the
-      // five doors almost never change — each pen-up rebuilt all five.
+      // doors almost never change — each pen-up rebuilt all five of them.
       slice: () {
         final layer = session.activeLayer;
         return (

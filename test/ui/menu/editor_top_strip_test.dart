@@ -337,8 +337,13 @@ void main() {
     FieldSlider barOf(WidgetTester tester, String key) =>
         tester.widget<FieldSlider>(find.byKey(ValueKey<String>(key)));
 
+    // The tool column scrolls when the window is short — this one is — so
+    // a hand scrolls to the button first, as the test does.
     Future<void> arm(WidgetTester tester, String railKey) async {
-      await tester.tap(find.byKey(ValueKey<String>(railKey)));
+      final button = find.byKey(ValueKey<String>(railKey));
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
       await tester.pumpAndSettle();
     }
 
