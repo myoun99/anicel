@@ -77,6 +77,13 @@ void main() {
     }
   }
 
+  /// The top-left quarter of the left box's slice of the form's surface
+  /// ([envelopeInkSurfaceWidth] across the form), inked solid.
+  Future<ui.Image> leftQuarter() {
+    final surface = envelopeInkSurfaceWidth(testForm.aspectRatio);
+    return solidInk((surface / 4).round(), (surface / 2).round());
+  }
+
   Future<(int, int, int)> pixelAt(ui.Image image, int x, int y) async {
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     final offset = (y * image.width + x) * 4;
@@ -104,9 +111,9 @@ void main() {
     await tester.runAsync(() async {
       final layout = layoutOn(200);
       final leftKey = envelopeInkBoxKey(owner, 'left');
-      // A quarter of the left box's surface slice (2048 × 4096), inked
-      // solid: it lands on the box's top-left quarter and nowhere else.
-      final ink = await solidInk(512, 1024);
+      // A quarter of the left box's surface slice, inked solid: it lands
+      // on the box's top-left quarter and nowhere else.
+      final ink = await leftQuarter();
       addTearDown(ink.dispose);
 
       final rendered = await paintSheet(
@@ -139,7 +146,7 @@ void main() {
     await tester.runAsync(() async {
       final layout = layoutOn(200);
       final leftKey = envelopeInkBoxKey(owner, 'left');
-      final ink = await solidInk(512, 1024);
+      final ink = await leftQuarter();
       addTearDown(ink.dispose);
 
       final rendered = await paintSheet(

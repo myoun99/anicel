@@ -1,13 +1,24 @@
+import 'dart:math' as math;
+
+import '../project.dart' show defaultProjectCameraSize;
 import 'cut_envelope_form.dart';
 
 /// Ink surface pixels across the FORM's whole width — the resolution every
-/// envelope's handwriting is stored at, whatever paper it prints on.
+/// envelope's handwriting is stored at, whatever paper it prints on — for a
+/// form of [aspectRatio].
 ///
-/// Generous on purpose: a box surface is a slice of this one, so the
-/// smallest cel cell of the analog preset (≈1/16 of the width) still gets
-/// ~260px to hold a hand-written number, and the tile-sparse store means
-/// the unused remainder costs nothing.
-const double envelopeInkSurfaceWidth = 4096;
+/// One pixel per paper unit where the form prints on the default shooting
+/// frame: the canvas's grade (유저 2026-09-26, one-paper-brush-width-Q2:
+/// 「해상도를 캔버스처럼 낮추기」), so a brush of a size at 100% draws on the
+/// envelope as wide as on the canvas. It stays the form's, never a cut's
+/// ([CutEnvelopeLayout.inkSurfaceScale]): on a canvas larger than that
+/// frame the ink is coarser in proportion, on a smaller one finer. It was
+/// 4096 whatever the form — two to three times the canvas's grade.
+double envelopeInkSurfaceWidth(double aspectRatio) {
+  const frame = defaultProjectCameraSize;
+  final ratio = aspectRatio <= 0 ? 1.0 : aspectRatio;
+  return math.min(frame.width.toDouble(), frame.height * ratio).ceilToDouble();
+}
 
 /// A box placed on paper: the form's fractions turned into paper units.
 class PlacedEnvelopeBox {
@@ -103,7 +114,8 @@ class CutEnvelopeLayout {
   /// three. Since the form scales with the paper, dividing by [formWidth]
   /// makes the surface coordinate of a point invariant — the paper size
   /// cancels out.
-  double get inkSurfaceScale => envelopeInkSurfaceWidth / formWidth;
+  double get inkSurfaceScale =>
+      envelopeInkSurfaceWidth(form.aspectRatio) / formWidth;
 
   PlacedEnvelopeBox place(EnvelopeBox box) => PlacedEnvelopeBox(
     box: box,

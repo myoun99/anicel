@@ -24,8 +24,11 @@ const LayerId timesheetInkStripLayerId = LayerId('sheet-strip');
 const LayerId timesheetInkPageLayerId = LayerId('sheet-page');
 
 /// The timesheet ink's resolution: its surfaces' pixels per sheet unit (a
-/// frame row is 18 of them, so 72 pixels a row).
-const int timesheetInkScale = 4;
+/// frame row is 18 of them).
+///
+/// ONE, the canvas's grade — the conte's reason (`conteInkScale`,
+/// one-paper-brush-width-Q2); it was 4.
+const int timesheetInkScale = 1;
 
 /// Frame-anchored ink: one surface per page BAND of frame rows, so writing
 /// follows its frames through the paged and the continuous view alike.

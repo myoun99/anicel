@@ -81,8 +81,8 @@ void main() {
     final ink = window.inkViewport(panel);
 
     // Paper is 100 wide and the form fills it, so a surface pixel is
-    // 100/4096 of a paper unit.
-    expect(ink.zoom, 2 / (envelopeInkSurfaceWidth / 100));
+    // 100/W of a paper unit.
+    expect(ink.zoom, 2 / (envelopeInkSurfaceWidth(1) / 100));
     expect(ink.panX, 10 + 2 * 25, reason: 'box left is 25 in paper space');
     expect(ink.panY, 20 + 2 * 50);
   });
@@ -269,10 +269,13 @@ void main() {
 
       controller.syncGeometry(aspectRatio: 660 / 497);
 
-      expect(controller.surfaceSize!.width, envelopeInkSurfaceWidth);
+      expect(
+        controller.surfaceSize!.width,
+        envelopeInkSurfaceWidth(660 / 497),
+      );
       expect(
         controller.surfaceSize!.height,
-        (envelopeInkSurfaceWidth / (660 / 497)).ceil(),
+        (envelopeInkSurfaceWidth(660 / 497) / (660 / 497)).ceil(),
       );
 
       // The analog preset printed on a 4K cut is the same surface.

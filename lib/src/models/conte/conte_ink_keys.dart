@@ -21,10 +21,17 @@ const LayerId conteInkRowLayerId = LayerId('conte-row');
 /// The conte ink's resolution: its surfaces' pixels per page point — what
 /// the ink is drawn at and what every printer lays it back at.
 ///
+/// ONE, the canvas's grade (유저 2026-09-26, one-paper-brush-width-Q2:
+/// 「해상도를 캔버스처럼 낮추기」): a brush of a size at 100% draws on the
+/// sheet as wide as on the canvas, and a surface pixel is a pixel of the
+/// brush's own size. It was 4 — a brush four times thinner than on the
+/// canvas at the same size, and sixteen times the memory; zoomed in, the ink
+/// now shows its pixels as the canvas does.
+///
 /// ↩️The page painter kept a copy of the controller's number so as not to
 /// import the input side; two numbers that must agree are two chances to
 /// print ink at a scale it was not drawn at.
-const int conteInkScale = 4;
+const int conteInkScale = 1;
 
 /// The paper plane's frame id is this plus the page — minted by
 /// [conteInkPageKey] and read back by [conteInkPageIndexOf], one spelling.

@@ -64,10 +64,11 @@ class CutEnvelopeInkController extends SheetInkController<Null> {
   /// Never notifies: callers run this during build.
   void syncGeometry({required double aspectRatio}) {
     final ratio = aspectRatio <= 0 ? 1.0 : aspectRatio;
+    final width = envelopeInkSurfaceWidth(ratio);
     _plane.syncTo(
       CanvasSize(
-        width: envelopeInkSurfaceWidth.ceil(),
-        height: (envelopeInkSurfaceWidth / ratio).ceil().clamp(1, 1 << 16),
+        width: width.ceil(),
+        height: (width / ratio).ceil().clamp(1, 1 << 16),
       ),
     );
   }
