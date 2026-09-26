@@ -289,6 +289,46 @@ void main() {
       expect(layer(), isNull, reason: 'the pointer left');
     });
 
+    testWidgets('F-193: a PEN\'s hover lets go when Android\'s exit arrives — '
+        'a hover far outside the window', (tester) async {
+      // 유저: 「도구버튼 위에서 펜 호버하다 펜 아예때서 사라지면 버튼
+      // 활성화색? 흰색배경된채로 유지되있음」. The activity turns the exit
+      // Flutter drops into this hover (MainActivity.kt, pinned by
+      // `a_pen_that_leaves_is_said_to_have_left_test`); the button must let
+      // go of it, which a hover read anywhere but the region's own exit
+      // would not.
+      await pump(
+        tester,
+        AppIconButton(
+          keyValue: 'pen',
+          tooltip: 'Pen',
+          icon: const Icon(Icons.draw),
+          onPressed: () {},
+        ),
+      );
+      Color? layer() {
+        final box = tester.widget<DecoratedBox>(
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('pen')),
+            matching: faceLayer,
+          ),
+        );
+        return (box.decoration as ShapeDecoration).color;
+      }
+
+      final base = schemeOf(tester, 'pen').onSurfaceVariant;
+      final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+      await pen.addPointer(location: Offset.zero);
+      addTearDown(pen.removePointer);
+      await pen.moveTo(tester.getCenter(find.byKey(const ValueKey('pen'))));
+      await tester.pump();
+      expect(layer(), stateLayer(base, 0.08), reason: 'the pen hovers it');
+
+      await pen.moveTo(const Offset(-100000, -100000));
+      await tester.pump(const Duration(seconds: 2));
+      expect(layer(), isNull, reason: 'the pen left, and the button knows');
+    });
+
     testWidgets('a SELECTED button\'s layer is the accent, as styleFrom '
         'derives it from the foreground', (tester) async {
       await pump(

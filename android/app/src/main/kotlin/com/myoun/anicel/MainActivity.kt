@@ -11,6 +11,8 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.view.MotionEvent
+import android.view.View
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -89,6 +91,38 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    // F-193 (user 2026-09-27, Android): a pen hovering over a tool button
+    // and then lifted away left the button lit - its hover never ended.
+    //
+    // Flutter's Android embedding drops ACTION_HOVER_EXIT: FlutterView hands
+    // the framework HOVER_MOVE and SCROLL only (its own TODO: "implementing
+    // ADD, REMOVE"). So a pen leaving hover range is never said to have left,
+    // and every MouseRegion it was over keeps its hover until the pen comes
+    // back somewhere else. iOS (UIHoverGestureRecognizer's end) and Windows
+    // (WM_POINTERLEAVE) do send the leave; this is the Android gap only.
+    //
+    // The exit is handed on as a hover FAR outside the window, in order with
+    // the events around it - synchronously, before the ACTION_DOWN that
+    // follows when the pen touches rather than leaves. The framework's hit
+    // test finds nothing there and exits every region the pen was over,
+    // exactly as a real leave would.
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        val handled = super.dispatchGenericMotionEvent(ev)
+        if (ev.actionMasked == MotionEvent.ACTION_HOVER_EXIT &&
+            ev.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS
+        ) {
+            val flutterView: View? = findViewById(FlutterActivity.FLUTTER_VIEW_ID)
+            if (flutterView != null) {
+                val away = MotionEvent.obtain(ev)
+                away.action = MotionEvent.ACTION_HOVER_MOVE
+                away.setLocation(-100000f, -100000f)
+                flutterView.onGenericMotionEvent(away)
+                away.recycle()
+            }
+        }
+        return handled
     }
 
     // PICK-2: the path grant. The Result waits here the same way the mic
