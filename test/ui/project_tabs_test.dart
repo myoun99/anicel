@@ -418,6 +418,26 @@ void main() {
     );
   });
 
+  testWidgets('the marquee of the project coming on screen keeps its undo — '
+      'the canvas it replaces takes off only the recorder IT put on', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    final channel = workspaceOf(tester).canvasSelectionCommands!;
+    final first = channel.regionHistoryRecorder;
+    expect(first, isNotNull, reason: 'CONTROL: the canvas records its marquee');
+
+    // The new project's canvas installs its recorder in the same build that
+    // retires the old canvas, and the old one's dispose runs after it.
+    await newProject(tester);
+    expect(channel.regionHistoryRecorder, isNotNull);
+    expect(
+      identical(channel.regionHistoryRecorder, first),
+      isFalse,
+      reason: 'the recorder is the new canvas\'s own',
+    );
+  });
+
   testWidgets('a lift the canvas is holding LANDS in its own project before '
       'another comes on screen — it is never carried into the next', (
     tester,
