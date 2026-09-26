@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior;
 import 'package:flutter/material.dart';
@@ -10,6 +8,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../audio/audio_slide.dart';
 import '../audio/waveform_painter.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
@@ -36,46 +35,20 @@ const String seAudioLaneId = 'se-audio';
 /// the frame band on this).
 bool laneIsSeAudio(PropertyLaneRow lane) => lane.laneId == seAudioLaneId;
 
-/// The span whose offset the audio lane's value field reads and edits:
-/// the one covering [frameIndex] (AE semantics — the value column shows
-/// the playhead's state), falling back to the layer's first span so the
-/// field stays usable wherever the playhead sits.
-SeAudioSpan? seAudioSpanForLaneValue(Layer layer, int frameIndex) {
-  final spans = seAudioSpans(layer);
-  if (spans.isEmpty) {
-    return null;
-  }
-  for (final span in spans) {
-    if (span.startFrame <= frameIndex && frameIndex < span.endFrameExclusive) {
-      return span;
-    }
-  }
-  return spans.first;
-}
-
-/// Parses the offset field's input: a frame count with optional sign and
-/// trailing 'f' ('12', '12f', '-0f' → 12/12/0); negative offsets clamp to
-/// 0 in the session (a sound cannot start before its block).
-int? parseAudioOffsetInput(String input) {
-  final match = RegExp(r'^-?\s*(\d+)\s*f?$').firstMatch(input.trim());
-  return match == null ? null : int.parse(match.group(1)!);
-}
-
-String formatAudioOffset(int offsetFrames) => '${offsetFrames}f';
-
-/// Value-scrub pixels per frame: 4px of drag per skipped frame (a finer
-/// tool than the waveform's 1-cell-per-frame slide).
-const double _offsetScrubPixelsPerFrame = 4;
-
 /// The lanes an SE layer exposes: the audio lane while it carries sounds.
-/// The label cell's value field shows/edits the playhead span's offset
-/// trim AE-style (tap to type, drag to scrub; commits route through the
-/// host into session.setAudioClipOffset — one undo).
+///
+/// ↩️**NO VALUE FIELD** (유저 2026-09-27: 「이거 블록별로 오프셋이
+/// 맞지않나? 그래서 블록 편집창에서 하는게 맞을듯」). The label cell showed
+/// and scrubbed ONE offset for the whole row since R3-(9b) — the playhead
+/// block's, AE-style — while every block carries its own; and the scrub
+/// moved only the number, so the waveform stood still until the release.
+/// The offset is edited in the block's own edit window now
+/// (`SeOffsetStrip`), where the waveform slides as it is dragged; the band
+/// below keeps its slide on each span.
 List<PropertyLaneRow> seAudioLanesFor(Layer layer) {
   if (layer.kind != LayerKind.se || layer.audioClips.isEmpty) {
     return const [];
   }
-  final hasSpans = seAudioSpans(layer).isNotEmpty;
   return [
     PropertyLaneRow(
       laneId: seAudioLaneId,
@@ -84,22 +57,6 @@ List<PropertyLaneRow> seAudioLanesFor(Layer layer) {
       label: AppText.strings.tlAudioLane,
       keyedFrames: const {},
       showsKeyNavigator: false,
-      valueLabel: !hasSpans
-          ? null
-          : (frameIndex) => formatAudioOffset(
-              seAudioSpanForLaneValue(layer, frameIndex)!.clip.offsetFrames,
-            ),
-      scrubValue: !hasSpans
-          ? null
-          : (currentLabel, dragDelta) {
-              final base = parseAudioOffsetInput(currentLabel);
-              if (base == null) {
-                return null;
-              }
-              final delta = (dragDelta.dx / _offsetScrubPixelsPerFrame).round();
-              final next = base + delta;
-              return formatAudioOffset(next < 0 ? 0 : next);
-            },
     ),
   ];
 }
@@ -397,12 +354,14 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
 
   int get _deltaFrames => (_dragDelta / widget.frameCellExtent).round();
 
-  /// The offset the current drag previews: dragging the waveform toward
-  /// the span start (negative pixels) skips further into the file.
-  int get _previewOffset {
-    final base = _dragging ? _dragBaseOffset : widget.span.clip.offsetFrames;
-    return (base - _deltaFrames).clamp(0, math.max(0, _fileFrames - 1));
-  }
+  /// The offset the current drag previews ([slidAudioOffset] — the one
+  /// slide law the block edit window's strip also answers with).
+  int get _previewOffset => slidAudioOffset(
+    base: _dragging ? _dragBaseOffset : widget.span.clip.offsetFrames,
+    dragPixels: _dragDelta,
+    pixelsPerFrame: widget.frameCellExtent,
+    fileFrames: _fileFrames,
+  );
 
   int get _previewFadeIn {
     final base = widget.span.clip.fadeInFrames;
