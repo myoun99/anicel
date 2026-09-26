@@ -1,7 +1,10 @@
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/conte/conte_ink_keys.dart'
+    show conteHandwritingOfACopy, conteInkRowKey;
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -115,7 +118,8 @@ mintIndependentClip({
 }
 
 /// WHAT A CLIP BECOMES WHEN IT LANDS ON [layer] — the linked branch and
-/// the independent one, side by side, so a paste asks once per row.
+/// the independent one, side by side, so a paste asks once per row, and a
+/// block duplicate — a paste of the block beside itself — asks the same.
 ///
 /// Split out of `FrameClipboard._pasteRun` when the paste learned the band:
 /// the independent branch mints PER LAYER, so the arithmetic stopped being
@@ -126,11 +130,18 @@ mintIndependentClip({
 ///
 /// [row] is the clip AND the cels and sounds it carries as ONE argument,
 /// because a board row that lost them is not a row this can place.
+///
+/// 🚨EVERY BLOCK IT PLACES WRITES ON THE CONTE UNDER AN ID OF ITS OWN,
+/// linked or not ([conteHandwritingOfACopy]; [handwriting] says which
+/// handwriting each starts as a copy of): a link shares a drawing, and the
+/// handwriting is the block's (유저 2026-09-25, conte-drawing-target: blocks
+/// of the same name are not linked).
 ({
   TimelineClipRow clip,
   List<Frame> born,
   List<AudioClip> bornSounds,
   Map<FrameId, FrameId> minted,
+  Map<String, String> handwriting,
 })
 placedClipFor({
   required Layer layer,
@@ -138,27 +149,55 @@ placedClipFor({
   row,
   required bool independent,
   required FrameId Function() mint,
+  required String Function() mintInkId,
 }) {
-  if (!independent) {
-    return (
-      clip: row.clip,
-      born: [
-        // A 잘라내기 orphaned the cels it lifted, so the layer no longer
-        // holds them; the clipboard does. Bringing back the SAME id is what
-        // makes cut-then-paste-back a move rather than a deletion — and
-        // re-adding only what is missing keeps a plain copy from duplicating
-        // anything.
-        for (final cel in row.cels)
-          if (!layer.frames.any((frame) => frame.id == cel.id)) cel,
-      ],
-      bornSounds: const <AudioClip>[],
-      minted: const {},
-    );
-  }
-  // 🚨THE CLIPBOARD IS THE PLACE TO LOOK — the only one.
+  final placed = independent
+      ? _independentClipOf(layer, row, mint)
+      : (
+          clip: row.clip,
+          born: [
+            // A 잘라내기 orphaned the cels it lifted, so the layer no longer
+            // holds them; the clipboard does. Bringing back the SAME id is
+            // what makes cut-then-paste-back a move rather than a deletion —
+            // and re-adding only what is missing keeps a plain copy from
+            // duplicating anything.
+            for (final cel in row.cels)
+              if (!layer.frames.any((frame) => frame.id == cel.id)) cel,
+          ],
+          bornSounds: const <AudioClip>[],
+          minted: const <FrameId, FrameId>{},
+        );
+  final written = conteHandwritingOfACopy(placed.clip.exposures, mintInkId);
+  return (
+    clip: TimelineClipRow(
+      exposures: written.exposures,
+      length: placed.clip.length,
+    ),
+    born: placed.born,
+    bornSounds: placed.bornSounds,
+    minted: placed.minted,
+    handwriting: written.copies,
+  );
+}
+
+/// [row] minted as cels of [layer]'s own ([mintIndependentClip]).
+({
+  TimelineClipRow clip,
+  List<Frame> born,
+  List<AudioClip> bornSounds,
+  Map<FrameId, FrameId> minted,
+})
+_independentClipOf(
+  Layer layer,
+  ({TimelineClipRow clip, List<Frame> cels, List<AudioClip> sounds}) row,
+  FrameId Function() mint,
+) {
+  // 🚨[row]'S CELS ARE THE PLACE TO LOOK — the only one: the board's for a
+  // paste, the row's own for a duplicate, whose source stands beside it.
   //
-  // It was the SECOND place, after the row, and after a 잘라내기 already
-  // the only one (유저 #3, 2026-08-14): a cut orphans the cels it lifted,
+  // For a paste the board was the SECOND place, after the row, and after a
+  // 잘라내기 already the only one (유저 #3, 2026-08-14): a cut orphans the
+  // cels it lifted,
   // so they are gone from `layer.frames` by the time this runs. Reading
   // only the layer found nothing, minted an id anyway, and authored an
   // exposure pointing at a cel that does not exist: a white block, `?`
@@ -239,4 +278,38 @@ Map<FrameId, BitmapSurface> picturesShownBy({
   required BrushFrameKey Function(FrameId cel) keyOf,
 }) => {
   for (final cel in cels) cel.id: ?store.bakedSurfaceOrNull(keyOf(cel.id)),
+};
+
+/// 🚨AND THE HANDWRITING COMES WITH THEM: a copied block starts with the
+/// handwriting its source had on the conte, under the id it was given
+/// ([placedClipFor]'s `handwriting`), in [cut] — 유저 2026-09-26 (cut-
+/// duplicate-sheet-ink-Q1) 「복제는 전부 복사」: the same, and from there
+/// on apart.
+///
+/// ⚠️Stored as it is: a row plane's surface is the sheet body's whatever
+/// the cut's canvas, so there is nothing to fit, unlike a picture.
+void carryConteHandwriting({
+  required BrushFrameStore store,
+  required CutId cut,
+  required Map<String, String> copies,
+  required BitmapSurface? Function(String inkId) handwritingOf,
+}) {
+  for (final MapEntry(key: inkId, value: source) in copies.entries) {
+    if (handwritingOf(source) case final surface?) {
+      store.storeBakedSurface(conteInkRowKey(cut, inkId), surface);
+    }
+  }
+}
+
+/// The handwriting the blocks of [exposures] show on [cut]'s conte as it is
+/// NOW, by each block's id — what a copy takes BY VALUE, for
+/// [picturesShownBy]'s reason.
+Map<String, BitmapSurface> conteHandwritingShownBy({
+  required BrushFrameStore store,
+  required CutId cut,
+  required Iterable<TimelineExposure> exposures,
+}) => {
+  for (final exposure in exposures)
+    if (exposure.memo?.inkId case final inkId? when inkId.isNotEmpty)
+      inkId: ?store.bakedSurfaceOrNull(conteInkRowKey(cut, inkId)),
 };

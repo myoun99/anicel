@@ -99,8 +99,13 @@ part 'cut_commands/project_setting_commands.dart';
 /// A pasted (or duplicated) layer: its id, and which cel of the copy each
 /// of its cels was minted from — what the pictures follow, since they live
 /// in a store keyed by the ids the paste just changed (F-62's lesson, at the
-/// layer's scale).
-typedef PastedLayer = ({LayerId layerId, Map<FrameId, FrameId> minted});
+/// layer's scale) — and, by each of its blocks' handwriting ids, the one it
+/// starts as a copy of (`conteHandwritingOfACopy`).
+typedef PastedLayer = ({
+  LayerId layerId,
+  Map<FrameId, FrameId> minted,
+  Map<String, String> handwriting,
+});
 
 /// A duplicated cut: its id, which row of it each source row became, and
 /// which cel each source cel became — [PastedLayer]'s answer for a whole cut.
@@ -645,7 +650,11 @@ class CutCommandCoordinator {
       ),
     );
 
-    return (layerId: plan.layer.id, minted: plan.frameIdMap);
+    return (
+      layerId: plan.layer.id,
+      minted: plan.frameIdMap,
+      handwriting: plan.handwriting,
+    );
   }
 
   /// RASTERIZE (§6-f): nulls the layer's media reference — the pixels are

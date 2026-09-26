@@ -90,6 +90,11 @@ class LayerClipboard implements BringsMedia {
           cel,
         ),
       ),
+      handwriting: conteHandwritingShownBy(
+        store: _renderCaches.conteInkRowStore,
+        cut: _project.requireActiveCut.id,
+        exposures: activeLayer.timeline.values,
+      ),
       names: namesOfACopy(
         project: _project.repository.requireProject(),
         media: {
@@ -176,6 +181,12 @@ class LayerClipboard implements BringsMedia {
       minted: pasted.minted,
       pictureOf: (source) => copy.pictures[source],
     );
+    carryConteHandwriting(
+      store: _renderCaches.conteInkRowStore,
+      cut: cut.id,
+      copies: pasted.handwriting,
+      handwritingOf: (inkId) => copy.handwriting[inkId],
+    );
     _changes.refreshAfterCutCommand(preferredActiveLayerId: pasted.layerId);
     _changes.notifyChanged();
   }
@@ -226,6 +237,7 @@ class _CopiedLayer implements BoardCopy {
   const _CopiedLayer({
     required this.payload,
     required this.pictures,
+    required this.handwriting,
     required this.names,
   });
 
@@ -238,6 +250,10 @@ class _CopiedLayer implements BoardCopy {
   /// the source's keys, and a source drawn over after the copy is not what
   /// was copied.
   final Map<FrameId, BitmapSurface> pictures;
+
+  /// The handwriting its blocks showed on the conte when it was copied, by
+  /// each block's id — BY VALUE for [pictures]' reason.
+  final Map<String, BitmapSurface> handwriting;
 
   /// What the row names in its project besides its ids — the medium it
   /// shows, the terms it spells — for a paste elsewhere.

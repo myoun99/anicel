@@ -4,6 +4,7 @@ import '../frame_id.dart';
 import '../layer_id.dart';
 import '../project.dart';
 import '../project_id.dart';
+import '../timeline_exposure.dart';
 import '../track_id.dart';
 
 /// The conte ink's cel-key contract (R5) — the ONE place its namespace is
@@ -89,6 +90,41 @@ Set<(CutId, String)> writtenConteBlocks(Project project) => {
           if (exposure.memo?.inkId case final inkId? when inkId.isNotEmpty)
             (cut.id, inkId),
 };
+
+/// [exposures] as their COPY writes on the conte: every block written on
+/// under an id of its own, minted by [mint] — and [copies], by each new id,
+/// the handwriting it starts as a copy of.
+///
+/// 🚨EVERY copy, linked or not: 유저 2026-09-26 (cut-duplicate-sheet-ink-Q1)
+/// 「복제는 전부 복사」 — a copy starts with the same handwriting and they go
+/// on apart; and blocks of the same name are not linked (conte-drawing-
+/// target). A link shares a drawing; the handwriting is the block's. So
+/// each copied block takes its own id, even where two of the source wrote
+/// under one.
+({Map<int, TimelineExposure> exposures, Map<String, String> copies})
+conteHandwritingOfACopy(
+  Map<int, TimelineExposure> exposures,
+  String Function() mint,
+) {
+  final copies = <String, String>{};
+  TimelineExposure writtenAnew(TimelineExposure exposure) {
+    final memo = exposure.memo;
+    if (memo == null || memo.inkId.isEmpty) {
+      return exposure;
+    }
+    final inkId = mint();
+    copies[inkId] = memo.inkId;
+    return exposure.copyWith(memo: () => memo.copyWith(inkId: inkId));
+  }
+
+  return (
+    exposures: {
+      for (final MapEntry(key: index, value: exposure) in exposures.entries)
+        index: writtenAnew(exposure),
+    },
+    copies: copies,
+  );
+}
 
 /// Whether [key] is cell-anchored conte ink — [conteInkRowKey]'s plane.
 bool isConteInkRowKey(BrushFrameKey key) =>

@@ -1,6 +1,7 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/conte/conte_ink_keys.dart' show conteInkRowLayerId;
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -208,12 +209,20 @@ class FrameClipboard implements BringsMedia {
 
   _CopiedRow _copiedRowFor(Layer row, TimelineClipRow clip) {
     final cels = _celsCarriedBy(row, clip);
+    final cut = _project.activeCutOrNull;
     return _CopiedRow(
       layerId: row.id,
       clip: clip,
       cels: cels,
       sounds: _soundsCarriedBy(row, cels),
       pictures: _picturesCarriedBy(row, cels),
+      handwriting: cut == null
+          ? const {}
+          : conteHandwritingShownBy(
+              store: _renderCaches.conteInkRowStore,
+              cut: cut.id,
+              exposures: clip.exposures.values,
+            ),
     );
   }
 
@@ -617,6 +626,10 @@ class FrameClipboard implements BringsMedia {
     // mints nothing.
     final mintedByLayer =
         <(LayerId, Map<FrameId, FrameId>, Map<FrameId, BitmapSurface>)>[];
+    // Which handwriting each pasted block starts as a copy of, per row —
+    // linked or not, a block writes on the conte for itself.
+    final handwritten =
+        <(Map<String, String>, Map<String, BitmapSurface>)>[];
     final targets = <Layer>[layer, ..._pasteTargetRowsBesides(layer)];
     for (var i = 0; i < targets.length; i += 1) {
       final target = targets[i];
@@ -632,17 +645,20 @@ class FrameClipboard implements BringsMedia {
       final List<Frame> mineCels;
       final List<AudioClip> mineSounds;
       final Map<FrameId, BitmapSurface> minePictures;
+      final Map<String, BitmapSurface> mineHandwriting;
       if (board.length <= 1) {
         mine = clip;
         mineCels = copied.cels;
         mineSounds = copied.sounds;
         // The anchor row is the board's first — the pictures live on rows.
         minePictures = board.first.pictures;
+        mineHandwriting = board.first.handwriting;
       } else if (i < board.length) {
         mine = board[i].clip;
         mineCels = board[i].cels;
         mineSounds = board[i].sounds;
         minePictures = board[i].pictures;
+        mineHandwriting = board[i].handwriting;
       } else {
         continue;
       }
@@ -658,9 +674,13 @@ class FrameClipboard implements BringsMedia {
         ),
         independent: independent,
         mint: () => _frameIds.mintFrameId(target.id),
+        mintInkId: () => _frameIds.mintFrameId(conteInkRowLayerId).value,
       );
       if (placed.minted.isNotEmpty) {
         mintedByLayer.add((target.id, placed.minted, minePictures));
+      }
+      if (placed.handwriting.isNotEmpty) {
+        handwritten.add((placed.handwriting, mineHandwriting));
       }
       runs.add((
         layerId: target.id,
@@ -695,6 +715,17 @@ class FrameClipboard implements BringsMedia {
         to: targetId,
         minted: minted,
         pictureOf: (source) => pictures[source],
+      );
+    }
+    for (final (copies, handwriting) in handwritten) {
+      if (cut == null) {
+        break;
+      }
+      carryConteHandwriting(
+        store: _renderCaches.conteInkRowStore,
+        cut: cut.id,
+        copies: copies,
+        handwritingOf: (inkId) => handwriting[inkId],
       );
     }
     if (replacing) {
@@ -947,6 +978,7 @@ class _CopiedRow {
     this.cels = const [],
     this.sounds = const [],
     this.pictures = const {},
+    this.handwriting = const {},
   });
 
   final LayerId layerId;
@@ -965,6 +997,11 @@ class _CopiedRow {
   /// VALUE so a paste in any cut brings the drawing (F-161). A cel with no
   /// picture of its own is simply absent.
   final Map<FrameId, BitmapSurface> pictures;
+
+  /// The handwriting the clip's blocks showed on the conte when they were
+  /// copied, by each block's id — BY VALUE for [pictures]' reason. A block
+  /// never written on is simply absent.
+  final Map<String, BitmapSurface> handwriting;
 }
 
 /// What the app holds from the last FRAME copy — ONE board for every open
