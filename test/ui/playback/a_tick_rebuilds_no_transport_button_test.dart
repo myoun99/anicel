@@ -65,9 +65,15 @@ void main() {
       find.byKey(const ValueKey<String>('playback-transport-activeCut')),
     );
 
+    final stopped = row();
     controller.play(scope: PlaybackScope.activeCut);
     await tester.pump();
     final playing = row();
+    expect(
+      identical(playing, stopped),
+      isFalse,
+      reason: 'the play button shows the play, so the row rebuilds for it',
+    );
     // A tick a frame (10 fps): three frames played, none dropped.
     final frames = <int>{};
     for (var tick = 0; tick < 3; tick += 1) {

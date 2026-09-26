@@ -360,7 +360,10 @@ class _OnWhatTheRowShows extends StatefulWidget {
 }
 
 class _OnWhatTheRowShowsState extends State<_OnWhatTheRowShows> {
-  late _TransportShows _shown = _read();
+  /// Read in [initState], never lazily: nothing but a notification would
+  /// read it first, and a first read inside one would take the moved state
+  /// for the one the row was built with.
+  late _TransportShows _shown;
 
   _TransportShows _read() {
     final controller = widget.controller;
@@ -383,6 +386,7 @@ class _OnWhatTheRowShowsState extends State<_OnWhatTheRowShows> {
   @override
   void initState() {
     super.initState();
+    _shown = _read();
     widget.controller.addListener(_moved);
   }
 
