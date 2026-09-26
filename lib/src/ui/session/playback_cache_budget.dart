@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_warm_extent.dart';
+import '../../services/playback/cut_composite_structure.dart';
+import '../../services/playback/cut_frame_composite_signature.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/playback_cache_budget.dart';
 import '../../models/playback_quality.dart';
@@ -43,6 +45,17 @@ class PlaybackCacheBudget {
   final PlaybackRun _run;
 
   PlaybackCacheBudgetEnforcer? _enforcer;
+
+  /// [playbackReadyRunsForCut]'s memo: per cut instance, each structure's
+  /// full signature at one quality and one pixel revision.
+  final Expando<
+    ({
+      PlaybackQuality quality,
+      int pixelRevision,
+      Map<CutFrameCompositeSignature, CutFrameCompositeSignature> byStructure,
+    })
+  >
+  _signedStructures = Expando('signedCompositeStructures');
 
   PlaybackCacheBudgetEnforcer get _playbackCacheBudgetEnforcer =>
       _enforcer ??= PlaybackCacheBudgetEnforcer(
@@ -176,17 +189,78 @@ class PlaybackCacheBudget {
   ///    that frame draws exactly what its composite would hold: nothing.
   ///
   /// The empty answer reads the same shared visit the signature rides, so
-  /// it cannot disagree with what the compose loop would actually paint —
-  /// [CutFrameCompositeCache.readyRunsIn] reads both kinds off one
-  /// signature, once per span of one picture.
+  /// it cannot disagree with what the compose loop would actually paint.
+  ///
+  /// ★Asked once per span of one picture, never per frame (I-22): zoomed
+  /// out to ten minutes the per-frame read was 94% of a playback tick. The
+  /// spans come from [compositeStructureSpansIn]; each structure's full
+  /// signature is taken once per pixel revision, and the cache is asked
+  /// with [CutFrameCompositeCache.holdsComposite] — a pure read, where the
+  /// per-frame bar filed an index key and touched the entry as used for
+  /// every frame on screen.
   List<({int startIndex, int endIndexExclusive})> playbackReadyRunsForCut(
     Cut cut,
     int start,
     int end,
-  ) => _renderCaches.cutFrameCompositeCache.readyRunsIn(
-    cut: cut,
-    quality: _run.playbackQuality,
-    start: start,
-    end: end,
-  );
+  ) {
+    final composites = _renderCaches.cutFrameCompositeCache;
+    final quality = _run.playbackQuality;
+    final signed = _signedStructuresOf(cut, quality);
+    final runs = <({int startIndex, int endIndexExclusive})>[];
+    for (final span in compositeStructureSpansIn(
+      cut,
+      start: start,
+      end: end,
+    )) {
+      final structure = span.signature;
+      final ready =
+          structure.nodes.isEmpty ||
+          composites.holdsComposite(
+            signed[structure] ??= composites.signatureOf(
+              cut: cut,
+              frameIndex: span.start,
+              quality: quality,
+            ),
+          );
+      if (!ready) {
+        continue;
+      }
+      final last = runs.isEmpty ? null : runs.last;
+      if (last != null && last.endIndexExclusive == span.start) {
+        runs.last = (
+          startIndex: last.startIndex,
+          endIndexExclusive: span.endExclusive,
+        );
+      } else {
+        runs.add((
+          startIndex: span.start,
+          endIndexExclusive: span.endExclusive,
+        ));
+      }
+    }
+    return runs;
+  }
+
+  /// Each structure's full signature for [cut] at [quality], good until a
+  /// pixel moves: [BrushFrameStore.celPixelRevision] is the store's one
+  /// signal that a source revision may have changed (a whole-store swap
+  /// opens a new project, so its cuts are new instances and miss here).
+  Map<CutFrameCompositeSignature, CutFrameCompositeSignature>
+  _signedStructuresOf(Cut cut, PlaybackQuality quality) {
+    final revision =
+        _renderCaches.cutFrameCompositeCache.frameStore.celPixelRevision.value;
+    final held = _signedStructures[cut];
+    if (held != null &&
+        held.quality == quality &&
+        held.pixelRevision == revision) {
+      return held.byStructure;
+    }
+    final fresh = (
+      quality: quality,
+      pixelRevision: revision,
+      byStructure: <CutFrameCompositeSignature, CutFrameCompositeSignature>{},
+    );
+    _signedStructures[cut] = fresh;
+    return fresh.byStructure;
+  }
 }

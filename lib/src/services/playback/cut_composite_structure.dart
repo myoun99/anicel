@@ -34,7 +34,7 @@ List<CutFrameCompositeSpan> compositeStructureSpansIn(
   Cut cut, {
   required int start,
   required int end,
-}) => (_tables[cut] ??= _StructureTable(cut)).spansIn(math.max(0, start), end);
+}) => (_tables[cut] ??= _StructureTable(cut)).spansIn(start, end);
 
 /// How many frames the structure tables have resolved so far — the work a
 /// span table exists to save, read by the tests that pin it.
@@ -92,8 +92,7 @@ class _StructureTable {
     _framesResolved += to - from;
     return computeCutFrameCompositeSpans(
       cut: cut,
-      startFrame: from,
-      frameCount: to,
+      frames: (startIndex: from, endIndexExclusive: to),
       quality: _structureQuality,
       revisionOf: _noRevision,
     );

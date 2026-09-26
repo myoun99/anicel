@@ -47,7 +47,7 @@ void main() {
   }) {
     return computeCutFrameCompositeSpans(
       cut: forCut ?? cut(),
-      frameCount: frameCount,
+      frames: (startIndex: 0, endIndexExclusive: frameCount),
       quality: quality,
       revisionOf: revisionOf ?? (_, _) => 7,
     );
@@ -149,8 +149,7 @@ void main() {
     final whole = spans();
     final tail = computeCutFrameCompositeSpans(
       cut: cut(),
-      startFrame: 3,
-      frameCount: 14,
+      frames: (startIndex: 3, endIndexExclusive: 14),
       quality: PlaybackQuality.half,
       revisionOf: (_, _) => 7,
     );
