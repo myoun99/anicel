@@ -81,37 +81,29 @@ class TimelineViewCluster extends StatelessWidget {
       ? secondsPlusFramesLabel(oneBasedFrame, projectFrameRate.countingBase)
       : '$oneBasedFrame';
 
-  /// One −/+ button step (UI-R11 #11): multiplicative (×1.25) like editor
-  /// zooms so a step feels equal at 4px and 96px, rounded to the whole-px
-  /// grid the slider already quantizes to.
-  ///
-  /// ⛔THE ±1 FALLBACK IS GONE (2026-09-16). It read 「where ×1.25 lands back
-  /// on the same whole pixel, the step is that pixel」 — a guard against a
-  /// step that stands still. Measured across the WHOLE grid the quantizer
-  /// can produce ({2.4} ∪ 3…96): ×1.25 lands back on the same pixel only AT
-  /// THE TWO BOUNDS — 2.4 stepping out, 96 stepping in — and there the ±1
-  /// answer is the value the main line already gives, because
-  /// [TimelineZoomLimits.quantize] clamps. The branch could not change an
-  /// outcome, which is exactly why its mutant would not die: the gate said
-  /// so before anyone read the arithmetic.
-  double _steppedZoom({required bool zoomIn}) =>
-      TimelineZoomLimits.quantize(
-        zoomIn ? pixelsPerFrame * 1.25 : pixelsPerFrame / 1.25,
-      );
+  /// The widest zoom this project's rate allows.
+  double get _minPixelsPerFrame =>
+      TimelineZoomLimits.minPixelsPerFrameAt(projectFrameRate.countingBase);
 
   /// R26 #42: the app's standard icon button — the disabled look is
   /// IconButton's own (no hand-mixed alpha), same as the canvas bar.
   Widget _zoomStepButton({required bool zoomIn}) {
     final atBound = zoomIn
         ? pixelsPerFrame >= TimelineZoomLimits.maxPixelsPerFrame
-        : pixelsPerFrame <= TimelineZoomLimits.minPixelsPerFrame;
+        : pixelsPerFrame <= _minPixelsPerFrame;
     final enabled = onPixelsPerFrameChanged != null && !atBound;
     return AppIconButton(
       keyValue: zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
       tooltip: zoomIn ? 'Zoom In' : 'Zoom Out',
       icon: Icon(zoomIn ? Icons.zoom_in : Icons.zoom_out),
       onPressed: enabled
-          ? () => onPixelsPerFrameChanged!(_steppedZoom(zoomIn: zoomIn))
+          ? () => onPixelsPerFrameChanged!(
+              TimelineZoomLimits.stepped(
+                pixelsPerFrame,
+                zoomIn: zoomIn,
+                framesPerSecond: projectFrameRate.countingBase,
+              ),
+            )
           : null,
     );
   }
@@ -187,10 +179,10 @@ class TimelineViewCluster extends StatelessWidget {
           width: 140,
           child: FieldSlider(
             key: const ValueKey<String>('timeline-zoom-slider'),
-            min: TimelineZoomLimits.minPixelsPerFrame,
+            min: _minPixelsPerFrame,
             max: TimelineZoomLimits.maxPixelsPerFrame,
             value: pixelsPerFrame.clamp(
-              TimelineZoomLimits.minPixelsPerFrame,
+              _minPixelsPerFrame,
               TimelineZoomLimits.maxPixelsPerFrame,
             ),
             // Zoom reads as percent of the default frame width.
@@ -210,7 +202,10 @@ class TimelineViewCluster extends StatelessWidget {
             onChanged: onPixelsPerFrameChanged == null
                 ? null
                 : (value) {
-                    final stepped = TimelineZoomLimits.quantize(value);
+                    final stepped = TimelineZoomLimits.quantize(
+                      value,
+                      framesPerSecond: projectFrameRate.countingBase,
+                    );
                     if (stepped != pixelsPerFrame) {
                       onPixelsPerFrameChanged!(stepped);
                     }

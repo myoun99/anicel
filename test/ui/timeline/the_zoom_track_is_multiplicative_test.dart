@@ -50,30 +50,27 @@ void main() {
     return zooms;
   }
 
+  /// The floor at 24fps: a second at no fewer than three pixels.
+  final floor = TimelineZoomLimits.minPixelsPerFrameAt(24);
+
   testWidgets('the middle of the zoom track is the range\'s GEOMETRIC middle '
       '— equal travel is equal ratio', (tester) async {
     final zooms = await pump(tester);
     await tester.tapAt(tester.getCenter(trackOf()));
     await tester.pump();
 
-    final geometric = math.sqrt(
-      TimelineZoomLimits.minPixelsPerFrame *
-          TimelineZoomLimits.maxPixelsPerFrame,
-    );
-    const arithmetic =
-        (TimelineZoomLimits.minPixelsPerFrame +
-            TimelineZoomLimits.maxPixelsPerFrame) /
-        2;
+    final geometric = math.sqrt(floor * TimelineZoomLimits.maxPixelsPerFrame);
+    final arithmetic = (floor + TimelineZoomLimits.maxPixelsPerFrame) / 2;
     expect(zooms, isNotEmpty);
     expect(
       zooms.last,
       closeTo(geometric, 1),
-      reason: 'halfway along the bar is halfway in RATIO (about 15px)',
+      reason: 'halfway along the bar is halfway in RATIO (about 3.5px)',
     );
     expect(
       zooms.last,
       isNot(closeTo(arithmetic, 1)),
-      reason: 'a linear track put the middle at about 49px, which leaves the '
+      reason: 'a linear track put the middle at about 48px, which leaves the '
           'whole narrow half in the first few pixels of travel',
     );
   });
@@ -88,8 +85,8 @@ void main() {
     expect(zooms, isNotEmpty);
     expect(
       zooms.last,
-      TimelineZoomLimits.minPixelsPerFrame,
-      reason: 'rounding used to write 2px under a 2.4px floor, and nothing '
+      floor,
+      reason: 'rounding once wrote 2px under a 2.4px floor, and nothing '
           'brought it back',
     );
   });

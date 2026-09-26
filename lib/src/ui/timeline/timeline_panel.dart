@@ -368,14 +368,10 @@ class TimelinePanel extends StatefulWidget {
   final Widget? timelineActionToolbar;
 
   /// Frame-axis zoom, DaVinci/AE-style continuous slider value in pixels
-  /// per frame; the shared range covers the storyboard's overview zooms
-  /// and the timeline's classic cell width alike. The X-sheet's frame row
-  /// height scales proportionally so its classic geometry sits at the
-  /// same default.
-  // 4 → 2.4 (UI-R18 #11): the shared zoom floor drops to 10% of the
-  // default density across all three frame panels.
-  static const double minPixelsPerFrame = TimelineZoomLimits.minPixelsPerFrame;
-  static const double maxPixelsPerFrame = TimelineZoomLimits.maxPixelsPerFrame;
+  /// per frame; the shared range ([TimelineZoomLimits]) covers the
+  /// storyboard's overview zooms and the timeline's classic cell width
+  /// alike. The X-sheet's frame row height scales proportionally so its
+  /// classic geometry sits at the same default.
   // 48 → 24 (R-toolbar slim round): the zoom slider's 100% now reads the
   // CSP/TVPaint-density default.
   static const double defaultPixelsPerFrame =

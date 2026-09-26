@@ -182,7 +182,7 @@ void main() {
       'cell is the only one that draws it', () {
     for (final crossExtent in [rowExtent, 12.0, 8.0]) {
       for (
-        var cell = TimelineZoomLimits.minPixelsPerFrame;
+        var cell = TimelineZoomLimits.minPixelsPerFrameAt(24);
         cell <= TimelineZoomLimits.maxPixelsPerFrame;
         cell += 0.6
       ) {
