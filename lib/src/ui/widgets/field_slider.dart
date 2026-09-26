@@ -778,6 +778,12 @@ class _FieldSliderState extends State<FieldSlider> {
       ),
     );
     final claimed = Semantics(
+      // 🚨ITS OWN SEMANTICS BOUNDARY (2026-09-26). A value that changes lays
+      // its writing out again, and every layout re-walks the nearest
+      // boundary's whole share of the semantics tree — without one here that
+      // was the panel's scroll view, about a thousand nodes for one number.
+      // The bar was a node of its own already; this stops the walk at it.
+      container: true,
       slider: true,
       label: widget.label,
       value: valueText,

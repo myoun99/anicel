@@ -41,8 +41,12 @@ class _PanelBuild {
       // Zero: panels sit flush against the dock and the timeline (the
       // shell draws its own chrome).
       padding: EdgeInsets.zero,
-      child: LayoutBuilder(
-        builder: _panelBox,
+      // 🚨Its own SEMANTICS boundary, like every dock region (2026-09-26):
+      // the panel lays itself out again at every pen-up, and each layout
+      // re-walked the ROOT's share of the semantics tree for it.
+      child: Semantics(
+        container: true,
+        child: LayoutBuilder(builder: _panelBox),
       ),
     );
   }
