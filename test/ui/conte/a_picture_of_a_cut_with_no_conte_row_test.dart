@@ -395,6 +395,24 @@ void main() {
     expect(celInkAt(row, const Offset(320, 180), of: hollow), isTrue);
   });
 
+  testWidgets('a press on a refusing picture\'s rounded-off corner is the '
+      'paper\'s — no notice where no picture shows', (tester) async {
+    final picture = await pumpPanel(tester, autoCreates: false);
+    final border = ConteSheetMetrics(
+      cameraAspect: session.camera.cameraFrameAspect,
+    ).silhouetteBorder;
+    // The slot's corner, which its round cuts away.
+    final corner = picture.topLeft + Offset(border + 1, border + 0.5);
+    final notices = cursorNotices.revision;
+
+    final gesture = await tester.startGesture(corner, pointer: 7);
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(cursorNotices.revision, notices);
+  });
+
   testWidgets('with it off, a conte row with no block is left as it is',
       (tester) async {
     final picture = await pumpPanel(tester, autoCreates: false, of: hollow);

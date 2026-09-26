@@ -1,8 +1,11 @@
-import 'dart:ui' show Rect, Size;
+import 'dart:ui' show Offset, Rect, Size;
+
+import 'package:flutter/painting.dart' show MatrixUtils;
 
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 import '../../core/contain_rect.dart';
+import '../../core/convex_clip.dart' show convexIntersection;
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/camera_pose.dart';
@@ -15,6 +18,7 @@ import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/project_id.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/track_id.dart';
@@ -27,6 +31,7 @@ import '../../services/layer_pose_matrix.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../sheet/sheet_ink_controller.dart';
 import '../sheet/sheet_ink_layer.dart';
+import '../sheet_painting.dart' show tracedRoundedRect;
 import '../storyboard_layer_policy.dart';
 
 /// What a picture window asks of the project the conte prints — the
@@ -132,6 +137,11 @@ ContePicture? _pictureOf(
   );
   final scale = shown.width / camera.width;
   final placement = layerPlacementAt(cut: cut, layer: layer, frameIndex: frame);
+  final canvasToPaper = Matrix4.translationValues(shown.left, shown.top, 0)
+    ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
+    ..multiply(
+      cameraProjectionMatrix(project.cameraPoseOf(cut, frame), camera),
+    );
   // The cell, not the drawing: a drawing exposed twice is two pictures.
   final id = 'picture-${cell.cutId}-${cell.source.startFrame}';
   return (
@@ -140,11 +150,7 @@ ContePicture? _pictureOf(
       key: project.celKeyOf(cut, layer.id, frameId),
       plane: cut.canvasSize,
       slot: mark.slot,
-      canvasToPaper: Matrix4.translationValues(shown.left, shown.top, 0)
-        ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
-        ..multiply(
-          cameraProjectionMatrix(project.cameraPoseOf(cut, frame), camera),
-        ),
+      canvasToPaper: canvasToPaper,
       artworkToCanvas: placement == null
           ? Matrix4.identity()
           : layerPoseMatrix(
@@ -152,7 +158,7 @@ ContePicture? _pictureOf(
               cut.canvasSize,
               anchorPoint: placement.anchorPoint,
             ),
-      canvasSize: cut.canvasSize,
+      paperOutline: _outlineOf(mark, shown, cut.canvasSize, canvasToPaper),
       overlay: overlayOf(id),
       refusal: pending ? project.rowRefusal : null,
     ),
@@ -163,6 +169,32 @@ ContePicture? _pictureOf(
     shown: shown,
     labels: [...conteCameraLabelsOf(cell, page.metrics)],
   );
+}
+
+/// What a picture shows of its slot, on the paper — what the sheet clips it
+/// to: the slot's rounded corners ([tracedRoundedRect]), the camera's frame
+/// in it ([shown]) and the cut's canvas, where [canvasToPaper] lays it. The
+/// pen takes exactly this, so a stroke's piece in a corner the picture
+/// cuts away stays on the paper that shows it.
+List<Offset> _outlineOf(
+  SheetPicture mark,
+  Rect shown,
+  CanvasSize canvas,
+  Matrix4 canvasToPaper,
+) {
+  List<Offset> cornersOf(Rect rect) => [
+    rect.topLeft,
+    rect.topRight,
+    rect.bottomRight,
+    rect.bottomLeft,
+  ];
+  final slot = mark.cornerRadius > 0
+      ? tracedRoundedRect(mark.slot, mark.cornerRadius)
+      : cornersOf(mark.slot);
+  return convexIntersection(convexIntersection(slot, cornersOf(shown)), [
+    for (final corner in cornersOf(canvas.canvasRect))
+      MatrixUtils.transformPoint(canvasToPaper, corner),
+  ]);
 }
 
 /// The cels the conte's pictures draw into: the SESSION's cel store,

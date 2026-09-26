@@ -2,12 +2,11 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../core/convex_clip.dart' show convexContains;
 import '../../models/brush_edit_canvas_input_settings.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -56,9 +55,19 @@ sealed class SheetWindow {
   /// lands exactly where the sheet shows it.
   CanvasViewport inkViewport(CanvasViewport panelViewport);
 
-  /// [paper], a rect in the sheet's document space, in this window's
+  /// [paper], an outline in the sheet's document space, in this window's
   /// SURFACE pixels.
-  CanvasSelectionShape surfaceShapeOf(Rect paper);
+  CanvasSelectionShape surfaceShapeOf(List<Offset> paper);
+
+  /// What of the paper this window takes — its rect, unless it shows less
+  /// of it: a picture's rounded slot, only where its canvas is. The windows
+  /// under it keep the rest ([sheetInkRegions]), and a press there is its.
+  List<Offset> get paperOutline => [
+    documentRect.topLeft,
+    documentRect.topRight,
+    documentRect.bottomRight,
+    documentRect.bottomLeft,
+  ];
 
   /// Which of its surface's pixels this window shows at all, before the
   /// windows stacked above it take theirs ([sheetInkRegions]).
@@ -144,12 +153,8 @@ class SheetInkWindow extends SheetWindow {
   Rect get surfaceRect => placement.surfaceRect;
 
   @override
-  CanvasSelectionShape surfaceShapeOf(Rect paper) => _surfaceShape(
-    Rect.fromPoints(
-      placement.pixelOf(paper.topLeft),
-      placement.pixelOf(paper.bottomRight),
-    ),
-  );
+  CanvasSelectionShape surfaceShapeOf(List<Offset> paper) =>
+      _outlineShape([for (final point in paper) placement.pixelOf(point)]);
 
   @override
   CanvasSelectionRegion get shows =>
@@ -180,13 +185,21 @@ class SheetPictureWindow extends SheetWindow {
     required this.slot,
     required this.canvasToPaper,
     required this.artworkToCanvas,
-    required this.canvasSize,
+    required this.paperOutline,
     required this.overlay,
     this.refusal,
   });
 
   /// Where the picture sits on the paper.
   final Rect slot;
+
+  /// What the picture shows of its slot — the outline the sheet clips it
+  /// to, as its corners on the paper: in the slot's rounded corners, and
+  /// only where its canvas is, since a picture is cropped at the canvas
+  /// after the placement (「페이스트보드는 포함 안 시킴」). The rest of the
+  /// slot is the windows' under it: a stroke there shows, so it is kept.
+  @override
+  final List<Offset> paperOutline;
 
   @override
   final String? refusal;
@@ -204,9 +217,6 @@ class SheetPictureWindow extends SheetWindow {
   /// The cel's own pixels → the cut's canvas.
   final Matrix4 artworkToCanvas;
 
-  /// The canvas the camera crops the picture at.
-  final CanvasSize canvasSize;
-
   @override
   Rect get documentRect => slot;
 
@@ -219,35 +229,27 @@ class SheetPictureWindow extends SheetWindow {
       )!;
 
   @override
-  CanvasSelectionShape surfaceShapeOf(Rect paper) =>
-      _mappedRect(Matrix4.inverted(_artworkToPaper), paper);
-
-  /// The slot, and only where the canvas is: a picture is cropped at the
-  /// canvas after the placement, so artwork the pose carries past the edge
-  /// is not in it (「페이스트보드는 포함 안 시킴」).
-  @override
-  CanvasSelectionRegion? get shows => refusal != null
-      ? null
-      : CanvasSelectionRegion.shape(surfaceShapeOf(slot)).combinedWith(
-          _mappedRect(Matrix4.inverted(artworkToCanvas), canvasSize.canvasRect),
-          SelectionCombineMode.intersect,
-        );
-}
-
-/// [rect]'s corners through [map], as the outline they make.
-CanvasSelectionShape _mappedRect(Matrix4 map, Rect rect) {
-  CanvasPoint corner(Offset paper) {
-    final point = MatrixUtils.transformPoint(map, paper);
-    return CanvasPoint(x: point.dx, y: point.dy);
+  CanvasSelectionShape surfaceShapeOf(List<Offset> paper) {
+    final toArtwork = Matrix4.inverted(_artworkToPaper);
+    return _outlineShape([
+      for (final point in paper) MatrixUtils.transformPoint(toArtwork, point),
+    ]);
   }
 
-  return CanvasSelectionShape([
-    corner(rect.topLeft),
-    corner(rect.topRight),
-    corner(rect.bottomRight),
-    corner(rect.bottomLeft),
-  ]);
+  /// Its [paperOutline], and nothing where that is no outline at all — a
+  /// camera framing none of the canvas.
+  @override
+  CanvasSelectionRegion? get shows => refusal != null ||
+          paperOutline.length < 3
+      ? null
+      : CanvasSelectionRegion.shape(surfaceShapeOf(paperOutline));
 }
+
+/// [points] as the outline they make.
+CanvasSelectionShape _outlineShape(List<Offset> points) =>
+    CanvasSelectionShape([
+      for (final point in points) CanvasPoint(x: point.dx, y: point.dy),
+    ]);
 
 /// Where each of [windows] keeps ink, in its OWN surface's pixels: what it
 /// [SheetWindow.shows], less every window stacked above it. Null for a
@@ -280,11 +282,12 @@ CanvasSelectionRegion? _inkRegionOf(
     if (region == null) {
       break;
     }
-    if (!upper.documentRect.overlaps(window.documentRect)) {
+    final taken = upper.paperOutline;
+    if (taken.length < 3 || !upper.documentRect.overlaps(window.documentRect)) {
       continue;
     }
     region = region.combinedWith(
-      window.surfaceShapeOf(upper.documentRect),
+      window.surfaceShapeOf(taken),
       SelectionCombineMode.subtract,
     );
   }
@@ -406,8 +409,11 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// The refusal of the window on top at [position], at the cursor — the
   /// canvas's notice for a press on an empty cell it may not fill.
   void _refuseAt(Offset position) {
+    final viewport = widget.viewport;
+    final paper =
+        (position - Offset(viewport.panX, viewport.panY)) / viewport.zoom;
     for (final window in widget.windows.reversed) {
-      if (window.screenRect(widget.viewport).contains(position)) {
+      if (convexContains(window.paperOutline, paper)) {
         if (window.refusal case final refusal?) {
           cursorNotices.show(refusal);
         }

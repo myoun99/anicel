@@ -13,7 +13,7 @@ import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../conte/conte_fonts.dart';
 import '../conte/conte_page_painter.dart' show conteWrappedLines;
-import '../sheet_painting.dart' show sheetWordsSize;
+import '../sheet_painting.dart' show sheetWordsSize, tracedRoundedRect;
 import '../theme/app_theme.dart' show AppTypography;
 
 /// The conte sheet as ONE vector PDF.
@@ -236,29 +236,9 @@ class _ContePdfPageWriter {
     _g.fillPath();
   }
 
-  /// The app's corner — a superellipse on flat sides — as a path on the
-  /// page, TRACED from the engine's own shape, the one the panel draws: a
-  /// PDF has no superellipse, and a circle's arc would be a second corner.
-  /// Traced every half point; the points a flat side adds say nothing, so
-  /// they go.
+  /// The app's corner as a path on the page ([tracedRoundedRect]).
   void _traceRounded(ui.Rect rect, double radius) {
-    final shape = ui.Path()
-      ..addRSuperellipse(
-        ui.RSuperellipse.fromRectAndRadius(rect, ui.Radius.circular(radius)),
-      );
-    final points = <ui.Offset>[];
-    for (final metric in shape.computeMetrics()) {
-      double? heading;
-      for (var along = 0.0; along < metric.length; along += 0.5) {
-        final tangent = metric.getTangentForOffset(along)!;
-        // A flat side keeps one heading: where it starts traces it.
-        if (heading != null && (tangent.angle - heading).abs() < 1e-6) {
-          continue;
-        }
-        heading = tangent.angle;
-        points.add(tangent.position);
-      }
-    }
+    final points = tracedRoundedRect(rect, radius);
     _g.moveTo(points.first.dx, _y(points.first.dy));
     for (final point in points.skip(1)) {
       _g.lineTo(point.dx, _y(point.dy));

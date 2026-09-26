@@ -55,6 +55,33 @@ void paintSheetImageContained(
   );
 }
 
+/// The app's corner round [rect] — a superellipse on flat sides — as the
+/// points of its outline, TRACED from the engine's own shape, the one a
+/// sheet clips its pictures to: what a PDF draws in its place (a PDF has
+/// no superellipse, and a circle's arc would be a second corner), and what
+/// of the paper a picture takes from the pen. Traced every half point; the
+/// points a flat side adds say nothing, so they go.
+List<Offset> tracedRoundedRect(Rect rect, double radius) {
+  final shape = Path()
+    ..addRSuperellipse(
+      ui.RSuperellipse.fromRectAndRadius(rect, Radius.circular(radius)),
+    );
+  final points = <Offset>[];
+  for (final metric in shape.computeMetrics()) {
+    double? heading;
+    for (var along = 0.0; along < metric.length; along += 0.5) {
+      final tangent = metric.getTangentForOffset(along)!;
+      // A flat side keeps one heading: where it starts traces it.
+      if (heading != null && (tangent.angle - heading).abs() < 1e-6) {
+        continue;
+      }
+      heading = tangent.angle;
+      points.add(tangent.position);
+    }
+  }
+  return points;
+}
+
 /// Lays down a sheet's PAPER — the one way the timesheet, the conte and the
 /// cut envelope fill it.
 ///

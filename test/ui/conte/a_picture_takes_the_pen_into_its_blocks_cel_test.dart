@@ -283,6 +283,54 @@ void main() {
       );
       expect(ink.hasInkFor(ConteInkPlane.row, row.key), isTrue);
     });
+
+    testWidgets('🚨the slot\'s rounded corner is not the picture\'s: a stroke '
+        'through it stays in the cell\'s ink, where the page shows it', (
+      tester,
+    ) async {
+      final origin = await pump(
+        tester,
+        CameraPose(center: CanvasPoint(x: 320, y: 180)),
+      );
+      final slot = picture.window.slot;
+      // Inside the slot's rect, outside the round its corner is cut by.
+      final corner = slot.topLeft + const Offset(1, 0.5);
+      final row = conteInkWindows(
+        page,
+        unwrittenInkIdOf: bandOf,
+      ).singleWhere((window) => window.key == conteInkRowKey(cutId, 'band-0'));
+      expect(row.documentRect.contains(corner), isTrue, reason: 'fixture');
+
+      await stroke(tester, origin, [
+        Offset(slot.left - 12, corner.dy),
+        Offset(slot.left - 4, corner.dy),
+        Offset(slot.left + 4, corner.dy),
+      ]);
+
+      final surface = ink
+          .sessionStateFor(ConteInkPlane.row, row.key)
+          .canvasState
+          .currentSurface;
+      expect(
+        inkAt(surface, row.placement.pixelOf(corner)),
+        isTrue,
+        reason: 'the page shows no picture there, so the cell keeps it',
+      );
+      final window = picture.window;
+      expect(
+        inkAt(
+          store.bakedSurfaceOrNull(window.key),
+          MatrixUtils.transformPoint(
+            Matrix4.inverted(
+              window.canvasToPaper.multiplied(window.artworkToCanvas),
+            ),
+            corner,
+          ),
+        ),
+        isFalse,
+        reason: 'and the cel keeps nothing the picture does not show',
+      );
+    });
   });
 
   testWidgets('the panel composites the picture live: the stroke shows in it '
