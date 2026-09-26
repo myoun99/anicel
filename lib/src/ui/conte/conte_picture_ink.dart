@@ -24,7 +24,6 @@ import '../../services/brush_frame_store.dart';
 import '../../services/camera_projection_matrix.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/layer_pose_matrix.dart';
-import '../../services/project_repository.dart' show cutWithLayerInserted;
 import '../canvas/active_stroke_overlay.dart';
 import '../sheet/sheet_ink_controller.dart';
 import '../sheet/sheet_ink_layer.dart';
@@ -38,12 +37,12 @@ typedef ContePictureProject = ({
   BrushFrameKey Function(Cut cut, LayerId layerId, FrameId frameId) celKeyOf,
   CameraPose Function(Cut cut, int frameIndex) cameraPoseOf,
   CanvasSize cameraFrameSize,
-  // The conte row a cut with none would be given, and where — named before
-  // it exists (`AutoFrameForStroke.conteRowFor`); null for a cut that has
-  // its row.
-  ({Layer layer, int index})? Function(Cut cut) conteRowOf,
-  // Why a picture of a cut with no conte row takes no ink — null while the
-  // canvas's 「프레임 자동 생성」 is on and the stroke makes the row.
+  // The cel a picture of a cell with no block draws into, the conte row it
+  // is on and the cut the picture draws through — named before it exists
+  // (`AutoFrameForStroke.conteCelFor`); null for a cut with a block.
+  ({Cut cut, Layer layer, FrameId frameId})? Function(Cut cut) conteCelOf,
+  // Why a picture of a cell with no block takes no ink — null while the
+  // canvas's 「프레임 자동 생성」 is on and the stroke makes its cel.
   String? rowRefusal,
 });
 
@@ -66,12 +65,13 @@ typedef ContePicture = ({
 /// window, so a cell's band keeps what is drawn around its picture and the
 /// cel what is drawn on it.
 ///
-/// A cut with no conte row has no block to draw into yet. Its picture
-/// draws as the canvas's 「프레임 자동 생성」 would have it (유저 답
-/// conte-drawing-target-Q2 「토글을 따른다 (캔버스와 한 법)」): into the cel
-/// of the row its first stroke makes, through the cut as it will stand —
-/// or, with the toggle off, into nothing, refusing the pen as the canvas
-/// does ([ContePictureProject.rowRefusal]).
+/// A cell with no block — a cut with no conte row, or a row whose every
+/// block is gone — has nothing to draw into yet. Its picture draws as the
+/// canvas's 「프레임 자동 생성」 would have it (유저 답 conte-drawing-target-
+/// Q2 「토글을 따른다 (캔버스와 한 법)」): into the cel its first stroke
+/// makes, through the cut as it will stand — or, with the toggle off, into
+/// nothing, refusing the pen as the canvas does
+/// ([ContePictureProject.rowRefusal]).
 ///
 /// [overlayOf] gives picture `id`'s live stroke, the one its pen draws and
 /// its composite paints — held by what holds them both, which lets it go
@@ -85,27 +85,26 @@ List<ContePicture> contePictures(
 ];
 
 /// What [cell]'s picture draws into: its block's cel on [cut]'s conte row —
-/// or, on a cut with none, the one cel of the row its first stroke makes,
-/// in the cut as that row will leave it.
+/// or, for a cell with no block, the cel its first stroke makes, drawn
+/// through the cut `AutoFrameForStroke.conteCelFor` gives.
 ({Cut cut, Layer layer, FrameId frameId, bool pending})? _drawnOf(
   Cut cut,
   ContePlacedCell cell,
   ContePictureProject project,
 ) {
-  if (storyboardLayerForCut(cut) case final layer?) {
-    final frameId = cell.source.frameId;
-    return frameId == null
-        ? null
-        : (cut: cut, layer: layer, frameId: frameId, pending: false);
+  final row = storyboardLayerForCut(cut);
+  final frameId = cell.source.frameId;
+  if (row != null && frameId != null) {
+    return (cut: cut, layer: row, frameId: frameId, pending: false);
   }
-  final row = project.conteRowOf(cut);
-  if (row == null) {
+  final made = project.conteCelOf(cut);
+  if (made == null) {
     return null;
   }
   return (
-    cut: cutWithLayerInserted(cut, row.layer, row.index),
-    layer: row.layer,
-    frameId: row.layer.frames.single.id,
+    cut: made.cut,
+    layer: made.layer,
+    frameId: made.frameId,
     pending: true,
   );
 }

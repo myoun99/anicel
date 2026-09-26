@@ -42,10 +42,15 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 /// stroke while it is drawn, and nothing the canvas stands on moves. With
 /// it off, nothing is made and nothing drawn there, and the press says why
 /// as the canvas does.
+///
+/// A conte row whose every block is gone has no block either (the question
+/// said 「또는 블록이 없는 칸」): the stroke covers THAT row with one cel,
+/// as a row is born, rather than make a second.
 void main() {
   const canvas = CanvasSize(width: 640, height: 360);
   const drawn = CutId('38');
   const empty = CutId('39');
+  const hollow = CutId('40');
 
   Project project() => Project(
     id: const ProjectId('conte-project'),
@@ -94,6 +99,22 @@ void main() {
               ),
             ],
           ),
+          // A cut whose conte row lost every block.
+          Cut(
+            id: hollow,
+            name: '40',
+            duration: 10,
+            canvasSize: canvas,
+            layers: [
+              Layer(
+                id: const LayerId('sb-40'),
+                name: 'SB',
+                kind: LayerKind.storyboard,
+                frames: const [],
+                timeline: const {},
+              ),
+            ],
+          ),
         ],
       ),
     ],
@@ -103,11 +124,12 @@ void main() {
   late ConteInkController ink;
 
   /// The panel, its brush on, with the canvas's 「프레임 자동 생성」 set to
-  /// [autoCreates]; returns the picture of the cut with no conte row, on
-  /// the screen.
+  /// [autoCreates]; returns the picture of the cut [of] — by default the
+  /// one with no conte row — on the screen.
   Future<Rect> pumpPanel(
     WidgetTester tester, {
     required bool autoCreates,
+    CutId of = empty,
   }) async {
     final input = AppInput.settings.value;
     AppInput.settings.value = input.copyWith(autoCreateFrameOnDraw: autoCreates);
@@ -153,7 +175,7 @@ void main() {
         cameraAspect: session.camera.cameraFrameAspect,
       ),
     ).first;
-    final cell = page.cells.singleWhere((cell) => cell.cutId == '39');
+    final cell = page.cells.singleWhere((cell) => cell.cutId == of.value);
     return cell.pictureRect.shift(
       tester.getTopLeft(find.byKey(const ValueKey<String>('conte-form-paint'))),
     );
@@ -162,9 +184,9 @@ void main() {
   Cut cutOf(CutId id) => session.cutById(id)!;
 
   /// Whether [row]'s one cel holds ink at canvas [pixel].
-  bool celInkAt(Layer row, Offset pixel) {
+  bool celInkAt(Layer row, Offset pixel, {CutId of = empty}) {
     final surface = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(
-      session.brushFrameKeyForCut(cutOf(empty), row.id, row.frames.single.id),
+      session.brushFrameKeyForCut(cutOf(of), row.id, row.frames.single.id),
     );
     return surface != null &&
         (surfacePixelRgba(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
@@ -249,57 +271,59 @@ void main() {
     );
   });
 
-  testWidgets('the stroke shows in the picture while it is drawn, before '
-      'the row it makes is there', (tester) async {
-    final picture = await pumpPanel(tester, autoCreates: true);
-    final live = find.byKey(
-      const ValueKey<String>('conte-picture-live-picture-39-0'),
-    );
-    expect(live, findsOneWidget);
-    final at = picture.center - tester.getTopLeft(live);
+  for (final (of, made) in [(empty, 'row'), (hollow, 'cel')]) {
+    testWidgets('the stroke shows in the picture while it is drawn, before '
+        'the $made it makes is there (cut ${of.value})', (tester) async {
+      final picture = await pumpPanel(tester, autoCreates: true, of: of);
+      final live = find.byKey(
+        ValueKey<String>('conte-picture-live-picture-${of.value}-0'),
+      );
+      expect(live, findsOneWidget);
+      final at = picture.center - tester.getTopLeft(live);
 
-    Future<bool> showsInk() async {
-      final painter = tester
-          .widgetList<CustomPaint>(
-            find.descendant(of: live, matching: find.byType(CustomPaint)),
-          )
-          .map((paint) => paint.painter)
-          .whereType<CustomPainter>()
-          .first;
-      final size = tester.getSize(live);
-      final bytes = (await tester.runAsync(() async {
-        final recorder = ui.PictureRecorder();
-        painter.paint(Canvas(recorder, Offset.zero & size), size);
-        final image = await recorder.endRecording().toImage(
-          size.width.ceil(),
-          size.height.ceil(),
-        );
-        final data = await image.toByteData(
-          format: ui.ImageByteFormat.rawRgba,
-        );
-        image.dispose();
-        return data!.buffer.asUint8List();
-      }))!;
-      return _alphaAt(bytes, size.width.ceil(), at) > 0;
-    }
+      Future<bool> showsInk() async {
+        final painter = tester
+            .widgetList<CustomPaint>(
+              find.descendant(of: live, matching: find.byType(CustomPaint)),
+            )
+            .map((paint) => paint.painter)
+            .whereType<CustomPainter>()
+            .first;
+        final size = tester.getSize(live);
+        final bytes = (await tester.runAsync(() async {
+          final recorder = ui.PictureRecorder();
+          painter.paint(Canvas(recorder, Offset.zero & size), size);
+          final image = await recorder.endRecording().toImage(
+            size.width.ceil(),
+            size.height.ceil(),
+          );
+          final data = await image.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          );
+          image.dispose();
+          return data!.buffer.asUint8List();
+        }))!;
+        return _alphaAt(bytes, size.width.ceil(), at) > 0;
+      }
 
-    expect(await showsInk(), isFalse);
-    final gesture = await tester.startGesture(picture.center, pointer: 7);
-    await tester.pump();
-    await gesture.moveTo(picture.center + const Offset(6, 0));
-    await tester.pump();
-    await gesture.moveTo(picture.center + const Offset(12, 0));
-    await tester.pump();
-    expect(
-      storyboardLayerForCut(cutOf(empty)),
-      isNull,
-      reason: 'fixture: the row is made as the stroke lands',
-    );
-    expect(await showsInk(), isTrue);
-    await gesture.up();
-    await tester.pumpAndSettle();
-    expect(await showsInk(), isTrue, reason: 'the pen-up changes nothing');
-  });
+      expect(await showsInk(), isFalse);
+      final gesture = await tester.startGesture(picture.center, pointer: 7);
+      await tester.pump();
+      await gesture.moveTo(picture.center + const Offset(6, 0));
+      await tester.pump();
+      await gesture.moveTo(picture.center + const Offset(12, 0));
+      await tester.pump();
+      expect(
+        storyboardLayerForCut(cutOf(of))?.timeline ?? const {},
+        isEmpty,
+        reason: 'fixture: what the stroke draws into is made as it lands',
+      );
+      expect(await showsInk(), isTrue);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(await showsInk(), isTrue, reason: 'the pen-up changes nothing');
+    });
+  }
 
   testWidgets('with it off, nothing is made and nothing drawn there — the '
       'press says why, in the canvas\'s words', (tester) async {
@@ -334,6 +358,56 @@ void main() {
         session.languageSettings.value.programLanguage,
       ).noticeNoFrameHere,
     );
+    // The notice goes of itself.
+    await tester.pump(CursorNoticeController.defaultDuration);
+  });
+
+  testWidgets('🚨a conte row with no block left is covered by one cel, and '
+      'the stroke lands in it — no second row; ONE undo leaves it as it '
+      'was', (tester) async {
+    final picture = await pumpPanel(tester, autoCreates: true, of: hollow);
+    final before = storyboardLayerForCut(cutOf(hollow))!;
+    expect(before.timeline, isEmpty, reason: 'fixture');
+
+    final gesture = await tester.startGesture(picture.center, pointer: 7);
+    await tester.pump();
+    await gesture.moveTo(picture.center + const Offset(8, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final row = storyboardLayerForCut(cutOf(hollow))!;
+    expect(cutOf(hollow).layers, hasLength(1), reason: 'the same row');
+    expect(row.id, before.id);
+    final block = row.timeline[0];
+    expect(block?.frameId, row.frames.single.id);
+    expect(block?.length, cutOf(hollow).duration, reason: 'covering the cut');
+    expect(celInkAt(row, const Offset(320, 180), of: hollow), isTrue);
+
+    session.historyManager.undo();
+    await tester.pumpAndSettle();
+    expect(storyboardLayerForCut(cutOf(hollow))!.timeline, isEmpty);
+    expect(celInkAt(row, const Offset(320, 180), of: hollow), isFalse);
+
+    session.historyManager.redo();
+    await tester.pumpAndSettle();
+    expect(storyboardLayerForCut(cutOf(hollow))!.timeline[0], block);
+    expect(celInkAt(row, const Offset(320, 180), of: hollow), isTrue);
+  });
+
+  testWidgets('with it off, a conte row with no block is left as it is',
+      (tester) async {
+    final picture = await pumpPanel(tester, autoCreates: false, of: hollow);
+
+    final gesture = await tester.startGesture(picture.center, pointer: 7);
+    await tester.pump();
+    await gesture.moveTo(picture.center + const Offset(8, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(storyboardLayerForCut(cutOf(hollow))!.timeline, isEmpty);
+    expect(storyboardLayerForCut(cutOf(hollow))!.frames, isEmpty);
     // The notice goes of itself.
     await tester.pump(CursorNoticeController.defaultDuration);
   });

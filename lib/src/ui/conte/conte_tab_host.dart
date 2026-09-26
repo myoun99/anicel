@@ -453,7 +453,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
       celKeyOf: _session.brushFrameKeyForCut,
       cameraPoseOf: _session.camera.cameraPoseForCut,
       cameraFrameSize: _session.camera.cameraFrameSize,
-      conteRowOf: autoFrame.conteRowFor,
+      conteCelOf: autoFrame.conteCelFor,
       // The canvas's notice, word for word, for a press on a cell it may
       // not fill (`EditorCanvasArea._drawRefusalFor`).
       rowRefusal: autoFrame.autoCreates
@@ -470,7 +470,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   void _makeWhatTheStrokeLandsIn(SheetWindow window) {
     if (window is SheetPictureWindow) {
       if (_session.cutById(window.key.cutId) case final cut?) {
-        _session.autoFrame.addConteRow(cut);
+        _session.autoFrame.addConteCel(cut);
       }
     } else if (conteInkRowIdOf(window.key) case final inkId?) {
       _session.storyboardCursor.writeConteBlockInk(window.key.cutId, inkId);

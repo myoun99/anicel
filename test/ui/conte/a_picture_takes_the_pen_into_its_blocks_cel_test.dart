@@ -156,7 +156,7 @@ void main() {
         cameraPoseOf: (cut, frame) => pose,
         cameraFrameSize: canvas,
         // The cut has its conte row.
-        conteRowOf: (cut) => null,
+        conteCelOf: (cut) => null,
         rowRefusal: null,
       ), (id) => stroke).single;
 

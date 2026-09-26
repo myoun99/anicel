@@ -4,11 +4,16 @@ import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
+import '../../models/storyboard_coverage.dart' show storyboardDivisionKeys;
+import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../services/commands/cut_command_input_planner.dart'
     show plannedAddLayerCommand;
 import '../../services/editing/default_layer_helpers.dart'
-    show bornRowOfKind;
+    show bornRowOfKind, coveringCelFor;
 import '../../services/command.dart';
+import '../../services/commands/update_layer_timeline_command.dart';
+import '../../services/project_repository.dart'
+    show cutWithLayerInserted;
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import 'active_cut_controllers.dart';
@@ -55,59 +60,105 @@ class AutoFrameForStroke {
   /// conte-drawing-target-Q2 「토글을 따른다 (캔버스와 한 법)」).
   bool get autoCreates => AppInput.settings.value.autoCreateFrameOnDraw;
 
-  /// 🚨THE CONTE ROW A PICTURE'S FIRST STROKE WOULD MAKE on [cut], named
-  /// before it exists — [frameIdForNextCel], said of a cut with no conte
-  /// row. A conte picture draws into its block's cel, and a cut with no
-  /// conte row has none: its picture draws into the cel this names, and
-  /// the stroke's landing makes the row ([addConteRow]) — so the pen that
-  /// heard the press already stands on the cel it makes, and the picture
-  /// is drawn through the cut as it will stand.
+  /// 🚨THE CEL A PICTURE'S FIRST STROKE WOULD MAKE on [cut]'s conte, named
+  /// before it exists — [frameIdForNextCel], said of a conte cell with no
+  /// block. A conte picture draws into its block's cel, and such a cell has
+  /// none: a cut with no conte row, or one whose row lost every block
+  /// (유저 답 conte-drawing-target-Q2: 「콘티 레이어(없으면) · 블록이 생기고
+  /// 그대로 그려진다」). Its picture draws into the cel this names, and the
+  /// stroke's landing makes it ([addConteCel]) — so the pen that heard the
+  /// press already stands on the cel it makes.
   ///
-  /// Laid where a row made with nothing selected goes, on top
-  /// ([newRowPlacement]): [cut] is not the cut the canvas stands on, so it
-  /// has no active row to go above. Null when [cut] has its conte row.
-  ({Layer layer, int index})? conteRowFor(Cut cut) {
-    if (storyboardLayerForCut(cut) != null) {
+  /// [cut] is what the picture draws through: with the row it makes, when
+  /// it has none — the live stroke stands in the composite where that row
+  /// will; as it is, when its row is there to stand in.
+  ///
+  /// Null when [cut] has a block to draw on.
+  ({Cut cut, Layer layer, FrameId frameId})? conteCelFor(Cut cut) {
+    final plan = _conteCelPlan(cut);
+    if (plan == null) {
       return null;
     }
-    final layerId = _nextConteRow.putIfAbsent(cut.id, _layerIds.mint);
-    final placement = newRowPlacement(cut.layers, cut.layers.length);
-    final row = bornRowOfKind(
-      LayerKind.storyboard,
-      layerId: layerId,
-      coveringFrameId: () => frameIdForNextCel(layerId),
-      cut: cut,
+    final (:layer, :index) = plan;
+    return (
+      cut: index == null ? cut : cutWithLayerInserted(cut, layer, index),
+      layer: layer,
+      frameId: frameIdForNextCel(layer.id),
+    );
+  }
+
+  /// The conte row a first stroke on [cut] leaves, and where it goes in the
+  /// stack — null [index] for the row [cut] has, covered in place.
+  ///
+  /// A cut with no row gets one on top, where a row made with nothing
+  /// selected goes ([newRowPlacement]): [cut] is not the cut the canvas
+  /// stands on, so it has no active row to go above. A row with no block
+  /// is covered by one cel, as a row is born ([coveringCelFor]).
+  ({Layer layer, int? index})? _conteCelPlan(Cut cut) {
+    final row = storyboardLayerForCut(cut);
+    if (row == null) {
+      final layerId = _nextConteRow.putIfAbsent(cut.id, _layerIds.mint);
+      final placement = newRowPlacement(cut.layers, cut.layers.length);
+      final born = bornRowOfKind(
+        LayerKind.storyboard,
+        layerId: layerId,
+        coveringFrameId: () => frameIdForNextCel(layerId),
+        cut: cut,
+      );
+      return (
+        layer: placement.folderId == null
+            ? born
+            : born.copyWith(folderId: placement.folderId),
+        index: placement.index,
+      );
+    }
+    if (storyboardDivisionKeys(
+      timeline: row.timeline,
+      cutDuration: cut.duration,
+    ).isNotEmpty) {
+      return null;
+    }
+    final cel = coveringCelFor(
+      frameId: frameIdForNextCel(row.id),
+      cutDuration: cut.duration,
     );
     return (
-      layer: placement.folderId == null
-          ? row
-          : row.copyWith(folderId: placement.folderId),
-      index: placement.index,
+      layer: row.copyWith(
+        frames: [...row.frames, cel.frame],
+        timeline: cel.timeline,
+      ),
+      index: null,
     );
   }
 
   final Map<CutId, LayerId> _nextConteRow = <CutId, LayerId>{};
 
-  /// Makes the conte row [conteRowFor] names on [cut] — its own undo step,
-  /// until the stroke that made it folds it in with the stroke's.
+  /// Makes the cel [conteCelFor] names on [cut] — its own undo step, until
+  /// the stroke that made it folds it in with the stroke's.
   ///
-  /// ⛔It selects nothing: the row joins a cut the canvas may not stand on,
+  /// ⛔It selects nothing: the cel joins a cut the canvas may not stand on,
   /// and a drawing on the conte moves no focus (conte-drawing-target ①).
-  void addConteRow(Cut cut) {
-    final row = conteRowFor(cut);
-    if (row == null) {
+  void addConteCel(Cut cut) {
+    final plan = _conteCelPlan(cut);
+    if (plan == null) {
       return;
     }
+    final (:layer, :index) = plan;
     _nextConteRow.remove(cut.id);
-    _nextCel.remove(row.layer.id);
-    _project.historyManager.execute(
-      plannedAddLayerCommand(
+    _nextCel.remove(layer.id);
+    _project.historyManager.execute(switch (index) {
+      null => UpdateLayerTimelineCommand(
+        repository: _project.repository,
+        before: storyboardLayerForCut(cut)!,
+        after: rederiveRunBehaviors(layer, cutFrameCount: cut.duration),
+      ),
+      final index => plannedAddLayerCommand(
         repository: _project.repository,
         cutId: cut.id,
-        layer: row.layer,
-        insertionIndex: row.index,
+        layer: layer,
+        insertionIndex: index,
       ),
-    );
+    });
     _changes.notifyChanged();
   }
 
