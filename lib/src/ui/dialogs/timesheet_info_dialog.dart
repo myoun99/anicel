@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
-import '../../models/layer_mark.dart';
-import '../../models/layer_process.dart';
 import '../../models/timesheet_info.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
 
-/// Edits the sheet-header text (the title and the episode) the paper
-/// timesheet reads, and which header boxes the form prints. Pops the
-/// edited [TimesheetInfo], or null when cancelled.
+/// Edits how the paper timesheet prints: which header boxes it carries,
+/// the hold bar, the SE wash. Pops the edited [TimesheetInfo], or null when
+/// cancelled.
+///
+/// ⛔The work's words are not here: its title, episode and staff are set in
+/// the work's settings (`WorkSettingsWindow`, 유저 09-25 「작품명/화수는
+/// 이제 타임시트패널같은곳에서 편집안하게 … 해당 설정은 프로젝트 설정쪽에」).
 class TimesheetInfoDialog extends StatefulWidget {
   const TimesheetInfoDialog({super.key, required this.initialInfo});
 
@@ -20,12 +22,6 @@ class TimesheetInfoDialog extends StatefulWidget {
 }
 
 class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
-  late final TextEditingController _titleController = TextEditingController(
-    text: widget.initialInfo.title,
-  );
-  late final TextEditingController _episodeController = TextEditingController(
-    text: widget.initialInfo.episode,
-  );
   late final Set<TimesheetHeaderField> _hiddenFields = {
     ...widget.initialInfo.hiddenFields,
   };
@@ -37,20 +33,6 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
         '${widget.initialInfo.exposureBarThreshold ?? TimesheetInfo.defaultExposureBarThreshold}',
   );
   late bool _seEmptyFill = widget.initialInfo.seEmptyFill;
-
-  /// One name field per 공정's worker — the colour label with no
-  /// correction, which the cut envelope binds by (`{staff.<label>.name}`).
-  ///
-  /// ⛔EVERY process gets a row, including 用紙. Leaving one out would be a
-  /// 「~는 제외한다」 rule nobody asked for, and an empty row costs a line
-  /// while a missing one costs a question — the same reason a rail row
-  /// reserves every slot.
-  late final Map<LayerMark, TextEditingController> _staffControllers = {
-    for (final process in LayerProcess.values)
-      LayerMark(process: process): TextEditingController(
-        text: widget.initialInfo.staffNameFor(LayerMark(process: process)),
-      ),
-  };
 
   static String _fieldLabel(TimesheetHeaderField field) {
     final strings = AppText.strings;
@@ -67,21 +49,12 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
 
   @override
   void dispose() {
-    _titleController.dispose();
-    _episodeController.dispose();
     _exposureBarThresholdController.dispose();
-    for (final controller in _staffControllers.values) {
-      controller.dispose();
-    }
     super.dispose();
   }
 
   void _submit() {
     final threshold = int.tryParse(_exposureBarThresholdController.text.trim());
-    var staffed = widget.initialInfo;
-    for (final entry in _staffControllers.entries) {
-      staffed = staffed.withStaffName(entry.key, entry.value.text.trim());
-    }
     // 🚨★★★copyWith, NOT a fresh TimesheetInfo. Building one from scratch
     // listed the fields this dialog edits and silently dropped every field
     // it does not — `staff` and `logoAssetPath` both default to empty, so
@@ -92,9 +65,7 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
     // next field: remembering is the part that failed. `copyWith` carries
     // what it was not asked about ([[make-the-invariant-unrepresentable]]).
     Navigator.of(context).pop(
-      staffed.copyWith(
-        title: _titleController.text.trim(),
-        episode: _episodeController.text.trim(),
+      widget.initialInfo.copyWith(
         hiddenFields: {..._hiddenFields},
         exposureBarThreshold: () => _exposureBarEnabled && threshold != null
             ? threshold.clamp(1, 999)
@@ -126,47 +97,6 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            AppWindowField(
-              label: strings.sheetFieldTitle,
-              emphasized: true,
-              child: TextField(
-                key: const ValueKey<String>('timesheet-info-title-field'),
-                controller: _titleController,
-                autofocus: true,
-                decoration: InputDecoration(hintText: strings.sheetTitleHint),
-              ),
-            ),
-            const SizedBox(height: 12),
-            AppWindowField(
-              label: strings.sheetFieldEpisode,
-              child: TextField(
-                key: const ValueKey<String>('timesheet-info-episode-field'),
-                controller: _episodeController,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              strings.sheetStaffByProcess,
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-            const SizedBox(height: 8),
-            // 🚨One row per 공정, always all of them — the cut envelope binds
-            // `{staff.<label>.name}` by this same key, so what the form can
-            // fill and what a form can print are one list.
-            for (final entry in _staffControllers.entries) ...[
-              AppWindowField(
-                label: entry.key.displayName,
-                child: TextField(
-                  key: ValueKey<String>(
-                    'timesheet-info-staff-${entry.key.keySlug}',
-                  ),
-                  controller: entry.value,
-                  onSubmitted: (_) => _submit(),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            const SizedBox(height: 16),
             Text(
               strings.sheetVisibleBoxes,
               style: Theme.of(context).textTheme.labelMedium,

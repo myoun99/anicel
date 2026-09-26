@@ -621,8 +621,9 @@ enum AppStrings {
   String get sheetFieldTime => _s('sheetFieldTime');
   String get sheetFieldName => _s('sheetFieldName');
   String get sheetFieldSheet => _s('sheetFieldSheet');
-  String get sheetTitleHint => _s('sheetTitleHint');
-  String get sheetStaffByProcess => _s('sheetStaffByProcess');
+  String get workSettingsTitle => _s('workSettingsTitle');
+  String get workSettingsStaff => _s('workSettingsStaff');
+  String get staffWorker => _s('staffWorker');
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
   String get sheetNotation => _s('sheetNotation');
   String get sheetExposureBar => _s('sheetExposureBar');
@@ -2046,8 +2047,9 @@ enum AppStrings {
     'sheetFieldTime': 'Time',
     'sheetFieldName': 'Name',
     'sheetFieldSheet': 'Sheet',
-    'sheetTitleHint': 'Project name when empty',
-    'sheetStaffByProcess': 'Staff by process',
+    'workSettingsTitle': 'Work settings',
+    'workSettingsStaff': 'Staff',
+    'staffWorker': 'Artist',
     'sheetVisibleBoxes': 'Visible boxes',
     'sheetNotation': 'Notation',
     'sheetExposureBar': 'Exposure hold bar',
@@ -2948,6 +2950,7 @@ enum AppStrings {
     'menuAction.edit-toggle-mark': 'マークの切り替え',
     'menuAction.edit-keyboard-shortcuts': 'キーボードショートカット…',
     'menuAction.edit-preferences': '環境設定…',
+    'menuAction.work-settings': '作品設定…',
     'menuAction.cut-new': 'カットを新規作成',
     'menuAction.cut-duplicate': 'カットを複製',
     'menuAction.cut-create-linked': 'リンクカットを作成',
@@ -3154,8 +3157,9 @@ enum AppStrings {
     'sheetFieldTime': 'タイム',
     'sheetFieldName': '作画者',
     'sheetFieldSheet': 'シート',
-    'sheetTitleHint': '空欄ならプロジェクト名',
-    'sheetStaffByProcess': '工程ごとの担当',
+    'workSettingsTitle': '作品設定',
+    'workSettingsStaff': 'スタッフ設定',
+    'staffWorker': '作業者',
     'sheetVisibleBoxes': '表示する枠',
     'sheetNotation': '表記',
     'sheetExposureBar': '止めの引き伸ばし線',
@@ -4277,6 +4281,7 @@ enum AppStrings {
     'menuAction.edit-toggle-mark': '마크 켜기/끄기',
     'menuAction.edit-keyboard-shortcuts': '키보드 단축키…',
     'menuAction.edit-preferences': '환경설정…',
+    'menuAction.work-settings': '작품 설정…',
     'menuAction.cut-new': '새 컷',
     'menuAction.cut-duplicate': '컷 복제',
     'menuAction.cut-create-linked': '링크 컷 만들기',
@@ -4481,8 +4486,9 @@ enum AppStrings {
     'sheetFieldTime': '타임',
     'sheetFieldName': '작화자',
     'sheetFieldSheet': '시트',
-    'sheetTitleHint': '비우면 프로젝트 이름',
-    'sheetStaffByProcess': '공정별 담당자',
+    'workSettingsTitle': '작품 설정',
+    'workSettingsStaff': '스태프 설정',
+    'staffWorker': '작업자',
     'sheetVisibleBoxes': '표시할 칸',
     'sheetNotation': '표기',
     'sheetExposureBar': '止め 늘림 선',
@@ -5606,6 +5612,7 @@ enum AppStrings {
     'menuAction.edit-toggle-mark': 'Basculer le repère',
     'menuAction.edit-keyboard-shortcuts': 'Raccourcis clavier…',
     'menuAction.edit-preferences': 'Préférences…',
+    'menuAction.work-settings': 'Réglages de l’œuvre…',
     'menuAction.cut-new': 'Nouveau plan',
     'menuAction.cut-duplicate': 'Dupliquer le plan',
     'menuAction.cut-create-linked': 'Créer un plan lié',
@@ -5836,8 +5843,9 @@ enum AppStrings {
     'sheetFieldTime': 'Durée',
     'sheetFieldName': 'Animateur',
     'sheetFieldSheet': 'Feuille',
-    'sheetTitleHint': 'Nom du projet si vide',
-    'sheetStaffByProcess': 'Équipe par étape',
+    'workSettingsTitle': 'Réglages de l’œuvre',
+    'workSettingsStaff': 'Équipe',
+    'staffWorker': 'Artiste',
     'sheetVisibleBoxes': 'Cases visibles',
     'sheetNotation': 'Notation',
     'sheetExposureBar': 'Trait de maintien',
@@ -6986,6 +6994,7 @@ enum AppStrings {
     'menuAction.edit-toggle-mark': '切换标记',
     'menuAction.edit-keyboard-shortcuts': '键盘快捷键…',
     'menuAction.edit-preferences': '偏好设置…',
+    'menuAction.work-settings': '作品设置…',
     'menuAction.cut-new': '新建镜头',
     'menuAction.cut-duplicate': '复制镜头',
     'menuAction.cut-create-linked': '创建链接镜头',
@@ -7171,8 +7180,9 @@ enum AppStrings {
     'sheetFieldTime': '时长',
     'sheetFieldName': '作画',
     'sheetFieldSheet': '表号',
-    'sheetTitleHint': '留空则用项目名',
-    'sheetStaffByProcess': '各工序负责人',
+    'workSettingsTitle': '作品设置',
+    'workSettingsStaff': '人员设置',
+    'staffWorker': '作业者',
     'sheetVisibleBoxes': '显示的栏位',
     'sheetNotation': '标注',
     'sheetExposureBar': '保持延长线',

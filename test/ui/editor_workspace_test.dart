@@ -1122,9 +1122,10 @@ void main() {
       expect(find.byTooltip('Page View'), findsOneWidget);
     });
 
-    testWidgets('sheet info dialog edits the project timesheet info', (
-      tester,
-    ) async {
+    testWidgets('the work settings window, from the top strip\'s ⚙, edits '
+        'the work\'s words', (tester) async {
+      // 유저 09-25: 「작품명/화수는 이제 타임시트패널같은곳에서 편집안하게 …
+      // 상단띠의 설정버튼이 낫겟지」.
       late ProjectRepository repository;
       await tester.pumpWidget(
         MaterialApp(
@@ -1132,24 +1133,23 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(_timesheetTabKey));
-      await tester.pumpAndSettle();
 
+      await openSettingsFlyout(tester);
       await tester.tap(
-        find.byKey(const ValueKey<String>('timesheet-info-button')),
+        find.byKey(const ValueKey<String>('menu-work-settings')),
       );
       await tester.pumpAndSettle();
 
       await tester.enterText(
-        find.byKey(const ValueKey<String>('timesheet-info-title-field')),
+        find.byKey(const ValueKey<String>('work-settings-title-field')),
         'YOASOBI',
       );
       await tester.enterText(
-        find.byKey(const ValueKey<String>('timesheet-info-episode-field')),
+        find.byKey(const ValueKey<String>('work-settings-episode-field')),
         'MV',
       );
       await tester.tap(
-        find.byKey(const ValueKey<String>('timesheet-info-save-button')),
+        find.byKey(const ValueKey<String>('work-settings-save-button')),
       );
       await tester.pumpAndSettle();
 

@@ -79,7 +79,11 @@ class ExportAccordion extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        expanded ? title : '$title — $summary',
+                        // A module holding nothing yet says only its name —
+                        // not a dash with nothing after it.
+                        expanded || summary.isEmpty
+                            ? title
+                            : '$title — $summary',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelMedium?.copyWith(

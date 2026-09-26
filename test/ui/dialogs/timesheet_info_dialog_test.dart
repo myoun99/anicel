@@ -52,14 +52,13 @@ void main() {
     // so every field the window does not show — `staff`, `logoAssetPath` —
     // came back at its default. Opening this window and pressing save
     // deleted the production staff and the logo, and nothing said so.
-    const keyDirection = LayerMark(
-      process: LayerProcess.key,
-      revise: LayerRevise.direction,
-    );
+    // The work's own words live in the work's settings since 09-25, which
+    // leaves this window even more to not show.
     final before = const TimesheetInfo(
       title: 'T',
+      episode: 'E',
       logoAssetPath: 'logo.png',
-    ).withStaffName(keyDirection, '원화 연출');
+    ).withStaffName(const LayerMark(process: LayerProcess.key), '원화');
     TimesheetInfo? after;
     await _openDialog(tester, before, (r) => after = r);
 
@@ -71,63 +70,7 @@ void main() {
     await tester.tap(save);
     await tester.pumpAndSettle();
 
-    expect(
-      after!.logoAssetPath,
-      'logo.png',
-      reason: 'the logo is not this window\'s to delete',
-    );
-    expect(
-      after!.staffNameFor(keyDirection),
-      '원화 연출',
-      reason: 'nor the staff — the window never showed this role at all',
-    );
-  });
-
-  testWidgets('every 공정 has a name row, and typing one keeps it', (
-    tester,
-  ) async {
-    TimesheetInfo? saved;
-    await _openDialog(tester, TimesheetInfo.empty, (r) => saved = r);
-
-    // ⛔EVERY process, including 用紙. Leaving one out would be a rule
-    // nobody asked for, and the cut envelope binds `{staff.<label>.name}`
-    // by this same key — so what the form can fill and what a form can
-    // print have to be one list.
-    for (final process in LayerProcess.values) {
-      final worker = LayerMark(process: process);
-      expect(
-        find.byKey(ValueKey<String>('timesheet-info-staff-${worker.keySlug}')),
-        findsOneWidget,
-        reason: '${worker.keySlug} has no row',
-      );
-    }
-
-    const key = LayerMark(process: LayerProcess.key);
-    final keyRow = find.byKey(
-      ValueKey<String>('timesheet-info-staff-${key.keySlug}'),
-    );
-    await tester.ensureVisible(keyRow);
-    await tester.pumpAndSettle();
-    await tester.enterText(keyRow, '김원화');
-
-    final save = find.byKey(
-      const ValueKey<String>('timesheet-info-save-button'),
-    );
-    await tester.ensureVisible(save);
-    await tester.pumpAndSettle();
-    await tester.tap(save);
-    await tester.pumpAndSettle();
-
-    expect(saved!.staffNameFor(key), '김원화');
-    expect(
-      saved!.staff.containsKey(
-        const LayerMark(process: LayerProcess.paper).keySlug,
-      ),
-      isFalse,
-      reason:
-          'a row left blank writes nothing — the map holds the roles that '
-          'were filled, not one entry per row',
-    );
+    expect(after, before);
   });
 
   testWidgets('a header box is a boolean ROW: it reads the box, a press '
