@@ -211,8 +211,25 @@ void main() {
       testWidgets('a label clicked once, then its eye twice, is no rename — '
           'the eye\'s presses are no part of it', (tester) async {
         await pumpPanel(tester);
+        // The name's ground nearest the eye.
+        final name = tester
+            .getRect(
+              find.byKey(ValueKey<String>('$prefix-layer-name-${a.value}')),
+            )
+            .deflate(3);
+        final eyeAt = eye(tester, a);
+        final nearTheEye = Offset(
+          eyeAt.dx.clamp(name.left, name.right),
+          eyeAt.dy.clamp(name.top, name.bottom),
+        );
+        expect(
+          (eye(tester, a) - nearTheEye).distance,
+          lessThan(kDoubleTapSlop),
+          reason: 'CONTROL: near enough for the recognizer to take the eye\'s '
+              'press as the second tap — the case under test',
+        );
 
-        await tester.tapAt(label(tester, a), kind: PointerDeviceKind.stylus);
+        await tester.tapAt(nearTheEye, kind: PointerDeviceKind.stylus);
         await tester.pump(const Duration(milliseconds: 60));
         await twoPresses(tester, eye(tester, a), eye(tester, a));
 
@@ -354,6 +371,36 @@ void main() {
         find.byKey(_dialog),
         findsOneWidget,
         reason: 'CONTROL: a double click reaches this rail\'s rows',
+      );
+    });
+
+    testWidgets('a track\'s SE row — owned by the track, not the cut — takes '
+        'its new name', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
+      await tester.pumpAndSettle();
+      session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      final se = session.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.se,
+      );
+      expect(
+        session.requireActiveCut.layers.map((layer) => layer.id),
+        isNot(contains(se.id)),
+        reason: 'fixture premise: the row is the track\'s, not the cut\'s',
+      );
+
+      await doubleClick(tester, se.id);
+      await answer(tester, 'Voice');
+
+      expect(tester.takeException(), isNull);
+      expect(
+        session.layers.firstWhere((layer) => layer.id == se.id).name,
+        'Voice',
       );
     });
   });

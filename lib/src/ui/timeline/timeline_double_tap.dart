@@ -190,11 +190,21 @@ GestureTapDownCallback timelineLabelDoubleTapActivation(LayerId layerId) =>
       }
     };
 
-/// A row label's double tap, mounted around its strip: the frame block's
-/// recognizer — its window, its slop, its moment (the second press DOWN) —
-/// yielding the label's controls ([ControlYieldingDoubleTapGestureRecognizer]).
+/// A row label's double click, mounted around the label — the one widget
+/// every surface that shows a layer's label mounts (the timeline rail, the
+/// x-sheet's header, the storyboard's rows), both halves in it.
+///
+/// The frame block's recognizer — its window, its slop, its moment (the
+/// second press DOWN) — yielding the label's controls
+/// ([ControlYieldingDoubleTapGestureRecognizer]). Every press it counts is
+/// RECORDED after the double tap that press may complete has fired: the
+/// order the cells' two halves keep, the first press read before the
+/// second one's record replaces it. And the record runs before the label's
+/// own pick, which listens outside it, so the host reads the selection as
+/// the press found it.
 Widget timelineLabelDoubleTapDetector({
   required LayerId layerId,
+  required TimelineLabelDoubleClick doubleClick,
   required Widget child,
 }) => RawGestureDetector(
   gestures: <Type, GestureRecognizerFactory>{
@@ -206,6 +216,10 @@ Widget timelineLabelDoubleTapDetector({
             layerId,
           );
           recognizer.onDoubleTap = () {};
+          recognizer.onPress = timelineLabelDoubleTapRecord(
+            layerId,
+            doubleClick,
+          );
         }),
   },
   child: child,
@@ -228,9 +242,20 @@ class ControlYieldingDoubleTapGestureRecognizer
     extends DoubleTapGestureRecognizer {
   ControlYieldingDoubleTapGestureRecognizer({super.debugOwner});
 
+  /// Every press this recognizer counts, AFTER the double tap it may
+  /// complete has fired — a label's record half
+  /// ([timelineLabelDoubleTapDetector]).
+  void Function(Offset localPosition)? onPress;
+
   @override
   bool isPointerAllowed(PointerDownEvent event) =>
       !controlOwnsTap(event.pointer) && super.isPointerAllowed(event);
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    onPress?.call(event.localPosition);
+  }
 
   @override
   void handleNonAllowedPointer(PointerDownEvent event) {

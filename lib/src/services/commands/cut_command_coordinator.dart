@@ -315,7 +315,11 @@ class CutCommandCoordinator {
       throw ArgumentError.value(name, 'name', 'Layer name cannot be empty.');
     }
 
-    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    // ANYWHERE, as the name write itself is (`ProjectRepository`'s
+    // layer-flag updates: 「track-owned SE layers must reach the same
+    // commands」). ↩️A cut-scoped lookup here threw on a track's SE row —
+    // found by I-48's label double click, and the menu's rename with it.
+    final layer = _requireLayerAnywhere(layerId);
     if (layer.name == trimmedName) {
       return;
     }

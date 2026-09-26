@@ -19,10 +19,7 @@ import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
 import 'rail_eyes.dart';
 import 'timeline_double_tap.dart'
-    show
-        TimelineLabelDoubleClick,
-        timelineLabelDoubleTapDetector,
-        timelineLabelDoubleTapRecord;
+    show TimelineLabelDoubleClick, timelineLabelDoubleTapDetector;
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
 import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
@@ -360,12 +357,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     final surface = _surface(context, colorScheme);
     final strip = InstantTapRegion(
       pressSeeksFor: AppInput.timelineCellPressSeeks,
-      // I-48: the frame block's activation law, RECORD half — this press
-      // landed on this row's label. It runs BEFORE the pick below, so the
-      // host reads the selection as the press found it.
-      onPressDown: doubleClick == null
-          ? null
-          : timelineLabelDoubleTapRecord(layer.id, doubleClick),
       // The PICK. Whether it also CLEARS is the session's call — see
       // `standOnRow`, which holds the selection when the press landed inside
       // it, because that press is most likely the start of a move.
@@ -373,12 +364,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
       // And when the press turned out to be a tap, the selection goes —
       // 유저: 「클릭하고 떼면 뭐든 비우게」.
       onSettledTap: onSettledPress == null ? null : (_) => onSettledPress!(),
-      // …and its ACTIVATION half, INSIDE this region: the deeper listener
-      // hears a press first, so the second press reads the first one's
-      // record before its own record replaces it — the cells' order.
+      // I-48: the label's double click, INSIDE the pick — the deeper
+      // listener hears a press first, so its record reads the selection
+      // before the pick can change it.
       child: doubleClick == null
           ? surface
-          : timelineLabelDoubleTapDetector(layerId: layer.id, child: surface),
+          : timelineLabelDoubleTapDetector(
+              layerId: layer.id,
+              doubleClick: doubleClick,
+              child: surface,
+            ),
     );
 
     // R10 R3: a folder row used to carry rename + dissolve on a context
