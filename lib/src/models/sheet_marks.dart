@@ -177,9 +177,9 @@ final class SheetWords extends SheetMark {
       text.isEmpty || slot.width <= 0 || slot.height <= 0;
 }
 
-/// A cell's picture, contained in [slot]. The printer finds the image by
-/// ([cutId], [pictureFrame]) — the panel in its thumbnail store, the PDF
-/// among the pictures its export rendered.
+/// A cell's picture: the camera's [frame], in its [slot]. The printer finds
+/// the image by ([cutId], [pictureFrame]) — the panel in its thumbnail
+/// store, the PDF among the pictures its export rendered.
 ///
 /// Clipped to the slot's corners ([cornerRadius], the window it sits in):
 /// a square picture in a rounded window would cover the window's corners.
@@ -189,16 +189,27 @@ final class SheetPicture extends SheetMark {
     required this.cutId,
     required this.pictureFrame,
     required this.slot,
+    required this.frame,
     this.cornerRadius = 0,
   });
 
   final String cutId;
   final int pictureFrame;
   final Rect slot;
+
+  /// Where the camera's frame lies in [slot] — the whole slot when the slot
+  /// has the camera's shape. Every printer fills it with the image, and the
+  /// pen draws through it.
+  ///
+  /// ⛔Not worked out from the image: a picture rendered N pixels wide is
+  /// the camera's shape only to the nearest pixel of its height, and a
+  /// contain on those pixels left a sliver of the window uncovered — the
+  /// page, the PDF and the pen each answered where the picture was (F-197).
+  final Rect frame;
   final double cornerRadius;
 
   @override
-  Object get _prints => (cutId, pictureFrame, slot, cornerRadius);
+  Object get _prints => (cutId, pictureFrame, slot, frame, cornerRadius);
 }
 
 /// A media image — the company logo — contained in [slot].

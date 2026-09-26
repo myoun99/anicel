@@ -36,7 +36,9 @@ import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
+import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
@@ -526,12 +528,33 @@ void main() {
       );
     }
 
-    /// The panel on [project], its brush off, with the block's cel inked
-    /// and the page's printed picture [printed].
+    /// The block's cel black over the whole canvas — the cut filled black.
+    BitmapSurface filledBlack() {
+      const size = defaultCelTileSize;
+      final pixels = Uint8List(size * size * 4);
+      for (var i = 3; i < pixels.length; i += 4) {
+        pixels[i] = 0xFF;
+      }
+      return BitmapSurface(
+        canvasSize: canvas,
+        tileSize: size,
+        tiles: {
+          for (var y = 0; y * size < canvas.height; y += 1)
+            for (var x = 0; x * size < canvas.width; x += 1)
+              TileCoord(x: x, y: y): BitmapTile(size: size, pixels: pixels),
+        },
+      );
+    }
+
+    /// The panel on [project], its brush off, with the block's cel [cel]
+    /// (inked, unless told) and the page's printed picture [printed], seen
+    /// through [view].
     Future<Rect> pumpPanel(
       WidgetTester tester,
       Project project, {
       ui.Image? printed,
+      BitmapSurface? cel,
+      CanvasViewport? view,
     }) async {
       session = EditorSessionManager(initialProject: project);
       addTearDown(session.dispose);
@@ -549,7 +572,7 @@ void main() {
           .single;
       session.renderCaches.brushFrameStore.storeBakedSurface(
         session.brushFrameKeyForCut(drawn, layerId, frameId),
-        inked(),
+        cel ?? inked(),
       );
       await tester.binding.setSurfaceSize(const Size(900, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -573,7 +596,7 @@ void main() {
                               }) => printed,
                           landed: const _NeverLands(),
                         ),
-                  viewport: seedFromRender(tester, CanvasViewport()),
+                  viewport: seedFromRender(tester, view ?? CanvasViewport()),
                   inkController: ink,
                   pictures: cels,
                   brushToolState: brush,
@@ -721,6 +744,82 @@ void main() {
         const Color(0xFFFFFFFF),
         reason: 'the row\'s pose is where the picture puts it',
       );
+    });
+
+    // 🗣️F-197 (유저 2026-09-27): 「해당컷 채우기로 전면 검정색됫는데
+    // 콘티프리뷰패널에서 줌하거나 팬할때 그림이랑 실루엣 경계에 흰 여백? 선이
+    // 생김」 · 「팬은 아니고 줌할때마다 생김」.
+    testWidgets('🚨with the brush on, a cut filled black meets the silhouette '
+        'with no light line across any side of its window, at any zoom', (
+      tester,
+    ) async {
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(const Color(0xFF000000), BlendMode.src);
+        return recorder.endRecording().toImage(64, 36);
+      }))!;
+      addTearDown(printed.dispose);
+      final seams = <String>[];
+      var scans = 0;
+      for (final zoom in const [0.83, 1.37, 1.9]) {
+        await pumpPanel(
+          tester,
+          framed(zoom: 1),
+          printed: printed,
+          cel: filledBlack(),
+          view: CanvasViewport(zoom: zoom, panX: 11, panY: 7),
+        );
+        brushOn.value = true;
+        final on = await shoot(tester);
+        expect(
+          find.byKey(const ValueKey<String>('conte-picture-live-picture-39-0')),
+          findsOneWidget,
+          reason: 'fixture: the live picture is up',
+        );
+
+        // Where the page is on the screen: the form's own printer's view.
+        final form = find.byKey(const ValueKey<String>('conte-form-paint'));
+        final painter =
+            tester.widget<CustomPaint>(form).painter! as ContePagePainter;
+        final view = renderSnappedViewport(
+          painter.viewport!,
+          painter.effectiveRatio,
+        );
+        final origin =
+            tester.getTopLeft(form) - tester.getTopLeft(find.byKey(boundary));
+        Offset onScreen(Offset paper) =>
+            origin +
+            Offset(
+              view.panX + view.zoom * paper.dx,
+              view.panY + view.zoom * paper.dy,
+            );
+        final slot = contePictureSlot(
+          painter.page.cells.single,
+          painter.page.metrics,
+        );
+        final middle = onScreen(slot.center);
+        // Across each side: three device pixels either way of the edge.
+        for (final (side, edge, across) in [
+          ('left', onScreen(slot.centerLeft).dx, true),
+          ('right', onScreen(slot.centerRight).dx, true),
+          ('top', onScreen(slot.topCenter).dy, false),
+          ('bottom', onScreen(slot.bottomCenter).dy, false),
+        ]) {
+          final device = edge * on.ratio;
+          for (var d = device.floor() - 3; d <= device.ceil() + 3; d += 1) {
+            final point = across
+                ? Offset((d + 0.5) / on.ratio, middle.dy)
+                : Offset(middle.dx, (d + 0.5) / on.ratio);
+            final red = (on.colorAt(point).r * 255).round();
+            scans += 1;
+            if (red > 64) {
+              seams.add('zoom $zoom, $side side, device pixel $d: $red');
+            }
+          }
+        }
+      }
+      expect(scans, greaterThan(50), reason: 'fixture: the edges are read');
+      expect(seams, isEmpty);
     });
   });
 }

@@ -1,10 +1,9 @@
-import 'dart:ui' show Offset, Rect, Size;
+import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/painting.dart' show MatrixUtils;
 
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
-import '../../core/contain_rect.dart';
 import '../../core/convex_clip.dart' show convexIntersection;
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
@@ -129,12 +128,8 @@ ContePicture? _pictureOf(
   final frame = cell.source.pictureFrame;
   final camera = project.cameraFrameSize;
   final mark = contePictureOf(cell, page.metrics);
-  // Laid as the sheet lays the picture: the camera's frame contained in
-  // the slot (`paintSheetImageContained`).
-  final shown = containRect(
-    Size(camera.width.toDouble(), camera.height.toDouble()),
-    mark.slot,
-  );
+  // Laid where every printer lays the picture ([SheetPicture.frame]).
+  final shown = mark.frame;
   final scale = shown.width / camera.width;
   final placement = layerPlacementAt(cut: cut, layer: layer, frameIndex: frame);
   final canvasToPaper = Matrix4.translationValues(shown.left, shown.top, 0)

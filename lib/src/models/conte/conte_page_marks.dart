@@ -2,8 +2,9 @@
 /// all print from ([SheetMark]).
 library;
 
-import 'dart:ui' show Offset, Rect;
+import 'dart:ui' show Offset, Rect, Size;
 
+import '../../core/contain_rect.dart';
 import '../project_frame_rate.dart'
     show runningTimeLabel, secondsPlusFramesLabel;
 import '../sheet_marks.dart';
@@ -363,15 +364,19 @@ Rect contePictureSlot(ContePlacedCell cell, ConteSheetMetrics m) =>
     cell.pictureRect.deflate(m.silhouetteBorder);
 
 /// [cell]'s picture as the page prints it — and as a live picture shows
-/// its corner while the brush draws into it.
-SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) =>
-    SheetPicture(
-      SheetPaintLayer.picture,
-      cutId: cell.cutId,
-      pictureFrame: cell.source.pictureFrame,
-      slot: contePictureSlot(cell, m),
-      cornerRadius: m.windowRadius,
-    );
+/// its corner while the brush draws into it: the camera's shape contained
+/// in the slot, the whole slot for a window of that shape.
+SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) {
+  final slot = contePictureSlot(cell, m);
+  return SheetPicture(
+    SheetPaintLayer.picture,
+    cutId: cell.cutId,
+    pictureFrame: cell.source.pictureFrame,
+    slot: slot,
+    frame: containRect(Size(m.cameraAspect, 1), slot),
+    cornerRadius: m.windowRadius,
+  );
+}
 
 /// The camera's labels written on [cell]'s picture — printed over the
 /// picture, and over a live picture again, where it covers them.

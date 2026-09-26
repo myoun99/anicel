@@ -205,16 +205,17 @@ class _ContePdfPageWriter {
         :final cutId,
         :final pictureFrame,
         :final slot,
+        :final frame,
         :final cornerRadius,
       ):
         final image = pictures[(cutId, pictureFrame)];
-        if (image != null) {
+        if (image != null && !frame.isEmpty) {
           _g.saveContext();
           if (cornerRadius > 0) {
             _traceRounded(slot, cornerRadius);
             _g.clipPath();
           }
-          _contained(image, slot);
+          _drawnIn(image, frame);
           _g.restoreContext();
         }
       case SheetImage(:final assetPath, :final slot):
@@ -250,12 +251,18 @@ class _ContePdfPageWriter {
     if (slot.width <= 0 || slot.height <= 0) {
       return;
     }
-    final drawn = containRect(
-      ui.Size(image.width.toDouble(), image.height.toDouble()),
-      slot,
+    _drawnIn(
+      image,
+      containRect(
+        ui.Size(image.width.toDouble(), image.height.toDouble()),
+        slot,
+      ),
     );
-    _g.drawImage(image, drawn.left, _y(drawn.bottom), drawn.width, drawn.height);
   }
+
+  /// [image] filling [rect].
+  void _drawnIn(PdfImage image, ui.Rect rect) =>
+      _g.drawImage(image, rect.left, _y(rect.bottom), rect.width, rect.height);
 
   /// An ink raster where its [placement] lays it, clipped to its window —
   /// the screen's `paintSheetInkWindow`, in PDF.

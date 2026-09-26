@@ -169,6 +169,7 @@ void main() {
           cutId: 'c',
           pictureFrame: 0,
           slot: Rect.fromLTWH(70, 0, 30, 30),
+          frame: Rect.fromLTWH(70, 0, 30, 30),
           cornerRadius: 6,
         ),
       ],
