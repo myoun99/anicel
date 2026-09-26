@@ -7,6 +7,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -54,6 +55,8 @@ Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
       entry.key: TimelineExposure.drawing(
         FrameId('$cutId-${entry.key}'),
         length: entry.value,
+        // Written on: a band shows only a block's own handwriting.
+        memo: ExposureMemo(inkId: 'ink-$cutId-${entry.key}'),
       ),
   },
 );
@@ -358,7 +361,8 @@ void main() {
   });
 
   testWidgets('R5: a stroke on a cell\'s row band lands on that CELL\'s ink '
-      'surface (block-FrameId key); the margins land on the page plane — '
+      'surface (its BLOCK\'s own ink id); the margins land on the page '
+      'plane — '
       'one undo clears each, through the app history', (
     tester,
   ) async {
@@ -408,7 +412,7 @@ void main() {
     final firstCell = page.cells.first;
     final rowKey = conteInkRowKey(
       CutId(firstCell.cutId),
-      firstCell.source.frameId!,
+      firstCell.source.inkId!,
     );
     final page0 = conteInkPageKey(0);
     expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isFalse);
@@ -512,7 +516,7 @@ void main() {
     final cell = windows.singleWhere(
       (window) =>
           window.key ==
-          conteInkRowKey(CutId(firstCell.cutId), firstCell.source.frameId!),
+          conteInkRowKey(CutId(firstCell.cutId), firstCell.source.inkId!),
     );
     bool inkUnder(SheetInkWindow window, Offset at) {
       final surface = controller

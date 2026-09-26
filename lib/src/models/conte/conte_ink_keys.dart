@@ -2,6 +2,7 @@ import '../brush_frame_key.dart';
 import '../cut_id.dart';
 import '../frame_id.dart';
 import '../layer_id.dart';
+import '../project.dart';
 import '../project_id.dart';
 import '../track_id.dart';
 
@@ -9,9 +10,9 @@ import '../track_id.dart';
 /// minted and recognized, shared by the ink controller (UI), the session's
 /// archive routing and the exporters. The namespace keeps sheet ink out of
 /// every cel-rendering path; the ROW plane's key carries the REAL CutId
-/// and the storyboard block's REAL [FrameId] — the cell's stable identity
-/// (the memo's rule) and the load-time GC unit ("ink dies with the
-/// drawing").
+/// and the storyboard block's own ink id (`ExposureMemo.inkId`) — the
+/// block's stable identity (the memo's rule: it moves and copies with the
+/// block) and the load-time GC unit ("ink dies with the block").
 const ProjectId conteInkProjectId = ProjectId('conte-ink');
 const TrackId conteInkTrackId = TrackId('conte-ink');
 const CutId conteInkCutId = CutId('conte-ink');
@@ -60,16 +61,34 @@ int? conteInkPageIndexOf(BrushFrameKey key) {
   return int.tryParse(frame.substring(_conteInkPagePrefix.length));
 }
 
-/// Cell-anchored plane: one surface per storyboard drawing block.
-BrushFrameKey conteInkRowKey(CutId cutId, FrameId frameId) {
+/// Cell-anchored plane: one surface per storyboard BLOCK — the block's own
+/// [inkId] (`ExposureMemo.inkId`) in the frame slot, not its drawing's id:
+/// two exposures of one cel write each for itself.
+BrushFrameKey conteInkRowKey(CutId cutId, String inkId) {
   return BrushFrameKey(
     projectId: conteInkProjectId,
     trackId: conteInkTrackId,
     cutId: cutId,
     layerId: conteInkRowLayerId,
-    frameId: frameId,
+    frameId: FrameId(inkId),
   );
 }
+
+/// The block [key] is the handwriting of — the `ExposureMemo.inkId`
+/// [conteInkRowKey] was given — or null for any other key.
+String? conteInkRowIdOf(BrushFrameKey key) =>
+    isConteInkRowKey(key) ? key.frameId.value : null;
+
+/// Every block [project] has written on, by its cut and its handwriting id
+/// — what a loaded row entry must still name.
+Set<(CutId, String)> writtenConteBlocks(Project project) => {
+  for (final track in project.tracks)
+    for (final cut in track.cuts)
+      for (final layer in cut.layers)
+        for (final exposure in layer.timeline.values)
+          if (exposure.memo?.inkId case final inkId? when inkId.isNotEmpty)
+            (cut.id, inkId),
+};
 
 /// Whether [key] is cell-anchored conte ink — [conteInkRowKey]'s plane.
 bool isConteInkRowKey(BrushFrameKey key) =>

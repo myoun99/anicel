@@ -3,6 +3,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -54,8 +55,16 @@ void main() {
           Frame(id: const FrameId('sb-5'), duration: 1, strokes: const []),
         ],
         timeline: const {
-          0: TimelineExposure.drawing(FrameId('sb-0'), length: 5),
-          5: TimelineExposure.drawing(FrameId('sb-5'), length: 5),
+          0: TimelineExposure.drawing(
+            FrameId('sb-0'),
+            length: 5,
+            memo: ExposureMemo(inkId: 'ink-0'),
+          ),
+          5: TimelineExposure.drawing(
+            FrameId('sb-5'),
+            length: 5,
+            memo: ExposureMemo(inkId: 'ink-5'),
+          ),
         },
       ),
     ],

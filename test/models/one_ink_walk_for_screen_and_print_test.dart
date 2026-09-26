@@ -21,16 +21,19 @@ void main() {
     required String cutId,
     required int rowOnPage,
     String? frameId,
+    String? inkId,
+    int startFrame = 0,
     int rowSpan = 1,
   }) => ContePlacedCell(
     cutId: cutId,
     cutName: cutId,
     cellIndex: 0,
     source: ConteCellSource(
-      startFrame: 0,
-      endFrameExclusive: 12,
-      pictureFrame: 0,
+      startFrame: startFrame,
+      endFrameExclusive: startFrame + 12,
+      pictureFrame: startFrame,
       frameId: frameId == null ? null : FrameId(frameId),
+      inkId: inkId,
       rowSpan: rowSpan,
     ),
     pictureRect: Rect.zero,
@@ -63,16 +66,16 @@ void main() {
   test('each cell adds its ROW BAND, after the page and in cell order', () {
     final windows = conteInkMarks(
       page([
-        cell(cutId: 'c1', rowOnPage: 0, frameId: 'f1'),
-        cell(cutId: 'c2', rowOnPage: 1, frameId: 'f2'),
+        cell(cutId: 'c1', rowOnPage: 0, frameId: 'f1', inkId: 'i1'),
+        cell(cutId: 'c2', rowOnPage: 1, frameId: 'f2', inkId: 'i2'),
       ]),
       metrics,
     ).toList();
 
     expect(windows.map((w) => w.key), [
       conteInkPageKey(0),
-      conteInkRowKey(const CutId('c1'), const FrameId('f1')),
-      conteInkRowKey(const CutId('c2'), const FrameId('f2')),
+      conteInkRowKey(const CutId('c1'), 'i1'),
+      conteInkRowKey(const CutId('c2'), 'i2'),
     ]);
   });
 
@@ -81,20 +84,82 @@ void main() {
     final windows = conteInkMarks(
       page([
         cell(cutId: 'c1', rowOnPage: 0),
-        cell(cutId: 'c2', rowOnPage: 1, frameId: 'f2'),
+        cell(cutId: 'c2', rowOnPage: 1, frameId: 'f2', inkId: 'i2'),
       ]),
       metrics,
+      unwrittenInkIdOf: (placed) => 'named-${placed.cutId}',
     ).toList();
 
     expect(windows.map((w) => w.key), [
       conteInkPageKey(0),
-      conteInkRowKey(const CutId('c2'), const FrameId('f2')),
+      conteInkRowKey(const CutId('c2'), 'i2'),
+    ]);
+  });
+
+  test('a block never written on prints NO band, and the pen writes it '
+      'under the name it is given ahead', () {
+    final sheet = page([
+      cell(cutId: 'c1', rowOnPage: 0, frameId: 'f1', startFrame: 4),
+    ]);
+
+    expect(conteInkMarks(sheet, metrics).map((w) => w.key), [
+      conteInkPageKey(0),
+    ]);
+    expect(
+      conteInkMarks(
+        sheet,
+        metrics,
+        unwrittenInkIdOf: (placed) =>
+            'named-${placed.cutId}-${placed.source.startFrame}',
+      ).map((w) => w.key),
+      [conteInkPageKey(0), conteInkRowKey(const CutId('c1'), 'named-c1-4')],
+    );
+  });
+
+  test('a block written on keeps its OWN id — the name ahead is not asked',
+      () {
+    final windows = conteInkMarks(
+      page([cell(cutId: 'c1', rowOnPage: 0, frameId: 'f1', inkId: 'i1')]),
+      metrics,
+      unwrittenInkIdOf: (_) => 'named',
+    ).toList();
+
+    expect(windows.last.key, conteInkRowKey(const CutId('c1'), 'i1'));
+  });
+
+  test('🚨two exposures of ONE drawing are two bands — each block writes '
+      'for itself', () {
+    final windows = conteInkMarks(
+      page([
+        cell(cutId: 'c1', rowOnPage: 0, frameId: 'f', inkId: 'i1'),
+        cell(
+          cutId: 'c1',
+          rowOnPage: 1,
+          frameId: 'f',
+          inkId: 'i2',
+          startFrame: 12,
+        ),
+      ]),
+      metrics,
+    ).toList();
+
+    expect(windows.map((w) => w.key).skip(1), [
+      conteInkRowKey(const CutId('c1'), 'i1'),
+      conteInkRowKey(const CutId('c1'), 'i2'),
     ]);
   });
 
   test('the band is the cell\'s ROWS, so a two-row cell gets a taller one', () {
     final windows = conteInkMarks(
-      page([cell(cutId: 'c1', rowOnPage: 0, frameId: 'f1', rowSpan: 2)]),
+      page([
+        cell(
+          cutId: 'c1',
+          rowOnPage: 0,
+          frameId: 'f1',
+          inkId: 'i1',
+          rowSpan: 2,
+        ),
+      ]),
       metrics,
     ).toList();
 
@@ -116,11 +181,12 @@ void main() {
     expect(windows.single.key, isNot(conteInkPageKey(0)));
   });
 
-  test('a row key is the CUT and the FRAME — the same drawing under two '
-      'cuts is two windows', () {
-    expect(
-      conteInkRowKey(const CutId('a'), const FrameId('f')),
-      isNot(conteInkRowKey(const CutId('b'), const FrameId('f'))),
-    );
+  test('a row key is the CUT and the BLOCK\'s id — the same id under two '
+      'cuts is two windows, and the key reads back its id', () {
+    final key = conteInkRowKey(const CutId('a'), 'i');
+
+    expect(key, isNot(conteInkRowKey(const CutId('b'), 'i')));
+    expect(conteInkRowIdOf(key), 'i');
+    expect(conteInkRowIdOf(conteInkPageKey(0)), isNull);
   });
 }

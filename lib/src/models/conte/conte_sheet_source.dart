@@ -21,6 +21,7 @@ class ConteCellSource {
     required this.endFrameExclusive,
     required this.pictureFrame,
     this.frameId,
+    this.inkId,
     this.action = '',
     this.rowSpan = 1,
     this.encroachFraction = 0,
@@ -37,6 +38,10 @@ class ConteCellSource {
 
   /// The drawing in the cell, when it has one.
   final FrameId? frameId;
+
+  /// The block's handwriting on the sheet — its exposure's
+  /// `ExposureMemo.inkId`; null until the block is first written on.
+  final String? inkId;
 
   /// The ACTION column's text — the exposure's `actionMemo`.
   final String action;

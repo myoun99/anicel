@@ -16,10 +16,16 @@ import 'conte_sheet_layout.dart';
 /// screen and print is a page that prints something the user never saw —
 /// and the order matters too, because the page ink lies under the rows.
 /// The brush's input windows are made from this walk as well.
+///
+/// A cell's row is its BLOCK's handwriting ([ConteCellSource.inkId]). A
+/// block not yet written on has none to print; the pen still writes there,
+/// under the id [unwrittenInkIdOf] names before it exists — the printers
+/// pass nothing and print no row for it.
 Iterable<SheetInk> conteInkMarks(
   ContePageLayout page,
-  ConteSheetMetrics metrics,
-) sync* {
+  ConteSheetMetrics metrics, {
+  String Function(ContePlacedCell cell)? unwrittenInkIdOf,
+}) sync* {
   SheetInk ink(BrushFrameKey key, Rect window) => SheetInk(
     SheetPaintLayer.ink,
     key: key,
@@ -34,12 +40,16 @@ Iterable<SheetInk> conteInkMarks(
     Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
   );
   for (final cell in page.cells) {
-    final frameId = cell.source.frameId;
-    if (frameId == null) {
+    // A cell with no drawing is no block: nothing of it to write on.
+    if (cell.source.frameId == null) {
+      continue;
+    }
+    final inkId = cell.source.inkId ?? unwrittenInkIdOf?.call(cell);
+    if (inkId == null) {
       continue;
     }
     yield ink(
-      conteInkRowKey(CutId(cell.cutId), frameId),
+      conteInkRowKey(CutId(cell.cutId), inkId),
       cell.rowBandRect(metrics),
     );
   }

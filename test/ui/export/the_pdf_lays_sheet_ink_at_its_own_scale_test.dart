@@ -35,6 +35,7 @@ void main() {
               endFrameExclusive: 24,
               pictureFrame: 0,
               frameId: FrameId('f'),
+              inkId: 'i',
             ),
           ],
         ),
@@ -58,7 +59,7 @@ void main() {
         fonts: await ContePdfFonts.load(),
         words: conteWordsIn(AppLanguage.ja),
         inkPictures: {
-          conteInkRowKey(const CutId('a'), const FrameId('f')): ink,
+          conteInkRowKey(const CutId('a'), 'i'): ink,
         },
       ),
     );

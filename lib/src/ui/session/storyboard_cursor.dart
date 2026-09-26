@@ -1,3 +1,5 @@
+import '../../models/conte/conte_ink_keys.dart'
+    show conteInkRowLayerId;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/exposure_memo.dart';
@@ -97,6 +99,61 @@ class StoryboardCursor {
       memo: (entry.memo ?? const ExposureMemo.empty()).copyWith(
         actionMemo: action,
       ),
+    );
+    _changes.notifyChanged();
+  }
+
+  /// 🚨THE HANDWRITING ID A BLOCK'S FIRST STROKE ON THE CONTE WOULD TAKE,
+  /// named before it exists — the block of [cutId]'s storyboard row that
+  /// opens at [startFrame].
+  ///
+  /// A block is written on under its own id (`ExposureMemo.inkId`); one
+  /// never written on has none, so the pen writes under this name, and the
+  /// stroke's landing puts it on the block ([writeConteBlockInk]) — the
+  /// canvas's `frameIdForNextCel`, said of a block.
+  ///
+  /// ⚠️Minted by the drawings' own mint — an id no other in this run has.
+  /// An id free in the PROJECT is not free: an undone first stroke and a
+  /// deleted block both give theirs up while the session still holds the
+  /// surface, and a redo or an undo hands it back.
+  String conteInkIdFor(CutId cutId, int startFrame) =>
+      _unwrittenInk.putIfAbsent(
+        (cutId, startFrame),
+        () => _frameIds.mintFrameId(conteInkRowLayerId).value,
+      );
+
+  final Map<(CutId, int), String> _unwrittenInk = {};
+
+  /// Puts [inkId] on the block of [cutId] it was named for
+  /// ([conteInkIdFor]) — undoably, and while a stroke's landings fold, in
+  /// the stroke's own step. So a landing only says which handwriting it
+  /// was drawn into. Nothing when no block was named so, or the block that
+  /// opens there has its own already.
+  void writeConteBlockInk(CutId cutId, String inkId) {
+    final named = [
+      for (final MapEntry(key: (owner, start), :value) in _unwrittenInk.entries)
+        if (owner == cutId && value == inkId) start,
+    ];
+    final cut = _project.cutById(cutId);
+    final layer = cut == null ? null : storyboardLayerForCut(cut);
+    if (named.isEmpty || layer == null) {
+      return;
+    }
+    final start = named.single;
+    final entry = layer.timeline[start];
+    final memo = entry?.memo ?? const ExposureMemo.empty();
+    if (entry == null ||
+        !entry.isDrawing ||
+        entry.ghost ||
+        memo.inkId.isNotEmpty) {
+      return;
+    }
+    _unwrittenInk.remove((cutId, start));
+    _project.cutCommandCoordinator.updateExposureMemo(
+      cutId: cutId,
+      layerId: layer.id,
+      blockStartIndex: start,
+      memo: memo.copyWith(inkId: inkId),
     );
     _changes.notifyChanged();
   }

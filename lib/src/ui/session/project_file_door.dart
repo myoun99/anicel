@@ -15,7 +15,6 @@ import 'dart:io';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
-import '../../models/frame_id.dart';
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
@@ -1088,15 +1087,6 @@ Set<CutId> _everyCutId(Project project) => {
     for (final cut in track.cuts) cut.id,
 };
 
-/// Every drawing the project holds — what a loaded ROW ink entry is
-/// checked against.
-Set<FrameId> _everyFrameId(Project project) => {
-  for (final track in project.tracks)
-    for (final cut in track.cuts)
-      for (final layer in cut.layers)
-        for (final frame in layer.frames) frame.id,
-};
-
 /// The loaded cels, split by the store that owns them — the drawings', or
 /// a sheet's ink store ([RenderCaches.sheetInkStoreFor]) — and PRUNED of
 /// the ink whose owner no longer exists in the project being opened.
@@ -1128,23 +1118,23 @@ _sortLoadedCels(AnicelOpenResult result, RenderCaches caches) {
 /// set gathered once, on the first key that asks.
 ///
 /// A conte ROW entry belongs to its storyboard block ("ink dies with the
-/// drawing"); a conte PAGE entry to nothing, the paper stays. An envelope's
-/// and a timesheet's belong to the cut the sheet describes — which box or
-/// band a stroke sits in is never pruned: swapping the envelope's form back
-/// has to bring the writing back with it.
+/// block" — the block its `ExposureMemo.inkId` names, in its cut); a conte
+/// PAGE entry to nothing, the paper stays. An envelope's and a timesheet's
+/// belong to the cut the sheet describes — which box or band a stroke sits
+/// in is never pruned: swapping the envelope's form back has to bring the
+/// writing back with it.
 class _InkOwners {
   _InkOwners(this._project);
 
   final Project _project;
   late final Set<CutId> _cuts = _everyCutId(_project);
-  late final Set<FrameId> _frames = _everyFrameId(_project);
+  late final Set<(CutId, String)> _blocks = writtenConteBlocks(_project);
 
   bool stillHold(BrushFrameKey key) {
-    if (isConteInkKey(key)) {
-      return key.layerId != conteInkRowLayerId ||
-          _frames.contains(key.frameId);
+    if (conteInkRowIdOf(key) case final inkId?) {
+      return _blocks.contains((key.cutId, inkId));
     }
-    return _cuts.contains(key.cutId);
+    return isConteInkKey(key) || _cuts.contains(key.cutId);
   }
 }
 

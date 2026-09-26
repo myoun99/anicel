@@ -103,6 +103,10 @@ ConteCellSource _cellSource({
       pinnedFrameIndex: cut.metadata.thumbnailFrameIndex,
     ),
     frameId: cell.frameId,
+    inkId: switch (exposure?.memo?.inkId) {
+      final inkId? when inkId.isNotEmpty => inkId,
+      _ => null,
+    },
     action: exposure?.memo?.actionMemo ?? '',
     rowSpan: move.rowSpan,
     encroachFraction: move.encroachFraction,

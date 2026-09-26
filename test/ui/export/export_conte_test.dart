@@ -12,6 +12,7 @@ import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/export_spec.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -63,6 +64,8 @@ void main() {
         entry.key: TimelineExposure.drawing(
           FrameId('$cutId-${entry.key}'),
           length: entry.value,
+          // Written on: the printers print only a block's own handwriting.
+          memo: ExposureMemo(inkId: 'ink-$cutId-${entry.key}'),
         ),
     },
   );
@@ -194,7 +197,7 @@ void main() {
       final band = cell.rowBandRect(metrics);
       final rowKey = conteInkRowKey(
         CutId(cell.cutId),
-        cell.source.frameId!,
+        cell.source.inkId!,
       );
       final ink = await solidInk(
         (band.width * 4).ceil(),
@@ -244,7 +247,7 @@ void main() {
       );
       final cell = pages.first.cells.first;
       final band = cell.rowBandRect(pages.first.metrics);
-      final rowKey = conteInkRowKey(CutId(cell.cutId), cell.source.frameId!);
+      final rowKey = conteInkRowKey(CutId(cell.cutId), cell.source.inkId!);
       final ink = await solidInk(
         (band.width * 4).ceil(),
         (band.height * 4).ceil(),
