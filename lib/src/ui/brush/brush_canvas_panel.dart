@@ -782,8 +782,9 @@ class BrushCanvasPanel extends StatefulWidget {
   /// mounted — see [InteractiveBrushEditCanvasView.onStrokeLanderChanged].
   final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
-  /// Selection-drag lifecycle for the host (R15-⑤): the session blocks
-  /// frame seeks/cut switches while a selection interaction is live.
+  /// Selection-drag lifecycle for the host: the session holds prerender
+  /// warming while it is live, as it does for a stroke. ↩️F-196: it also
+  /// blocked frame seeks and cut switches (R15-⑤) — only a stroke does now.
   final ValueChanged<bool>? onSelectionInteractionChanged;
 
   /// False hides the rotate/flip toolbar controls and disables the
@@ -1196,8 +1197,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _viewportState._listenedViewport = null;
     _viewportState._ownViewport.dispose();
     // A mid-stroke teardown must release the session's warm hold — a
-    // leaked hold would gate prerendering forever. Same for a mid-drag
-    // selection interaction (R15-⑤: a leaked hold would block seeks).
+    // leaked hold would gate prerendering forever (and a stroke's would
+    // hold the playhead). Same for a mid-drag selection interaction.
     if (_strokeActive) {
       widget.onStrokeInputActiveChanged?.call(false);
     }

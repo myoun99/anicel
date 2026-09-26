@@ -389,7 +389,8 @@ class _InteractiveCanvasBuild {
       // `onCoordinatorChanged` above uses.
       onStrokeLanderChanged: (lander) =>
           session.liveStrokeLanding.lander = lander,
-      // R15-⑤: _selection drags block seeks/cut switches entirely.
+      // A selection drag holds the prerender's warming. ↩️F-196: it also
+      // blocked seeks and cut switches (R15-⑤) — only a stroke does now.
       onSelectionInteractionChanged: (active) => active
           ? session.beginSelectionInteraction()
           : session.endSelectionInteraction(),

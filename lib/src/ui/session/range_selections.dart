@@ -979,13 +979,14 @@ class RangeSelections {
   }
 
   /// Selection-tool interactions (marquee/move/transform drags) — counted
-  /// so overlapping holds nest (R15-⑤).
+  /// so overlapping holds nest. What they hold is the prerender's warming,
+  /// as a stroke does.
+  ///
+  /// ↩️F-196 (유저 2026-09-27, 「잠그는 기능을 싹 다 빼고 필요한거만」): they
+  /// held the PLAYHEAD too (R15-⑤) and no longer do — a seek carries the
+  /// selection session to the next cel and a float writes nothing until it
+  /// lands (`EditorSessionManager.strokeInFlight` says which lock stayed and why).
   int _selectionInteractionHolds = 0;
-
-  /// Whether a selection-tool interaction holds the playhead — the count
-  /// itself, so the flag cannot disagree with the holds it stands for.
-  /// Nothing listened to it; the session asks it when a seek comes.
-  bool get selectionInteractionActive => _selectionInteractionHolds > 0;
 
   void beginSelectionInteraction() {
     _selectionInteractionHolds += 1;

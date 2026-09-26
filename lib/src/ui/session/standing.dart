@@ -774,7 +774,7 @@ class Standing {
   void selectRow(TimelineRowAddress row) {
     switch (row) {
       case LayerRowAddress(:final layerId):
-        if (_internals.editingInteractionBusy) {
+        if (_internals.strokeInFlight) {
           return;
         }
         // The row lives on a track, so picking it picks that track too —
@@ -862,8 +862,8 @@ class Standing {
     if (cutId == _timeline.editingSession.activeCutId) {
       return;
     }
-    // R15-⑤: never switch cuts under a live editing interaction.
-    if (_internals.editingInteractionBusy) {
+    // R15-⑤: never switch cuts under a live stroke.
+    if (_internals.strokeInFlight) {
       return;
     }
     final before = _selection.activeLayerId;

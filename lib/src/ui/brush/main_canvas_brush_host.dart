@@ -301,8 +301,9 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// mounted — see [InteractiveBrushEditCanvasView.onStrokeLanderChanged].
   final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
-  /// Forwarded to [BrushCanvasPanel]: selection-drag lifecycle (R15-⑤
-  /// seek lock).
+  /// Forwarded to [BrushCanvasPanel]: selection-drag lifecycle — the
+  /// prerender's warm hold (↩️F-196: no longer a
+  /// seek lock, R15-⑤).
   final ValueChanged<bool>? onSelectionInteractionChanged;
 
   /// R26 #35: a paint attempt with NO editable cel under the playhead.

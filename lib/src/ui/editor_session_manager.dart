@@ -1079,7 +1079,7 @@ class EditorSessionManager extends ChangeNotifier
   /// cuts twice for one press.
   @override
   void selectTrackRow(TrackId trackId) {
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     final trackBefore = selectedTrackId;
@@ -3017,10 +3017,10 @@ class EditorSessionManager extends ChangeNotifier
   /// [frameSeekCommitted] and rebuild once per committed seek.
   @override
   void selectFrameIndex(int frameIndex) {
-    // R15-⑤: a live editing interaction REFUSES the seek outright — a
+    // R15-⑤: a live STROKE refuses the seek outright — a
     // flip under an in-flight edit tore widgets down inside the build
     // phase (red screens) and could land the edit on the wrong cel.
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     historyManager.places.settle();
@@ -3061,12 +3061,22 @@ class EditorSessionManager extends ChangeNotifier
     }
   }
 
-  /// R15-⑤: any live editing interaction (brush stroke, selection drag)
-  /// blocks frame seeks, scrubs and cut switches entirely — the playhead
-  /// moves when the pen lifts, never under it.
+  /// R15-⑤: a live STROKE blocks frame seeks, scrubs and cut switches
+  /// entirely — the playhead moves when the pen lifts, never under it.
+  ///
+  /// 🗣️F-196 (유저 2026-09-27): 「애초에 잠그는 기능을 싹 다 빼고 필요한거만
+  /// 보고해」. This is the one that is needed, MEASURED with it switched off
+  /// (`only_a_stroke_holds_the_playhead_test`): a ruler scrub or a cut switch
+  /// under the pen threw the stroke away, and a palm on the ruler is all it
+  /// takes. A seek alone was already safe — the canvas pins a live stroke to
+  /// its cel — but the playhead keeps one rule under the pen.
+  ///
+  /// ↩️A selection drag held it too, and no longer does: the selection
+  /// layer carries a session to the next cel on a seek, and a float writes
+  /// nothing until it lands, so nothing is lost ([RangeSelections]'s hold
+  /// is only the prerender's now).
   @override
-  bool get editingInteractionBusy =>
-      brushInputActive.value || rangeSelections.selectionInteractionActive;
+  bool get strokeInFlight => brushInputActive.value;
 
   // --- Track-global frame axis (R15-①) -----------------------------------
 
@@ -3213,7 +3223,7 @@ class EditorSessionManager extends ChangeNotifier
   /// track is a no-op, like the fx/eye buttons there.
   @override
   void selectTrackCutAtPlayhead(TrackId trackId) {
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     // The TRACK is what the tap selected, so it is taken whether or not a
@@ -3260,7 +3270,7 @@ class EditorSessionManager extends ChangeNotifier
   /// GAP still parks. Callers that park a frame a cut covers are declaring
   /// a preview, not a landing — the live scrub is the one such caller.
   void parkGlobalFrame(int globalFrame) {
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     if (trackFrameAxis().isEmpty) {
@@ -3279,7 +3289,7 @@ class EditorSessionManager extends ChangeNotifier
   /// the playhead in a cut the move never chose.
   @override
   void selectGlobalFrame(int globalFrame, {TrackFrameAxis? onAxis}) {
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     final axis = onAxis ?? trackFrameAxis();

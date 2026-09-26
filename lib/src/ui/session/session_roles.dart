@@ -173,7 +173,7 @@ abstract interface class SessionInternals {
   PillSubject get deleteSubject;
   ValueNotifier<TimelineDragPreview?> get dragPreview;
   ValueNotifier<int> get editingFrameCursor;
-  bool get editingInteractionBusy;
+  bool get strokeInFlight;
   bool get editingPlayheadInGap;
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
   double layerOpacityAtFrame(Layer layer, int frameIndex);
