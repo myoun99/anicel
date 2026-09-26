@@ -26,7 +26,6 @@ import '../brush/brush_tool_state.dart';
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailTier, StoryboardThumbnails;
-import '../text/app_strings.dart';
 import '../timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview, TimelineDragPreview;
 import '../widgets/page_turn_strip.dart';
@@ -161,16 +160,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
       },
     );
   }
-
-  /// What the page cluster reads for [page]: the number the page itself
-  /// prints — a body page's 「n / N」 — and, for the two pages that carry
-  /// none, what they are.
-  String _readoutOf(ContePageLayout? page) => switch (page?.kind) {
-    ContePageKind.cover => AppText.strings.cnPageCover,
-    ContePageKind.blank => AppText.strings.cnPageBlank,
-    ContePageKind.body => '${page!.bodyNumber} / ${page.bodyCount}',
-    null => '',
-  };
 
   /// A cell press: the cut, its storyboard row and the frame — the
   /// design's "칸 클릭 = selectCut + selectLayer + selectFrameIndex".
@@ -342,14 +331,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13).
       pageStrip: pageTurnStrip(
         keyPrefix: 'conte',
-        page: (
-          index: pageIndex,
-          count: pageCount,
-          readout: _readoutOf(page),
-          // The readout prints the BODY's number, so a typed 3 is the
-          // body's third page — two sheets of paper after the cover's.
-          firstNumbered: math.max(firstBody, 0),
-        ),
+        page: viewerPage(pageIndex, pageCount),
         onTurnTo: (page) => _turnToPage(page, pageCount),
       ),
       bottomBarHostToken: (pageIndex, pageCount),

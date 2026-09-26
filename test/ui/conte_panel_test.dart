@@ -36,7 +36,6 @@ import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
-import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 
 /// The conte panel IS the sheet: it draws the renderer the export draws, a
@@ -211,7 +210,9 @@ void main() {
   });
 
   testWidgets('the panel opens on the body\'s first page — the cover and its '
-      'blank back a turn away, each read for what it is', (tester) async {
+      'blank back a turn away, counted as a viewer counts: the cover is 1', (
+    tester,
+  ) async {
     await _pumpConte(tester);
 
     expect(find.byKey(const ValueKey<String>('conte-form-paint')), findsOneWidget);
@@ -226,30 +227,32 @@ void main() {
           ),
         )
         .data!;
-    expect(readout(), '1 / 1', reason: 'the number the page prints');
+    // 유저 2026-09-26: 「뷰어패널로서는 첫 페이지가 1이되도록」 — the page
+    // itself still prints the body's number.
+    expect(readout(), '3 / 3');
 
     await tester.tap(
       find.byKey(const ValueKey<String>('conte-previous-page-button')),
     );
     await tester.pumpAndSettle();
-    expect(readout(), AppText.strings.cnPageBlank);
+    expect(readout(), '2 / 3', reason: 'the cover\'s blank back');
     await tester.tap(
       find.byKey(const ValueKey<String>('conte-previous-page-button')),
     );
     await tester.pumpAndSettle();
-    expect(readout(), AppText.strings.cnPageCover);
+    expect(readout(), '1 / 3', reason: 'the cover');
 
-    // Typing reads the readout's own spelling: 1 is the BODY's first page,
-    // not the first sheet of paper.
+    // Typing reads the readout's own spelling: 3 is the third sheet of
+    // paper — the body's first page.
     await tester.tap(find.byKey(const ValueKey<String>('conte-page-readout')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey<String>('conte-page-input')),
-      '1',
+      '3',
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(readout(), '1 / 1');
+    expect(readout(), '3 / 3');
   });
 
   testWidgets('a cell\'s picture picks its cut and frame; a tap on its '

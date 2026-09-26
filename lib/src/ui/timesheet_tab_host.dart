@@ -361,7 +361,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         count: pageCount,
         // '1/2' — the spelling shared with the printed ページ header (R26 #41).
         readout: layout?.pageLabel(page) ?? '-',
-        firstNumbered: 0,
       ),
       onTurnTo: widget.continuous ? null : _turnToPage,
     );

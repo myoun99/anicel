@@ -818,8 +818,6 @@ enum AppStrings {
   /// The conte sheet panel.
 
   /// The conte panel's page readout on the two pages that carry no number.
-  String get cnPageCover => _s('cnPageCover');
-  String get cnPageBlank => _s('cnPageBlank');
 
   /// What the conte PRINTS — read from the NOTATION language's table, not
   /// the program's (`conteWordsIn`).
@@ -2724,8 +2722,6 @@ enum AppStrings {
     'tlPull': 'Pull (close frames)',
     'sbOneStoryboardRowPerCut':
         'This cut already has a storyboard row. A cut can hold only one.',
-    'cnPageCover': 'Cover',
-    'cnPageBlank': 'Blank',
     'cnHeadCut': 'CUT',
     'cnHeadPicture': 'PICTURE',
     'cnHeadAction': 'ACTION',
@@ -4057,8 +4053,6 @@ enum AppStrings {
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
     'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
-    'cnPageCover': '表紙',
-    'cnPageBlank': '白紙',
     'cnHeadCut': 'カット',
     'cnHeadPicture': '画面',
     'cnHeadAction': '内容',
@@ -5385,8 +5379,6 @@ enum AppStrings {
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
     'sbOneStoryboardRowPerCut': '이 컷에는 이미 스토리보드 레이어가 있습니다. 컷당 하나만 가능합니다.',
-    'cnPageCover': '표지',
-    'cnPageBlank': '빈 장',
     'cnHeadCut': '컷',
     'cnHeadPicture': '화면',
     'cnHeadAction': '내용',
@@ -6788,8 +6780,6 @@ enum AppStrings {
         'Ce plan a déjà un calque storyboard. Un seul par plan.',
     'cnPreviousPage': 'Page précédente',
     'cnNextPage': 'Page suivante',
-    'cnPageCover': 'Couv.',
-    'cnPageBlank': 'Vierge',
     'cnHeadCut': 'PLAN',
     'cnHeadPicture': 'IMAGE',
     'cnHeadAction': 'ACTION',
@@ -8042,8 +8032,6 @@ enum AppStrings {
     'sbOneStoryboardRowPerCut': '该镜头已有分镜图层，每个镜头只能有一个。',
     'cnPreviousPage': '上一页',
     'cnNextPage': '下一页',
-    'cnPageCover': '封面',
-    'cnPageBlank': '空白页',
     'cnHeadCut': '镜头',
     'cnHeadPicture': '画面',
     'cnHeadAction': '内容',

@@ -900,8 +900,6 @@ void main() {
     'tlPush': (s) => s.tlPush,
     'tlPull': (s) => s.tlPull,
     'sbOneStoryboardRowPerCut': (s) => s.sbOneStoryboardRowPerCut,
-    'cnPageCover': (s) => s.cnPageCover,
-    'cnPageBlank': (s) => s.cnPageBlank,
     'cnHeadCut': (s) => s.cnHeadCut,
     'cnHeadPicture': (s) => s.cnHeadPicture,
     'cnHeadAction': (s) => s.cnHeadAction,

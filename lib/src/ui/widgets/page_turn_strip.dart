@@ -21,15 +21,14 @@ import 'drag_value_label.dart';
 ///
 /// The spelling travels with the position because the hosts do not agree
 /// on it: the timesheet says '1/2', the spelling shared with the printed
-/// ページ header (R26 #41), while the conte and the viewer say '1 / 2' — and
-/// the conte numbers its BODY, so its 1 is the page after the cover's
-/// blank back, and a typed 3 counts from there.
+/// ページ header (R26 #41), while the viewers say '1 / 2' ([viewerPage]).
+/// Every one of them counts from the first page, and so does a typed 3.
 ///
 /// ⚠️Up/down rather than left/right: the strip reads vertically, so a
 /// chevron pointing sideways would point at nothing.
 List<Widget> pageTurnStrip({
   required String keyPrefix,
-  required ({int index, int count, String readout, int firstNumbered}) page,
+  required ({int index, int count, String readout}) page,
   required ValueChanged<int>? onTurnTo,
   List<Widget> leading = const <Widget>[],
 }) {
@@ -75,10 +74,10 @@ List<Widget> pageTurnStrip({
           return;
         }
         // '3' and '3/7' both mean page three (the readout's own
-        // spelling round-trips), counted from the page the host calls 1.
+        // spelling round-trips).
         final parsed = int.tryParse(text.split('/').first.trim());
         if (parsed != null) {
-          onTurnTo(page.firstNumbered + parsed - 1);
+          onTurnTo(parsed - 1);
         }
       },
     ),
@@ -93,5 +92,17 @@ List<Widget> pageTurnStrip({
     ),
   ];
 }
+
+/// Page [index] of [count] as a VIEWER numbers it: its first page is 1,
+/// written '1 / 2' — the media viewer's and the conte's, one rule (유저
+/// 2026-09-26: 「뷰어패널로서는 첫 페이지가 1이되도록 … 뷰어패널의 규칙
+/// 동일하게」).
+///
+/// ↩️The conte numbered its BODY here, as its pages print: the cover and
+/// its blank back read 「Cover」 · 「Blank」 and a typed 3 counted from the
+/// body. The printed numbers stay the body's; the viewer's count is the
+/// book's.
+({int index, int count, String readout}) viewerPage(int index, int count) =>
+    (index: index, count: count, readout: '${index + 1} / $count');
 
 void _noDrag(double units) {}
