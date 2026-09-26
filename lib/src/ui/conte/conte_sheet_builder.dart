@@ -4,6 +4,7 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/project.dart';
 import '../../models/storyboard_coverage.dart';
@@ -47,7 +48,9 @@ ConteSheetSource buildConteSheetSource(Project project) {
     episode: info.episode,
     logoAssetPath: info.logoAssetPath,
     coverImagePath: info.coverImagePath,
-    conteStaffName: info.staffFor(LayerProcess.conte.jsonValue).name,
+    conteStaffName: info.staffNameFor(
+      const LayerMark(process: LayerProcess.conte),
+    ),
     framesPerSecond: project.frameRate.countingBase,
   );
 }

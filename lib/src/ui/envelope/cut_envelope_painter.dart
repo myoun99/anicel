@@ -61,7 +61,7 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
   /// second, coarser rounding.
   final double effectiveRatio;
 
-  /// Resolves a media asset path to a decoded image (logo, 도장).
+  /// Resolves a media asset path to a decoded image (the logo).
   final ui.Image? Function(String assetPath)? imageFor;
 
   /// The ink surface for a box.

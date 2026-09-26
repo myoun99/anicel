@@ -57,7 +57,7 @@ enum EnvelopeContentKind {
   /// Text resolved from a [EnvelopeBox.binding] token.
   text,
 
-  /// A media asset (logo, 도장) resolved from a binding token.
+  /// A media asset (the logo) resolved from a binding token.
   image;
 
   String toJson() => name;

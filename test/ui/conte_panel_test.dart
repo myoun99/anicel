@@ -13,6 +13,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -169,9 +170,9 @@ void main() {
             )
             // 유저 답 conte-cover-staff: 「コンテ 한 줄」 — the conte
             // process's own assignee.
-            .withStaff(
-              LayerProcess.conte.jsonValue,
-              const ProductionStaff(name: '大川'),
+            .withStaffName(
+              const LayerMark(process: LayerProcess.conte),
+              '大川',
             ),
       ),
     );

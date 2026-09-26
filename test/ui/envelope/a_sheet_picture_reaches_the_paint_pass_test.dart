@@ -5,15 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/sheet/sheet_image_cache.dart';
 import '../../helpers/temp_dir.dart';
 
-/// 🚨★★★A CHOSEN 도장 HAS TO REACH THE PAINT PASS.
+/// 🚨★★★A SHEET'S PICTURE HAS TO REACH THE PAINT PASS — the logo on the
+/// envelope and the conte, the conte's cover picture.
 ///
-/// 「담당자 = 이름 + 도장 이미지 한 세트」 (cut-envelope 정본 §7), and the
-/// card's own spec: 「고른 도장이 컷봉투의 해당 칸에 찍혀야 한다」.
-///
-/// The model held `stampAssetPath`, the envelope bound `{staff.<role>.stamp}`
-/// and the painter took an `imageFor` — but the workspace passed none, with a
-/// comment saying a resolver with no source is dead code. The stamp picker is
-/// that source now, so this is the piece that was missing.
+/// The painter took an `imageFor`, but the workspace once passed none, with
+/// a comment saying a resolver with no source is dead code: nothing a sheet
+/// was given could ever print. This is the piece that was missing.
 ///
 /// ⛔The painter asks SYNCHRONOUSLY, inside a paint pass. So the contract is
 /// not "returns the image"; it is "answers null once, and has it by the time
@@ -27,7 +24,7 @@ void main() {
   late Directory dir;
 
   setUp(() async {
-    dir = await Directory.systemTemp.createTemp('envelope-stamp');
+    dir = await Directory.systemTemp.createTemp('sheet-picture');
   });
   tearDown(() => deleteTempQuietly(dir));
 
@@ -59,7 +56,7 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      final path = await writePng('seal.png');
+      final path = await writePng('logo.png');
       var loaded = 0;
       final cache = SheetImageCache()..addListener(() => loaded += 1);
       addTearDown(cache.dispose);
@@ -88,7 +85,7 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      // Otherwise every paint reads the disk again for a stamp whose file
+      // Otherwise every paint reads the disk again for a picture whose file
       // went away — a decode per frame that can never succeed.
       var loaded = 0;
       final cache = SheetImageCache()..addListener(() => loaded += 1);

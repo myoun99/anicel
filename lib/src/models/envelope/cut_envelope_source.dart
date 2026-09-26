@@ -1,4 +1,4 @@
-import '../production_staff.dart';
+import '../layer_mark.dart';
 import '../project_frame_rate.dart';
 import 'cut_envelope_counts.dart';
 
@@ -58,7 +58,9 @@ class CutEnvelopeSource {
   /// The 担当 rows, top to bottom.
   final List<CutEnvelopeCelCount> cels;
 
-  final Map<String, ProductionStaff> staff;
+  /// Who does each colour label's work, keyed by [LayerMark.keySlug] —
+  /// the work's one staff vocabulary.
+  final Map<String, String> staff;
   final String? logoAssetPath;
 
   final int canvasWidth;
@@ -82,7 +84,7 @@ final RegExp _indexed = RegExp(r'^(\w+)\[(\d+)\]\.(\w+)$');
 /// `{cut[i].name|seconds|frames|length}`
 /// `{cel[i].name|genga|douga}`
 /// `{total.genga|douga}`
-/// `{staff.<role>.name}`
+/// `{staff.<label>.name}` — a colour label's [LayerMark.keySlug]
 /// `{canvas.width|height}` `{camera.width|height}`
 String? resolveEnvelopeText(String binding, CutEnvelopeSource source) {
   final match = _token.firstMatch(binding.trim());
@@ -146,29 +148,23 @@ String? resolveEnvelopeText(String binding, CutEnvelopeSource source) {
     };
   }
   if (parts.length == 3 && parts.first == 'staff' && parts.last == 'name') {
-    final name = source.staff[parts[1]]?.name ?? '';
+    final name = source.staff[parts[1]] ?? '';
     return name.isEmpty ? null : name;
   }
   return null;
 }
 
-/// The media asset PATH an image binding resolves to: `{logo}` or
-/// `{staff.<role>.stamp}`. Null leaves the box empty — which is also what
-/// a hand-drawn stamp wants.
+/// The media asset PATH an image binding resolves to: `{logo}`. Null
+/// leaves the box empty.
+///
+/// ⛔There is no `{staff.<role>.stamp}`: a 도장 is made per cut on the
+/// envelope itself, not carried by the work's staff (유저 09-25).
 String? resolveEnvelopeImage(String binding, CutEnvelopeSource source) {
   final match = _token.firstMatch(binding.trim());
   if (match == null) {
     return null;
   }
-  final path = match.group(1)!;
-  if (path == 'logo') {
-    return source.logoAssetPath;
-  }
-  final parts = path.split('.');
-  if (parts.length == 3 && parts.first == 'staff' && parts.last == 'stamp') {
-    return source.staff[parts[1]]?.stampAssetPath;
-  }
-  return null;
+  return match.group(1) == 'logo' ? source.logoAssetPath : null;
 }
 
 /// A zero size means "not measured yet" and prints nothing rather than 0.

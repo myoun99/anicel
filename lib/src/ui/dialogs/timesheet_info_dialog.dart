@@ -1,19 +1,11 @@
-import '../widgets/app_tooltip.dart';
-import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
+import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/timesheet_info.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
-import '../widgets/panel_flyout.dart';
-import '../theme/app_theme.dart';
-import '../../services/persistence/file_type_groups.dart';
-import 'folder_pick_flow.dart';
-import '../input/control_press_claim.dart';
 
 /// Edits the sheet-header text (title/episode/scene/artist) the paper
 /// timesheet reads, and which header boxes the form prints. Pops the
@@ -52,27 +44,17 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
   );
   late bool _seEmptyFill = widget.initialInfo.seEmptyFill;
 
-  /// One name field per 공정 — the list the user designed (I-4), which
-  /// `LayerProcess` already is and the cut envelope already binds by
-  /// (`{staff.<role>.name}`).
+  /// One name field per 공정's worker — the colour label with no
+  /// correction, which the cut envelope binds by (`{staff.<label>.name}`).
   ///
   /// ⛔EVERY process gets a row, including 用紙. Leaving one out would be a
   /// 「~는 제외한다」 rule nobody asked for, and an empty row costs a line
   /// while a missing one costs a question — the same reason a rail row
   /// reserves every slot.
-  /// The stamp each role is carrying, edited live and written on submit —
-  /// the names go through controllers, and this is their other half.
-  late final Map<String, String?> _stamps = {
+  late final Map<LayerMark, TextEditingController> _staffControllers = {
     for (final process in LayerProcess.values)
-      process.jsonValue: widget.initialInfo
-          .staffFor(process.jsonValue)
-          .stampAssetPath,
-  };
-
-  late final Map<String, TextEditingController> _staffControllers = {
-    for (final process in LayerProcess.values)
-      process.jsonValue: TextEditingController(
-        text: widget.initialInfo.staffFor(process.jsonValue).name,
+      LayerMark(process: process): TextEditingController(
+        text: widget.initialInfo.staffNameFor(LayerMark(process: process)),
       ),
   };
 
@@ -104,6 +86,10 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
 
   void _submit() {
     final threshold = int.tryParse(_exposureBarThresholdController.text.trim());
+    var staffed = widget.initialInfo;
+    for (final entry in _staffControllers.entries) {
+      staffed = staffed.withStaffName(entry.key, entry.value.text.trim());
+    }
     // 🚨★★★copyWith, NOT a fresh TimesheetInfo. Building one from scratch
     // listed the fields this dialog edits and silently dropped every field
     // it does not — `staff` and `logoAssetPath` both default to empty, so
@@ -114,7 +100,7 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
     // next field: remembering is the part that failed. `copyWith` carries
     // what it was not asked about ([[make-the-invariant-unrepresentable]]).
     Navigator.of(context).pop(
-      widget.initialInfo.copyWith(
+      staffed.copyWith(
         title: _titleController.text.trim(),
         episode: _episodeController.text.trim(),
         scene: _sceneController.text.trim(),
@@ -126,19 +112,6 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
             ? TimesheetInfo.defaultExposureBarThreshold
             : null,
         seEmptyFill: _seEmptyFill,
-        // A role survives if it has EITHER half — a stamp with no name is a
-        // real answer, and so is a name with no stamp.
-        staff: {
-          for (final entry in _staffControllers.entries)
-            if (entry.value.text.trim().isNotEmpty ||
-                _stamps[entry.key] != null)
-              entry.key: widget.initialInfo
-                  .staffFor(entry.key)
-                  .copyWith(
-                    name: entry.value.text.trim(),
-                    stampAssetPath: () => _stamps[entry.key],
-                  ),
-        },
       ),
     );
   }
@@ -205,33 +178,17 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
             ),
             const SizedBox(height: 8),
             // 🚨One row per 공정, always all of them — the cut envelope binds
-            // `{staff.<role>.name}` by this same key, so what the form can
+            // `{staff.<label>.name}` by this same key, so what the form can
             // fill and what a form can print are one list.
-            for (final process in LayerProcess.values) ...[
+            for (final entry in _staffControllers.entries) ...[
               AppWindowField(
-                label: process.displayName,
-                // 「담당자 = 이름 + 도장 이미지 한 세트」 — one row, both
-                // halves, so the field never has to be read as the whole
-                // answer.
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        key: ValueKey<String>(
-                          'timesheet-info-staff-${process.jsonValue}',
-                        ),
-                        controller: _staffControllers[process.jsonValue],
-                        onSubmitted: (_) => _submit(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _StaffStampCell(
-                      process: process,
-                      assetPath: _stamps[process.jsonValue],
-                      onPicked: (path) =>
-                          setState(() => _stamps[process.jsonValue] = path),
-                    ),
-                  ],
+                label: entry.key.displayName,
+                child: TextField(
+                  key: ValueKey<String>(
+                    'timesheet-info-staff-${entry.key.keySlug}',
+                  ),
+                  controller: entry.value,
+                  onSubmitted: (_) => _submit(),
                 ),
               ),
               const SizedBox(height: 12),
@@ -305,119 +262,6 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
           onPressed: _submit,
         ),
       ],
-    );
-  }
-}
-
-/// The stamp beside a staff name — 「담당자 = 이름 + 도장 이미지 한 세트」
-/// (cut-envelope 정본 §7). The envelope already binds `{staff.<role>.stamp}`
-/// and the model already holds [ProductionStaff.stampAssetPath]; what was
-/// missing was any way in the app to CHOOSE one.
-///
-/// 🚨THE SLOT IS ALWAYS HERE. An empty stamp draws its outline, not nothing:
-/// a cell that appeared only once a file was chosen would be UI popping into
-/// existence, and the row would jump the first time anyone used it.
-///
-/// ⚠️Aspect ratio is PRESERVED (`BoxFit.contain`) — 정본: 「늘어난 도장은
-/// 도장이 아니다」.
-class _StaffStampCell extends StatelessWidget {
-  const _StaffStampCell({
-    required this.process,
-    required this.assetPath,
-    required this.onPicked,
-  });
-
-  final LayerProcess process;
-  final String? assetPath;
-  final ValueChanged<String?> onPicked;
-
-  static const double _size = AppShapes.controlLarge;
-
-  Future<void> _pick(BuildContext context) async {
-    final grants = await pickFileGrantsForUser(
-      context,
-      supportedExtensions: imageFileExtensions,
-    );
-    if (grants.isEmpty) {
-      // A cancelled picker changes nothing — it does not clear what was
-      // already chosen. That is what the menu's Remove is for.
-      return;
-    }
-    onPicked(grants.first.path);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    // A control's corner is a fraction of its own size — never a circular
-    // radius, which the shapes ratchet is there to keep out.
-    final shape = AppShapes.control(
-      _size,
-      side: BorderSide(color: colors.outlineVariant),
-    );
-    final strings = AppText.strings;
-    final path = assetPath;
-    return AppTooltip(
-      message: strings.sheetStampPick,
-      child: ControlPressClaim(
-        onPressed: () => showPanelFlyout(
-          context,
-          entries: [
-            PanelFlyoutItem(
-              keyValue: 'timesheet-stamp-pick-${process.jsonValue}',
-              label: strings.sheetStampPick,
-              icon: Icons.image_outlined,
-              onSelected: () => unawaited(_pick(context)),
-            ),
-            // ⛔BOTH entries, always, even with no stamp set: a menu that
-            // grows a row the moment a file lands is the same popping this
-            // widget's own slot exists to avoid. Clearing an empty stamp is
-            // a no-op, which is a fine thing for a menu row to be.
-            PanelFlyoutItem(
-              keyValue: 'timesheet-stamp-clear-${process.jsonValue}',
-              label: strings.sheetStampClear,
-              icon: Icons.backspace_outlined,
-              onSelected: () => onPicked(null),
-            ),
-          ],
-        ),
-        child: InkWell(
-          key: ValueKey<String>('timesheet-stamp-${process.jsonValue}'),
-          customBorder: shape,
-          onTap: silentPress(
-            () => showPanelFlyout(
-              context,
-              entries: [
-                PanelFlyoutItem(
-                  keyValue: 'timesheet-stamp-pick-${process.jsonValue}',
-                  label: strings.sheetStampPick,
-                  icon: Icons.image_outlined,
-                  onSelected: () => unawaited(_pick(context)),
-                ),
-                // ⛔BOTH entries, always, even with no stamp set: a menu that
-                // grows a row the moment a file lands is the same popping this
-                // widget's own slot exists to avoid. Clearing an empty stamp is
-                // a no-op, which is a fine thing for a menu row to be.
-                PanelFlyoutItem(
-                  keyValue: 'timesheet-stamp-clear-${process.jsonValue}',
-                  label: strings.sheetStampClear,
-                  icon: Icons.backspace_outlined,
-                  onSelected: () => onPicked(null),
-                ),
-              ],
-            ),
-          ),
-          child: Container(
-            width: _size,
-            height: _size,
-            decoration: ShapeDecoration(shape: shape),
-            padding: const EdgeInsets.all(3),
-            child: path == null
-                ? null
-                : Image.file(File(path), fit: BoxFit.contain),
-          ),
-        ),
-      ),
     );
   }
 }

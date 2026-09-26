@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 
 void main() {
@@ -86,23 +88,37 @@ void main() {
   });
 
   group('production staff', () {
-    test('staffFor answers an empty assignee rather than null', () {
-      expect(TimesheetInfo.empty.staffFor(ProductionRole.genga).name, '');
-      expect(TimesheetInfo.empty.staffFor('anything').isEmpty, isTrue);
+    const key = LayerMark(process: LayerProcess.key);
+    const keyDirection = LayerMark(
+      process: LayerProcess.key,
+      revise: LayerRevise.direction,
+    );
+
+    test('staffNameFor answers an empty name rather than null', () {
+      expect(TimesheetInfo.empty.staffNameFor(key), '');
     });
 
-    test('withStaff sets a role and DROPS it when emptied', () {
-      final assigned = TimesheetInfo.empty.withStaff(
-        ProductionRole.genga,
-        const ProductionStaff(name: '大川'),
-      );
-      expect(assigned.staff, hasLength(1));
-      expect(assigned.staffFor(ProductionRole.genga).name, '大川');
+    test('a stage and its correction are two names, keyed by the label', () {
+      // 유저 답 staff-roles-from-labels: 「공정별 묶음 — 작업자 + 그 공정의
+      // 수정 담당」.
+      final info = TimesheetInfo.empty
+          .withStaffName(key, '大川')
+          .withStaffName(keyDirection, '清');
 
-      final cleared = assigned.withStaff(
-        ProductionRole.genga,
-        ProductionStaff.empty,
-      );
+      expect(info.staffNameFor(key), '大川');
+      expect(info.staffNameFor(keyDirection), '清');
+      expect(info.staff, {key.keySlug: '大川', keyDirection.keySlug: '清'});
+    });
+
+    test('the take is not part of whose work it is', () {
+      final info = TimesheetInfo.empty.withStaffName(key, '大川');
+      expect(info.staffNameFor(key.withTake(2)), '大川');
+    });
+
+    test('withStaffName DROPS a name when emptied', () {
+      final cleared = TimesheetInfo.empty
+          .withStaffName(key, '大川')
+          .withStaffName(key, '');
       expect(
         cleared.staff,
         isEmpty,
@@ -110,31 +126,30 @@ void main() {
       );
     });
 
-    test('a stamp is set and cleared through the nullable closure', () {
-      const staff = ProductionStaff(name: '清', stampAssetPath: 'stamps/a.png');
-      expect(staff.copyWith(name: '明').stampAssetPath, 'stamps/a.png');
-      expect(staff.copyWith(stampAssetPath: () => null).stampAssetPath, isNull);
-    });
-
     test('staff and logo round-trip through JSON', () {
       final info = TimesheetInfo.empty
-          .withStaff(
-            ProductionRole.genga,
-            const ProductionStaff(name: '大川', stampAssetPath: 'stamps/o.png'),
-          )
-          .withStaff(
-            ProductionRole.director,
-            const ProductionStaff(name: '清'),
-          )
+          .withStaffName(key, '大川')
+          .withStaffName(keyDirection, '清')
           .copyWith(logoAssetPath: () => 'logos/studio.png');
 
       final restored = TimesheetInfo.fromJson(info.toJson());
 
       expect(restored, info);
-      expect(restored.staffFor(ProductionRole.genga).stampAssetPath,
-          'stamps/o.png');
-      expect(restored.staffFor(ProductionRole.director).stampAssetPath, isNull);
+      expect(restored.staffNameFor(keyDirection), '清');
       expect(restored.logoAssetPath, 'logos/studio.png');
+    });
+
+    test('a staff entry that is not a name drops rather than throwing', () {
+      // A file from before the labels vocabulary kept a name-and-stamp
+      // object per role.
+      final restored = TimesheetInfo.fromJson({
+        'staff': {
+          'key': '大川',
+          'genga': {'name': '山田', 'stamp': 'stamps/y.png'},
+        },
+      });
+
+      expect(restored.staff, {'key': '大川'});
     });
 
     test('an old file with no staff loads clean', () {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/dialogs/timesheet_info_dialog.dart';
@@ -51,11 +52,14 @@ void main() {
     // so every field the window does not show — `staff`, `logoAssetPath` —
     // came back at its default. Opening this window and pressing save
     // deleted the production staff and the logo, and nothing said so.
-    const before = TimesheetInfo(
-      title: 'T',
-      staff: {'key': ProductionStaff(name: '원화 담당')},
-      logoAssetPath: 'logo.png',
+    const keyDirection = LayerMark(
+      process: LayerProcess.key,
+      revise: LayerRevise.direction,
     );
+    final before = const TimesheetInfo(
+      title: 'T',
+      logoAssetPath: 'logo.png',
+    ).withStaffName(keyDirection, '원화 연출');
     TimesheetInfo? after;
     await _openDialog(tester, before, (r) => after = r);
 
@@ -73,8 +77,8 @@ void main() {
       reason: 'the logo is not this window\'s to delete',
     );
     expect(
-      after!.staffFor('key').name,
-      '원화 담당',
+      after!.staffNameFor(keyDirection),
+      '원화 연출',
       reason: 'nor the staff — the window never showed this role at all',
     );
   });
@@ -86,21 +90,21 @@ void main() {
     await _openDialog(tester, TimesheetInfo.empty, (r) => saved = r);
 
     // ⛔EVERY process, including 用紙. Leaving one out would be a rule
-    // nobody asked for, and the cut envelope binds `{staff.<role>.name}`
+    // nobody asked for, and the cut envelope binds `{staff.<label>.name}`
     // by this same key — so what the form can fill and what a form can
     // print have to be one list.
     for (final process in LayerProcess.values) {
+      final worker = LayerMark(process: process);
       expect(
-        find.byKey(
-          ValueKey<String>('timesheet-info-staff-${process.jsonValue}'),
-        ),
+        find.byKey(ValueKey<String>('timesheet-info-staff-${worker.keySlug}')),
         findsOneWidget,
-        reason: '${process.jsonValue} has no row',
+        reason: '${worker.keySlug} has no row',
       );
     }
 
+    const key = LayerMark(process: LayerProcess.key);
     final keyRow = find.byKey(
-      ValueKey<String>('timesheet-info-staff-${LayerProcess.key.jsonValue}'),
+      ValueKey<String>('timesheet-info-staff-${key.keySlug}'),
     );
     await tester.ensureVisible(keyRow);
     await tester.pumpAndSettle();
@@ -114,9 +118,11 @@ void main() {
     await tester.tap(save);
     await tester.pumpAndSettle();
 
-    expect(saved!.staffFor(LayerProcess.key.jsonValue).name, '김원화');
+    expect(saved!.staffNameFor(key), '김원화');
     expect(
-      saved!.staff.containsKey(LayerProcess.paper.jsonValue),
+      saved!.staff.containsKey(
+        const LayerMark(process: LayerProcess.paper).keySlug,
+      ),
       isFalse,
       reason:
           'a row left blank writes nothing — the map holds the roles that '
@@ -226,90 +232,6 @@ void main() {
     expect(
       second!.exposureBarThreshold,
       TimesheetInfo.defaultExposureBarThreshold,
-    );
-  });
-
-  testWidgets('🚨every process row reserves a STAMP slot, set or not', (
-    tester,
-  ) async {
-    // 「담당자 = 이름 + 도장 이미지 한 세트」 (cut-envelope 정본 §7). The
-    // model and the envelope binding were both already there; the app had
-    // nowhere to CHOOSE one.
-    //
-    // ⛔The slot is reserved on every row, including the empty ones — a cell
-    // that appeared only once a file was chosen would be UI popping into
-    // existence and the row would jump the first time anyone used it.
-    await _openDialog(tester, TimesheetInfo.empty, (_) {});
-    for (final process in LayerProcess.values) {
-      final cell = find.byKey(
-        ValueKey<String>('timesheet-stamp-${process.jsonValue}'),
-      );
-      await tester.ensureVisible(cell);
-      expect(
-        cell,
-        findsOneWidget,
-        reason: '${process.jsonValue} has nowhere to put its stamp',
-      );
-    }
-  });
-
-  testWidgets('the stamp menu can REMOVE one, and the name survives it', (
-    tester,
-  ) async {
-    // Picking opens the OS file picker, which a widget test cannot drive.
-    // Removing is the half that is entirely ours, and it is also the half a
-    // "cancelled picker clears the stamp" bug would show up in.
-    const role = 'key';
-    TimesheetInfo? saved;
-    await _openDialog(
-      tester,
-      const TimesheetInfo(
-        staff: {
-          role: ProductionStaff(name: '아무개', stampAssetPath: 'C:/a/seal.png'),
-        },
-      ),
-      (result) => saved = result,
-    );
-
-    await _tapSetting(tester, 'timesheet-stamp-$role');
-    await _tapSetting(tester, 'timesheet-stamp-clear-$role');
-    await _tapSetting(tester, 'timesheet-info-save-button');
-
-    expect(saved, isNotNull, reason: 'the window has to have saved');
-    expect(
-      saved!.staffFor(role).stampAssetPath,
-      isNull,
-      reason: 'Remove has to actually remove it',
-    );
-    expect(
-      saved!.staffFor(role).name,
-      '아무개',
-      reason:
-          'and take only the stamp with it — the two halves of a staff row '
-          'are edited independently',
-    );
-  });
-
-  testWidgets('⛔a role with ONLY a stamp is still a role', (tester) async {
-    // The submit used to keep a role when its NAME was non-empty, with the
-    // stamp riding along from the old value. Once the stamp is editable
-    // here, a stamp with no name is an answer the user typed and dropping
-    // it would lose it silently.
-    const role = 'inbetween';
-    TimesheetInfo? saved;
-    await _openDialog(
-      tester,
-      const TimesheetInfo(
-        staff: {role: ProductionStaff(stampAssetPath: 'C:/a/seal.png')},
-      ),
-      (result) => saved = result,
-    );
-    await _tapSetting(tester, 'timesheet-info-save-button');
-
-    expect(
-      saved!.staffFor(role).stampAssetPath,
-      'C:/a/seal.png',
-      reason: 'a nameless stamp is not an empty row',
     );
   });
 }

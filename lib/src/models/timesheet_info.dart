@@ -1,8 +1,6 @@
 import '../core/collection_equality.dart';
 import 'envelope/cut_envelope_presets.dart';
-import 'production_staff.dart';
-
-export 'production_staff.dart';
+import 'layer_mark.dart';
 
 /// The paper form's header boxes, in printing order — the episode number
 /// (話数 / Ep.no) leads like the real reference sheets (R7-⑥), then Title,
@@ -52,13 +50,22 @@ class TimesheetInfo {
   /// wash) — default on, toggleable per project.
   final bool seEmptyFill;
 
-  /// Who holds each production role, keyed by [ProductionRole] (or any key
-  /// a studio's own form binds — the process list differs per production,
-  /// so this stays an open map rather than fixed fields).
+  /// Who does each colour label's work — the name a paper form prints for
+  /// a stage, or for a stage's correction — keyed by the label's
+  /// [LayerMark.keySlug]: 원화 is `key`, 원화 작화감독 is
+  /// `key-animation-director`.
   ///
-  /// Read by every paper surface: the cut envelope's 担当 row, and the
-  /// approval boxes a timesheet or conte prints.
-  final Map<String, ProductionStaff> staff;
+  /// 🚨★★★ONE VOCABULARY, THE COLOUR LABELS. 유저 09-25: 「이런 스태프는
+  /// 색라벨에 자세하게 나와있으니 그거 기반으로」, grouped 「공정별 묶음 —
+  /// 작업자 + 그 공정의 수정 담당」 (답 staff-roles-from-labels). ↩️The
+  /// window wrote the process keys while the envelope read a vocabulary of
+  /// its own (`genga` · `director` …) — the two sets never met, and no name
+  /// ever reached an envelope.
+  ///
+  /// ⛔NAMES ONLY. A 도장 or a check is made per cut on the envelope itself
+  /// (유저 09-25: 「도장이나 체크나 이런거는 그냥 전처럼 컷봉투 내에서
+  /// 조작」), so the work's staff carries no stamp.
+  final Map<String, String> staff;
 
   /// The studio logo, as a [MediaAsset] path of kind `image` — the mark a
   /// form prints in its corner. Null prints nothing.
@@ -75,10 +82,9 @@ class TimesheetInfo {
   /// workspace value that did not outlive the session.
   final String envelopeFormId;
 
-  /// The role's assignee, or an empty one when nobody is set — so a form
+  /// The name for [mark]'s work, or empty when nobody is set — so a form
   /// binding never has to null-check.
-  ProductionStaff staffFor(String role) =>
-      staff[role] ?? ProductionStaff.empty;
+  String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
 
   /// The header boxes the form prints, in printing order.
   List<TimesheetHeaderField> get visibleFields => [
@@ -94,7 +100,7 @@ class TimesheetInfo {
     Set<TimesheetHeaderField>? hiddenFields,
     int? Function()? exposureBarThreshold,
     bool? seEmptyFill,
-    Map<String, ProductionStaff>? staff,
+    Map<String, String>? staff,
     String? Function()? logoAssetPath,
     String? Function()? coverImagePath,
     String? envelopeFormId,
@@ -120,14 +126,14 @@ class TimesheetInfo {
     );
   }
 
-  /// One role's assignee replaced; an empty one drops the entry so the map
-  /// never accumulates blanks.
-  TimesheetInfo withStaff(String role, ProductionStaff assignee) {
+  /// [mark]'s name replaced; an empty one drops the entry so the map never
+  /// accumulates blanks.
+  TimesheetInfo withStaffName(LayerMark mark, String name) {
     final next = {...staff};
-    if (assignee.isEmpty) {
-      next.remove(role);
+    if (name.isEmpty) {
+      next.remove(mark.keySlug);
     } else {
-      next[role] = assignee;
+      next[mark.keySlug] = name;
     }
     return copyWith(staff: next);
   }
@@ -141,10 +147,7 @@ class TimesheetInfo {
     if (exposureBarThreshold != null)
       'exposureBarThreshold': exposureBarThreshold,
     if (!seEmptyFill) 'seEmptyFill': false,
-    if (staff.isNotEmpty)
-      'staff': {
-        for (final entry in staff.entries) entry.key: entry.value.toJson(),
-      },
+    if (staff.isNotEmpty) 'staff': {...staff},
     if (logoAssetPath != null) 'logo': logoAssetPath,
     if (coverImagePath != null) 'cover': coverImagePath,
     if (envelopeFormId != CutEnvelopePresets.analogId)
@@ -166,11 +169,11 @@ class TimesheetInfo {
       exposureBarThreshold: json['exposureBarThreshold'] as int?,
       seEmptyFill: json['seEmptyFill'] as bool? ?? true,
       staff: {
+        // A value that is not a name (a file from before the labels
+        // vocabulary kept a name-and-stamp object) drops silently.
         for (final entry
             in (json['staff'] as Map<String, dynamic>? ?? const {}).entries)
-          entry.key: ProductionStaff.fromJson(
-            entry.value as Map<String, dynamic>,
-          ),
+          if (entry.value case final String name) entry.key: name,
       },
       logoAssetPath: json['logo'] as String?,
       coverImagePath: json['cover'] as String?,

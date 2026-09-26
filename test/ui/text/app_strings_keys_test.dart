@@ -338,8 +338,6 @@ void main() {
     'sheetArtist': (s) => s.sheetArtist,
     'sheetStaffByProcess': (s) => s.sheetStaffByProcess,
     'sheetVisibleBoxes': (s) => s.sheetVisibleBoxes,
-    'sheetStampPick': (s) => s.sheetStampPick,
-    'sheetStampClear': (s) => s.sheetStampClear,
     'sheetNotation': (s) => s.sheetNotation,
     'sheetExposureBar': (s) => s.sheetExposureBar,
     'sheetExposureBarHelp': (s) => s.sheetExposureBarHelp,

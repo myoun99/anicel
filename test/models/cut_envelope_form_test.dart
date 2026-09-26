@@ -3,7 +3,9 @@ import 'package:anicel/src/models/envelope/cut_envelope_counts.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_form.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_source.dart';
-import 'package:anicel/src/models/production_staff.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 
 /// The envelope FORM is data: boxes in form-space fractions, each holding
 /// a printed label, a bound value, or nothing but handwriting space.
@@ -20,10 +22,7 @@ void main() {
       CutEnvelopeCelCount(name: 'A', genga: 16, dougaEstimate: 23),
       CutEnvelopeCelCount(name: 'B', genga: 11, dougaEstimate: 14),
     ],
-    staff: {
-      'genga': ProductionStaff(name: '大川', stampAssetPath: 'stamps/o.png'),
-      'douga': ProductionStaff(name: '山田'),
-    },
+    staff: {'key': '大川', 'inbetween': '山田'},
     logoAssetPath: 'logos/studio.png',
     canvasWidth: 2340,
     canvasHeight: 1654,
@@ -57,8 +56,8 @@ void main() {
     });
 
     test('staff names resolve; an unheld role prints nothing', () {
-      expect(resolveEnvelopeText('{staff.genga.name}', source), '大川');
-      expect(resolveEnvelopeText('{staff.scan.name}', source), isNull);
+      expect(resolveEnvelopeText('{staff.key.name}', source), '大川');
+      expect(resolveEnvelopeText('{staff.layout.name}', source), isNull);
     });
 
     test('an index past the end prints nothing rather than throwing', () {
@@ -83,17 +82,88 @@ void main() {
   });
 
   group('image bindings', () {
-    test('logo and stamps resolve to asset paths', () {
+    test('the logo resolves to its asset path', () {
       expect(resolveEnvelopeImage('{logo}', source), 'logos/studio.png');
-      expect(
-        resolveEnvelopeImage('{staff.genga.stamp}', source),
-        'stamps/o.png',
+    });
+  });
+
+  group('🚨the staff a form prints is the colour labels\' staff', () {
+    // The info window wrote the process keys (`key` · `inbetween` …) while
+    // the bundled forms read a vocabulary of their own (`genga` · `douga`
+    // · `director` …): the two sets never met, so no name ever reached an
+    // envelope (09-25). The probe below used to re-point every role at one
+    // entry, which is exactly how the mismatch stayed green.
+    final labels = {
+      for (final mark in everyLayerMark())
+        if (!mark.isNone) mark.keySlug,
+    };
+    final staffName = RegExp(r'^\{staff\.(.+)\.name\}$');
+
+    for (final form in CutEnvelopePresets.all) {
+      test('${form.id}: every staff binding names a colour label', () {
+        for (final box in form.boxes) {
+          final match = staffName.firstMatch(box.binding ?? '');
+          if (match == null) {
+            continue;
+          }
+          expect(labels, contains(match.group(1)), reason: box.id);
+        }
+      });
+    }
+
+    test('a name written through the work\'s staff reaches the 原画 and 動画 '
+        'boxes', () {
+      final info = TimesheetInfo.empty
+          .withStaffName(const LayerMark(process: LayerProcess.key), '大川')
+          .withStaffName(
+            const LayerMark(process: LayerProcess.inbetween),
+            '山田',
+          );
+      final written = CutEnvelopeSource(staff: info.staff);
+      String? printed(String boxId) => resolveEnvelopeText(
+        CutEnvelopePresets.analog.boxById(boxId)!.binding!,
+        written,
       );
+
+      expect(printed('staff-name-genga'), '大川');
+      expect(printed('staff-name-douga'), '山田');
     });
 
-    test('a role with no stamp leaves the box for a hand-drawn mark', () {
-      expect(resolveEnvelopeImage('{staff.douga.stamp}', source), isNull);
-      expect(resolveEnvelopeImage('{staff.nobody.stamp}', source), isNull);
+    test('the roles the labels do not have are left for the pen', () {
+      // 유저 답 envelope-roles-without-label: 「빈칸으로 두고 손으로 쓴다」.
+      for (final id in [
+        'staff-name-colorDesign',
+        'staff-name-scan',
+        'staff-name-tracePaint',
+      ]) {
+        final box = CutEnvelopePresets.analog.boxById(id)!;
+        expect(box.contentKind, EnvelopeContentKind.blank, reason: id);
+        expect(box.takesInk, isTrue, reason: id);
+      }
+    });
+
+    test('⛔a stamp space binds nothing — a 도장 is made per cut on the '
+        'envelope', () {
+      // 유저 09-25: 「도장이나 체크나 이런거는 그냥 전처럼 컷봉투 내에서
+      // 조작」 — the work's staff carries no stamp.
+      final analog = CutEnvelopePresets.analog;
+      final digital = CutEnvelopePresets.digital;
+      for (final box in [
+        for (final role in [
+          'director',
+          'animationDirector',
+          'inbetweenCheck',
+          'colorCheck',
+        ])
+          analog.boxById('approval-$role')!,
+        for (var index = 0; index < 4; index += 1)
+          digital.boxById('lo-stamp-$index')!,
+        for (var index = 0; index < 2; index += 1)
+          digital.boxById('genga-stamp-$index')!,
+      ]) {
+        expect(box.contentKind, EnvelopeContentKind.blank, reason: box.id);
+        expect(box.takesInk, isTrue, reason: box.id);
+      }
     });
   });
 
@@ -190,7 +260,7 @@ bool _isAddressable(String binding) {
       for (var i = 0; i < 32; i += 1)
         const CutEnvelopeCelCount(name: 'x', genga: 0, dougaEstimate: 0),
     ],
-    staff: const {'probe': ProductionStaff(name: 'x', stampAssetPath: 'x')},
+    staff: const {'probe': 'x'},
     logoAssetPath: 'x',
     canvasWidth: 1,
     canvasHeight: 1,
@@ -198,8 +268,12 @@ bool _isAddressable(String binding) {
     cameraHeight: 1,
   );
   // Re-point any staff role at the probe entry so role-shaped tokens are
-  // recognised even when nobody holds that role here.
-  final probed = binding.replaceAll(RegExp(r'\{staff\.\w+\.'), '{staff.probe.');
+  // recognised even when nobody holds that role here. ⚠️Only the GRAMMAR:
+  // whether the role is one the labels have is the group above.
+  final probed = binding.replaceAll(
+    RegExp(r'\{staff\.[\w-]+\.'),
+    '{staff.probe.',
+  );
   return resolveEnvelopeText(probed, empty) != null ||
       resolveEnvelopeImage(probed, empty) != null;
 }
