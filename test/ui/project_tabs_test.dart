@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
@@ -15,6 +16,7 @@ import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/services/persistence/volatile_scratch_files.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart'
     show CanvasSelectionDocument;
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
@@ -32,6 +34,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart'
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../helpers/draw_on_current_frame.dart';
+import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// I-7 through the window (유저 2026-09-26): 「여러 프로젝트 열수있게할거야 …
@@ -105,6 +108,7 @@ void main() {
       'keeps the last one\'s session', (tester) async {
     final projects = await pumpApp(tester);
     final firstCanvas = tester.state(find.byType(EditorCanvasArea));
+    final firstHost = tester.state(find.byType(MainCanvasBrushHost));
     await newProject(tester);
     final session = projects.active;
     for (final canvas in tester.widgetList<EditorCanvasArea>(
@@ -121,6 +125,12 @@ void main() {
       identical(tester.state(find.byType(EditorCanvasArea)), firstCanvas),
       isFalse,
       reason: 'a new canvas, not the last project\'s carried across',
+    );
+    expect(
+      identical(tester.state(find.byType(MainCanvasBrushHost)), firstHost),
+      isFalse,
+      reason: 'and the brush host under the WINDOW\'s region key with it — '
+          'a GlobalKey carries what is under it',
     );
   });
 
@@ -418,21 +428,87 @@ void main() {
     );
   });
 
+  testWidgets('a stroke drawn in the project on screen goes into THAT '
+      'project\'s drawings — the canvas is made again for it, not carried '
+      'over from the tab before', (tester) async {
+    /// A new cel on [project]'s current frame, a pen stroke across the
+    /// canvas, and the key the stroke should have gone to.
+    Future<BrushFrameKey> strokeIn(EditorSessionManager project) async {
+      project.createDrawingAtCurrentFrame();
+      await tester.pumpAndSettle();
+      final selection = project.editingCanvas.activeBrushEditorSelection!;
+      final pen = await tester.startGesture(
+        visibleCanvasPoint(tester),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump();
+      for (var step = 0; step < 4; step += 1) {
+        await pen.moveBy(const Offset(12, 8));
+        await tester.pump();
+      }
+      await pen.up();
+      await tester.pumpAndSettle();
+      return project.brushFrameKeyForCut(
+        project.requireActiveCut,
+        selection.layerId,
+        selection.frameId,
+      );
+    }
+
+    bool inked(EditorSessionManager project, BrushFrameKey key) =>
+        project.renderCaches.brushFrameStore.celHasRenderableContent(key);
+
+    final projects = await pumpApp(tester);
+    final first = projects.active;
+    expect(
+      inked(first, await strokeIn(first)),
+      isTrue,
+      reason: 'CONTROL: the stroke lands in the one project open',
+    );
+
+    await newProject(tester);
+    final second = projects.active;
+    final key = await strokeIn(second);
+    expect(
+      inked(second, key),
+      isTrue,
+      reason: 'the stroke is the second project\'s drawing',
+    );
+    expect(
+      inked(first, key),
+      isFalse,
+      reason: 'and not written into the project that went behind',
+    );
+  });
+
   testWidgets('the marquee of the project coming on screen keeps its undo — '
       'the canvas it replaces takes off only the recorder IT put on', (
     tester,
   ) async {
-    await pumpApp(tester);
+    final projects = await pumpApp(tester);
+    final first = projects.active;
     final channel = workspaceOf(tester).canvasSelectionCommands!;
-    final first = channel.regionHistoryRecorder;
-    expect(first, isNotNull, reason: 'CONTROL: the canvas records its marquee');
+    final recorder = channel.regionHistoryRecorder;
+    expect(recorder, isNotNull, reason: 'CONTROL: the canvas records');
 
     // The new project's canvas installs its recorder in the same build that
-    // retires the old canvas, and the old one's dispose runs after it.
-    await newProject(tester);
-    expect(channel.regionHistoryRecorder, isNotNull);
+    // retires the old canvas, and the old one's dispose runs after it. A
+    // canvas re-installs on its next rebuild, so the hole a careless
+    // dispose leaves is FRAMES wide — every frame is asked.
+    await tapKey(tester, 'top-strip-project-button');
+    await tester.tap(find.byKey(const ValueKey<String>('menu-file-new')));
+    for (var frame = 0; frame < 20; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(
+        channel.regionHistoryRecorder,
+        isNotNull,
+        reason: 'frame $frame of the switch',
+      );
+    }
+    await tester.pumpAndSettle();
+    expect(identical(projects.active, first), isFalse, reason: 'premise');
     expect(
-      identical(channel.regionHistoryRecorder, first),
+      identical(channel.regionHistoryRecorder, recorder),
       isFalse,
       reason: 'the recorder is the new canvas\'s own',
     );
