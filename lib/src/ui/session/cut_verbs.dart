@@ -22,7 +22,7 @@ import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'cut_placement.dart';
-import 'independent_clip_mint.dart' show carryBakedPictures;
+import 'independent_clip_mint.dart' show carryBakedPictures, carrySurfaces;
 import 'render_caches.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
@@ -153,14 +153,12 @@ class CutVerbs {
       BrushFrameStore store,
       CutId owner,
       BrushFrameKey? Function(BrushFrameKey key) inCopy,
-    ) {
-      store.bakedSurfacesForCut(owner).forEach((key, surface) {
-        final copyKey = inCopy(key);
-        if (copyKey != null) {
-          store.storeBakedSurface(copyKey, surface);
-        }
-      });
-    }
+    ) => carrySurfaces(
+      store: store,
+      sources: store.bakedSurfacesForCut(owner).entries,
+      surfaceOf: (written) => written.value,
+      keyOfCopy: (written) => inCopy(written.key),
+    );
 
     carry(_renderCaches.conteInkRowStore, from, (key) {
       final block = conteInkRowIdOf(key);

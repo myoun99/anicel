@@ -219,11 +219,36 @@ _independentClipOf(
   );
 }
 
-/// 🚨★★★AND THE PICTURES COME WITH THEM (F-62).
+/// 🚨★★★A COPY BRINGS ITS SURFACES: each of [sources] that shows one has
+/// it stored under the key its copy is kept by ([keyOfCopy]) — a cel's
+/// picture, a block's handwriting on a sheet — and one without is skipped.
 ///
 /// ⚠️Surfaces are IMMUTABLE with structural tile sharing, so storing the
 /// same object under the new key IS the copy — the same reasoning
 /// `UnlinkLayerCommand` states where it forks a linked member's cels.
+///
+/// ⛔ONE law for every copy: the pictures a pasted or duplicated cel shows
+/// ([carryBakedPictures]), the handwriting a copied block writes under an
+/// id of its own ([carryConteHandwriting]) and a duplicated cut's sheets'
+/// writing (`CutVerbs`) were three loops saying it when the third arrived
+/// (2026-09-26).
+void carrySurfaces<S>({
+  required BrushFrameStore store,
+  required Iterable<S> sources,
+  required BitmapSurface? Function(S source) surfaceOf,
+  required BrushFrameKey? Function(S source) keyOfCopy,
+}) {
+  for (final source in sources) {
+    final surface = surfaceOf(source);
+    final key = keyOfCopy(source);
+    if (surface != null && key != null) {
+      store.storeBakedSurface(key, surface);
+    }
+  }
+}
+
+/// 🚨★★★AND THE PICTURES COME WITH THEM (F-62) — [carrySurfaces], said of
+/// the cels a copy minted.
 ///
 /// ⛔A LINKED paste or duplicate copies nothing on purpose: it points the
 /// new exposures at the cels that already exist, which is what 「링크」
@@ -244,24 +269,21 @@ void carryBakedPictures({
   required LayerId to,
   required Map<FrameId, FrameId> minted,
   required BitmapSurface? Function(FrameId source) pictureOf,
-}) {
-  for (final entry in minted.entries) {
-    final surface = pictureOf(entry.key);
-    if (surface == null) {
-      continue;
-    }
-    store.storeBakedSurface(
-      internals.brushFrameKeyForCut(cut, to, entry.value),
-      // 🚨A picture is kept at ITS CUT's canvas size, or its cel opens BLANK
-      // and the first stroke saves the blank over it — the D5 loss the load
-      // heal exists for (`_healStaleCelSizes`). A copy can come from a cut,
-      // or a project (I-7), of another size. It keeps its canvas numbers,
-      // as a pasted layer's transform does (`LayerCopyPayload.transformTrack`
-      // — 「the numbers travel」).
-      resizeBitmapSurfaceCanvas(surface, cut.canvasSize),
-    );
-  }
-}
+}) => carrySurfaces(
+  store: store,
+  sources: minted.entries,
+  surfaceOf: (minted) => switch (pictureOf(minted.key)) {
+    // 🚨A picture is kept at ITS CUT's canvas size, or its cel opens BLANK
+    // and the first stroke saves the blank over it — the D5 loss the load
+    // heal exists for (`_healStaleCelSizes`). A copy can come from a cut,
+    // or a project (I-7), of another size. It keeps its canvas numbers,
+    // as a pasted layer's transform does (`LayerCopyPayload.transformTrack`
+    // — 「the numbers travel」).
+    final surface? => resizeBitmapSurfaceCanvas(surface, cut.canvasSize),
+    null => null,
+  },
+  keyOfCopy: (minted) => internals.brushFrameKeyForCut(cut, to, minted.value),
+);
 
 /// The pictures [cels] show as they are NOW, each under the key [keyOf]
 /// names — what a copy takes BY VALUE (F-161): a paste may land in another
@@ -284,7 +306,7 @@ Map<FrameId, BitmapSurface> picturesShownBy({
 /// handwriting its source had on the conte, under the id it was given
 /// ([placedClipFor]'s `handwriting`), in [cut] — 유저 2026-09-26 (cut-
 /// duplicate-sheet-ink-Q1) 「복제는 전부 복사」: the same, and from there
-/// on apart.
+/// on apart. [carrySurfaces], said of the blocks a copy wrote anew.
 ///
 /// ⚠️Stored as it is: a row plane's surface is the sheet body's whatever
 /// the cut's canvas, so there is nothing to fit, unlike a picture.
@@ -293,13 +315,12 @@ void carryConteHandwriting({
   required CutId cut,
   required Map<String, String> copies,
   required BitmapSurface? Function(String inkId) handwritingOf,
-}) {
-  for (final MapEntry(key: inkId, value: source) in copies.entries) {
-    if (handwritingOf(source) case final surface?) {
-      store.storeBakedSurface(conteInkRowKey(cut, inkId), surface);
-    }
-  }
-}
+}) => carrySurfaces(
+  store: store,
+  sources: copies.entries,
+  surfaceOf: (copy) => handwritingOf(copy.value),
+  keyOfCopy: (copy) => conteInkRowKey(cut, copy.key),
+);
 
 /// The handwriting the blocks of [exposures] show on [cut]'s conte as it is
 /// NOW, by each block's id — what a copy takes BY VALUE, for
