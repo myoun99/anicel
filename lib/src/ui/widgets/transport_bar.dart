@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart' show DragVerbClaim;
 import '../theme/app_theme.dart';
 import 'app_icon_button.dart';
+import 'axis_bar_gesture.dart' show OwningHorizontalDragGestureRecognizer;
 import 'drag_value_label.dart';
 import '../text/app_strings.dart' show AppText;
 import '../repaint_props.dart';
@@ -349,24 +351,46 @@ class _TransportTrackState extends State<TransportTrack> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _width = constraints.maxWidth;
-        // A Listener, not a GestureDetector: a scrub track has to move on
-        // the press itself. A drag recognizer would hold the first ~18px
-        // of every scrub waiting to see whether this is a drag, and the
-        // handle you grabbed would sit still while your finger left it.
-        return Listener(
-          key: const ValueKey<String>('transport-track'),
+        // A scrub track has to move on the press itself. A stock drag
+        // recognizer would hold the first ~18px of every scrub waiting to
+        // see whether this is a drag, and the handle you grabbed would sit
+        // still while your finger left it — so the press seeks from `onDown`
+        // and the drag takes the arena on its first movement.
+        //
+        // F-200: and a press on the track is the track's — the claim at the
+        // press and that owning drag (`axis_bar_gesture.dart`), so no
+        // scroller around it gets there first. ↩️It was a raw [Listener],
+        // which takes no part in the arena and so held nothing.
+        return DragVerbClaim(
           behavior: HitTestBehavior.opaque,
-          onPointerDown: (event) => _begin(event.localPosition),
-          onPointerMove: (event) => _apply(event.localPosition),
-          child: CustomPaint(
-            size: Size(constraints.maxWidth, widget.height),
-            painter: _TrackPainter(
-              position: _lastFrame == 0 ? 0 : widget.currentFrame / _lastFrame,
-              showRange: widget.showRange,
-              rangeStart: _lastFrame == 0 ? 0 : widget.inFrame / _lastFrame,
-              rangeEnd: _lastFrame == 0 ? 1 : widget.outFrame / _lastFrame,
+          child: RawGestureDetector(
+            key: const ValueKey<String>('transport-track'),
+            behavior: HitTestBehavior.opaque,
+            gestures: <Type, GestureRecognizerFactory>{
+              OwningHorizontalDragGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    OwningHorizontalDragGestureRecognizer
+                  >(OwningHorizontalDragGestureRecognizer.new, (recognizer) {
+                    recognizer.onDown = (details) =>
+                        _begin(details.localPosition);
+                    recognizer.onStart = (details) =>
+                        _apply(details.localPosition);
+                    recognizer.onUpdate = (details) =>
+                        _apply(details.localPosition);
+                  }),
+            },
+            child: CustomPaint(
+              size: Size(constraints.maxWidth, widget.height),
+              painter: _TrackPainter(
+                position: _lastFrame == 0
+                    ? 0
+                    : widget.currentFrame / _lastFrame,
+                showRange: widget.showRange,
+                rangeStart: _lastFrame == 0 ? 0 : widget.inFrame / _lastFrame,
+                rangeEnd: _lastFrame == 0 ? 1 : widget.outFrame / _lastFrame,
+              ),
+              child: SizedBox(height: widget.height),
             ),
-            child: SizedBox(height: widget.height),
           ),
         );
       },

@@ -1,9 +1,12 @@
+import 'package:flutter/gestures.dart' show TapGestureRecognizer;
 import 'package:flutter/material.dart';
 import '../../models/kept_span.dart';
 import '../text/full_width_numerals.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../repaint_props.dart';
+import '../widgets/axis_bar_gesture.dart'
+    show OwningHorizontalDragGestureRecognizer;
 import '../timeline/memo_token.dart';
 
 /// One position axis for the nav bar's scrub: how many stops, where the
@@ -200,29 +203,51 @@ class _ExportScrubBar extends StatelessWidget {
           onChanged(axis.clamp((fraction * axis.length).floor()));
         }
 
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (details) => seekTo(details.localPosition.dx),
-          onHorizontalDragStart: (details) => seekTo(details.localPosition.dx),
-          onHorizontalDragUpdate: (details) => seekTo(details.localPosition.dx),
-          child: SizedBox(
-            height: 26,
-            child: CustomPaint(
-              painter: _ExportScrubPainter(
-                axis: axis,
-                position: position,
-                inMark: inMark,
-                outMark: outMark,
-                trackColor: theme.dividerColor,
-                accent: theme.colorScheme.primary,
-                dimColor: theme.colorScheme.onSurfaceVariant,
-                captionStyle: theme.textTheme.labelSmall?.copyWith(
-                  fontSize: 9,
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
+        final bar = SizedBox(
+          height: 26,
+          child: CustomPaint(
+            painter: _ExportScrubPainter(
+              axis: axis,
+              position: position,
+              inMark: inMark,
+              outMark: outMark,
+              trackColor: theme.dividerColor,
+              accent: theme.colorScheme.primary,
+              dimColor: theme.colorScheme.onSurfaceVariant,
+              captionStyle: theme.textTheme.labelSmall?.copyWith(
+                fontSize: 9,
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w700,
               ),
             ),
+          ),
+        );
+        // F-200: a press on the scrub bar is the bar's — the claim at the
+        // press and a drag that takes the arena on its first movement
+        // (`axis_bar_gesture.dart`), so no scroller around it gets there
+        // first.
+        return DragVerbClaim(
+          behavior: HitTestBehavior.opaque,
+          child: RawGestureDetector(
+            behavior: HitTestBehavior.opaque,
+            gestures: <Type, GestureRecognizerFactory>{
+              TapGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                    TapGestureRecognizer.new,
+                    (recognizer) => recognizer.onTapDown = (details) =>
+                        seekTo(details.localPosition.dx),
+                  ),
+              OwningHorizontalDragGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    OwningHorizontalDragGestureRecognizer
+                  >(OwningHorizontalDragGestureRecognizer.new, (recognizer) {
+                    recognizer.onStart = (details) =>
+                        seekTo(details.localPosition.dx);
+                    recognizer.onUpdate = (details) =>
+                        seekTo(details.localPosition.dx);
+                  }),
+            },
+            child: bar,
           ),
         );
       },

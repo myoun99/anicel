@@ -8,6 +8,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
 import 'anchored_popup.dart';
+import 'axis_bar_gesture.dart' show OwningPanGestureRecognizer;
 import 'field_slider.dart' show sliderValueText;
 import '../text/app_strings.dart' show AppText;
 import '../repaint_props.dart';
@@ -575,20 +576,28 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
         // 🚨A drag on this strip IS the verb — it moves a curve point. So it
         // takes the STRONG claim: no eager pan above may start from here, and
         // the weak claim's absorber stands down for it.
+        //
+        // F-200: the claim alone let a fast drag leak — the pan waited for
+        // its slop, and a scroller above could get there first. The drag
+        // takes the arena on its first movement (`axis_bar_gesture.dart`).
         return DragVerbClaim(
           behavior: HitTestBehavior.opaque,
-          child: GestureDetector(
+          child: RawGestureDetector(
             key: ValueKey<String>('pressure-curve-graph-${source.name}'),
             behavior: HitTestBehavior.opaque,
-            onPanStart: draft.enabled
-                ? (details) => _handlePanStart(source, box, details)
-                : null,
-            onPanUpdate: draft.enabled
-                ? (details) => _handlePanUpdate(source, box, details)
-                : null,
-            onPanEnd: draft.enabled
-                ? (_) => setState(_endDragState)
-                : null,
+            gestures: <Type, GestureRecognizerFactory>{
+              if (draft.enabled)
+                OwningPanGestureRecognizer:
+                    GestureRecognizerFactoryWithHandlers<
+                      OwningPanGestureRecognizer
+                    >(OwningPanGestureRecognizer.new, (recognizer) {
+                      recognizer.onStart = (details) =>
+                          _handlePanStart(source, box, details);
+                      recognizer.onUpdate = (details) =>
+                          _handlePanUpdate(source, box, details);
+                      recognizer.onEnd = (_) => setState(_endDragState);
+                    }),
+            },
             child: CustomPaint(
               painter: _CurveGraphPainter(
                 points: draft.points,

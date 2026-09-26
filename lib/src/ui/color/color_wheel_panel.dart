@@ -3,7 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart' show DragVerbClaim;
 import '../repaint_props.dart';
+import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
 
 /// Krita/CSP-style color wheel: a hue ring around a saturation/value
 /// TRIANGLE that rotates with the hue (its full-saturation corner rides
@@ -276,19 +278,43 @@ class _ColorWheelState extends State<ColorWheel> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
-        return GestureDetector(
+        // 🗣️F-200 (유저 2026-09-27): 「띠에 여러 패널 열려있어서 스크롤바
+        // 활성화되있을시, 컬러휠 조작 빠르게 스크롤하다보면 다중패널의
+        // 스크롤바가 작동해버림」. A drag on the wheel IS the wheel's verb, so
+        // it wears both halves of the bar's law (`axis_bar_gesture.dart`):
+        // the claim at the press, and a pan that takes the arena on its
+        // first movement. ↩️A plain pan waited for its slop, and a fast pull
+        // let the panels' scroller reach its own first.
+        return DragVerbClaim(
           behavior: HitTestBehavior.opaque,
-          onPanDown: (details) {
-            _activeRegion = ColorWheelGeometry(
-              size,
-              hue: widget.hsv.hue,
-            ).regionAt(details.localPosition);
-            _apply(details.localPosition, size);
-          },
-          onPanUpdate: (details) => _apply(details.localPosition, size),
-          onPanEnd: (_) => _activeRegion = ColorWheelRegion.none,
-          onPanCancel: () => _activeRegion = ColorWheelRegion.none,
-          child: CustomPaint(painter: _ColorWheelPainter(hsv: widget.hsv)),
+          child: RawGestureDetector(
+            behavior: HitTestBehavior.opaque,
+            gestures: <Type, GestureRecognizerFactory>{
+              OwningPanGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    OwningPanGestureRecognizer
+                  >(OwningPanGestureRecognizer.new, (recognizer) {
+                    recognizer.onDown = (details) {
+                      _activeRegion = ColorWheelGeometry(
+                        size,
+                        hue: widget.hsv.hue,
+                      ).regionAt(details.localPosition);
+                      _apply(details.localPosition, size);
+                    };
+                    // The move that wins the arena is reported here, not as
+                    // an update.
+                    recognizer.onStart = (details) =>
+                        _apply(details.localPosition, size);
+                    recognizer.onUpdate = (details) =>
+                        _apply(details.localPosition, size);
+                    recognizer.onEnd = (_) =>
+                        _activeRegion = ColorWheelRegion.none;
+                    recognizer.onCancel = () =>
+                        _activeRegion = ColorWheelRegion.none;
+                  }),
+            },
+            child: CustomPaint(painter: _ColorWheelPainter(hsv: widget.hsv)),
+          ),
         );
       },
     );
