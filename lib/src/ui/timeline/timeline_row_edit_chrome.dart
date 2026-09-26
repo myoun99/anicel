@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show ClipOp;
-import 'package:flutter/foundation.dart' show listEquals, setEquals;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, listEquals, setEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
@@ -25,6 +26,7 @@ import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart' show timelineFrameSpanRect;
+import 'timeline_frame_window.dart' show visibleFrameWindowFor;
 import 'timeline_run_end_handles.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../text/app_face.dart';
@@ -465,13 +467,25 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     required this.devicePixelRatio,
     this.gripGround = timelineDrawingHeldColor,
     this.gripGrounds,
-  }) : super(repaint: geometry);
+    this.windowBucket,
+    this.viewportMainExtent = 0,
+  }) : super(repaint: Listenable.merge([geometry, ?windowBucket]));
 
   final TimelineRowChromeResolver resolver;
 
   /// The LIVE frame-axis geometry (R28 #4): a zoom step repaints, never
   /// rebuilds, the row that built this painter.
   final TimelineFrameGeometryHandle geometry;
+
+  /// The row's scroll window, as its cells take it (UI-R15): a paint draws
+  /// what the window can show and repaints once per span crossing.
+  ///
+  /// 🚨I-22 ③: the storyboard's cut row spans the whole film, so its chrome
+  /// drew every grip of it — ~900 at ten minutes — whenever it painted, and
+  /// at 24px a frame the view shows about twenty of them. Null keeps the
+  /// whole row, for a host that shows all of it.
+  final ValueListenable<int>? windowBucket;
+  final double viewportMainExtent;
 
   TimelineRowEditChromeModel get model => resolver.resolve(geometry.value);
   double get frameCellExtent => geometry.value.frameCellExtent;
@@ -508,6 +522,30 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   /// the successor of `find.byKey` on the widgets these replaced.
   List<TimelineRowChromeTarget> get targets => model.targets;
 
+  /// The targets a paint draws: those its window can show ([windowBucket]).
+  Iterable<TimelineRowChromeTarget> get targetsInWindow {
+    final window = _windowShows();
+    return model.targets.where((target) => window(target.rect));
+  }
+
+  /// Whether a rect reaches the row-local stretch of the frame axis the
+  /// window can show.
+  bool Function(Rect rect) _windowShows() {
+    final frames = geometry.value;
+    final window = visibleFrameWindowFor(
+      bucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
+      cellExtent: frames.frameCellExtent,
+      frameStartIndex: frames.frameStartIndex,
+      frameEndIndexExclusive: frames.frameEndIndexExclusive,
+    );
+    final from = frames.edgeAt(window.startIndex);
+    final to = frames.edgeAt(window.endIndexExclusive);
+    return resolver.axis == Axis.horizontal
+        ? (rect) => rect.right > from && rect.left < to
+        : (rect) => rect.bottom > from && rect.top < to;
+  }
+
   /// The first target whose rect contains [position]; null = the row's
   /// cells own that pixel.
   TimelineRowChromeTarget? targetAt(Offset position) {
@@ -531,7 +569,8 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     final model = this.model;
-    for (final span in model.patternSpans) {
+    final shows = _windowShows();
+    for (final span in model.patternSpans.where(shows)) {
       paintTimelineRunPatternSpan(
         canvas,
         span,
@@ -544,7 +583,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     }
     final glyphSize = timelineRunClusterGlyphSize(frameCellExtent);
     final grounds = gripGrounds?.call();
-    for (final target in model.targets) {
+    for (final target in model.targets.where((target) => shows(target.rect))) {
       switch (target) {
         case TimelineRowGripTarget():
           _paintGrip(canvas, target, grounds);
@@ -651,6 +690,8 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       // the only one that knows.
       gripGrounds,
       devicePixelRatio,
+      ByIdentity(windowBucket),
+      viewportMainExtent,
     );
   }
 
@@ -728,11 +769,18 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     required this.runEdit,
     this.gripGround = timelineDrawingHeldColor,
     this.gripGrounds,
+    this.windowBucket,
+    this.viewportMainExtent = 0,
   });
 
   /// Key placed on the [CustomPaint] itself: tests read the painter (and
   /// its render box, for target geometry) off this.
   final Key paintKey;
+
+  /// The row's scroll window, as its cells take it — what the painter draws
+  /// ([TimelineRowEditChromePainter.windowBucket]).
+  final ValueListenable<int>? windowBucket;
+  final double viewportMainExtent;
 
   /// The row's layer — the RUN-edge half's identity. Null on rows whose
   /// blocks are not a layer's (the storyboard's cut row), which is also
@@ -1252,6 +1300,8 @@ class _TimelineRowEditChromeLayerState
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         gripGround: widget.gripGround,
         gripGrounds: widget.gripGrounds,
+        windowBucket: widget.windowBucket,
+        viewportMainExtent: widget.viewportMainExtent,
       ),
       child: _ChromeHitGate(
         // Off-target pixels belong to the cells: the gate keeps the

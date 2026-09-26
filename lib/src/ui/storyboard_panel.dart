@@ -4680,6 +4680,10 @@ class _StoryboardTrackRow extends StatelessWidget {
       ),
       gripGrounds: () =>
           StoryboardPlateGrounds(blocksPainter, crossOffset: paper.slot.top),
+      // The blocks' own window: the row spans the whole film, and the grips
+      // are drawn where the view can reach, as the blocks under them are.
+      windowBucket: windowBucket,
+      viewportMainExtent: viewportWidth,
       // No layer: these blocks are panels of many cuts, and the row has no
       // run edges for a LayerId to name.
       layerId: null,
