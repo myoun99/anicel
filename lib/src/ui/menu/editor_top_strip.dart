@@ -1664,15 +1664,13 @@ Future<ProjectPick?> pickProjectFile(
   required List<String> supportedExtensions,
   String? initialDirectory,
 }) async {
-  final grants = await pickFileGrantsForUser(
+  // A project opens from a document with no filesystem path through a
+  // working copy (PICK-7, Drive on Android).
+  final grant = await pickProjectGrantForUser(
     context,
     supportedExtensions: supportedExtensions,
     initialDirectory: initialDirectory,
-    // A project opens from a document with no filesystem path through a
-    // working copy (PICK-7, Drive on Android).
-    acceptsDocuments: true,
   );
-  final grant = grants.isEmpty ? null : grants.first;
   if (grant?.document case final document?) {
     ProviderDocuments.remember(document);
     return (path: document.uri, folderBookmark: null, placed: false);
@@ -1706,17 +1704,17 @@ Future<ProjectPick?> pickProjectFile(
 /// places is a COMPLETE, CURRENT project — which is why the caller adopts
 /// it rather than writing over it (`placed: true`).
 ///
-/// [keepsSavingThere]: whether the session goes on saving into what is
-/// placed — Save As does, a backup does not. On a scoped platform a
-/// destination with no filesystem path (PICK-7, Drive on Android) is then
-/// worked on through a working copy; see [placeStagedFileForUser].
+/// On a scoped platform a destination with no filesystem path (PICK-7,
+/// Drive on Android) is answered with its WORKING COPY — what the picker
+/// poured in, kept for the saves that follow ([placeStagedFileForUser]).
+/// A caller that does not go on saving there lets it go
+/// ([ProviderDocuments.letGo]).
 @visibleForTesting
 Future<ProjectPick?> pickProjectSaveTarget(
   BuildContext context,
   String suggestedName,
   String initialDirectory, {
   required Future<void> Function(String stagingPath) stageArchive,
-  required bool keepsSavingThere,
 }) async {
   var name = suggestedName;
   if (!name.toLowerCase().endsWith(anicelProjectSuffix)) {
@@ -1725,12 +1723,7 @@ Future<ProjectPick?> pickProjectSaveTarget(
   if (!FolderPicker.grantsAreScoped) {
     return _pickDesktopSaveTarget(context, name, initialDirectory);
   }
-  return _pickScopedSaveTarget(
-    context,
-    name,
-    stageArchive,
-    keepsSavingThere: keepsSavingThere,
-  );
+  return _pickScopedSaveTarget(context, name, stageArchive);
 }
 
 Future<ProjectPick?> _pickDesktopSaveTarget(
@@ -1790,13 +1783,12 @@ Future<ProjectPick?> _pickDesktopSaveTarget(
 Future<ProjectPick?> _pickScopedSaveTarget(
   BuildContext context,
   String name,
-  Future<void> Function(String stagingPath) stageArchive, {
-  required bool keepsSavingThere,
-}) async {
+  Future<void> Function(String stagingPath) stageArchive,
+) async {
   final grant = await placeStagedFileForUser(
     context,
     suggestedName: name,
-    keepsSavingThere: keepsSavingThere,
+    keepsSavingThere: true,
     write: (stagingPath) async {
       try {
         // WRITTEN, whole, from the live session — never copied from the
@@ -1826,9 +1818,7 @@ Future<ProjectPick?> _pickScopedSaveTarget(
       }
     },
   );
-  // A document the bytes were poured into and that nothing saves into
-  // again (a backup) is where they landed by its URI (PICK-7).
-  final placed = grant?.path ?? grant?.document?.uri;
+  final placed = grant?.path;
   if (placed == null) {
     return null;
   }
@@ -2151,14 +2141,14 @@ Future<void> backUpFailedCopy(
         running: strings.savePrepareRunning,
         done: strings.savePrepareDone,
       ),
-      // A backup is a copy to keep; the session goes on saving where it
-      // did.
-      keepsSavingThere: false,
     );
     if (pick == null || !context.mounted) {
       return;
     }
     if (pick.placed) {
+      // A backup is a copy to keep, not where the project saves from now
+      // on: a working copy kept for a document it went into goes (PICK-7).
+      ProviderDocuments.letGo(pick.path);
       await _sayFailedCopyBackedUp(context);
       return;
     }
@@ -2390,7 +2380,6 @@ Future<void> promptSaveProjectAs(
         staged = await write(stagingPath, report);
       },
     ),
-    keepsSavingThere: true,
   );
   if (pick == null || !context.mounted) {
     return;

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/services/persistence/save_failure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -239,6 +240,50 @@ void main() {
     expect(File(placed).readAsStringSync(), 'the work');
     expect(offeredAs, startsWith('take-'));
     expect(said, isTrue, reason: 'placed, so now it says backed up');
+  });
+
+  testWidgets('a backup poured into a DOCUMENT (Drive on Android, PICK-7) '
+      'keeps no working copy — it is a copy to keep, not where the project '
+      'saves from now on', (tester) async {
+    FolderPicker.debugOperatingSystem = 'android';
+    const drive = ProviderDocument(
+      uri: 'content://drive/doc/backup',
+      name: 'take-backup.anicel',
+    );
+    addTearDown(() {
+      FolderPicker.debugFileExporter = null;
+      ProviderDocuments.debugReset();
+    });
+    String? poured;
+    FolderPicker.debugFileExporter = ({
+      required String sourcePath,
+      String? suggestedName,
+    }) async {
+      poured = File(sourcePath).readAsStringSync();
+      return const FolderGrant.providerDocument(drive);
+    };
+    final (:session, :context) = await mounted(tester);
+    final copy = keptCopy(session, 'take.anicel');
+    const saidBackedUp = ValueKey<String>('failed-copy-backup-placed');
+
+    var done = false;
+    var said = false;
+    await tester.runAsync(() async {
+      unawaited(
+        backUpFailedCopy(context, session, copy: copy).then((_) => done = true),
+      );
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (!done && DateTime.now().isBefore(deadline)) {
+        await tester.pump(const Duration(milliseconds: 16));
+        said = said || find.byKey(saidBackedUp).evaluate().isNotEmpty;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    });
+
+    expect(done, isTrue, reason: 'the backup never came back');
+    expect(poured, 'the work', reason: 'the document got the failed copy');
+    expect(said, isTrue, reason: 'placed, so now it says backed up');
+    expect(ProviderDocuments.workingCopyOf(drive.uri), isNull);
   });
 
   testWidgets('the close question says the failed copy goes with the '

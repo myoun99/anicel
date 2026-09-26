@@ -137,23 +137,70 @@ Future<FolderGrant?> pickFolderGrantForUser(
 ///
 /// Empty when the user backed out or was told why they cannot use what
 /// they chose.
-///
-/// [acceptsDocuments]: the caller can work on a file with no filesystem
-/// path through its provider (PICK-7 — a project opens one through a
-/// working copy, [ProviderDocuments]). Every other caller is told what a
-/// Drive folder is told, and keeps the real files picked beside it.
 Future<List<FolderGrant>> pickFileGrantsForUser(
   BuildContext context, {
   required List<String> supportedExtensions,
   bool allowMultiple = false,
   String? initialDirectory,
-  bool acceptsDocuments = false,
+}) async {
+  final grants = await _pickedFileGrants(
+    context,
+    allowMultiple: allowMultiple,
+    initialDirectory: initialDirectory,
+  );
+  if (grants == null || !context.mounted) {
+    return const [];
+  }
+  return _grantsTheCallerTakes(
+    context,
+    grants,
+    supportedExtensions,
+    acceptsDocuments: false,
+  );
+}
+
+/// The PROJECT door's pick (PICK-7): one file — and, unlike every other
+/// caller of [pickFileGrantsForUser], a file with no filesystem path is
+/// taken too, as the provider document it is. A project opens one through
+/// a working copy ([ProviderDocuments]); a door that needs a real file is
+/// told what a Drive folder is told.
+///
+/// Null when the user backed out or was told why they cannot use what
+/// they chose.
+Future<FolderGrant?> pickProjectGrantForUser(
+  BuildContext context, {
+  required List<String> supportedExtensions,
+  String? initialDirectory,
+}) async {
+  final grants = await _pickedFileGrants(
+    context,
+    allowMultiple: false,
+    initialDirectory: initialDirectory,
+  );
+  if (grants == null || !context.mounted) {
+    return null;
+  }
+  final taken = await _grantsTheCallerTakes(
+    context,
+    grants,
+    supportedExtensions,
+    acceptsDocuments: true,
+  );
+  return taken.isEmpty ? null : taken.first;
+}
+
+/// The pick itself, behind the storage gate, with a failure that answers
+/// for the whole batch said out loud — null when there is nothing to take.
+Future<List<FolderGrant>?> _pickedFileGrants(
+  BuildContext context, {
+  required bool allowMultiple,
+  String? initialDirectory,
 }) async {
   // The same gate as the folder flow, for the same reason: Android resolves
   // the system document back to a real path, and that probe fails without
   // the All-Files grant.
   if (!await _storageGrantCleared(context)) {
-    return const [];
+    return null;
   }
   // 🚨★★★**NO TYPE FILTER — the dialog shows everything.** 유저 2026-08-29:
   // 「픽커는 어떤플랫폼이든 어떤 확장자던 선택할수 있게하고, 대응만
@@ -170,18 +217,28 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
     initialDirectory: initialDirectory,
   );
   if (!context.mounted) {
-    return const [];
+    return null;
   }
   // Never empty, and a failure arrives as ONE grant carrying the status —
   // so the first entry answers for the batch. A document answers for
-  // itself below: a batch can hold real files beside it.
+  // itself ([_grantsTheCallerTakes]): a batch can hold real files beside it.
   if (grants.first.document == null &&
       await _spokenFor(context, grants.first) == null) {
-    return const [];
+    return null;
   }
-  if (!context.mounted) {
-    return const [];
-  }
+  return grants;
+}
+
+/// What the caller takes of [grants]: the files of a kind it supports —
+/// judged by NAME, a document's own, since its URI says nothing of what it
+/// is — and the documents only where [acceptsDocuments]. What it turns away
+/// is said once for the documents and once for the unsupported files.
+Future<List<FolderGrant>> _grantsTheCallerTakes(
+  BuildContext context,
+  List<FolderGrant> grants,
+  List<String> supportedExtensions, {
+  required bool acceptsDocuments,
+}) async {
   final accepted = <FolderGrant>[];
   final refused = <String>[];
   var documentsRefused = false;
@@ -191,7 +248,6 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
       documentsRefused = true;
       continue;
     }
-    // A document's own name answers what it is — its URI says nothing.
     final name = grant.path ?? document?.name;
     if (name == null) {
       continue;

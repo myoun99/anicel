@@ -1179,47 +1179,7 @@ abstract final class FolderPicker {
           // not successful.
           return const [FolderGrant.unavailable()];
         }
-        final grants = <FolderGrant>[];
-        for (final item in items) {
-          if (item is! Map) {
-            continue;
-          }
-          final path = item['path'];
-          if (path is! String || path.isEmpty) {
-            // PICK-7: a file with no path the provider still reads and
-            // writes — the document, under its own status, so no caller
-            // can take it for a path.
-            final uri = item['uri'];
-            if (uri is String && uri.isNotEmpty) {
-              final name = item['name'];
-              final size = item['size'];
-              grants.add(
-                FolderGrant.providerDocument(
-                  ProviderDocument(
-                    uri: uri,
-                    name: name is String && name.isNotEmpty
-                        ? name
-                        : fileNameOfPath(uri),
-                    length: size is int ? size : null,
-                  ),
-                ),
-              );
-            }
-            // Same rule per item: a granted entry with no path is dropped
-            // rather than becoming a grant every caller would have to guard.
-            continue;
-          }
-          final bookmark = item['bookmark'];
-          grants.add(
-            FolderGrant.granted(
-              path: _normalize(path),
-              bookmark: bookmark is String && bookmark.isNotEmpty
-                  ? bookmark
-                  : null,
-              kind: kind,
-            ),
-          );
-        }
+        final grants = [for (final item in items) ?_itemGrant(item, kind)];
         return grants.isEmpty ? const [FolderGrant.unavailable()] : grants;
       case 'cancelled':
         return const [FolderGrant.cancelled()];
@@ -1228,6 +1188,39 @@ abstract final class FolderPicker {
       default:
         return const [FolderGrant.unavailable()];
     }
+  }
+
+  /// One item of a granted answer: a path, or — PICK-7 — a file with no path
+  /// that the provider still reads and writes, under a status of its own so
+  /// no caller can take its URI for a path. Null for an item that names
+  /// neither: it is dropped rather than becoming a grant every caller would
+  /// have to guard.
+  static FolderGrant? _itemGrant(Object? item, GrantKind kind) {
+    if (item is! Map) {
+      return null;
+    }
+    final path = item['path'];
+    if (path is String && path.isNotEmpty) {
+      final bookmark = item['bookmark'];
+      return FolderGrant.granted(
+        path: _normalize(path),
+        bookmark: bookmark is String && bookmark.isNotEmpty ? bookmark : null,
+        kind: kind,
+      );
+    }
+    final uri = item['uri'];
+    if (uri is! String || uri.isEmpty) {
+      return null;
+    }
+    final name = item['name'];
+    final size = item['size'];
+    return FolderGrant.providerDocument(
+      ProviderDocument(
+        uri: uri,
+        name: name is String && name.isNotEmpty ? name : fileNameOfPath(uri),
+        length: size is int ? size : null,
+      ),
+    );
   }
 
   static String _normalize(String path) => path.replaceAll('\\', '/');

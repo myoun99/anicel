@@ -182,6 +182,22 @@ abstract final class ProviderDocuments {
     return destination;
   }
 
+  /// [path] is not worked on any more: when it is a working copy, it goes —
+  /// the file and the document's claim on it. Anything else is left alone:
+  /// a real file a picker placed is the person's.
+  static void letGo(String path) {
+    final document = documentBehind(path);
+    if (document == null) {
+      return;
+    }
+    _workingCopies.remove(document.uri);
+    try {
+      File(path).parent.deleteSync(recursive: true);
+    } on FileSystemException {
+      // The room is swept when the run ends.
+    }
+  }
+
   /// Hands [workingCopy] back to the document it was opened from, whole —
   /// how every save of such a project ends. Nothing to do for any other
   /// file. Throws [ProviderDocumentRefused] when the provider does not take
