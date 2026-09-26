@@ -62,9 +62,17 @@ class TimelineCellDoubleTapGate {
   }
 }
 
-/// The frame axis a surface's cells lie along, and a cell's extent on it —
-/// read at the tap, since a zoom may have moved it since the build.
-typedef TimelineDoubleTapGrid = ({Axis axis, double Function() cellExtent});
+/// A surface's cells as the double tap reads them: which cell a local
+/// position is ([frameAt] — null for positions that are no cell at all:
+/// outside the visible window, a zero-width zoom), and the frame axis they
+/// lie along with a cell's extent on it, read at the tap since a zoom may
+/// have moved it since the build. ONE value, so the two halves of the gate
+/// cannot be handed two different grids.
+typedef TimelineDoubleTapCells = ({
+  int? Function(Offset localPosition) frameAt,
+  Axis axis,
+  double Function() cellExtent,
+});
 
 /// [localPosition] as a double tap aims it: where a cell is narrower than a
 /// pixel, the middle of the pixel it falls in, so two taps in one pixel are
@@ -75,34 +83,38 @@ typedef TimelineDoubleTapGrid = ({Axis axis, double Function() cellExtent});
 /// and a pen or a finger that moved one pixel between the taps landed on
 /// another cell — the editors opened only for a mouse held still. From a
 /// pixel a cell up, nothing changes.
-Offset timelineDoubleTapAim(Offset localPosition, TimelineDoubleTapGrid grid) {
-  if (grid.cellExtent() >= 1) {
+Offset timelineDoubleTapAim(
+  Offset localPosition,
+  TimelineDoubleTapCells cells,
+) {
+  if (cells.cellExtent() >= 1) {
     return localPosition;
   }
-  return grid.axis == Axis.horizontal
+  return cells.axis == Axis.horizontal
       ? Offset(localPosition.dx.floorToDouble() + 0.5, localPosition.dy)
       : Offset(localPosition.dx, localPosition.dy.floorToDouble() + 0.5);
 }
 
+/// The cell a double tap at [localPosition] names ([timelineDoubleTapAim]).
+int? _cellAimedAt(Offset localPosition, TimelineDoubleTapCells cells) =>
+    cells.frameAt(timelineDoubleTapAim(localPosition, cells));
+
 /// The RECORD half of the frame-block activation law, as the one closure
 /// every cell surface mounts on its press region's `onPressDown`.
 ///
-/// [frameAt] answers which cell a local position is — null for positions
-/// that are no cell at all (outside the visible window, a zero-width
-/// zoom). The dense timeline rows and the storyboard's sparse strips both
-/// build their handler HERE, so "which press arms the gate" cannot fork
-/// per surface again (절대명령 2026-08-17: reuse the frame-block law, never
+/// The dense timeline rows and the storyboard's sparse strips both build
+/// their handler HERE, so "which press arms the gate" cannot fork per
+/// surface again (절대명령 2026-08-17: reuse the frame-block law, never
 /// invent a sibling of it). The LANE bands mount it too, naming their lane
 /// (유저 2026-09-11: 「트랜스폼행에서 더블클릭으로 편집창 안열리는것등 이런거
 /// 싹 법 하나로 통일」).
 void Function(Offset localPosition) timelineCellDoubleTapRecord({
   required LayerId layerId,
   String? laneId,
-  required TimelineDoubleTapGrid grid,
-  required int? Function(Offset localPosition) frameAt,
+  required TimelineDoubleTapCells cells,
 }) {
   return (localPosition) {
-    final frameIndex = frameAt(timelineDoubleTapAim(localPosition, grid));
+    final frameIndex = _cellAimedAt(localPosition, cells);
     if (frameIndex != null) {
       TimelineCellDoubleTapGate.recordTapDown(
         layerId,
@@ -117,20 +129,16 @@ void Function(Offset localPosition) timelineCellDoubleTapRecord({
 /// when the gate agrees BOTH taps hit the same cell (R26 #37 — two taps on
 /// different frames of one block are two seeks, never an editor).
 ///
-/// [frameAt] and [grid] must be the SAME the record half uses, or the two
-/// halves describe two different grids and the gate compares apples to
-/// pears.
+/// [cells] must be the SAME the record half uses, or the two halves
+/// describe two different grids and the gate compares apples to pears.
 GestureTapDownCallback timelineCellDoubleTapActivation({
   required LayerId layerId,
   String? laneId,
-  required TimelineDoubleTapGrid grid,
-  required int? Function(Offset localPosition) frameAt,
+  required TimelineDoubleTapCells cells,
   required void Function(int frameIndex) onActivate,
 }) {
   return (details) {
-    final frameIndex = frameAt(
-      timelineDoubleTapAim(details.localPosition, grid),
-    );
+    final frameIndex = _cellAimedAt(details.localPosition, cells);
     if (frameIndex != null &&
         TimelineCellDoubleTapGate.acceptsActivation(
           layerId,

@@ -732,9 +732,12 @@ class _TimelineLaneRangeGestureLayerState
     return frame < 0 ? 0 : frame;
   }
 
-  /// The grid the double tap aims with ([timelineDoubleTapAim]).
-  TimelineDoubleTapGrid get _aim =>
-      (axis: widget.axis, cellExtent: () => widget.frameCellExtent);
+  /// The cells the double tap aims at ([timelineDoubleTapAim]).
+  TimelineDoubleTapCells get _cells => (
+    frameAt: _frameAt,
+    axis: widget.axis,
+    cellExtent: () => widget.frameCellExtent,
+  );
 
   /// This layer's row address on the mount's row list — the grip seam's
   /// vocabulary.
@@ -885,8 +888,7 @@ class _TimelineLaneRangeGestureLayerState
         onPressDown: timelineCellDoubleTapRecord(
           layerId: widget.layer.id,
           laneId: widget.laneId,
-          grid: _aim,
-          frameAt: _frameAt,
+          cells: _cells,
         ),
         onTap: (localPosition) => widget.callbacks.onTapAt(
           widget.layer.id,
@@ -924,8 +926,7 @@ class _TimelineLaneRangeGestureLayerState
               : timelineCellDoubleTapActivation(
                   layerId: widget.layer.id,
                   laneId: widget.laneId,
-                  grid: _aim,
-                  frameAt: _frameAt,
+                  cells: _cells,
                   onActivate: (frame) =>
                       activate(widget.layer.id, widget.laneId, frame),
                 ),

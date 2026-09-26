@@ -150,11 +150,19 @@ void main() {
       for (final axis in Axis.values) {
         const tap = Offset(100.3, 40.7);
         expect(
-          timelineDoubleTapAim(tap, (axis: axis, cellExtent: () => 1.0)),
+          timelineDoubleTapAim(tap, (
+            frameAt: (_) => null,
+            axis: axis,
+            cellExtent: () => 1.0,
+          )),
           tap,
         );
         expect(
-          timelineDoubleTapAim(tap, (axis: axis, cellExtent: () => eighth)),
+          timelineDoubleTapAim(tap, (
+            frameAt: (_) => null,
+            axis: axis,
+            cellExtent: () => eighth,
+          )),
           axis == Axis.horizontal
               ? const Offset(100.5, 40.7)
               : const Offset(100.3, 40.5),

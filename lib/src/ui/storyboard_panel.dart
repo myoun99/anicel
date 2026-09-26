@@ -3034,7 +3034,11 @@ Positioned _storyboardRowPressLayer({
   required StoryboardRowFramePress? onRowFramePress,
   required void Function(int frame)? onEdit,
 }) {
-  final grid = (axis: Axis.horizontal, cellExtent: () => cellExtent);
+  final cells = (
+    frameAt: frameAt,
+    axis: Axis.horizontal,
+    cellExtent: () => cellExtent,
+  );
   return Positioned.fill(
     key: key,
     child: InstantTapRegion(
@@ -3042,8 +3046,7 @@ Positioned _storyboardRowPressLayer({
       pressSeeksFor: AppInput.timelineCellPressSeeks,
       onPressDown: timelineCellDoubleTapRecord(
         layerId: layer.id,
-        grid: grid,
-        frameAt: frameAt,
+        cells: cells,
       ),
       onTap: (localPosition) {
         final frame = frameAt(localPosition);
@@ -3058,8 +3061,7 @@ Positioned _storyboardRowPressLayer({
             ? null
             : timelineCellDoubleTapActivation(
                 layerId: layer.id,
-                grid: grid,
-                frameAt: frameAt,
+                cells: cells,
                 onActivate: onEdit,
               ),
         child: const SizedBox.expand(),

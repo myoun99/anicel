@@ -1066,8 +1066,12 @@ Widget timelineRowCellsPaintArea({
     return inWindow(frameIndex) ? frameIndex : null;
   }
 
-  // …and the grid they aim with ([timelineDoubleTapAim]).
-  final aim = (axis: painter.axis, cellExtent: () => painter.frameCellExtent);
+  // …and the cells the double tap aims at ([timelineDoubleTapAim]).
+  final cells = (
+    frameAt: cellAt,
+    axis: painter.axis,
+    cellExtent: () => painter.frameCellExtent,
+  );
 
   // The pick rides the raw pointer, never the arena — see the shared
   // [InstantTapRegion], which R10 lifted out of the two copies the
@@ -1081,8 +1085,7 @@ Widget timelineRowCellsPaintArea({
     // the double-tap recognizer only reports the second tap's position.
     onPressDown: timelineCellDoubleTapRecord(
       layerId: layer.id,
-      grid: aim,
-      frameAt: cellAt,
+      cells: cells,
     ),
     onTap: (localPosition) {
       final frameIndex = painter.frameIndexAt(localPosition);
@@ -1111,8 +1114,7 @@ Widget timelineRowCellsPaintArea({
           ? null
           : timelineCellDoubleTapActivation(
               layerId: layer.id,
-              grid: aim,
-              frameAt: cellAt,
+              cells: cells,
               onActivate: (frameIndex) {
                 select(frameIndex);
                 onActivateCell(layer.id, frameIndex);

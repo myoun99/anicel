@@ -390,21 +390,28 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       (frame - geometry.value.frameStartIndex) * _cellExtent;
 
   /// A cut's block width: its frames, and at least [minBlockWidth] so a
-  /// short cut can be seen — but never past where the next cut starts
-  /// ([roomFrames] from this cut's start; null for the last cut).
+  /// short cut can be seen — but never past where the next cut starts.
   ///
   /// 🗣️유저 2026-09-26 (zoom-floor-fixed-marks-Q1, 「다음 컷 앞에서 멈춘다 …
   /// 안겹치고 … 프리미어처럼」): at I-22's ten-minute floor the 8px floor was
   /// 64 frames, and every shorter cut lay over the next one — drawn under it
   /// and pressed as itself. A row of short cuts reads frame for frame now,
   /// as Premiere's does.
-  double _widthFor(int duration, {required int? roomFrames}) {
-    final width = duration * _cellExtent;
-    final floor = roomFrames == null
+  double _widthFor(StoryboardTimelineLayoutEntry entry) {
+    final width = entry.duration * _cellExtent;
+    final next = _nextStartByCut[entry.cutId];
+    final floor = next == null
         ? minBlockWidth
-        : math.min(minBlockWidth, roomFrames * _cellExtent);
+        : math.min(minBlockWidth, (next - entry.startFrame) * _cellExtent);
     return width < floor ? floor : width;
   }
+
+  /// Where the cut after each one starts — [entries] are in track order,
+  /// and the last cut has no one to stop for.
+  late final Map<CutId, int> _nextStartByCut = {
+    for (var index = 0; index + 1 < entries.length; index += 1)
+      entries[index].cutId: entries[index + 1].startFrame,
+  };
 
   /// The frame span worth drawing — the full track under the classic
   /// contract, the bucket-derived window (shared policy) when the row is
@@ -470,18 +477,12 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// thumbnails when they are shown.
   StoryboardCutBlockVisual? _visualFor(
     StoryboardTimelineLayoutEntry entry, {
-    required int? nextStartFrame,
     required ({int startIndex, int endIndexExclusive}) window,
     required TrackFrameRangeSelection? selection,
     required CutId? hovered,
   }) {
     final left = _left(entry.startFrame);
-    final width = _widthFor(
-      entry.duration,
-      roomFrames: nextStartFrame == null
-          ? null
-          : nextStartFrame - entry.startFrame,
-    );
+    final width = _widthFor(entry);
     // A block reaches at least [minBlockWidth], so its visible end is
     // measured in pixels, not in the cut's own frames.
     final endFrame = _cellExtent <= 0
@@ -653,14 +654,9 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         : null;
     final hovered = hoveredCutId.value;
     final visuals = <StoryboardCutBlockVisual>[];
-    for (var index = 0; index < entries.length; index += 1) {
-      final entry = entries[index];
+    for (final entry in entries) {
       final visual = _visualFor(
         entry,
-        // In track order, so the next entry is the next cut on the row.
-        nextStartFrame: index + 1 < entries.length
-            ? entries[index + 1].startFrame
-            : null,
         window: window,
         selection: selection,
         hovered: hovered,
