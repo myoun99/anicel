@@ -238,16 +238,10 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
   Object get props => (scale,);
 
   // One node per labeled header (the old per-cell widgets' surface),
-  // windowed with the paint pass.
+  // windowed with the paint pass ([TimelineRulerScale.windowSemantics]).
   @override
-  SemanticsBuilderCallback get semanticsBuilder => (size) =>
-      frameWindowSemantics(
-        window: scale.visibleWindow(),
-        rectFor: scale.cellRectFor,
-        labelFor: (frameIndex) => scale.modelAt(frameIndex).label.isEmpty
-            ? null
-            : 'frame ${frameIndex + 1}',
-      );
+  SemanticsBuilderCallback get semanticsBuilder =>
+      (size) => scale.windowSemantics();
 }
 
 /// How a strip sets its frame NUMBER at a cadence: the type alone — the ink
@@ -661,6 +655,17 @@ final class TimelineRulerScale {
     }
     return widest;
   }
+
+  /// The strip's a11y surface: one node per frame it writes a number on,
+  /// windowed and walked like its paint ([writingStep]) — the ruler's
+  /// across and the rail's down, one code.
+  List<CustomPainterSemantics> windowSemantics() => frameWindowSemantics(
+    window: visibleWindow(),
+    step: writingStep,
+    rectFor: cellRectFor,
+    labelFor: (frameIndex) =>
+        modelAt(frameIndex).label.isEmpty ? null : 'frame ${frameIndex + 1}',
+  );
 
   /// The step every frame this strip writes at is a multiple of — the gcd
   /// of the number cadence ([labelEveryFrames]) and the seconds'

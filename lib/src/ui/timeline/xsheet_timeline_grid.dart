@@ -15,7 +15,6 @@ import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'rail_column_swipe.dart';
 import 'layer_rail_window.dart';
-import 'frame_window_semantics.dart';
 
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
@@ -1472,14 +1471,13 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
   @override
   Object get props => (scale,);
 
-  // Every row gets a node — the rail numbers every frame.
+  // ↩️Every row got a node, because "the rail numbers every frame" — which
+  // stopped being so when its numbers began to thin with the ruler's
+  // (R9 #4). A node stands where a number is written, the ruler's code
+  // ([TimelineRulerScale.windowSemantics]).
   @override
-  SemanticsBuilderCallback get semanticsBuilder => (size) =>
-      frameWindowSemantics(
-        window: scale.visibleWindow(),
-        rectFor: scale.cellRectFor,
-        labelFor: (frameIndex) => 'frame ${frameIndex + 1}',
-      );
+  SemanticsBuilderCallback get semanticsBuilder =>
+      (size) => scale.windowSemantics();
 }
 
 /// One cell of the section band above the layer headers: the paper sheet's

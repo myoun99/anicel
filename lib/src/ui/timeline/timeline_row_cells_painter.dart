@@ -24,6 +24,7 @@ import 'timeline_beat_lines.dart'
     show
         TimelineGridLaw,
         timelineBlockFrameLine,
+        timelineFrameLineStep,
         timelineGridGroundOver,
         timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
@@ -31,6 +32,7 @@ import 'timeline_exposure_block_visual.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
+import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'timeline_grid_tile_store.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
@@ -491,8 +493,15 @@ class TimelineRowCellsPainter extends CustomPainter
       // Through [to] itself: a second line is 1.5 wide about a centre half
       // a pixel past its boundary, so the line starting frame [to] leans a
       // quarter pixel back into this stretch, and a tile ending here owns
-      // that sliver.
-      for (var frame = from; frame <= to; frame += 1) {
+      // that sliver. Only the boundaries a line can stand on are asked
+      // ([timelineFrameLineStep]) — the sheet's and the ruler's walk; I-22's
+      // floor puts ~19,000 frames in a window.
+      final step = timelineFrameLineStep(frameCellExtent, framesPerSecond);
+      for (
+        var frame = timelineFirstOnStride(from, step);
+        frame <= to;
+        frame += step
+      ) {
         final line = _blockFrameLineAt(frame);
         if (line != null) {
           lines.add(line);

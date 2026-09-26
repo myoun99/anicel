@@ -629,6 +629,28 @@ void main() {
       }
     });
 
+    test('both strips give a node where they write a number and nowhere '
+        'else — the rail\'s every row went with its every-row numbers', () {
+      for (final axis in Axis.values) {
+        final strip = wide(axis: axis, frameStartIndex: 7);
+        final nodes =
+            (axis == Axis.horizontal
+                    ? TimelineFrameRulerPainter(scale: strip)
+                    : XSheetFrameRailPainter(scale: strip))
+                .semanticsBuilder!(const Size(1800, 28));
+        final numbered = [
+          for (var frame = 7; frame < 14400; frame += 1)
+            if (strip.modelAt(frame).label.isNotEmpty) 'frame ${frame + 1}',
+        ];
+        expect(numbered, isNotEmpty, reason: 'the premise: $axis numbers');
+        expect(
+          nodes.map((node) => node.properties.label),
+          numbered,
+          reason: '$axis',
+        );
+      }
+    });
+
     test('the paper is one rect per ground: the selected cell and the '
         'playback end are its only edges', () {
       final strip = scale(
