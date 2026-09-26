@@ -48,8 +48,9 @@ class ProjectSettings {
   }
 
   /// One undo step; no-op when unchanged. The BACKDROP (R3b): the stage's
-  /// floor — what a fade reveals and what an opaque export bakes where
-  /// nothing covers. Its alpha is real since F-114, like the other planes'.
+  /// floor — what a translucent picture reveals (never a fade's screen,
+  /// F-192) and what an opaque export bakes where nothing covers. Its alpha
+  /// is real since F-114, like the other planes'.
   void setProjectBackdrop(int argb) {
     _project.cutCommandCoordinator.setProjectBackdrop(argb);
     _changes.notifyChanged();

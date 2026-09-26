@@ -297,7 +297,8 @@ class ExportFrameRenderer {
   /// sized canvases in (the camera frame is that space). The bake mirrors
   /// playback: the finished frame posed over the output space (V track
   /// Transform, AE precomp semantics), thinned by the fade (R3b:
-  /// transparency over the backdrop, no target-color wash). PNG sequences
+  /// transparency over the backdrop) and covered by a one-sided
+  /// transition's own black or white screen (F-192). PNG sequences
   /// deliberately stay unposed and unfaded (they are compositing
   /// sources).
   ///

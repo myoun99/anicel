@@ -70,10 +70,10 @@ class CutMetadata {
     if (thumbnailFrameIndex != null) 'thumbnailFrame': thumbnailFrameIndex,
     if (!mark.isNone) 'mark': mark.toJson(),
     if (staff.isNotEmpty) 'staff': {...staff},
-    // The per-cut fade TARGET (FO/WO) is gone (R3b): the fade is
-    // transparency toward the project backdrop, and a white-out is a
-    // white cut on a lower track — legacy 'fadeTarget' keys are ignored
-    // on read.
+    // The per-cut fade TARGET (FO/WO) is gone (R3b) — legacy 'fadeTarget'
+    // keys are ignored on read. ↩️F-192: the black or white a fade clears
+    // from or closes to is the TERM's (F.x black, W.x white —
+    // `transitionScreenColorOf`), not the cut's and not the backdrop's.
   };
 
   factory CutMetadata.fromJson(Map<String, dynamic> json) {

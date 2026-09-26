@@ -209,8 +209,8 @@ class TrackStackContribution {
 /// That is this formula's `i == 0` case, and it generalises: with
 /// `S_i = below + Σ_{j≤i} a_j` and `w_i = a_i / S_i`, the result's
 /// coefficient for each picture is exactly `a_i` and the floor keeps
-/// `1 - Σa`. A lone F.O into a gap therefore still fades to the backdrop
-/// (`w = a`), while an O.L's pair does not (`w = 1, t`).
+/// `1 - Σa`. A lone O.L half into a gap therefore still thins to the
+/// backdrop (`w = a`), while an O.L's pair does not (`w = 1, t`).
 ///
 /// [alphas] summing past 1 is not a mix but plain layering (independent
 /// tracks), and the alphas are returned unchanged — the premise the

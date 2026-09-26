@@ -127,7 +127,8 @@ class CanvasTrackStackView extends StatefulWidget {
   final ProjectBackground background;
 
   /// The BACKDROP (R3b): the panel-wide floor this stack sits on — what
-  /// an uncovered frame shows (the old void) and what every fade reveals.
+  /// an uncovered frame shows (the old void) and what a translucent cut
+  /// reveals. A fade lays its own screen instead (F-192).
   final int backdropArgb;
 
   /// The bottom covered track's stage apron (R3b): fills its camera frame
