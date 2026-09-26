@@ -14,6 +14,7 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import 'helpers/native_engine_path.dart';
 import 'helpers/temp_dir.dart';
@@ -147,6 +148,12 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // in the same callback: `deleteAfterSessionEnds` in
   // `test/helpers/project_scratch_folder.dart`.
   setUp(() => addTearDown(OpenProjectFile.instance.releaseAll));
+  // 🚨**THE TIMELINE TILE STORE IS ONE PER PROCESS**, and a raster a test
+  // queued drained inside the NEXT test — against the earlier test's
+  // painter and resolvers, in the next test's zone (2026-09-26: a rows test
+  // failed on a raster the test before it had queued). A test ends with
+  // the store empty; the drain it scheduled then finds nothing.
+  tearDown(TimelineGridTileStore.instance.clear);
   try {
     await testMain();
   } finally {
