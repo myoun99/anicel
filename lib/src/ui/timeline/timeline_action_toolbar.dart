@@ -1097,8 +1097,13 @@ class TimelineActionToolbar extends StatelessWidget {
                 // text) — and colour alone is the standing rule for
                 // selection.
                 color: input.autoCreateFrameOnDraw ? AppColors.accent : null,
-                onPressed: () => AppInput.settings.value = input.copyWith(
-                  autoCreateFrameOnDraw: !input.autoCreateFrameOnDraw,
+                // F-191: through the setting's own door, which writes it
+                // down. ↩️It set the live notifier alone, so the toggle came
+                // back off (or on) with every restart.
+                onPressed: () => session.setInputSettings(
+                  input.copyWith(
+                    autoCreateFrameOnDraw: !input.autoCreateFrameOnDraw,
+                  ),
                 ),
               ),
             ),

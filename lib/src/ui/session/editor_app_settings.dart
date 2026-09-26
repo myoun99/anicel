@@ -98,10 +98,10 @@ class EditorAppSettings {
   /// The LIVE value lives app-wide on [AppFrameGridSettings.settings] — every
   /// grid host's law reads it there; the session only restores/persists.
   Future<void> _restoreFrameGridSettings() async {
-    final restored = await _frameGridSettingsStore?.load();
-    if (restored != null) {
-      AppFrameGridSettings.settings.value = restored;
-    }
+    _restored(
+      AppFrameGridSettings.settings,
+      await _frameGridSettingsStore?.load(),
+    );
   }
 
   void setFrameGridSettings(AppFrameGridSettings settings) => _publish(
@@ -133,10 +133,7 @@ class EditorAppSettings {
       ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
 
   Future<void> _restoreOnionSkinSettings() async {
-    final restored = await _onionSkinSettingsStore?.load();
-    if (restored != null) {
-      onionSkinSettings.value = restored;
-    }
+    _restored(onionSkinSettings, await _onionSkinSettingsStore?.load());
   }
 
   void setOnionSkinSettings(OnionSkinSettings settings) => _publish(
@@ -157,22 +154,45 @@ class EditorAppSettings {
   /// that did not change rebuilds the whole app, and the write behind it
   /// is a disk touch per step of a slider drag.
   ///
+  /// 🚨F-191 (유저 2026-09-27): 「필압곡선이나 속도곡선이 앱 재기동하면
+  /// 초기화」. ↩️The guard asked the LIVE notifier whether the value was
+  /// already there — and a slider previews its drag through that very
+  /// notifier, so by the release the value WAS there, the commit found
+  /// nothing to do, and the file never heard of it. What the app draws
+  /// from and what the file holds are two answers, and one notifier cannot
+  /// give both: the notifier fires only on a change by itself, and the
+  /// save now asks [_held].
+  ///
   /// ⚠️THE SAVE IS UNAWAITED ON PURPOSE — a settings write must not make
   /// the caller wait on the disk, and the notifier has already published
   /// what the app draws from. [save] is null in tests (no store injected),
   /// which keeps the in-memory defaults.
-  static void _publish<T>(
+  void _publish<T>(
     ValueNotifier<T> live,
     T next,
     Future<void> Function(T value)? save,
   ) {
-    if (next == live.value) {
+    live.value = next;
+    if (save == null || (_held.containsKey(live) && _held[live] == next)) {
       return;
     }
-    live.value = next;
-    if (save != null) {
-      unawaited(save(next));
+    _held[live] = next;
+    unawaited(save(next));
+  }
+
+  /// What each store HOLDS, by the notifier it feeds: the value it loaded
+  /// at restore or was last handed to save. Nothing here for a store that
+  /// has not been read or written yet — its first commit writes.
+  final Map<ValueNotifier<Object?>, Object?> _held = {};
+
+  /// A store's value back from disk: live, and held — [_publish]'s guard
+  /// asks the latter.
+  void _restored<T>(ValueNotifier<T> live, T? restored) {
+    if (restored == null) {
+      return;
     }
+    live.value = restored;
+    _held[live] = restored;
   }
 
   /// ⚠️**Persist only — there is no `_restoreUiScale` above.** Every other
@@ -236,11 +256,14 @@ class EditorAppSettings {
     // means the device's language for the program; the notation keeps its
     // default. ⛔Nothing is written down: the file is the user's choice, so
     // a device that changes its language is followed until they make one.
-    languageSettings.value =
-        await store.load() ??
-        AppLanguageSettings(
-          programLanguage: AppLanguage.forDevice(_deviceLanguageCodes()),
-        );
+    final loaded = await store.load();
+    if (loaded != null) {
+      _restored(languageSettings, loaded);
+      return;
+    }
+    languageSettings.value = AppLanguageSettings(
+      programLanguage: AppLanguage.forDevice(_deviceLanguageCodes()),
+    );
   }
 
   void setLanguageSettings(AppLanguageSettings settings) =>
@@ -254,10 +277,7 @@ class EditorAppSettings {
   /// The LIVE accents live app-wide on [AppColors.accentSettings] (the
   /// theme root rebuilds off it); the session only restores/persists.
   Future<void> _restoreAccentSettings() async {
-    final restored = await _accentSettingsStore?.load();
-    if (restored != null) {
-      AppColors.accentSettings.value = restored;
-    }
+    _restored(AppColors.accentSettings, await _accentSettingsStore?.load());
   }
 
   void setAccentSettings(AppAccentSettings settings) =>
@@ -273,10 +293,7 @@ class EditorAppSettings {
   /// travels with the project (R28 #9 reversed by the user, 2026-07-29).
   /// This restore keeps the stored default alive for the next project.
   Future<void> _restoreWorkspaceColors() async {
-    final restored = await _workspaceColorsStore?.load();
-    if (restored != null) {
-      AppWorkspaceColors.settings.value = restored;
-    }
+    _restored(AppWorkspaceColors.settings, await _workspaceColorsStore?.load());
   }
 
   /// Remembers a pasteboard choice as the app-level default for the NEXT
@@ -301,10 +318,7 @@ class EditorAppSettings {
     // that demotion is this side's half. Without it the dead choice
     // reloads on the next launch — with no working pointer to undo it.
     WintabPenService.instance.persistSettings = setInputSettings;
-    final restored = await _inputSettingsStore?.load();
-    if (restored != null) {
-      AppInput.settings.value = restored;
-    }
+    _restored(AppInput.settings, await _inputSettingsStore?.load());
   }
 
   void setInputSettings(AppInputSettings settings) =>
@@ -316,10 +330,7 @@ class EditorAppSettings {
   final AppSaveSettingsStore? _saveSettingsStore;
 
   Future<void> _restoreSaveSettings() async {
-    final restored = await _saveSettingsStore?.load();
-    if (restored != null) {
-      AppSave.settings.value = restored;
-    }
+    _restored(AppSave.settings, await _saveSettingsStore?.load());
   }
 
   void setSaveSettings(AppSaveSettings settings) =>
@@ -331,10 +342,7 @@ class EditorAppSettings {
   final AppMemorySettingsStore? _memorySettingsStore;
 
   Future<void> _restoreMemorySettings() async {
-    final restored = await _memorySettingsStore?.load();
-    if (restored != null) {
-      AppMemory.settings.value = restored;
-    }
+    _restored(AppMemory.settings, await _memorySettingsStore?.load());
   }
 
   void setMemorySettings(AppMemorySettings settings) =>
@@ -352,10 +360,7 @@ class EditorAppSettings {
       ValueNotifier<AudioSyncSettings>(AudioSyncSettings.defaults);
 
   Future<void> _restoreAudioSyncSettings() async {
-    final restored = await _audioSyncSettingsStore?.load();
-    if (restored != null) {
-      audioSyncSettings.value = restored;
-    }
+    _restored(audioSyncSettings, await _audioSyncSettingsStore?.load());
   }
 
   void setAudioSyncSettings(AudioSyncSettings settings) =>
