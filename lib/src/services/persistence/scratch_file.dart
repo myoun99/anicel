@@ -57,25 +57,32 @@ class ScratchFile {
   /// ⚠️Null as well when [blocks] ended SHORT: a source that stops early
   /// ends its stream without an error, and a short file must never wear
   /// the real name.
+  ///
+  /// 🚨**THE HANDLE IS CLOSED — AND AWAITED — BEFORE THE NEIGHBOUR GOES.**
+  /// This wrote through `openWrite` + `addStream` until 09-26. dart:io's
+  /// file sink answers a failing source by asking its file to close
+  /// WITHOUT waiting (`_FileStreamConsumer.addStream`), so [remove] ran
+  /// while the handle could still be open — Windows will not delete an
+  /// open file, [remove] is silent, and the `.part` stayed. CI's Windows
+  /// shard caught it once (09-26); pinned to one core the old way left it
+  /// 34 times in 300, this way 0 in 300.
   static Future<String?> writeStreamed(
     String path,
     Stream<List<int>> blocks, {
     required int length,
   }) async {
     final partPath = '$path.part';
-    IOSink? sink;
+    RandomAccessFile? part;
     try {
       File(path).parent.createSync(recursive: true);
       var arrived = 0;
-      sink = File(partPath).openWrite();
-      await sink.addStream(
-        blocks.map((block) {
-          arrived += block.length;
-          return block;
-        }),
-      );
-      await sink.close();
-      sink = null;
+      part = await File(partPath).open(mode: FileMode.write);
+      await for (final block in blocks) {
+        arrived += block.length;
+        await part.writeFrom(block);
+      }
+      await part.close();
+      part = null;
       if (arrived != length) {
         remove(partPath);
         return null;
@@ -84,7 +91,7 @@ class ScratchFile {
       return path;
     } on Object {
       try {
-        await sink?.close();
+        await part?.close();
       } on Object {
         // The write already failed; the neighbour goes below.
       }
