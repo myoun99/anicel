@@ -3375,6 +3375,7 @@ class EditorSessionManager extends ChangeNotifier
     solo: visibilitySolo,
     failedCopies: failedSaveCopies,
     keepStandingShown: standing.keepStandingShown,
+    playback: playbackRig,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not
