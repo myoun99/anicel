@@ -108,7 +108,12 @@ const _mayNameTheSession = <String, String>{
 /// of the cycle edges — the span reads what `ActiveCutControllers` builds —
 /// so its two askers take the QUESTION as a closure, the way the
 /// controllers already take the span's frame count.
-const _sessionInternalsMembers = 34;
+/// 34 → 31 (2026-09-27, the tenth family): three members nobody asked
+/// through the role — the delete subject (the session keeps it, the panels
+/// and tests read it there), the lane-group reset and the SE window (two
+/// second names for their owners' verbs, deleted: callers say
+/// `session.laneVerbs` and `session.trackSe`).
+const _sessionInternalsMembers = 31;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

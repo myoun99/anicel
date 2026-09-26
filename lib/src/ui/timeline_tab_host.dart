@@ -955,7 +955,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // playhead, or a live lane range's keys) so both grids and the
             // storyboard ask the same question.
             onResetLaneGroup: (layer, lane) =>
-                _session.resetLaneGroup(layer.id, lane.laneId),
+                _session.laneVerbs.resetLaneGroup(layer.id, lane.laneId),
             timelineActionToolbar: timelineToolbar,
           );
           // The GAP empty state (UI-R9 #3): no cut selected — no rows, no

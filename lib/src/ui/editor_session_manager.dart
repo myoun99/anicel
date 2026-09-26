@@ -1136,8 +1136,6 @@ class EditorSessionManager extends ChangeNotifier
   late final TrackSeDisplay trackSe = TrackSeDisplay(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, transitions: transitions, voiceRecording: voiceRecording);
 
   @override
-  TrackSeWindow get trackSeWindow => trackSe.trackSeWindow;
-  @override
   bool isTrackSeLayerId(LayerId layerId) => trackSe.isTrackSeLayerId(layerId);
   @override
   int rowAxisOffset(LayerId layerId) => trackSe.rowAxisOffset(layerId);
@@ -1703,9 +1701,6 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
   );
 
-  @override
-  bool resetLaneGroup(LayerId layerId, String headerLaneId) =>
-      laneVerbs.resetLaneGroup(layerId, headerLaneId);
   // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,
   // `currentLaneKeyAddress`, `setLaneKeyName`, `linkLaneKeyName`) retired
   // when the RANGE form arrived: a single key is the one-frame span at the
@@ -2036,7 +2031,7 @@ class EditorSessionManager extends ChangeNotifier
     // 🚨An SE row is the TRACK's, so [layerById] — which walks the open
     // cut — never finds one. These are the doors `landSound` itself uses.
     seRowFor: trackSeGlobalLayerById,
-    seWindow: () => trackSeWindow,
+    seWindow: () => trackSe.trackSeWindow,
   );
 
   /// Where a file being dragged stands on a row — the answer the silhouette
@@ -2732,7 +2727,7 @@ class EditorSessionManager extends ChangeNotifier
       return null;
     }
     final global = trackSeGlobalLayerById(layerId);
-    return global == null ? null : trackSeWindow.displayLayer(global);
+    return global == null ? null : trackSe.trackSeWindow.displayLayer(global);
   }
 
   /// Maps a DISPLAY block start to the layer's COMMIT form key: identity
@@ -2746,7 +2741,7 @@ class EditorSessionManager extends ChangeNotifier
     if (global == null) {
       return displayStart;
     }
-    return trackSeWindow.globalBlockStartFor(global, displayStart);
+    return trackSe.trackSeWindow.globalBlockStartFor(global, displayStart);
   }
 
   /// The layer ops COMMIT against: the GLOBAL form for track-SE rows.
@@ -2905,7 +2900,6 @@ class EditorSessionManager extends ChangeNotifier
   /// places before this (the cut menu, the layer menu, a loose layer button),
   /// each hard-wired to one noun, which is why the same word did different
   /// things depending on where you reached for it.
-  @override
   PillSubject get deleteSubject => deleteSubjectFor(cutsAreThisPanels: true);
 
   /// [deleteSubject], asked of a PANEL — see [editInstanceSubjectFor] for

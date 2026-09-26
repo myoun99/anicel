@@ -969,7 +969,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           description: 'Toggle ${lane.label}',
                         ),
                     onResetLaneGroup: (layer, lane) =>
-                        _session.resetLaneGroup(layer.id, lane.laneId),
+                        _session.laneVerbs.resetLaneGroup(
+                          layer.id,
+                          lane.laneId,
+                        ),
                     poseDisplaySize: _session.camera.cameraFrameSize,
                     // No onSetCutFade: the fade handles went with the V row's
                     // transform. F.I/F.O spans on the transition row are the

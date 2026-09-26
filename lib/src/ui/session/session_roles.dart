@@ -25,14 +25,12 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/canvas_selection_region.dart';
 import '../../models/layer_id.dart';
-import '../../models/pill_subject.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
 import '../../models/track.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
-import '../../models/track_se_window.dart';
 import '../../models/track_frame_axis.dart';
 import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/cut_reorder_planner.dart';
@@ -170,7 +168,6 @@ abstract interface class SessionInternals {
   bool Function()? get canvasHasSelection;
   void Function()? get clearCanvasSelection;
   TimelineRowAddress get currentRow;
-  PillSubject get deleteSubject;
   ValueNotifier<TimelineDragPreview?> get dragPreview;
   ValueNotifier<int> get editingFrameCursor;
   bool get strokeInFlight;
@@ -180,7 +177,6 @@ abstract interface class SessionInternals {
   PixelVerbCanvas Function()? get pixelVerbCanvas;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   PixelVerbSubject get pixelVerbSubject;
-  bool resetLaneGroup(LayerId layerId, String headerLaneId);
   bool rowIsSelected(TimelineRowAddress row);
   void selectLayer(LayerId layerId);
   void selectTrackCutAtPlayhead(TrackId trackId);
@@ -191,7 +187,6 @@ abstract interface class SessionInternals {
     int? frameIndex,
     int? globalFrameIndex,
   });
-  TrackSeWindow get trackSeWindow;
   void updateActiveCutCameraTrack(
     TransformTrack track, {
     String description = 'Edit camera keyframes',
