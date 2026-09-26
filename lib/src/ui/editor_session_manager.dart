@@ -70,7 +70,6 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/cut_reorder_planner.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -249,7 +248,6 @@ class EditorSessionManager extends ChangeNotifier
   /// keeps and why the live values sit on app-wide notifiers instead.
   ///
   /// Everything below is this session's unchanged face on it.
-  @override
   final EditorAppSettings appSettings;
 
   /// Whether [appSettings] is this session's own to let go of: the app's
@@ -380,7 +378,7 @@ class EditorSessionManager extends ChangeNotifier
   late final ProjectSettings projectSettings = ProjectSettings(
     project: this,
     changes: this,
-    internals: this,
+    appSettings: appSettings,
   );
 
   // ── every pixel this session is holding: its own object ─────────────
@@ -463,7 +461,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     timeline: this,
-    internals: this,
+    appSettings: appSettings,
     soloedSeLayerIds: visibilitySolo.soloedSeLayerIds,
     renderCaches: renderCaches,
     settings: projectSettings,
@@ -585,8 +583,6 @@ class EditorSessionManager extends ChangeNotifier
   );
   @override
   late final CutCommandCoordinator cutCommandCoordinator;
-  @override
-  final CutReorderPlanner cutReorderPlanner = const CutReorderPlanner();
 
   // ── the active cut's two controllers: their own object ──────────────
   //

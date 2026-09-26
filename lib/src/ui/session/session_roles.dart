@@ -9,7 +9,6 @@
 // travel is narrower roles, and a member no collaborator uses is deleted.
 
 import 'package:flutter/foundation.dart';
-import 'editor_app_settings.dart';
 import '../../services/editing/editing_session_state.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
@@ -29,7 +28,6 @@ import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
 import '../../models/track_frame_axis.dart';
 import '../../services/commands/cut_command_coordinator.dart';
-import '../../services/commands/cut_reorder_planner.dart';
 import '../../services/history_manager.dart';
 import '../../services/project_repository.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
@@ -126,10 +124,8 @@ abstract interface class TimelineAccess {
 /// collaborator that uses it, becomes a role, or is injected as the
 /// sibling it really is. ⛔Nothing is added here.
 abstract interface class SessionInternals {
-  EditorAppSettings get appSettings;
   bool blockMoveEligible(LayerId layerId);
   int commitBlockStart(LayerId layerId, int displayStart);
-  CutReorderPlanner get cutReorderPlanner;
   bool get disposed;
   Layer? get targetLayerForKindToggle;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);

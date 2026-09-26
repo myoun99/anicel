@@ -129,7 +129,11 @@ const _mayNameTheSession = <String, String>{
 /// `CellInstances` names no internals now either) and the drawing-start
 /// status, which only a status-text chain nobody read any more asked
 /// (`currentCellStatusText` and two siblings had no caller; deleted whole).
-const _sessionInternalsMembers = 22;
+/// 22 → 20 (2026-09-27, the twelfth family): the app settings are a
+/// sibling `PlaybackRig` and `ProjectSettings` take by constructor — the
+/// only thing either asked, so neither names internals now — and the cut
+/// reorder planner, stateless and asked only by `CutVerbs`, is theirs.
+const _sessionInternalsMembers = 20;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

@@ -75,6 +75,10 @@ class CutVerbs {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
+  /// Where a cut may step to and which index that is. Stateless, and asked
+  /// by nobody but these verbs — so it is theirs, not a name on the session.
+  static const _cutReorderPlanner = CutReorderPlanner();
+
   void createCut() {
     final plan = _placement.cutCreationPlan;
     if (plan == null) {
@@ -217,7 +221,7 @@ class CutVerbs {
   bool _canMoveActiveCut(CutMoveDirection direction) {
     final position = _activeCutPositionOrNull;
     return position != null &&
-        _internals.cutReorderPlanner.canMove(position, direction);
+        _cutReorderPlanner.canMove(position, direction);
   }
 
   /// ⛔ONE MOVE, WITH A SIGN. The two verbs used to be written out, guard
@@ -225,13 +229,13 @@ class CutVerbs {
   /// the reorder would have done it in one direction only.
   void _moveActiveCut(CutMoveDirection direction) {
     final position = _activeCutPosition;
-    if (!_internals.cutReorderPlanner.canMove(position, direction)) {
+    if (!_cutReorderPlanner.canMove(position, direction)) {
       return;
     }
     _project.cutCommandCoordinator.reorderCut(
       trackId: position.trackId,
       cutId: position.cutId,
-      newIndex: _internals.cutReorderPlanner.moveTargetIndex(
+      newIndex: _cutReorderPlanner.moveTargetIndex(
         position,
         direction,
       ),
