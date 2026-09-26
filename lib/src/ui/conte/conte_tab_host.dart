@@ -33,6 +33,7 @@ import '../sheet/sheet_strata.dart';
 import 'conte_fonts.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
+import 'conte_picture_ink.dart';
 import 'conte_sheet_builder.dart';
 import 'conte_words_in.dart';
 
@@ -56,6 +57,7 @@ class ConteTabHost extends StatefulWidget {
     this.viewportController,
     this.onViewportChanged,
     this.inkController,
+    this.pictures,
     this.brushToolState,
     this.brushAllowed = false,
     this.onBrushAllowedChanged,
@@ -91,6 +93,10 @@ class ConteTabHost extends StatefulWidget {
   /// Conte ink store, owned above the tab group so annotations survive
   /// tab switches. Null renders the sheet read-only.
   final ConteInkController? inkController;
+
+  /// The cels the cells' pictures draw into — the canvas's own. Null
+  /// leaves the pictures read-only while the sheet takes ink.
+  final ContePictureInkController? pictures;
 
   /// The editor's current brush/eraser LISTENABLE (R18 UI-3): only the
   /// ink overlay subscribes — tool switches never rebuild the document.
@@ -392,6 +398,16 @@ class _ConteTabHostState extends State<ConteTabHost> {
         viewport: viewport,
         strokeActive: _strokeHold,
         cacheInvalidationSink: _cacheInvalidationSink,
+        pictures: widget.pictures,
+        pictureWindows: widget.pictures == null
+            ? const []
+            : contePictureWindows(page, (
+                cutOf: _session.cutById,
+                celKeyOf: _session.brushFrameKeyForCut,
+                cameraPoseOf: _session.camera.cameraPoseForCut,
+                cameraFrameSize: _session.camera.cameraFrameSize,
+              )),
+        pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
       ),
     );
   }

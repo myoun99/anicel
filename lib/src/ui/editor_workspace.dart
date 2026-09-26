@@ -95,6 +95,7 @@ import 'widgets/superellipse_clip.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'conte/conte_ink.dart';
+import 'conte/conte_picture_ink.dart';
 import 'conte/conte_tab_host.dart';
 import 'envelope/cut_envelope_ink.dart';
 import 'envelope/cut_envelope_tab_host.dart';

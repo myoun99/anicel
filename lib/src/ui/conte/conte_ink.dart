@@ -16,6 +16,7 @@ import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
 import '../sheet/sheet_ink_layer.dart';
 import '../sheet/sheet_ink_controller.dart';
+import 'conte_picture_ink.dart';
 
 /// Which conte ink plane a stroke lands on.
 enum ConteInkPlane {
@@ -130,8 +131,9 @@ List<SheetInkWindow> conteInkWindows(ContePageLayout page) => [
 ];
 
 /// The conte's ink input/display stack: every window hosts the SAME
-/// interactive brush view the drawing canvas uses, windowed onto its ink
-/// surface by a derived viewport ([SheetInkLayer]).
+/// interactive brush view the drawing canvas uses, windowed onto its
+/// surface by a derived viewport ([SheetInkLayer]) — the sheet's own ink
+/// and, above it, the pictures drawing into their cels.
 class ConteInkLayer extends StatelessWidget {
   const ConteInkLayer({
     super.key,
@@ -142,6 +144,9 @@ class ConteInkLayer extends StatelessWidget {
     required this.viewport,
     required this.strokeActive,
     this.cacheInvalidationSink,
+    this.pictures,
+    this.pictureWindows = const [],
+    this.pictureInvalidationSink,
   });
 
   final ConteInkController controller;
@@ -162,27 +167,53 @@ class ConteInkLayer extends StatelessWidget {
 
   final CacheInvalidationSink? cacheInvalidationSink;
 
+  /// The cels the pictures draw into, and the windows they draw through
+  /// ([contePictureWindows]).
+  final ContePictureInkController? pictures;
+  final List<SheetPictureWindow> pictureWindows;
+
+  /// Where a picture's stroke tells the caches which cel changed — the
+  /// canvas's own sink: the cel is the canvas's, and the pictures and the
+  /// playback that show it have to hear.
+  final CacheInvalidationSink? pictureInvalidationSink;
+
   @override
   Widget build(BuildContext context) {
     return SheetInkLayer(
-      windows: conteInkWindows(page),
+      windows: [...conteInkWindows(page), ...pictureWindows],
       keyPrefix: 'conte',
       viewport: viewport,
       brushToolState: brushToolState,
       strokeActive: strokeActive,
       history: historyManager.gestures,
-      // The plane axis stays HERE, with the controller that has one.
-      sessionStateFor: (window) => controller.sessionStateFor(
-        window.plane! as ConteInkPlane,
-        window.key,
-      ),
-      onStrokeCommitted: (window, strokeData) => controller.commitStroke(
-        plane: window.plane! as ConteInkPlane,
-        key: window.key,
-        strokeData: strokeData,
-        historyManager: historyManager,
-        cacheInvalidationSink: cacheInvalidationSink,
-      ),
+      // The plane axis stays HERE, with the controllers that have one: a
+      // picture's plane is its cel's canvas size, the ink's is its plane.
+      sessionStateFor: (window) => switch (window.plane) {
+        final CanvasSize size => pictures!.sessionStateFor(size, window.key),
+        final plane => controller.sessionStateFor(
+          plane! as ConteInkPlane,
+          window.key,
+        ),
+      },
+      onStrokeCommitted: (window, strokeData) {
+        if (window.plane case final CanvasSize size) {
+          pictures!.commitStroke(
+            plane: size,
+            key: window.key,
+            strokeData: strokeData,
+            historyManager: historyManager,
+            cacheInvalidationSink: pictureInvalidationSink,
+          );
+          return;
+        }
+        controller.commitStroke(
+          plane: window.plane! as ConteInkPlane,
+          key: window.key,
+          strokeData: strokeData,
+          historyManager: historyManager,
+          cacheInvalidationSink: cacheInvalidationSink,
+        );
+      },
     );
   }
 }

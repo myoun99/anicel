@@ -4,6 +4,8 @@ import 'package:flutter/rendering.dart';
 
 import '../../models/brush_edit_canvas_input_settings.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_point.dart';
+import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
@@ -14,8 +16,60 @@ import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
+import '../../services/viewport_transform_matrix.dart';
 import '../brush/brush_tool_state.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
+
+/// A window the sheet's brush draws through: where it sits on the paper,
+/// how the brush sees its surface, and which of that surface's pixels it
+/// can show — for the sheet's own ink ([SheetInkWindow]) and for a picture
+/// that draws into a cel ([SheetPictureWindow]) alike, so [SheetInkLayer]
+/// asks nothing about which one it holds.
+@immutable
+sealed class SheetWindow {
+  const SheetWindow({required this.id, required this.key, this.plane});
+
+  /// WHICH of the panel's planes this window belongs to — the timesheet's
+  /// page/strip, the conte's paper/cell/picture. ⛔This layer never reads
+  /// it: it hands the window back to [SheetInkLayer.sessionStateFor] and
+  /// [SheetInkLayer.onStrokeCommitted], and the panel that made the window
+  /// is the only thing that knows what its planes mean. A sheet with one
+  /// plane (the envelope) leaves it null.
+  final Object? plane;
+
+  /// Identifies the WINDOW, not the surface.
+  ///
+  /// The same strip band surface appears through TWO windows on a paged
+  /// timesheet (the page's left and right halves), so the frame key cannot
+  /// stand in for this.
+  final String id;
+
+  final BrushFrameKey key;
+
+  /// The window's rect in the sheet's document space.
+  Rect get documentRect;
+
+  /// The viewport the interactive brush view needs so surface pixel (x, y)
+  /// lands exactly where the sheet shows it.
+  CanvasViewport inkViewport(CanvasViewport panelViewport);
+
+  /// [paper], a rect in the sheet's document space, in this window's
+  /// SURFACE pixels.
+  CanvasSelectionShape surfaceShapeOf(Rect paper);
+
+  /// Which of its surface's pixels this window shows at all, before the
+  /// windows stacked above it take theirs ([sheetInkRegions]).
+  CanvasSelectionRegion? get shows;
+
+  /// The window's on-screen rect under the panel transform — what its view
+  /// is clipped to on screen.
+  Rect screenRect(CanvasViewport panelViewport) => Rect.fromLTWH(
+    panelViewport.panX + panelViewport.zoom * documentRect.left,
+    panelViewport.panY + panelViewport.zoom * documentRect.top,
+    panelViewport.zoom * documentRect.width,
+    panelViewport.zoom * documentRect.height,
+  );
+}
 
 /// 🚨★★★ONE ON-SHEET INK WINDOW, for every sheet that has them.
 ///
@@ -32,13 +86,12 @@ import '../canvas/interactive_brush_edit_canvas_view.dart';
 /// timesheet maps [inkOffset] there instead. With `inkOffset` at the
 /// origin the timesheet's expression IS the other two, term for term — so
 /// this is one law with a default, not a law with an exception.
-@immutable
-class SheetInkWindow {
+class SheetInkWindow extends SheetWindow {
   const SheetInkWindow({
-    required this.id,
-    required this.key,
+    required super.id,
+    required super.key,
     required this.placement,
-    this.plane,
+    super.plane,
   });
 
   /// The window of an ink mark a sheet's walk yields — the walk the sheet's
@@ -46,28 +99,11 @@ class SheetInkWindow {
   SheetInkWindow.of(SheetInk ink, {required String id, Object? plane})
     : this(id: id, key: ink.key, placement: ink.placement, plane: plane);
 
-  /// WHICH of the panel's ink planes this window belongs to — the
-  /// timesheet's page/strip, the conte's paper/cell. ⛔This layer never
-  /// reads it: it hands the window back to [SheetInkLayer.sessionStateFor]
-  /// and [SheetInkLayer.onStrokeCommitted], and the panel that made the
-  /// window is the only thing that knows what its planes mean. A sheet
-  /// with one plane (the envelope) leaves it null.
-  final Object? plane;
-
-  /// Identifies the WINDOW, not the surface.
-  ///
-  /// The same strip band surface appears through TWO windows on a paged
-  /// timesheet (the page's left and right halves), so the frame key cannot
-  /// stand in for this.
-  final String id;
-
-  final BrushFrameKey key;
-
   /// Where this window shows its surface — the one mapping between ink
   /// pixels and the paper the printers lay the ink back by.
   final SheetInkPlacement placement;
 
-  /// The window's rect in the sheet's document space.
+  @override
   Rect get documentRect => placement.window;
 
   /// Ink-surface pixels per document unit.
@@ -76,9 +112,9 @@ class SheetInkWindow {
   /// Ink-surface pixel that maps to [documentRect]'s top-left.
   Offset get inkOffset => placement.origin;
 
-  /// The viewport the interactive brush view needs so ink pixel (x, y)
-  /// lands exactly where the sheet paints this window: the panel transform
-  /// composed with where surface pixel (0, 0) lies on the paper.
+  /// The panel transform composed with where surface pixel (0, 0) lies on
+  /// the paper.
+  @override
   CanvasViewport inkViewport(CanvasViewport panelViewport) {
     final origin = placement.paperOf(Offset.zero);
     return CanvasViewport(
@@ -91,22 +127,109 @@ class SheetInkWindow {
   /// The window's slice of its ink surface, in SURFACE pixels.
   Rect get surfaceRect => placement.surfaceRect;
 
+  @override
+  CanvasSelectionShape surfaceShapeOf(Rect paper) => _surfaceShape(
+    Rect.fromPoints(
+      placement.pixelOf(paper.topLeft),
+      placement.pixelOf(paper.bottomRight),
+    ),
+  );
+
+  @override
+  CanvasSelectionRegion get shows =>
+      CanvasSelectionRegion.shape(_surfaceShape(surfaceRect));
+
   /// This window as the mark a printer lays its ink by.
   SheetInk get mark =>
       SheetInk(SheetPaintLayer.ink, key: key, placement: placement);
-
-  /// The window's on-screen rect under the panel transform — what its view
-  /// is clipped to on screen.
-  Rect screenRect(CanvasViewport panelViewport) => Rect.fromLTWH(
-    panelViewport.panX + panelViewport.zoom * documentRect.left,
-    panelViewport.panY + panelViewport.zoom * documentRect.top,
-    panelViewport.zoom * documentRect.width,
-    panelViewport.zoom * documentRect.height,
-  );
 }
 
-/// Where each of [windows] keeps ink, in its OWN surface's pixels: its
-/// slice of the surface, less every window stacked above it. Null for a
+/// A PICTURE the brush draws into: a cel a sheet shows in a slot, seen
+/// through the camera and the layer's placement — the conte's picture,
+/// whose part of a stroke goes to its block's cel (유저 2026-09-25,
+/// conte-drawing-target: 「그림 칸 안의 부분은 그 블록의 콘티 레이어
+/// 그림으로」).
+///
+/// ⛔ONE map, the printer's: [canvasToPaper] is the camera
+/// (`cameraProjectionMatrix`) and the slot's contain (`containRect`), and
+/// [artworkToCanvas] the layer's placement (`layerPlacementAt`) — the ones
+/// the picture is painted with, so the pen lands where the picture shows
+/// the stroke. Every step is a zoom, a turn or a move, so the whole chain
+/// is one brush viewport.
+class SheetPictureWindow extends SheetWindow {
+  const SheetPictureWindow({
+    required super.id,
+    required super.key,
+    super.plane,
+    required this.slot,
+    required this.canvasToPaper,
+    required this.artworkToCanvas,
+    required this.canvasSize,
+  });
+
+  /// Where the picture sits on the paper.
+  final Rect slot;
+
+  /// The cut's canvas → the paper.
+  final Matrix4 canvasToPaper;
+
+  /// The cel's own pixels → the cut's canvas.
+  final Matrix4 artworkToCanvas;
+
+  /// The canvas the camera crops the picture at.
+  final CanvasSize canvasSize;
+
+  @override
+  Rect get documentRect => slot;
+
+  Matrix4 get _artworkToPaper => canvasToPaper.multiplied(artworkToCanvas);
+
+  @override
+  CanvasViewport inkViewport(CanvasViewport panelViewport) =>
+      viewportOfSimilarity(
+        viewportTransformMatrix(panelViewport).multiplied(_artworkToPaper),
+      )!;
+
+  @override
+  CanvasSelectionShape surfaceShapeOf(Rect paper) =>
+      _mappedRect(Matrix4.inverted(_artworkToPaper), paper);
+
+  /// The slot, and only where the canvas is: a picture is cropped at the
+  /// canvas after the placement, so artwork the pose carries past the edge
+  /// is not in it (「페이스트보드는 포함 안 시킴」).
+  @override
+  CanvasSelectionRegion? get shows =>
+      CanvasSelectionRegion.shape(surfaceShapeOf(slot)).combinedWith(
+        _mappedRect(
+          Matrix4.inverted(artworkToCanvas),
+          Rect.fromLTWH(
+            0,
+            0,
+            canvasSize.width.toDouble(),
+            canvasSize.height.toDouble(),
+          ),
+        ),
+        SelectionCombineMode.intersect,
+      );
+}
+
+/// [rect]'s corners through [map], as the outline they make.
+CanvasSelectionShape _mappedRect(Matrix4 map, Rect rect) {
+  CanvasPoint corner(Offset paper) {
+    final point = MatrixUtils.transformPoint(map, paper);
+    return CanvasPoint(x: point.dx, y: point.dy);
+  }
+
+  return CanvasSelectionShape([
+    corner(rect.topLeft),
+    corner(rect.topRight),
+    corner(rect.bottomRight),
+    corner(rect.bottomLeft),
+  ]);
+}
+
+/// Where each of [windows] keeps ink, in its OWN surface's pixels: what it
+/// [SheetWindow.shows], less every window stacked above it. Null for a
 /// window the ones above cover whole — it keeps nothing, so it is not
 /// mounted.
 ///
@@ -122,20 +245,16 @@ class SheetInkWindow {
 /// a box, and on a paged timesheet off the bottom of the left half into
 /// the top of the right one — the same band surface, which that window
 /// shows.
-List<CanvasSelectionRegion?> sheetInkRegions(List<SheetInkWindow> windows) =>
-    [
-      for (var index = 0; index < windows.length; index += 1)
-        _inkRegionOf(windows[index], windows.skip(index + 1)),
-    ];
+List<CanvasSelectionRegion?> sheetInkRegions(List<SheetWindow> windows) => [
+  for (var index = 0; index < windows.length; index += 1)
+    _inkRegionOf(windows[index], windows.skip(index + 1)),
+];
 
 CanvasSelectionRegion? _inkRegionOf(
-  SheetInkWindow window,
-  Iterable<SheetInkWindow> above,
+  SheetWindow window,
+  Iterable<SheetWindow> above,
 ) {
-  CanvasSelectionRegion? region = CanvasSelectionRegion.shape(
-    _surfaceShape(window.surfaceRect),
-  );
-  final placement = window.placement;
+  var region = window.shows;
   for (final upper in above) {
     if (region == null) {
       break;
@@ -144,12 +263,7 @@ CanvasSelectionRegion? _inkRegionOf(
       continue;
     }
     region = region.combinedWith(
-      _surfaceShape(
-        Rect.fromPoints(
-          placement.pixelOf(upper.documentRect.topLeft),
-          placement.pixelOf(upper.documentRect.bottomRight),
-        ),
-      ),
+      window.surfaceShapeOf(upper.documentRect),
       SelectionCombineMode.subtract,
     );
   }
@@ -187,7 +301,7 @@ class SheetInkLayer extends StatefulWidget {
     required this.onStrokeCommitted,
   });
 
-  final List<SheetInkWindow> windows;
+  final List<SheetWindow> windows;
 
   /// Widget-key prefix — `timesheet`, `conte`, `envelope`. Each window's
   /// key is `<prefix>-ink-<window id>`, which is what the panels spelled
@@ -212,9 +326,9 @@ class SheetInkLayer extends StatefulWidget {
   /// swipe's many-landings-one-undo, said of a stroke.
   final HistoryGestures history;
 
-  final BrushEditSessionState Function(SheetInkWindow window) sessionStateFor;
+  final BrushEditSessionState Function(SheetWindow window) sessionStateFor;
 
-  final void Function(SheetInkWindow window, BrushStrokeCommitData strokeData)
+  final void Function(SheetWindow window, BrushStrokeCommitData strokeData)
   onStrokeCommitted;
 
   @override
@@ -254,7 +368,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// windows share has taken the other half's piece by the time the
   /// second one lands.
   void _land(
-    SheetInkWindow window,
+    SheetWindow window,
     CanvasSelectionRegion region,
     BrushStrokeCommitData strokeData,
   ) {

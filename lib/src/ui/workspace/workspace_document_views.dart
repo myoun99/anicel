@@ -83,6 +83,10 @@ class _WorkspaceDocumentViews {
 
   late ConteInkController _conteInk;
 
+  /// The conte's pictures draw into the canvas's own cels — the session's
+  /// cel store, beside the sheet's ink.
+  late ContePictureInkController _contePictures;
+
   late CutEnvelopeInkController _envelopeInk;
 
   /// Makes the ink controllers over [session]'s stores — the workspace's
@@ -97,6 +101,7 @@ class _WorkspaceDocumentViews {
       rowStore: caches.conteInkRowStore,
       pageStore: caches.conteInkPageStore,
     );
+    _contePictures = ContePictureInkController(cels: caches.brushFrameStore);
     _envelopeInk = CutEnvelopeInkController(store: caches.envelopeInkStore);
   }
 
@@ -104,6 +109,7 @@ class _WorkspaceDocumentViews {
   void unbindSession() {
     _timesheetInk.dispose();
     _conteInk.dispose();
+    _contePictures.dispose();
     _envelopeInk.dispose();
   }
 

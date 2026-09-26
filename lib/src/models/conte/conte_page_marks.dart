@@ -356,6 +356,12 @@ Iterable<SheetMark> _content(
   );
 }
 
+/// Where [cell]'s picture is printed — inside the silhouette's border. The
+/// brush draws into the picture through this same slot, so the pen lands
+/// where the picture shows the stroke.
+Rect contePictureSlot(ContePlacedCell cell, ConteSheetMetrics m) =>
+    cell.pictureRect.deflate(m.silhouetteBorder);
+
 /// One cell: its window grown with its camera work, its picture, the
 /// camera's labels and its two text columns.
 Iterable<SheetMark> _cell(
@@ -363,7 +369,7 @@ Iterable<SheetMark> _cell(
   ConteSheetSource source,
   ContePlacedCell cell,
 ) sync* {
-  final window = cell.pictureRect.deflate(m.silhouetteBorder);
+  final window = contePictureSlot(cell, m);
   yield* _cameraWork(m, cell, window);
   yield SheetPicture(
     SheetPaintLayer.picture,

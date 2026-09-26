@@ -208,6 +208,59 @@ void main() {
     );
     expect(alphaAt(c, 2, 2), greaterThan(0), reason: 'content survives grow');
   });
+
+  // 🚨A conte picture draws the cel the canvas may be standing on, through
+  // a coordinator of its own over the SAME store. A session here left on
+  // the old pixels is their stroke, painted over by the next commit here.
+  group('two coordinators over one store', () {
+    BrushFrameEditingCoordinator over(BrushFrameStore store) =>
+        BrushFrameEditingCoordinator(
+          initialFrameKey: key('frame-a'),
+          frameStore: store,
+          sessionStore: BrushFrameEditSessionStore(
+            canvasSize: canvasSize,
+            tileSize: 4,
+          ),
+          historyPolicy: const BrushHistoryPolicy(),
+        );
+
+    test('what the other one drew is what this one reads next — and '
+        'draws on top of', () {
+      final store = BrushFrameStore();
+      final canvas = over(store);
+      final picture = over(store);
+      expect(alphaAt(canvas, 2, 2), 0, reason: '⛔전제: a session, blank');
+
+      picture.commitSourceStroke(sourceDabs: [_dab(0)]);
+      expect(alphaAt(canvas, 2, 2), greaterThan(0));
+
+      canvas.commitSourceStroke(
+        sourceDabs: [
+          _dab(1).copyWith(center: CanvasPoint(x: 6, y: 6)),
+        ],
+      );
+      expect(alphaAt(canvas, 2, 2), greaterThan(0), reason: 'kept, not '
+          'painted over');
+      expect(
+        surfacePixelRgba(store.bakedSurfaceOrNull(key('frame-a'))!, 2, 2),
+        isNot(0),
+      );
+    });
+
+    test('a cel the other one emptied reads empty here too', () {
+      final store = BrushFrameStore();
+      final canvas = over(store);
+      final picture = over(store);
+      canvas.commitSourceStroke(sourceDabs: [_dab(0)]);
+      expect(alphaAt(canvas, 2, 2), greaterThan(0), reason: '⛔전제: drawn');
+
+      picture.restoreSurfaceSnapshot(
+        key('frame-a'),
+        picture.currentSurfaceOf(key('frame-a')).copyWith(tiles: const {}),
+      );
+      expect(alphaAt(canvas, 2, 2), 0);
+    });
+  });
 }
 
 BrushDab _dab(int sequence) => BrushDab(

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 import '../models/canvas_viewport.dart';
@@ -69,4 +71,27 @@ Matrix4 viewportInverseTransformMatrix(CanvasViewport viewport) {
     }
   }
   return matrix;
+}
+
+/// The viewport a pan · zoom · rotation [matrix] IS — [viewportTransformMatrix]
+/// run backwards, for a chain of such maps one brush view has to see
+/// through (a sheet's picture: the panel, the slot, the camera and the
+/// layer's placement). Null when [matrix] is not one: a shear, a mirror or
+/// a collapse has no viewport.
+CanvasViewport? viewportOfSimilarity(Matrix4 matrix) {
+  final a = matrix.entry(0, 0);
+  final b = matrix.entry(1, 0);
+  final zoom = math.sqrt(a * a + b * b);
+  final slack = zoom * 1e-9;
+  if (zoom == 0 ||
+      (matrix.entry(1, 1) - a).abs() > slack ||
+      (matrix.entry(0, 1) + b).abs() > slack) {
+    return null;
+  }
+  return CanvasViewport(
+    zoom: zoom,
+    panX: matrix.entry(0, 3),
+    panY: matrix.entry(1, 3),
+    rotationDegrees: math.atan2(b, a) * 180 / math.pi,
+  );
 }

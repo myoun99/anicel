@@ -992,6 +992,9 @@ class _WorkspaceTabs {
               _state._views._conteViewport,
               _state._views._conteBrushAllowed,
               _state._views._conteInk,
+              // Its pictures' cels, followed through the store: an undo
+              // that moves no row still moves their pixels (F-80 ②).
+              _state._views._contePictures,
               // The locale reprints the sheet chrome (labels/tooltips).
               _state.widget.session.languageSettings,
             ]),
@@ -1007,6 +1010,7 @@ class _WorkspaceTabs {
               // panel is unmounted.
               viewportController: _state._views._conteViewport,
               inkController: _state._views._conteInk,
+              pictures: _state._views._contePictures,
               brushToolState: _state._brushTool,
               brushAllowed: _state._views._conteBrushAllowed.value,
               onBrushAllowedChanged: (enabled) {
