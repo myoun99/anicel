@@ -140,105 +140,86 @@ class _PanelBuild {
     child: _toolDeck(context),
   );
 
-  /// The bare canvas when no cursor visual is armed, else the deck —
-  /// underlay, canvas, overlay, the tap layer, the tool cursors, the
-  /// selection layer and the idle ants.
+  /// The deck — underlay, canvas, overlay, the tap layer, the tool cursors,
+  /// the selection layer and the idle ants.
+  ///
+  /// ⛔Always a deck, with the canvas at one keyed place in it. The bare
+  /// canvas stood alone while no cursor visual was armed, and that switch
+  /// cost twice: a predicate missing from its list dropped a cursor outright
+  /// (the fill bucket was dead on the three sheets, which pass no underlay or
+  /// overlay), and crossing it re-created the whole content — a sheet's every
+  /// stratum re-recorded when its brush switch was touched.
   Widget _toolDeck(BuildContext context) {
     final overlayBuilder = _overlayBuilder;
     final underlayBuilder = _underlayBuilder;
     final idleSelection = _idleSelection;
-    return
-    // 🐛The FILL cursor was missing from this
-    // list, and the omission is not cosmetic:
-    // with fill armed `_toolTapHandler()`
-    // returns null (R22-A sends the dab
-    // through the stroke pipeline) and
-    // `canvasToolPaints(fill)` is false, so
-    // every other conjunct held and the whole
-    // Stack was skipped — taking the bucket
-    // icon AND the region that hides the
-    // system cursor with it. The three hosts
-    // that pass no underlay or overlay (the
-    // conte, the cut envelope, the timesheet)
-    // sit in this branch permanently, so the
-    // fill cursor was simply dead there.
-    //
-    // The invariant to keep: the Stack is
-    // built whenever ANY cursor predicate is
-    // true, so a tracker is mounted whenever
-    // a visual is.
-    overlayBuilder == null &&
-        underlayBuilder == null &&
-        _state._tap.toolTapHandler() == null &&
-        !_selectionLayerActive &&
-        idleSelection == null &&
-        !_state._toolCursor.eyedropperCursorActive &&
-        !_state._toolCursor.fillCursorActive &&
-        !_state._toolCursor.brushCursorActive
-    ? _canvasView
-    : Stack(
-        children: [
-          if (underlayBuilder != null)
-            Positioned.fill(
-              child: underlayBuilder(
-                context,
-                _state._viewportState._viewport,
-                // ★ONE PLACE DECIDES WHETHER THERE IS A PAINTER, and
-                // it is the builder. This call site used to ask the VERB
-                // coordinator first — a second copy of the same decision,
-                // with the ROW question mixed in — so standing on a
-                // property lane never even asked, and the live row sat in
-                // the composite tree with nobody to paint it. 🗣️유저
-                // 2026-09-12: 「레이어에 서있을땐 그림 제대로 보이는데
-                // 트랜스폼에 서면 그림이 사라져」. The builder answers null
-                // by itself when there is nothing to paint.
-                _state._activeSurfacePainter(),
-                _state._selectionFloat,
-              ),
+    return Stack(
+      children: [
+        if (underlayBuilder != null)
+          Positioned.fill(
+            child: underlayBuilder(
+              context,
+              _state._viewportState._viewport,
+              // ★ONE PLACE DECIDES WHETHER THERE IS A PAINTER, and
+              // it is the builder. This call site used to ask the VERB
+              // coordinator first — a second copy of the same decision,
+              // with the ROW question mixed in — so standing on a
+              // property lane never even asked, and the live row sat in
+              // the composite tree with nobody to paint it. 🗣️유저
+              // 2026-09-12: 「레이어에 서있을땐 그림 제대로 보이는데
+              // 트랜스폼에 서면 그림이 사라져」. The builder answers null
+              // by itself when there is nothing to paint.
+              _state._activeSurfacePainter(),
+              _state._selectionFloat,
             ),
-          Positioned.fill(child: _canvasView),
-          if (overlayBuilder != null)
-            Positioned.fill(
-              child: overlayBuilder(
-                context,
-                _state._viewportState._viewport,
-              ),
+          ),
+        // Keyed: an underlay that comes and goes above it moves its index.
+        Positioned.fill(
+          key: const ValueKey<String>('brush-canvas-deck-view'),
+          child: _canvasView,
+        ),
+        if (overlayBuilder != null)
+          Positioned.fill(
+            child: overlayBuilder(
+              context,
+              _state._viewportState._viewport,
             ),
-          // Non-painting tools (P5 eyedropper / P6
-          // fill): one tap layer ABOVE the canvas
-          // absorbs the pointer so no stroke starts.
-          if (_state._tap.toolTapHandler() != null)
-            _state._tap.toolTapLayer(),
-          // Eyedropper cursor (R11-②): crosshair +
-          // a hover swatch of the color under the
-          // pointer — for the tool AND the Alt-held
-          // temporary pick. Translucent: picks fall
-          // through to the tap layer / canvas below.
-          if (_state._toolCursor.eyedropperCursorActive)
-            ..._state._eyedropperCursorLayers(),
-          // R26 #23: the fill tool wears the bucket.
-          if (_state._toolCursor.fillCursorActive)
-            ..._state._fillCursorLayers(),
-          // The painting tools wear their own
-          // footprint: an outline of the tip that
-          // follows the pointer, so a stroke can be
-          // aimed before it starts.
-          if (_state._toolCursor.brushCursorActive)
-            ..._state._brushCursorLayers(),
-          // The P9 selection tools own the pointer
-          // while active (marquee/lasso/move) —
-          // strokes cannot start below the layer.
-          if (_selectionLayerActive)
-            _state._selectionLayer(underlayBuilder),
-          // R28-S: the selection is a DOCUMENT
-          // fact, so its ants stay on screen under
-          // every other tool too — that is what
-          // makes "선택하고 다른 툴" legible (R26
-          // #18). Purely decorative: the layer
-          // above owns all interaction.
-          if (idleSelection != null)
-            _state._idleSelectionAnts(idleSelection),
-        ],
+          ),
+        // Non-painting tools (P5 eyedropper / P6
+        // fill): one tap layer ABOVE the canvas
+        // absorbs the pointer so no stroke starts.
+        if (_state._tap.toolTapHandler() != null)
+          _state._tap.toolTapLayer(),
+        // Eyedropper cursor (R11-②): crosshair +
+        // a hover swatch of the color under the
+        // pointer — for the tool AND the Alt-held
+        // temporary pick. Translucent: picks fall
+        // through to the tap layer / canvas below.
+        if (_state._toolCursor.eyedropperCursorActive)
+          ..._state._eyedropperCursorLayers(),
+        // R26 #23: the fill tool wears the bucket.
+        if (_state._toolCursor.fillCursorActive)
+          ..._state._fillCursorLayers(),
+        // The painting tools wear their own
+        // footprint: an outline of the tip that
+        // follows the pointer, so a stroke can be
+        // aimed before it starts.
+        if (_state._toolCursor.brushCursorActive)
+          ..._state._brushCursorLayers(),
+        // The P9 selection tools own the pointer
+        // while active (marquee/lasso/move) —
+        // strokes cannot start below the layer.
+        if (_selectionLayerActive)
+          _state._selectionLayer(underlayBuilder),
+        // R28-S: the selection is a DOCUMENT
+        // fact, so its ants stay on screen under
+        // every other tool too — that is what
+        // makes "선택하고 다른 툴" legible (R26
+        // #18). Purely decorative: the layer
+        // above owns all interaction.
+        if (idleSelection != null)
+          _state._idleSelectionAnts(idleSelection),
+      ],
     );
   }
 

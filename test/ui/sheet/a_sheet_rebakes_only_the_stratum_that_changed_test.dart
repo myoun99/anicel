@@ -21,12 +21,15 @@ import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/sheet/sheet_strata.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show CutTrimDragPreview;
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
@@ -47,6 +50,8 @@ void main() {
   late EditorSessionManager session;
   late ChangeNotifier thumbnails;
   late ChangeNotifier images;
+  late ValueNotifier<bool> brushAllowed;
+  late ValueNotifier<BrushToolState> brushTool;
 
   BrushStrokeCommitData oneDab() => BrushStrokeCommitData(
     sourceDabs: [
@@ -86,6 +91,8 @@ void main() {
                 continuous: false,
                 onContinuousChanged: (_) {},
                 inkController: ink,
+                brushToolState: brushTool,
+                brushAllowed: brushAllowed.value,
               ),
               () => ink.commitStroke(
                 plane: TimesheetInkPlane.strip,
@@ -108,6 +115,8 @@ void main() {
                 thumbnailFor: null,
                 thumbnailRepaint: thumbnails,
                 inkController: ink,
+                brushToolState: brushTool,
+                brushAllowed: brushAllowed.value,
                 imageFor: (_) => null,
                 imageRepaint: images,
               ),
@@ -130,6 +139,8 @@ void main() {
               () => CutEnvelopeTabHost(
                 session: session,
                 inkController: ink,
+                brushToolState: brushTool,
+                brushAllowed: brushAllowed.value,
                 imageFor: (_) => null,
                 imageRepaint: images,
               ),
@@ -160,6 +171,10 @@ void main() {
       addTearDown(thumbnails.dispose);
       images = ChangeNotifier();
       addTearDown(images.dispose);
+      brushAllowed = ValueNotifier<bool>(false);
+      addTearDown(brushAllowed.dispose);
+      brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+      addTearDown(brushTool.dispose);
       final (host, stroke) = sheet.mount();
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -172,6 +187,7 @@ void main() {
                 thumbnails,
                 images,
                 session.languageSettings,
+                brushAllowed,
               ]),
               builder: (context, _) => host(),
             ),
@@ -230,6 +246,46 @@ void main() {
       final (rebakes, stroke) = await mount(tester);
       expect(await rebakes(stroke), only({SheetStratum.ink}));
       expect(await rebakes(session.undo), only({SheetStratum.ink}));
+    });
+
+    testWidgets('${sheet.sheet}: the brush switched on and off re-records '
+        'the ink alone', (tester) async {
+      final (rebakes, _) = await mount(tester);
+      // The windows a live brush shows stand down in the print, and come
+      // back to it.
+      expect(
+        await rebakes(() => brushAllowed.value = true),
+        only({SheetStratum.ink}),
+      );
+      expect(
+        await rebakes(() => brushAllowed.value = false),
+        only({SheetStratum.ink}),
+      );
+    });
+
+    testWidgets('${sheet.sheet}: a drag re-records nothing, and the values '
+        'that follow it stand down meanwhile', (tester) async {
+      final (rebakes, _) = await mount(tester);
+      expect(
+        await rebakes(
+          () => session.dragPreview.value = CutTrimDragPreview(
+            previewDurations: {session.requireActiveCut.id: 8},
+          ),
+        ),
+        only(const {}),
+      );
+      expect(
+        tester
+            .renderObjectList<RenderStaticRaster>(find.byType(StaticRaster))
+            .singleWhere((raster) => raster.debugLabel == '${sheet.sheet}-content')
+            .standDown,
+        // The envelope prints no length a drag moves.
+        sheet.sheet == 'envelope'
+            ? StandDownReason.none
+            : StandDownReason.disabled,
+      );
+      session.dragPreview.value = null;
+      await tester.pumpAndSettle();
     });
 
     testWidgets('${sheet.sheet}: a landed media image re-records the strata '
