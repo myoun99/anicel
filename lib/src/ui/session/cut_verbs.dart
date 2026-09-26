@@ -1,16 +1,24 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../../models/conte/conte_ink_keys.dart' show conteInkRowKey;
 import '../../models/cut.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/cut_id.dart';
+import '../../models/envelope/cut_envelope_ink_keys.dart'
+    show envelopeInkKeyOfCut;
+import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
+import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
+import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'cut_placement.dart';
@@ -125,7 +133,54 @@ class CutVerbs {
         ),
       );
     }
+    _carrySheetInk(from: cutId, to: copy.cutId, minted: copy.minted);
   });
+
+  /// The sheets' handwriting of a duplicated cut, onto its copy: the conte
+  /// cells' by their blocks' new ids, the envelope's and the timesheet's box
+  /// by box and band by band. From there the copy's is its own.
+  ///
+  /// 🗣️유저 2026-09-26 (cut-duplicate-sheet-ink-Q1): 「따라간다 — 복제는
+  /// 전부 복사」. Each sheet's ink is owned the way the load prunes it
+  /// (`_InkOwners`): a conte cell by its block, the others by their cut —
+  /// the envelope's by the cut that OWNS the envelope, the representative
+  /// when [from] shares one ([cutEnvelopeInkOwner]); the copy is no
+  /// sibling, so it owns its own. The conte's paper plane belongs to no cut
+  /// and stays where it is.
+  void _carrySheetInk({
+    required CutId from,
+    required CutId to,
+    required Map<FrameId, FrameId> minted,
+  }) {
+    void carry(
+      BrushFrameStore store,
+      CutId owner,
+      BrushFrameKey? Function(BrushFrameKey key) inCopy,
+    ) {
+      store.bakedSurfacesForCut(owner).forEach((key, surface) {
+        final copyKey = inCopy(key);
+        if (copyKey != null) {
+          store.storeBakedSurface(copyKey, surface);
+        }
+      });
+    }
+
+    carry(_renderCaches.conteInkRowStore, from, (key) {
+      final block = minted[key.frameId];
+      return block == null ? null : conteInkRowKey(to, block);
+    });
+    carry(
+      _renderCaches.envelopeInkStore,
+      cutEnvelopeInkOwner(_project.repository.requireProject(), from),
+      (key) => envelopeInkKeyOfCut(key, to),
+    );
+    for (final store in [
+      _renderCaches.timesheetInkStripStore,
+      _renderCaches.timesheetInkPageStore,
+    ]) {
+      carry(store, from, (key) => timesheetInkKeyOfCut(key, to));
+    }
+  }
 
   void deleteActiveCut() {
     // With a cut RANGE selection live, the delete command acts on the

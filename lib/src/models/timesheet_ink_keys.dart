@@ -30,6 +30,12 @@ const LayerId timesheetInkPageLayerId = LayerId('sheet-page');
 /// one-paper-brush-width-Q2); it was 4.
 const int timesheetInkScale = 1;
 
+/// The two planes' frame ids are these plus the band or the page — minted
+/// by [timesheetInkStripKey] and [timesheetInkPageKey] and read back by
+/// [timesheetInkKeyOfCut], one spelling.
+String _stripFramePrefix(CutId cutId) => 'sheet-strip-${cutId.value}-b';
+String _pageFramePrefix(CutId cutId) => 'sheet-page-${cutId.value}-p';
+
 /// Frame-anchored ink: one surface per page BAND of frame rows, so writing
 /// follows its frames through the paged and the continuous view alike.
 BrushFrameKey timesheetInkStripKey(CutId cutId, int band) {
@@ -38,7 +44,7 @@ BrushFrameKey timesheetInkStripKey(CutId cutId, int band) {
     trackId: timesheetInkTrackId,
     cutId: cutId,
     layerId: timesheetInkStripLayerId,
-    frameId: FrameId('sheet-strip-${cutId.value}-b$band'),
+    frameId: FrameId('${_stripFramePrefix(cutId)}$band'),
   );
 }
 
@@ -50,8 +56,31 @@ BrushFrameKey timesheetInkPageKey(CutId cutId, int page) {
     trackId: timesheetInkTrackId,
     cutId: cutId,
     layerId: timesheetInkPageLayerId,
-    frameId: FrameId('sheet-page-${cutId.value}-p$page'),
+    frameId: FrameId('${_pageFramePrefix(cutId)}$page'),
   );
+}
+
+/// The ink [key] is — the same band or the same page — on the sheet of the
+/// cut [cutId] instead (a duplicated cut's copy, cut-duplicate-sheet-ink);
+/// null for a key of no timesheet plane.
+BrushFrameKey? timesheetInkKeyOfCut(BrushFrameKey key, CutId cutId) {
+  if (!isTimesheetInkKey(key)) {
+    return null;
+  }
+  final strip = key.layerId == timesheetInkStripLayerId;
+  final prefix = strip
+      ? _stripFramePrefix(key.cutId)
+      : _pageFramePrefix(key.cutId);
+  final frame = key.frameId.value;
+  final number = frame.startsWith(prefix)
+      ? int.tryParse(frame.substring(prefix.length))
+      : null;
+  if (number == null) {
+    return null;
+  }
+  return strip
+      ? timesheetInkStripKey(cutId, number)
+      : timesheetInkPageKey(cutId, number);
 }
 
 /// Whether [key] belongs to the timesheet ink namespace at all.
