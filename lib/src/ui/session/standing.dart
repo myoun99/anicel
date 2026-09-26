@@ -713,20 +713,40 @@ class Standing {
   /// ([layerACutStandSeats]). A row the cut does not show — a gap has no
   /// cut, a V lane's carrier is no layer — seats nothing.
   ///
-  /// ⚠️A flip, a ruler seek and playback cross cuts the way they always have
-  /// — whether they follow too is the user's to say
-  /// (storyboard-flip-crosses-cut).
+  /// A flip, a ruler seek and playback that cross a cut give the same answer
+  /// ([layerACutSwitchSeats]).
   void _seatTimelineOnStoryboardStand({required LayerId? before}) {
-    final seat = switch (storyboardStandingRow) {
-      LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
-          when _activeCutHasLayer(layerId) =>
-        layerId,
-      TrackRowAddress() => layerACutStandSeats(before: before),
-      _ => null,
-    };
+    final seat = _layerTheStoryboardStandSeats(before: before);
     if (seat != null) {
       _seatLayer(seat);
     }
+  }
+
+  LayerId? _layerTheStoryboardStandSeats({required LayerId? before}) =>
+      switch (storyboardStandingRow) {
+        LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
+            when _activeCutHasLayer(layerId) =>
+          layerId,
+        TrackRowAddress() => layerACutStandSeats(before: before),
+        _ => null,
+      };
+
+  /// 🚨The layer a CUT SWITCH lands the timeline on — every door that
+  /// switches the cut asks this: [selectCut] (a flip, a ruler seek, a
+  /// scrub's landing) and playback's follow.
+  ///
+  /// 🗣️유저 (storyboard-flip-crosses-cut, 2026-09-27 답): 「따라간다 — 컷을
+  /// 넘는 이동도 누를 때와 같은 답」. Working in the storyboard, a cut
+  /// crossed is stood on the way a press stands on it (F-187,
+  /// [_layerTheStoryboardStandSeats]). Anywhere else — or when that has no
+  /// answer — the cut comes back on the row it was left on.
+  ///
+  /// ⚠️Asked AFTER the new cut is active: both halves ask what it shows.
+  LayerId? layerACutSwitchSeats(CutId cutId, {required LayerId? before}) {
+    final storyboard = _working.value == WorkingPanel.storyboard
+        ? _layerTheStoryboardStandSeats(before: before)
+        : null;
+    return storyboard ?? _lastLayerByCut[cutId];
   }
 
   /// The layer standing on the active CUT seats (F-187): its conte row when
@@ -846,8 +866,8 @@ class Standing {
     if (_internals.editingInteractionBusy) {
       return;
     }
+    final before = _selection.activeLayerId;
     rememberActiveLayerForCut();
-    final nextActiveLayerId = _lastLayerByCut[cutId];
 
     final fromGap =
         _selection.gapGlobalFrame != null ||
@@ -865,9 +885,13 @@ class Standing {
           _timeline.editingSession.selectedTrackId,
     );
     _selection.clearFrameRangeSelection();
-    // The cut comes back on the row it was left on; never visited (or the
-    // layer is gone — the rebuild's own guard) falls back to the top row.
-    _controllers.rebuild(preferredActiveLayerId: nextActiveLayerId);
+    // The cut comes back on the row it was left on — or, working in the
+    // storyboard, where a press would stand ([layerACutSwitchSeats]); never
+    // visited (or the layer is gone — the rebuild's own guard) falls back
+    // to the top row.
+    _controllers.rebuild(
+      preferredActiveLayerId: layerACutSwitchSeats(cutId, before: before),
+    );
     // F-169: the row is the program's pick, not yours — and the rail's view
     // may have changed since you left it.
     keepStandingShown(filterSparesStanding: false);

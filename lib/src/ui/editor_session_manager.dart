@@ -539,8 +539,20 @@ class EditorSessionManager extends ChangeNotifier
     if (position == null || position.cutId == editingSession.activeCutId) {
       return;
     }
+    // The same landing as every other cut switch (storyboard-flip-crosses-
+    // cut, 유저 09-27 「따라간다」): the row left behind is remembered, and
+    // the row landed on is the one [Standing.layerACutSwitchSeats] names.
+    // ↩️It took the new cut's first row, whatever you were working in.
+    final before = activeLayerId;
+    standing.rememberActiveLayerForCut();
     editingSession.setActiveCutId(position.cutId);
-    activeCutControllers.rebuild(preferredFrameIndex: position.localFrameIndex);
+    activeCutControllers.rebuild(
+      preferredActiveLayerId: standing.layerACutSwitchSeats(
+        position.cutId,
+        before: before,
+      ),
+      preferredFrameIndex: position.localFrameIndex,
+    );
   }
 
   void _onPlaybackPlaylistWarmRequested(
