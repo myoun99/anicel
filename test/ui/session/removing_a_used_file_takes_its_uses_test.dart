@@ -17,6 +17,7 @@ import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_repeat.dart'
     show rederiveRunBehaviors;
 import 'package:anicel/src/models/timeline_run_behavior.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/media/media_asset_uses.dart';
@@ -71,6 +72,11 @@ Project _project() => Project(
   id: const ProjectId('remove-a-used-file'),
   name: 'Remove a used file',
   createdAt: DateTime.utc(2026, 9, 15),
+  // The work's logo is taken from the file too; its cover from another.
+  timesheetInfo: const TimesheetInfo(
+    logoAssetPath: _movie,
+    coverImagePath: _clap,
+  ),
   mediaAssets: [
     MediaAsset(path: _movie, name: 'walk.mp4'),
     MediaAsset(path: _clap, name: 'clap.wav'),
@@ -164,11 +170,14 @@ void main() {
     List<(LayerId, FrameId?)> uses() => [
       for (final use in session.mediaPool.mediaAssetUses(_movie))
         switch (use) {
+          WorkPictureMediaUse(:final picture) =>
+            (LayerId(picture.name), null),
           RowMediaUse(:final layerId) => (layerId, null),
           FrameMediaUse(:final layerId, :final frameId) => (layerId, frameId),
         },
     ];
     expect(uses(), [
+      (const LayerId('logo'), null),
       (const LayerId('s1'), const FrameId('step')),
       (const LayerId('s2'), const FrameId('lonely')),
       (const LayerId('walk'), null),
@@ -230,6 +239,10 @@ void main() {
     expect(layer('t2-s1')!.timeline, isEmpty);
     expect(layer('t2-s1')!.frames, isEmpty);
     expect(layer('t2-s1')!.audioClips, isEmpty);
+    // The logo is let go; the cover, taken from the other file, stays.
+    final info = session.repository.requireProject().timesheetInfo;
+    expect(info.logoAssetPath, isNull);
+    expect(info.coverImagePath, _clap);
 
     // The rows in hand follow the stack: the deleted row is not held, and
     // what stood on it is let go — the range over it is gone, as after any

@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
+import '../../models/media_asset.dart';
 import '../../models/timesheet_info.dart';
 import '../export/export_settings_modules.dart' show ExportAccordion;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/panel_flyout.dart';
 
 /// 작품 설정 — the work's words every paper form prints: its title, its
 /// episode, and who does each stage's work. Pops the edited
@@ -25,9 +27,14 @@ class WorkSettingsWindow extends StatefulWidget {
     super.key,
     required this.initialInfo,
     required this.projectName,
+    this.pictures = const [],
   });
 
   final TimesheetInfo initialInfo;
+
+  /// The media pool's images — what the work's pictures are picked from
+  /// (답 logo-home 「작품 설정 한 곳」: 「미디어 풀 그림을 한 번 고르면」).
+  final List<MediaAsset> pictures;
 
   /// What the forms print for a work with no title — shown faintly in the
   /// empty title, as what the paper will carry.
@@ -58,6 +65,12 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
         ),
   };
 
+  /// Each picture of the work, as picked so far.
+  late final Map<WorkPicture, String?> _pictures = {
+    for (final picture in WorkPicture.values)
+      picture: picture.pathIn(widget.initialInfo),
+  };
+
   bool _workOpen = true;
   bool _staffOpen = false;
   final Set<LayerProcess> _foldedProcesses = {};
@@ -73,13 +86,16 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
   }
 
   /// 🚨Built on the info it was given, NOT a fresh one: what this window
-  /// does not show — the logo, the sheet's options, the envelope's form —
-  /// is not its to reset ([[make-the-invariant-unrepresentable]]).
+  /// does not show — the sheet's options, the envelope's form — is not its
+  /// to reset ([[make-the-invariant-unrepresentable]]).
   void _submit() {
     var next = widget.initialInfo.copyWith(
       title: _title.text.trim(),
       episode: _episode.text.trim(),
     );
+    for (final MapEntry(key: picture, value: path) in _pictures.entries) {
+      next = picture.withPath(next, path);
+    }
     for (final MapEntry(key: mark, value: field) in _staff.entries) {
       next = next.withStaffName(mark, field.text.trim());
     }
@@ -178,8 +194,48 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
           onSubmitted: (_) => _submit(),
         ),
       ),
+      for (final picture in WorkPicture.values) ...[
+        const SizedBox(height: 12),
+        _pictureField(picture, strings),
+      ],
     ],
   );
+
+  /// A picture of the work: none, or one of the pool's images — named as
+  /// the pool names it.
+  Widget _pictureField(WorkPicture picture, AppStrings strings) {
+    final path = _pictures[picture];
+    return AppWindowField(
+      label: strings.workPictureName(picture),
+      child: PanelFlyoutButton(
+        key: ValueKey<String>('work-settings-picture-${picture.name}'),
+        label: path == null
+            ? strings.commonNone
+            : mediaAssetNameFor(
+                widget.pictures
+                    .where((asset) => asset.path == path)
+                    .firstOrNull,
+                path,
+              ),
+        expand: true,
+        entriesBuilder: () => [
+          PanelFlyoutItem(
+            keyValue: 'work-settings-picture-${picture.name}-none',
+            label: strings.commonNone,
+            selected: path == null,
+            onSelected: () => setState(() => _pictures[picture] = null),
+          ),
+          for (final asset in widget.pictures)
+            PanelFlyoutItem(
+              keyValue: 'work-settings-picture-${picture.name}-${asset.path}',
+              label: asset.name,
+              selected: asset.path == path,
+              onSelected: () => setState(() => _pictures[picture] = asset.path),
+            ),
+        ],
+      ),
+    );
+  }
 
   /// One process's fold: its worker, then the corrections it references
   /// ([revisesFor], through [everyLayerMark]).

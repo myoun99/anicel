@@ -20,6 +20,7 @@ import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/media_moves.dart';
 import '../../services/media/project_media_sources.dart'
     show
         ProjectConforms,
@@ -28,7 +29,7 @@ import '../../services/media/project_media_sources.dart'
         projectMediaSources;
 import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
-    show AnicelSessionFields, remapProjectMediaPaths;
+    show AnicelSessionFields;
 import '../../services/persistence/coordinated_project_swap.dart';
 import '../../services/persistence/failed_save_copies.dart';
 import '../../services/persistence/folder_grant.dart'
@@ -1074,7 +1075,7 @@ Future<ProjectFileRead> readProjectFile(
     bindTo: bindTo,
     project: grants.moved.isEmpty
         ? result.project
-        : remapProjectMediaPaths(result.project, grants.moved),
+        : projectWithMediaMoved(result.project, grants.moved),
     result: result,
     grants: grants,
   );

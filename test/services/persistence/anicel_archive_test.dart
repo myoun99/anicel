@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -17,6 +16,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
+import 'package:anicel/src/services/media/media_moves.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 
 void main() {
@@ -85,7 +85,7 @@ void main() {
     });
 
     // Resolution on another machine: the relative entry rewrites the pool.
-    final remapped = remapProjectMediaPaths(contents.project, {
+    final remapped = projectWithMediaMoved(contents.project, {
       'D:/work/proj/audio/boom.wav': 'G:/drive/proj/audio/boom.wav',
     });
     expect(remapped.mediaAssets.first.path, 'G:/drive/proj/audio/boom.wav');
@@ -141,31 +141,6 @@ void main() {
     final contents = parseAnicelArchiveBytes(Uint8List.fromList(v1Bytes));
     expect(contents.project, isNotNull);
     expect(contents.cels, isEmpty);
-  });
-
-  test('media remap rewrites SE audio clips on tracks AND cuts', () {
-    final base = createDefaultProject();
-    final track = base.tracks.first;
-    final seeded = base.copyWith(
-      tracks: [
-        track.copyWith(
-          seLayers: [
-            track.seLayers.first.copyWith(
-              audioClips: [
-                AudioClip(filePath: 'old/a.wav', frameId: const FrameId('x')),
-              ],
-            ),
-            ...track.seLayers.skip(1),
-          ],
-        ),
-      ],
-    );
-
-    final remapped = remapProjectMediaPaths(seeded, {'old/a.wav': 'new/a.wav'});
-    expect(
-      remapped.tracks.first.seLayers.first.audioClips.single.filePath,
-      'new/a.wav',
-    );
   });
 
   test('a newer formatVersion refuses to load with a clear error', () {

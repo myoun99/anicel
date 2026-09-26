@@ -41,9 +41,13 @@ String celPlaceLine(CelPlace place) {
   };
 }
 
-/// One use of a media pool file as a line of the list the pool shows: a row
-/// by its cut and its name, a frame as [celPlaceLine] names it.
+/// One use of a media pool file as a line of the list the pool shows: a
+/// picture of the work where it is set, a row by its cut and its name, a
+/// frame as [celPlaceLine] names it.
 String mediaAssetUseLine(MediaAssetUse use) => switch (use) {
+  WorkPictureMediaUse(:final picture) =>
+    '${AppText.strings.workSettingsTitle} · '
+        '${AppText.strings.workPictureName(picture)}',
   RowMediaUse(:final ownerName, :final layerName) => rowPlaceLine(
     ownerName: ownerName,
     layerName: layerName,

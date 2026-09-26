@@ -3,6 +3,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
+import '../../models/timesheet_info.dart' show WorkPicture;
 import '../../models/track_id.dart';
 import '../persistence/cel_places.dart' show DrawingCelPlace, rowOwnerName;
 import '../project_lookup.dart' show projectLayersWithOwners;
@@ -60,9 +61,17 @@ final class FrameMediaUse extends MediaAssetUse {
   final DrawingCelPlace place;
 }
 
-/// Every use [project] has of the file at [asked], in the order the project
-/// holds its rows — lazily, so asking whether there is one stops at the
-/// first.
+/// A picture of the work its sheets print from the file — its company logo
+/// or its conte cover's picture (작품 설정).
+final class WorkPictureMediaUse extends MediaAssetUse {
+  const WorkPictureMediaUse(this.picture);
+
+  final WorkPicture picture;
+}
+
+/// Every use [project] has of the file at [asked] — the work's pictures,
+/// then its rows in the order the project holds them — lazily, so asking
+/// whether there is one stops at the first.
 ///
 /// A sound counts on a frame its row still holds (REC1-A): a link to a frame
 /// that is gone plays nothing anywhere, so it must not hold the pool
@@ -75,6 +84,12 @@ final class FrameMediaUse extends MediaAssetUse {
 /// or that a removal could delete.
 Iterable<MediaAssetUse> mediaAssetUsesOf(Project project, String asked) sync* {
   final path = normalizedMediaPath(asked);
+  for (final picture in WorkPicture.values) {
+    if (picture.pathIn(project.timesheetInfo) case final used?
+        when normalizedMediaPath(used) == path) {
+      yield WorkPictureMediaUse(picture);
+    }
+  }
   for (final owned in projectLayersWithOwners(project)) {
     final layer = owned.layer;
     final cut = owned.cut;

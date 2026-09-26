@@ -232,6 +232,7 @@ class MediaPool {
     final uses = mediaAssetUses(path).toList();
     _project.historyManager.runAsOneStep('Remove media', () {
       _removeUses(path, uses);
+      _letGoOfWorkPictures(uses);
       _project.cutCommandCoordinator.updateMediaAssets(
         next,
         description: 'Remove media',
@@ -310,9 +311,24 @@ class MediaPool {
     }
   }
 
+  /// The pictures of the work among [uses], let go as the window's 「없음」
+  /// lets them go.
+  void _letGoOfWorkPictures(List<MediaAssetUse> uses) {
+    final pictures = uses.whereType<WorkPictureMediaUse>().toList();
+    if (pictures.isEmpty) {
+      return;
+    }
+    var info = _project.repository.requireProject().timesheetInfo;
+    for (final use in pictures) {
+      info = use.picture.withPath(info, null);
+    }
+    _project.cutCommandCoordinator.setTimesheetInfo(info);
+  }
+
   /// Points the [oldPath] asset at [newPath] — the pool entry AND every
-  /// referencing clip, one undo step (Resolve-style relink for moved
-  /// files). Waveforms re-extract from the new file.
+  /// reference to it (`projectWithMediaMoved`), one undo step
+  /// (Resolve-style relink for moved files). Waveforms re-extract from the
+  /// new file.
   ///
   /// ⚠️Async because the re-stage below runs in an isolate — see
   /// [MediaStagingStore.stageCarriedBytes].

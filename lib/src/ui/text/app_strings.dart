@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/app_language.dart';
 import '../../models/frame.dart' show inbetweenMark;
+import '../../models/timesheet_info.dart' show WorkPicture;
 
 /// The LIVE program/notation languages, app-wide — the same shape
 /// [AppColors.accentSettings] uses, and for the same reason: widgets deep
@@ -623,6 +624,15 @@ enum AppStrings {
   String get sheetFieldSheet => _s('sheetFieldSheet');
   String get workSettingsTitle => _s('workSettingsTitle');
   String get workSettingsStaff => _s('workSettingsStaff');
+  String get workLogo => _s('workLogo');
+  String get workCover => _s('workCover');
+
+  /// What a picture of the work is called — in 작품 설정 and in the list of
+  /// a pool file's uses alike.
+  String workPictureName(WorkPicture picture) => switch (picture) {
+    WorkPicture.logo => workLogo,
+    WorkPicture.cover => workCover,
+  };
   String get staffWorker => _s('staffWorker');
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
   String get sheetNotation => _s('sheetNotation');
@@ -2049,6 +2059,8 @@ enum AppStrings {
     'sheetFieldSheet': 'Sheet',
     'workSettingsTitle': 'Work settings',
     'workSettingsStaff': 'Staff',
+    'workLogo': 'Company logo',
+    'workCover': 'Cover picture',
     'staffWorker': 'Artist',
     'sheetVisibleBoxes': 'Visible boxes',
     'sheetNotation': 'Notation',
@@ -3159,6 +3171,8 @@ enum AppStrings {
     'sheetFieldSheet': 'シート',
     'workSettingsTitle': '作品設定',
     'workSettingsStaff': 'スタッフ設定',
+    'workLogo': '会社ロゴ',
+    'workCover': '表紙の絵',
     'staffWorker': '作業者',
     'sheetVisibleBoxes': '表示する枠',
     'sheetNotation': '表記',
@@ -4488,6 +4502,8 @@ enum AppStrings {
     'sheetFieldSheet': '시트',
     'workSettingsTitle': '작품 설정',
     'workSettingsStaff': '스태프 설정',
+    'workLogo': '회사 로고',
+    'workCover': '표지 그림',
     'staffWorker': '작업자',
     'sheetVisibleBoxes': '표시할 칸',
     'sheetNotation': '표기',
@@ -5845,6 +5861,8 @@ enum AppStrings {
     'sheetFieldSheet': 'Feuille',
     'workSettingsTitle': 'Réglages de l’œuvre',
     'workSettingsStaff': 'Équipe',
+    'workLogo': 'Logo du studio',
+    'workCover': 'Image de couverture',
     'staffWorker': 'Artiste',
     'sheetVisibleBoxes': 'Cases visibles',
     'sheetNotation': 'Notation',
@@ -7182,6 +7200,8 @@ enum AppStrings {
     'sheetFieldSheet': '表号',
     'workSettingsTitle': '作品设置',
     'workSettingsStaff': '人员设置',
+    'workLogo': '公司标志',
+    'workCover': '封面图',
     'staffWorker': '作业者',
     'sheetVisibleBoxes': '显示的栏位',
     'sheetNotation': '标注',

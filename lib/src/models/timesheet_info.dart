@@ -214,3 +214,25 @@ class TimesheetInfo {
       'exposureBarThreshold: $exposureBarThreshold, '
       'seEmptyFill: $seEmptyFill)';
 }
+
+/// A picture of the work its sheets print, taken from its media pool: the
+/// company logo and the conte cover's picture — which field keeps it. ONE
+/// vocabulary for the window that picks them (작품 설정), the walk that moves
+/// them with their file (`projectWithMediaMoved`) and the pool that lists
+/// them among a file's uses.
+enum WorkPicture {
+  logo,
+  cover;
+
+  /// The pool path [info] keeps for this picture, or null.
+  String? pathIn(TimesheetInfo info) => switch (this) {
+    logo => info.logoAssetPath,
+    cover => info.coverImagePath,
+  };
+
+  /// [info] keeping [path] for this picture — null takes it away.
+  TimesheetInfo withPath(TimesheetInfo info, String? path) => switch (this) {
+    logo => info.copyWith(logoAssetPath: () => path),
+    cover => info.copyWith(coverImagePath: () => path),
+  };
+}

@@ -28,6 +28,7 @@ import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
 import '../../models/import/import_warning.dart';
+import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
 import '../text/model_vocabulary.dart';
 import '../text/place_lines.dart' show celPlaceLine;
@@ -703,6 +704,10 @@ class EditorTopStrip extends StatelessWidget {
           dialog: (_) => WorkSettingsWindow(
             initialInfo: session.timesheetInfo,
             projectName: session.repository.requireProject().name,
+            pictures: [
+              for (final asset in session.mediaPool.mediaAssets)
+                if (asset.kind == MediaAssetKind.image) asset,
+            ],
           ),
           commit: session.updateTimesheetInfo,
         ),

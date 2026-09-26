@@ -1,13 +1,12 @@
-import '../../models/cut.dart';
-import '../../models/layer.dart';
 import '../../models/project.dart';
-import '../../models/track.dart';
 import '../command.dart';
+import '../media/media_moves.dart';
 import '../project_repository.dart';
 
 /// Points a media asset at a new file: rewrites the pool entry's path AND
-/// every referencing clip across all tracks in ONE undo step — the Resolve
-/// offline-media relink flow. The display name survives the move.
+/// every reference to it — clips, rows, the work's pictures
+/// ([projectWithMediaMoved]) — in ONE undo step, the Resolve offline-media
+/// relink flow. The display name survives the move.
 ///
 /// Undo restores the whole previous project reference (models are
 /// immutable, so holding it is O(1)); untouched tracks/cuts/layers keep
@@ -58,67 +57,22 @@ class RelinkMediaAssetCommand implements Command {
     repository.replaceProject(previousProject);
   }
 
-  Layer _relinkedLayer(Layer layer, {required bool Function() markChanged}) {
-    final referencesAsset = layer.mediaReference?.assetPath == oldPath;
-    if (!referencesAsset &&
-        !layer.audioClips.any((clip) => clip.filePath == oldPath)) {
-      return layer;
-    }
-    markChanged();
-    return layer.copyWith(
-      audioClips: [
-        for (final clip in layer.audioClips)
-          if (clip.filePath == oldPath)
-            clip.copyWith(filePath: newPath)
-          else
-            clip,
-      ],
-      // The layer's MEDIA REFERENCE (§6-z23) rides the same relink walk.
-      mediaReference: referencesAsset
-          ? layer.mediaReference!.copyWith(assetPath: newPath)
-          : layer.mediaReference,
-    );
-  }
-
+  /// The walk every move of a file takes ([projectWithMediaMoved]), and the
+  /// carry a relink by hand gives the asset ([carriedAs]).
   Project _relinked(Project project) {
-    var tracksChanged = false;
-    final tracks = <Track>[];
-    for (final track in project.tracks) {
-      var trackChanged = false;
-      bool mark() => trackChanged = true;
-      final seLayers = [
-        for (final layer in track.seLayers)
-          _relinkedLayer(layer, markChanged: mark),
-      ];
-      final cuts = <Cut>[];
-      for (final cut in track.cuts) {
-        var layersChanged = false;
-        final layers = [
-          for (final layer in cut.layers)
-            _relinkedLayer(layer, markChanged: () => layersChanged = true),
-        ];
-        cuts.add(layersChanged ? cut.copyWith(layers: layers) : cut);
-        trackChanged = trackChanged || layersChanged;
-      }
-      tracks.add(
-        trackChanged ? track.copyWith(cuts: cuts, seLayers: seLayers) : track,
-      );
-      tracksChanged = tracksChanged || trackChanged;
+    final moved = projectWithMediaMoved(project, {oldPath: newPath});
+    final carriedAs = this.carriedAs;
+    if (carriedAs == null) {
+      return moved;
     }
-    return project.copyWith(
+    return moved.copyWith(
       mediaAssets: [
-        for (final asset in project.mediaAssets)
-          if (asset.path != oldPath)
-            asset
+        for (final asset in moved.mediaAssets)
+          if (asset.path == newPath)
+            asset.copyWith(carriedAs: carriedAs)
           else
-            // 🚨copyWith keeps what it is NOT given, so a relink moves the
-            // path and leaves whatever source tracking the asset already
-            // had. ⛔It does not write any: a relink says 「the same file
-            // is over here now」, and where a copy came from is the copy's
-            // business — see [MediaAsset.sourcePath].
-            asset.copyWith(path: newPath, carriedAs: carriedAs),
+            asset,
       ],
-      tracks: tracksChanged ? tracks : project.tracks,
     );
   }
 }

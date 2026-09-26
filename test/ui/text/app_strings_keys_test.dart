@@ -336,6 +336,8 @@ void main() {
     'sheetFieldSheet': (s) => s.sheetFieldSheet,
     'workSettingsTitle': (s) => s.workSettingsTitle,
     'workSettingsStaff': (s) => s.workSettingsStaff,
+    'workLogo': (s) => s.workLogo,
+    'workCover': (s) => s.workCover,
     'staffWorker': (s) => s.staffWorker,
     'sheetVisibleBoxes': (s) => s.sheetVisibleBoxes,
     'sheetNotation': (s) => s.sheetNotation,
