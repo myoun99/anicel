@@ -4,6 +4,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart' show firstUnusedLayerName;
 import '../../models/timeline_exposure.dart';
 
@@ -114,6 +115,29 @@ Layer createCoveringLayer({
     timeline: {0: TimelineExposure.drawing(frameId, length: duration)},
   );
 }
+
+/// A row of a drawing [kind] made from nothing: a covering kind born over
+/// its cut in the one cel [coveringFrameId] names, an animation row with its
+/// default cels — and either wearing its kind's label (F-76,
+/// [LayerMark.bornOfKind]).
+///
+/// ONE birth for the layer panel's Add Layer and for the conte row a
+/// picture's first stroke makes on a cut that has none.
+Layer bornRowOfKind(
+  LayerKind kind, {
+  required LayerId layerId,
+  required FrameId Function() coveringFrameId,
+  required Cut cut,
+}) =>
+    (kind.coversWithoutGaps
+            ? createCoveringLayer(
+                layerId: layerId,
+                frameId: coveringFrameId(),
+                cut: cut,
+                kind: kind,
+              )
+            : createDefaultAnimationLayer(layerId: layerId, cut: cut))
+        .copyWith(mark: LayerMark.bornOfKind(kind));
 
 /// The storyboard-kind shorthand for [createCoveringLayer] (its original
 /// name — the storyboard row was the first covering kind).

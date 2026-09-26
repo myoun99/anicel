@@ -1,10 +1,21 @@
 import '../../models/app_input_settings.dart';
+import '../../models/cut.dart';
+import '../../models/cut_id.dart';
+import '../../models/layer.dart';
+import '../../models/layer_kind.dart';
+import '../../models/new_row_placement.dart';
+import '../../services/commands/cut_command_input_planner.dart'
+    show plannedAddLayerCommand;
+import '../../services/editing/default_layer_helpers.dart'
+    show bornRowOfKind;
 import '../../services/command.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'frame_verbs.dart';
+import 'layer_id_mint.dart';
+import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 
 /// The AUTO FRAME FOR A STROKE — a stroke landing on an empty cell makes
 /// the drawing the stroke needs, and the frame it made is taken or flushed
@@ -19,12 +30,14 @@ class AutoFrameForStroke {
     required SelectionAccess selection,
     required ChangeSink changes,
     required FrameIds frameIds,
+    required LayerIdMint layerIds,
     required ActiveCutControllers controllers,
     required FrameVerbs frameVerbs,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
+       _layerIds = layerIds,
        _controllers = controllers,
        _frameVerbs = frameVerbs;
 
@@ -34,7 +47,69 @@ class AutoFrameForStroke {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
+  final LayerIdMint _layerIds;
   final ActiveCutControllers _controllers;
+
+  /// Whether a stroke on an empty cell makes what it needs — the canvas's
+  /// 「프레임 자동 생성」, which the conte's pictures follow too (유저 답
+  /// conte-drawing-target-Q2 「토글을 따른다 (캔버스와 한 법)」).
+  bool get autoCreates => AppInput.settings.value.autoCreateFrameOnDraw;
+
+  /// 🚨THE CONTE ROW A PICTURE'S FIRST STROKE WOULD MAKE on [cut], named
+  /// before it exists — [frameIdForNextCel], said of a cut with no conte
+  /// row. A conte picture draws into its block's cel, and a cut with no
+  /// conte row has none: its picture draws into the cel this names, and
+  /// the stroke's landing makes the row ([addConteRow]) — so the pen that
+  /// heard the press already stands on the cel it makes, and the picture
+  /// is drawn through the cut as it will stand.
+  ///
+  /// Laid where a row made with nothing selected goes, on top
+  /// ([newRowPlacement]): [cut] is not the cut the canvas stands on, so it
+  /// has no active row to go above. Null when [cut] has its conte row.
+  ({Layer layer, int index})? conteRowFor(Cut cut) {
+    if (storyboardLayerForCut(cut) != null) {
+      return null;
+    }
+    final layerId = _nextConteRow.putIfAbsent(cut.id, _layerIds.mint);
+    final placement = newRowPlacement(cut.layers, cut.layers.length);
+    final row = bornRowOfKind(
+      LayerKind.storyboard,
+      layerId: layerId,
+      coveringFrameId: () => frameIdForNextCel(layerId),
+      cut: cut,
+    );
+    return (
+      layer: placement.folderId == null
+          ? row
+          : row.copyWith(folderId: placement.folderId),
+      index: placement.index,
+    );
+  }
+
+  final Map<CutId, LayerId> _nextConteRow = <CutId, LayerId>{};
+
+  /// Makes the conte row [conteRowFor] names on [cut] — its own undo step,
+  /// until the stroke that made it folds it in with the stroke's.
+  ///
+  /// ⛔It selects nothing: the row joins a cut the canvas may not stand on,
+  /// and a drawing on the conte moves no focus (conte-drawing-target ①).
+  void addConteRow(Cut cut) {
+    final row = conteRowFor(cut);
+    if (row == null) {
+      return;
+    }
+    _nextConteRow.remove(cut.id);
+    _nextCel.remove(row.layer.id);
+    _project.historyManager.execute(
+      plannedAddLayerCommand(
+        repository: _project.repository,
+        cutId: cut.id,
+        layer: row.layer,
+        insertionIndex: row.index,
+      ),
+    );
+    _changes.notifyChanged();
+  }
 
   /// 🚨I-10 — THE BLOCK A PEN-DOWN MADE, waiting to be undone WITH the
   /// stroke it was made for.
@@ -57,7 +132,7 @@ class AutoFrameForStroke {
   /// must refuse everywhere the manual button does, or the toggle becomes a
   /// second answer to 「can this row take a cel」.
   bool get canAutoCreateFrameForStroke =>
-      AppInput.settings.value.autoCreateFrameOnDraw &&
+      autoCreates &&
       _autoFrameForStroke == null &&
       _frameVerbs.canCreateDrawingAtCurrentFrame;
 

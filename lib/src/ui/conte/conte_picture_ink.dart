@@ -24,6 +24,7 @@ import '../../services/brush_frame_store.dart';
 import '../../services/camera_projection_matrix.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/layer_pose_matrix.dart';
+import '../../services/project_repository.dart' show cutWithLayerInserted;
 import '../canvas/active_stroke_overlay.dart';
 import '../sheet/sheet_ink_controller.dart';
 import '../sheet/sheet_ink_layer.dart';
@@ -37,6 +38,13 @@ typedef ContePictureProject = ({
   BrushFrameKey Function(Cut cut, LayerId layerId, FrameId frameId) celKeyOf,
   CameraPose Function(Cut cut, int frameIndex) cameraPoseOf,
   CanvasSize cameraFrameSize,
+  // The conte row a cut with none would be given, and where — named before
+  // it exists (`AutoFrameForStroke.conteRowFor`); null for a cut that has
+  // its row.
+  ({Layer layer, int index})? Function(Cut cut) conteRowOf,
+  // Why a picture of a cut with no conte row takes no ink — null while the
+  // canvas's 「프레임 자동 생성」 is on and the stroke makes the row.
+  String? rowRefusal,
 });
 
 /// One picture the conte draws into while its brush is on: the window its
@@ -53,34 +61,67 @@ typedef ContePicture = ({
   List<SheetMark> labels,
 });
 
-/// The pictures of [page] the brush draws into: one per cell whose drawing
-/// block has a cel (conte-drawing-target ③). Their windows go ABOVE every
-/// ink window, so a cell's band keeps what is drawn around its picture and
-/// the cel what is drawn on it.
+/// The pictures of [page] the brush draws into: one per cell, into its
+/// block's cel (conte-drawing-target ③). Their windows go ABOVE every ink
+/// window, so a cell's band keeps what is drawn around its picture and the
+/// cel what is drawn on it.
 ///
-/// A cell with no drawing — a cut with no conte layer, a gap in one — has
-/// no cel to draw into yet; a press there makes one only as the canvas's
-/// 「프레임 자동 생성」 would (유저 답 conte-drawing-target-Q2).
+/// A cut with no conte row has no block to draw into yet. Its picture
+/// draws as the canvas's 「프레임 자동 생성」 would have it (유저 답
+/// conte-drawing-target-Q2 「토글을 따른다 (캔버스와 한 법)」): into the cel
+/// of the row its first stroke makes, through the cut as it will stand —
+/// or, with the toggle off, into nothing, refusing the pen as the canvas
+/// does ([ContePictureProject.rowRefusal]).
+///
+/// [overlayOf] gives picture `id`'s live stroke, the one its pen draws and
+/// its composite paints — held by what holds them both, which lets it go
+/// after them.
 List<ContePicture> contePictures(
   ContePageLayout page,
   ContePictureProject project,
-  ContePictureInkController cels,
+  ActiveStrokeOverlayModel Function(String id) overlayOf,
 ) => [
-  for (final cell in page.cells) ?_pictureOf(page, cell, project, cels),
+  for (final cell in page.cells) ?_pictureOf(page, cell, project, overlayOf),
 ];
+
+/// What [cell]'s picture draws into: its block's cel on [cut]'s conte row —
+/// or, on a cut with none, the one cel of the row its first stroke makes,
+/// in the cut as that row will leave it.
+({Cut cut, Layer layer, FrameId frameId, bool pending})? _drawnOf(
+  Cut cut,
+  ContePlacedCell cell,
+  ContePictureProject project,
+) {
+  if (storyboardLayerForCut(cut) case final layer?) {
+    final frameId = cell.source.frameId;
+    return frameId == null
+        ? null
+        : (cut: cut, layer: layer, frameId: frameId, pending: false);
+  }
+  final row = project.conteRowOf(cut);
+  if (row == null) {
+    return null;
+  }
+  return (
+    cut: cutWithLayerInserted(cut, row.layer, row.index),
+    layer: row.layer,
+    frameId: row.layer.frames.single.id,
+    pending: true,
+  );
+}
 
 ContePicture? _pictureOf(
   ContePageLayout page,
   ContePlacedCell cell,
   ContePictureProject project,
-  ContePictureInkController cels,
+  ActiveStrokeOverlayModel Function(String id) overlayOf,
 ) {
-  final frameId = cell.source.frameId;
-  final cut = project.cutOf(CutId(cell.cutId));
-  final layer = cut == null ? null : storyboardLayerForCut(cut);
-  if (frameId == null || cut == null || layer == null) {
+  final found = project.cutOf(CutId(cell.cutId));
+  final drawn = found == null ? null : _drawnOf(found, cell, project);
+  if (drawn == null) {
     return null;
   }
+  final (:cut, :layer, :frameId, :pending) = drawn;
   final frame = cell.source.pictureFrame;
   final camera = project.cameraFrameSize;
   final mark = contePictureOf(cell, page.metrics);
@@ -113,7 +154,8 @@ ContePicture? _pictureOf(
               anchorPoint: placement.anchorPoint,
             ),
       canvasSize: cut.canvasSize,
-      overlay: cels.overlayFor(id),
+      overlay: overlayOf(id),
+      refusal: pending ? project.rowRefusal : null,
     ),
     cut: cut,
     layer: layer,
@@ -143,8 +185,6 @@ class ContePictureInkController extends SheetInkController<CanvasSize> {
 
   final Map<CanvasSize, BrushFrameEditingCoordinator> _coordinators = {};
 
-  final Map<String, ActiveStrokeOverlayModel> _overlays = {};
-
   /// Where a coordinator stands before its first cel is selected — never a
   /// cel of the project, and never written: every read and commit selects
   /// the window's own cel first.
@@ -171,18 +211,9 @@ class ContePictureInkController extends SheetInkController<CanvasSize> {
   @override
   BrushFrameStore storeFor(CanvasSize plane) => _cels;
 
-  /// Picture [id]'s live stroke — kept across rebuilds, and shared by the
-  /// window's pen and the composite that paints the stroke in place.
-  ActiveStrokeOverlayModel overlayFor(String id) =>
-      _overlays.putIfAbsent(id, ActiveStrokeOverlayModel.new);
-
   @override
   void dispose() {
     _cels.celPixelRevision.removeListener(notifyListeners);
-    for (final overlay in _overlays.values) {
-      overlay.dispose();
-    }
-    _overlays.clear();
     super.dispose();
   }
 }

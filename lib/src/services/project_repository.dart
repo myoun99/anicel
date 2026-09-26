@@ -49,6 +49,19 @@ typedef _FoundEdit<I, E> = ({
   Project? Function(Project project, I id, E Function(E) update) edit,
 });
 
+/// [cut] with [layer] inserted at [index] (appended when null) — the cut a
+/// row joins, and the one a conte picture draws through while the row its
+/// first stroke makes is not there yet.
+Cut cutWithLayerInserted(Cut cut, Layer layer, int? index) => cut.copyWith(
+  layers: insertedAt(
+    cut.layers,
+    // The cut is only known here, and its length is what the ghosts fill
+    // to. See [ProjectRepository]'s `_withDerivedRunEdges`.
+    rederiveRunBehaviors(layer, cutFrameCount: cut.duration),
+    index,
+  ),
+);
+
 class ProjectRepository {
   ProjectRepository({Project? initialProject})
     : _currentProject = initialProject == null
@@ -672,13 +685,7 @@ class ProjectRepository {
   }
 
   void insertLayer({required CutId cutId, required Layer layer, int? index}) {
-    _mutate(_cut, cutId, (cut) {
-      // The cut is only known here, and its length is what the ghosts
-      // fill to. See [_withDerivedRunEdges].
-      final derived = rederiveRunBehaviors(layer, cutFrameCount: cut.duration);
-      final layers = insertedAt(cut.layers, derived, index);
-      return cut.copyWith(layers: layers);
-    });
+    _mutate(_cut, cutId, (cut) => cutWithLayerInserted(cut, layer, index));
   }
 
   void replaceLayer({required Layer layer}) {

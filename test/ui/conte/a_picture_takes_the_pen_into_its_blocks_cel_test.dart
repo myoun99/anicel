@@ -34,6 +34,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
@@ -141,12 +142,20 @@ void main() {
       addTearDown(strokeActive.dispose);
       final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
       addTearDown(brush.dispose);
+      // The picture's live stroke, let go after the views drawing into it
+      // (tear-downs run last-added first).
+      final stroke = ActiveStrokeOverlayModel();
+      addTearDown(stroke.dispose);
+      addTearDown(() => tester.pumpWidget(const SizedBox()));
       picture = contePictures(page, (
         cutOf: (id) => id == cutId ? drawn : null,
         celKeyOf: celKeyOf,
         cameraPoseOf: (cut, frame) => pose,
         cameraFrameSize: canvas,
-      ), cels).single;
+        // The cut has its conte row.
+        conteRowOf: (cut) => null,
+        rowRefusal: null,
+      ), (id) => stroke).single;
 
       await tester.binding.setSurfaceSize(
         Size(metrics.pageWidth + 40, metrics.pageHeight + 40),
@@ -381,6 +390,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(await showsInk(), isTrue, reason: 'the pen-up changes nothing');
+    expect(
+      session.cutById(cutId)!.layers,
+      hasLength(1),
+      reason: 'a picture of a cut with its conte row makes no other',
+    );
     expect(
       ink.hasInkFor(
         ConteInkPlane.row,

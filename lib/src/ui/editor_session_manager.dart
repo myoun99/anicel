@@ -2366,6 +2366,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     frameIds: this,
+    layerIds: layerIds,
     controllers: activeCutControllers,
     frameVerbs: frameVerbs,
   );

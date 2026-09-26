@@ -147,6 +147,7 @@ class ConteInkLayer extends StatelessWidget {
     this.pictures,
     this.pictureWindows = const [],
     this.pictureInvalidationSink,
+    this.beforePictureLands,
   });
 
   final ConteInkController controller;
@@ -177,6 +178,11 @@ class ConteInkLayer extends StatelessWidget {
   /// playback that show it have to hear.
   final CacheInvalidationSink? pictureInvalidationSink;
 
+  /// Told a picture's piece of a stroke is landing, before it is kept —
+  /// where the row a picture of a cut with none draws into is made, so the
+  /// stroke lands in a cel its cut has.
+  final ValueChanged<SheetPictureWindow>? beforePictureLands;
+
   @override
   Widget build(BuildContext context) {
     return SheetInkLayer(
@@ -196,7 +202,8 @@ class ConteInkLayer extends StatelessWidget {
         ),
       },
       onStrokeCommitted: (window, strokeData) {
-        if (window.plane case final CanvasSize size) {
+        if (window case SheetPictureWindow(plane: final CanvasSize size)) {
+          beforePictureLands?.call(window);
           pictures!.commitStroke(
             plane: size,
             key: window.key,

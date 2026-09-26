@@ -9,7 +9,6 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../services/command.dart';
 import '../services/editing/default_layer_helpers.dart';
-import '../services/commands/add_layer_command.dart';
 import '../services/commands/cut_command_input_planner.dart';
 import '../services/commands/update_layer_display_command.dart';
 import '../services/history_manager.dart';
@@ -152,19 +151,12 @@ class LayerController {
     // Layer EXISTENCE is shared structure: a row created here appears in
     // every 겸용 sibling too, with ids planned up front so redo reuses
     // them.
-    final plan = planAddLayerCommandInput(
-      project: _repository.requireProject(),
-      cutId: cutId,
-      layer: layer,
-    );
     _historyManager.execute(
-      AddLayerCommand(
+      plannedAddLayerCommand(
         repository: _repository,
         cutId: cutId,
         layer: layer,
         insertionIndex: insertionIndex ?? insertionIndexAboveActiveLayer(),
-        mirrors: plan.mirrors,
-        linkGroupId: plan.linkGroupId,
       ),
     );
     _activeLayerId = layer.id;

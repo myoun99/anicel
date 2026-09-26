@@ -20,6 +20,7 @@ import '../../services/viewport_transform_matrix.dart';
 import '../brush/brush_tool_state.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../widgets/cursor_notice.dart' show cursorNotices;
 
 /// A window the sheet's brush draws through: where it sits on the paper,
 /// how the brush sees its surface, and which of that surface's pixels it
@@ -66,6 +67,14 @@ sealed class SheetWindow {
   /// surface, in its place in a composite — a picture's cel inside the
   /// cut's composite. Null when the window's own view paints it.
   ActiveStrokeOverlayModel? get overlay => null;
+
+  /// Why this window takes no ink, said at the cursor when a press lands on
+  /// it — the canvas's answer on an empty cell it may not fill. Null while
+  /// it takes ink.
+  ///
+  /// A refusing window still covers what lies under it: nothing of a stroke
+  /// is kept where it shows, by it or by the paper below.
+  String? get refusal => null;
 
   /// The window's on-screen rect under the panel transform — what its view
   /// is clipped to on screen.
@@ -172,10 +181,14 @@ class SheetPictureWindow extends SheetWindow {
     required this.artworkToCanvas,
     required this.canvasSize,
     required this.overlay,
+    this.refusal,
   });
 
   /// Where the picture sits on the paper.
   final Rect slot;
+
+  @override
+  final String? refusal;
 
   /// The picture is painted live in the cut's composite while the brush is
   /// on, its stroke in the cel's place there (유저 답 conte-picture-display-Q1
@@ -212,19 +225,20 @@ class SheetPictureWindow extends SheetWindow {
   /// canvas after the placement, so artwork the pose carries past the edge
   /// is not in it (「페이스트보드는 포함 안 시킴」).
   @override
-  CanvasSelectionRegion? get shows =>
-      CanvasSelectionRegion.shape(surfaceShapeOf(slot)).combinedWith(
-        _mappedRect(
-          Matrix4.inverted(artworkToCanvas),
-          Rect.fromLTWH(
-            0,
-            0,
-            canvasSize.width.toDouble(),
-            canvasSize.height.toDouble(),
+  CanvasSelectionRegion? get shows => refusal != null
+      ? null
+      : CanvasSelectionRegion.shape(surfaceShapeOf(slot)).combinedWith(
+          _mappedRect(
+            Matrix4.inverted(artworkToCanvas),
+            Rect.fromLTWH(
+              0,
+              0,
+              canvasSize.width.toDouble(),
+              canvasSize.height.toDouble(),
+            ),
           ),
-        ),
-        SelectionCombineMode.intersect,
-      );
+          SelectionCombineMode.intersect,
+        );
 }
 
 /// [rect]'s corners through [map], as the outline they make.
@@ -396,6 +410,19 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     }
   }
 
+  /// The refusal of the window on top at [position], at the cursor — the
+  /// canvas's notice for a press on an empty cell it may not fill.
+  void _refuseAt(Offset position) {
+    for (final window in widget.windows.reversed) {
+      if (window.screenRect(widget.viewport).contains(position)) {
+        if (window.refusal case final refusal?) {
+          cursorNotices.show(refusal);
+        }
+        return;
+      }
+    }
+  }
+
   /// A window taken away mid-stroke never reports the stroke's end, and
   /// the pen would stay down for good. After the frame: this runs during
   /// build, and the flag's listeners rebuild widgets.
@@ -430,10 +457,11 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
           (window: widget.windows[index], region: region),
     ];
     _releaseWindowsGone({for (final entry in keeping) entry.window.id});
-    // No callbacks: it only claims the press, after every window has
-    // heard it.
+    // It claims the press, after every window has heard it — and where the
+    // window on top refuses the pen, says why, as the canvas does.
     return Listener(
       behavior: HitTestBehavior.opaque,
+      onPointerDown: (event) => _refuseAt(event.localPosition),
       child: Stack(
         children: [
           for (final (:window, :region) in keeping)

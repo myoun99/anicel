@@ -20,7 +20,6 @@ import '../../models/layer.dart';
 import '../../models/layer_folder.dart' show createFolderLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
@@ -133,18 +132,13 @@ class LayerStack {
         // The COVERING kinds (storyboard, image) are born covering their
         // cut — one cell, edge to edge. There is no "X" in their world,
         // so they never start empty and then have to be filled.
-        Layer newLayerFor(Cut cut) => kind.coversWithoutGaps
-            ? createCoveringLayer(
-                layerId: layerId,
-                frameId: _frameIds.mintFrameId(layerId),
-                cut: cut,
-                kind: kind,
-              )
-            : createDefaultAnimationLayer(layerId: layerId, cut: cut);
-        // F-76: a row made from nothing wears its kind's label
-        // ([LayerMark.bornOfKind]).
         _layerVerbs.addRowAboveActive(
-          (cut) => newLayerFor(cut).copyWith(mark: LayerMark.bornOfKind(kind)),
+          (cut) => bornRowOfKind(
+            kind,
+            layerId: layerId,
+            coveringFrameId: () => _frameIds.mintFrameId(layerId),
+            cut: cut,
+          ),
         );
       case LayerKind.adjustment:
         // R6b: a real row you ADD (unlike a folder), joining the stack

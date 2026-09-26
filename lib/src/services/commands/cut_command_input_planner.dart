@@ -10,6 +10,7 @@ import '../../models/project.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../editing/cut_duplicate_helpers.dart' show remapTimelineExposure;
 import '../project_lookup.dart' show requireCut;
+import '../project_repository.dart';
 import 'add_layer_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
@@ -529,6 +530,33 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
       prefix: 'link',
       usedIds: {for (final group in project.linkRegistry.groups) group.id},
     ),
+  );
+}
+
+/// [layer] added to [cutId] at [insertionIndex], and to the 겸용 siblings
+/// [planAddLayerCommandInput] plans against the project as it stands.
+///
+/// ONE recipe for every way a row is added to a cut: the layer panel's Add
+/// Layer, on the cut the canvas stands on, and the conte row a picture's
+/// first stroke makes, on the picture's cut.
+AddLayerCommand plannedAddLayerCommand({
+  required ProjectRepository repository,
+  required CutId cutId,
+  required Layer layer,
+  int? insertionIndex,
+}) {
+  final plan = planAddLayerCommandInput(
+    project: repository.requireProject(),
+    cutId: cutId,
+    layer: layer,
+  );
+  return AddLayerCommand(
+    repository: repository,
+    cutId: cutId,
+    layer: layer,
+    insertionIndex: insertionIndex,
+    mirrors: plan.mirrors,
+    linkGroupId: plan.linkGroupId,
   );
 }
 

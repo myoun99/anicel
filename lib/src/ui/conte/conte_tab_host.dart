@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/identity_memo.dart';
+import '../../models/app_input_settings.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
@@ -20,14 +21,17 @@ import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
+import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow;
 import '../sheet/sheet_text_edit_layer.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
+import '../canvas/active_stroke_overlay.dart';
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailTier, StoryboardThumbnails;
 import '../timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview, TimelineDragPreview;
+import '../text/app_strings.dart';
 import '../widgets/page_turn_strip.dart';
 import '../sheet/sheet_strata.dart';
 import 'conte_fonts.dart';
@@ -143,9 +147,34 @@ class _ConteTabHostState extends State<ConteTabHost> {
   // identity the staleness check, the timesheet host's pattern.
   final _sheet = IdentityMemo<(ConteSheetSource, List<ContePageLayout>)>();
 
+  /// Each picture's live stroke, by picture — the one its pen draws and its
+  /// composite paints. Held HERE, above both: they are let go when this is,
+  /// after every view that draws into them. ↩️The pictures' controller held
+  /// them, and outlived nothing: let go with a project going off screen, it
+  /// left the views still on screen drawing into what it had disposed.
+  final Map<String, ActiveStrokeOverlayModel> _strokes = {};
+
+  ActiveStrokeOverlayModel _strokeOf(String picture) =>
+      _strokes.putIfAbsent(picture, ActiveStrokeOverlayModel.new);
+
+  // The pictures of cuts with no conte row take the pen or refuse it as the
+  // canvas's 「프레임 자동 생성」 says — so the page is laid again when it
+  // flips.
+  @override
+  void initState() {
+    super.initState();
+    AppInput.settings.addListener(_onInputSettings);
+  }
+
+  void _onInputSettings() => setState(() {});
+
   @override
   void dispose() {
+    AppInput.settings.removeListener(_onInputSettings);
     _strokeHold.dispose();
+    for (final stroke in _strokes.values) {
+      stroke.dispose();
+    }
     super.dispose();
   }
 
@@ -375,7 +404,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
             if (ink != null && pictures.isNotEmpty)
               Positioned.fill(
                 child: ContePictureLive(
-                  pictures: pictures,
+                  // A picture that refuses the pen shows what it prints.
+                  pictures: [
+                    for (final picture in pictures)
+                      if (picture.window.refusal == null) picture,
+                  ],
                   session: _session,
                   surfaceOf: (picture) => widget.pictures!
                       .sessionStateFor(
@@ -414,16 +447,33 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// The pictures [page]'s brush draws into — none without the cels'
   /// controller.
   List<ContePicture> _picturesOf(ContePageLayout page) {
-    final cels = widget.pictures;
-    if (cels == null) {
+    if (widget.pictures == null) {
       return const [];
     }
+    final autoFrame = _session.autoFrame;
     return contePictures(page, (
       cutOf: _session.cutById,
       celKeyOf: _session.brushFrameKeyForCut,
       cameraPoseOf: _session.camera.cameraPoseForCut,
       cameraFrameSize: _session.camera.cameraFrameSize,
-    ), cels);
+      conteRowOf: autoFrame.conteRowFor,
+      // The canvas's notice, word for word, for a press on a cell it may
+      // not fill (`EditorCanvasArea._drawRefusalFor`).
+      rowRefusal: autoFrame.autoCreates
+          ? null
+          : AppStrings.of(
+              _session.languageSettings.value.programLanguage,
+            ).noticeNoFrameHere,
+    ), _strokeOf);
+  }
+
+  /// A picture's piece of a stroke landing on a cut with no conte row
+  /// makes the row it was drawn into — in the stroke's own undo step.
+  void _makeTheRowDrawnInto(SheetPictureWindow window) {
+    final cut = _session.cutById(window.key.cutId);
+    if (cut != null) {
+      _session.autoFrame.addConteRow(cut);
+    }
   }
 
   Positioned _inkLayer(
@@ -449,6 +499,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         pictures: widget.pictures,
         pictureWindows: [for (final picture in pictures) picture.window],
         pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
+        beforePictureLands: _makeTheRowDrawnInto,
       ),
     );
   }
