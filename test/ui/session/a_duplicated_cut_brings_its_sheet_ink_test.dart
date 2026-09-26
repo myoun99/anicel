@@ -3,10 +3,9 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
-import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
-import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -45,26 +44,18 @@ void main() {
       storeOf(key).storeBakedSurface(key, ink);
   Object? read(BrushFrameKey key) => storeOf(key).bakedSurfaceOrNull(key);
 
-  /// A cel of [cut] — the block a conte cell is drawn over — and the same
-  /// cel in [copy], found by where it stands.
-  (FrameId, FrameId) aCelIn(Cut cut, Cut copy) {
-    for (var row = 0; row < cut.layers.length; row += 1) {
-      final cels = cut.layers[row].frames;
-      if (cels.isNotEmpty) {
-        return (cels.first.id, copy.layers[row].frames.first.id);
-      }
-    }
-    throw StateError('fixture premise: a cut with a cel');
-  }
-
   test('every sheet\'s writing of the cut is on the copy\'s sheets', () {
     final source = session.requireActiveCut;
-    final block = source.layers
-        .firstWhere((layer) => layer.frames.isNotEmpty)
-        .frames
-        .first
-        .id;
-    write(conteInkRowKey(source.id, block));
+    // A block written on on the conte: its handwriting is kept under the id
+    // its memo carries (`ExposureMemo.inkId`).
+    final drawn = source.layers.firstWhere((layer) => layer.frames.isNotEmpty);
+    session.cutCommandCoordinator.updateExposureMemo(
+      cutId: source.id,
+      layerId: drawn.id,
+      blockStartIndex: drawn.timeline.keys.first,
+      memo: const ExposureMemo(inkId: 'ink-1'),
+    );
+    write(conteInkRowKey(source.id, 'ink-1'));
     write(envelopeInkBoxKey(source.id, 'memo'));
     write(timesheetInkStripKey(source.id, 2));
     write(timesheetInkPageKey(source.id, 1));
@@ -72,11 +63,12 @@ void main() {
     session.cutVerbs.duplicateActiveCut();
     final copy = session.requireActiveCut;
     expect(copy.id, isNot(source.id), reason: 'the copy is where you stand');
-    final (sourceBlock, copyBlock) = aCelIn(source, copy);
-    expect(sourceBlock, block, reason: 'fixture premise');
-    expect(copyBlock, isNot(block), reason: 'the copy minted its own cels');
 
-    expect(read(conteInkRowKey(copy.id, copyBlock)), same(ink));
+    expect(
+      read(conteInkRowKey(copy.id, 'ink-1')),
+      same(ink),
+      reason: 'the copied block keeps its id, on the copy\'s cut',
+    );
     expect(read(envelopeInkBoxKey(copy.id, 'memo')), same(ink));
     expect(read(timesheetInkStripKey(copy.id, 2)), same(ink));
     expect(read(timesheetInkPageKey(copy.id, 1)), same(ink));
@@ -86,7 +78,7 @@ void main() {
       reason: 'band for band — nothing written where the source had none',
     );
     expect(
-      read(conteInkRowKey(source.id, block)),
+      read(conteInkRowKey(source.id, 'ink-1')),
       same(ink),
       reason: 'the source keeps its own',
     );

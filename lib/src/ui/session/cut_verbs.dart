@@ -3,13 +3,13 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
-import '../../models/conte/conte_ink_keys.dart' show conteInkRowKey;
+import '../../models/conte/conte_ink_keys.dart'
+    show conteInkRowIdOf, conteInkRowKey;
 import '../../models/cut.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart'
     show envelopeInkKeyOfCut;
-import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
@@ -133,12 +133,13 @@ class CutVerbs {
         ),
       );
     }
-    _carrySheetInk(from: cutId, to: copy.cutId, minted: copy.minted);
+    _carrySheetInk(from: cutId, to: copy.cutId);
   });
 
   /// The sheets' handwriting of a duplicated cut, onto its copy: the conte
-  /// cells' by their blocks' new ids, the envelope's and the timesheet's box
-  /// by box and band by band. From there the copy's is its own.
+  /// cells' block by block — each copied block keeps its handwriting id, on
+  /// the copy's cut — the envelope's and the timesheet's box by box and band
+  /// by band. From there the copy's is its own.
   ///
   /// 🗣️유저 2026-09-26 (cut-duplicate-sheet-ink-Q1): 「따라간다 — 복제는
   /// 전부 복사」. Each sheet's ink is owned the way the load prunes it
@@ -147,11 +148,7 @@ class CutVerbs {
   /// when [from] shares one ([cutEnvelopeInkOwner]); the copy is no
   /// sibling, so it owns its own. The conte's paper plane belongs to no cut
   /// and stays where it is.
-  void _carrySheetInk({
-    required CutId from,
-    required CutId to,
-    required Map<FrameId, FrameId> minted,
-  }) {
+  void _carrySheetInk({required CutId from, required CutId to}) {
     void carry(
       BrushFrameStore store,
       CutId owner,
@@ -166,7 +163,7 @@ class CutVerbs {
     }
 
     carry(_renderCaches.conteInkRowStore, from, (key) {
-      final block = minted[key.frameId];
+      final block = conteInkRowIdOf(key);
       return block == null ? null : conteInkRowKey(to, block);
     });
     carry(
