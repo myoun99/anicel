@@ -360,14 +360,14 @@ class BrushFrameStore {
   /// 2026-08-16: RAM 비례 + 메모리 압박 반응 — a 3GB tablet was being
   /// asked to hold a desktop's 1.5GB of hot cels).
   int get hotCelByteBudget => _hotBudget.bytes;
+  set hotCelByteBudget(int value) => _hotBudget.bytes = value;
 
-  /// Cels beyond the new budget start cooling now — the law above, applied
-  /// when the budget moves rather than at the next cel that happens to
-  /// arrive: a project sent to a background tab (I-7) gets no next cel.
-  set hotCelByteBudget(int value) {
-    _hotBudget.bytes = value;
-    _scheduleCooling();
-  }
+  /// Cools what the budget no longer holds — asked when a budget MOVES (a
+  /// new allowance, a project tab sent behind, I-7) rather than left for
+  /// the next cel to arrive, which a tab behind the one on screen never
+  /// gets. The budget write itself stays a write: the memory warning is
+  /// its own kick ([respondToMemoryPressure]).
+  void coolToBudget() => _scheduleCooling();
 
   /// The least a memory warning leaves the hot tier — and the least the
   /// memory tab's allowance may scale it to ([CacheBudgets.floors]).

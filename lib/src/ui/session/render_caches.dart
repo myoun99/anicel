@@ -75,11 +75,20 @@ class RenderCaches {
   /// and the sheet-ink stores' ONE share, split evenly
   /// ([CacheBudgets.sheetInk]). The session calls it; a store no session
   /// set keeps the desktop-class default, as an unknown device does.
+  ///
+  /// ...and KEEPS them: each store cools what its new budget no longer
+  /// holds ([BrushFrameStore.coolToBudget]) — the playback cache's
+  /// `enforce` said of the cels. A budget that moved and waited for the
+  /// next cel to arrive was never kept by a project tab sent behind (I-7),
+  /// which gets no next cel.
   void applyCacheBudgets(CacheBudgets budgets) {
     brushFrameStore.hotCelByteBudget = budgets.drawings;
     final stores = sheetInkStores;
     for (final store in stores) {
       store.hotCelByteBudget = budgets.sheetInk ~/ stores.length;
+    }
+    for (final store in celStores) {
+      store.coolToBudget();
     }
   }
 

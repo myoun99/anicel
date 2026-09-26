@@ -741,8 +741,24 @@ class ProjectFile {
   /// [holdMediaBytes]): two callers woken by the same save both find it
   /// over, and an `await` between the wait and the act lets the other one
   /// act first. 🪦`saveSettled` waited alone, and nothing called it once
-  /// both did it this way (a0db20fa1).
+  /// both did it this way (a0db20fa1) — until a caller came that acts on
+  /// nothing after the wait ([saveSettled]).
   Completer<void> _saveEnded = Completer<void>()..complete();
+
+  /// Completes once no save is running — what letting a closed project go
+  /// waits for (I-7: a tab can close while the autosave clock is writing
+  /// its file, and a session disposed mid-write tears the tail it was
+  /// extending).
+  ///
+  /// ⚠️A WAIT ALONE, which the note above warns against — and safe here
+  /// for the one reason it names: the caller starts nothing after it. A
+  /// closed project's tab is gone and its clock hook with it, so no save
+  /// can begin between this completing and the session going.
+  Future<void> get saveSettled async {
+    while (_saveInFlight) {
+      await _saveEnded.future;
+    }
+  }
 
   /// Raised for the WHOLE save, retirement included — see
   /// [ProjectFileDoor.saveProjectToFile], which says why the window has to

@@ -1,11 +1,17 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/recent_projects.dart';
+import 'package:anicel/src/services/persistence/recent_projects_store.dart';
+import 'package:anicel/src/services/persistence/volatile_scratch_files.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -13,6 +19,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/open_projects.dart';
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
@@ -249,6 +256,156 @@ void main() {
       row([a, b], 'brushTips'),
       row([a], 'brushTips'),
       reason: 'the tips and the held piece are the app\'s, not a tab\'s',
+    );
+  });
+
+  testWidgets('the project BEHIND the one on screen has no canvas: the window '
+      'takes its canvas hooks off it, and hangs them on the one in front', (
+    tester,
+  ) async {
+    final projects = await pumpApp(tester);
+    final first = projects.active;
+    expect(first.canvasHasSelection, isNotNull, reason: 'CONTROL');
+    await newProject(tester);
+    expect(first.canvasHasSelection, isNull);
+    expect(first.clearCanvasSelection, isNull);
+    expect(first.pixelVerbCanvas, isNull);
+    final second = projects.active;
+    expect(second.canvasHasSelection, isNotNull);
+    expect(second.clearCanvasSelection, isNotNull);
+    expect(second.pixelVerbCanvas, isNotNull);
+  });
+
+  testWidgets('a file that fails to open leaves the tabs as they were, and '
+      'lets the session it was read into go', (tester) async {
+    final folder = Directory.systemTemp.createTempSync('qa_project_tabs_');
+    deleteAfterSessionEnds(folder);
+    final path = '${folder.path.replaceAll(r'\', '/')}/Broken.anicel';
+    File(path).writeAsStringSync('not an archive');
+    final seeded = const RecentProjects().withOpened(RecentProject(path: path));
+    AppRecent.projects.value = seeded;
+    RecentProjectsStore().save(seeded);
+    addTearDown(() {
+      AppRecent.projects.value = const RecentProjects();
+      RecentProjectsStore().save(const RecentProjects());
+    });
+    final projects = await pumpApp(tester);
+    final only = projects.active;
+    // What the open sessions' undo stacks may park — each open session
+    // adds its budget, so a session the failed open kept would show here.
+    final room = VolatileScratchFiles.ceilingBytes;
+
+    await tapKey(tester, 'top-strip-project-button');
+    final recents = find.byKey(const ValueKey<String>('menu-recent-projects'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(recents));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
+    for (var attempt = 0; attempt < 200; attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.text(AppText.strings.commonNotice).evaluate().isNotEmpty) {
+        break;
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+    }
+    expect(
+      find.text(AppText.strings.commonNotice),
+      findsOneWidget,
+      reason: 'CONTROL: the open failed, and said so',
+    );
+    await tester.pumpAndSettle();
+
+    expect(projects.sessions, [only], reason: 'no tab for a failed open');
+    expect(
+      VolatileScratchFiles.ceilingBytes,
+      room,
+      reason: 'the session the file was read into was let go',
+    );
+  });
+
+  testWidgets('F-123 into a new tab: a file opened from the menu puts the '
+      'tools back where it was saved — the file is read before its tab '
+      'exists, and the tools come back when the tab does', (tester) async {
+    final folder = Directory.systemTemp.createTempSync('qa_project_tabs_');
+    deleteAfterSessionEnds(folder);
+    final path = '${folder.path.replaceAll(r'\', '/')}/Tools.anicel';
+    final projects = await pumpApp(tester);
+    final tool = workspaceOf(tester).brushTool!;
+    tool.value = tool.value.copyWith(tool: CanvasTool.eraser);
+    await tester.pump();
+    await tester.runAsync(
+      () => projects.active.projectDoor.saveProjectToFile(
+        path,
+        asked: SaveAsked.byAPerson,
+      ),
+    );
+    // Clean now, so its ✕ asks nothing; a fresh untitled tab takes its place.
+    await tapKey(tester, 'project-tab-close-0');
+    tool.value = tool.value.copyWith(tool: CanvasTool.brush);
+    await tester.pump();
+
+    FolderPicker.debugFilePicker = ({
+      required List<XTypeGroup> acceptedTypeGroups,
+      required bool allowMultiple,
+    }) async => [
+      FolderGrant(
+        status: FolderPickStatus.granted,
+        path: path,
+        kind: GrantKind.file,
+      ),
+    ];
+    await tapKey(tester, 'top-strip-project-button');
+    await tester.tap(find.byKey(const ValueKey<String>('menu-file-open')));
+    for (var attempt = 0; attempt < 200; attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (projects.active.projectFile.path == path) {
+        break;
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+    }
+    expect(projects.active.projectFile.path, path, reason: 'CONTROL: opened');
+    for (var frame = 0; frame < 20; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+    }
+    expect(tool.value.tool, CanvasTool.eraser);
+  });
+
+  testWidgets('a tab closed while the clock is writing its file is let go '
+      'only once the write ends — never mid-write', (tester) async {
+    final projects = await pumpApp(tester);
+    await newProject(tester);
+    final closing = projects.active;
+    // What the open sessions' undo stacks may park: a session that is let
+    // go takes its share with it, which is how this sees the letting go.
+    final withIt = VolatileScratchFiles.ceilingBytes;
+    closing.projectFile.beginSave();
+
+    await tapKey(tester, 'project-tab-close-1');
+    expect(projects.sessions, hasLength(1), reason: 'the tab is gone');
+    await tester.pump();
+    await tester.pump();
+    expect(
+      VolatileScratchFiles.ceilingBytes,
+      withIt,
+      reason: 'kept while its save is still writing',
+    );
+
+    closing.projectFile.endSave();
+    await tester.pump();
+    await tester.pump();
+    expect(
+      VolatileScratchFiles.ceilingBytes,
+      lessThan(withIt),
+      reason: 'let go once the write ended',
     );
   });
 }

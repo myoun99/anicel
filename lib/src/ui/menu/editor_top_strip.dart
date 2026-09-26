@@ -562,7 +562,7 @@ class EditorTopStrip extends StatelessWidget {
     // 여는거야」 — a tab of its own beside the ones already open.
     _item(
       id: 'file-new',
-      label: 'New project',
+      label: AppText.strings.newProject,
       icon: Icons.note_add_outlined,
       onPressed: () => projects.open(newUntitledProject()),
     ),
@@ -1378,7 +1378,9 @@ class _ProjectTabOverflow extends StatelessWidget {
       ],
       child: Center(
         child: Text(
-          activeHidden ? projectTabLabel(projects, active) : '+${hidden.length}',
+          activeHidden
+              ? projectTabLabel(projects, active)
+              : '+${hidden.length}',
           key: activeHidden
               ? const ValueKey<String>('top-strip-project-name')
               : null,

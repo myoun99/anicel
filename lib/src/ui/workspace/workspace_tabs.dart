@@ -267,7 +267,8 @@ class _WorkspaceTabs {
                 toolHold: _state.widget.toolHold,
                 cameraViewEnabled: _state._views._cameraViewEnabled,
                 cameraDimOpacity: _state._views._cameraDimOpacity,
-                expandedLaneLayerIds: _state.widget.session.railView.expandedLaneLayerIds,
+                expandedLaneLayerIds:
+                    _state.widget.session.railView.expandedLaneLayerIds,
                 fillOptions: _state._views._fillOptions,
                 selectionMaskOptions: _state._views._selectionMaskOptions,
                 transformOptions: _state._transformOptions,
@@ -854,9 +855,11 @@ class _WorkspaceTabs {
               timelineFrameAxisOffset:
                   _state._frameAxisOffsets[LayerRailId.timeline],
               xsheetFrameAxisOffset: _state._frameAxisOffsets[LayerRailId.xsheet],
-              expandedLaneLayerIds: _state.widget.session.railView.expandedLaneLayerIds.value,
+              expandedLaneLayerIds:
+                  _state.widget.session.railView.expandedLaneLayerIds.value,
               onToggleLayerLanes: _state._toggleLayerLanes,
-              expandedLaneGroupKeys: _state.widget.session.railView.expandedLaneGroupKeys.value,
+              expandedLaneGroupKeys:
+                  _state.widget.session.railView.expandedLaneGroupKeys.value,
               onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
               hiddenSections:
                   _state.widget.session.railView.hiddenSections.value,

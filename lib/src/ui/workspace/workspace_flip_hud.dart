@@ -59,11 +59,11 @@ class _WorkspaceFlipHud {
     }
     final rows = buildTimelineDisplayRows(
       layers: horizontalLayerDisplayOrder(session.layers),
-      expandedLayerIds: _state.widget.session.railView.expandedLaneLayerIds.value,
+      expandedLayerIds: session.railView.expandedLaneLayerIds.value,
       lanesForLayer: (layer) => timelineLanesForLayer(
         layer: layer,
         session: session,
-        expandedGroupKeys: _state.widget.session.railView.expandedLaneGroupKeys.value,
+        expandedGroupKeys: session.railView.expandedLaneGroupKeys.value,
       ),
       hiddenSections: session.railView.hiddenSections.value,
       rowFilter: session.railView.rowFilter.value,

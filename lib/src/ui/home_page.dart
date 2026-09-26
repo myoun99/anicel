@@ -490,9 +490,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// ⚠️A tab closed while it was ON SCREEN is still the workspace's session
   /// until the rebuild this frame makes, and the workspace takes its own
   /// hooks off in that rebuild: disposing it now would have the workspace
-  /// unhook from a disposed session. So it goes after the frame; a window
-  /// that is closing (this State's dispose, after the workspace's own) lets
-  /// every one go at once.
+  /// unhook from a disposed session. So it goes after the frame — and after
+  /// any save the clock began before the tab closed ([ProjectFile
+  /// .saveSettled]). A window that is closing (this State's dispose, after
+  /// the workspace's own) lets every one go at once.
   void _letGo(EditorSessionManager session) {
     _hooks.remove(session)?.unhang(this);
     if (!mounted) {
@@ -500,7 +501,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     _goingAway.add(session);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await session.projectFile.saveSettled;
       if (_goingAway.remove(session)) {
         session.dispose();
       }

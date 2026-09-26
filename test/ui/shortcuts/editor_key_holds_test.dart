@@ -297,6 +297,31 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     expect(CanvasPanHold.held.value, isFalse);
   });
+
+  testWidgets('🚨I-7: pointed at another project\'s stroke, the holds wait on '
+      'THAT one — the one they left no longer counts', (tester) async {
+    await pumpRoad(tester);
+    final onScreen = ValueNotifier(true);
+    addTearDown(onScreen.dispose);
+    holds.strokeLive = onScreen;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    expect(tool.value.tool, CanvasTool.brush, reason: 'its stroke is live');
+
+    strokeLive.value = true;
+    strokeLive.value = false;
+    await tester.pump();
+    expect(
+      tool.value.tool,
+      CanvasTool.brush,
+      reason: 'the project behind finishing a stroke frees nothing',
+    );
+
+    onScreen.value = false;
+    await tester.pump();
+    expect(tool.value.tool, CanvasTool.eyedropper);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    expect(tool.value.tool, CanvasTool.brush);
+  });
 }
 
 /// The tools the drawing view presses for — where a held pen button stands

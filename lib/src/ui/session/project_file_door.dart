@@ -509,11 +509,13 @@ class ProjectFileDoor {
     required StagedArchive staged,
   }) {
     _refuseAFileOpenElsewhere(placedPath);
+    final left = _file.path;
     _file.bindToSavedFile(
       placedPath,
       mediaInFile: staged.mediaInFile,
       cleanAsOf: staged.cleanAsOf,
     );
+    _letGoOfTheFileItLeft(left, placedPath);
     _changes.notifyChanged();
   }
 
@@ -736,7 +738,35 @@ class ProjectFileDoor {
   /// whoever holds them: the shell's tool notifier and the workspace's
   /// preset library, neither of which the door can reach. Null until the
   /// workspace installs it; a session with no workspace carries no tools.
-  ToolChoiceBridge? toolChoice;
+  ///
+  /// 🚨A file opens into a session NO WINDOW SHOWS YET (I-7: it is read
+  /// before its tab is added, so a read that fails leaves the tabs alone),
+  /// and the workspace installs this when the tab comes on screen. So what
+  /// the file saved waits here and is put back THEN — once: a tab brought
+  /// forward again later is not an open.
+  ToolChoiceBridge? get toolChoice => _toolChoice;
+  set toolChoice(ToolChoiceBridge? bridge) {
+    _toolChoice = bridge;
+    final waiting = _toolsToResume;
+    if (bridge != null && waiting != null) {
+      _toolsToResume = null;
+      bridge.resume(waiting);
+    }
+  }
+
+  ToolChoiceBridge? _toolChoice;
+
+  /// What an open read while no bridge was installed ([toolChoice]).
+  Map<String, Object?>? _toolsToResume;
+
+  void _resumeTools(Map<String, Object?> tools) {
+    final bridge = _toolChoice;
+    if (bridge == null) {
+      _toolsToResume = tools;
+      return;
+    }
+    bridge.resume(tools);
+  }
 
   /// Where the work stands right now, as every save writes it beside the
   /// project (F-123) — read as the save is made, so the file holds the place
@@ -832,12 +862,36 @@ class ProjectFileDoor {
     for (final carry in mediaToStore.keys) {
       _staging.retire(carry);
     }
+    final left = _file.path;
     _file.bindToSavedFile(
       filePath,
       mediaInFile: {...mediaEntryNamesFor(mediaToStore).values},
       cleanAsOf: cleanAsOf,
     );
+    _letGoOfTheFileItLeft(left, filePath);
     _changes.notifyChanged();
+  }
+
+  /// Lets go of [left] — the file this session was bound to before a save
+  /// bound it to [filePath] — once no cel still reads from it.
+  ///
+  /// 🚨The handles are per FILE since I-7 (a project per tab), so binding
+  /// to another file no longer lets the last one go by itself — the Open
+  /// door says the same of the file an open replaces. A Save As moves every
+  /// clean cel onto the new file; a cel edited while it wrote keeps its old
+  /// ref, and the old file stays held while anything reads it.
+  void _letGoOfTheFileItLeft(String? left, String filePath) {
+    if (left == null || namesTheSameFile(left, filePath)) {
+      return;
+    }
+    for (final store in _stores) {
+      for (final path in store.filesReadFrom) {
+        if (namesTheSameFile(path, left)) {
+          return;
+        }
+      }
+    }
+    OpenProjectFile.instance.releaseFor(left);
   }
 
   /// Every audio path the project references (SE clips + the SOUND entries
@@ -985,7 +1039,7 @@ class ProjectFileDoor {
     // F-169 ②: the row the work was saved standing on is where you go back
     // to, so what the rail's view hides it with opens.
     _keepStandingShown(reveal: true);
-    toolChoice?.resume(resume.tools);
+    _resumeTools(resume.tools);
     _file.bindToOpenedFile(
       bindTo ?? filePath,
       // The media entries the file holds, as it says itself. Whether an

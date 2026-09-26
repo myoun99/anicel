@@ -375,6 +375,10 @@ enum AppStrings {
   // --- Project lifecycle confirmations ---
   String get closeProjectTitle => _s('closeProjectTitle');
 
+  /// The project popover's first row: a new project in a tab of its own
+  /// (I-7).
+  String get newProject => _s('newProject');
+
   /// A never-saved project's tab (I-7); `{n}` is its number this run.
   String get untitledProjectTab => _s('untitledProjectTab');
 
@@ -1803,6 +1807,7 @@ enum AppStrings {
     'guideAddVanishingPoint': 'Add vanishing point',
     'guideMakeVertical': 'Make exactly vertical',
     'closeProjectTitle': 'Close project?',
+    'newProject': 'New project',
     'untitledProjectTab': 'Untitled {n}',
     'fileOpenInAnotherTab': 'That file is already open in another tab.',
     'closeProjectBody': 'Your changes are not saved. Close anyway?',
@@ -2897,6 +2902,7 @@ enum AppStrings {
     'guideAddVanishingPoint': '消失点を追加',
     'guideMakeVertical': '完全な垂直にする',
     'closeProjectTitle': 'プロジェクトを閉じますか？',
+    'newProject': '新規プロジェクト',
     'untitledProjectTab': '無題 {n}',
     'fileOpenInAnotherTab': 'そのファイルは別のタブで開いています。',
     'closeProjectBody': '変更は保存されていません。閉じますか？',
@@ -2933,7 +2939,6 @@ enum AppStrings {
     'menuBarHelp': 'ヘルプ',
     'menuPlay': '再生',
     'menuPause': '一時停止',
-    'menuAction.file-new': '新規プロジェクト',
     'menuAction.file-open': '開く…',
     'menuAction.file-import': '読み込み／配置…',
     'menuAction.file-export': '書き出し…',
@@ -4229,6 +4234,7 @@ enum AppStrings {
     'guideAddVanishingPoint': '소실점 추가',
     'guideMakeVertical': '정확히 수직으로',
     'closeProjectTitle': '프로젝트를 닫을까요?',
+    'newProject': '새 프로젝트',
     'untitledProjectTab': '제목 없음 {n}',
     'fileOpenInAnotherTab': '그 파일은 다른 탭에서 열려 있습니다.',
     'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
@@ -4265,7 +4271,6 @@ enum AppStrings {
     'menuBarHelp': '도움말',
     'menuPlay': '재생',
     'menuPause': '일시정지',
-    'menuAction.file-new': '새 프로젝트',
     'menuAction.file-open': '열기…',
     'menuAction.file-import': '가져오기/배치…',
     'menuAction.file-export': '내보내기…',
@@ -5563,6 +5568,7 @@ enum AppStrings {
     'guideAddVanishingPoint': 'Ajouter un point de fuite',
     'guideMakeVertical': 'Rendre exactement vertical',
     'closeProjectTitle': 'Fermer le projet ?',
+    'newProject': 'Nouveau projet',
     'untitledProjectTab': 'Sans titre {n}',
     'fileOpenInAnotherTab': 'Ce fichier est déjà ouvert dans un autre onglet.',
     'closeProjectBody':
@@ -5597,7 +5603,6 @@ enum AppStrings {
     'menuBarHelp': 'Aide',
     'menuPlay': 'Lire',
     'menuPause': 'Pause',
-    'menuAction.file-new': 'Nouveau projet',
     'menuAction.file-open': 'Ouvrir…',
     'menuAction.file-import': 'Importer / Placer…',
     'menuAction.file-export': 'Exporter…',
@@ -6949,6 +6954,7 @@ enum AppStrings {
     'guideAddVanishingPoint': '添加消失点',
     'guideMakeVertical': '设为完全垂直',
     'closeProjectTitle': '关闭项目？',
+    'newProject': '新建项目',
     'untitledProjectTab': '未命名 {n}',
     'fileOpenInAnotherTab': '该文件已在另一个标签页中打开。',
     'closeProjectBody': '你的更改尚未保存。仍要关闭吗？',
@@ -6980,7 +6986,6 @@ enum AppStrings {
     'menuBarHelp': '帮助',
     'menuPlay': '播放',
     'menuPause': '暂停',
-    'menuAction.file-new': '新建项目',
     'menuAction.file-open': '打开…',
     'menuAction.file-import': '导入/放置…',
     'menuAction.file-export': '导出…',

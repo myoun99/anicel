@@ -116,4 +116,35 @@ void main() {
       reason: 'another open project\'s file is not this open\'s to let go',
     );
   });
+
+  test('a SAVE AS lets go of the file it left — the same law as an open '
+      '(I-7: a handle per file, so binding elsewhere lets nothing go by '
+      'itself)', () async {
+    final directory = Directory.systemTemp.createTempSync('anicel-held-as');
+    deleteAfterSessionEnds(directory);
+    final first = '${directory.path}${Platform.pathSeparator}first.anicel';
+    final second = '${directory.path}${Platform.pathSeparator}second.anicel';
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    await session.projectDoor.saveProjectToFile(
+      first,
+      asked: SaveAsked.byAPerson,
+    );
+    expect(OpenProjectFile.instance.isHolding(first), isTrue, reason: 'CONTROL');
+
+    await session.projectDoor.saveProjectToFile(
+      second,
+      asked: SaveAsked.byAPerson,
+    );
+
+    expect(OpenProjectFile.instance.isHolding(second), isTrue);
+    expect(
+      OpenProjectFile.instance.isHolding(first),
+      isFalse,
+      reason: 'every cel moved onto the new file; nothing reads the old one',
+    );
+    File(first).deleteSync();
+  });
 }

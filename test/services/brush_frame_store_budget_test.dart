@@ -16,6 +16,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/cache_budgets.dart';
 
 import '../helpers/native_engine_path.dart';
 
@@ -75,40 +76,10 @@ void main() {
     test('kicks a cooling pass — a plain budget write alone never cools',
         () async {
       final store = BrushFrameStore();
-      const k1 = BrushFrameKey(
-        projectId: ProjectId('p'),
-        trackId: TrackId('t'),
-        cutId: CutId('c'),
-        layerId: LayerId('l'),
-        frameId: FrameId('f1'),
-      );
-      const k2 = BrushFrameKey(
-        projectId: ProjectId('p'),
-        trackId: TrackId('t'),
-        cutId: CutId('c'),
-        layerId: LayerId('l'),
-        frameId: FrameId('f2'),
-      );
-      BitmapSurface ink(int seed) {
-        final pixels = Uint8List(8 * 8 * 4);
-        for (var i = 0; i < pixels.length; i += 1) {
-          pixels[i] = (i * seed * 31 + seed) & 0xFF;
-        }
-        return BitmapSurface(
-          canvasSize: const CanvasSize(width: 16, height: 16),
-          tileSize: 8,
-          tiles: {
-            TileCoord(x: 0, y: 0): BitmapTile(
-              size: 8,
-              pixels: pixels,
-            ),
-          },
-        );
-      }
 
       // Stored UNDER the default budget: both hot, nothing scheduled.
-      store.storeBakedSurface(k1, ink(3));
-      store.storeBakedSurface(k2, ink(5));
+      store.storeBakedSurface(_k1, _ink(3));
+      store.storeBakedSurface(_k2, _ink(5));
 
       // A direct field write is exactly what pressure does internally —
       // and it must NOT cool by itself, or the kick assertion below
@@ -116,7 +87,7 @@ void main() {
       store.hotCelByteBudget = 300;
       await store.drainCooling();
       expect(
-        store.isCelCold(k1),
+        store.isCelCold(_k1),
         isFalse,
         reason: 'presence anchor: the budget write alone scheduled nothing',
       );
@@ -124,12 +95,12 @@ void main() {
       store.respondToMemoryPressure();
       await store.drainCooling();
       expect(
-        store.isCelCold(k1),
+        store.isCelCold(_k1),
         isTrue,
         reason: 'the pressure response is what kicked the cooling pass',
       );
       expect(
-        store.isCelCold(k2),
+        store.isCelCold(_k2),
         isFalse,
         reason: 'the most recently used cel never cools',
       );
@@ -139,6 +110,33 @@ void main() {
         reason: 'the floor never raises a deliberately tight budget',
       );
     });
+  });
+
+  test('a budget APPLIED is a budget kept: the cel stores cool what their '
+      'new budgets no longer hold — a tab sent behind gets no next cel to '
+      'do it (I-7)', () async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final store = session.renderCaches.brushFrameStore;
+    // Stored UNDER the session's budget: both hot, nothing scheduled.
+    store
+      ..storeBakedSurface(_k1, _ink(3))
+      ..storeBakedSurface(_k2, _ink(5));
+    await store.drainCooling();
+    expect(store.isCelCold(_k1), isFalse, reason: 'CONTROL: both hot');
+
+    session.renderCaches.applyCacheBudgets(
+      CacheBudgets.of({for (final line in CacheBudgetLine.values) line: 300}),
+    );
+    await store.drainCooling();
+    expect(store.isCelCold(_k1), isTrue, reason: 'over the new budget');
+    expect(
+      store.isCelCold(_k2),
+      isFalse,
+      reason: 'the most recently used cel never cools',
+    );
   });
 
   test('the session seeds the store from the device and forwards pressure '
@@ -196,4 +194,38 @@ void main() {
       reason: 'sanity bounds: more than 1GB, less than 100TB',
     );
   });
+}
+
+const _k1 = BrushFrameKey(
+  projectId: ProjectId('p'),
+  trackId: TrackId('t'),
+  cutId: CutId('c'),
+  layerId: LayerId('l'),
+  frameId: FrameId('f1'),
+);
+
+const _k2 = BrushFrameKey(
+  projectId: ProjectId('p'),
+  trackId: TrackId('t'),
+  cutId: CutId('c'),
+  layerId: LayerId('l'),
+  frameId: FrameId('f2'),
+);
+
+/// A one-tile cel whose bytes depend on [seed], so two of them differ.
+BitmapSurface _ink(int seed) {
+  final pixels = Uint8List(8 * 8 * 4);
+  for (var i = 0; i < pixels.length; i += 1) {
+    pixels[i] = (i * seed * 31 + seed) & 0xFF;
+  }
+  return BitmapSurface(
+    canvasSize: const CanvasSize(width: 16, height: 16),
+    tileSize: 8,
+    tiles: {
+      TileCoord(x: 0, y: 0): BitmapTile(
+        size: 8,
+        pixels: pixels,
+      ),
+    },
+  );
 }

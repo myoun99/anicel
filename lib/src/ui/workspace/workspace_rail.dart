@@ -241,7 +241,8 @@ class _WorkspaceRail {
   }
 
   void _toggleLaneGroup(String groupKey) {
-    final next = Set<String>.of(_state.widget.session.railView.expandedLaneGroupKeys.value);
+    final expanded = _state.widget.session.railView.expandedLaneGroupKeys;
+    final next = Set<String>.of(expanded.value);
     if (next.remove(groupKey)) {
       // Closing: only this group's MEMBERS go, so the header is what
       // swallows them and where the standing row lands (R5 #11).
@@ -255,7 +256,7 @@ class _WorkspaceRail {
     } else {
       next.add(groupKey);
     }
-    _state.widget.session.railView.expandedLaneGroupKeys.value = next;
+    expanded.value = next;
   }
 
   void _toggleAttachGroup(LayerId baseId) {

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_workspace_colors.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/open_projects.dart';
@@ -145,7 +146,10 @@ void main() {
     final projects = make();
     final open = projects.open(createDefaultProject());
     bind(open, 'C:/work/Scene 3.anicel');
-    expect(identical(projects.boundTo(r'C:\work\Scene 3.anicel'), open), isTrue);
+    expect(
+      identical(projects.boundTo(r'C:\work\Scene 3.anicel'), open),
+      isTrue,
+    );
     expect(projects.boundTo('C:/work/Scene 4.anicel'), isNull);
   });
 
@@ -201,5 +205,19 @@ void main() {
     final b = projects.open(createDefaultProject());
     projects.dispose();
     expect(letGo, [a, b]);
+  });
+
+  test('a NEW project is new: an id no other open project has, and the '
+      'pasteboard the app keeps for the next project', () {
+    final kept = AppWorkspaceColors.settings.value;
+    addTearDown(() => AppWorkspaceColors.settings.value = kept);
+    AppWorkspaceColors.settings.value = const AppWorkspaceColors(
+      pasteboardArgb: 0xFF123456,
+    );
+    final a = newUntitledProject();
+    final b = newUntitledProject();
+    expect(a.id, isNot(b.id));
+    expect(a.pasteboardArgb, 0xFF123456);
+    expect(b.pasteboardArgb, 0xFF123456);
   });
 }

@@ -243,9 +243,11 @@ class _WorkspaceCollapsedRows {
       hasLanes: timelineLanesForLayer(
         layer: layer,
         session: session,
-        expandedGroupKeys: _state.widget.session.railView.expandedLaneGroupKeys.value,
+        expandedGroupKeys: session.railView.expandedLaneGroupKeys.value,
       ).isNotEmpty,
-      lanesExpanded: _state.widget.session.railView.expandedLaneLayerIds.value.contains(layer.id),
+      lanesExpanded: session.railView.expandedLaneLayerIds.value.contains(
+        layer.id,
+      ),
       // 🚨A NULL CALLBACK IS NOT "no handler", IT IS "NO COLUMN": this row
       // reads `onToggleLayerOnionSkin != null` and friends as whether the
       // slot exists at all. Leaving them out to mean "nothing can be pressed
@@ -383,7 +385,7 @@ class _WorkspaceCollapsedRows {
         ? timelineLanesForLayer(
             layer: layer,
             session: session,
-            expandedGroupKeys: _state.widget.session.railView.expandedLaneGroupKeys.value,
+            expandedGroupKeys: session.railView.expandedLaneGroupKeys.value,
           ).where((candidate) => candidate.laneId == row.laneId).firstOrNull
         : null;
     if (row is LaneRowAddress && lane == null) {
