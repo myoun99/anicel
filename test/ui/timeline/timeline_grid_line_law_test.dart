@@ -204,6 +204,29 @@ void main() {
         }
       }
     });
+
+    test('a sheet whose window starts off the step still rules every line '
+        'the law rules in it', () {
+      const cell = 1 / 8;
+      const start = 7;
+      const extent = 125.0;
+      final lines = _Lines();
+      TimelineGridSheetPainter(
+        frameCellExtent: cell,
+        framesPerSecond: 24,
+        colorScheme: scheme,
+        ground: null,
+        frameStartIndex: start,
+      ).paint(lines, const Size(extent, 40));
+
+      final ruled = [
+        for (var frame = start; (frame - start) * cell <= extent; frame += 1)
+          if (inkAt(frame, cell: cell) != null)
+            timelineFrameBoundaryLinePosition(frame - start, cell),
+      ];
+      expect(ruled, isNotEmpty, reason: 'the premise: the window rules');
+      expect(lines.alongs, ruled);
+    });
   });
 
   test('the over-block ink darkens the paper, never glows over it (D32)', () {
@@ -246,4 +269,15 @@ void main() {
     expect(baseShift, lessThan(secondShift));
     expect(baseShift, greaterThan(0));
   });
+}
+
+/// Every line drawn, as where it stands along a horizontal frame axis.
+class _Lines implements Canvas {
+  final alongs = <double>[];
+
+  @override
+  void drawLine(Offset p1, Offset p2, Paint paint) => alongs.add(p1.dx);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

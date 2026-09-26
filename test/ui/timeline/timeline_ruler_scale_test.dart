@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart' show wordFitsAsItIs;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show timelineMarkGap;
+    show timelineFrameBoundaryLineInk, timelineGridLineSnap, timelineMarkGap;
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -654,7 +654,62 @@ void main() {
         strip.cellRectFor(99),
       ));
     });
+
+    test('the paper rules every line the law rules, whatever frame a '
+        'stretch starts on', () {
+      for (final axis in Axis.values) {
+        // The selected cell and the playback end cut the paper at 10, 11
+        // and 50 — none of them on the lines' step at this zoom.
+        final strip = scale(
+          axis: axis,
+          metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
+          currentFrameIndex: 10,
+          playbackFrameCount: 50,
+          frameEndIndexExclusive: 1000,
+        );
+        final lines = _Lines();
+        strip.paintPaperIn(lines, (startIndex: 0, endIndexExclusive: 1000));
+
+        double edgeOf(int frame) {
+          final rect = strip.cellRectFor(frame);
+          return (axis == Axis.horizontal ? rect.left : rect.top) +
+              timelineGridLineSnap;
+        }
+
+        final ruled = [
+          for (var frame = 0; frame < 1000; frame += 1)
+            if (timelineFrameBoundaryLineInk(
+                  frameIndex: frame,
+                  frameCellExtent: cell,
+                  framesPerSecond: 24,
+                  colorScheme: strip.colorScheme,
+                ) !=
+                null)
+              edgeOf(frame),
+        ];
+        expect(ruled.length, greaterThan(2), reason: 'the premise');
+        expect(
+          [
+            for (final start in lines.starts)
+              axis == Axis.horizontal ? start.dx : start.dy,
+          ],
+          ruled,
+          reason: '$axis',
+        );
+      }
+    });
   });
+}
+
+/// Every line drawn, by where it starts.
+class _Lines implements Canvas {
+  final starts = <Offset>[];
+
+  @override
+  void drawLine(Offset p1, Offset p2, Paint paint) => starts.add(p1);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 /// Every rect laid, with the colour it was laid in.
