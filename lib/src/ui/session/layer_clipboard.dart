@@ -168,11 +168,22 @@ class LayerClipboard implements BringsMedia {
         insertionIndex: insertionIndex,
       );
     });
-    // The paste minted every cel afresh, and a picture lives under its
-    // cel's id — so the pictures the copy took follow them over (F-62's
-    // law, at the layer's scale). ↩️Nothing did until 2026-09-26: a pasted
-    // layer, and a duplicated one, came out with no drawing at all
-    // (measured; card `duplicates-lose-their-pictures`).
+    _carryWhatTheCopyShowed(copy, cut, pasted);
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: pasted.layerId);
+    _changes.notifyChanged();
+  }
+
+  /// The paste minted every cel afresh, and a picture lives under its
+  /// cel's id — so the pictures the copy took follow them over (F-62's
+  /// law, at the layer's scale). ↩️Nothing did until 2026-09-26: a pasted
+  /// layer, and a duplicated one, came out with no drawing at all
+  /// (measured; card `duplicates-lose-their-pictures`). Its blocks wrote
+  /// on the conte anew, and their handwriting follows them the same way.
+  void _carryWhatTheCopyShowed(
+    _CopiedLayer copy,
+    Cut cut,
+    PastedLayer pasted,
+  ) {
     carryBakedPictures(
       internals: _internals,
       store: _renderCaches.brushFrameStore,
@@ -187,8 +198,6 @@ class LayerClipboard implements BringsMedia {
       copies: pasted.handwriting,
       handwritingOf: (inkId) => copy.handwriting[inkId],
     );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: pasted.layerId);
-    _changes.notifyChanged();
   }
 
   /// Where a pasted row goes in [cut]: right below the active row, and at

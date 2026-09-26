@@ -1,7 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
-import '../../models/conte/conte_ink_keys.dart' show conteInkRowLayerId;
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -673,8 +672,7 @@ class FrameClipboard implements BringsMedia {
           sounds: mineSounds,
         ),
         independent: independent,
-        mint: () => _frameIds.mintFrameId(target.id),
-        mintInkId: () => _frameIds.mintFrameId(conteInkRowLayerId).value,
+        ids: _frameIds,
       );
       if (placed.minted.isNotEmpty) {
         mintedByLayer.add((target.id, placed.minted, minePictures));

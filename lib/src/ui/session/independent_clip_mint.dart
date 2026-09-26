@@ -2,7 +2,7 @@ import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart'
-    show conteHandwritingOfACopy, conteInkRowKey;
+    show conteHandwritingOfACopy, conteInkRowKey, conteInkRowLayerId;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
@@ -125,7 +125,7 @@ mintIndependentClip({
 /// the independent branch mints PER LAYER, so the arithmetic stopped being
 /// something one row could keep inline. It sits HERE rather than on the
 /// clipboard because it holds no clipboard state — [row] is the board's
-/// row, [mint] is the caller's id source — and because the two functions
+/// row, [ids] is the caller's id source — and because the two functions
 /// it is the sibling of already live in this file.
 ///
 /// [row] is the clip AND the cels and sounds it carries as ONE argument,
@@ -148,11 +148,10 @@ placedClipFor({
   required ({TimelineClipRow clip, List<Frame> cels, List<AudioClip> sounds})
   row,
   required bool independent,
-  required FrameId Function() mint,
-  required String Function() mintInkId,
+  required FrameIds ids,
 }) {
   final placed = independent
-      ? _independentClipOf(layer, row, mint)
+      ? _independentClipOf(layer, row, () => ids.mintFrameId(layer.id))
       : (
           clip: row.clip,
           born: [
@@ -167,7 +166,10 @@ placedClipFor({
           bornSounds: const <AudioClip>[],
           minted: const <FrameId, FrameId>{},
         );
-  final written = conteHandwritingOfACopy(placed.clip.exposures, mintInkId);
+  final written = conteHandwritingOfACopy(
+    placed.clip.exposures,
+    () => ids.mintFrameId(conteInkRowLayerId).value,
+  );
   return (
     clip: TimelineClipRow(
       exposures: written.exposures,

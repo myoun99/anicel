@@ -1,6 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/conte/conte_ink_keys.dart'
-    show conteInkRowKey, conteInkRowLayerId;
+    show conteInkRowKey;
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/cut.dart' show Cut;
@@ -228,8 +228,7 @@ class FrameVerbs {
       layer: layer,
       row: (clip: clip, cels: layer.frames, sounds: layer.audioClips),
       independent: !linked,
-      mint: () => _frameIds.mintFrameId(layer.id),
-      mintInkId: () => _frameIds.mintFrameId(conteInkRowLayerId).value,
+      ids: _frameIds,
     );
     _controllers.timelineController.spliceRunsForLayers(
       runs: [
