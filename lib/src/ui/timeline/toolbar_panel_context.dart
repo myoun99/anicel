@@ -593,6 +593,12 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (_bandMissesTheStandingRow) {
       return null;
     }
+    return _standingRowEditTarget;
+  }
+
+  /// [editTarget]'s last rung: with no selection speaking, the block the
+  /// standing row holds under the global playhead.
+  StoryboardEditTarget? get _standingRowEditTarget {
     switch (session.storyboardStandingRow) {
       case LayerRowAddress(:final layerId)
           when session.isTrackTransitionLayerId(layerId):
