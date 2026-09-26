@@ -147,10 +147,10 @@ class RenderCaches {
   /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
   /// archive can persist them (the second cel namespace), while the ink
   /// controller (workspace UI) keeps the coordinators. The ROW store's
-  /// keys carry storyboard block [FrameId]s: entries whose block no longer
-  /// exists are pruned at LOAD (never at save — a deleted block's ink must
-  /// survive its own undo), so "ink dies with the drawing" lands at the
-  /// session boundary.
+  /// keys carry each storyboard block's own handwriting id
+  /// (`ExposureMemo.inkId`): entries no block names any more are pruned at
+  /// LOAD (never at save — a deleted block's ink must survive its own
+  /// undo), so "ink dies with the block" lands at the session boundary.
   final BrushFrameStore conteInkRowStore = BrushFrameStore();
   final BrushFrameStore conteInkPageStore = BrushFrameStore();
 

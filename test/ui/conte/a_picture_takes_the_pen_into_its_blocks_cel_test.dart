@@ -125,6 +125,9 @@ void main() {
     late HistoryManager history;
     late ContePicture picture;
 
+    /// The name the band of a block not yet written on is written under.
+    String bandOf(ContePlacedCell cell) => 'band-${cell.source.startFrame}';
+
     Future<Offset> pump(WidgetTester tester, CameraPose pose) async {
       final drawn = cut();
       page = layoutConteSheet(
@@ -178,6 +181,7 @@ void main() {
                   strokeActive: strokeActive,
                   pictures: cels,
                   pictureWindows: [picture.window],
+                  unwrittenInkIdOf: bandOf,
                 ),
               ),
             ),
@@ -247,7 +251,8 @@ void main() {
 
       final row = conteInkWindows(
         page,
-      ).singleWhere((window) => window.key == conteInkRowKey(cutId, frameId));
+        unwrittenInkIdOf: bandOf,
+      ).singleWhere((window) => window.key == conteInkRowKey(cutId, 'band-0'));
       BitmapSurface rowSurface() => ink
           .sessionStateFor(ConteInkPlane.row, row.key)
           .canvasState
@@ -398,7 +403,10 @@ void main() {
     expect(
       ink.hasInkFor(
         ConteInkPlane.row,
-        conteInkRowKey(cutId, frameId),
+        conteInkRowKey(
+          cutId,
+          session.storyboardCursor.conteInkIdFor(cutId, 0),
+        ),
       ),
       isFalse,
       reason: 'drawn on the picture only: the cell\'s ink got nothing',

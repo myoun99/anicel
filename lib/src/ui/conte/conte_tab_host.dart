@@ -10,6 +10,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/conte/conte_ink_keys.dart' show conteInkRowIdOf;
 import '../../models/conte/conte_page_marks.dart'
     show conteCellTextSize, conteInkArgb;
 import '../../models/conte/conte_sheet_layout.dart';
@@ -21,7 +22,7 @@ import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
-import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow;
+import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow, SheetWindow;
 import '../sheet/sheet_text_edit_layer.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
@@ -463,14 +464,23 @@ class _ConteTabHostState extends State<ConteTabHost> {
     ), _strokeOf);
   }
 
-  /// A picture's piece of a stroke landing on a cut with no conte row
-  /// makes the row it was drawn into — in the stroke's own undo step.
-  void _makeTheRowDrawnInto(SheetPictureWindow window) {
-    final cut = _session.cutById(window.key.cutId);
-    if (cut != null) {
-      _session.autoFrame.addConteRow(cut);
+  /// A piece of a stroke landing makes what it was drawn into, in the
+  /// stroke's own undo step: a picture of a cut with no conte row the row,
+  /// a block's first handwriting the block's id.
+  void _makeWhatTheStrokeLandsIn(SheetWindow window) {
+    if (window is SheetPictureWindow) {
+      if (_session.cutById(window.key.cutId) case final cut?) {
+        _session.autoFrame.addConteRow(cut);
+      }
+    } else if (conteInkRowIdOf(window.key) case final inkId?) {
+      _session.storyboardCursor.writeConteBlockInk(window.key.cutId, inkId);
     }
   }
+
+  /// The name the pen writes a block not yet written on under
+  /// (`StoryboardCursor.conteInkIdFor`).
+  String _unwrittenInkIdOf(ContePlacedCell cell) => _session.storyboardCursor
+      .conteInkIdFor(CutId(cell.cutId), cell.source.startFrame);
 
   Positioned _inkLayer(
     _InkMount ink,
@@ -493,7 +503,8 @@ class _ConteTabHostState extends State<ConteTabHost> {
         pictures: widget.pictures,
         pictureWindows: [for (final picture in pictures) picture.window],
         pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
-        beforePictureLands: _makeTheRowDrawnInto,
+        unwrittenInkIdOf: _unwrittenInkIdOf,
+        beforeLanding: _makeWhatTheStrokeLandsIn,
       ),
     );
   }

@@ -21,10 +21,10 @@ import 'conte_picture_ink.dart';
 /// Which conte ink plane a stroke lands on.
 enum ConteInkPlane {
   /// CELL-anchored ink over a cell's whole ROW BAND (cut column through
-  /// the TIME column) — one surface per storyboard drawing block, keyed by
-  /// the block's [FrameId] exactly like the cell memo (R5): the ink rides
-  /// its cell through splits, moves and repagination, saves with the
-  /// project, and dies with the drawing.
+  /// the TIME column) — one surface per storyboard BLOCK, keyed by the
+  /// block's own handwriting id, which rides on its memo beside its ACTION
+  /// (`ExposureMemo.inkId`): the ink rides its block through moves and
+  /// repagination, saves with the project, and dies with the block.
   row,
 
   /// Paper-anchored ink over the whole page (header, margins, the hole's
@@ -112,13 +112,21 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
 /// that cell and everything else (header, margins, the hole) goes to the
 /// paper — one stroke, split where it crosses ([sheetInkRegions]).
 /// A cell with no drawing block carries no band window — ink belongs to
-/// drawings ("그림 삭제 시 잉크 동반 삭제"), so a block-less cell offers
-/// only the paper behind it.
+/// blocks ("그림 삭제 시 잉크 동반 삭제"), so a block-less cell offers
+/// only the paper behind it. A block not yet written on writes under the
+/// name [unwrittenInkIdOf] gives it ahead.
 ///
 /// ⛔Made from the walk the page's printers read ([conteInkMarks]) — the
 /// brush writes through exactly the windows the paper shows.
-List<SheetInkWindow> conteInkWindows(ContePageLayout page) => [
-  for (final ink in conteInkMarks(page, page.metrics))
+List<SheetInkWindow> conteInkWindows(
+  ContePageLayout page, {
+  String Function(ContePlacedCell cell)? unwrittenInkIdOf,
+}) => [
+  for (final ink in conteInkMarks(
+    page,
+    page.metrics,
+    unwrittenInkIdOf: unwrittenInkIdOf,
+  ))
     SheetInkWindow.of(
       ink,
       id: switch (ConteInkPlane.of(ink.key)) {
@@ -147,7 +155,8 @@ class ConteInkLayer extends StatelessWidget {
     this.pictures,
     this.pictureWindows = const [],
     this.pictureInvalidationSink,
-    this.beforePictureLands,
+    this.unwrittenInkIdOf,
+    this.beforeLanding,
   });
 
   final ConteInkController controller;
@@ -178,15 +187,23 @@ class ConteInkLayer extends StatelessWidget {
   /// playback that show it have to hear.
   final CacheInvalidationSink? pictureInvalidationSink;
 
-  /// Told a picture's piece of a stroke is landing, before it is kept —
-  /// where the row a picture of a cut with none draws into is made, so the
-  /// stroke lands in a cel its cut has.
-  final ValueChanged<SheetPictureWindow>? beforePictureLands;
+  /// The name a block not yet written on writes under ([conteInkWindows]).
+  final String Function(ContePlacedCell cell)? unwrittenInkIdOf;
+
+  /// Told each piece of a stroke is landing, before it is kept — where what
+  /// it was drawn into is made or named: the conte row a picture of a cut
+  /// with none draws into, the id a block's first handwriting puts on it.
+  /// So the stroke lands in something its cut has, in the stroke's own undo
+  /// step.
+  final ValueChanged<SheetWindow>? beforeLanding;
 
   @override
   Widget build(BuildContext context) {
     return SheetInkLayer(
-      windows: [...conteInkWindows(page), ...pictureWindows],
+      windows: [
+        ...conteInkWindows(page, unwrittenInkIdOf: unwrittenInkIdOf),
+        ...pictureWindows,
+      ],
       keyPrefix: 'conte',
       viewport: viewport,
       brushToolState: brushToolState,
@@ -202,8 +219,8 @@ class ConteInkLayer extends StatelessWidget {
         ),
       },
       onStrokeCommitted: (window, strokeData) {
+        beforeLanding?.call(window);
         if (window case SheetPictureWindow(plane: final CanvasSize size)) {
-          beforePictureLands?.call(window);
           pictures!.commitStroke(
             plane: size,
             key: window.key,
