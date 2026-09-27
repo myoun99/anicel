@@ -3,18 +3,23 @@ import 'dart:io';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_composite_cache_key.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_tile_cache_key.dart';
 import 'package:anicel/src/models/media_reference.dart';
+import 'package:anicel/src/models/playback_preview_cache_key.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/cache_invalidation_executor.dart';
 import 'package:anicel/src/services/commands/swap_layer_reference_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
@@ -194,6 +199,34 @@ void main() {
     });
   });
 
+  test('every picture it puts in is told to the caches — or the canvas keeps '
+      'drawing the old one', () {
+    seed('/work/bg_v1.png');
+    final history = HistoryManager();
+    addTearDown(history.dispose);
+    final sink = _RecordingSink();
+
+    history.execute(
+      SwapLayerReferenceCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: rowId,
+        reference: MediaReference(assetPath: '/work/bg_v2.png'),
+        store: store,
+        pictures: {key: solid(0x22)},
+        cacheInvalidationSink: sink,
+      ),
+    );
+    history.undo();
+    history.redo();
+
+    expect(sink.brushFrames.map((told) => (told.frameKey, told.wholeFrame)), [
+      (key, true),
+      (key, true),
+      (key, true),
+    ]);
+  });
+
   group('a movie', () {
     setUp(() => seed('/work/take1.mp4'));
 
@@ -244,4 +277,21 @@ void main() {
       );
     });
   });
+}
+
+class _RecordingSink implements CacheInvalidationSink {
+  final List<BrushFrameCacheInvalidation> brushFrames = [];
+
+  @override
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) =>
+      brushFrames.add(invalidation);
+
+  @override
+  void invalidateFrameComposite(FrameCompositeCacheKey key) {}
+
+  @override
+  void invalidateLayerTile(LayerTileCacheKey key) {}
+
+  @override
+  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) {}
 }

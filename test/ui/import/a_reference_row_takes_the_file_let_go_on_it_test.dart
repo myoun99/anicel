@@ -37,21 +37,37 @@ void main() {
 
   const red = 0xFF0000FF;
   const blue = 0x0000FFFF;
+  const clear = [0, 0, 0, 0];
 
   /// The app with `old.png` placed as an image row that REFERENCES it — the
-  /// placement window's reference road — and `next` in the pool, whose
-  /// panel is open. [next] names the pool file; [nextBytes] replaces what a
-  /// solid blue picture would write there.
+  /// placement window's reference road — and [next] in the pool, whose
+  /// panel is open. [nextBytes] replaces what a solid blue picture of
+  /// [size] would write there; [carryNext] pools it CARRIED and then takes
+  /// its original away.
   Future<({EditorSessionManager session, Layer row, String next})> open(
     WidgetTester tester, {
     String next = 'next.png',
     List<int>? nextBytes,
+    ({int width, int height}) size = (width: 8, height: 8),
+    bool carryNext = false,
   }) async {
     final paths = (await tester.runAsync(() async {
-      final old = await writeSolidPng(tempDir, 'old.png', rgba: red);
+      final old = await writeSolidPng(
+        tempDir,
+        'old.png',
+        width: size.width,
+        height: size.height,
+        rgba: red,
+      );
       final path = '${tempDir.path}${Platform.pathSeparator}$next';
       if (nextBytes == null) {
-        await writeSolidPng(tempDir, next, rgba: blue);
+        await writeSolidPng(
+          tempDir,
+          next,
+          width: size.width,
+          height: size.height,
+          rgba: blue,
+        );
       } else {
         await File(path).writeAsBytes(nextBytes);
       }
@@ -64,11 +80,13 @@ void main() {
         home: HomePage(
           initialProject: createDefaultProject().copyWith(
             mediaAssets: [
-              MediaAsset(
-                path: paths.next,
-                name: 'next',
-                kind: mediaAssetKindForPath(paths.next) ?? MediaAssetKind.image,
-              ),
+              if (!carryNext)
+                MediaAsset(
+                  path: paths.next,
+                  name: 'next',
+                  kind:
+                      mediaAssetKindForPath(paths.next) ?? MediaAssetKind.image,
+                ),
             ],
           ),
         ),
@@ -86,14 +104,24 @@ void main() {
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    final placed = await tester.runAsync(
-      () => session.importDoors.importImageFile(
-        path: paths.old,
-        destination: ImportDestination.activeCutLayer,
-        copyIntoProject: false,
-      ),
-    );
-    expect(placed, isTrue, reason: 'premise: the reference row is placed');
+    await tester.runAsync(() async {
+      if (carryNext) {
+        await session.mediaPool.importMediaFiles(
+          [paths.next],
+          copyIntoProject: true,
+        );
+        await File(paths.next).delete();
+      }
+      expect(
+        await session.importDoors.importImageFile(
+          path: paths.old,
+          destination: ImportDestination.activeCutLayer,
+          copyIntoProject: false,
+        ),
+        isTrue,
+        reason: 'premise: the reference row is placed',
+      );
+    });
     await tester.pumpAndSettle();
     final row = session.requireActiveCut.layers.firstWhere(
       (layer) => layer.mediaReference?.assetPath == paths.old,
@@ -101,36 +129,34 @@ void main() {
     return (session: session, row: row, next: paths.next);
   }
 
-  /// The RGBA at the canvas centre of the picture the row's cel holds.
-  List<int> centre(EditorSessionManager session, Layer row) {
+  /// The RGBA at ([x], [y]) of the picture the row's cel holds — clear where
+  /// no tile holds anything.
+  List<int> pixelAt(EditorSessionManager session, Layer row, int x, int y) {
     final cut = session.requireActiveCut;
     final surface = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(
       session.brushFrameKeyForCut(cut, row.id, row.frames.single.id),
     )!;
-    final x = cut.canvasSize.width ~/ 2;
-    final y = cut.canvasSize.height ~/ 2;
     final size = surface.tileSize;
     final tile = surface.tiles.entries
-        .firstWhere(
-          (entry) => entry.key.x == x ~/ size && entry.key.y == y ~/ size,
-        )
-        .value;
+        .where((entry) => entry.key.x == x ~/ size && entry.key.y == y ~/ size)
+        .firstOrNull
+        ?.value;
+    if (tile == null) {
+      return clear;
+    }
     final at = ((y % size) * size + (x % size)) * 4;
     return tile.pixels.sublist(at, at + 4);
   }
 
-  bool silhouetteShown(WidgetTester tester) => find
-      .byWidgetPredicate(
-        (widget) =>
-            widget is CustomPaint &&
-            widget.painter is TimelineSilhouettePainter,
-      )
-      .evaluate()
-      .isNotEmpty;
+  List<int> centre(EditorSessionManager session, Layer row) {
+    final canvas = session.requireActiveCut.canvasSize;
+    return pixelAt(session, row, canvas.width ~/ 2, canvas.height ~/ 2);
+  }
 
   /// Drags [path]'s pool row onto the second cell of [row] and lets go —
-  /// answering whether the silhouette stood there while it hovered.
-  Future<bool> dragOnto(WidgetTester tester, Layer row, String path) async {
+  /// answering how many frames the silhouette covered while it hovered,
+  /// or null when none stood there.
+  Future<int?> dragOnto(WidgetTester tester, Layer row, String path) async {
     final target = find.byKey(
       ValueKey<String>('timeline-layer-asset-drop-${row.id}'),
     );
@@ -155,10 +181,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await gesture.moveTo(at);
     await tester.pump();
-    final shown = silhouetteShown(tester);
+    final silhouette = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((paint) => paint.painter)
+        .whereType<TimelineSilhouettePainter>()
+        .firstOrNull;
     await gesture.up();
     await tester.pump();
-    return shown;
+    return silhouette?.frames;
   }
 
   /// Lets the swap's read and bake land.
@@ -172,6 +202,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  bool pointsAt(EditorSessionManager session, Layer row, String path) =>
+      session.layerById(row.id)!.mediaReference!.assetPath == path;
+
   testWidgets('🎯a still let go on a still reference row: the row shows it — '
       'at once, no window — with its name and its frames as they were, and '
       'ONE undo brings the old picture back', (tester) async {
@@ -180,12 +213,14 @@ void main() {
     expect(centre(session, row), [255, 0, 0, 255]);
 
     final silhouette = await dragOnto(tester, row, next);
-    await settle(
-      tester,
-      () => session.layerById(row.id)!.mediaReference!.assetPath == next,
-    );
+    await settle(tester, () => pointsAt(session, row, next));
 
-    expect(silhouette, isTrue, reason: '「끄는 동안 행 위에 바뀔 블록이 실루엣」');
+    final shown = row.timeline.entries;
+    expect(
+      silhouette,
+      shown.last.key + shown.last.value.length! - shown.first.key,
+      reason: '「끄는 동안 행 위에 바뀔 블록이 실루엣」 — all of what it shows',
+    );
     expect(find.byType(ImportDialog), findsNothing);
     final swapped = session.layerById(row.id)!;
     expect(swapped.mediaReference!.assetPath, next);
@@ -197,19 +232,55 @@ void main() {
 
     session.historyManager.undo();
     await tester.pumpAndSettle();
-    expect(session.layerById(row.id)!.mediaReference!.assetPath, old);
+    expect(pointsAt(session, row, old), isTrue);
     expect(centre(session, row), [255, 0, 0, 255]);
+  });
+
+  testWidgets('the new picture stands where the old one stood — at the fit '
+      'the row was placed with', (tester) async {
+    final (:session, :row, :next) = await open(
+      tester,
+      size: (width: 16, height: 8),
+    );
+    final top = (
+      x: session.requireActiveCut.canvasSize.width ~/ 2,
+      y: 2,
+    );
+    expect(
+      pixelAt(session, row, top.x, top.y),
+      clear,
+      reason: 'premise: a wide picture placed to fit leaves the top open',
+    );
+
+    await dragOnto(tester, row, next);
+    await settle(tester, () => pointsAt(session, row, next));
+
+    expect(centre(session, row), [0, 0, 255, 255]);
+    expect(pixelAt(session, row, top.x, top.y), clear);
+  });
+
+  testWidgets('a CARRIED file swaps in from the project\'s own copy — its '
+      'original gone', (tester) async {
+    final (:session, :row, :next) = await open(tester, carryNext: true);
+
+    await dragOnto(tester, row, next);
+    await settle(tester, () => pointsAt(session, row, next));
+
+    expect(centre(session, row), [0, 0, 255, 255]);
   });
 
   testWidgets('a movie does not stand where a still stands: no silhouette, '
       'and letting go changes nothing', (tester) async {
-    final (:session, :row, :next) = await open(tester, next: 'take.mp4',
-        nextBytes: const [0, 0, 0, 24]);
+    final (:session, :row, :next) = await open(
+      tester,
+      next: 'take.mp4',
+      nextBytes: const [0, 0, 0, 24],
+    );
 
     final silhouette = await dragOnto(tester, row, next);
     await tester.pumpAndSettle();
 
-    expect(silhouette, isFalse);
+    expect(silhouette, isNull);
     expect(find.byType(ImportDialog), findsNothing);
     expect(session.layerById(row.id), row);
   });
@@ -217,21 +288,45 @@ void main() {
   testWidgets('a file that will not read changes nothing and says so', (
     tester,
   ) async {
-    final (:session, :row, :next) = await open(tester, next: 'broken.png',
-        nextBytes: const [1, 2, 3, 4]);
+    final (:session, :row, :next) = await open(
+      tester,
+      next: 'broken.png',
+      nextBytes: const [1, 2, 3, 4],
+    );
+    const said = 'broken.png: could not read the file.';
 
     await dragOnto(tester, row, next);
-    await settle(tester, () => find.text('broken.png: could not read the '
-        'file.').evaluate().isNotEmpty);
+    await settle(tester, () => find.text(said).evaluate().isNotEmpty);
 
-    expect(find.text('broken.png: could not read the file.'), findsOneWidget);
+    expect(find.text(said), findsOneWidget);
     expect(session.layerById(row.id), row);
     expect(centre(session, row), [255, 0, 0, 255]);
   });
 
+  testWidgets('a row that changes while its new picture is read is left as it '
+      'is — the swap was aimed at the row as it stood', (tester) async {
+    final (:session, :row, :next) = await open(tester);
+
+    final swapped = await tester.runAsync(() async {
+      final swapping = session.importDoors.swapReference(
+        layerId: row.id,
+        path: next,
+      );
+      session.layerVerbs.renameLayer(row.id, 'renamed');
+      return swapping;
+    });
+    await tester.pumpAndSettle();
+
+    expect(swapped, isFalse);
+    expect(pointsAt(session, row, row.mediaReference!.assetPath), isTrue);
+    expect(centre(session, row), [255, 0, 0, 255]);
+  });
+
   group('a movie reference row', () {
+    const takeRow = LayerId('take-row');
+
     Layer movieRow(String path) => Layer(
-      id: const LayerId('take-row'),
+      id: takeRow,
       name: 'take',
       frames: [
         Frame(id: const FrameId('take-cel'), duration: 1, strokes: const []),
@@ -243,7 +338,8 @@ void main() {
     );
 
     testWidgets('takes a movie let go on it — the reference is all that '
-        'moves, where in the file it starts included', (tester) async {
+        'moves, where in the file it starts included — and nothing else',
+        (tester) async {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
@@ -254,27 +350,32 @@ void main() {
       );
 
       expect(
-        session.dropSpotFor(const LayerId('take-row'), 2, '/work/take2.mp4'),
-        const ReferenceSwapSpot(LayerId('take-row')),
+        session.dropSpotFor(takeRow, 2, '/work/take2.mp4'),
+        const ReferenceSwapSpot(takeRow),
       );
+      expect(session.dropSpotFor(takeRow, 2, '/work/still.png'), isNull);
       expect(
-        session.dropSpotFor(const LayerId('take-row'), 2, '/work/still.png'),
-        isNull,
+        await session.importDoors.swapReference(
+          layerId: takeRow,
+          path: '/work/still.png',
+        ),
+        isFalse,
+        reason: 'the door asks the same question the drop does',
       );
 
       final swapped = await session.importDoors.swapReference(
-        layerId: const LayerId('take-row'),
+        layerId: takeRow,
         path: '/work/take2.mp4',
       );
 
       expect(swapped, isTrue);
       expect(
-        session.layerById(const LayerId('take-row'))!.mediaReference,
+        session.layerById(takeRow)!.mediaReference,
         MediaReference(assetPath: '/work/take2.mp4', frameOffset: 3),
       );
       session.historyManager.undo();
       expect(
-        session.layerById(const LayerId('take-row'))!.mediaReference,
+        session.layerById(takeRow)!.mediaReference,
         MediaReference(assetPath: '/work/take1.mp4', frameOffset: 3),
       );
       // The edit's own settling timers, run out on the test's clock.
