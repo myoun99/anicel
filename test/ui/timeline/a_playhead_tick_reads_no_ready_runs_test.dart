@@ -71,4 +71,55 @@ void main() {
       reason: 'the window moved, so it asks about other frames',
     );
   });
+
+  testWidgets('a rebuild with another answer draws that answer at once', (
+    tester,
+  ) async {
+    final bucket = ValueNotifier<int>(0);
+    Future<void> mount(ReadyRunsIn answer) => tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: SizedBox(
+            width: 800,
+            height: 20,
+            child: TimelineRulerCursorOverlay(
+              keyValue: 'ready-bar-probe',
+              playhead: null,
+              repaintSignal: null,
+              windowBucket: bucket,
+              viewportMainExtent: 40,
+              renderedFrames: 100,
+              cellWidth: 8,
+              readyRunsIn: answer,
+            ),
+          ),
+        ),
+      ),
+    );
+    await mount((start, end) => [(startIndex: 0, endIndexExclusive: 2)]);
+    await mount((start, end) => [(startIndex: 4, endIndexExclusive: 6)]);
+    final strip = tester.renderObject<RenderCustomPaint>(
+      find.byKey(const ValueKey<String>('ready-bar-probe')),
+    );
+    // The bar's rects, read back as frames (8px a frame).
+    final canvas = TestRecordingCanvas();
+    (strip.painter! as TimelineRulerCursorOverlayPainter).paint(
+      canvas,
+      strip.size,
+    );
+    final bars = [
+      for (final call in canvas.invocations)
+        if (call.invocation.memberName == #drawRect)
+          call.invocation.positionalArguments.first as Rect,
+    ].where(
+      (rect) =>
+          rect.height == TimelineRulerCursorOverlayPainter.readyBarThickness,
+    );
+    expect(
+      [for (final bar in bars) (bar.left / 8).round()],
+      [4],
+      reason: 'the strip draws the answer it was rebuilt with',
+    );
+  });
 }
