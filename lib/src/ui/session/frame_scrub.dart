@@ -91,12 +91,12 @@ class FrameScrub {
   /// [_selection.selectGlobalFrame] on a boundary cross ran selectCut + a committed
   /// seek per move, rebuilding every visible panel — the cut-boundary
   /// crossing lag — and the gap branch's immediate deselect was the same
-  /// hitch on gap entry. [_internals.followPlaybackCut] keeps playback's crossings
-  /// quiet for exactly this reason; the release ([commitFrameScrub])
+  /// hitch on gap entry. The session's `followPlaybackCut` keeps playback's
+  /// crossings quiet for exactly this reason; the release ([commitFrameScrub])
   /// lands the ONE full seek, where cut activation and gap deselection
   /// now both live (UI-R10 #13's live empty-out moved there on purpose).
   void scrubGlobalFrame(int globalFrame) {
-    if (_internals.editingInteractionBusy) {
+    if (_internals.strokeInFlight) {
       return;
     }
     final axis = _timeline.trackFrameAxis();
@@ -170,8 +170,8 @@ class FrameScrub {
   /// the same-frame branch too — a tap that lands where it already was is a
   /// no-op the retarget scope swallows by index.
   void scrubFrameIndex(int frameIndex) {
-    // R15-⑤: scrubs are seeks too — refused under a live edit.
-    if (_internals.editingInteractionBusy) {
+    // R15-⑤: scrubs are seeks too — refused under a live stroke.
+    if (_internals.strokeInFlight) {
       return;
     }
     if (frameIndex != _controllers.timelineController.currentFrameIndex) {
@@ -226,10 +226,10 @@ class FrameScrub {
     _scrubTouchedTerritory = false;
     final parked = _selection.gapGlobalFrame;
     if (parked != null) {
-      // R15-⑤: a live editing interaction refuses the landing seek — the
+      // R15-⑤: a live stroke refuses the landing seek — the
       // parking stays put (the parked display state) instead of being
       // half-cleared.
-      if (_internals.editingInteractionBusy) {
+      if (_internals.strokeInFlight) {
         return;
       }
       // The parking is cleared BEFORE the landing seek: selectCut must

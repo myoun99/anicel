@@ -18,6 +18,7 @@ import 'same_file.dart';
 import 'save_failure.dart' show SaveNotSwappedIn;
 import 'scratch_file.dart';
 import 'session_scratch.dart';
+import '../media/media_moves.dart';
 import 'anicel_project_archive.dart';
 
 /// A loaded .anicel: the project with media paths already RESOLVED (relative
@@ -1528,7 +1529,7 @@ class AnicelFileService {
       }
     }
 
-    final remapped = remapProjectMediaPaths(document.project, remap);
+    final remapped = projectWithMediaMoved(document.project, remap);
     return AnicelOpenResult(
       project: remapped,
       cels: cels,

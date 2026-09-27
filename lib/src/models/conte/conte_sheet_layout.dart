@@ -264,7 +264,7 @@ class ContePageLayout {
   }) : bodyIndex = bodyIndex ?? pageIndex;
 
   /// Where the page stands in the whole conte, cover included — the index
-  /// the panel turns to and the paper-plane ink is keyed by.
+  /// the panel turns to.
   final int pageIndex;
   final ContePageKind kind;
   final List<ContePlacedCell> cells;

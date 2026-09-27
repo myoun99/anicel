@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/app_language.dart';
 import '../../models/frame.dart' show inbetweenMark;
+import '../../models/timesheet_info.dart' show WorkPicture;
 
 /// The LIVE program/notation languages, app-wide — the same shape
 /// [AppColors.accentSettings] uses, and for the same reason: widgets deep
@@ -458,6 +459,8 @@ enum AppStrings {
   /// cannot tell that apart from a real cancel — the delegate is never
   /// called — so this is the only moment left to say it.
   String get folderPickDriveNotice => _s('folderPickDriveNotice');
+  String get folderPickDriveNoticeAndroid =>
+      _s('folderPickDriveNoticeAndroid');
   String get fileNameEmpty => _s('fileNameEmpty');
   String get recentProjectsTitle => _s('recentProjectsTitle');
   String get recentReconnect => _s('recentReconnect');
@@ -612,8 +615,8 @@ enum AppStrings {
   String get accent1Label => _s('accent1Label');
   String get accent1Help => _s('accent1Help');
 
-  // --- Sheet info ---
-  String get sheetInfoTitle => _s('sheetInfoTitle');
+  // --- Sheet format ---
+  String get sheetFormatTitle => _s('sheetFormatTitle');
   String get sheetFieldTitle => _s('sheetFieldTitle');
   String get sheetFieldEpisode => _s('sheetFieldEpisode');
   String get sheetFieldScene => _s('sheetFieldScene');
@@ -623,13 +626,24 @@ enum AppStrings {
   String get sheetFieldSheet => _s('sheetFieldSheet');
   String get workSettingsTitle => _s('workSettingsTitle');
   String get workSettingsStaff => _s('workSettingsStaff');
+  String get workLogo => _s('workLogo');
+  String get workCover => _s('workCover');
+
+  /// What a picture of the work is called — in 작품 설정 and in the list of
+  /// a pool file's uses alike.
+  String workPictureName(WorkPicture picture) => switch (picture) {
+    WorkPicture.logo => workLogo,
+    WorkPicture.cover => workCover,
+  };
   String get staffWorker => _s('staffWorker');
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
-  String get sheetNotation => _s('sheetNotation');
   String get sheetExposureBar => _s('sheetExposureBar');
   String get sheetExposureBarHelp => _s('sheetExposureBarHelp');
-  String get sheetExposureBarN => _s('sheetExposureBarN');
+  String get sheetBarDrawn => _s('sheetBarDrawn');
+  String get sheetBarNotDrawn => _s('sheetBarNotDrawn');
   String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
+  String get sheetFillOn => _s('sheetFillOn');
+  String get sheetFillOff => _s('sheetFillOff');
   String get sheetBrushAllow => _s('sheetBrushAllow');
   String get sheetModeNotation => _s('sheetModeNotation');
   String get sheetModeData => _s('sheetModeData');
@@ -862,6 +876,8 @@ enum AppStrings {
   String get cutDuplicateActive => _s('cutDuplicateActive');
   String get cutRename => _s('cutRename');
   String get cutEditNote => _s('cutEditNote');
+  String get cutSettings => _s('cutSettings');
+  String get cutSettingsTitle => _s('cutSettingsTitle');
   String get cutMoveLeft => _s('cutMoveLeft');
   String get cutMoveRight => _s('cutMoveRight');
   String get cutDelete => _s('cutDelete');
@@ -1864,6 +1880,9 @@ enum AppStrings {
     'folderPickDriveNotice':
         'Google Drive cannot hand over a folder. Use iCloud Drive, Dropbox, '
         'or this device.',
+    'folderPickDriveNoticeAndroid':
+        'Google Drive cannot hand over a folder. Use a folder on this device '
+        '— a sync app (Autosync …) can keep a Drive folder there.',
     'fileNameEmpty': 'File name cannot be empty.',
     'recentProjectsTitle': 'Recent projects',
     'recentReconnect': 'Reconnect',
@@ -2039,7 +2058,7 @@ enum AppStrings {
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
     'accent1Help': 'Selection, playhead, active toggles.',
-    'sheetInfoTitle': 'Sheet info',
+    'sheetFormatTitle': 'Sheet format',
     'sheetFieldTitle': 'Title',
     'sheetFieldEpisode': 'Episode',
     'sheetFieldScene': 'Scene',
@@ -2049,14 +2068,18 @@ enum AppStrings {
     'sheetFieldSheet': 'Sheet',
     'workSettingsTitle': 'Work settings',
     'workSettingsStaff': 'Staff',
+    'workLogo': 'Company logo',
+    'workCover': 'Cover picture',
     'staffWorker': 'Artist',
     'sheetVisibleBoxes': 'Visible boxes',
-    'sheetNotation': 'Notation',
     'sheetExposureBar': 'Exposure hold bar',
     'sheetExposureBarHelp':
         'Draw the hold bar from the (N+1)th comma of N+ holds',
-    'sheetExposureBarN': 'N (industry standard 3)',
-    'sheetSeEmptyFill': 'Gray out empty SE stretches',
+    'sheetBarDrawn': 'Drawn',
+    'sheetBarNotDrawn': 'Not drawn',
+    'sheetSeEmptyFill': 'Empty SE stretches',
+    'sheetFillOn': 'Grayed',
+    'sheetFillOff': 'Blank',
     'sheetBrushAllow': 'Allow Brush',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
     'sheetModeData': 'Data Sheet (as exported)',
@@ -2088,6 +2111,8 @@ enum AppStrings {
     'cutDuplicateActive': 'Duplicate active cut',
     'cutRename': 'Rename cut…',
     'cutEditNote': 'Edit cut note…',
+    'cutSettings': 'Cut settings…',
+    'cutSettingsTitle': 'Cut settings',
     'cutMoveLeft': 'Move cut left',
     'cutMoveRight': 'Move cut right',
     'cutDelete': 'Delete cut',
@@ -2951,6 +2976,7 @@ enum AppStrings {
     'menuAction.edit-keyboard-shortcuts': 'キーボードショートカット…',
     'menuAction.edit-preferences': '環境設定…',
     'menuAction.work-settings': '作品設定…',
+    'menuAction.project-settings': 'プロジェクト設定',
     'menuAction.cut-new': 'カットを新規作成',
     'menuAction.cut-duplicate': 'カットを複製',
     'menuAction.cut-create-linked': 'リンクカットを作成',
@@ -3007,6 +3033,10 @@ enum AppStrings {
     'folderPickDriveNotice':
         'Google ドライブはフォルダーを渡せません。iCloud Drive・Dropbox・'
         'この端末をお使いください。',
+    'folderPickDriveNoticeAndroid':
+        'Google ドライブはフォルダーを渡せません。この端末のフォルダーを'
+        'お使いください — 同期アプリ（Autosync など）でドライブのフォルダーを'
+        '端末に置けます。',
     'fileNameEmpty': 'ファイル名を入力してください。',
     'recentProjectsTitle': '最近使ったプロジェクト',
     'recentReconnect': '再接続',
@@ -3149,7 +3179,7 @@ enum AppStrings {
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
     'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
-    'sheetInfoTitle': 'シート情報',
+    'sheetFormatTitle': 'シート書式',
     'sheetFieldTitle': 'タイトル',
     'sheetFieldEpisode': '話数',
     'sheetFieldScene': 'シーン',
@@ -3159,13 +3189,17 @@ enum AppStrings {
     'sheetFieldSheet': 'シート',
     'workSettingsTitle': '作品設定',
     'workSettingsStaff': 'スタッフ設定',
+    'workLogo': '会社ロゴ',
+    'workCover': '表紙の絵',
     'staffWorker': '作業者',
     'sheetVisibleBoxes': '表示する枠',
-    'sheetNotation': '表記',
     'sheetExposureBar': '止めの引き伸ばし線',
     'sheetExposureBarHelp': 'N コマ以上の止めで (N+1) コマ目から線を引く',
-    'sheetExposureBarN': 'N（業界標準は3）',
-    'sheetSeEmptyFill': 'セリフのない区間をグレーで塗る',
+    'sheetBarDrawn': '引く',
+    'sheetBarNotDrawn': '引かない',
+    'sheetSeEmptyFill': 'セリフのない区間',
+    'sheetFillOn': '塗る',
+    'sheetFillOff': '塗らない',
     'sheetBrushAllow': 'ブラシを許可',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
     'sheetModeData': 'データシート（書き出しのまま）',
@@ -3302,6 +3336,8 @@ enum AppStrings {
     'cutDuplicateActive': 'アクティブなカットを複製',
     'cutRename': 'カット名を変更…',
     'cutEditNote': 'カットメモを編集…',
+    'cutSettings': 'カット設定…',
+    'cutSettingsTitle': 'カット設定',
     'cutMoveLeft': 'カットを左へ',
     'cutMoveRight': 'カットを右へ',
     'cutDelete': 'カットを削除',
@@ -4282,6 +4318,7 @@ enum AppStrings {
     'menuAction.edit-keyboard-shortcuts': '키보드 단축키…',
     'menuAction.edit-preferences': '환경설정…',
     'menuAction.work-settings': '작품 설정…',
+    'menuAction.project-settings': '프로젝트 설정',
     'menuAction.cut-new': '새 컷',
     'menuAction.cut-duplicate': '컷 복제',
     'menuAction.cut-create-linked': '링크 컷 만들기',
@@ -4338,6 +4375,10 @@ enum AppStrings {
     'folderPickDriveNotice':
         '구글 드라이브는 폴더를 넘겨주지 못합니다. iCloud Drive·Dropbox·'
         '이 기기를 사용하세요.',
+    'folderPickDriveNoticeAndroid':
+        '구글 드라이브는 폴더를 넘겨주지 못합니다. 이 기기의 폴더를 '
+        '사용하세요 — 동기화 앱(Autosync 등)으로 드라이브 폴더를 이 기기에 '
+        '둘 수 있습니다.',
     'fileNameEmpty': '파일 이름을 입력하세요.',
     'recentProjectsTitle': '최근 프로젝트',
     'recentReconnect': '다시 연결',
@@ -4478,7 +4519,7 @@ enum AppStrings {
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
     'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',
-    'sheetInfoTitle': '시트 정보',
+    'sheetFormatTitle': '타임시트 서식',
     'sheetFieldTitle': '제목',
     'sheetFieldEpisode': '화수',
     'sheetFieldScene': '씬',
@@ -4488,13 +4529,17 @@ enum AppStrings {
     'sheetFieldSheet': '시트',
     'workSettingsTitle': '작품 설정',
     'workSettingsStaff': '스태프 설정',
+    'workLogo': '회사 로고',
+    'workCover': '표지 그림',
     'staffWorker': '작업자',
     'sheetVisibleBoxes': '표시할 칸',
-    'sheetNotation': '표기',
     'sheetExposureBar': '止め 늘림 선',
     'sheetExposureBarHelp': 'N코마 이상 止め에서 (N+1)번째 코마부터 선을 긋기',
-    'sheetExposureBarN': 'N (업계 표준 3)',
-    'sheetSeEmptyFill': '대사 없는 구간을 회색으로 채우기',
+    'sheetBarDrawn': '그음',
+    'sheetBarNotDrawn': '안 그음',
+    'sheetSeEmptyFill': '대사 없는 구간',
+    'sheetFillOn': '칠함',
+    'sheetFillOff': '비움',
     'sheetBrushAllow': '브러시 허용',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
     'sheetModeData': '데이터 시트(내보내는 그대로)',
@@ -4633,6 +4678,8 @@ enum AppStrings {
     'cutDuplicateActive': '활성 컷 복제',
     'cutRename': '컷 이름 변경…',
     'cutEditNote': '컷 메모 편집…',
+    'cutSettings': '컷 설정…',
+    'cutSettingsTitle': '컷 설정',
     'cutMoveLeft': '컷 왼쪽으로',
     'cutMoveRight': '컷 오른쪽으로',
     'cutDelete': '컷 삭제',
@@ -5613,6 +5660,7 @@ enum AppStrings {
     'menuAction.edit-keyboard-shortcuts': 'Raccourcis clavier…',
     'menuAction.edit-preferences': 'Préférences…',
     'menuAction.work-settings': 'Réglages de l’œuvre…',
+    'menuAction.project-settings': 'Réglages du projet',
     'menuAction.cut-new': 'Nouveau plan',
     'menuAction.cut-duplicate': 'Dupliquer le plan',
     'menuAction.cut-create-linked': 'Créer un plan lié',
@@ -5669,6 +5717,10 @@ enum AppStrings {
     'folderPickDriveNotice':
         'Google Drive ne peut pas fournir de dossier. Utilisez iCloud Drive, '
         'Dropbox ou cet appareil.',
+    'folderPickDriveNoticeAndroid':
+        'Google Drive ne peut pas fournir de dossier. Utilisez un dossier de '
+        'cet appareil — une app de synchronisation (Autosync …) peut y garder '
+        'un dossier Drive.',
     'fileNameEmpty': 'Le nom de fichier ne peut pas être vide.',
     'recentProjectsTitle': 'Projets récents',
     'recentReconnect': 'Reconnecter',
@@ -5835,7 +5887,7 @@ enum AppStrings {
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
-    'sheetInfoTitle': 'Infos de la feuille',
+    'sheetFormatTitle': 'Format de la feuille',
     'sheetFieldTitle': 'Titre',
     'sheetFieldEpisode': 'Épisode',
     'sheetFieldScene': 'Scène',
@@ -5845,14 +5897,18 @@ enum AppStrings {
     'sheetFieldSheet': 'Feuille',
     'workSettingsTitle': 'Réglages de l’œuvre',
     'workSettingsStaff': 'Équipe',
+    'workLogo': 'Logo du studio',
+    'workCover': 'Image de couverture',
     'staffWorker': 'Artiste',
     'sheetVisibleBoxes': 'Cases visibles',
-    'sheetNotation': 'Notation',
     'sheetExposureBar': 'Trait de maintien',
     'sheetExposureBarHelp':
         'Tracer le trait à partir du (N+1)e comma des maintiens de N+',
-    'sheetExposureBarN': 'N (standard du métier : 3)',
-    'sheetSeEmptyFill': 'Griser les plages sans dialogue',
+    'sheetBarDrawn': 'Tracé',
+    'sheetBarNotDrawn': 'Non tracé',
+    'sheetSeEmptyFill': 'Plages sans dialogue',
+    'sheetFillOn': 'Grisées',
+    'sheetFillOff': 'Vides',
     'sheetBrushAllow': 'Autoriser le pinceau',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
     'sheetModeData': "Feuille de données (telle qu'exportée)",
@@ -5990,6 +6046,8 @@ enum AppStrings {
     'cutDuplicateActive': 'Dupliquer le plan actif',
     'cutRename': 'Renommer le plan…',
     'cutEditNote': 'Modifier la note du plan…',
+    'cutSettings': 'Réglages du plan…',
+    'cutSettingsTitle': 'Réglages du plan',
     'cutMoveLeft': 'Déplacer le plan à gauche',
     'cutMoveRight': 'Déplacer le plan à droite',
     'cutDelete': 'Supprimer le plan',
@@ -6995,6 +7053,7 @@ enum AppStrings {
     'menuAction.edit-keyboard-shortcuts': '键盘快捷键…',
     'menuAction.edit-preferences': '偏好设置…',
     'menuAction.work-settings': '作品设置…',
+    'menuAction.project-settings': '项目设置',
     'menuAction.cut-new': '新建镜头',
     'menuAction.cut-duplicate': '复制镜头',
     'menuAction.cut-create-linked': '创建链接镜头',
@@ -7048,6 +7107,9 @@ enum AppStrings {
     'folderPickUnavailable': '无法打开文件夹选择器。',
     'folderPickDriveNotice':
         'Google 云端硬盘无法提供文件夹。请使用 iCloud Drive、Dropbox 或本设备。',
+    'folderPickDriveNoticeAndroid':
+        'Google 云端硬盘无法提供文件夹。请使用本设备上的文件夹 — 同步应用'
+        '（Autosync 等）可以把云端硬盘文件夹放到本设备上。',
     'fileNameEmpty': '文件名不能为空。',
     'recentProjectsTitle': '最近的项目',
     'recentReconnect': '重新连接',
@@ -7172,7 +7234,7 @@ enum AppStrings {
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
-    'sheetInfoTitle': '摄影表信息',
+    'sheetFormatTitle': '摄影表格式',
     'sheetFieldTitle': '标题',
     'sheetFieldEpisode': '集数',
     'sheetFieldScene': '场',
@@ -7182,13 +7244,17 @@ enum AppStrings {
     'sheetFieldSheet': '表号',
     'workSettingsTitle': '作品设置',
     'workSettingsStaff': '人员设置',
+    'workLogo': '公司标志',
+    'workCover': '封面图',
     'staffWorker': '作业者',
     'sheetVisibleBoxes': '显示的栏位',
-    'sheetNotation': '标注',
     'sheetExposureBar': '保持延长线',
     'sheetExposureBarHelp': '在 N 格以上的保持中，从第 (N+1) 格开始画线',
-    'sheetExposureBarN': 'N（行业标准为 3）',
-    'sheetSeEmptyFill': '将无台词区间置灰',
+    'sheetBarDrawn': '画',
+    'sheetBarNotDrawn': '不画',
+    'sheetSeEmptyFill': '无台词区间',
+    'sheetFillOn': '置灰',
+    'sheetFillOff': '留空',
     'sheetBrushAllow': '允许画笔',
     'sheetModeNotation': '标注表（重复·保持文字）',
     'sheetModeData': '数据表（与导出一致）',
@@ -7324,6 +7390,8 @@ enum AppStrings {
     'cutDuplicateActive': '复制当前镜头',
     'cutRename': '重命名镜头…',
     'cutEditNote': '编辑镜头备注…',
+    'cutSettings': '镜头设置…',
+    'cutSettingsTitle': '镜头设置',
     'cutMoveLeft': '镜头左移',
     'cutMoveRight': '镜头右移',
     'cutDelete': '删除镜头',

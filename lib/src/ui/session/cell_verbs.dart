@@ -1,6 +1,5 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/frame.dart' show inbetweenMark;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -11,7 +10,6 @@ import '../../services/cel_pixel_region.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/layer_pose_matrix.dart' show LayerPoseSample;
 import '../../services/commands/cel_pixel_overwrite_command.dart';
-import '../timeline/timeline_cell_exposure_state.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
@@ -22,6 +20,27 @@ import 'range_selections.dart';
 import 'frame_clipboard.dart';
 import 'transition_range_hold.dart';
 import 'transitions.dart';
+
+/// The canvas-side facts a PIXEL VERB press needs, read together at the
+/// moment of the press.
+///
+/// 🚨★★★**ONE MEMBER, NOT THREE.** They were three fields on
+/// `SessionInternals`, published by one method and read by one collaborator
+/// — and the comment over the publisher already called them 「the canvas-side
+/// facts the PIXEL verbs need」, which is a name. Adding the mask as a fourth
+/// field would have widened the seam that ratchet was closing; folding them
+/// narrowed it by two. ↪ The member then moved here, into the one
+/// collaborator that reads it ([CellVerbs.pixelVerbCanvas]).
+///
+/// ⚠️Read at the PRESS, all three at once: the marquee survives tool
+/// switches, the colour changes under the pointer, and the tool settings
+/// panel can move the mask while the popover is open, so a value captured
+/// when the editor opened would be none of them.
+typedef PixelVerbCanvas = ({
+  CanvasSelectionRegion? region,
+  int argb,
+  SelectionMaskOptions mask,
+});
 
 /// The CELL VERBS — deleting the cell under the cursor or the selection,
 /// the status text a cell shows, and the pixel verbs (the keys they act
@@ -34,7 +53,6 @@ class CellVerbs {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required RenderCaches renderCaches,
@@ -45,7 +63,6 @@ class CellVerbs {
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
        _controllers = controllers,
        _internals = internals,
        _renderCaches = renderCaches,
@@ -60,12 +77,33 @@ class CellVerbs {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final RenderCaches _renderCaches;
   final LaneVerbs _laneVerbs;
   final RangeSelections _rangeSelections;
+
+  /// The canvas-side facts a pixel-verb press needs, published by whoever
+  /// owns them — see [PixelVerbCanvas].
+  ///
+  /// ⛔A getter, not a copy. The marquee is a document-level fact that
+  /// survives tool switches (`CanvasSelectionCommands.region`), the colour
+  /// changes under the pointer, and the mask moves with the tool settings
+  /// panel — so a snapshot taken when the toolbar was built would act on a
+  /// selection the user has since redrawn, in a colour they have left.
+  ///
+  /// 🚨The colour's ALPHA is ignored downstream — RGB only (유저 확정).
+  PixelVerbCanvas Function()? pixelVerbCanvas;
+
+  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
+  PixelVerbSubject get pixelVerbSubject {
+    if (pixelVerbCellKeys().isEmpty) {
+      return PixelVerbSubject.nothing;
+    }
+    return _selection.frameRangeSelection.value == null
+        ? PixelVerbSubject.standing
+        : PixelVerbSubject.range;
+  }
 
   /// The cels a pixel verb would touch: a live frame range's whole block, or
   /// the one cel you are standing on.
@@ -153,7 +191,7 @@ class CellVerbs {
   /// same question the press runs (T25: one answer behind both).
   bool get canRunPixelVerb =>
       _internals.pixelEditingCoordinator != null &&
-      _internals.pixelVerbSubject != PixelVerbSubject.nothing;
+      pixelVerbSubject != PixelVerbSubject.nothing;
 
   /// 색 변환 (`CelPixelChannel.colour`) and 픽셀 비우기 (`.alpha`) — one
   /// operation with the channel swapped, which is why they are one method.
@@ -175,7 +213,7 @@ class CellVerbs {
       return;
     }
     // Read ONCE, at the moment of the press — see [PixelVerbCanvas].
-    final canvas = _internals.pixelVerbCanvas?.call();
+    final canvas = pixelVerbCanvas?.call();
     _project.historyManager.execute(
       CelPixelOverwriteCommand.forVerb(
         coordinator: coordinator,
@@ -468,60 +506,4 @@ class CellVerbs {
 
   /// 링크 독립 on the frame axis ([FrameClipboard.unlinkRuns]).
   void unlinkCells() => _clipboard.unlinkRuns(_unlinkRuns());
-
-  String get currentCellStatusText {
-    final layer = _selection.activeLayer;
-    if (layer == null) {
-      return 'Cell: No layer';
-    }
-
-    return 'Cell: ${_cellStatusLabelForLayer(layer)}';
-  }
-
-  String get compactCellActionText {
-    final layer = _selection.activeLayer;
-    if (layer == null) {
-      return 'No layer';
-    }
-
-    final frameIndex = _controllers.timelineController.currentFrameIndex;
-    final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
-    final canPaste = _clipboard.canPasteLinkedFrameAtCurrentFrame;
-
-    switch (exposureState) {
-      case TimelineCellExposureState.drawingStart:
-        return 'Drawing: Copy / Rename / Delete';
-      case TimelineCellExposureState.held:
-        return canPaste
-            ? 'Held: Paste / Copy / Rename / Mark'
-            : 'Held: Copy / Rename / Mark';
-      case TimelineCellExposureState.markHeld:
-        return canPaste
-            ? 'Held + $inbetweenMark: Paste / Copy / Rename / Mark'
-            : 'Held + $inbetweenMark: Copy / Rename / Mark';
-      case TimelineCellExposureState.uncovered:
-        // Dots are block-owned: an empty cell offers no Mark (author an
-        // unnamed frame first).
-        return canPaste ? 'X: Paste / New Frame' : 'X: New Frame';
-      case TimelineCellExposureState.markUncovered:
-        return canPaste
-            ? 'X + $inbetweenMark: Paste / New Frame / Mark'
-            : 'X + $inbetweenMark: New Frame / Mark';
-    }
-  }
-
-  String _cellStatusLabelForLayer(Layer layer) {
-    final frameIndex = _controllers.timelineController.currentFrameIndex;
-    final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
-    return switch (exposureState) {
-      TimelineCellExposureState.drawingStart =>
-        _internals.drawingStartStatusForLayer(layer, frameIndex),
-      TimelineCellExposureState.held => 'Held drawing',
-      TimelineCellExposureState.markHeld =>
-        'Held drawing + Mark $inbetweenMark',
-      TimelineCellExposureState.uncovered => 'Empty (X)',
-      TimelineCellExposureState.markUncovered =>
-        'Empty (X) + Mark $inbetweenMark',
-    };
-  }
 }

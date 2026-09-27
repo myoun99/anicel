@@ -16,8 +16,6 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
-import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 
 import '../../helpers/fixed_thumbnails.dart';
@@ -97,7 +95,7 @@ void main() {
             activeCutId: const CutId('C1'),
             pixelsPerFrame: ppf,
             thumbnails: fixedThumbnails(
-              (cut, frame, {tier = StoryboardThumbnailTier.strip}) => picture,
+              (cut, frame, {required shownHeight}) => picture,
             ),
           ),
         ),

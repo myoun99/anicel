@@ -1,9 +1,10 @@
 import 'package:flutter/widgets.dart';
 
-import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../widgets/app_scrollbar_lane.dart';
+import 'canvas_view_limit.dart';
 
 /// The canvas panbar's AXIS PROJECTION: what the rotated, flipped, zoomed
 /// canvas spans along one axis, and how the viewport's pan reads as a
@@ -21,17 +22,32 @@ class CanvasViewportPanMetrics {
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
-  }) : visibleExtent = _visibleExtent(axis, editorViewportSize) {
-    // The canvas content's viewport-space AABB (pan excluded): under
-    // rotation/flip the panbar tracks the rotated silhouette, not the raw
-    // canvas rect. The scrollable CONTENT then spans paper×3 (UI-R18
-    // #16, the pro-canvas convention): one full canvas of runway on each
-    // side, so zoom-anchored pans stay inside the model (no snap on
-    // thumb grab) and a canvas smaller than the panel still pans.
-    final bounds = _contentBounds(axis, viewport, canvasSize);
-    final runway = finiteNonNegativeExtent(bounds.extent);
-    scaledContentExtent = finiteNonNegativeExtent(bounds.extent + 2 * runway);
-    _contentOffset = bounds.start - runway;
+    this.limit,
+  }) : visibleExtent = limit == null
+           ? _visibleExtent(axis, editorViewportSize)
+           : finiteNonNegativeExtent(_along(axis, limit.window).extent) {
+    final limit = this.limit;
+    if (limit != null) {
+      // A canvas with a LIMIT (F-201): the bar spans the paper and nothing
+      // past it, over the window the view is held in — so its two ends are
+      // the two places the view stops ([viewHeldTo]).
+      final bounds = viewportSpan(axis, viewport, limit.rect);
+      scaledContentExtent = finiteNonNegativeExtent(bounds.extent);
+      _contentOffset = bounds.start - _along(axis, limit.window).start;
+    } else {
+      // The canvas content's viewport-space AABB (pan excluded): under
+      // rotation/flip the panbar tracks the rotated silhouette, not the
+      // raw canvas rect. The scrollable CONTENT then spans paper×3 (UI-R18
+      // #16, the pro-canvas convention): one full canvas of runway on each
+      // side, so zoom-anchored pans stay inside the model (no snap on
+      // thumb grab) and a canvas smaller than the panel still pans.
+      final bounds = viewportSpan(axis, viewport, canvasSize.canvasRect);
+      final runway = finiteNonNegativeExtent(bounds.extent);
+      scaledContentExtent = finiteNonNegativeExtent(
+        bounds.extent + 2 * runway,
+      );
+      _contentOffset = bounds.start - runway;
+    }
     maxScroll = scrollRangeFor(
       contentExtent: scaledContentExtent,
       viewportExtent: visibleExtent,
@@ -42,12 +58,18 @@ class CanvasViewportPanMetrics {
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
+
+  /// The view's limit and the window it is held in
+  /// (`BrushCanvasPanel.viewLimit`) — null for a canvas that pans freely.
+  final ({Rect rect, Rect window})? limit;
+
   late final double scaledContentExtent;
   final double visibleExtent;
   late final double maxScroll;
 
   /// The content AABB's start along [axis] relative to the pan (0 without
-  /// rotation/flip, where the canvas origin IS the content start).
+  /// rotation/flip, where the canvas origin IS the content start) — and,
+  /// under a [limit], relative to the window's start as well.
   late final double _contentOffset;
 
   /// The viewport's position along [axis] in scroll-offset space
@@ -71,35 +93,11 @@ class CanvasViewportPanMetrics {
         : viewport.copyWith(panY: -clamped - _contentOffset);
   }
 
-  static ({double start, double extent}) _contentBounds(
-    Axis axis,
-    CanvasViewport viewport,
-    CanvasSize canvasSize,
-  ) {
-    if (!viewport.hasRotationOrFlip) {
-      final source = axis == Axis.horizontal
-          ? canvasSize.width
-          : canvasSize.height;
-      return (start: 0, extent: source * viewport.zoom);
-    }
-    final unpanned = viewport.copyWith(panX: 0, panY: 0);
-    final width = canvasSize.width.toDouble();
-    final height = canvasSize.height.toDouble();
-    double? min;
-    double? max;
-    for (final corner in [
-      CanvasPoint(x: 0, y: 0),
-      CanvasPoint(x: width, y: 0),
-      CanvasPoint(x: width, y: height),
-      CanvasPoint(x: 0, y: height),
-    ]) {
-      final mapped = unpanned.canvasToViewport(corner);
-      final value = axis == Axis.horizontal ? mapped.x : mapped.y;
-      min = min == null || value < min ? value : min;
-      max = max == null || value > max ? value : max;
-    }
-    return (start: min!, extent: max! - min);
-  }
+  /// [rect]'s span along [axis], in its own coordinates.
+  static ({double start, double extent}) _along(Axis axis, Rect rect) =>
+      axis == Axis.horizontal
+      ? (start: rect.left, extent: rect.width)
+      : (start: rect.top, extent: rect.height);
 
   static double _visibleExtent(Axis axis, Size editorViewportSize) {
     final source = axis == Axis.horizontal

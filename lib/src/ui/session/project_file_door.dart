@@ -20,6 +20,7 @@ import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/media_moves.dart';
 import '../../services/media/project_media_sources.dart'
     show
         ProjectConforms,
@@ -28,18 +29,21 @@ import '../../services/media/project_media_sources.dart'
         projectMediaSources;
 import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
-    show AnicelSessionFields, remapProjectMediaPaths;
+    show AnicelSessionFields;
 import '../../services/persistence/coordinated_project_swap.dart';
 import '../../services/persistence/failed_save_copies.dart';
 import '../../services/persistence/folder_grant.dart'
     show FolderPicker, MaterializeCancelled;
 import '../../services/persistence/media_staging_store.dart';
+import '../../services/persistence/provider_documents.dart';
 import '../../services/persistence/save_failure.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
 import '../../services/persistence/same_file.dart';
 import '../../services/project_lookup.dart'
     show cutPositionOf, projectAudioSourcePaths;
+import '../playback/playback_cache_budget.dart' show defaultPlaybackQuality;
+import 'playback_rig.dart';
 import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
@@ -110,7 +114,9 @@ class ProjectFileDoor {
     required VisibilitySolo solo,
     required FailedSaveCopies failedCopies,
     required StandingLaw keepStandingShown,
+    required PlaybackRig playback,
   }) : _file = file,
+       _playback = playback,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -129,6 +135,10 @@ class ProjectFileDoor {
 
   final ProjectFile _file;
   final ProjectAccess _project;
+
+  /// Whose playback quality a save keeps and an open puts back
+  /// ([ProjectResume.playbackQuality]).
+  final PlaybackRig _playback;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -271,11 +281,65 @@ class ProjectFileDoor {
     // at the next launch is the only thing that says otherwise.
     MemoryBlackBox.begin('save');
     try {
-      await _saveSomewhere(filePath, asked: asked, onProgress: onProgress);
+      // A working copy's save is half the save: the document behind it
+      // takes the other half, whole.
+      final handsBack = ProviderDocuments.documentBehind(filePath) != null;
+      await _saveSomewhere(
+        filePath,
+        asked: asked,
+        onProgress: !handsBack || onProgress == null
+            ? onProgress
+            : (done) => onProgress(done / 2),
+      );
+      if (handsBack) {
+        await _handBackToItsDocument(
+          filePath,
+          onProgress: onProgress == null
+              ? null
+              : (done) => onProgress(0.5 + done / 2),
+        );
+      }
     } finally {
       _file.endSave();
       MemoryBlackBox.end('save');
     }
+  }
+
+  /// 🚨★★★**A PROJECT FROM A PROVIDER DOCUMENT IS SAVED WHEN THE DOCUMENT
+  /// HAS IT** (PICK-7, 유저 2026-09-27: 「저장은 통째로 다시 쓴다」). The
+  /// save before this wrote [workingCopy] — incrementally, like any local
+  /// file — and this hands the whole file back to the document it was
+  /// opened from ([ProviderDocuments.publish]).
+  ///
+  /// A provider that will not take it leaves the work in the working copy,
+  /// in this run's room, and the session UNSAVED: the document does not
+  /// hold these edits, so the close still asks and the next save — the
+  /// clock's too — tries again. It is said the way any refused save is
+  /// said: why, and where the work is. The working copy IS the failed copy
+  /// here — the one place these edits are, gone when the run is — so it is
+  /// offered for backup, and a hand-back that lands withdraws the offer.
+  /// ⛔It is never retired the way a failed copy is: the session reads from
+  /// it.
+  Future<void> _handBackToItsDocument(
+    String workingCopy, {
+    void Function(double)? onProgress,
+  }) async {
+    if (_file.failedCopy != null) {
+      // The save went to a failed copy, not here: nothing new to hand on.
+      return;
+    }
+    try {
+      await ProviderDocuments.publish(workingCopy, onProgress: onProgress);
+    } on Object catch (error) {
+      _file.markDirty();
+      _failedCopies.record(workingCopy, workingCopy);
+      throw SaveFailure(
+        cause: SaveFailureCause.replaceRefused,
+        error: error,
+        failedCopy: workingCopy,
+      );
+    }
+    _failedCopies.forget(workingCopy);
   }
 
   /// Throws before anything is written when [filePath] is another open
@@ -759,6 +823,7 @@ class ProjectFileDoor {
     layerId: _selection.activeLayerId,
     frameIndex: _selection.currentFrameIndex,
     tools: toolChoice?.read() ?? const {},
+    playbackQuality: _playback.playbackQuality,
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -1000,6 +1065,10 @@ class ProjectFileDoor {
     // what a file itself shuts — a folder — is not the view's to open.
     _keepStandingShown();
     _resumeTools(resume.tools);
+    // A file that says nothing previews as a new project does.
+    _playback.setPlaybackQuality(
+      resume.playbackQuality ?? defaultPlaybackQuality,
+    );
   }
 }
 
@@ -1074,7 +1143,7 @@ Future<ProjectFileRead> readProjectFile(
     bindTo: bindTo,
     project: grants.moved.isEmpty
         ? result.project
-        : remapProjectMediaPaths(result.project, grants.moved),
+        : projectWithMediaMoved(result.project, grants.moved),
     result: result,
     grants: grants,
   );
@@ -1117,9 +1186,10 @@ _sortLoadedCels(AnicelOpenResult result, RenderCaches caches) {
 /// Whether a loaded sheet-ink key's owner is still in the project — each
 /// set gathered once, on the first key that asks.
 ///
-/// A conte ROW entry belongs to its storyboard block ("ink dies with the
-/// block" — the block its `ExposureMemo.inkId` names, in its cut); a conte
-/// PAGE entry to nothing, the paper stays. An envelope's and a timesheet's
+/// A conte entry belongs to its storyboard block ("ink dies with the
+/// block" — the block its `ExposureMemo.inkId` names, in its cut); one that
+/// names no block — the paper plane an older file kept, gone since the ink
+/// is the cells' alone (H44) — holds nothing. An envelope's and a timesheet's
 /// belong to the cut the sheet describes — which box or band a stroke sits
 /// in is never pruned: swapping the envelope's form back has to bring the
 /// writing back with it.
@@ -1131,10 +1201,11 @@ class _InkOwners {
   late final Set<(CutId, String)> _blocks = writtenConteBlocks(_project);
 
   bool stillHold(BrushFrameKey key) {
-    if (conteInkRowIdOf(key) case final inkId?) {
-      return _blocks.contains((key.cutId, inkId));
+    if (isConteInkKey(key)) {
+      final inkId = conteInkRowIdOf(key);
+      return inkId != null && _blocks.contains((key.cutId, inkId));
     }
-    return isConteInkKey(key) || _cuts.contains(key.cutId);
+    return _cuts.contains(key.cutId);
   }
 }
 

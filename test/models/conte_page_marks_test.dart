@@ -129,6 +129,75 @@ void main() {
       }
     });
 
+    test('a picture fills the camera\'s frame in its slot: the whole slot in '
+        'a window of the camera\'s shape, the camera\'s shape centred in one '
+        'its camera work made taller', () {
+      // F-197: every printer and the pen read this one rect, so none of them
+      // works out from a rendered picture's pixels where the picture is.
+      final worked = ConteSheetSource(
+        framesPerSecond: 24,
+        cuts: [
+          _cut('W', [
+            _cell(0, 24),
+            const ConteCellSource(
+              startFrame: 24,
+              endFrameExclusive: 48,
+              pictureFrame: 24,
+              rowSpan: 2,
+            ),
+          ]),
+        ],
+      );
+      final laid = layoutConteSheet(worked).single;
+      final pictures = contePageMarks(
+        laid,
+        worked,
+        words: _ja,
+      ).whereType<SheetPicture>().toList();
+      expect(
+        pictures,
+        hasLength(2),
+        reason: 'fixture: a plain cell, a tall one',
+      );
+      void expectSame(Rect a, Rect b, String reason) {
+        for (final (x, y) in [
+          (a.left, b.left),
+          (a.top, b.top),
+          (a.right, b.right),
+          (a.bottom, b.bottom),
+        ]) {
+          expect(x, closeTo(y, 1e-9), reason: reason);
+        }
+      }
+
+      final plain = pictures.first;
+      expectSame(
+        plain.frame,
+        plain.slot,
+        'the camera\'s shape fills its window',
+      );
+      final tall = pictures.last;
+      expect(
+        tall.slot.height,
+        greaterThan(plain.slot.height * 1.5),
+        reason: 'fixture: the camera work took two rows',
+      );
+      expect(
+        tall.frame.width / tall.frame.height,
+        closeTo(laid.metrics.cameraAspect, 1e-9),
+        reason: 'the camera\'s shape, kept',
+      );
+      expectSame(
+        tall.frame,
+        Rect.fromCenter(
+          center: tall.slot.center,
+          width: tall.slot.width,
+          height: tall.slot.width / laid.metrics.cameraAspect,
+        ),
+        'as wide as the window, in its middle',
+      );
+    });
+
     test('the film\'s pictures — with the camera work written on them — are '
         'their own stratum, apart from the typed values and never on them',
         () {

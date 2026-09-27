@@ -36,7 +36,8 @@ void paintSheetInkWindow(
 }
 
 /// Draws [image] contained in [slot] — as large as fits, centred, its own
-/// shape kept — the way every sheet prints a picture or a media image.
+/// shape kept — the way every sheet prints a media image. (A cell's picture
+/// fills the frame its mark names instead — [SheetPicture.frame].)
 void paintSheetImageContained(
   Canvas canvas,
   ui.Image image,
@@ -46,11 +47,26 @@ void paintSheetImageContained(
   if (slot.width <= 0 || slot.height <= 0) {
     return;
   }
-  final source = Size(image.width.toDouble(), image.height.toDouble());
+  paintSheetImageIn(
+    canvas,
+    image,
+    containRect(Size(image.width.toDouble(), image.height.toDouble()), slot),
+    quality,
+  );
+}
+
+/// Draws [image] filling [rect] — the one image draw a sheet prints a
+/// picture or a media image through, owning the quality its caller names.
+void paintSheetImageIn(
+  Canvas canvas,
+  ui.Image image,
+  Rect rect,
+  FilterQuality quality,
+) {
   canvas.drawImageRect(
     image,
-    Offset.zero & source,
-    containRect(source, slot),
+    Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
+    rect,
     Paint()..filterQuality = quality,
   );
 }
@@ -159,13 +175,7 @@ class SheetDeviceGrid {
   ) {
     final viewport = sheet.viewport;
     if (viewport != null) {
-      final snapped = renderSnappedViewport(viewport, sheet.devicePixelRatio);
-      return SheetDeviceGrid._(
-        scale: snapped.zoom,
-        dx: snapped.panX,
-        dy: snapped.panY,
-        devicePixelRatio: sheet.devicePixelRatio,
-      );
+      return SheetDeviceGrid.through(viewport, sheet.devicePixelRatio);
     }
     return SheetDeviceGrid._(
       scale: math.min(
@@ -178,12 +188,27 @@ class SheetDeviceGrid {
     );
   }
 
+  /// The panel's way alone: its [viewport] at [devicePixelRatio] — for a
+  /// layer over the page that has no size of its own to fit.
+  factory SheetDeviceGrid.through(
+    CanvasViewport viewport,
+    double devicePixelRatio,
+  ) {
+    final snapped = renderSnappedViewport(viewport, devicePixelRatio);
+    return SheetDeviceGrid._(
+      scale: snapped.zoom,
+      dx: snapped.panX,
+      dy: snapped.panY,
+      devicePixelRatio: devicePixelRatio,
+    );
+  }
+
   final double scale;
   final double dx;
   final double dy;
   final double devicePixelRatio;
 
-  /// 🚨THE ONE ROUNDING every fill edge and rule edge on a sheet goes
+  /// 🚨THE ONE ROUNDING every fill, rule and picture edge on a sheet goes
   /// through, from paper units to the device grid and back to canvas units:
   /// a silhouette that ends at x and a rule whose edge is x land on the same
   /// device pixel because they are the same call (유저 2026-09-25: 「절대
@@ -204,6 +229,29 @@ class SheetDeviceGrid {
     _x(rect.right),
     _y(rect.bottom),
   );
+
+  /// The device pixels [rect] covers WHOLLY — its edges moved in to the
+  /// grid, where [snap] moves them to the nearest line. For a view laid over
+  /// the page that must never show past what it draws.
+  Rect inside(Rect rect) {
+    double on(double at, double Function(double device) round) =>
+        round(at * devicePixelRatio) / devicePixelRatio;
+    const slack = 1e-6;
+    double up(double device) => (device - slack).ceilToDouble();
+    double down(double device) => (device + slack).floorToDouble();
+    return Rect.fromLTRB(
+      on(dx + scale * rect.left, up),
+      on(dy + scale * rect.top, up),
+      on(dx + scale * rect.right, down),
+      on(dy + scale * rect.bottom, down),
+    );
+  }
+
+  /// The app's corner of [radius] paper units round [cut], a rect already
+  /// cut on this grid — THE shape a window's well fills and its picture is
+  /// clipped to, so the two are one call and agree to the device pixel.
+  ui.RSuperellipse rounded(Rect cut, double radius) =>
+      ui.RSuperellipse.fromRectAndRadius(cut, Radius.circular(radius * scale));
 
   /// [rule]'s rectangle cut on the grid — never thinner than one device
   /// pixel, so a rule survives any zoom out, and widened AWAY from the edge
@@ -258,6 +306,12 @@ class SheetDeviceGrid {
   }
 }
 
+/// A cut's picture at a frame, for a window that draws it [shownHeight]
+/// device pixels tall — what the panel's picture law is asked with. An
+/// export's pictures are rendered before it prints, and ignore it.
+typedef SheetPictureLookup =
+    ui.Image? Function(String cutId, int pictureFrame, double shownHeight);
+
 /// The images a Canvas printer finds by what a mark names.
 class SheetMarkImages {
   const SheetMarkImages({
@@ -267,7 +321,7 @@ class SheetMarkImages {
     this.liveInkKeys = const {},
   });
 
-  final ui.Image? Function(String cutId, int pictureFrame)? pictureFor;
+  final SheetPictureLookup? pictureFor;
   final ui.Image? Function(String assetPath)? imageFor;
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
 
@@ -311,8 +365,9 @@ double sheetWordsSize(SheetWords words, SheetTextStyle style) {
 /// The Canvas printer of [SheetMark]s — the screen's and the PNG's (the PDF
 /// replays the same list).
 ///
-/// Fills and rules are cut on the device grid ([SheetDeviceGrid]) and drawn
-/// without anti-aliasing; words, pictures and ink are drawn in paper space.
+/// Fills, rules and pictures are cut on the device grid ([SheetDeviceGrid]),
+/// flat fills and rules without anti-aliasing; words and ink are drawn in
+/// paper space.
 class SheetCanvasPrinter {
   const SheetCanvasPrinter({
     required this.style,
@@ -402,10 +457,7 @@ class _SheetCanvas {
       return;
     }
     canvas.drawRSuperellipse(
-      ui.RSuperellipse.fromRectAndRadius(
-        grid.snap(fill.rect),
-        Radius.circular(fill.cornerRadius * grid.scale),
-      ),
+      grid.rounded(grid.snap(fill.rect), fill.cornerRadius),
       Paint()..color = Color(fill.argb),
     );
   }
@@ -419,32 +471,35 @@ class _SheetCanvas {
     );
   }
 
+  /// A picture cut on the grid its window is cut on: clipped to the shape
+  /// the well under it fills ([_fill]), its frame filled to the same device
+  /// pixels.
+  ///
+  /// 🗣️F-197 (유저 2026-09-27): 「해당컷 채우기로 전면 검정색됫는데 …
+  /// 줌하거나 팬할때 그림이랑 실루엣 경계에 흰 여백? 선이 생김」 · 「팬은
+  /// 아니고 줌할때마다 생김」. The picture was drawn in paper space over a
+  /// well cut on the grid: wherever a zoom put the window's edge inside a
+  /// device pixel, the picture covered part of that pixel and the light well
+  /// showed through the rest. A pan keeps each edge's place in its pixel
+  /// (whole pixels, the snap's phase), so only a zoom ever moved it.
   void _picture(SheetPicture picture) {
+    final frame = grid.snap(picture.frame);
     final image = printer.images.pictureFor?.call(
       picture.cutId,
       picture.pictureFrame,
+      frame.height * grid.devicePixelRatio,
     );
     if (image == null) {
       return;
     }
-    _inPaperSpace(() {
-      canvas.save();
-      if (picture.cornerRadius > 0) {
-        canvas.clipRSuperellipse(
-          ui.RSuperellipse.fromRectAndRadius(
-            picture.slot,
-            Radius.circular(picture.cornerRadius),
-          ),
-        );
-      }
-      paintSheetImageContained(
-        canvas,
-        image,
-        picture.slot,
-        FilterQuality.medium,
+    canvas.save();
+    if (picture.cornerRadius > 0) {
+      canvas.clipRSuperellipse(
+        grid.rounded(grid.snap(picture.slot), picture.cornerRadius),
       );
-      canvas.restore();
-    });
+    }
+    paintSheetImageIn(canvas, image, frame, FilterQuality.medium);
+    canvas.restore();
   }
 
   void _inPaperSpace(VoidCallback draw) {

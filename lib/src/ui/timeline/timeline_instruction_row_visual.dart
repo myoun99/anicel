@@ -5,6 +5,8 @@ import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
+import '../../models/transition_geometry.dart'
+    show TransitionSides, transitionSidesOf;
 import '../text/vertical_writing_text.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -472,10 +474,18 @@ class _InstructionMarkPainter extends CustomPainter with RepaintOnProps {
     switch (markType) {
       case CameraInstructionMarkType.bar:
         _paintDurationLine(canvas, size);
+      // W.I and W.O are the same wedges (F-192): their screen is white,
+      // which is the compositor's business, not the mark's shape. The wedge
+      // opens the way the screen moves — the compositor's own answer.
       case CameraInstructionMarkType.fi:
-        _paintFadeWedge(canvas, size, wideAtStart: false);
       case CameraInstructionMarkType.fo:
-        _paintFadeWedge(canvas, size, wideAtStart: true);
+      case CameraInstructionMarkType.wi:
+      case CameraInstructionMarkType.wo:
+        _paintFadeWedge(
+          canvas,
+          size,
+          wideAtStart: transitionSidesOf(markType) == TransitionSides.fadesOut,
+        );
       case CameraInstructionMarkType.ol:
         _paintBowtie(canvas, size);
     }

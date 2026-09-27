@@ -26,7 +26,11 @@ void main() {
   test('standing on the transition row, the ＋ makes a span at the playhead '
       '— on the global row', () {
     final s = _standingOnTheTransitionRow(frame: 3);
-    expect(s.canCreateInstance, isTrue, reason: 'F-180: it was dark here');
+    expect(
+      s.cellInstances.canCreateInstance,
+      isTrue,
+      reason: 'F-180: it was dark here',
+    );
 
     createActiveInstance(s);
 
@@ -66,7 +70,7 @@ void main() {
       reason: 'the premise: the cut row draws the O.L over this frame',
     );
 
-    expect(s.canCreateInstance, isFalse);
+    expect(s.cellInstances.canCreateInstance, isFalse);
     expect(
       s.cellInstances.activeCellHoldsAnInstance,
       isTrue,

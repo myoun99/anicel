@@ -107,8 +107,9 @@ void main() {
         frameId: const FrameId('new-frame'),
         cut: _cut(layers: [_layer('A'), _layer('BG', kind: LayerKind.image)]),
       ).name,
-      'B',
-      reason: 'a conte row still takes a cel\'s name',
+      'Conte',
+      reason: 'a conte row is Conte — neither a picture\'s name nor a cel\'s '
+          '(F-76)',
     );
   });
 }

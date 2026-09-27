@@ -123,6 +123,7 @@ class _PanelBuild {
         pageStrip: _state.widget.pageStrip,
         // The capsules float INSIDE what the panels left over.
         cover: _state.widget.floorCover,
+        onFloor: _state._onFloor,
         railBand: _state.widget.floorRailBand,
         bottomOverlaySpan: _state.widget.floorBottomOverlaySpan,
         child: LayoutBuilder(builder: _viewport),

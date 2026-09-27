@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../models/bitmap_surface.dart';
+import '../../native/qa_pen_ledger.dart';
 import '../../services/input/pen_sidecars.dart';
+import '../debug/input_inspector.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
 import '../../models/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
@@ -43,12 +45,21 @@ import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
+part 'brush_edit/brush_edit_opening.dart';
 part 'brush_edit/brush_edit_fill.dart';
 part 'brush_edit/brush_edit_pressure.dart';
 part 'brush_edit/brush_edit_overlay.dart';
 part 'brush_edit/brush_edit_hold.dart';
 part 'brush_edit/brush_edit_cel_press.dart';
 part 'brush_edit/brush_edit_press.dart';
+
+/// Every dab a stroke on this canvas LAYS, in order, the moment it lays it —
+/// null records nothing. A test sets a list here to ask WHEN a sample
+/// reached the canvas, which the committed stroke cannot say (H43: a press
+/// that waits for nothing must not be held, and a stroke that waited lands
+/// the moment its last reading comes).
+@visibleForTesting
+List<BrushDab>? debugStrokeDabsLaid;
 
 /// Lands the stroke the pen is in the middle of, if any, and answers
 /// whether anything landed — [BrushEditPress.landActiveStroke] handed out
@@ -89,6 +100,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.overlayModel,
     this.paintsContent = true,
     this.editable = true,
+    this.rowAcceptsStrokes = true,
     this.onPressNeedsCel,
     CanvasViewport? viewport,
     CutGuides? guides,
@@ -110,6 +122,21 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// above [key]: a frame flip must reset this view IN PLACE, never
   /// rebuild it.
   final bool editable;
+
+  /// Whether the ROW the playhead stands on takes strokes — false on a
+  /// property lane (`MainCanvasBrushHost.rowAcceptsStrokes`).
+  ///
+  /// 🗣️F-196 (유저 2026-09-27): 「fx행에 서있는데 그림이 그려지고 커밋시
+  /// 사라짐. … 안그려져야 하는곳은 통일해서 선 안나오게」. H19 split this from
+  /// [editable] one layer up, and this view only ever heard [editable] — so
+  /// on a lane over a cel it began the stroke, drew the live line, and the
+  /// commit was refused at pen-up.
+  ///
+  /// ★Two questions, two flags, as H19 has them: [editable] says whether
+  /// there is a cel (what is PAINTED, and whether a press asks for one);
+  /// this says whether a press may DRAW. ⛔Folding it into [editable] would
+  /// stand the view down on a lane, and standing down paints nothing.
+  final bool rowAcceptsStrokes;
 
   /// 🚨I-10 — WHOEVER HEARS THE PRESS IS THE ONLY ONE WHO CAN DRAW IT.
   ///
@@ -511,6 +538,10 @@ class _InteractiveBrushEditCanvasViewState
   // A collaborator (canvas/brush_edit/brush_edit_stroke.dart, a part of this library).
   // The State keeps the entry points its pointer handlers call.
   late final _BrushEditStroke _stroke = _BrushEditStroke(this);
+
+  /// What the stroke's contact has read so far, and what it holds until it
+  /// has (H43).
+  late final _BrushEditOpening _opening = _BrushEditOpening(this);
 
   /// Whether the pen-tail mapping is engaged (the pen is turned
   /// tail-down). Not a button hold: it spans strokes until the pen is

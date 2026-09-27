@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
     show anicelProjectSuffix;
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -412,6 +413,28 @@ void main() {
       );
       expect(pick?.path, '/drive/elsewhere.anicel');
       expect(pick?.placed, isTrue, reason: 'the caller adopts, not re-saves');
+    });
+
+    testWidgets('🎯Save As into a DOCUMENT with no filesystem path (PICK-7, '
+        'Drive on Android) answers with its WORKING COPY — what the picker '
+        'poured in, kept for the saves that follow', (tester) async {
+      const drive = ProviderDocument(
+        uri: 'content://drive/doc/new',
+        name: 'x.anicel',
+      );
+      addTearDown(ProviderDocuments.debugReset);
+      List<int>? poured;
+      installExporter((sourcePath) {
+        poured = File(sourcePath).readAsBytesSync();
+        return const FolderGrant.providerDocument(drive);
+      });
+
+      final pick = await runSave(tester, 'x');
+
+      expect(poured, stagedMarker);
+      expect(pick?.placed, isTrue);
+      expect(pick?.path, ProviderDocuments.workingCopyOf(drive.uri));
+      expect(File(pick!.path).readAsBytesSync(), stagedMarker);
     });
 
     testWidgets('the suffix rides the suggested name', (tester) async {

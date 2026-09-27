@@ -75,6 +75,10 @@ class CutVerbs {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
+  /// Where a cut may step to and which index that is. Stateless, and asked
+  /// by nobody but these verbs — so it is theirs, not a name on the session.
+  static const _cutReorderPlanner = CutReorderPlanner();
+
   void createCut() {
     final plan = _placement.cutCreationPlan;
     if (plan == null) {
@@ -146,8 +150,7 @@ class CutVerbs {
   /// (`_InkOwners`): a conte cell by its block, the others by their cut —
   /// the envelope's by the cut that OWNS the envelope, the representative
   /// when [from] shares one ([cutEnvelopeInkOwner]); the copy is no
-  /// sibling, so it owns its own. The conte's paper plane belongs to no cut
-  /// and stays where it is.
+  /// sibling, so it owns its own.
   void _carrySheetInk({required CutId from, required CutId to}) {
     void carry(
       BrushFrameStore store,
@@ -218,7 +221,7 @@ class CutVerbs {
   bool _canMoveActiveCut(CutMoveDirection direction) {
     final position = _activeCutPositionOrNull;
     return position != null &&
-        _internals.cutReorderPlanner.canMove(position, direction);
+        _cutReorderPlanner.canMove(position, direction);
   }
 
   /// ⛔ONE MOVE, WITH A SIGN. The two verbs used to be written out, guard
@@ -226,13 +229,13 @@ class CutVerbs {
   /// the reorder would have done it in one direction only.
   void _moveActiveCut(CutMoveDirection direction) {
     final position = _activeCutPosition;
-    if (!_internals.cutReorderPlanner.canMove(position, direction)) {
+    if (!_cutReorderPlanner.canMove(position, direction)) {
       return;
     }
     _project.cutCommandCoordinator.reorderCut(
       trackId: position.trackId,
       cutId: position.cutId,
-      newIndex: _internals.cutReorderPlanner.moveTargetIndex(
+      newIndex: _cutReorderPlanner.moveTargetIndex(
         position,
         direction,
       ),
@@ -278,6 +281,31 @@ class CutVerbs {
       return;
     }
     _project.cutCommandCoordinator.setCutMark(cutIds: cutIds, mark: mark);
+    _changes.notifyChanged();
+  }
+
+  /// The first addressed cut's own staff names — what 컷 설정 shows, as the
+  /// cut button shows the first addressed cut's 색 라벨 — or null with no
+  /// cut to address, so the window stands down (the gap state).
+  Map<String, String>? get addressedCutStaff {
+    final cutIds = addressedCutIds;
+    return cutIds.isEmpty
+        ? null
+        : _project.cutById(cutIds.first)?.metadata.staff;
+  }
+
+  /// Names each stage of [names] on every addressed cut — and on each one's
+  /// 겸용 siblings — as ONE undo step; every other stage keeps each cut's
+  /// own (컷 설정).
+  void setAddressedCutStaffNames(Map<LayerMark, String> names) {
+    final cutIds = addressedCutIds;
+    if (cutIds.isEmpty || names.isEmpty) {
+      return;
+    }
+    _project.cutCommandCoordinator.setCutStaffNames(
+      cutIds: cutIds,
+      names: names,
+    );
     _changes.notifyChanged();
   }
 

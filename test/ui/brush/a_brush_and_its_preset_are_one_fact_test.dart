@@ -99,5 +99,48 @@ void main() {
       );
       expect(notifier.value.size, 50);
     });
+
+    test('🚨F-181: a brush taken up WHOLE is that brush, even where it equals '
+        'the tool it replaces — not a switch back to the bank\'s', () {
+      // The brush tool is banked holding what the hand set on `pen`.
+      final notifier = PaintToolStateNotifier(
+        holding(preset('pen')).copyWith(size: 900),
+      );
+      addTearDown(notifier.dispose);
+      notifier.value = notifier.value.withPreset(
+        preset('pen'),
+        tool: CanvasTool.eraser,
+      );
+      expect(notifier.value.size, 10, reason: 'premise: the eraser on pen');
+
+      // `pen` taken up again for the brush tool: the very settings the eraser
+      // holds, so only the tool differs.
+      final again = notifier.value.withPreset(
+        preset('pen'),
+        tool: CanvasTool.brush,
+      );
+      expect(
+        again.copyWith(tool: CanvasTool.eraser),
+        notifier.value,
+        reason: 'premise: to the setter this looks like a pure switch',
+      );
+      notifier.holdBrush(again);
+
+      expect(
+        notifier.value.size,
+        10,
+        reason: 'the bank\'s 900 came back in its place, and a library reset '
+            'left the brush holding what the hand had set',
+      );
+      expect(notifier.value.tool, CanvasTool.brush);
+
+      // A plain switch still hands each tool its banked brush.
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.eraser);
+      notifier.value = notifier.value.copyWith(size: 30);
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
+      expect(notifier.value.size, 10);
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.eraser);
+      expect(notifier.value.size, 30);
+    });
   });
 }

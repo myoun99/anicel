@@ -286,6 +286,21 @@ class AudioClips {
   /// The index travels with the clip because [removeAudioClipAt] addresses
   /// by position: a clip has no id of its own, and looking it up again
   /// afterwards would search a list that just changed.
+  /// How many frames the block the selection stands on covers — the window
+  /// its sounds play in, which the block edit window's offset strip draws
+  /// (09-27). Found the way [selectedSeAudioClips] finds the block's frame;
+  /// 1 where no block covers the playhead.
+  int get selectedSeBlockFrames {
+    final layer = _selection.activeLayer;
+    if (layer == null) {
+      return 1;
+    }
+    final block = _controllers.timelineController.blockForLayerAt(
+      layer: layer,
+    );
+    return block?.length ?? 1;
+  }
+
   List<({AudioClip clip, int index})> get selectedSeAudioClips {
     final layer = _selection.activeLayer;
     final frame = _selection.selectedFrame;

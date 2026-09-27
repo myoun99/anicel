@@ -71,7 +71,7 @@ class _WorkspaceCollapsedRows {
   /// today. If it ever grows a second, that function is where it grows and
   /// this line follows it there.
   double collapsedRowHeight() => _collapsedRowIsStoryboard
-      ? _state._storyboardTrackLaneHeight.value
+      ? _state._storyboardLaneHeight(_state.context)
       : timelineLayerRowHeightIn(_state.context);
 
   Widget _collapsedRow() {
@@ -188,6 +188,7 @@ class _WorkspaceCollapsedRows {
                 // draws from, so a picture rendered for one is already
                 // rendered for the other.
                 thumbnails: _state._storyboardThumbnails.thumbnails,
+                devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
               ),
             ),
     );

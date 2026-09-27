@@ -46,6 +46,7 @@ import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'widgets/dock_edge_splitter.dart';
 import 'widgets/field_slider.dart';
+import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
     show
         PropertyLaneEditCallbacks,
@@ -77,6 +78,7 @@ import 'timeline/layer_row_drag.dart'
         layerRowDragChips;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
+import 'input/scroller_press_hold.dart';
 import 'timeline/transform_lane_policy.dart'
     show laneSelectionCoversBandRow, transformGroupHeader;
 import '../models/app_input_settings.dart' show AppInput;
@@ -158,7 +160,7 @@ import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_scale.dart';
 import 'timeline/timeline_section_policy.dart'
-    show TimelineSection, timelineSectionLabel;
+    show TimelineSection, timelineSectionForLayerKind, timelineSectionLabel;
 import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
 import 'timeline/timeline_selected_exposure_outline.dart'
@@ -535,6 +537,8 @@ class StoryboardPanel extends StatefulWidget {
     this.dragPreview,
     this.legend,
     this.rowFilter = TimelineRowFilter.none,
+    this.hiddenSections = const {},
+    this.onToggleSection,
     this.visibilitySoloEnabled = false,
     this.opacityDragPreview,
     this.legendOpacityValue = 1.0,
@@ -621,26 +625,37 @@ class StoryboardPanel extends StatefulWidget {
   /// fold (유저 2026-09-25: 「띠는 v행 세로 줄어도 고정으로 그 자리에 두자」),
   /// so at 52 the picture is gone and every word stays whole.
   ///
-  /// The CEILING is the tallest row the born cut's picture stays sharp in
-  /// (⛔해상도로 속도를 사지 않는다): a cut is born 2340×1654
-  /// ([defaultCutCanvasSize]), so its sheet-sized thumbnail — the one a
-  /// strip past the strip-sized one asks for
-  /// ([StoryboardCutBlocksPainter.thumbnailTierFor]) — is 640×452, and the
-  /// bands take 52 more. ⚠️A wider canvas's picture is shorter: a 16:9
-  /// cut's is 360, which the top of this range draws a little stretched.
-  /// ↩️64 · 28 · 160 with two bands.
+  /// The CEILING is the tallest row whose picture stays sharp
+  /// ([maxTrackLaneHeightFor]) — 🗣️유저 2026-09-27
+  /// (storyboard-v-row-ceiling-Q1): 「그림이 선명한 한 최대로(카메라 프레임
+  /// 높이 + 띠)」. ↩️504, while the tallest picture a strip could ask was
+  /// the conte's fixed 640px one. ↩️64 · 28 · 160 with two bands.
   static const double defaultTrackLaneHeight = 96;
-  // Min/max are the height's LEGAL RANGE — the bar's steppers died with B7
-  // (2026-08-17), and the V-track splitter (2026-09-26) clamps to the same
-  // pair ([onResizeTrackLanes]).
+  // The height's LEGAL RANGE — the bar's steppers died with B7 (2026-08-17),
+  // and the V-track splitter (2026-09-26) clamps to it
+  // ([onResizeTrackLanes]).
   static const double minTrackLaneHeight =
       StoryboardCutBlocksPainter.bandHeight * 4;
-  static const double maxTrackLaneHeight = 504;
 
-  /// [height] held to the legal range — what the splitter's drag and a
-  /// saved layout alike may set.
-  static double clampTrackLaneHeight(double height) =>
-      height.clamp(minTrackLaneHeight, maxTrackLaneHeight).toDouble();
+  /// The tallest a V row may grow for a film shot through [cameraFrame] on
+  /// a screen of [devicePixelRatio]: the strip asks its picture at the
+  /// height it shows it, up to the camera frame (`pictureRenderWidthFor`),
+  /// so past the frame's own height in the screen's pixels the picture
+  /// would stretch (⛔해상도로 속도를 사지 않는다) — that height, and the four
+  /// bands over it.
+  static double maxTrackLaneHeightFor(
+    CanvasSize cameraFrame,
+    double devicePixelRatio,
+  ) => minTrackLaneHeight + cameraFrame.height / devicePixelRatio;
+
+  /// [height] held to the legal range under [ceiling] — the height the rows
+  /// are drawn at, whatever the splitter or a saved layout set.
+  static double clampTrackLaneHeight(
+    double height, {
+    required double ceiling,
+  }) => height
+      .clamp(minTrackLaneHeight, math.max(minTrackLaneHeight, ceiling))
+      .toDouble();
 
   /// The vertical scrollbar's lane width — the TIMELINE's
   /// [TimelineGridMetrics.verticalScrollbarWidth] by value (UI-R10 #15/#21
@@ -1012,6 +1027,17 @@ class StoryboardPanel extends StatefulWidget {
   /// a filter: any mark would empty the storyboard whatever the mark was.
   final TimelineRowFilter rowFilter;
 
+  /// The SE and camera sections left off the rail — the set the timeline's
+  /// grids read, toggled from the same legend menu ([onToggleSection]).
+  ///
+  /// 🗣️F-199 (유저 2026-09-27): 「콘티패널도 타임라인이랑 동일하게 se나
+  /// 카메라섹션 접을수있게 로직통일」. The S rows are the SE section and the
+  /// transition row the camera section's ([timelineSectionForLayerKind]); the
+  /// V row belongs to none and always shows. ↩️The legend here carried the
+  /// menu all along, greyed: it was never handed the toggle.
+  final Set<TimelineSection> hiddenSections;
+  final ValueChanged<TimelineSection>? onToggleSection;
+
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
 
@@ -1256,6 +1282,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void initState() {
     super.initState();
+    // The rows and the frames are the storyboard: one surface scrolled two
+    // ways (F-202).
+    scrollTogether(_verticalController, _horizontalController);
     _horizontalController.addListener(_frameAxis.handleScroll);
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
     widget.playheadFrame?.addListener(_handlePlaybackPage);
@@ -1966,46 +1995,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       ),
                                     ),
                                     if (playheadListenable != null)
-                                      // Frame-wide accent tint only — no solid
-                                      // edge line over the blocks (user
-                                      // direction); the ruler carries its own
-                                      // current-frame highlight. Subscribes to
-                                      // the cursor itself: a tick moves THIS
-                                      // overlay, the blocks never rebuild.
-                                      ValueListenableBuilder<int?>(
-                                        valueListenable:
-                                            playheadListenable,
-                                        builder:
-                                            (
-                                              context,
-                                              playheadFrame,
-                                              _,
-                                            ) => playheadFrame == null
-                                            ? const SizedBox.shrink()
-                                            : Positioned(
-                                                key:
-                                                    const ValueKey<
-                                                      String
-                                                    >(
-                                                      'storyboard-playhead',
-                                                    ),
-                                                left: frame.scale
-                                                    .leftForFrame(
-                                                      playheadFrame,
-                                                    ),
-                                                top: 0,
-                                                bottom: 0,
-                                                width: frame.scale
-                                                    .pixelsPerFrame,
-                                                child: IgnorePointer(
-                                                  child: ColoredBox(
-                                                    color: timelinePlayheadColor
-                                                        .withValues(
-                                                          alpha: 0.18,
-                                                        ),
-                                                  ),
-                                                ),
-                                              ),
+                                      _playheadTint(
+                                        playheadListenable,
+                                        frame.scale,
                                       ),
                                     // The MOVIE-END line through the
                                     // STRIPS (UI-R20 #3): the ruler's
@@ -2168,6 +2160,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               ),
               legend: widget.legend,
               rowFilter: widget.rowFilter,
+              hiddenSections: widget.hiddenSections,
+              onToggleSection: widget.onToggleSection,
               showRowSolos: true,
               marksInUse: _legendMarksInUse(),
               kindsInUse: _legendKindsInUse(),
@@ -2674,6 +2668,36 @@ class _StoryboardLabelShell extends StatelessWidget {
     );
   }
 }
+
+/// The frame-wide accent tint on the playhead's frame — no solid edge line
+/// over the blocks (user direction); the ruler carries its own current-frame
+/// highlight. It subscribes to the cursor itself, on a layer of its own
+/// ([TickLayer]): a tick moves THIS overlay, the blocks never rebuild.
+Widget _playheadTint(ValueListenable<int?> playhead, TimelineScale scale) =>
+    Positioned.fill(
+      child: IgnorePointer(
+        child: TickLayer(
+          child: ValueListenableBuilder<int?>(
+            valueListenable: playhead,
+            builder: (context, frame, _) => Stack(
+              children: [
+                if (frame != null)
+                  Positioned(
+                    key: const ValueKey<String>('storyboard-playhead'),
+                    left: scale.leftForFrame(frame),
+                    top: 0,
+                    bottom: 0,
+                    width: scale.pixelsPerFrame,
+                    child: ColoredBox(
+                      color: timelinePlayheadColor.withValues(alpha: 0.18),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
 
 /// A storyboard label row's NAME: the one row-name style every surface
 /// wears ([layerRowNameStyle], F-26 #1226 — 「스토리보드패널도 겸사겸사 싹 다
@@ -4680,6 +4704,10 @@ class _StoryboardTrackRow extends StatelessWidget {
       ),
       gripGrounds: () =>
           StoryboardPlateGrounds(blocksPainter, crossOffset: paper.slot.top),
+      // The blocks' own window: the row spans the whole film, and the grips
+      // are drawn where the view can reach, as the blocks under them are.
+      windowBucket: windowBucket,
+      viewportMainExtent: viewportWidth,
       // No layer: these blocks are panels of many cuts, and the row has no
       // run edges for a LayerId to name.
       layerId: null,
@@ -4967,6 +4995,7 @@ class _StoryboardTrackRow extends StatelessWidget {
       showSeconds: showSeconds,
       countingBase: projectFrameRate.countingBase,
       thumbnails: thumbnails,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
       windowBucket: windowBucket,
       viewportMainExtent: viewportWidth,
     );

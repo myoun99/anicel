@@ -399,7 +399,7 @@ void main() {
       await gesture.moveTo(origin + rect.center + const Offset(6, 4));
       await tester.pump();
       expect(session.brushInputActive.value, isTrue);
-      expect(session.editingInteractionBusy, isTrue);
+      expect(session.strokeInFlight, isTrue);
 
       await gesture.up();
       await tester.pump();

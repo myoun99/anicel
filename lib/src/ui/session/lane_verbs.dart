@@ -527,10 +527,10 @@ class LaneVerbs {
       resolvedPose: _laneResolvedPose(layer, frame),
       resolvedAnchorPoint: isCamera
           ? null
-          : _internals.layerAnchorPointAtFrame(layer, frame),
+          : _timeline.layerAnchorPointAtFrame(layer, frame),
       resolvedOpacity: isCamera
           ? 1
-          : _internals.layerOpacityAtFrame(layer, frame),
+          : resolveOpacityTrackAt(layer.transformTrack.opacity, frame),
     );
   }
 

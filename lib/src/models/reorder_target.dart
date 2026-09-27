@@ -42,15 +42,22 @@ int reorderTargetForSlot({required int slot, required int movedIndex}) =>
 /// [movedIndex]; [target] is a target index (see the two indices above).
 /// Out-of-range targets clamp rather than throw: a pointer can leave the
 /// list, and the ends are where it means to be.
+///
+/// A null [movedIndex] is an entry carried in from ANOTHER list — a brush
+/// dropped into a group it was not in (I-49). Nothing is lifted out, so the
+/// list as it stands is already the list without it.
 T? reorderAnchorAt<T>(
   List<T> ordered, {
-  required int movedIndex,
+  required int? movedIndex,
   required int target,
 }) {
-  if (movedIndex < 0 || movedIndex >= ordered.length) {
+  if (movedIndex != null &&
+      (movedIndex < 0 || movedIndex >= ordered.length)) {
     return null;
   }
-  final without = [...ordered]..removeAt(movedIndex);
+  final without = movedIndex == null
+      ? ordered
+      : ([...ordered]..removeAt(movedIndex));
   final clamped = target.clamp(0, without.length);
   return clamped < without.length ? without[clamped] : null;
 }

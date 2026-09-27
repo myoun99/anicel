@@ -5,6 +5,20 @@ import 'display_resample.dart';
 
 export '../../services/viewport_transform_matrix.dart';
 
+/// The canvas rect a [box] shows through [viewport] — the part of a
+/// paper a painter or a page's widgets have to bother with. For the
+/// views that never turn (the sheets', the viewer's).
+///
+/// ONE for the three that asked it: the timesheet's painter culling its
+/// pages, and the conte's and the timesheet's hosts mounting only the
+/// pages on screen (F-201).
+Rect canvasRectShown(CanvasViewport viewport, Size box) => Rect.fromLTWH(
+  -viewport.panX / viewport.zoom,
+  -viewport.panY / viewport.zoom,
+  box.width / viewport.zoom,
+  box.height / viewport.zoom,
+);
+
 /// [viewport] with its TRANSLATION snapped to whole device pixels — what
 /// every canvas-space painter actually renders (the pan-phase snap,
 /// 2026-08-17 실기: two symptoms, one fractional device translation).

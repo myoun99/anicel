@@ -76,7 +76,6 @@ void main() {
     final caches = session.renderCaches;
     final stores = {
       caches.conteInkRowStore,
-      caches.conteInkPageStore,
       caches.envelopeInkStore,
       caches.timesheetInkStripStore,
       caches.timesheetInkPageStore,
@@ -96,7 +95,6 @@ void main() {
     final session = newSession();
     final stores = [
       session.renderCaches.conteInkRowStore,
-      session.renderCaches.conteInkPageStore,
       session.renderCaches.envelopeInkStore,
       session.renderCaches.timesheetInkStripStore,
       session.renderCaches.timesheetInkPageStore,

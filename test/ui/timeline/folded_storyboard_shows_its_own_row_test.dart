@@ -124,6 +124,18 @@ void main() {
     );
   });
 
+  testWidgets('the folded row asks its pictures at the screen\'s density, as '
+      'the open row does (유저 2026-09-25: 「화면이 필요한 만큼(최대 원본)」 · '
+      '「같은로직으로 법 통일」)', (tester) async {
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _pumpFolded(tester, storyboard: true);
+    final painter =
+        tester.widget<CustomPaint>(_cutBlocks()).painter!
+            as StoryboardCutBlocksPainter;
+    expect(painter.devicePixelRatio, 2);
+  });
+
   testWidgets('D15 ③: thumbnails are ON in the folded row, because the same '
       'painter draws them in the open one', (tester) async {
     await _pumpFolded(tester, storyboard: true);

@@ -10,14 +10,17 @@ import '../track_id.dart';
 /// The conte ink's cel-key contract (R5) — the ONE place its namespace is
 /// minted and recognized, shared by the ink controller (UI), the session's
 /// archive routing and the exporters. The namespace keeps sheet ink out of
-/// every cel-rendering path; the ROW plane's key carries the REAL CutId
-/// and the storyboard block's own ink id (`ExposureMemo.inkId`) — the
-/// block's stable identity (the memo's rule: it moves and copies with the
-/// block) and the load-time GC unit ("ink dies with the block").
+/// every cel-rendering path; a key carries the REAL CutId and the
+/// storyboard block's own ink id (`ExposureMemo.inkId`) — the block's
+/// stable identity (the memo's rule: it moves and copies with the block)
+/// and the load-time GC unit ("ink dies with the block").
+///
+/// ⛔No paper plane. 유저 09-26 (H44): 「잉크가 종이 어디던간에 그려지는데
+/// 그게아니라 칸에만 넣고싶거든? 그래서 컷 이동하면 따라오도록 구조적으로
+/// 강제하고싶으니까 칸에만 그려지도록」 — ink the page kept for itself stayed
+/// where it was drawn while the cuts moved under it.
 const ProjectId conteInkProjectId = ProjectId('conte-ink');
 const TrackId conteInkTrackId = TrackId('conte-ink');
-const CutId conteInkCutId = CutId('conte-ink');
-const LayerId conteInkPageLayerId = LayerId('conte-page');
 const LayerId conteInkRowLayerId = LayerId('conte-row');
 
 /// The conte ink's resolution: its surfaces' pixels per page point — what
@@ -34,33 +37,6 @@ const LayerId conteInkRowLayerId = LayerId('conte-row');
 /// import the input side; two numbers that must agree are two chances to
 /// print ink at a scale it was not drawn at.
 const int conteInkScale = 1;
-
-/// The paper plane's frame id is this plus the page — minted by
-/// [conteInkPageKey] and read back by [conteInkPageIndexOf], one spelling.
-const String _conteInkPagePrefix = 'conte-page-p';
-
-/// Paper-anchored plane: one surface per page.
-BrushFrameKey conteInkPageKey(int page) {
-  return BrushFrameKey(
-    projectId: conteInkProjectId,
-    trackId: conteInkTrackId,
-    cutId: conteInkCutId,
-    layerId: conteInkPageLayerId,
-    frameId: FrameId('$_conteInkPagePrefix$page'),
-  );
-}
-
-/// The page [key] is paper-plane ink for — the `page` [conteInkPageKey] was
-/// given — or null when it is any other key.
-int? conteInkPageIndexOf(BrushFrameKey key) {
-  final frame = key.frameId.value;
-  if (!isConteInkKey(key) ||
-      key.layerId != conteInkPageLayerId ||
-      !frame.startsWith(_conteInkPagePrefix)) {
-    return null;
-  }
-  return int.tryParse(frame.substring(_conteInkPagePrefix.length));
-}
 
 /// Cell-anchored plane: one surface per storyboard BLOCK — the block's own
 /// [inkId] (`ExposureMemo.inkId`) in the frame slot, not its drawing's id:

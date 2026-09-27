@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
@@ -10,6 +11,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart'
     show timelineRunLengthLabel;
+import 'timeline_frame_window.dart' show visibleFrameWindowFor;
 import 'timeline_glyph_cache.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
@@ -77,12 +79,26 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
     required this.countingBase,
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
+    this.windowBucket,
+    this.viewportMainExtent = 0,
     // F-24: the labels no longer ask what they are sitting on, so this
     // painter no longer watches the cel-content revision either — the ink
     // is the block's ink whatever the block holds.
-  }) : super(repaint: geometry);
+  }) : super(repaint: Listenable.merge([geometry, ?windowBucket]));
 
   final Layer layer;
+
+  /// The row's scroll window, as its cells take it (UI-R15): a paint prints
+  /// the labels of the blocks the window can show and repaints once per span
+  /// crossing.
+  ///
+  /// 🚨I-22 ③: the labels ride the cells painter as its foreground, so they
+  /// paint whenever the cells do — at every span crossing of a scroll — and
+  /// they printed every block's number on the row while the cells drew what
+  /// the window reaches (95ms of a 769ms scroll sample at 24px, profile).
+  /// Null keeps the whole row, for a host that shows all of it.
+  final ValueListenable<int>? windowBucket;
+  final double viewportMainExtent;
 
   /// The ambient text style the row sits in — the app's face. The number
   /// is printed the way the block's NAME is ([timelineBlockWordStyle]).
@@ -130,7 +146,24 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
   );
 
   /// Every label this row would draw, in block order — THE probe surface.
-  List<TimelineRunLabel> runLabels() {
+  List<TimelineRunLabel> runLabels() =>
+      _labelsIn(frameStartIndex, frameEndIndexExclusive);
+
+  /// The labels a paint prints: those whose block reaches the frames the
+  /// window can show ([windowBucket]).
+  List<TimelineRunLabel> runLabelsInWindow() {
+    final window = visibleFrameWindowFor(
+      bucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
+      cellExtent: frameCellExtent,
+      frameStartIndex: frameStartIndex,
+      frameEndIndexExclusive: frameEndIndexExclusive,
+    );
+    return _labelsIn(window.startIndex, window.endIndexExclusive);
+  }
+
+  /// The labels of the blocks that reach frames [from, to), in block order.
+  List<TimelineRunLabel> _labelsIn(int from, int to) {
     final labels = <TimelineRunLabel>[];
     for (final key in layer.timeline.keys) {
       final entry = layer.timeline[key]!;
@@ -139,12 +172,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
       }
       final startIndex = key;
       final endIndexExclusive = key + (entry.length ?? 1);
-      if (!frameRangesOverlap(
-        startIndex,
-        endIndexExclusive,
-        frameStartIndex,
-        frameEndIndexExclusive,
-      )) {
+      if (!frameRangesOverlap(startIndex, endIndexExclusive, from, to)) {
         continue;
       }
       // D23: a 1-comma block prints nothing — paint and semantics fall
@@ -183,7 +211,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     final style = labelStyle;
-    for (final label in runLabels()) {
+    for (final label in runLabelsInWindow()) {
       final glyph = timelineGlyphPainter(label.text, style);
       // Clipped to its OWN block: a number wider than one cell spills back
       // over its own block, never into the neighbour's.
@@ -231,6 +259,8 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
         countingBase,
         baseTextStyle,
         axis,
+        ByIdentity(windowBucket),
+        viewportMainExtent,
       );
   // ⛔The cel-content comparison went with F-24. It was here because a
   // moved revision was a moved GROUND (the empty-cel blend) and the ink

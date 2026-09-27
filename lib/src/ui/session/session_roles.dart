@@ -9,8 +9,6 @@
 // travel is narrower roles, and a member no collaborator uses is deleted.
 
 import 'package:flutter/foundation.dart';
-import 'attach_fx_confirm.dart';
-import 'editor_app_settings.dart';
 import '../../services/editing/editing_session_state.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
@@ -20,22 +18,16 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
-import '../../models/pixel_verb_subject.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
-import '../../services/canvas_selection.dart' show SelectionMaskOptions;
-import '../../services/canvas_selection_region.dart';
 import '../../models/layer_id.dart';
-import '../../models/pill_subject.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
 import '../../models/track.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
-import '../../models/track_se_window.dart';
 import '../../models/track_frame_axis.dart';
 import '../../services/commands/cut_command_coordinator.dart';
-import '../../services/commands/cut_reorder_planner.dart';
 import '../../services/history_manager.dart';
 import '../../services/project_repository.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
@@ -72,6 +64,7 @@ abstract interface class SelectionAccess {
     )
     inBand,
   );
+  bool get editingPlayheadInGap;
   int? get gapGlobalFrame;
   set gapGlobalFrame(int? value);
   Layer? get activeLayer;
@@ -122,29 +115,10 @@ abstract interface class TimelineAccess {
   TrackFrameAxis axisForTrack(TrackId trackId);
   EditingSessionState get editingSession;
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex);
+  CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
   TransformPose layerPoseAtFrame(Layer layer, int frameIndex);
   TrackFrameAxis trackFrameAxis();
 }
-
-/// The canvas-side facts a PIXEL VERB press needs, read together at the
-/// moment of the press.
-///
-/// 🚨★★★**ONE MEMBER, NOT THREE.** They were three fields on
-/// [SessionInternals], published by one method and read by one collaborator
-/// — and the comment over the publisher already called them 「the canvas-side
-/// facts the PIXEL verbs need」, which is a name. Adding the mask as a fourth
-/// field would have widened the seam the ratchet below is closing; folding
-/// them narrows it by two.
-///
-/// ⚠️Read at the PRESS, all three at once: the marquee survives tool
-/// switches, the colour changes under the pointer, and the tool settings
-/// panel can move the mask while the popover is open, so a value captured
-/// when the editor opened would be none of them.
-typedef PixelVerbCanvas = ({
-  CanvasSelectionRegion? region,
-  int argb,
-  SelectionMaskOptions mask,
-});
 
 /// What collaborators still reach into the session for beyond the
 /// roles above — the measured remainder of the coupling, and a list
@@ -152,36 +126,16 @@ typedef PixelVerbCanvas = ({
 /// collaborator that uses it, becomes a role, or is injected as the
 /// sibling it really is. ⛔Nothing is added here.
 abstract interface class SessionInternals {
-  bool activeCutHasLayer(LayerId? layerId);
-  EditorAppSettings get appSettings;
   bool blockMoveEligible(LayerId layerId);
   int commitBlockStart(LayerId layerId, int displayStart);
-  CutReorderPlanner get cutReorderPlanner;
   bool get disposed;
-  String drawingStartStatusForLayer(Layer layer, int frameIndex);
-  List<({int startIndex, int length})> emptyGapsInRange(
-    Layer layer,
-    TimelineFrameRangeSelection selection,
-  );
-  void followPlaybackCut();
   Layer? get targetLayerForKindToggle;
-  AttachFxConfirmController get attachFxConfirm;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
-  bool get canCreateInstance;
-  bool Function()? get canvasHasSelection;
-  void Function()? get clearCanvasSelection;
   TimelineRowAddress get currentRow;
-  PillSubject get deleteSubject;
   ValueNotifier<TimelineDragPreview?> get dragPreview;
   ValueNotifier<int> get editingFrameCursor;
-  bool get editingInteractionBusy;
-  bool get editingPlayheadInGap;
-  CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
-  double layerOpacityAtFrame(Layer layer, int frameIndex);
-  PixelVerbCanvas Function()? get pixelVerbCanvas;
+  bool get strokeInFlight;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
-  PixelVerbSubject get pixelVerbSubject;
-  bool resetLaneGroup(LayerId layerId, String headerLaneId);
   bool rowIsSelected(TimelineRowAddress row);
   void selectLayer(LayerId layerId);
   void selectTrackCutAtPlayhead(TrackId trackId);
@@ -192,7 +146,6 @@ abstract interface class SessionInternals {
     int? frameIndex,
     int? globalFrameIndex,
   });
-  TrackSeWindow get trackSeWindow;
   void updateActiveCutCameraTrack(
     TransformTrack track, {
     String description = 'Edit camera keyframes',

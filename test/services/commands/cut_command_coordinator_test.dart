@@ -56,16 +56,18 @@ void main() {
         activeCutId: existingCut.id,
       );
 
-      fixture.coordinator.createCut(
-        trackId: const TrackId('track-1'),
-        name: 'Created',
+      final name = CutCommandCoordinator.nextCutNameAfter(
+        fixture.project,
+        existingCut.name,
       );
+
+      fixture.coordinator.createCut(trackId: const TrackId('track-1'));
 
       var cuts = fixture.cutsFor(const TrackId('track-1'));
       final created = cuts.last.id;
       expect(cuts.first, existingCut);
       expect(created, isNot(existingCut.id));
-      expect(cuts.last.name, 'Created');
+      expect(cuts.last.name, name, reason: 'named after the cut it follows');
       expect(cuts.last.layers.first.id, const LayerId('layer-1'));
       expect(fixture.editingSession.activeCutId, created);
       expect(fixture.historyManager.undoCount, 1);

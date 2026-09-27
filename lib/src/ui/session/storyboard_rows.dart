@@ -1,8 +1,12 @@
 import '../../models/cut_id.dart';
+import '../../models/layer.dart' show Layer;
 import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
 import 'session_roles.dart';
 import 'project_settings.dart';
+import 'rail_view.dart';
+import '../timeline/timeline_section_policy.dart'
+    show timelineSectionForLayerKind;
 
 /// The STORYBOARD ROWS — the rail rows it shows, the cut selection swept
 /// across them, and the next cut in storyboard order — as their own
@@ -21,10 +25,16 @@ class StoryboardRows {
     required SelectionAccess selection,
     required TimelineAccess timeline,
     required ProjectSettings projectSettings,
+    required RailView railView,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
-       _projectSettings = projectSettings;
+       _projectSettings = projectSettings,
+       _railView = railView;
+
+  /// The hidden SECTIONS the rail leaves out (F-199) — the set the
+  /// timeline's grids read.
+  final RailView _railView;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -73,14 +83,22 @@ class StoryboardRows {
   /// nothing to refuse).
   List<TimelineRowAddress> storyboardRailRows(TrackId trackId) {
     final track = _project.trackById(trackId);
+    // F-199: a hidden section's rows are off the rail, so off this list —
+    // a drag across them selects only what it can be seen to cross. The
+    // section a row sits in is the timeline's own answer.
+    final hidden = _railView.hiddenSections.value;
+    bool shown(Layer layer) =>
+        !hidden.contains(timelineSectionForLayerKind(layer.kind));
     return [
       // The TRANSITION row heads the group on screen, so it heads the list: a
       // row delta walks this in VISUAL order, and a row missing from it is
       // unreachable — which is what left a cross-row drag unable to start on
       // it or arrive at it (user 2026-08-11).
-      if (track != null) LayerRowAddress(track.transitionLayer.id),
+      if (track != null && shown(track.transitionLayer))
+        LayerRowAddress(track.transitionLayer.id),
       if (track != null)
-        for (final layer in track.seLayers.reversed) LayerRowAddress(layer.id),
+        for (final layer in track.seLayers.reversed)
+          if (shown(layer)) LayerRowAddress(layer.id),
       TrackRowAddress(trackId),
     ];
   }

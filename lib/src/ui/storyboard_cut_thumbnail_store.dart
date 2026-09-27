@@ -11,9 +11,10 @@ import '../models/layer.dart';
 import '../native/qa_native_engine.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 import 'media/viewer_raster_budget.dart';
+import 'media/viewer_render_tier.dart';
 
 /// One picture the storyboard shows: a cut, composited at one of its
-/// frames.
+/// frames, at one width.
 ///
 /// A cut used to have exactly one, so the cut was the key. It has one per
 /// PANEL now — the conte's cells are panels of the cut, and each shows the
@@ -21,38 +22,25 @@ import 'media/viewer_raster_budget.dart';
 /// no storyboard row still has a single panel and therefore a single
 /// picture, which is the old behaviour arriving as a special case of the
 /// new one.
-/// How big a panel's picture is asked for.
 ///
-/// The axis that was missing (user, 2026-08-06: the conte's picture cells
-/// looked like a quarter of what they should — *"항상 풀퀄리티로 보고싶어"*).
-/// One store serves both panels ON PURPOSE — a cell and its strip block are
-/// one render, never two that must be kept in step — but they want
-/// different resolutions: the strip draws blocks a finger wide, the conte
-/// draws a printed frame that also exports. So the SIZE joins the key
-/// rather than the strip's number being raised for everyone.
-enum StoryboardThumbnailTier {
-  /// The timeline strip's blocks.
-  strip(128),
-
-  /// A printed sheet's picture cell — the width the conte PDF already
-  /// renders its cells at, so screen and export agree.
-  sheet(640);
-
-  const StoryboardThumbnailTier(this.width);
-
-  final int width;
-}
-
-typedef StoryboardThumbnailKey = ({
-  CutId cutId,
-  int frameIndex,
-  StoryboardThumbnailTier tier,
-});
+/// The WIDTH is the axis that was missing (user, 2026-08-06: the conte's
+/// picture cells looked like a quarter of what they should —
+/// *"항상 풀퀄리티로 보고싶어"*). One store serves both panels ON PURPOSE — a
+/// cell and its strip block are one render, never two that must be kept in
+/// step — but they show it at different sizes, so the size joins the key.
+/// ↩️It was two fixed tiers (a strip block's 128 and a sheet cell's 640),
+/// and a zoomed-in cell or a tall V row stretched the picture past the
+/// pixels it had; it is now the size the surface SHOWS it at
+/// ([pictureRenderWidthFor] — 유저 2026-09-25 「화면이 필요한 만큼(최대
+/// 원본)」, and for the cut blocks 「같은로직으로 법 통일」).
+typedef StoryboardThumbnailKey = ({CutId cutId, int frameIndex, int width});
 
 /// The resolver the storyboard's rows and the conte's page ask while they
-/// PAINT — only for what their window shows.
+/// PAINT — only for what their window shows, saying how many device pixels
+/// tall they draw the picture ([shownHeight]). The width that buys is the
+/// store's answer, never the surface's.
 typedef StoryboardThumbnailResolver =
-    ui.Image? Function(Cut cut, int frameIndex, {StoryboardThumbnailTier tier});
+    ui.Image? Function(Cut cut, int frameIndex, {required double shownHeight});
 
 /// A surface's panel pictures: [resolve] asked while it paints, and
 /// [landed] told when a render lands or a picture is let go — ONE value,
@@ -70,13 +58,13 @@ typedef StoryboardThumbnails = ({
   Listenable landed,
 });
 
-/// Renders and caches the small composites the storyboard's panels show.
+/// Renders and caches the composites the storyboard's panels show.
 ///
 /// [thumbnailFor] is a synchronous paint-time resolver: it returns whatever
 /// is cached (possibly stale, possibly null) and kicks one async render at
-/// thumbnail resolution when the panel's signature changed. Renders finish
-/// → [notifyListeners] → the painters that asked repaint with the fresh
-/// image ([thumbnails]).
+/// the width the surface's size asks when the panel's signature changed.
+/// Renders finish → [notifyListeners] → the painters that asked repaint
+/// with the fresh image ([thumbnails]).
 ///
 /// Invalidation: a structural signature (canvas size, duration, per-layer
 /// visibility/opacity/frames/EXPOSURES, camera track, layer transforms and
@@ -104,14 +92,20 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   StoryboardCutThumbnailStore({
     required Future<ui.Image?> Function(Cut cut, int frameIndex, int width)
     render,
+    required ui.Size Function() originalSize,
     EditorCacheInvalidationHub? invalidationHub,
     this.onHeldBytesChanged,
   }) : _render = render,
+       _originalSize = originalSize,
        _hub = invalidationHub {
     _hub?.addBrushFrameListener(_onBrushFrameInvalidated);
   }
 
   final Future<ui.Image?> Function(Cut cut, int frameIndex, int width) _render;
+
+  /// The size a picture has at its fullest — the camera frame it renders
+  /// through. No width past it is ever asked for.
+  final ui.Size Function() _originalSize;
   final EditorCacheInvalidationHub? _hub;
 
   final Map<StoryboardThumbnailKey, ui.Image> _images = {};
@@ -143,15 +137,24 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     landed: this,
   );
 
-  /// The cached thumbnail for [cut] at [frameIndex]; kicks an async
-  /// (re)render when the signature changed, returning the stale image
-  /// meanwhile.
+  /// The cached picture of [cut] at [frameIndex] for a surface drawing it
+  /// [shownHeight] device pixels tall; kicks an async (re)render when that
+  /// width's signature changed, returning the stale image meanwhile.
+  ///
+  /// A width that has never landed shows the panel's picture at another
+  /// width until it does — 유저 2026-09-25 took exactly that as the cost of
+  /// the answer (「확대한 직후 잠깐 이전 해상도가 보였다가 선명해진다」), and
+  /// it is never an empty cell for a frame.
   ui.Image? thumbnailFor(
     Cut cut,
     int frameIndex, {
-    StoryboardThumbnailTier tier = StoryboardThumbnailTier.strip,
+    required double shownHeight,
   }) {
-    final key = (cutId: cut.id, frameIndex: frameIndex, tier: tier);
+    final key = (
+      cutId: cut.id,
+      frameIndex: frameIndex,
+      width: pictureRenderWidthFor(shownHeight, _originalSize()),
+    );
     final signature = _signatureFor(cut);
     if (_renderedSignatures[key] != signature && !_rendering.contains(key)) {
       _rendering.add(key);
@@ -161,13 +164,29 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     if (held != null) {
       // Asked for: to the young end of the eviction order.
       _images[key] = held;
+      return held;
     }
-    return held;
+    return _standInFor(key);
+  }
+
+  /// The sharpest picture of [key]'s panel held at another width. Not
+  /// moved in the eviction order: a stand-in stays as old as it was, so it
+  /// is the first to go once the right width is in.
+  ui.Image? _standInFor(StoryboardThumbnailKey key) {
+    ui.Image? sharpest;
+    for (final entry in _images.entries) {
+      if (entry.key.cutId == key.cutId &&
+          entry.key.frameIndex == key.frameIndex &&
+          (sharpest == null || entry.value.width > sharpest.width)) {
+        sharpest = entry.value;
+      }
+    }
+    return sharpest;
   }
 
   void _startRender(Cut cut, StoryboardThumbnailKey key, String signature) {
     unawaited(
-      _render(cut, key.frameIndex, key.tier.width)
+      _render(cut, key.frameIndex, key.width)
           .then((image) {
             _rendering.remove(key);
             if (_disposed) {

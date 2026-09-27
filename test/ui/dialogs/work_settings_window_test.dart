@@ -3,9 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/dialogs/work_settings_window.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// 작품 설정 (유저 09-25, project-settings-window): the work's title and
 /// episode, and its staff by the colour labels — two folds, the staff
@@ -14,8 +16,9 @@ void main() {
   Future<void> openWindow(
     WidgetTester tester,
     TimesheetInfo initial,
-    void Function(TimesheetInfo? result) onResult,
-  ) async {
+    void Function(TimesheetInfo? result) onResult, {
+    List<MediaAsset> pictures = const [],
+  }) async {
     await tester.binding.setSurfaceSize(const Size(900, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -30,6 +33,7 @@ void main() {
                     builder: (_) => WorkSettingsWindow(
                       initialInfo: initial,
                       projectName: 'Untitled 3',
+                      pictures: pictures,
                     ),
                   ),
                 );
@@ -170,6 +174,51 @@ void main() {
       find.byKey(const ValueKey<String>('work-settings-title-field')),
     );
     expect(title.decoration?.hintText, 'Untitled 3');
+  });
+
+  testWidgets('the work\'s pictures are picked from the pool\'s images — the '
+      'logo, the cover, or none — and named as the pool names them', (
+    tester,
+  ) async {
+    const logo = 'C:/pool/studio.png';
+    const cover = 'C:/pool/key.png';
+    final before = WorkPicture.cover.withPath(TimesheetInfo.empty, cover);
+    TimesheetInfo? after;
+    await openWindow(
+      tester,
+      before,
+      (r) => after = r,
+      pictures: [
+        MediaAsset(path: logo, name: 'Studio', kind: MediaAssetKind.image),
+        MediaAsset(path: cover, name: 'Key visual', kind: MediaAssetKind.image),
+      ],
+    );
+    String label(WorkPicture picture) => tester
+        .widget<PanelFlyoutButton>(
+          find.byKey(ValueKey<String>('work-settings-picture-${picture.name}')),
+        )
+        .label;
+    Future<void> pick(WorkPicture picture, String choice) async {
+      final button = 'work-settings-picture-${picture.name}';
+      await tester.ensureVisible(find.byKey(ValueKey<String>(button)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>(button)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>('$button-$choice')));
+      await tester.pumpAndSettle();
+    }
+
+    expect(label(WorkPicture.logo), AppText.strings.commonNone);
+    expect(label(WorkPicture.cover), 'Key visual');
+
+    await pick(WorkPicture.logo, logo);
+    await pick(WorkPicture.cover, 'none');
+    expect(label(WorkPicture.logo), 'Studio');
+    expect(label(WorkPicture.cover), AppText.strings.commonNone);
+    await save(tester);
+
+    expect(after?.logoAssetPath, logo);
+    expect(after?.coverImagePath, isNull);
   });
 
   testWidgets('🚨saving does not reset what this window does not show', (

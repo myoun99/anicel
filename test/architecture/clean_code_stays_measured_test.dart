@@ -176,7 +176,27 @@ void main() {
   /// `_standWhereItWasSaved`, `_bakeEveryCel`, `_registerSounds`,
   /// `_projectOf`). 🔬`clean_code_diff` between master (`2907ac360`, at 432)
   /// and the lane: those two gone, nothing added.
-  const longBodies = 430;
+  ///
+  /// ⚠️430 → 431 on 2026-09-27, two named as the rule above asks (I-22, a
+  /// row reads each cell once a pass). A tile's ink was ONE body,
+  /// `_emitForeground` (161), that wrote the ops and awaited each word's
+  /// bake in the same loop. The ops are written inside the painter's one
+  /// pass now (`readInOnePass`), which cannot await, so the writing stays
+  /// `_emitForeground` (86, synchronous) and the bake after it is
+  /// `_bakeGlyphs` (69: bake the distinct words, stack them into the
+  /// tile's atlas, write their glyph ops). `_raster` (65) is where that
+  /// pass opens, around the paper and the ink both. 🔬`clean_code_diff`
+  /// between master (`76bf3351f`, at 429) and the lane named those two and
+  /// nothing else.
+  ///
+  /// ⚠️431 → 432 on 2026-09-27, one named as the rule above asks (F-192, a
+  /// fade clears from its own black or white screen). The printed sheet's
+  /// `_paintInstructionMarkSlice` (62) draws each mark kind in one switch,
+  /// and W.I and W.O became kinds of their own that share the fade wedge's
+  /// case — two case labels and the line that names the mark once for the
+  /// wedge's direction. 🔬`clean_code_diff` between master (`87a5d3c21`, at
+  /// 431) and the integration lane: that one added, nothing else.
+  const longBodies = 432;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

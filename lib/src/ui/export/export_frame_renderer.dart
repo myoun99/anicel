@@ -16,6 +16,8 @@ import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/movie_cel.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/transition_geometry.dart'
+    show TransitionVeil, cutTransitionVeilsAt;
 import '../../services/cut_frame_composite_plan.dart';
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
@@ -32,6 +34,7 @@ import '../../services/composite_effect_paint.dart'
 import '../canvas/subtree_image_composite.dart' show steppedForChain;
 import '../editor_session_manager.dart';
 import '../playback/playback_frame_painter.dart';
+import '../playback/transition_veil_paint.dart';
 import '../track_effect_paint_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'export_cel_group_plan.dart';
@@ -194,6 +197,17 @@ class ExportFrameRenderer {
   /// frozen while a run streams).
   List<StoryboardTimelineLayoutEntry>? _stackLayout;
 
+  List<StoryboardTimelineLayoutEntry> get _layout =>
+      _stackLayout ??= buildStoryboardTimelineLayout(
+        session.repository.requireProject(),
+      );
+
+  /// [task]'s cut in [_layout] — its place on its own TRACK axis, which a
+  /// transition, its screen and the stack are all read against. Null for a
+  /// cut the layout does not hold.
+  StoryboardTimelineLayoutEntry? _entryOf(ExportFrameTask task) =>
+      _layout.where((entry) => entry.cutId == task.cut.id).firstOrNull;
+
   /// One composited frame. [ExportSizeMode.canvas] renders the identity
   /// camera over the cut's own canvas size (centered, zoom 1, no rotation),
   /// which is exactly the raw canvas at 1:1 pixels on the white paper.
@@ -294,7 +308,8 @@ class ExportFrameRenderer {
   /// sized canvases in (the camera frame is that space). The bake mirrors
   /// playback: the finished frame posed over the output space (V track
   /// Transform, AE precomp semantics), thinned by the fade (R3b:
-  /// transparency over the backdrop, no target-color wash). PNG sequences
+  /// transparency over the backdrop) and covered by a one-sided
+  /// transition's own black or white screen (F-192). PNG sequences
   /// deliberately stay unposed and unfaded (they are compositing
   /// sources).
   ///
@@ -360,7 +375,11 @@ class ExportFrameRenderer {
       trackFrame,
       enabled: trackFxEnabled,
     );
-    if (fade >= 1 && trackEffects.isEmpty) {
+    // F-192: a lone F.I/F.O/W.I/W.O is ONE contribution, so it never reached
+    // the transition mix above — ↩️its fade was simply missing from a
+    // canvas-size export. Its screen lands here, on this one frame.
+    final veils = _veilsOf(task);
+    if (fade >= 1 && trackEffects.isEmpty && veils.isEmpty) {
       return image;
     }
     final bounds = ui.Rect.fromLTWH(
@@ -401,6 +420,7 @@ class ExportFrameRenderer {
           if (!identical(stepped, image)) {
             stepped.dispose();
           }
+          paintTransitionVeils(canvas, bounds, veils);
           if (fade < 1) {
             canvas.restore();
           }
@@ -409,6 +429,22 @@ class ExportFrameRenderer {
     } finally {
       image.dispose();
     }
+  }
+
+  /// The screens one-sided transitions lay over [task]'s cut at its frame
+  /// ([cutTransitionVeilsAt]) — the frame's place on the cut's own TRACK
+  /// axis ([_entryOf]).
+  List<TransitionVeil> _veilsOf(ExportFrameTask task) {
+    final own = _entryOf(task);
+    if (own == null) {
+      return const [];
+    }
+    return cutTransitionVeilsAt(
+      cutStart: own.startFrame,
+      cutEnd: own.endFrame,
+      spans: session.transitions.transitionSpansOfTrack(own.trackId),
+      globalFrame: own.startFrame + task.frameIndex,
+    );
   }
 
   /// The cuts this frame is mixed from and the space they share — null when
@@ -424,17 +460,14 @@ class ExportFrameRenderer {
     int globalFrame,
   })?
   _sharedTransitionSpace(ExportFrameTask task) {
-    final layout = _stackLayout ??= buildStoryboardTimelineLayout(
-      session.repository.requireProject(),
-    );
-    final own = layout.where((entry) => entry.cutId == task.cut.id).firstOrNull;
+    final own = _entryOf(task);
     if (own == null) {
       return null;
     }
     // This cut's own TRACK axis: a transition is a track's, so the partner can
     // only come from here.
     final entries = [
-      for (final entry in layout)
+      for (final entry in _layout)
         if (entry.trackId == own.trackId) entry,
     ];
     final globalFrame = own.startFrame + task.frameIndex;
@@ -530,6 +563,9 @@ class ExportFrameRenderer {
             if (!identical(steppedFrame, image)) {
               steppedFrame.dispose();
             }
+            // F-192: a one-sided transition's own screen, inside this
+            // contribution's weight — the painter's unit, in canvas space.
+            paintTransitionVeils(canvas, bounds, contribution.veils);
             if (weight < 1) {
               canvas.restore();
             }
@@ -556,18 +592,9 @@ class ExportFrameRenderer {
     ExportFrameTask task, {
     required bool preserveAlpha,
   }) async {
-    final layout = _stackLayout ??= buildStoryboardTimelineLayout(
-      session.repository.requireProject(),
-    );
-    var globalFrame = task.frameIndex;
-    for (final entry in layout) {
-      if (entry.cutId == task.cut.id) {
-        globalFrame = entry.startFrame + task.frameIndex;
-        break;
-      }
-    }
+    final globalFrame = (_entryOf(task)?.startFrame ?? 0) + task.frameIndex;
     final positions = resolveTrackStackContributions(
-      layout: layout,
+      layout: _layout,
       spansOf: session.transitions.transitionSpansOfTrack,
       globalFrameIndex: globalFrame,
     );
@@ -691,6 +718,7 @@ class ExportFrameRenderer {
         paintLetterbox: false,
         fadeOpacity: isStage ? weight : 1,
         imageOpacity: isStage ? 1 : weight,
+        veils: position.veils,
       ).paint(
         canvas,
         ui.Size(size.width.toDouble(), size.height.toDouble()),

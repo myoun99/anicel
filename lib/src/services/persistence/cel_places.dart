@@ -59,13 +59,6 @@ final class DrawingCelPlace extends CelPlace {
   final String celName;
 }
 
-/// Conte ink on the paper of a page, by the number the page prints.
-final class ContePageInkPlace extends CelPlace {
-  const ContePageInkPlace(this.pageNumber);
-
-  final int pageNumber;
-}
-
 /// Conte handwriting of one storyboard block: its cut, and the drawing the
 /// block shows.
 final class ConteRowInkPlace extends CelPlace {
@@ -92,9 +85,8 @@ final class GoneCelPlace extends CelPlace {
 /// is exactly as long as the count a notice gives.
 ///
 /// In the order a person meets them: drawings as the project holds its rows
-/// ([projectLayersWithOwners]), the conte's paper ink by page, then the ink
-/// over storyboard drawings and in envelopes by cut — and last, what holds
-/// no place.
+/// ([projectLayersWithOwners]), then the ink over storyboard drawings and
+/// in envelopes by cut — and last, what holds no place.
 List<CelPlace> celPlacesOf(Project project, Iterable<BrushFrameKey> keys) {
   final index = _CelPlaceIndex(project);
   final found = [for (final key in keys) index.placeOf(key)]
@@ -105,7 +97,7 @@ List<CelPlace> celPlacesOf(Project project, Iterable<BrushFrameKey> keys) {
   return [for (final entry in found) entry.place];
 }
 
-enum _Plane { drawing, contePage, conteRow, envelope, gone }
+enum _Plane { drawing, conteRow, envelope, gone }
 
 typedef _Found = ({_Plane plane, int position, CelPlace place});
 
@@ -158,14 +150,6 @@ class _CelPlaceIndex {
   final _envelopes = <CutId, _Found>{};
 
   _Found placeOf(BrushFrameKey key) {
-    final pageIndex = conteInkPageIndexOf(key);
-    if (pageIndex != null) {
-      return (
-        plane: _Plane.contePage,
-        position: pageIndex,
-        place: ContePageInkPlace(pageIndex + 1),
-      );
-    }
     final found = isConteInkRowKey(key)
         ? _rows[(key.cutId, conteInkRowIdOf(key)!)]
         : isEnvelopeInkKey(key)

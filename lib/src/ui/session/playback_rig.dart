@@ -34,6 +34,7 @@ import 'movie_cel_hydrator.dart';
 import 'playback_cache_budget.dart';
 import 'project_settings.dart';
 import 'render_caches.dart';
+import 'editor_app_settings.dart';
 import 'session_roles.dart';
 
 /// Playback's own machinery: the transport, its audio paths, the
@@ -44,7 +45,7 @@ class PlaybackRig implements PlaybackRun {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
-    required SessionInternals internals,
+    required EditorAppSettings appSettings,
     required ValueListenable<Set<LayerId>> soloedSeLayerIds,
     required RenderCaches renderCaches,
     required ProjectSettings settings,
@@ -63,7 +64,7 @@ class PlaybackRig implements PlaybackRun {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals,
+       _appSettings = appSettings,
        _soloedSeLayerIds = soloedSeLayerIds,
        _renderCaches = renderCaches,
        _settings = settings,
@@ -78,7 +79,7 @@ class PlaybackRig implements PlaybackRun {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-  final SessionInternals _internals;
+  final EditorAppSettings _appSettings;
 
   /// The SE rows soloed for monitoring (`VisibilitySolo` holds it) — every
   /// audio path narrows to them while any are.
@@ -187,7 +188,7 @@ class PlaybackRig implements PlaybackRun {
     // Widget tests must never open a real OS audio device.
     resolveDevice: audioOutputUnlessTesting,
     resolveUserOffsetSamples: (sampleRate) =>
-        _internals.appSettings.audioSyncSettings.value.offsetSamples(
+        _appSettings.audioSyncSettings.value.offsetSamples(
           sampleRate: sampleRate,
           frameRateNumerator: _settings.projectFrameRate.numerator,
           frameRateDenominator: _settings.projectFrameRate.denominator,
@@ -196,7 +197,7 @@ class PlaybackRig implements PlaybackRun {
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveCueClips: () => _voiceRecording.voiceRecordCueClips,
     resolveOutputDeviceName: () =>
-        _internals.appSettings.audioSyncSettings.value.outputDeviceName,
+        _appSettings.audioSyncSettings.value.outputDeviceName,
   );
 
   /// The output/input device lists for the Preferences pickers (AUDIO-PRO
@@ -220,7 +221,7 @@ class PlaybackRig implements PlaybackRun {
     resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveOutputDeviceName: () =>
-        _internals.appSettings.audioSyncSettings.value.outputDeviceName,
+        _appSettings.audioSyncSettings.value.outputDeviceName,
   );
 
   /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths

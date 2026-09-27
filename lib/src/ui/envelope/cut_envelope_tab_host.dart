@@ -8,6 +8,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/envelope/cut_envelope_source.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
@@ -22,6 +23,7 @@ import '../sheet/sheet_ink_layer.dart';
 import 'cut_envelope_ink.dart';
 import 'cut_envelope_overlay.dart';
 import 'cut_envelope_painter.dart';
+import 'envelope_picture_drop.dart';
 
 /// The cut-envelope PANEL: the 봉투 as paper inside the canvas panel shell
 /// — the timesheet's and conte's architecture with envelope content.
@@ -165,12 +167,8 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
               keyPrefix: 'envelope',
             ),
       bottomBarLeading: _panelActions(),
-      fitFocusRect: Rect.fromLTWH(
-        0,
-        0,
-        paper.width.toDouble(),
-        paper.height.toDouble(),
-      ),
+      fitFocusRect: paper.canvasRect,
+      viewLimit: paper.canvasRect,
       drawingOn: inking,
       strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(
@@ -244,6 +242,19 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                     historyManager: session.historyManager,
                     viewport: viewport,
                     strokeActive: _strokeHold,
+                    cacheInvalidationSink: _cacheInvalidationSink,
+                  ),
+                ),
+              // A pool picture dropped on a box stamps it, brush or no
+              // brush: a drop is no stray mark for the switch to guard.
+              if (inkController != null && owner != null)
+                Positioned.fill(
+                  child: EnvelopePictureDrop(
+                    session: session,
+                    layout: layout,
+                    windows: windows,
+                    ink: inkController,
+                    viewport: viewport,
                     cacheInvalidationSink: _cacheInvalidationSink,
                   ),
                 ),

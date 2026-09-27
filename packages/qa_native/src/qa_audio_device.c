@@ -203,7 +203,21 @@ static int qa_audio_ensure_context(int32_t backend) {
       return 0;
     }
   } else {
-    if (ma_context_init(NULL, 0, NULL, &g_context) != MA_SUCCESS) {
+    // F-190 (user 2026-09-27: a Bluetooth headset plays every other app,
+    // and this one out of the speaker). iOS keeps ONE audio session per
+    // app, and the default config set it to PlayAndRecord (the voice take
+    // needs the input) with DefaultToSpeaker and no Bluetooth — under
+    // PlayAndRecord a headset is an allowed output only when the session
+    // says AllowBluetoothA2DP, so everything went to the speaker. The
+    // category stays; the options let the headset in. Only Apple's mobile
+    // backend reads them: elsewhere this is the default config, and those
+    // backends already follow the system's default device.
+    ma_context_config config = ma_context_config_init();
+    config.coreaudio.sessionCategory = ma_ios_session_category_play_and_record;
+    config.coreaudio.sessionCategoryOptions =
+        ma_ios_session_category_option_default_to_speaker |
+        ma_ios_session_category_option_allow_bluetooth_a2dp;
+    if (ma_context_init(NULL, 0, &config, &g_context) != MA_SUCCESS) {
       return 0;
     }
   }

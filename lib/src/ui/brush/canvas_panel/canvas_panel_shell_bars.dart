@@ -44,6 +44,7 @@ class _CanvasPanelShellBars {
     Size viewportSize,
     CanvasSize canvasSize,
     bool view,
+    ({Rect rect, Rect window})? limit,
   })?
   _panbarsToken;
 
@@ -71,6 +72,7 @@ class _CanvasPanelShellBars {
 
   void _ensureShellBars() {
     final viewportSize = _state._viewportState._resolvedEditorViewportSize();
+    final panLimit = _state._viewportState._panLimit;
     final panbarsToken = (
       viewport: _state._viewportState._viewport,
       viewportSize: viewportSize,
@@ -78,6 +80,9 @@ class _CanvasPanelShellBars {
       // F-77: the panbars capture whether there is a view to operate, so a
       // memo that did not carry it would outlive the answer.
       view: _state.widget.hasContentToView,
+      // F-201: the span they cover — the limit, and the window it is held
+      // in, which a floor cover moves without resizing the box.
+      limit: panLimit,
     );
     final pillToken = (
       // ⛔NOT the whole viewport — and since 2026-08-13 not "everything the
@@ -171,6 +176,7 @@ class _CanvasPanelShellBars {
         viewport: _state._viewportState._viewport,
         editorViewportSize: viewportSize,
         canvasSize: _state.widget.canvasSize,
+        limit: panLimit,
         onViewportChanged: _setViewportDuringPanbarDrag,
         onViewportChangeEnd: _state._viewportState._syncViewportParent,
         enabled: _state.widget.hasContentToView,
@@ -179,6 +185,7 @@ class _CanvasPanelShellBars {
         viewport: _state._viewportState._viewport,
         editorViewportSize: viewportSize,
         canvasSize: _state.widget.canvasSize,
+        limit: panLimit,
         onViewportChanged: _setViewportDuringPanbarDrag,
         onViewportChangeEnd: _state._viewportState._syncViewportParent,
         enabled: _state.widget.hasContentToView,

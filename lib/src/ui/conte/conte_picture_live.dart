@@ -89,11 +89,7 @@ class ContePictureLive extends StatelessWidget {
     final canvas = picture.cut.canvasSize;
     final corners = canvas.canvasRect;
     return ClipPath(
-      clipper: _Shot(
-        slot: window.screenRect(viewport),
-        radius: picture.mark.cornerRadius * viewport.zoom,
-        shown: MatrixUtils.transformRect(paperToScreen, picture.shown),
-      ),
+      clipper: _shotOf(picture),
       child: Stack(
         children: [
           const Positioned.fill(child: ColoredBox(color: exportFrameGround)),
@@ -132,6 +128,24 @@ class ContePictureLive extends StatelessWidget {
     );
   }
 
+  /// Where [picture] shows on the screen: the camera's frame in its slot,
+  /// inside the slot's rounded corners.
+  ///
+  /// 🚨Cut on the page's grid, INSIDE the frame (F-197): the print under it
+  /// fills the window to the grid's nearest lines, and this composite ends
+  /// where its frame ends — a clip reaching past that end showed the ground
+  /// under the frame's edge, a light line round a dark picture.
+  _Shot _shotOf(ContePicture picture) {
+    final grid = SheetDeviceGrid.through(viewport, effectiveRatio);
+    return _Shot(
+      window: grid.rounded(
+        grid.inside(picture.mark.slot),
+        picture.mark.cornerRadius,
+      ),
+      shown: grid.inside(picture.shown),
+    );
+  }
+
   /// Picture [id]'s display buffer, on the census — pushed: the census
   /// cannot reach a widget State; the session can.
   void _count(String id, int bytes) {
@@ -147,27 +161,21 @@ class ContePictureLive extends StatelessWidget {
 /// A picture's shot on screen: the camera's frame where the slot shows
 /// it, inside the slot's rounded corners.
 class _Shot extends CustomClipper<Path> {
-  const _Shot({required this.slot, required this.radius, required this.shown});
+  const _Shot({required this.window, required this.shown});
 
-  final Rect slot;
-  final double radius;
+  final ui.RSuperellipse window;
   final Rect shown;
 
   @override
   Path getClip(Size size) => Path.combine(
     PathOperation.intersect,
-    Path()
-      ..addRSuperellipse(
-        ui.RSuperellipse.fromRectAndRadius(slot, Radius.circular(radius)),
-      ),
+    Path()..addRSuperellipse(window),
     Path()..addRect(shown),
   );
 
   @override
   bool shouldReclip(_Shot oldClipper) =>
-      oldClipper.slot != slot ||
-      oldClipper.radius != radius ||
-      oldClipper.shown != shown;
+      oldClipper.window != window || oldClipper.shown != shown;
 }
 
 /// The canvas on screen — turned when the camera is.

@@ -86,6 +86,13 @@ sealed class SheetWindow {
   /// is kept where it shows, by it or by the paper below.
   String? get refusal => null;
 
+  /// The same window on a page that lies [by] further on in a stack of
+  /// pages (F-201): one layer hears the strokes of every page on screen, so
+  /// its windows must stand in ONE space — two pages' first cells share a
+  /// rect on their own pages, and would take each other's ink
+  /// ([sheetInkRegions]). The surface under it does not move.
+  SheetWindow shiftedBy(Offset by);
+
   /// The window's on-screen rect under the panel transform — what its view
   /// is clipped to on screen.
   Rect screenRect(CanvasViewport panelViewport) => Rect.fromLTWH(
@@ -178,6 +185,15 @@ class SheetInkWindow extends SheetWindow {
   /// This window as the mark a printer lays its ink by.
   SheetInk get mark =>
       SheetInk(SheetPaintLayer.ink, key: key, placement: placement);
+
+  @override
+  SheetInkWindow shiftedBy(Offset by) => SheetInkWindow(
+    id: id,
+    key: key,
+    placement: placement.shiftedBy(by),
+    plane: plane,
+    refusal: refusal,
+  );
 }
 
 /// A PICTURE the brush draws into: a cel a sheet shows in a slot, seen
@@ -258,6 +274,23 @@ class SheetPictureWindow extends SheetWindow {
           paperOutline.length < 3
       ? null
       : CanvasSelectionRegion.shape(surfaceShapeOf(paperOutline));
+
+  @override
+  SheetPictureWindow shiftedBy(Offset by) => SheetPictureWindow(
+    id: id,
+    key: key,
+    plane: plane,
+    slot: slot.shift(by),
+    canvasToPaper: Matrix4.translationValues(
+      by.dx,
+      by.dy,
+      0,
+    ).multiplied(canvasToPaper),
+    artworkToCanvas: artworkToCanvas,
+    paperOutline: [for (final point in paperOutline) point + by],
+    overlay: overlay,
+    refusal: refusal,
+  );
 }
 
 /// [points] as the outline they make.

@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/export/conte_pdf_writer.dart';
 import 'package:anicel/src/ui/export/export_conte_render.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/pdf_content.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The Conte export tab (work-order step 6): the picture conte as one
@@ -322,6 +323,47 @@ void main() {
     expect(status.data, contains('conte.pdf'));
   });
 
+  testWidgets('🗣️the PDF carries every cell\'s picture at the camera frame\'s '
+      'own size (유저 2026-09-25: 「내보내기는 원본」 · 「내보낼땐 용지가 '
+      '실제크기가 꽤 크니까 그에 맞춰서 해상도 높기만하면됨」)', (tester) async {
+    // The fixture's camera is 32×18; the run used to ask every picture at
+    // 640 wide whatever the camera was.
+    final session = EditorSessionManager(initialProject: project());
+    addTearDown(session.dispose);
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-browse-button')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    final sizes = pdfImageSizes(
+      File('${temp.path}${Platform.pathSeparator}conte.pdf').readAsBytesSync(),
+    );
+    expect(sizes, isNotEmpty, reason: 'fixture: the cells print pictures');
+    expect(sizes.toSet(), {(32, 18)});
+  });
+
   testWidgets('the page-image format writes one PNG per page of the book '
       'through the shared stream', (tester) async {
     final session = EditorSessionManager(initialProject: project());
@@ -367,6 +409,13 @@ void main() {
       files,
       containsAll(['conte_p1.png', 'conte_p2.png', 'conte_p3.png']),
       reason: 'the whole book: the cover, its blank back, then the body',
+    );
+    expect(
+      state.debugContePictureSize,
+      const CanvasSize(width: 32, height: 18),
+      reason:
+          '🗣️the pages print every picture at the camera frame\'s own '
+          'size (유저 2026-09-25 「내보내기는 원본」) — ↩️320px a scale step',
     );
   });
 

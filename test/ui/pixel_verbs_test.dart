@@ -168,14 +168,14 @@ void main() {
     expect(empty.frames, isEmpty);
     session.selectLayer(empty.id);
     await tester.pump();
-    expect(session.pixelVerbSubject, PixelVerbSubject.nothing);
+    expect(session.cells.pixelVerbSubject, PixelVerbSubject.nothing);
   });
 
   testWidgets('standing is one cel — the ladder does not reach for neighbours',
       (tester) async {
     final session = await pump(tester);
     await drawableRow(tester, session);
-    expect(session.pixelVerbSubject, PixelVerbSubject.standing);
+    expect(session.cells.pixelVerbSubject, PixelVerbSubject.standing);
     expect(cellVerbsOf(session).pixelVerbCellKeys(), hasLength(1));
   });
 
@@ -197,7 +197,7 @@ void main() {
     expect(session.rowSelection.value.length, greaterThan(1));
 
     expect(
-      session.pixelVerbSubject,
+      session.cells.pixelVerbSubject,
       PixelVerbSubject.standing,
       reason: 'selecting rows says which rows are selected, not '
           '「recolour all of their drawings」',
@@ -220,7 +220,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(session.pixelVerbSubject, PixelVerbSubject.range);
+    expect(session.cells.pixelVerbSubject, PixelVerbSubject.range);
     // 🚨COUNTED, not just non-empty. `isNotEmpty` passed with the range rung
     // deleted, because the standing rung answers with one — the assertion has
     // to say 「more than standing would give you」 or it is not about the range
@@ -237,12 +237,12 @@ void main() {
       '활성화되야함」', (tester) async {
     final session = await pump(tester);
     final row = await drawableRow(tester, session);
-    expect(session.pixelVerbSubject, PixelVerbSubject.standing);
+    expect(session.cells.pixelVerbSubject, PixelVerbSubject.standing);
 
     session.layerSwitches.toggleLayerVisibility(row.id);
     await tester.pump();
     expect(
-      session.pixelVerbSubject,
+      session.cells.pixelVerbSubject,
       PixelVerbSubject.nothing,
       reason: '「기본적으로 그림 조작하는건 그런느낌인거지」 — a pixel verb '
           'acts on what you can see',
@@ -253,7 +253,7 @@ void main() {
       '사라진거니 … 버튼도 비활성화되야하는데」', (tester) async {
     final session = await pump(tester);
     await drawableRow(tester, session);
-    expect(session.pixelVerbSubject, PixelVerbSubject.standing);
+    expect(session.cells.pixelVerbSubject, PixelVerbSubject.standing);
     final key = cellVerbsOf(session).pixelVerbCellKeys().single;
 
     // 🚨What 픽셀 비우기 leaves behind: the tiles are still there, every
@@ -281,7 +281,7 @@ void main() {
       isFalse,
       reason: 'the same question the block\'s tint asks',
     );
-    expect(session.pixelVerbSubject, PixelVerbSubject.nothing);
+    expect(session.cells.pixelVerbSubject, PixelVerbSubject.nothing);
   });
 
   testWidgets('the gate is the existing predicate — a camera row has no pixels',
@@ -296,7 +296,7 @@ void main() {
     session.selectLayer(camera.first.id);
     await tester.pump();
     expect(
-      session.pixelVerbSubject,
+      session.cells.pixelVerbSubject,
       PixelVerbSubject.nothing,
       reason: 'layerAcceptsBrushInput already refuses this — ⛔no new predicate',
     );
@@ -363,12 +363,12 @@ void main() {
       final session = await pump(tester);
 
       expect(
-        session.pixelVerbCanvas,
+        session.cells.pixelVerbCanvas,
         isNotNull,
         reason: 'the canvas-side facts the verbs read at the press',
       );
       expect(
-        session.pixelVerbCanvas!().mask.isHard,
+        session.cells.pixelVerbCanvas!().mask.isHard,
         isTrue,
         reason: 'every option is off by default, so nothing changes for a '
             'user who never touched them',
@@ -385,7 +385,7 @@ void main() {
       final box = CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: 0, top: 0, right: 40, bottom: 40),
       );
-      session.pixelVerbCanvas = () => (
+      session.cells.pixelVerbCanvas = () => (
         region: box,
         argb: 0xFF000000,
         mask: SelectionMaskOptions.none,
@@ -400,7 +400,7 @@ void main() {
       await tester.pump();
       expect(alphaAt(session, 38, 38), 255, reason: 'fixture: undo put it back');
 
-      session.pixelVerbCanvas = () => (
+      session.cells.pixelVerbCanvas = () => (
         region: box,
         argb: 0xFF000000,
         mask: const SelectionMaskOptions(featherPx: 8),
@@ -446,7 +446,7 @@ void main() {
       EditorSessionManager session,
       CanvasSelectionRegion marquee,
     ) async {
-      session.pixelVerbCanvas = () => (
+      session.cells.pixelVerbCanvas = () => (
         region: marquee,
         argb: 0xFF000000,
         mask: SelectionMaskOptions.none,

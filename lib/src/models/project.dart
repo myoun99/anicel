@@ -17,18 +17,20 @@ const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 /// The default BACKDROP: the app's own floor colour — one step darker than
 /// chrome, and NOT pure black (유저, R4 #2).
 ///
-/// It is the filmic ground a fade-out lands on (R3b), which is why it was
+/// It was the filmic ground a fade-out landed on (R3b), which is why it was
 /// black. Black turned out to cost more than it bought: with the pasteboard
 /// held equal to it (below), ink laid down outside the paper was invisible —
 /// "완전블랙이면 페이스트보드에 그려도 안보여서". Lifting both to the value
 /// the chrome already sits on keeps the two planes one field, keeps them
 /// clearly darker than the app around them, and lets a black line show.
 ///
+/// ↩️F-192 (유저 2026-09-27): a fade no longer lands on it — F.I/F.O clear
+/// from and close to their OWN black screen, W.I/W.O a white one, whatever
+/// the backdrop is.
+///
 /// ⚠️This colour REACHES THE EXPORT: `export_frame_renderer` paints it under
-/// every non-alpha frame and a fade thins the frame down to it. A project
-/// that wants a true-black fade sets its backdrop back to `0xFF000000` with
-/// the canvas pill's backdrop swatch (the project background window this
-/// used to name is gone, F-114) — the default is the editor's opinion, not a
+/// every non-alpha frame where nothing covers — gap frames, an O.L into a
+/// gap, a translucent track. The default is the editor's opinion, not a
 /// constraint on the film.
 ///
 /// ⚠️Must stay in step with `AppColors.backdrop`, which is the same colour
@@ -112,8 +114,9 @@ class Project {
   /// prints with (backdrop → pasteboard → paper → pictures).
   final ProjectBackground background;
 
-  /// The BACKDROP: the panel-wide floor behind everything — what a fade
-  /// reveals, and what an opaque export bakes where nothing covers.
+  /// The BACKDROP: the panel-wide floor behind everything — what a
+  /// translucent picture reveals (never a fade's screen, F-192), and what an
+  /// opaque export bakes where nothing covers.
   ///
   /// 🚨It was opaque by contract (it is the stage's final answer; an alpha
   /// here would only re-ask the question — user 2026-07-29), the constructor

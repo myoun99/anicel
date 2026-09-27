@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
@@ -17,6 +18,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -585,6 +587,51 @@ void main() {
     session.undo();
     await tester.pumpAndSettle();
     expect(_layerOf(session, 'a').attachedToLayerId, isNull);
+  });
+
+  testWidgets('a row with fx of its own ASKS before a drop mounts it — and '
+      'nothing is mounted until it is answered', (tester) async {
+    // 유저 2026-08-29: 「기존 fx가 사라집니다. 실행하겠습니까?」 — an attach row
+    // authors no fx, so mounting one that has them throws them away. The
+    // drag's end asks through the confirm it is handed (ARCH, the eleventh
+    // family), and holds the drop while the question is on screen.
+    await _pump(tester);
+    final session = _sessionOf(tester);
+    session.updateLayerTransformTrack(
+      const LayerId('a'),
+      TransformTrack(
+        keyframes: {0: TransformPose(center: CanvasPoint(x: 3, y: 4))},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final row = _railRowGrip('a');
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await _selectRow(tester, row);
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, -28));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('attach-drops-fx-dialog')),
+      findsOneWidget,
+      reason: 'A carries a transform the mount would throw away',
+    );
+    expect(
+      _layerOf(session, 'a').attachedToLayerId,
+      isNull,
+      reason: 'the drop is held while the question is on screen',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('attach-drops-fx-confirm')),
+    );
+    await tester.pumpAndSettle();
+    expect(_layerOf(session, 'a').attachedToLayerId, const LayerId('b'));
   });
 
   testWidgets('⑤ the mirror: a row carried DOWN onto a base rides ABOVE it', (

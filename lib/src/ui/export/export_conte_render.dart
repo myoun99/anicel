@@ -9,6 +9,7 @@ import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../../services/import/raster_cel_import.dart' show readImageFileOrNull;
 import '../conte/conte_page_painter.dart';
+import '../sheet_painting.dart' show SheetPictureLookup;
 import 'offscreen_raster.dart';
 
 /// Every media image [pages] print — the company logo, the cover's picture
@@ -48,7 +49,7 @@ Future<Map<String, ui.Image>> readContePageImages(
 Future<ui.Image> renderContePageImage({
   required ContePageLayout page,
   required ConteSheetSource source,
-  ui.Image? Function(String cutId, int pictureFrame)? pictureFor,
+  SheetPictureLookup? pictureFor,
   ui.Image? Function(String assetPath)? imageFor,
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
   double scale = 1,

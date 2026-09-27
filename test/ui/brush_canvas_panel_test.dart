@@ -241,6 +241,30 @@ void main() {
     );
   });
 
+  testWidgets('🗣️a DOCKED panel\'s scrollbar capsules run their whole edge; '
+      'the floor\'s keep the short capsule (F-201, 유저 2026-09-27: 「바탕에 '
+      '깔린 캔버스나 뷰어말고 도킹된 패널은 스크롤바 알약 최대치로 늘리자 '
+      '길이」)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    Future<(Rect, Rect)> barsWhen({required bool onFloor}) async {
+      await tester.pumpWidget(floorPillHarness(width: 900, onFloor: onFloor));
+      await tester.pumpAndSettle();
+      Rect bar(String key) =>
+          tester.getRect(find.byKey(ValueKey<String>(key)));
+      return (bar('canvas-panbar-vertical'), bar('canvas-panbar-horizontal'));
+    }
+
+    // The harness panel is 900 × 420; a capsule stands 6px in from each
+    // end of its edge.
+    final (docked, dockedAcross) = await barsWhen(onFloor: false);
+    expect(docked.height, closeTo(420 - 12, 0.5));
+    expect(dockedAcross.width, closeTo(900 - 12, 0.5));
+    final (floor, floorAcross) = await barsWhen(onFloor: true);
+    expect(floor.height, closeTo(420 * 0.34, 0.5));
+    expect(floorAcross.width, closeTo(260, 0.5), reason: 'the floor\'s cap');
+  });
+
   testWidgets('유저 R4 #4·#5: the pill and BOTH panbars sit the same distance '
       'from the edge they ride, at a floor width and at a rail width', (
     tester,

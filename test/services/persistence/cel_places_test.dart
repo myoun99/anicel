@@ -112,7 +112,6 @@ void main() {
   String said(CelPlace place) => switch (place) {
     DrawingCelPlace(:final ownerName, :final layerName, :final celName) =>
       'drawing $ownerName/$layerName/$celName',
-    ContePageInkPlace(:final pageNumber) => 'conte page $pageNumber',
     ConteRowInkPlace(:final cutName, :final celName) =>
       'conte row $cutName/$celName',
     EnvelopeInkPlace(:final cutName) => 'envelope $cutName',
@@ -148,16 +147,14 @@ void main() {
     expect(placesOf([drawn('c2', 's1', 's1-f')]), ['drawing Track 1/S1/hey']);
   });
 
-  test('conte ink: the paper by the page it prints, a block\'s handwriting '
-      'by its cut and the drawing the block shows', () {
+  test('conte ink: a block\'s handwriting by its cut and the drawing the '
+      'block shows', () {
     expect(
       placesOf([
         conteInkRowKey(const CutId('c1'), 'ink-b'),
-        conteInkPageKey(2),
-        conteInkPageKey(0),
         conteInkRowKey(const CutId('c1'), 'ink-a'),
       ]),
-      ['conte page 1', 'conte page 3', 'conte row 1/2', 'conte row 1/2'],
+      ['conte row 1/2', 'conte row 1/2'],
       reason: 'two blocks of one drawing are two handwritings, each a '
           'place of its own',
     );

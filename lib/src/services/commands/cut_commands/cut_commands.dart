@@ -16,7 +16,6 @@ class _CutCommands {
 
   void createCut({
     required TrackId trackId,
-    String? name,
     CanvasSize? canvasSize,
     // #18 — an EXPLICIT landing (gap parking, range selection): the index
     // to insert at, the walk-in distance into the gap as the new cut's
@@ -24,29 +23,44 @@ class _CutCommands {
     // length, the way the transition span's selection does). Null keeps
     // the classic anchor: right of the active cut, else the track's end.
     ({int? index, int leadingGapFrames, int? duration})? placement,
+    CutId? cutId,
+  }) => _coordinator.historyManager.execute(
+    createCutCommand(
+      trackId: trackId,
+      canvasSize: canvasSize,
+      placement: placement,
+      cutId: cutId,
+    ),
+  );
+
+  /// The command [createCut] runs, not run: its cut is the cut it makes.
+  /// [cutId] names that cut ahead — the conte's next cut is drawn into
+  /// before it exists (H44).
+  CreateCutCommand createCutCommand({
+    required TrackId trackId,
+    CanvasSize? canvasSize,
+    ({int? index, int leadingGapFrames, int? duration})? placement,
+    CutId? cutId,
   }) {
     final project = _coordinator.repository.requireProject();
-    final plan = planCreateCutCommandInput(project);
+    final plan = planCreateCutCommandInput(project, cutId: cutId);
     final anchor = placement == null
         ? _insertionAnchorFor(project, trackId)
         : (
             index: placement.index,
             referenceName: _referenceNameAt(project, trackId, placement.index),
           );
-
-    _coordinator.historyManager.execute(
-      CreateCutCommand(
-        repository: _coordinator.repository,
-        editingSession: _coordinator.editingSession,
-        trackId: trackId,
-        cutId: plan.cutId,
-        layerId: plan.layerId,
-        name: name ?? nextCutNameAfter(project, anchor.referenceName),
-        index: anchor.index,
-        leadingGapFrames: placement?.leadingGapFrames ?? 0,
-        duration: placement?.duration,
-        canvasSize: canvasSize ?? defaultCutCanvasSize,
-      ),
+    return CreateCutCommand(
+      repository: _coordinator.repository,
+      editingSession: _coordinator.editingSession,
+      trackId: trackId,
+      cutId: plan.cutId,
+      layerId: plan.layerId,
+      name: nextCutNameAfter(project, anchor.referenceName),
+      index: anchor.index,
+      leadingGapFrames: placement?.leadingGapFrames ?? 0,
+      duration: placement?.duration,
+      canvasSize: canvasSize ?? defaultCutCanvasSize,
     );
   }
 
@@ -241,6 +255,38 @@ class _CutCommands {
   /// Sets the 색 라벨 of [cutIds] — and of each one's 겸용 siblings — as ONE
   /// undo step ([UpdateCutMarkCommand]); nothing at all when every one of
   /// them already wears [mark].
+  /// 컷 설정: each stage of [names] named on [cutIds] and their 겸용
+  /// siblings, as ONE undo step — the stages it does not name keep each
+  /// cut's own, and a stage every cut already has so is no step at all.
+  void setCutStaffNames({
+    required List<CutId> cutIds,
+    required Map<LayerMark, String> names,
+  }) {
+    final project = _coordinator.repository.requireProject();
+    final cuts = [
+      for (final cutId in LinkedCutFieldCommand.linkedCutsOf(project, cutIds))
+        requireCut(project, cutId),
+    ];
+    final commands = [
+      for (final MapEntry(key: mark, value: name) in names.entries)
+        if (cuts.any((cut) => cut.metadata.staffNameFor(mark) != name))
+          UpdateCutStaffNameCommand(
+            repository: _coordinator.repository,
+            cutIds: cutIds,
+            mark: mark,
+            name: name,
+          ),
+    ];
+    if (commands.isEmpty) {
+      return;
+    }
+    _coordinator.historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(description: 'Set cut staff', commands: commands),
+    );
+  }
+
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) {
     final project = _coordinator.repository.requireProject();
     if (LinkedCutFieldCommand.linkedCutsOf(project, cutIds).every(

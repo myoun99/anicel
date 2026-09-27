@@ -117,11 +117,9 @@ void main() {
       expect((stack.children[0] as Positioned).child, isA<IgnorePointer>());
       expect(stack.children[1].key, rowsBodyKey);
       final playheadPositioned = stack.children[2] as Positioned;
-      // The playhead rides its OWN RepaintBoundary: a cursor move repaints
-      // just that layer instead of re-rasterizing the whole grid (the grid
-      // sheet has one too, from the same hand).
-      final playheadBoundary = playheadPositioned.child as RepaintBoundary;
-      expect(playheadBoundary.child!.key, playheadKey);
+      // The playhead brings its own layer (the cursor layer is a
+      // `TickLayer`), so the slot places it bare.
+      expect(playheadPositioned.child.key, playheadKey);
       expect(stack.children[3], isA<Positioned>());
       expect(stack.children[4], isA<TimelineBodyNoriShiroBoundary>());
       expect(stack.children[5], isA<TimelineBodyCutEndBoundary>());

@@ -610,6 +610,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
       // app's (「앱은 한 글꼴」, 08-28).
       baseTextStyle: DefaultTextStyle.of(context).style,
       axis: axis,
+      // The cells' window: the labels print the blocks it reaches (I-22).
+      windowBucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
     );
   }
 
@@ -663,6 +666,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
         // color label (⑲) — so a purple row's bars go black by the same
         // ground law its numbers follow.
         gripGround: layerMarkColor(layer.mark),
+        // The cells' window: what the chrome draws, as the cells under it.
+        windowBucket: windowBucket,
+        viewportMainExtent: viewportMainExtent,
         // The row closes its LayerId into the identity-free grip hooks — the
         // chrome layer serves cut rows too now, and a grip drag is the same
         // gesture on both.

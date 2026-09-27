@@ -140,23 +140,35 @@ class BrushPresetReorderGrid extends StatefulWidget {
 
   final ScrollController? scrollController;
 
-  /// Old index, new index — the same contract `ReorderableListView` used, so
-  /// the panel's existing handler is unchanged.
-  final void Function(int oldIndex, int newIndex)? onReorder;
+  /// A carried cell was dropped on slot [newIndex]. [oldIndex] is where it
+  /// stands in THIS list — or null when it is not in it at all, because the
+  /// list changed under the drag: the rail sprang another group open (I-49,
+  /// 유저 2026-09-26: 「브러시를 다른 그룹으로 옮길수있게. 그룹에 하나밖에
+  /// 없는 브러시일때든 뭐든 옮기기 허용」). The caller knows what it carried
+  /// ([onDragStart]); the grid only knows where it went.
+  final void Function(int? oldIndex, int newIndex)? onReorder;
 
   /// The rail springs its tabs open while a drag is in flight, and it has to
   /// be told: a drag reports to the cell it picked up, never to what is
-  /// under it now.
-  final VoidCallback? onDragStart;
+  /// under it now. Called with the index of the cell picked up.
+  final ValueChanged<int>? onDragStart;
   final VoidCallback? onDragEnd;
 
   @override
   State<BrushPresetReorderGrid> createState() => _BrushPresetReorderGridState();
 }
 
+/// Where the carried cell is held: its feedback's global top-left, and the
+/// grid it is aimed into.
+typedef _Drop = ({Offset offset, int columns, double cellWidth});
+
 class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
-  /// The cell being carried, by its ORIGINAL index.
-  int? _dragIndex;
+  /// The cell being carried, by its KEY.
+  ///
+  /// ⛔Not its index: the list can change under a drag — the rail springs
+  /// another group open — and an index into the list it was picked from
+  /// names some other brush in the list it lands in (I-49).
+  Key? _carried;
 
   /// The geometry the last build laid out, so this one can tell a resize
   /// from a reorder — see the comment in [build].
@@ -167,40 +179,144 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
   /// Where it would land if the pointer let go now.
   int? _targetIndex;
 
+  /// The rows, as laid out inside the scroll view — what a drop is aimed
+  /// against. ⛔Not this widget's own box: that one is the VIEWPORT, and
+  /// read against it a scrolled list aimed every drop as many rows short as
+  /// it was scrolled.
+  final GlobalKey _contentKey = GlobalKey();
+
+  /// The last place the carried cell was held over, kept so a scroll under
+  /// a still pointer re-aims it.
+  _Drop? _lastDrop;
+
+  /// Scrolls the list while the carried cell is held at its edge — what
+  /// the rail's `ReorderableListView` does for a tab, with the same
+  /// Flutter class and the same speed.
+  EdgeDraggingAutoScroller? _autoScroller;
+
+  /// Flutter's own for a reorderable list (`SliverReorderableList`), so a
+  /// brush and a group tab scroll their lists alike.
+  static const double _autoScrollVelocity = 50;
+
+  /// Where the carried cell stands in this list, or null when it is not in
+  /// it.
+  int? get _carriedIndex {
+    final carried = _carried;
+    if (carried == null) {
+      return null;
+    }
+    for (var i = 0; i < widget.itemCount; i += 1) {
+      if (widget.itemKey(i) == carried) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  /// Whether the carried cell came from another list than this one.
+  bool get _carriedFromElsewhere =>
+      _carried != null && _carriedIndex == null;
+
+  /// Every way a drag ends — dropped here, dropped somewhere else, or let
+  /// go on nothing — comes through once.
   void _endDrag({required bool accepted}) {
-    final from = _dragIndex;
+    if (!mounted || _carried == null) {
+      return;
+    }
+    final from = _carriedIndex;
+    final elsewhere = _carriedFromElsewhere;
     final to = _targetIndex;
+    _autoScroller?.stopAutoScroll();
+    _lastDrop = null;
     setState(() {
-      _dragIndex = null;
+      _carried = null;
       _targetIndex = null;
     });
-    widget.onDragEnd?.call();
-    if (accepted && from != null && to != null && from != to) {
+    // Before [onDragEnd]: the caller still knows what it carried.
+    if (accepted && to != null && (elsewhere || from != to)) {
       widget.onReorder?.call(from, to);
     }
+    widget.onDragEnd?.call();
   }
 
   /// The order the cells are DRAWN in while a drag is in flight: the carried
   /// cell lifted out and put back at the target, so the gap the user is
-  /// aiming at is the gap they see.
-  List<int> _visualOrder() {
-    final indices = [for (var i = 0; i < widget.itemCount; i += 1) i];
-    final from = _dragIndex;
+  /// aiming at is the gap they see. A cell carried in from another list is
+  /// not here to lift, so its target is a GAP (null).
+  List<int?> _visualOrder() {
+    final order = <int?>[for (var i = 0; i < widget.itemCount; i += 1) i];
     final to = _targetIndex;
-    if (from == null || to == null) {
-      return indices;
+    if (_carried == null || to == null) {
+      return order;
     }
-    final moved = indices.removeAt(from);
-    indices.insert(to.clamp(0, indices.length), moved);
-    return indices;
+    final from = _carriedIndex;
+    final moved = from == null ? null : order.removeAt(from);
+    order.insert(to.clamp(0, order.length), moved);
+    return order;
   }
 
-  /// Which slot a pointer at [local] is over.
-  int _slotAt(Offset local, int columns, double cellWidth) {
+  /// Which of [slots] a pointer at [local] is over.
+  int _slotAt(Offset local, int columns, double cellWidth, int slots) {
     final column = (local.dx / cellWidth).floor().clamp(0, columns - 1);
     final row = math.max(0, (local.dy / widget.cellHeight).floor());
     final slot = row * columns + column;
-    return slot.clamp(0, math.max(0, widget.itemCount - 1));
+    return slot.clamp(0, math.max(0, slots - 1));
+  }
+
+  /// Aims the drop at the slot under the carried cell held at [drop].
+  void _aimAt(_Drop drop) {
+    final box = _contentKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      return;
+    }
+    // ⚠️The feedback's TOP-LEFT is what the drag reports, so the slot is
+    // read from the cell's middle — otherwise a cell dropped on its own
+    // right half would read as the slot before it.
+    final local = box.globalToLocal(
+      drop.offset + Offset(drop.cellWidth / 2, widget.cellHeight / 2),
+    );
+    // A cell carried in from elsewhere adds a slot: the gap it would fill.
+    final slots = widget.itemCount + (_carriedFromElsewhere ? 1 : 0);
+    final slot = _slotAt(local, drop.columns, drop.cellWidth, slots);
+    if (slot != _targetIndex) {
+      setState(() => _targetIndex = slot);
+    }
+  }
+
+  /// Scrolls the list while the carried cell is held at [drop], past its
+  /// edge.
+  void _autoScrollNear(_Drop drop) {
+    final content = _contentKey.currentContext;
+    final scrollable = content == null ? null : Scrollable.maybeOf(content);
+    if (scrollable == null) {
+      return;
+    }
+    final scroller = _autoScroller ??= EdgeDraggingAutoScroller(
+      scrollable,
+      onScrollViewScrolled: () {
+        final drop = _lastDrop;
+        if (drop == null || !mounted) {
+          return;
+        }
+        _aimAt(drop);
+        // Still held past the edge: keep going. A pointer held still sends
+        // no more moves, so this is what carries the scroll on — Flutter's
+        // own reorderable list asks again the same way.
+        _autoScroller?.startAutoScrollIfNecessary(_feedbackRect(drop));
+      },
+      velocityScalar: _autoScrollVelocity,
+    );
+    scroller.startAutoScrollIfNecessary(_feedbackRect(drop));
+  }
+
+  /// Where the carried cell is drawn, in global coordinates.
+  Rect _feedbackRect(_Drop drop) =>
+      drop.offset & Size(drop.cellWidth, widget.cellHeight);
+
+  @override
+  void dispose() {
+    _autoScroller?.stopAutoScroll();
+    super.dispose();
   }
 
   @override
@@ -216,8 +332,8 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
           maxColumns: widget.maxColumns,
         );
         final cellWidth = width / columns;
-        final rows = (widget.itemCount / columns).ceil();
         final order = _visualOrder();
+        final rows = (order.length / columns).ceil();
 
         // 🚨A RESIZE IS NOT A REORDER (유저 2026-09-10, H33: 「열이 바껴서 3개나
         // 4개로 늘어날때 필요없는 쓸데없는 애니메이션 있거든? 그냥 그런거 싹
@@ -257,10 +373,13 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
         _laidOutCellWidth = cellWidth;
         _laidOutCellHeight = widget.cellHeight;
 
-        Widget cellAt(int slot) {
-          final index = order[slot];
+        Widget cellAt(int slot, int index) {
           final left = (slot % columns) * cellWidth;
           final top = (slot ~/ columns) * widget.cellHeight;
+          // The carried cell is the gap it left, wherever its drag began: a
+          // group sprung open and back rebuilds the cell, and the new one
+          // is not the `Draggable` drawing `childWhenDragging`.
+          final carried = widget.itemKey(index) == _carried;
           // ⚠️The caller's key goes on a real BOX, not on the
           // `AnimatedPositioned`: that one is a `Positioned` underneath, which
           // has no render object, so `tester.getCenter` — and anything else
@@ -269,7 +388,7 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
             key: widget.itemKey(index),
             width: cellWidth,
             height: widget.cellHeight,
-            child: widget.itemBuilder(context, index),
+            child: carried ? null : widget.itemBuilder(context, index),
           );
           return AnimatedPositioned(
             key: ValueKey<Key>(widget.itemKey(index)),
@@ -320,18 +439,17 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
                       ),
                       onDragStarted: () {
                         setState(() {
-                          _dragIndex = index;
+                          _carried = widget.itemKey(index);
                           _targetIndex = index;
                         });
-                        widget.onDragStart?.call();
+                        widget.onDragStart?.call(index);
                       },
+                      // Let go on nothing — called whether or not this cell
+                      // is still built (a sprung group rebuilds the list).
                       onDraggableCanceled: (_, _) => _endDrag(accepted: false),
-                      onDragEnd: (details) {
-                        if (details.wasAccepted) {
-                          return;
-                        }
-                        _endDrag(accepted: false);
-                      },
+                      // Dropped on some OTHER target: nothing moves here.
+                      // After our own drop this finds the drag already over.
+                      onDragCompleted: () => _endDrag(accepted: false),
                       child: child,
                     ),
                   ),
@@ -339,10 +457,14 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
         }
 
         final stack = SizedBox(
+          key: _contentKey,
           height: rows * widget.cellHeight,
           child: Stack(
             clipBehavior: Clip.none,
-            children: [for (var slot = 0; slot < order.length; slot += 1) cellAt(slot)],
+            children: [
+              for (var slot = 0; slot < order.length; slot += 1)
+                if (order[slot] case final index?) cellAt(slot, index),
+            ],
           ),
         );
 
@@ -351,26 +473,29 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
             : DragTarget<int>(
                 onWillAcceptWithDetails: (_) => true,
                 onMove: (details) {
-                  final box = context.findRenderObject() as RenderBox?;
-                  if (box == null) {
-                    return;
-                  }
-                  // ⚠️The feedback's TOP-LEFT is what `details.offset`
-                  // reports, so the slot is read from the cell's middle —
-                  // otherwise a cell dropped on its own right half would
-                  // read as the slot before it.
-                  final local = box.globalToLocal(
-                    details.offset +
-                        Offset(cellWidth / 2, widget.cellHeight / 2),
+                  final drop = (
+                    offset: details.offset,
+                    columns: columns,
+                    cellWidth: cellWidth,
                   );
-                  final slot = _slotAt(local, columns, cellWidth);
-                  if (slot != _targetIndex) {
-                    setState(() => _targetIndex = slot);
-                  }
+                  _lastDrop = drop;
+                  _aimAt(drop);
+                  _autoScrollNear(drop);
                 },
-                onLeave: (_) {},
+                onLeave: (_) => _autoScroller?.stopAutoScroll(),
                 onAcceptWithDetails: (_) => _endDrag(accepted: true),
-                builder: (context, _, _) => stack,
+                // ⚠️The whole viewport takes the drop, not just the rows:
+                // below the last cell is the end of the list, and a group
+                // with no brush left has no rows at all to drop on (I-49 —
+                // 「그룹안에 브러시 없으면 없는대로 두도록」 keeps such groups).
+                builder: (context, _, _) => ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight.isFinite
+                        ? constraints.maxHeight
+                        : 0,
+                  ),
+                  child: Align(alignment: Alignment.topLeft, child: stack),
+                ),
               );
 
         return SingleChildScrollView(

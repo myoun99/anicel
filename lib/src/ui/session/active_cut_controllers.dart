@@ -32,6 +32,7 @@ class ActiveCutControllers {
     required TimelineAccess timeline,
     required SessionInternals internals,
     required int Function() playbackFrameCount,
+    required bool Function(LayerId? layerId) activeCutHasLayer,
     required List<Layer> Function() trackSeDisplayLayers,
     required Layer Function() trackTransitionDisplayLayer,
     required void Function() onRebuilt,
@@ -40,6 +41,7 @@ class ActiveCutControllers {
        _timeline = timeline,
        _internals = internals,
        _playbackFrameCount = playbackFrameCount,
+       _activeCutHasLayer = activeCutHasLayer,
        _trackSeDisplayLayers = trackSeDisplayLayers,
        _trackTransitionDisplayLayer = trackTransitionDisplayLayer,
        _onRebuilt = onRebuilt;
@@ -49,6 +51,10 @@ class ActiveCutControllers {
   final TimelineAccess _timeline;
   final SessionInternals _internals;
   final int Function() _playbackFrameCount;
+
+  /// `ActiveCutSpan.activeCutHasLayer`, asked LAZILY for the reason the
+  /// display rows below are: the span reads the controllers built here.
+  final bool Function(LayerId? layerId) _activeCutHasLayer;
 
   /// Read LAZILY, not held: the display rows are another collaborator's,
   /// and that collaborator reads the controllers built here.
@@ -72,7 +78,7 @@ class ActiveCutControllers {
   void rebuild({LayerId? preferredActiveLayerId, int preferredFrameIndex = 0}) {
     final activeCutId = _timeline.editingSession.activeCutId;
     final initialActiveLayerId =
-        _internals.activeCutHasLayer(preferredActiveLayerId)
+        _activeCutHasLayer(preferredActiveLayerId)
         ? preferredActiveLayerId
         : null;
 

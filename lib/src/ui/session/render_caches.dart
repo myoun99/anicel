@@ -144,15 +144,14 @@ class RenderCaches {
     return total;
   }
 
-  /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
-  /// archive can persist them (the second cel namespace), while the ink
-  /// controller (workspace UI) keeps the coordinators. The ROW store's
+  /// The conte sheet ink's cel store (R5) — SESSION-owned so the .anicel
+  /// archive can persist it (the second cel namespace), while the ink
+  /// controller (workspace UI) keeps the coordinator. Its
   /// keys carry each storyboard block's own handwriting id
   /// (`ExposureMemo.inkId`): entries no block names any more are pruned at
   /// LOAD (never at save — a deleted block's ink must survive its own
   /// undo), so "ink dies with the block" lands at the session boundary.
   final BrushFrameStore conteInkRowStore = BrushFrameStore();
-  final BrushFrameStore conteInkPageStore = BrushFrameStore();
 
   /// The cut envelope's ink store — SESSION-owned for the same reason: the
   /// archive persists it, the workspace's controller owns the coordinator.
@@ -175,7 +174,6 @@ class RenderCaches {
   /// later would have been saved by some of them and budgeted by others.
   List<BrushFrameStore> get sheetInkStores => [
     conteInkRowStore,
-    conteInkPageStore,
     envelopeInkStore,
     timesheetInkStripStore,
     timesheetInkPageStore,
@@ -188,10 +186,10 @@ class RenderCaches {
   /// The store a sheet-ink [key] lives in — by its namespace and its plane
   /// — or null for a drawing's key.
   BrushFrameStore? sheetInkStoreFor(BrushFrameKey key) {
+    // Every conte key, even the paper plane an older file kept: it is
+    // sheet ink and never a drawing, and the load drops what names no block.
     if (isConteInkKey(key)) {
-      return key.layerId == conteInkRowLayerId
-          ? conteInkRowStore
-          : conteInkPageStore;
+      return conteInkRowStore;
     }
     if (isTimesheetInkKey(key)) {
       return key.layerId == timesheetInkStripLayerId

@@ -69,6 +69,7 @@ import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'linked_cut_field_command.dart';
 import 'update_cut_mark_command.dart';
+import 'update_cut_staff_name_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
 import 'update_track_effects_command.dart';
@@ -139,7 +140,6 @@ class CutCommandCoordinator {
 
   void createCut({
     required TrackId trackId,
-    String? name,
     CanvasSize? canvasSize,
     // #18 — an EXPLICIT landing (gap parking, range selection): the index
     // to insert at, the walk-in distance into the gap as the new cut's
@@ -147,12 +147,29 @@ class CutCommandCoordinator {
     // length, the way the transition span's selection does). Null keeps
     // the classic anchor: right of the active cut, else the track's end.
     ({int? index, int leadingGapFrames, int? duration})? placement,
+    CutId? cutId,
   }) => _cuts.createCut(
     trackId: trackId,
-    name: name,
     canvasSize: canvasSize,
     placement: placement,
+    cutId: cutId,
   );
+
+  /// The cut [createCut] would make with the same words, named [cutId] —
+  /// not made.
+  Cut plannedCut({
+    required TrackId trackId,
+    CanvasSize? canvasSize,
+    ({int? index, int leadingGapFrames, int? duration})? placement,
+    required CutId cutId,
+  }) => _cuts
+      .createCutCommand(
+        trackId: trackId,
+        canvasSize: canvasSize,
+        placement: placement,
+        cutId: cutId,
+      )
+      .cut;
   static String nextCutNameAfter(Project project, String? referenceName) =>
       _CutCommands.nextCutNameAfter(project, referenceName);
   void resizeCutCanvas({
@@ -179,6 +196,10 @@ class CutCommandCoordinator {
   );
   void updateCutNote({required CutId cutId, required String note}) =>
       _cuts.updateCutNote(cutId: cutId, note: note);
+  void setCutStaffNames({
+    required List<CutId> cutIds,
+    required Map<LayerMark, String> names,
+  }) => _cuts.setCutStaffNames(cutIds: cutIds, names: names);
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) =>
       _cuts.setCutMark(cutIds: cutIds, mark: mark);
   void updateCutThumbnailFrame({

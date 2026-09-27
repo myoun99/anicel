@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import 'cut_metadata.dart';
 import 'envelope/cut_envelope_presets.dart';
 import 'layer_mark.dart';
 
@@ -125,17 +126,21 @@ class TimesheetInfo {
     );
   }
 
-  /// [mark]'s name replaced; an empty one drops the entry so the map never
-  /// accumulates blanks.
-  TimesheetInfo withStaffName(LayerMark mark, String name) {
-    final next = {...staff};
-    if (name.isEmpty) {
-      next.remove(mark.keySlug);
-    } else {
-      next[mark.keySlug] = name;
-    }
-    return copyWith(staff: next);
-  }
+  /// [mark]'s name replaced ([staffWithName]).
+  TimesheetInfo withStaffName(LayerMark mark, String name) =>
+      copyWith(staff: staffWithName(staff, mark, name));
+
+  /// Who does each stage's work on [cut]: the work's staff, with the cut's
+  /// own names over it (유저 09-25: 작품 설정에는 기본값, 컷 설정에는 컷별
+  /// 이름 — [[project-settings-window]]).
+  Map<String, String> staffForCut(CutMetadata cut) => {
+    ...staff,
+    ...cut.staff,
+  };
+
+  /// The name for [mark]'s work on [cut] ([staffForCut]), or empty.
+  String staffNameForCut(CutMetadata cut, LayerMark mark) =>
+      staffForCut(cut)[mark.keySlug] ?? '';
 
   Map<String, dynamic> toJson() => {
     'title': title,
@@ -163,13 +168,7 @@ class TimesheetInfo {
       },
       exposureBarThreshold: json['exposureBarThreshold'] as int?,
       seEmptyFill: json['seEmptyFill'] as bool? ?? true,
-      staff: {
-        // A value that is not a name (a file from before the labels
-        // vocabulary kept a name-and-stamp object) drops silently.
-        for (final entry
-            in (json['staff'] as Map<String, dynamic>? ?? const {}).entries)
-          if (entry.value case final String name) entry.key: name,
-      },
+      staff: staffFromJson(json['staff']),
       logoAssetPath: json['logo'] as String?,
       coverImagePath: json['cover'] as String?,
       envelopeFormId:
@@ -213,4 +212,26 @@ class TimesheetInfo {
       'hiddenFields: $hiddenFields, '
       'exposureBarThreshold: $exposureBarThreshold, '
       'seEmptyFill: $seEmptyFill)';
+}
+
+/// A picture of the work its sheets print, taken from its media pool: the
+/// company logo and the conte cover's picture — which field keeps it. ONE
+/// vocabulary for the window that picks them (작품 설정), the walk that moves
+/// them with their file (`projectWithMediaMoved`) and the pool that lists
+/// them among a file's uses.
+enum WorkPicture {
+  logo,
+  cover;
+
+  /// The pool path [info] keeps for this picture, or null.
+  String? pathIn(TimesheetInfo info) => switch (this) {
+    logo => info.logoAssetPath,
+    cover => info.coverImagePath,
+  };
+
+  /// [info] keeping [path] for this picture — null takes it away.
+  TimesheetInfo withPath(TimesheetInfo info, String? path) => switch (this) {
+    logo => info.copyWith(logoAssetPath: () => path),
+    cover => info.copyWith(coverImagePath: () => path),
+  };
 }

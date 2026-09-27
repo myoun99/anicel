@@ -42,11 +42,16 @@ enum TransitionSides {
   /// crossed fades in, over one span. The pair IS the cross-dissolve.
   both,
 
-  /// F.O: this cut's own alpha falls to nothing. Nothing rises to meet it, so
-  /// what shows through is whatever is below — the backdrop, which is black.
+  /// F.O / W.O: this cut's own screen closes over it — black for F.O, white
+  /// for W.O ([cutTransitionVeilsAt]). Nothing rises to meet it.
+  ///
+  /// ↩️F-192 (유저 2026-09-27): it used to be the cut's ALPHA falling to
+  /// nothing, which showed whatever lay below — black only while the
+  /// backdrop happened to be, and empty space when it was none. 「백그라운드
+  /// 색을 바꾸는거말고 구조적으로」: the screen is the transition's own.
   fadesOut,
 
-  /// F.I: the mirror.
+  /// F.I / W.I: the mirror — the screen clears off the cut.
   fadesIn,
 }
 
@@ -81,13 +86,32 @@ bool oneSidedSpanOwnsCut({
 TransitionSides transitionSidesOf(CameraInstructionMarkType mark) =>
     switch (mark) {
       CameraInstructionMarkType.ol => TransitionSides.both,
-      CameraInstructionMarkType.fo => TransitionSides.fadesOut,
-      CameraInstructionMarkType.fi => TransitionSides.fadesIn,
+      CameraInstructionMarkType.fo ||
+      CameraInstructionMarkType.wo => TransitionSides.fadesOut,
+      CameraInstructionMarkType.fi ||
+      CameraInstructionMarkType.wi => TransitionSides.fadesIn,
       // A `bar` term is camera work, not a 場面転換, and never reaches the
       // transition row ([cameraInstructionIsTransition]). Treated as two-sided
       // so a hand-edited file cannot make it silently invisible.
       CameraInstructionMarkType.bar => TransitionSides.both,
     };
+
+/// The SCREEN a one-sided transition clears from or closes to, as ARGB —
+/// black for F.I/F.O, white for W.I/W.O (🗣️F-192: 「컷의 페이드인은 애초에
+/// 쌩 검은화면에서 바뀐단거였음. 화이트인은 쌩 흰화면에서 바뀌는거고」).
+/// Null for a term that crosses two pictures (O.L) or is no transition.
+int? transitionScreenColorOf(CameraInstructionMarkType mark) =>
+    switch (mark) {
+      CameraInstructionMarkType.fi ||
+      CameraInstructionMarkType.fo => 0xFF000000,
+      CameraInstructionMarkType.wi ||
+      CameraInstructionMarkType.wo => 0xFFFFFFFF,
+      CameraInstructionMarkType.ol || CameraInstructionMarkType.bar => null,
+    };
+
+/// A one-sided transition's screen over a cut at one frame: its [color]
+/// (ARGB) laid over the cut's whole contribution at [opacity].
+typedef TransitionVeil = ({int color, double opacity});
 
 /// The mark a transition term draws — [def]'s, or the bowtie for an id the
 /// vocabulary no longer holds, which is the shape a file from another build
@@ -325,9 +349,12 @@ CutTransitionHandles cutTransitionHandles({
 /// new kind of effect. The span asks each side the SAME question and the
 /// two answers are mirror images: the cut whose END is crossed fades out by
 /// the progress, the cut whose START is crossed fades in by it. Play both
-/// and you have a cross-dissolve; the pair IS the O.L. A lone F.I on a cut
-/// with nothing before it runs through the identical code and simply has no
-/// partner to cross with.
+/// and you have a cross-dissolve; the pair IS the O.L.
+///
+/// ↩️A one-sided fade (F.I, F.O, W.I, W.O) no longer thins the alpha: the
+/// picture stays whole and the transition lays its own screen over it
+/// ([cutTransitionVeilsAt], F-192). Thinning showed whatever was below the
+/// cut, which is not a black — or a white — screen.
 ///
 /// It is also what makes per-cut opacity possible at all. The old fade lived
 /// on one lane per TRACK, so two cuts sharing a frame necessarily read the
@@ -396,29 +423,57 @@ double cutTransitionRampAt({
         if (span.start < cutStart && spanEnd > cutStart) {
           alpha *= progress; // …and the incoming side of the one before it
         }
-      case TransitionSides.fadesOut:
-        // F.O: only the cut this span BELONGS to moves. No mirror term, so
-        // nothing rises to meet it — the picture falls to whatever is below,
-        // which is black. D26: and only while the span stays inside the cut
-        // — a crossing fade is inert (the same sentence the marker reads).
-        if (oneSidedSpanAppliesToCut(
-          span: span,
-          cutStart: cutStart,
-          cutEnd: cutEnd,
-        )) {
-          alpha *= 1 - progress;
-        }
-      case TransitionSides.fadesIn:
-        if (oneSidedSpanAppliesToCut(
-          span: span,
-          cutStart: cutStart,
-          cutEnd: cutEnd,
-        )) {
-          alpha *= progress;
-        }
+      // A one-sided fade leaves the picture whole and lays its SCREEN over
+      // it instead ([cutTransitionVeilsAt], F-192).
+      case TransitionSides.fadesOut || TransitionSides.fadesIn:
+        break;
     }
   }
   return alpha;
+}
+
+/// The screens one-sided transitions lay over a cut at [globalFrame], in
+/// span order — empty when none covers it.
+///
+/// 🗣️F-192 (유저 2026-09-27): 「컷의 f.i은 빈공간에서가 생기는게 아니라, 컷의
+/// 페이드인은 애초에 쌩 검은화면에서 바뀐단거였음. 화이트인은 쌩 흰화면에서
+/// 바뀌는거고 … 백그라운드색을 바꾸는거말고 구조적으로」. An F.I starts as its
+/// screen, solid, and clears to the picture; an F.O closes the other way. The
+/// screen is the TERM's ([transitionScreenColorOf]) and lies over the cut's
+/// whole contribution, so what is under the cut — the backdrop, a lower
+/// track, nothing at all — never shows through a fade.
+///
+/// ⚠️Only the cut the span BELONGS to is covered, and only while the span
+/// stays inside it (D26, [oneSidedSpanAppliesToCut]) — the sentence the ramp
+/// read for these spans before they had screens.
+List<TransitionVeil> cutTransitionVeilsAt({
+  required int cutStart,
+  required int cutEnd,
+  required Iterable<TransitionSpan> spans,
+  required int globalFrame,
+}) {
+  final veils = <TransitionVeil>[];
+  for (final span in spans) {
+    final color = transitionScreenColorOf(span.mark);
+    final progress = transitionProgressAt(span, globalFrame);
+    if (color == null ||
+        progress == null ||
+        !oneSidedSpanAppliesToCut(
+          span: span,
+          cutStart: cutStart,
+          cutEnd: cutEnd,
+        )) {
+      continue;
+    }
+    final covered = switch (transitionSidesOf(span.mark)) {
+      TransitionSides.fadesIn => 1 - progress,
+      TransitionSides.fadesOut || TransitionSides.both => progress,
+    };
+    if (covered > 0) {
+      veils.add((color: color, opacity: covered));
+    }
+  }
+  return veils;
 }
 
 /// How far a transition has progressed at [globalFrame], as 0 → 1 across

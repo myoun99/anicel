@@ -19,11 +19,9 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/editing/default_cut_helpers.dart'
-    show defaultCutCanvasSize;
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailResolver, StoryboardThumbnailTier;
+    show StoryboardThumbnailResolver;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/conte_ink.dart';
@@ -346,6 +344,7 @@ void main() {
       baseTextStyle: painter.baseTextStyle,
       showSeconds: painter.showSeconds,
       countingBase: painter.countingBase,
+      devicePixelRatio: painter.devicePixelRatio,
     );
     final block = short.blocks().single;
 
@@ -469,6 +468,7 @@ void main() {
       baseTextStyle: painter.baseTextStyle,
       showSeconds: painter.showSeconds,
       countingBase: painter.countingBase,
+      devicePixelRatio: painter.devicePixelRatio,
     );
     final block = selected.blocks().single;
     expect(block.isRangeSelected, isTrue, reason: '⛔전제');
@@ -617,7 +617,7 @@ void main() {
         tester,
         storyboardLayer: _dividedStoryboardLayer('cut-1', named: named),
         pixelsPerFrame: pixelsPerFrame,
-        thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
+        thumbnailFor: (cut, frame, {required shownHeight}) =>
             null,
       );
       return (requireCutBlock(tester, 'cut-1'), _painted(tester));
@@ -748,31 +748,11 @@ void main() {
     );
   });
 
-  test('🗣️a strip taller than the strip-sized picture asks for the sheet-'
-      'sized one — a V row may grow as tall as it likes (유저 2026-09-26: 「최대'
-      '값은 최대한 키울수있으면 좋아」) without stretching a small picture', () {
-    // 640×360: the strip-sized picture is 128 wide, so 72 tall.
-    const aspect = 360 / 640;
-    final stripTall = StoryboardThumbnailTier.strip.width * aspect;
-    expect(
-      StoryboardCutBlocksPainter.thumbnailTierFor(
-        stripTall,
-        canvasAspect: aspect,
-      ),
-      StoryboardThumbnailTier.strip,
-    );
-    expect(
-      StoryboardCutBlocksPainter.thumbnailTierFor(
-        stripTall + 1,
-        canvasAspect: aspect,
-      ),
-      StoryboardThumbnailTier.sheet,
-    );
-  });
-
-  testWidgets('the row asks its thumbnails at the tier its strip needs — the '
-      'default row the strip size, the tallest the sheet size', (tester) async {
-    final asked = <StoryboardThumbnailTier>{};
+  testWidgets('🗣️the row asks its pictures at the strip\'s height in DEVICE '
+      'pixels — the conte cell\'s law — so a V row may grow as tall as it '
+      'likes without stretching a small picture (유저 2026-09-26: 「최대값은 '
+      '최대한 키울수있으면 좋아」)', (tester) async {
+    final asked = <double>{};
     Future<void> pumpAt(double laneHeight) async {
       asked.clear();
       await tester.binding.setSurfaceSize(const Size(1400, 900));
@@ -790,9 +770,9 @@ void main() {
               thumbnails: fixedThumbnails((
                 cut,
                 frame, {
-                tier = StoryboardThumbnailTier.strip,
+                required shownHeight,
               }) {
-                asked.add(tier);
+                asked.add(shownHeight);
                 return null;
               }),
             ),
@@ -802,33 +782,26 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await pumpAt(StoryboardPanel.defaultTrackLaneHeight);
-    expect(asked, {StoryboardThumbnailTier.strip});
-    await pumpAt(StoryboardPanel.maxTrackLaneHeight);
-    expect(asked, {StoryboardThumbnailTier.sheet});
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    for (final laneHeight in [
+      StoryboardPanel.defaultTrackLaneHeight,
+      StoryboardPanel.defaultTrackLaneHeight * 4,
+    ]) {
+      await pumpAt(laneHeight);
+      expect(asked, {
+        StoryboardCutBlocksPainter.stripBandOf(laneHeight).height * 2,
+      }, reason: 'a $laneHeight row, at twice the density');
+    }
   });
 
-  test('🗣️the V row\'s heights are the user\'s: 96 by default, the four '
-      'bands at the floor, and at the ceiling the born cut\'s sheet-sized '
-      'picture is not stretched (유저 2026-09-26: 「기본높이는 96으로 가자. '
-      '최솟값 ok. 최대값은 최대한 키울수있으면 좋아」)', () {
+  test('🗣️the V row\'s heights are the user\'s: 96 by default and the four '
+      'bands at the floor (유저 2026-09-26: 「기본높이는 96으로 가자. 최솟값 '
+      'ok. 최대값은 최대한 키울수있으면 좋아」)', () {
     expect(StoryboardPanel.defaultTrackLaneHeight, 96);
     expect(
       StoryboardPanel.minTrackLaneHeight,
       StoryboardCutBlocksPainter.bandHeight * 4,
-    );
-    final bornPicture =
-        StoryboardThumbnailTier.sheet.width *
-        defaultCutCanvasSize.height /
-        defaultCutCanvasSize.width;
-    final strip = StoryboardCutBlocksPainter.stripBandOf(
-      StoryboardPanel.maxTrackLaneHeight,
-    ).height;
-    expect(strip, lessThanOrEqualTo(bornPicture), reason: 'sharp at the top');
-    expect(
-      strip,
-      greaterThan(bornPicture - 1),
-      reason: 'and as tall as that allows',
     );
   });
 
@@ -851,7 +824,7 @@ void main() {
       cutMark: _art,
       pixelsPerFrame: cell,
       // Panel a's picture is there; b's and c's are still being made.
-      thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
+      thumbnailFor: (cut, frame, {required shownHeight}) =>
           frame == 0 ? picture : null,
     );
     final block = requireCutBlock(tester, 'cut-1');

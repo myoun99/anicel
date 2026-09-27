@@ -1556,6 +1556,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
     final message = request == null ? strings.mediaViewerEmpty : _message;
 
+    // The page on the canvas: what a fit frames and where the view stops
+    // (F-201). None while a message stands in for it or the document is
+    // still on its way — a stand-in's size would hold a view the slot
+    // restored somewhere the page is not.
+    final paper = message == null && document != null && pageCount > 0
+        ? Rect.fromLTWH(0, 0, docSize.width, docSize.height)
+        : null;
+
     BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
         BrushCanvasPanel(
       coordinator: null,
@@ -1594,11 +1602,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // reopening minted a fresh one and the fit ran again over a view the
       // user had set. What the slot remembers is what makes 「once per
       // document」 true across a close.
-      autoFrame: message == null && _loadedToken != null && _needsFraming
-          ? CanvasAutoFrameRequest(
-              token: _loadedToken!,
-              rect: Rect.fromLTWH(0, 0, docSize.width, docSize.height),
-            )
+      autoFrame: paper != null && _loadedToken != null && _needsFraming
+          ? CanvasAutoFrameRequest(token: _loadedToken!, rect: paper)
           : null,
       // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays
       // on the pill. Register and swap are a session's worth of taps
@@ -1640,9 +1645,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // this one in the pool" can change. ⚠️It has to: the list captures
       // the entries when the BAR is built, not when the list opens.
       bottomBarHostToken: (pageIndex, pageCount, _canRegister),
-      fitFocusRect: message == null
-          ? Rect.fromLTWH(0, 0, docSize.width, docSize.height)
-          : null,
+      fitFocusRect: paper,
+      viewLimit: paper,
       contentOverride: (context, viewport) => Stack(
         children: [
           Positioned.fill(

@@ -46,17 +46,20 @@ import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
+import 'playback/transition_veil_paint.dart';
 import 'debug/input_inspector.dart';
 import 'text/app_face.dart';
 import 'text/app_strings.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
+import 'timeline/memo_token.dart' show ByList;
 import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
 import '../services/layer_pose_matrix.dart'
     show LayerPoseSample, artworkToCanvas, canvasToArtwork;
 import '../models/canvas_point.dart';
 import '../models/transform_track.dart' show TransformPose;
+import '../models/transition_geometry.dart' show TransitionVeil;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
@@ -671,7 +674,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// asks it directly — it IS a stroke, whichever tool is up, so the door
   /// it takes on an empty cell is the stroke's (confirm-button).
   bool _strokeNeedsCel(EditorSessionManager session) {
-    if (session.autoFrame.beginAutoFrameForStroke()) {
+    // 🚨F-196: the ROW first. `beginAutoFrameForStroke` asks the toggle and
+    // the LAYER, never the row you stand on, so a press on a lane's empty
+    // frame made a block on the layer beneath it and then drew into it —
+    // the stroke the lane refuses.
+    if (_rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
+        session.autoFrame.beginAutoFrameForStroke()) {
       return true;
     }
     cursorNotices.show(_drawRefusalFor(session));
@@ -891,6 +899,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasSize canvasSize,
     EditorSessionManager session,
     double cutFadeOpacity,
+    List<TransitionVeil> veils,
     BuildContext context,
   ) {
     return Positioned.fill(
@@ -901,11 +910,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // backdrop-colored wash at (1 − fade) is
       // pixel-equal to thinning the unit, without
       // re-compositing the editing stack.
+      //
+      // F-192: a one-sided transition's own screen is part of the unit,
+      // so it goes down FIRST and the wash thins it with the rest.
       child: IgnorePointer(
         child: CustomPaint(
           painter: _CutFadeWashPainter(
             viewport: viewport,
             canvasSize: canvasSize,
+            veils: veils,
             color: Color(
               session.repository.requireProject().backdropArgb,
             ).withValues(alpha: (1 - cutFadeOpacity).clamp(0.0, 1.0)),
@@ -1000,12 +1013,17 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   const _CutFadeWashPainter({
     required this.viewport,
     required this.canvasSize,
+    required this.veils,
     required this.color,
     required this.devicePixelRatio,
   });
 
   final CanvasViewport viewport;
   final CanvasSize canvasSize;
+
+  /// The screens one-sided transitions lay over the cut (F-192), under the
+  /// wash — they are the unit's, and the wash thins the unit.
+  final List<TransitionVeil> veils;
   final Color color;
 
   /// The pan-phase snap's device grid — the wash covers the canvas rect
@@ -1021,12 +1039,14 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
       viewport,
       devicePixelRatio: devicePixelRatio,
     );
+    paintTransitionVeils(canvas, canvasSize.canvasRect, veils);
     canvas.drawRect(canvasSize.canvasRect, Paint()..color = color);
     canvas.restore();
   }
 
   @override
-  Object get props => (viewport, canvasSize, color, devicePixelRatio);
+  Object get props =>
+      (viewport, canvasSize, ByList(veils), color, devicePixelRatio);
 }
 
 /// The editing canvas's SE name tags (R5b): the same canvas-space draw

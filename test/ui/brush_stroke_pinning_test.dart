@@ -91,7 +91,11 @@ void main() {
   InteractiveBrushEditCanvasView viewOf(WidgetTester tester) =>
       tester.widget<InteractiveBrushEditCanvasView>(mainCanvasView());
 
-  testWidgets('a selection interaction blocks seeks until it ends (R15-⑤)', (
+  // ↩️F-196 (유저 2026-09-27: 「애초에 잠그는 기능을 싹 다 빼고 필요한거만
+  // 보고해」): a selection interaction blocked seeks here until it ended
+  // (R15-⑤). It holds nothing now — only a stroke does, and
+  // `only_a_stroke_holds_the_playhead_test` says why that one stayed.
+  testWidgets('a selection interaction holds the playhead no longer', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -104,13 +108,11 @@ void main() {
 
     session.beginSelectionInteraction();
     session.selectFrameIndex(1);
-    expect(session.currentFrameIndex, 0, reason: 'seek refused mid-drag');
-    session.frameScrub.scrubFrameIndex(1);
-    expect(session.editingFrameCursor.value, 0, reason: 'scrub refused too');
-
+    expect(session.currentFrameIndex, 1, reason: 'the seek ran mid-drag');
+    session.frameScrub.scrubFrameIndex(0);
+    expect(session.editingFrameCursor.value, 0, reason: 'and the scrub');
+    session.frameScrub.commitFrameScrub();
     session.endSelectionInteraction();
-    session.selectFrameIndex(1);
-    expect(session.currentFrameIndex, 1);
 
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();

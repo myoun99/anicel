@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 
+import '../../helpers/conte_book.dart';
 import '../../helpers/conte_track_fixture.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/home_page_probes.dart';
@@ -264,9 +265,12 @@ void main() {
             body: ConteTabHost(
               session: session,
               thumbnails: null,
-              // Document space = screen space, one for one (the conte
-              // panel's own tests do the same).
-              viewport: seedFromRender(tester, CanvasViewport()),
+              // The body's first page = screen space, one for one (the
+              // conte panel's own tests do the same).
+              viewport: seedFromRender(
+                tester,
+                onConteBody(session, CanvasViewport()),
+              ),
             ),
           ),
         ),
@@ -289,9 +293,7 @@ void main() {
       final cell = pages.first.cells.firstWhere(
         (cell) => cell.cutId == cut.value,
       );
-      final pageTopLeft = tester.getTopLeft(
-        find.byKey(const ValueKey<String>('conte-form-paint')),
-      );
+      final pageTopLeft = conteBodyTopLeft(tester);
       await press(tester, pageTopLeft + cell.pictureRect.center);
     }
 

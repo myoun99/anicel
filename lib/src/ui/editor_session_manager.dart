@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
-import '../services/project_lookup.dart' show cutPositionOf;
+import '../services/project_lookup.dart' show brushFrameKeyIn, cutPositionOf;
 import '../models/app_language.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_memory_settings.dart';
@@ -21,7 +21,6 @@ import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
 import '../services/editing/run_id_mint.dart' as frame_ids;
 import '../services/editing/layer_standing_after_change.dart';
-import '../controllers/timeline_controller.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
@@ -33,7 +32,6 @@ import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
-import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../models/layer_id.dart';
 import '../models/standing_place.dart';
@@ -46,7 +44,6 @@ import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
-import '../models/timeline_empty_gaps.dart';
 import '../models/pill_subject.dart';
 import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
@@ -72,7 +69,6 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/cut_reorder_planner.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -251,7 +247,6 @@ class EditorSessionManager extends ChangeNotifier
   /// keeps and why the live values sit on app-wide notifiers instead.
   ///
   /// Everything below is this session's unchanged face on it.
-  @override
   final EditorAppSettings appSettings;
 
   /// Whether [appSettings] is this session's own to let go of: the app's
@@ -382,7 +377,7 @@ class EditorSessionManager extends ChangeNotifier
   late final ProjectSettings projectSettings = ProjectSettings(
     project: this,
     changes: this,
-    internals: this,
+    appSettings: appSettings,
   );
 
   // ── every pixel this session is holding: its own object ─────────────
@@ -465,7 +460,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     timeline: this,
-    internals: this,
+    appSettings: appSettings,
     soloedSeLayerIds: visibilitySolo.soloedSeLayerIds,
     renderCaches: renderCaches,
     settings: projectSettings,
@@ -530,7 +525,6 @@ class EditorSessionManager extends ChangeNotifier
   /// mid-playback (that stutter was audible as the cut-transition lag).
   /// Live position display rides the playback listenables; activeCut
   /// consumers catch up on the stop notify.
-  @override
   void followPlaybackCut() {
     if (playbackRig.playback.globalFrameIndexListenable.value == null) {
       return;
@@ -539,8 +533,20 @@ class EditorSessionManager extends ChangeNotifier
     if (position == null || position.cutId == editingSession.activeCutId) {
       return;
     }
+    // The same landing as every other cut switch (storyboard-flip-crosses-
+    // cut, 유저 09-27 「따라간다」): the row left behind is remembered, and
+    // the row landed on is the one [Standing.layerACutSwitchSeats] names.
+    // ↩️It took the new cut's first row, whatever you were working in.
+    final before = activeLayerId;
+    standing.rememberActiveLayerForCut();
     editingSession.setActiveCutId(position.cutId);
-    activeCutControllers.rebuild(preferredFrameIndex: position.localFrameIndex);
+    activeCutControllers.rebuild(
+      preferredActiveLayerId: standing.layerACutSwitchSeats(
+        position.cutId,
+        before: before,
+      ),
+      preferredFrameIndex: position.localFrameIndex,
+    );
   }
 
   void _onPlaybackPlaylistWarmRequested(
@@ -576,8 +582,6 @@ class EditorSessionManager extends ChangeNotifier
   );
   @override
   late final CutCommandCoordinator cutCommandCoordinator;
-  @override
-  final CutReorderPlanner cutReorderPlanner = const CutReorderPlanner();
 
   // ── the active cut's two controllers: their own object ──────────────
   //
@@ -595,6 +599,7 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     internals: this,
     playbackFrameCount: () => activeCutSpan.activeCutPlaybackFrameCount,
+    activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId),
     trackSeDisplayLayers: () => trackSe.trackSeDisplayLayers,
     trackTransitionDisplayLayer: () => transitions.trackTransitionDisplayLayer,
     onRebuilt: () {
@@ -702,7 +707,7 @@ class EditorSessionManager extends ChangeNotifier
   final CanvasSelectionDocument canvasSelection = CanvasSelectionDocument();
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId));
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
 
   // I-41: every door that MOVES where the user stands — the cut, the row,
   // the frame, the gap — first settles the last edit where it left them
@@ -806,6 +811,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     timeline: this,
     projectSettings: projectSettings,
+    railView: railView,
   );
 
   void claimStoryboardRow() => standing.claimStoryboardRow();
@@ -1003,14 +1009,6 @@ class EditorSessionManager extends ChangeNotifier
     return ids.isEmpty ? const {} : inBand(ids, selection);
   }
 
-  /// Whether the artwork carries a marquee, published by whoever owns it.
-  @override
-  bool Function()? canvasHasSelection;
-
-  /// Lets go of the marquee, published by whoever owns it.
-  @override
-  void Function()? clearCanvasSelection;
-
   /// The live editing coordinator, published by the canvas host.
   ///
   /// 🚨Null before the canvas has built one — a fresh project, a gap parking,
@@ -1028,35 +1026,11 @@ class EditorSessionManager extends ChangeNotifier
   /// [LiveStrokeLanding] for the rest of the reason.
   final LiveStrokeLanding liveStrokeLanding = LiveStrokeLanding();
 
-  /// The canvas-side facts a pixel-verb press needs, published by whoever
-  /// owns them — see [PixelVerbCanvas].
-  ///
-  /// ⛔A getter, not a copy. The marquee is a document-level fact that
-  /// survives tool switches (`CanvasSelectionCommands.region`), the colour
-  /// changes under the pointer, and the mask moves with the tool settings
-  /// panel — so a snapshot taken when the toolbar was built would act on a
-  /// selection the user has since redrawn, in a colour they have left.
-  ///
-  /// 🚨The colour's ALPHA is ignored downstream — RGB only (유저 확정).
-  @override
-  PixelVerbCanvas Function()? pixelVerbCanvas;
-
-  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
-  @override
-  PixelVerbSubject get pixelVerbSubject {
-    if (cells.pixelVerbCellKeys().isEmpty) {
-      return PixelVerbSubject.nothing;
-    }
-    return frameRangeSelection.value == null
-        ? PixelVerbSubject.standing
-        : PixelVerbSubject.range;
-  }
-
   // ── the cell verbs: their own object, in their own file ─────────────
   //
   // A collaborator (session/cell_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions, internals: this, renderCaches: renderCaches);
+  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions, internals: this, renderCaches: renderCaches);
 
   TimelineRowAddress get selectedRow => standing.selectedRow;
 
@@ -1066,7 +1040,7 @@ class EditorSessionManager extends ChangeNotifier
   /// cuts twice for one press.
   @override
   void selectTrackRow(TrackId trackId) {
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     final trackBefore = selectedTrackId;
@@ -1121,8 +1095,6 @@ class EditorSessionManager extends ChangeNotifier
   // `ProjectAccess`/`SessionInternals`, not a second name for a verb.
   late final TrackSeDisplay trackSe = TrackSeDisplay(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, transitions: transitions, voiceRecording: voiceRecording);
 
-  @override
-  TrackSeWindow get trackSeWindow => trackSe.trackSeWindow;
   @override
   bool isTrackSeLayerId(LayerId layerId) => trackSe.isTrackSeLayerId(layerId);
   @override
@@ -1197,21 +1169,10 @@ class EditorSessionManager extends ChangeNotifier
       cutPositionOf(repository.requireProject(), cutId)?.cut;
 
   /// The brush store key of a layer frame within [cut] — same derivation the
-  /// canvas selection uses (track containing the cut, first track fallback).
+  /// canvas selection uses ([brushFrameKeyIn]).
   @override
-  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId) {
-    final project = repository.requireProject();
-    final trackId =
-        cutPositionOf(project, cut.id)?.trackId ??
-        (project.tracks.isEmpty ? const TrackId('') : project.tracks.first.id);
-    return BrushFrameKey(
-      projectId: project.id,
-      trackId: trackId,
-      cutId: cut.id,
-      layerId: layerId,
-      frameId: frameId,
-    );
-  }
+  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId) =>
+      brushFrameKeyIn(repository.requireProject(), cut, layerId, frameId);
 
   /// Warms the active cut's composites around the playhead ("navigate away
   /// from a frame and it gets pre-rendered") — and the NEXT cut behind it
@@ -1399,21 +1360,6 @@ class EditorSessionManager extends ChangeNotifier
     trackSe: trackSe,
     transitions: transitions,
   );
-
-  /// ⛔THIS USED TO RE-DERIVE THE MEMBERSHIP BY KIND and knew only two of
-  /// the three sources (see [ActiveCutSpan.activeCutRowLayers] for H17 and
-  /// what it cost). It asks the composed list instead — and it stays HERE
-  /// rather than moving into [ActiveCutSpan] because
-  /// [ActiveCutControllers] is what asks it, and the span reads the
-  /// track-owned rows those controllers build: injecting it there would
-  /// close a construction cycle.
-  @override
-  bool activeCutHasLayer(LayerId? layerId) {
-    if (layerId == null) {
-      return false;
-    }
-    return activeCutSpan.activeCutRowLayers.any((layer) => layer.id == layerId);
-  }
 
   // --- Cut commands -------------------------------------------------------
 
@@ -1715,9 +1661,6 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
   );
 
-  @override
-  bool resetLaneGroup(LayerId layerId, String headerLaneId) =>
-      laneVerbs.resetLaneGroup(layerId, headerLaneId);
   // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,
   // `currentLaneKeyAddress`, `setLaneKeyName`, `linkLaneKeyName`) retired
   // when the RANGE form arrived: a single key is the one-frame span at the
@@ -1738,9 +1681,8 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
-  /// The layer's resolved anchor point at [frameIndex] — the anchor-point
-  /// lane's value column and key-freeze source (canvas center while
-  /// unkeyed).
+  /// The layer's resolved anchor point at [frameIndex] (canvas center while
+  /// unkeyed) — the lane key-freeze source and the canvas gizmo's anchor.
   @override
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex) {
     return resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex) ??
@@ -1748,13 +1690,6 @@ class EditorSessionManager extends ChangeNotifier
           x: requireActiveCut.canvasSize.width / 2,
           y: requireActiveCut.canvasSize.height / 2,
         );
-  }
-
-  /// The layer's animated Opacity sample (0..1; 1 while unkeyed) — the
-  /// opacity lane's value column and key-freeze source.
-  @override
-  double layerOpacityAtFrame(Layer layer, int frameIndex) {
-    return resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex);
   }
 
   // --- Visibility solo mode (session view state, not persisted) ------------
@@ -2024,7 +1959,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_row_drag.dart): the row picked up in the
   // rail and where it may land — on a row, a track or an effect lane.
-  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, internals: this);
+  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, attachFxConfirm: attachFxConfirm);
 
   // ── a file held over the timeline: its own object, in its own file ──
   //
@@ -2048,7 +1983,7 @@ class EditorSessionManager extends ChangeNotifier
     // 🚨An SE row is the TRACK's, so [layerById] — which walks the open
     // cut — never finds one. These are the doors `landSound` itself uses.
     seRowFor: trackSeGlobalLayerById,
-    seWindow: () => trackSeWindow,
+    seWindow: () => trackSe.trackSeWindow,
   );
 
   /// Where a file being dragged stands on a row — the answer the silhouette
@@ -2107,7 +2042,6 @@ class EditorSessionManager extends ChangeNotifier
   /// 🚨Owned here rather than by a surface: TWO of them end a row drag, and
   /// a dialog raised by whichever happened to be on screen is a second copy
   /// of the sentence waiting to drift ([AttachFxConfirmController]).
-  @override
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
 
   // --- SE mix controls (AUDIO-PRO R1) ---------------------------------------
@@ -2346,29 +2280,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, transitions: transitions, cells: cells, frameVerbs: frameVerbs, internals: this, storyboardRows: storyboardRows);
-
-  @override
-  bool get canCreateInstance => cellInstances.canCreateInstance;
-  /// The selection range's maximal EMPTY runs on [layer]'s timeline.
-  ///
-  /// D20 (2026-08-18) rewrote the coverage half: GHOST coverage is
-  /// authoring room — 「고스트일 뿐이니 생성 허용」 — the same sentence
-  /// [TimelineController.canCreateDrawingAt] reads, so the single-cell
-  /// verb and the range verb cannot answer "is this cell free"
-  /// differently. (The old comment here said the opposite: "ghost
-  /// coverage counts as covered".) A range over a repeat/hold tail
-  /// therefore fills the projected cells with authored ones, and the
-  /// rederive pass re-clamps the projection around them.
-  @override
-  List<({int startIndex, int length})> emptyGapsInRange(
-    Layer layer,
-    TimelineFrameRangeSelection selection,
-  ) => emptyGapsBetween(
-    layer,
-    selection.startIndex,
-    selection.endIndexExclusive,
-  );
+  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, transitions: transitions, cells: cells, frameVerbs: frameVerbs, storyboardRows: storyboardRows);
 
   // --- Comma edge drag ------------------------------------------------------
   //
@@ -2744,7 +2656,7 @@ class EditorSessionManager extends ChangeNotifier
       return null;
     }
     final global = trackSeGlobalLayerById(layerId);
-    return global == null ? null : trackSeWindow.displayLayer(global);
+    return global == null ? null : trackSe.trackSeWindow.displayLayer(global);
   }
 
   /// Maps a DISPLAY block start to the layer's COMMIT form key: identity
@@ -2758,7 +2670,7 @@ class EditorSessionManager extends ChangeNotifier
     if (global == null) {
       return displayStart;
     }
-    return trackSeWindow.globalBlockStartFor(global, displayStart);
+    return trackSe.trackSeWindow.globalBlockStartFor(global, displayStart);
   }
 
   /// The layer ops COMMIT against: the GLOBAL form for track-SE rows.
@@ -2917,7 +2829,6 @@ class EditorSessionManager extends ChangeNotifier
   /// places before this (the cut menu, the layer menu, a loose layer button),
   /// each hard-wired to one noun, which is why the same word did different
   /// things depending on where you reached for it.
-  @override
   PillSubject get deleteSubject => deleteSubjectFor(cutsAreThisPanels: true);
 
   /// [deleteSubject], asked of a PANEL — see [editInstanceSubjectFor] for
@@ -3030,10 +2941,10 @@ class EditorSessionManager extends ChangeNotifier
   /// [frameSeekCommitted] and rebuild once per committed seek.
   @override
   void selectFrameIndex(int frameIndex) {
-    // R15-⑤: a live editing interaction REFUSES the seek outright — a
+    // R15-⑤: a live STROKE refuses the seek outright — a
     // flip under an in-flight edit tore widgets down inside the build
     // phase (red screens) and could land the edit on the wrong cel.
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     historyManager.places.settle();
@@ -3074,12 +2985,22 @@ class EditorSessionManager extends ChangeNotifier
     }
   }
 
-  /// R15-⑤: any live editing interaction (brush stroke, selection drag)
-  /// blocks frame seeks, scrubs and cut switches entirely — the playhead
-  /// moves when the pen lifts, never under it.
+  /// R15-⑤: a live STROKE blocks frame seeks, scrubs and cut switches
+  /// entirely — the playhead moves when the pen lifts, never under it.
+  ///
+  /// 🗣️F-196 (유저 2026-09-27): 「애초에 잠그는 기능을 싹 다 빼고 필요한거만
+  /// 보고해」. This is the one that is needed, MEASURED with it switched off
+  /// (`only_a_stroke_holds_the_playhead_test`): a ruler scrub or a cut switch
+  /// under the pen threw the stroke away, and a palm on the ruler is all it
+  /// takes. A seek alone was already safe — the canvas pins a live stroke to
+  /// its cel — but the playhead keeps one rule under the pen.
+  ///
+  /// ↩️A selection drag held it too, and no longer does: the selection
+  /// layer carries a session to the next cel on a seek, and a float writes
+  /// nothing until it lands, so nothing is lost ([RangeSelections]'s hold
+  /// is only the prerender's now).
   @override
-  bool get editingInteractionBusy =>
-      brushInputActive.value || rangeSelections.selectionInteractionActive;
+  bool get strokeInFlight => brushInputActive.value;
 
   // --- Track-global frame axis (R15-①) -----------------------------------
 
@@ -3226,7 +3147,7 @@ class EditorSessionManager extends ChangeNotifier
   /// track is a no-op, like the fx/eye buttons there.
   @override
   void selectTrackCutAtPlayhead(TrackId trackId) {
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     // The TRACK is what the tap selected, so it is taken whether or not a
@@ -3273,7 +3194,7 @@ class EditorSessionManager extends ChangeNotifier
   /// GAP still parks. Callers that park a frame a cut covers are declaring
   /// a preview, not a landing — the live scrub is the one such caller.
   void parkGlobalFrame(int globalFrame) {
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     if (trackFrameAxis().isEmpty) {
@@ -3292,7 +3213,7 @@ class EditorSessionManager extends ChangeNotifier
   /// the playhead in a cut the move never chose.
   @override
   void selectGlobalFrame(int globalFrame, {TrackFrameAxis? onAxis}) {
-    if (editingInteractionBusy) {
+    if (strokeInFlight) {
       return;
     }
     final axis = onAxis ?? trackFrameAxis();
@@ -3400,6 +3321,7 @@ class EditorSessionManager extends ChangeNotifier
     solo: visibilitySolo,
     failedCopies: failedSaveCopies,
     keepStandingShown: standing.keepStandingShown,
+    playback: playbackRig,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not
@@ -3498,21 +3420,6 @@ class EditorSessionManager extends ChangeNotifier
   // string rebuilt for every row on every pass, which forced a row REBUILD
   // and only when something else had already announced — which is exactly
   // why a freshly drawn block stayed grey until you switched layers.
-
-  // --- Status text --------------------------------------------------------
-
-  String get currentLayerStatusText {
-    final layer = activeLayer;
-    return 'Layer: ${layer?.name ?? 'None'}';
-  }
-
-  @override
-  String drawingStartStatusForLayer(Layer layer, int frameIndex) {
-    final celNumber = celNumberOf(
-      frameVerbs.frameNameForLayer(layer, frameIndex),
-    );
-    return celNumber == null ? 'Drawing start' : 'Drawing start: $celNumber';
-  }
 
   // --- Canvas selection labels -------------------------------------------
 

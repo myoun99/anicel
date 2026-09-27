@@ -394,7 +394,7 @@ class _WorkspaceTabs {
                             onGroupsReordered:
                                 _state._presetLibrary.reorderGroups,
                             onLibraryReset:
-                                _state._presetLibrary.resetToDefaults,
+                                _state._brushPresets.resetLibrary,
                             onPresetExported: (id) {
                               unawaited(
                                 _state._brushPresets._exportAndNotice([
@@ -922,6 +922,8 @@ class _WorkspaceTabs {
             listenable: Listenable.merge([
               _state.widget.session,
               _state._storyboardPixelsPerFrame,
+              // F-199: a section toggle is not a session notify.
+              _state.widget.session.railView.hiddenSections,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),
@@ -939,6 +941,11 @@ class _WorkspaceTabs {
               // wherever the legend appears.
               rowFilter: _state.widget.session.railView.rowFilter.value,
               onSetRowFilter: _state._setTimelineRowFilter,
+              // F-199: the sections too — hidden and toggled with the
+              // timeline's.
+              hiddenSections:
+                  _state.widget.session.railView.hiddenSections.value,
+              onToggleSection: _state._toggleTimelineSection,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: (value) {
                 _state._storyboardPixelsPerFrame.value = value;
@@ -952,12 +959,16 @@ class _WorkspaceTabs {
               // ⛔No steppers any more (B7): the V rows' splitter is the
               // height's one writer, and it asks the NOTIFIER, not the value
               // this build took — a drag's steps outrun the rebuilds.
-              trackLaneHeight: _state._storyboardTrackLaneHeight.value,
+              trackLaneHeight: _state._storyboardLaneHeight(context),
               onResizeTrackLanes: (delta) {
                 final height = _state._storyboardTrackLaneHeight;
-                final before = height.value;
+                final ceiling = _state._storyboardLaneCeiling(context);
+                // From the height the rows are DRAWN at: one set above
+                // today's ceiling moves from where the hand sees it.
+                final before = _state._storyboardLaneHeight(context);
                 height.value = StoryboardPanel.clampTrackLaneHeight(
                   before + delta,
+                  ceiling: ceiling,
                 );
                 return height.value - before;
               },
@@ -1095,7 +1106,6 @@ class _WorkspaceTabs {
             // its own boundary builder inside the host.
             listenable: Listenable.merge([
               _state._views._timesheetContinuous,
-              _state._views._timesheetPage,
               _state._views._timesheetViewport,
               _state._views._timesheetBrushAllowed,
               // F-90: a crossing, played or dragged over, turns the sheet
@@ -1110,10 +1120,8 @@ class _WorkspaceTabs {
               onContinuousChanged: (continuous) {
                 _state._views._timesheetContinuous.value = continuous;
               },
-              page: _state._views._timesheetPage.value,
-              onPageChanged: (page) {
-                _state._views._timesheetPage.value = page;
-              },
+              // The host hears the page itself — the panel moves it.
+              reading: _state._views._timesheetPage,
               viewportController: _state._views._timesheetViewport,
               inkController: _state._views._timesheetInk,
               brushToolState: _state._brushTool,

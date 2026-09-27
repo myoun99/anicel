@@ -65,6 +65,19 @@ class RangeSelections {
   final TrackSeDisplay _trackSe;
   final RowSpans _rowSpans;
 
+  /// Whether the artwork carries a marquee, published by whoever owns it —
+  /// the fifth kind [hasAnySelection] counts.
+  ///
+  /// ⚠️Kept HERE, by the one collaborator that asks, and not on the session:
+  /// `SessionInternals` only shrinks (ARCH-session-state, the eleventh
+  /// family). The workspace publishes it while its canvas is mounted and
+  /// clears it when the project goes behind.
+  bool Function()? canvasHasSelection;
+
+  /// Lets go of the marquee, published by whoever owns it — the fifth kind
+  /// [clearAllSelections] lets go of.
+  void Function()? clearCanvasSelection;
+
   /// 🚨T10 — whether standing on ([row], [frameIndex]) lands INSIDE whatever
   /// is currently selected.
   ///
@@ -175,7 +188,7 @@ class RangeSelections {
       _selection.laneRangeSelection.value != null ||
       _selection.trackFrameRangeSelection.value != null ||
       _selection.rowSelection.value.isNotEmpty ||
-      (_internals.canvasHasSelection?.call() ?? false);
+      (canvasHasSelection?.call() ?? false);
 
   /// The four TIMELINE selections — and NOT the marquee on the artwork.
   ///
@@ -205,7 +218,7 @@ class RangeSelections {
     // a different half — the rail's cleared the marquee, the timeline's
     // cleared the timeline, and nothing on screen said which was which.
     // 「Let go」 means let go.
-    _internals.clearCanvasSelection?.call();
+    clearCanvasSelection?.call();
   }
 
   /// 🚨THE ONE-SELECTION LAW (유저 확정 2026-08-12): 「선택범위는 하나만
@@ -979,13 +992,14 @@ class RangeSelections {
   }
 
   /// Selection-tool interactions (marquee/move/transform drags) — counted
-  /// so overlapping holds nest (R15-⑤).
+  /// so overlapping holds nest. What they hold is the prerender's warming,
+  /// as a stroke does.
+  ///
+  /// ↩️F-196 (유저 2026-09-27, 「잠그는 기능을 싹 다 빼고 필요한거만」): they
+  /// held the PLAYHEAD too (R15-⑤) and no longer do — a seek carries the
+  /// selection session to the next cel and a float writes nothing until it
+  /// lands (`EditorSessionManager.strokeInFlight` says which lock stayed and why).
   int _selectionInteractionHolds = 0;
-
-  /// Whether a selection-tool interaction holds the playhead — the count
-  /// itself, so the flag cannot disagree with the holds it stands for.
-  /// Nothing listened to it; the session asks it when a seek comes.
-  bool get selectionInteractionActive => _selectionInteractionHolds > 0;
 
   void beginSelectionInteraction() {
     _selectionInteractionHolds += 1;

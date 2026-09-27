@@ -241,7 +241,7 @@ void main() {
 
     final row = session.repository.requireProject().tracks.first.seLayers.first;
     expect(
-      session.resetLaneGroup(row.id, transformGroupHeaderLane.laneId),
+      session.laneVerbs.resetLaneGroup(row.id, transformGroupHeaderLane.laneId),
       isFalse,
     );
   });

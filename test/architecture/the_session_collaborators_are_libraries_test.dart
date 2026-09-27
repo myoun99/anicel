@@ -103,7 +103,43 @@ const _mayNameTheSession = <String, String>{
 /// 36 → 35 (2026-09-26, the eighth family): the reveal tick moved into
 /// `RangeSelections`, beside its one writer (`revealSelection`), which
 /// releases it; the rails' hosts read it there.
-const _sessionInternalsMembers = 35;
+/// 35 → 34 (2026-09-27, the ninth family): whether the active cut shows a
+/// row moved into `ActiveCutSpan`, beside the row list it asks. It was one
+/// of the cycle edges — the span reads what `ActiveCutControllers` builds —
+/// so its two askers take the QUESTION as a closure, the way the
+/// controllers already take the span's frame count.
+/// 34 → 31 (2026-09-27, the tenth family): three members nobody asked
+/// through the role — the delete subject (the session keeps it, the panels
+/// and tests read it there), the lane-group reset and the SE window (two
+/// second names for their owners' verbs, deleted: callers say
+/// `session.laneVerbs` and `session.trackSe`).
+/// 31 → 29 (same day, the same family): two more nobody asked — the census
+/// above had counted a DOC COMMENT naming `_internals.x` as a call. The
+/// playback follow is the session's own listener, and the ＋'s answer was a
+/// second name for `CellInstances.canCreateInstance` (deleted).
+/// 29 → 24 (2026-09-27, the eleventh family): what the canvas publishes for
+/// ONE collaborator lives in that collaborator — the marquee's two hooks in
+/// `RangeSelections`, the pixel-verb canvas and its subject in `CellVerbs`
+/// (the workspace hangs them there, as it hangs `projectDoor.toolChoice`) —
+/// and the fx-drop question is a sibling `LayerRowDrag` takes by
+/// constructor, which leaves it naming no internals at all.
+/// 24 → 22 (same family): two session methods ONE collaborator asked —
+/// the range's empty runs (a second name for the model's
+/// `emptyGapsBetween`, which the other walkers already call; deleted, and
+/// `CellInstances` names no internals now either) and the drawing-start
+/// status, which only a status-text chain nobody read any more asked
+/// (`currentCellStatusText` and two siblings had no caller; deleted whole).
+/// 22 → 20 (2026-09-27, the twelfth family): the app settings are a
+/// sibling `PlaybackRig` and `ProjectSettings` take by constructor — the
+/// only thing either asked, so neither names internals now — and the cut
+/// reorder planner, stateless and asked only by `CutVerbs`, is theirs.
+/// 20 → 17 (2026-09-27, the thirteenth family): the readings BESIDE their
+/// kin. The anchor at a frame joins the pose at a frame in the timeline
+/// role; whether the playhead stands in a gap joins the gap it reads in the
+/// selection role; and the opacity at a frame was a second name for the
+/// model's `resolveOpacityTrackAt` — the lane rows already call that, so
+/// `LaneVerbs` does too and the session's copy is gone.
+const _sessionInternalsMembers = 17;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

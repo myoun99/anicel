@@ -21,22 +21,42 @@ class _StoryboardRailRows {
       _state.widget.railExtent ??
       (_state._ownedRailExtent ??= LayerRailExtent());
 
-  /// Rebuilds [builder] whenever the storyboard playhead moves — the
-  /// cursor-layer subscription the ruler and the playhead overlay already
-  /// take (F-19).
+  /// Rebuilds [builder] with the cut under the storyboard playhead on track
+  /// [trackIndex] whenever THAT cut changes — the cursor-layer subscription
+  /// the ruler and the playhead overlay already take (F-19), asking only
+  /// what the row shows of it.
+  ///
+  /// I-22 ③: it rebuilt on every move of the playhead, so the row — its
+  /// buttons, their faces and tooltips — was rebuilt at the playback rate
+  /// while a cut of 96 frames kept the same subject for four seconds.
   ///
   /// Returns the built widget UNWRAPPED when there is no playhead channel:
   /// a host that never publishes one has nothing for the subscription to
   /// listen to, and a builder that never fires is a rebuild boundary paid
   /// for nothing.
-  Widget _playheadFollowing(Widget Function(int? globalFrame) builder) {
+  Widget _cutAtPlayheadFollowing(
+    int trackIndex,
+    Widget Function(Cut? subject) builder,
+  ) {
     final playhead = _state.widget.playheadFrame;
     if (playhead == null) {
       return builder(null);
     }
-    return ValueListenableBuilder<int?>(
-      valueListenable: playhead,
-      builder: (context, globalFrame, _) => builder(globalFrame),
+    // 🚨A TICK LAYER (I-22 ③): at a far zoom a scrub crosses into another
+    // cut on nearly every move, and the row rebuilt bare in the body's
+    // layout scope laid the body out again and repainted the whole panel on
+    // each (measured at 0.16px: 30ms of a 366ms scrub sample). The row is
+    // the V rail row — the rail's width by the V lane's height.
+    return SizedBox(
+      width: StoryboardPanel.railWidthIn(_state.context),
+      height: _state.widget.trackLaneHeight,
+      child: TickLayer(
+        child: _FollowsTheCutUnderThePlayhead(
+          playhead: playhead,
+          cutAt: () => _state._standing.cutAtPlayheadOn(trackIndex),
+          builder: builder,
+        ),
+      ),
     );
   }
 
@@ -207,9 +227,25 @@ class _StoryboardRailRows {
   /// labels alone, so every row under a hidden one parted from its strip by
   /// a row (storyboard-filter-leaves-the-strips, measured 94 over 124).
   List<int> _shownSeSlots(Track track) => [
-    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
-      if (_filterAllowsSeRow(track, slot)) slot,
+    if (_sectionShown(TimelineSection.se))
+      for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
+        if (_filterAllowsSeRow(track, slot)) slot,
   ];
+
+  /// Whether the rail shows [section] — the set the timeline's grids read
+  /// (F-199: 「콘티패널도 타임라인이랑 동일하게 se나 카메라섹션 접을수있게
+  /// 로직통일」). The V row belongs to no section and always shows.
+  bool _sectionShown(TimelineSection section) =>
+      !_state.widget.hiddenSections.contains(section);
+
+  /// Whether the rail shows [track]'s transition row: its section is the one
+  /// the timeline puts that row's kind in — the camera section.
+  ///
+  /// ⚠️ONE question for the three places that lay the row out — the row
+  /// table, the rail's labels and the strips — or a hidden row would part a
+  /// label from its strip by a row, the filter's lesson below.
+  bool _showsTransitionRow(Track track) =>
+      _sectionShown(timelineSectionForLayerKind(track.transitionLayer.kind));
 
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
   /// rows (each with its twirled-down Audio lane and Transform group)
@@ -536,11 +572,12 @@ class _StoryboardRailRows {
       // ([timelineSectionForLayerKind]) — the label comes from that policy
       // rather than being typed here, so the two rails cannot start naming
       // the same section differently.
-      _sectionZoneGroup(
-        keyValue: 'storyboard-section-zone-${track.id.value}-transition',
-        label: timelineSectionLabel(TimelineSection.camera),
-        rows: [_state._rows.transitionLabelRow(track)],
-      ),
+      if (_showsTransitionRow(track))
+        _sectionZoneGroup(
+          keyValue: 'storyboard-section-zone-${track.id.value}-transition',
+          label: timelineSectionLabel(TimelineSection.camera),
+          rows: [_state._rows.transitionLabelRow(track)],
+        ),
       // A section with no rows left draws no zone: an empty SE band would
       // be a label over nothing once the filter took its rows.
       if (seRows.isNotEmpty)
@@ -664,8 +701,9 @@ class _StoryboardRailRows {
           // preview machinery (D6's no-flash rules, the territory flag) exists
           // because the active cut does not follow a drag — and switching it
           // per move would put a cut activation on every pointer move.
-          _playheadFollowing(
-            (_) => StoryboardTrackLabelRow(
+          _cutAtPlayheadFollowing(
+            index,
+            (subject) => StoryboardTrackLabelRow(
               track: track,
               trackLabel: _vRowName(index),
               laneHeight: _state.widget.trackLaneHeight,
@@ -689,7 +727,7 @@ class _StoryboardRailRows {
               // global index (each track independently) — no stand-down, no
               // parked look. A gap simply means no cut exists there: the
               // buttons stay normal and a press is a no-op.
-              subjectCut: _state._standing.cutAtPlayheadOn(index) ?? activeCut,
+              subjectCut: subject ?? activeCut,
               cutPictureVisibleOf: _state.widget.cutPictureVisibleOf,
               onToggleCutPictureVisibility:
                   _state.widget.onToggleCutPictureVisibility,
@@ -862,9 +900,19 @@ class _StoryboardRailRows {
         ),
         // Above both bands: standing and selected are two statements, and
         // the ring must stay readable inside a span that covers its row.
+        //
+        // 🚨On its OWN layer (I-22 ③): the ring follows the playhead, and the
+        // strips around it are one RepaintBoundary precisely so a playhead
+        // move re-rasterizes none of them (R12-⑥). Mounted bare inside it,
+        // every move repainted every strip — at ten minutes every edge grip
+        // of the film and the plate grounds under them, on every playback
+        // frame. The timeline's cursor layer rides its own the same way —
+        // and a layout of its own besides ([TickLayer]).
         Positioned.fill(
           child: IgnorePointer(
-            child: _state._standing.trackStandingCellRing(track, scale),
+            child: TickLayer(
+              child: _state._standing.trackStandingCellRing(track, scale),
+            ),
           ),
         ),
       ],
@@ -1231,14 +1279,16 @@ class _StoryboardRailRows {
     // Index 0 is the TOP of the group ([_trackRowBand] accumulates y from
     // here), and the transition row heads it — above the S rows, the way the
     // camera section heads the cut timeline's rows.
-    slots.add((
-      row: LayerRowAddress(track.transitionLayer.id),
-      laneRow: null,
-      bandRow: false,
-      lane: false,
-      railRow: (track: track, layer: track.transitionLayer, seSlot: null),
-      height: heights.transition,
-    ));
+    if (_showsTransitionRow(track)) {
+      slots.add((
+        row: LayerRowAddress(track.transitionLayer.id),
+        laneRow: null,
+        bandRow: false,
+        lane: false,
+        railRow: (track: track, layer: track.transitionLayer, seSlot: null),
+        height: heights.transition,
+      ));
+    }
     for (final slot in _shownSeSlots(track)) {
       final layer = _trackSeAt(track, slot);
       slots.add((
@@ -1547,11 +1597,12 @@ class _StoryboardRailRows {
       for (var index = 0; index < _state.widget.project.tracks.length; index++)
         [
           // Heads the group, matching the rail's row order.
-          _state._rows.transitionStripRow(
-            _state.widget.project.tracks[index],
-            contentWidth,
-            scale,
-          ),
+          if (_showsTransitionRow(_state.widget.project.tracks[index]))
+            _state._rows.transitionStripRow(
+              _state.widget.project.tracks[index],
+              contentWidth,
+              scale,
+            ),
           ..._seStripRowsForTrack(
             _state.widget.project.tracks[index],
             index,
@@ -1564,4 +1615,60 @@ class _StoryboardRailRows {
         ],
     ];
   }
+}
+
+/// Rebuilds [builder] when the cut under the playhead changes — never on a
+/// playhead move that stays inside it ([_StoryboardRailRows.
+/// _cutAtPlayheadFollowing]).
+class _FollowsTheCutUnderThePlayhead extends StatefulWidget {
+  const _FollowsTheCutUnderThePlayhead({
+    required this.playhead,
+    required this.cutAt,
+    required this.builder,
+  });
+
+  final ValueListenable<int?> playhead;
+  final Cut? Function() cutAt;
+  final Widget Function(Cut? subject) builder;
+
+  @override
+  State<_FollowsTheCutUnderThePlayhead> createState() =>
+      _FollowsTheCutUnderThePlayheadState();
+}
+
+class _FollowsTheCutUnderThePlayheadState
+    extends State<_FollowsTheCutUnderThePlayhead> {
+  late Cut? _subject = widget.cutAt();
+
+  void _moved() {
+    final subject = widget.cutAt();
+    if (!identical(subject, _subject)) {
+      setState(() => _subject = subject);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.playhead.addListener(_moved);
+  }
+
+  @override
+  void didUpdateWidget(_FollowsTheCutUnderThePlayhead oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.playhead, widget.playhead)) {
+      oldWidget.playhead.removeListener(_moved);
+      widget.playhead.addListener(_moved);
+    }
+    _subject = widget.cutAt();
+  }
+
+  @override
+  void dispose() {
+    widget.playhead.removeListener(_moved);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(_subject);
 }

@@ -1,7 +1,6 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
@@ -9,6 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_playhead_writing.dart';
+import 'package:anicel/src/ui/widgets/tick_layer.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
     show XSheetFrameRailPainter;
 
@@ -30,12 +30,13 @@ void main() {
     Axis axis = Axis.horizontal,
     double cell = 24,
     bool showSeconds = false,
+    int frames = 120,
   }) => TimelineRulerScale(
     axis: axis,
     frameStartIndex: 0,
-    frameEndIndexExclusive: 120,
+    frameEndIndexExclusive: frames,
     currentFrameIndex: -1,
-    playbackFrameCount: 120,
+    playbackFrameCount: frames,
     leadingFrameSpacer: 0,
     crossExtent: 28,
     metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
@@ -271,6 +272,55 @@ void main() {
       expect(spy.log.sublist(restore + 1), [('text', pair.offset)]);
     });
 
+    // 🚨I-22 ③ (09-27): the strip lays its paper a stretch at a time
+    // ([TimelineRulerScale.paintPaperIn]); the uncovering laid it a CELL at a
+    // time — at 0.16px hundreds of rects under one glyph on every playback
+    // tick, each a sixth of a pixel wide.
+    test('at the ten-minute floor the paper comes back the way the strip '
+        'lays it — a stretch at a time', () {
+      final scale = scaleOf(cell: 0.16, frames: 3000);
+      final step = scale.writingStep;
+      final frame = step * 40;
+      final x = scale.cellRectFor(frame).left;
+      final pair = at('P', Offset(x, 0));
+      final covered = at('AAAAAA', Offset(x - 20, 5));
+      List<TimelineGlyphPlacement> layout(
+        TimelineRulerScale scale,
+        int frameIndex, {
+        required bool current,
+      }) {
+        if (current) {
+          return frameIndex == frame ? [pair] : const [];
+        }
+        return frameIndex == frame - step ? [covered] : const [];
+      }
+
+      expect(covered.rect.overlaps(pair.rect), isTrue, reason: 'fixture');
+      expect(
+        covered.rect.width / 0.16,
+        greaterThan(100),
+        reason: 'fixture: the glyph lies over a hundred cells and more',
+      );
+
+      final playhead = ValueNotifier<int?>(frame);
+      addTearDown(playhead.dispose);
+      final spy = _Spy();
+      TimelineRulerPlayheadWritingPainter(
+        scale: scale,
+        playhead: playhead,
+        layout: layout,
+      ).paint(spy, const Size(480, 28));
+
+      final clip = spy.log.indexWhere((entry) => entry.$1 == 'clip');
+      final restore = spy.log.indexWhere((entry) => entry.$1 == 'restore');
+      expect(clip, isNonNegative, reason: 'premise: a glyph stood down');
+      expect(
+        spy.log.sublist(clip + 1, restore).where((e) => e.$1 == 'paper'),
+        hasLength(lessThan(5)),
+        reason: 'one ground is one rect, as on the strip',
+      );
+    });
+
     test('writes nothing without a playhead, or with one off the window', () {
       final playhead = ValueNotifier<int?>(null);
       addTearDown(playhead.dispose);
@@ -413,9 +463,19 @@ void main() {
     playhead.value = 7;
     await tester.pump();
     expect(painter().writtenFrame(), 7);
+    // Its own layer: the first boundary above the writing is its tick
+    // layer's, under the strip's.
+    var boundary = tester.renderObject(writing).parent;
+    while (boundary != null && !boundary.isRepaintBoundary) {
+      boundary = boundary.parent;
+    }
     expect(
-      tester.renderObject(writing).parent,
-      isA<RenderRepaintBoundary>(),
+      boundary,
+      same(
+        tester.renderObject(
+          find.ancestor(of: writing, matching: find.byType(TickLayer)),
+        ),
+      ),
       reason: 'its repaints never re-record the strip',
     );
     final strip =

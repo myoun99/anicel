@@ -90,6 +90,13 @@ void main() {
     expect(PenSidecars.freshReading()?.pressure, 0.9);
 
     wintab.debugReset();
+    // A fresh channel sample for the fallback read: the channel's 150 ms
+    // window runs on the real clock, and where the pen DLL is built beside
+    // the engine `wintab.start()` loads it — under a loaded machine that
+    // outlasted the window and the sample above had aged out (the lane's
+    // native parity run, 2026-09-27).
+    controller.add({'pressure': 0.3});
+    await Future<void>.delayed(Duration.zero);
     expect(PenSidecars.freshReading()?.pressure, 0.3);
   });
 

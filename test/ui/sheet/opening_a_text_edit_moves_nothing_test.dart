@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/app_faces.dart';
+import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -184,7 +185,7 @@ void main() {
                     thumbnails: null,
                     viewport: seedFromRender(
                       tester,
-                      CanvasViewport(zoom: zoom),
+                      onConteBody(session, CanvasViewport(zoom: zoom)),
                     ),
                   ),
                 ),
@@ -208,9 +209,7 @@ void main() {
         cell.actionRect.right,
         m.rowTop(cell.rowOnPage + cell.source.rowSpan),
       );
-      final origin = tester.getTopLeft(
-        find.byKey(const ValueKey<String>('conte-form-paint')),
-      );
+      final origin = conteBodyTopLeft(tester);
       return Rect.fromLTRB(
         origin.dx + zoom * paper.left,
         origin.dy + zoom * paper.top,

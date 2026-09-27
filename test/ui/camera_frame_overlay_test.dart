@@ -7,6 +7,8 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
+import 'package:anicel/src/ui/input/control_press_claim.dart'
+    show SurfaceDragClaim;
 
 void main() {
   const frameSize = CanvasSize(width: 1920, height: 1080);
@@ -337,6 +339,50 @@ void main() {
       await tester.pump();
       expect(committed, hasLength(1), reason: 'the committed drag lives');
       expect(committed.single.center.x, closeTo(1000 + 120, 1e-6));
+    });
+
+    testWidgets('F-194: a PEN takes a corner on the canvas — the surface '
+        'under it holds from the first movement, and so does this', (
+      tester,
+    ) async {
+      final committed = <CameraPose>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            // The canvas's claim, as `CanvasViewportGestureLayer` wears it
+            // around everything on the canvas.
+            body: SurfaceDragClaim(
+              child: CameraFrameOverlay(
+                pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
+                cameraFrameSize: frameSize,
+                viewport: CanvasViewport(zoom: 0.5),
+                dimOpacity: 0.5,
+                interactive: true,
+                onPoseCommitted: committed.add,
+              ),
+            ),
+          ),
+        ),
+      );
+      final origin = overlayOrigin(tester);
+
+      // The corner drag above, in the small steps a hand makes — each
+      // shorter than a pen's pan slop.
+      final gesture = await tester.startGesture(
+        origin + const Offset(20, 30),
+        kind: PointerDeviceKind.stylus,
+      );
+      for (var step = 1; step <= 24; step += 1) {
+        await gesture.moveTo(
+          origin + Offset(20 + 10.0 * step, 30 + 5.625 * step),
+        );
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+
+      expect(committed, hasLength(1), reason: 'the pen drove the camera');
+      expect(committed.single.zoom, closeTo(2, 1e-6));
     });
   });
 }

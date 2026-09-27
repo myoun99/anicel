@@ -119,7 +119,7 @@ void main() {
     final session = await pump(tester);
     final ranges = rangeSelectionsOf(session);
     expect(
-      session.canvasHasSelection,
+      ranges.canvasHasSelection,
       isNotNull,
       reason: 'the workspace publishes it; without that the button is blind '
           'to half of what it clears',
@@ -127,8 +127,8 @@ void main() {
 
     var marquee = true;
     var cleared = false;
-    session.canvasHasSelection = () => marquee;
-    session.clearCanvasSelection = () {
+    ranges.canvasHasSelection = () => marquee;
+    ranges.clearCanvasSelection = () {
       marquee = false;
       cleared = true;
     };

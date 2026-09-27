@@ -3,6 +3,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_project_frame_rate_command.dart';
+import 'editor_app_settings.dart';
 import 'session_roles.dart';
 import '../../core/identity_memo.dart';
 
@@ -20,14 +21,14 @@ class ProjectSettings {
   ProjectSettings({
     required ProjectAccess project,
     required ChangeSink changes,
-    required SessionInternals internals,
+    required EditorAppSettings appSettings,
   }) : _project = project,
        _changes = changes,
-       _internals = internals;
+       _appSettings = appSettings;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final SessionInternals _internals;
+  final EditorAppSettings _appSettings;
 
   /// One undo step; no-op when unchanged. Writes the PROJECT's pasteboard
   /// (R3b promotion) — and remembers the choice as the app-level default
@@ -36,7 +37,7 @@ class ProjectSettings {
   void setPasteboardColor(int argb) {
     _project.cutCommandCoordinator.setProjectPasteboard(argb);
     _changes.notifyChanged();
-    _internals.appSettings.rememberPasteboardDefault(argb);
+    _appSettings.rememberPasteboardDefault(argb);
   }
 
   /// One undo step; no-op when already none (F-114): the pasteboard is not
@@ -48,8 +49,9 @@ class ProjectSettings {
   }
 
   /// One undo step; no-op when unchanged. The BACKDROP (R3b): the stage's
-  /// floor — what a fade reveals and what an opaque export bakes where
-  /// nothing covers. Its alpha is real since F-114, like the other planes'.
+  /// floor — what a translucent picture reveals (never a fade's screen,
+  /// F-192) and what an opaque export bakes where nothing covers. Its alpha
+  /// is real since F-114, like the other planes'.
   void setProjectBackdrop(int argb) {
     _project.cutCommandCoordinator.setProjectBackdrop(argb);
     _changes.notifyChanged();

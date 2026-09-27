@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../models/layer_mark.dart';
-import '../../models/layer_process.dart';
+import '../../models/media_asset.dart';
 import '../../models/timesheet_info.dart';
 import '../export/export_settings_modules.dart' show ExportAccordion;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/panel_flyout.dart';
+import 'staff_process_folds.dart';
 
 /// 작품 설정 — the work's words every paper form prints: its title, its
 /// episode, and who does each stage's work. Pops the edited
@@ -18,16 +20,21 @@ import '../widgets/app_window.dart';
 ///
 /// Two folds, named as the user named them — 「작품설정이나 스태프설정
 /// 접을수있게. 기본값은 스태프설정만 접기」. The staff is the colour labels':
-/// a fold per process, its worker and the corrections it references (답
-/// staff-roles-from-labels 「공정별 묶음 — 작업자 + 그 공정의 수정 담당」).
+/// a fold per process, its worker and the corrections it references
+/// ([StaffProcessFolds] — a cut's settings show the same).
 class WorkSettingsWindow extends StatefulWidget {
   const WorkSettingsWindow({
     super.key,
     required this.initialInfo,
     required this.projectName,
+    this.pictures = const [],
   });
 
   final TimesheetInfo initialInfo;
+
+  /// The media pool's images — what the work's pictures are picked from
+  /// (답 logo-home 「작품 설정 한 곳」: 「미디어 풀 그림을 한 번 고르면」).
+  final List<MediaAsset> pictures;
 
   /// What the forms print for a work with no title — shown faintly in the
   /// empty title, as what the paper will carry.
@@ -45,22 +52,19 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
     text: widget.initialInfo.episode,
   );
 
-  /// One name per colour label, in the order the label popover lists them
-  /// ([everyLayerMark] — the one enumeration of the labels).
-  ///
-  /// ⛔EVERY label gets a row, including 用紙's worker: leaving one out
-  /// would be a 「~는 제외한다」 rule nobody asked for.
-  late final Map<LayerMark, TextEditingController> _staff = {
-    for (final mark in everyLayerMark())
-      if (!mark.isNone)
-        mark: TextEditingController(
-          text: widget.initialInfo.staffNameFor(mark),
-        ),
+  /// One name per colour label ([staffFieldsOf]).
+  late final Map<LayerMark, TextEditingController> _staff = staffFieldsOf(
+    widget.initialInfo.staffNameFor,
+  );
+
+  /// Each picture of the work, as picked so far.
+  late final Map<WorkPicture, String?> _pictures = {
+    for (final picture in WorkPicture.values)
+      picture: picture.pathIn(widget.initialInfo),
   };
 
   bool _workOpen = true;
   bool _staffOpen = false;
-  final Set<LayerProcess> _foldedProcesses = {};
 
   @override
   void dispose() {
@@ -73,23 +77,21 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
   }
 
   /// 🚨Built on the info it was given, NOT a fresh one: what this window
-  /// does not show — the logo, the sheet's options, the envelope's form —
-  /// is not its to reset ([[make-the-invariant-unrepresentable]]).
+  /// does not show — the sheet's options, the envelope's form — is not its
+  /// to reset ([[make-the-invariant-unrepresentable]]).
   void _submit() {
     var next = widget.initialInfo.copyWith(
       title: _title.text.trim(),
       episode: _episode.text.trim(),
     );
+    for (final MapEntry(key: picture, value: path) in _pictures.entries) {
+      next = picture.withPath(next, path);
+    }
     for (final MapEntry(key: mark, value: field) in _staff.entries) {
       next = next.withStaffName(mark, field.text.trim());
     }
     Navigator.of(context).pop(next);
   }
-
-  /// The words a folded section shows beside its title: what it holds.
-  String _summaryOf(Iterable<String> words) =>
-      [for (final word in words) if (word.trim().isNotEmpty) word.trim()]
-          .join(' · ');
 
   @override
   Widget build(BuildContext context) {
@@ -110,7 +112,7 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
             ExportAccordion(
               key: const ValueKey<String>('work-settings-work'),
               title: strings.workSettingsTitle,
-              summary: _summaryOf([_title.text, _episode.text]),
+              summary: foldSummary([_title.text, _episode.text]),
               expansion: (
                 expanded: _workOpen,
                 onToggle: () => setState(() => _workOpen = !_workOpen),
@@ -121,19 +123,17 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
             ExportAccordion(
               key: const ValueKey<String>('work-settings-staff'),
               title: strings.workSettingsStaff,
-              summary: _summaryOf([
+              summary: foldSummary([
                 for (final field in _staff.values) field.text,
               ]),
               expansion: (
                 expanded: _staffOpen,
                 onToggle: () => setState(() => _staffOpen = !_staffOpen),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final process in LayerProcess.values)
-                    _processFold(process, strings),
-                ],
+              child: StaffProcessFolds(
+                fields: _staff,
+                keyPrefix: 'work-settings',
+                onSubmitted: _submit,
               ),
             ),
           ],
@@ -178,55 +178,45 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
           onSubmitted: (_) => _submit(),
         ),
       ),
+      for (final picture in WorkPicture.values) ...[
+        const SizedBox(height: 12),
+        _pictureField(picture, strings),
+      ],
     ],
   );
 
-  /// One process's fold: its worker, then the corrections it references
-  /// ([revisesFor], through [everyLayerMark]).
-  Widget _processFold(LayerProcess process, AppStrings strings) {
-    final marks = [
-      for (final mark in _staff.keys)
-        if (mark.process == process) mark,
-    ];
-    final open = !_foldedProcesses.contains(process);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: ExportAccordion(
-        key: ValueKey<String>('work-settings-process-${process.jsonValue}'),
-        title: strings.layerProcessName(process.jsonValue, process.displayName),
-        summary: _summaryOf([for (final mark in marks) _staff[mark]!.text]),
-        expansion: (
-          expanded: open,
-          onToggle: () => setState(() {
-            if (open) {
-              _foldedProcesses.add(process);
-            } else {
-              _foldedProcesses.remove(process);
-            }
-          }),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final mark in marks) ...[
-              AppWindowField(
-                label: switch (mark.revise) {
-                  null => strings.staffWorker,
-                  final revise => strings.layerReviseName(
-                    revise.jsonValue,
-                    revise.displayName,
-                  ),
-                },
-                child: TextField(
-                  key: ValueKey<String>('work-settings-staff-${mark.keySlug}'),
-                  controller: _staff[mark],
-                  onSubmitted: (_) => _submit(),
-                ),
+  /// A picture of the work: none, or one of the pool's images — named as
+  /// the pool names it.
+  Widget _pictureField(WorkPicture picture, AppStrings strings) {
+    final path = _pictures[picture];
+    return AppWindowField(
+      label: strings.workPictureName(picture),
+      child: PanelFlyoutButton(
+        key: ValueKey<String>('work-settings-picture-${picture.name}'),
+        label: path == null
+            ? strings.commonNone
+            : mediaAssetNameFor(
+                widget.pictures
+                    .where((asset) => asset.path == path)
+                    .firstOrNull,
+                path,
               ),
-              const SizedBox(height: 6),
-            ],
-          ],
-        ),
+        expand: true,
+        entriesBuilder: () => [
+          PanelFlyoutItem(
+            keyValue: 'work-settings-picture-${picture.name}-none',
+            label: strings.commonNone,
+            selected: path == null,
+            onSelected: () => setState(() => _pictures[picture] = null),
+          ),
+          for (final asset in widget.pictures)
+            PanelFlyoutItem(
+              keyValue: 'work-settings-picture-${picture.name}-${asset.path}',
+              label: asset.name,
+              selected: asset.path == path,
+              onSelected: () => setState(() => _pictures[picture] = asset.path),
+            ),
+        ],
       ),
     );
   }

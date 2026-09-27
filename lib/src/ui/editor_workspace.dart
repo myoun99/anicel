@@ -770,10 +770,29 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<double> _storyboardPixelsPerFrame = ValueNotifier(8);
 
   /// The storyboard's V rows share ONE height (user's rule), kept here so
-  /// it survives a tab switch the way the zoom does.
+  /// it survives a tab switch the way the zoom does — as the splitter or a
+  /// saved layout SET it. What the rows are drawn at is
+  /// [_storyboardLaneHeight].
   final ValueNotifier<double> _storyboardTrackLaneHeight = ValueNotifier(
     StoryboardPanel.defaultTrackLaneHeight,
   );
+
+  /// The V rows' ceiling on the screen [context] is on, for the film's
+  /// camera ([StoryboardPanel.maxTrackLaneHeightFor]).
+  double _storyboardLaneCeiling(BuildContext context) =>
+      StoryboardPanel.maxTrackLaneHeightFor(
+        widget.session.camera.cameraFrameSize,
+        MediaQuery.devicePixelRatioOf(context),
+      );
+
+  /// The V rows' height as they are drawn — the set height, held under the
+  /// ceiling: a smaller camera or a denser screen lowers the ceiling, and
+  /// the height set above it comes back when the ceiling does.
+  double _storyboardLaneHeight(BuildContext context) =>
+      StoryboardPanel.clampTrackLaneHeight(
+        _storyboardTrackLaneHeight.value,
+        ceiling: _storyboardLaneCeiling(context),
+      );
 
   /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
   final ValueNotifier<bool> _showSecondsDisplay = ValueNotifier(false);
@@ -1079,16 +1098,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // publisher was missing it. 유저 확정 2026-09-09
     // (`pixel-verbs-mask-options` = 가): 「선택툴로 선택한채로 사용할때 …
     // 선택의 aa 따르게」.
-    session.pixelVerbCanvas = () => (
+    session.cells.pixelVerbCanvas = () => (
       region: widget.canvasSelectionCommands?.region,
       argb: _brushTool.value.color,
       mask: _views._selectionMaskOptions.value,
     );
     // The marquee, as the fifth selection kind — so one 선택 해제 can let go
     // of everything rather than half of it.
-    session.canvasHasSelection = () =>
+    // ⛔Not a cascade: an arrow closure swallows the next `..` section.
+    session.rangeSelections.canvasHasSelection = () =>
         widget.canvasSelectionCommands?.hasRegion ?? false;
-    session.clearCanvasSelection = () =>
+    session.rangeSelections.clearCanvasSelection = () =>
         widget.canvasSelectionCommands?.deselect();
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
@@ -1099,14 +1119,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       resume: (saved) =>
           _brushPresets.resumeChoice(ToolChoice.fromJson(saved)),
     );
-    _storyboardThumbnails = StoryboardCutThumbnailStore(
-      render: (cut, frameIndex, width) =>
-          _renderStoryboardThumbnail(session, cut, frameIndex, width),
-      invalidationHub: session.renderCaches.cacheInvalidationHub,
-      // The census cannot reach a widget State; the session can be reached.
-      onHeldBytesChanged: (bytes) =>
-          session.renderCaches.storyboardThumbnailBytes = bytes,
-    );
+    _storyboardThumbnails = _panelPicturesOf(session);
     session.memoryPressureTicks.addListener(
       _storyboardThumbnails.respondToMemoryPressure,
     );
@@ -1123,13 +1136,30 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     session.addListener(_syncViewersWithProject);
   }
 
+  /// The panel pictures [session]'s storyboard and conte draw — rendered
+  /// through its camera, never past the camera frame's own size.
+  StoryboardCutThumbnailStore _panelPicturesOf(EditorSessionManager session) =>
+      StoryboardCutThumbnailStore(
+        render: (cut, frameIndex, width) =>
+            _renderStoryboardThumbnail(session, cut, frameIndex, width),
+        originalSize: () {
+          final camera = session.camera.cameraFrameSize;
+          return ui.Size(camera.width.toDouble(), camera.height.toDouble());
+        },
+        invalidationHub: session.renderCaches.cacheInvalidationHub,
+        // The census cannot reach a widget State; the session can be
+        // reached.
+        onHeldBytesChanged: (bytes) =>
+            session.renderCaches.storyboardThumbnailBytes = bytes,
+      );
+
   /// Takes off what [_bindSession] hung on [session] — see there.
   void _unbindSession(EditorSessionManager session) {
     session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
     // A project behind the one on screen has no canvas: its marquee is not
     // this window's to report or to clear.
-    session
-      ..pixelVerbCanvas = null
+    session.cells.pixelVerbCanvas = null;
+    session.rangeSelections
       ..canvasHasSelection = null
       ..clearCanvasSelection = null;
     session.memoryPressureTicks.removeListener(

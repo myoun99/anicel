@@ -1,5 +1,6 @@
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/playback_quality.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show anicelObjectMapField;
 
@@ -33,6 +34,7 @@ class ProjectResume {
     this.layerId,
     this.frameIndex = 0,
     this.tools = const {},
+    this.playbackQuality,
   });
 
   static const ProjectResume none = ProjectResume();
@@ -47,11 +49,19 @@ class ProjectResume {
   /// read there.
   final Map<String, Object?> tools;
 
+  /// The resolution playback previewed at — a project setting kept here,
+  /// beside the project and not in it (유저 답 playback-quality-undo-Q1
+  /// 「언두 안 됨 — 보기 설정처럼(저장은 됨)」): picking one is no edit, so
+  /// no undo step takes it back and nothing marks the film unsaved, and the
+  /// file still keeps it. Null when the file says nothing.
+  final PlaybackQuality? playbackQuality;
+
   Map<String, Object?> toJson() => {
     if (cutId != null) 'cutId': cutId!.value,
     if (layerId != null) 'layerId': layerId!.value,
     if (frameIndex > 0) 'frameIndex': frameIndex,
     if (tools.isNotEmpty) 'tools': tools,
+    if (playbackQuality != null) 'playbackQuality': playbackQuality!.name,
   };
 
   /// The resume point [json] holds; any part it does not hold readably is
@@ -67,6 +77,9 @@ class ProjectResume {
           : null,
       frameIndex: frameIndex is int && frameIndex > 0 ? frameIndex : 0,
       tools: anicelObjectMapField(json['tools']),
+      playbackQuality: PlaybackQuality.values
+          .where((quality) => quality.name == json['playbackQuality'])
+          .firstOrNull,
     );
   }
 }

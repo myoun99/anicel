@@ -87,11 +87,49 @@ void main() {
     );
   });
 
+  // 🚨I-22 ③ (09-27): the neighbourhood is ~1,200 frames at 0.16px, and the
+  // walk laid out every one of them to find the few the strip writes at —
+  // the storyboard's heaviest cost on a ten-minute playback tick. The strip
+  // walks its own stride ([TimelineRulerScale.writingStep]); so does this.
+  testWidgets('at the ten-minute floor a tick lays out the frames the strip '
+      'writes at, and no other', (tester) async {
+    final scale = await rulerOf(tester, cell: 0.16, frames: 3000);
+    final step = scale.writingStep;
+    expect(step, greaterThan(1), reason: 'fixture: the strip thins its marks');
+    final visited = <int>[];
+    List<TimelineGlyphPlacement> counting(
+      TimelineRulerScale scale,
+      int frameIndex, {
+      required bool current,
+    }) {
+      if (!current) {
+        visited.add(frameIndex);
+      }
+      return TimelineFrameRulerPainter.glyphsAt(
+        scale,
+        frameIndex,
+        current: current,
+      );
+    }
+
+    timelineRulerPlayheadWriting(
+      scale: scale,
+      frame: 1500,
+      layout: counting,
+    );
+    expect(visited, isNotEmpty, reason: 'premise: the neighbourhood was read');
+    expect(
+      visited.where((frame) => frame % step != 0),
+      isEmpty,
+      reason: 'only the frames the strip itself writes at',
+    );
+  });
+
   testWidgets('what the neighbourhood finds is what the whole window would '
       'find', (tester) async {
     for (final showSeconds in [false, true]) {
       for (final frames in [120, 3000]) {
-        for (final cell in [0.5, 1.0, 2.4, 8.0, 24.0]) {
+        for (final cell in [0.16, 0.5, 1.0, 2.4, 8.0, 24.0]) {
           final scale = await rulerOf(
             tester,
             cell: cell,

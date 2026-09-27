@@ -5,6 +5,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
@@ -88,8 +89,8 @@ void main() {
                 inkController: ink,
               ),
               () => ink.commitStroke(
-                plane: ConteInkPlane.page,
-                key: conteInkPageKey(0),
+                plane: null,
+                key: conteInkRowKey(const CutId('conte-cut'), 'ink-0'),
                 strokeData: oneDab(),
                 historyManager: session.historyManager,
               ),

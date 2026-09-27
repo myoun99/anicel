@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../../models/attached_layer_resolve.dart';
 import '../../models/transform_track.dart';
+import '../../models/cut.dart' show Cut;
 import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
@@ -107,10 +108,11 @@ class OpacityVerbs {
   /// The fade the editing canvas (and the scrub preview) shows at
   /// [frameIndex] (default: the playhead).
   ///
-  /// The animated half is the TRANSITION row's now (an F.O span thins the cut
-  /// toward its end), so this is the track's STATIC opacity times the cut's
+  /// The animated half is the TRANSITION row's now (an O.L thins the cut
+  /// across its span), so this is the track's STATIC opacity times the cut's
   /// own transition ramp. R9 #21 still holds for the static half: it is not an
-  /// fx, so the fx bypass does not touch it.
+  /// fx, so the fx bypass does not touch it. ↩️F-192: a one-sided fade no
+  /// longer thins the cut — it lays its screen ([activeCutEditingVeils]).
   ///
   /// 🚨The RAMP, not [cutOpacityAt]. That one also answers the compositor's
   /// material question — 0 outside the cut's media range — and the playhead
@@ -121,22 +123,53 @@ class OpacityVerbs {
   /// outline. Standing somewhere is not compositing a playlist; the frames
   /// past the end line are ordinary space and only a covering span may thin
   /// them.
-  double activeCutEditingFadeOpacity({int? frameIndex}) {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
-      return 1;
-    }
-    final static = trackStaticOpacityForCut(cut.id);
-    final start = _project.activeCutGlobalStartFrame;
-    return static *
-        cutTransitionRampAt(
+  double activeCutEditingFadeOpacity({int? frameIndex}) =>
+      _activeCutTransitionAnswer(
+        frameIndex: frameIndex,
+        nothing: 1,
+        answer: (cut, start, globalFrame) =>
+            trackStaticOpacityForCut(cut.id) *
+            cutTransitionRampAt(
+              cutStart: start,
+              cutEnd: start + cut.duration,
+              spans: _transitions.activeTrackTransitionSpans,
+              globalFrame: globalFrame,
+            ),
+      );
+
+  /// The screens one-sided transitions lay over the editing canvas at
+  /// [frameIndex] (default: the playhead) — F-192's black and white, the
+  /// same veils the playback and the export paint ([cutTransitionVeilsAt]).
+  List<TransitionVeil> activeCutEditingVeils({int? frameIndex}) =>
+      _activeCutTransitionAnswer(
+        frameIndex: frameIndex,
+        nothing: const [],
+        answer: (cut, start, globalFrame) => cutTransitionVeilsAt(
           cutStart: start,
           cutEnd: start + cut.duration,
           spans: _transitions.activeTrackTransitionSpans,
-          globalFrame:
-              start +
-              (frameIndex ?? _controllers.timelineController.currentFrameIndex),
-        );
+          globalFrame: globalFrame,
+        ),
+      );
+
+  /// Where the active cut stands on its track at [frameIndex] (default: the
+  /// playhead), handed to [answer] — or [nothing] with no cut active. The
+  /// two editing questions above read the same frame the same way.
+  T _activeCutTransitionAnswer<T>({
+    required int? frameIndex,
+    required T nothing,
+    required T Function(Cut cut, int cutStart, int globalFrame) answer,
+  }) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return nothing;
+    }
+    final start = _project.activeCutGlobalStartFrame;
+    return answer(
+      cut,
+      start,
+      start + (frameIndex ?? _controllers.timelineController.currentFrameIndex),
+    );
   }
 
   /// The track's static opacity as everything should READ it — the live

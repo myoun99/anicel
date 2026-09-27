@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -99,6 +100,7 @@ void main() {
   );
 
   String described(MediaAssetUse use) => switch (use) {
+    WorkPictureMediaUse(:final picture) => 'work ${picture.name}',
     RowMediaUse(
       :final cutId,
       :final layerId,
@@ -135,6 +137,21 @@ void main() {
       'row c1/walk-1 = C1 · walk',
       'row c2/walk-2 = C2 · walk again',
     ]);
+  });
+
+  test('🚨the work\'s pictures are uses of the file they are taken from — '
+      'the work\'s first, then its rows', () {
+    final pictured = project.copyWith(
+      timesheetInfo: WorkPicture.cover.withPath(
+        WorkPicture.logo.withPath(project.timesheetInfo, movie),
+        movie,
+      ),
+    );
+
+    expect(
+      [for (final use in mediaAssetUsesOf(pictured, movie)) described(use)],
+      ['work logo', 'work cover', ...usesOf(movie)],
+    );
   });
 
   test('a file used somewhere else has only its own uses, and a file '

@@ -91,6 +91,7 @@ void main() {
       SheetCanvasPanel(
         cacheInvalidationSink: BrushEditCacheInvalidationSink(),
         canvasSize: const CanvasSize(width: 600, height: 800),
+        viewLimit: null,
         viewport: CanvasViewport(),
         onViewportChanged: onViewportChanged,
         // H24 asks what a press inside the panel does, with no ink mounted

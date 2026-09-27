@@ -39,8 +39,9 @@ import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailResolver, StoryboardThumbnailTier;
+    show StoryboardThumbnailResolver;
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import '../helpers/fixed_thumbnails.dart';
 import 'storyboard_cut_block_probe.dart';
@@ -931,7 +932,7 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _, {tier = StoryboardThumbnailTier.strip}) =>
+        thumbnailFor: (cut, _, {required shownHeight}) =>
             cut.id == const CutId('cut-a') ? image : null,
       );
 
@@ -993,7 +994,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         thumbnailFor:
-            (cut, frameIndex, {tier = StoryboardThumbnailTier.strip}) {
+            (cut, frameIndex, {required shownHeight}) {
               asked.add((cut.id, frameIndex));
               return null;
             },
@@ -1073,7 +1074,7 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _, {tier = StoryboardThumbnailTier.strip}) =>
+        thumbnailFor: (cut, _, {required shownHeight}) =>
             cut.id == const CutId('cut-a') ? image : null,
       );
 
@@ -1338,6 +1339,65 @@ void main() {
       // Tracks scrolled under the ruler; the ruler did not move.
       expect(tester.getTopLeft(firstRow).dy, lessThan(firstRowTop));
       expect(tester.getTopLeft(ruler), rulerTopLeft);
+    });
+
+    testWidgets('🚨F-202: under the app\'s scroll behaviour a pull down the '
+        'frames still scrolls the tracks — the tracks and the frames are ONE '
+        'surface, and the frames hold no press against the tracks', (
+      tester,
+    ) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _project([
+          for (var index = 0; index < 10; index += 1)
+            Track(
+              id: TrackId('track-$index'),
+              name: 'V${index + 1}',
+              // The last track runs long, so the frames scroll too; the
+              // rest stay short, so the press lands on an empty lane.
+              cuts: [
+                _cut(
+                  'cut-$index',
+                  name: 'Cut $index',
+                  duration: index == 9 ? 600 : 24,
+                ),
+              ],
+            ),
+        ]),
+        activeCutId: const CutId('cut-0'),
+        onCutSelected: (_) {},
+        scrollBehavior: const AppScrollBehavior(),
+      );
+      final frames = tester
+          .state<ScrollableState>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey<String>(
+                  'storyboard-timeline-horizontal-viewport',
+                ),
+              ),
+              matching: find.byType(Scrollable),
+            ),
+          )
+          .position;
+      expect(
+        frames.maxScrollExtent,
+        greaterThan(0),
+        reason: '⛔fixture premise: the frames scroll too, so they are a '
+            'scroller running across the tracks',
+      );
+      final firstRow = find.byKey(
+        const ValueKey<String>('storyboard-track-row-track-0'),
+      );
+      final firstRowTop = tester.getTopLeft(firstRow).dy;
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('storyboard-vertical-viewport')),
+        const Offset(0, -200),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.getTopLeft(firstRow).dy, lessThan(firstRowTop));
     });
 
     testWidgets('the pinned ruler follows horizontal scrolling with the '
@@ -1917,6 +1977,7 @@ Future<void> _pumpStoryboardPanel(
   double pixelsPerFrame = 8,
   bool showSeconds = false,
   ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
+  ScrollBehavior? scrollBehavior,
 }) async {
   // The rail matches the timeline's — 372 in UI-R5, 434 since the user
   // unified the two widths (2026-08-04), 443 since the OPAC column widened
@@ -1927,6 +1988,7 @@ Future<void> _pumpStoryboardPanel(
 
   await tester.pumpWidget(
     MaterialApp(
+      scrollBehavior: scrollBehavior,
       home: Scaffold(
         body: StoryboardPanel(
           project: project,

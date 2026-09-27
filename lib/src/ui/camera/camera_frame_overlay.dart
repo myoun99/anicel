@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart'
-    show DragStartBehavior, PanGestureRecognizer, PointerDeviceKind;
+    show DragStartBehavior, PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
@@ -13,6 +13,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/layer_pose_paint.dart' show cameraProjectionMatrix;
 import '../repaint_props.dart';
+import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
 
 /// The camera pose's center in viewport (screen) coordinates.
 Offset cameraCenterInViewport({
@@ -534,7 +535,19 @@ class CameraFramePainter extends CustomPainter with RepaintOnProps {
 /// finger that started the drag keeps driving it (committed drags
 /// survive palm rests; the overlay's Listener handles the sub-slop
 /// abort separately).
-class _CameraPanGestureRecognizer extends PanGestureRecognizer {
+///
+/// 🗣️F-194 (유저 2026-09-27, Android): 「카메라 레이어 조작하려고 스타일러스
+/// 펜으로 캔버스에서 실루엣 꼭짓점같은거 이동하려니 조작안됨」. H24: the
+/// canvas under this takes the arena on the FIRST movement, and a stock pan
+/// waits for its slop — 2px for a mouse, so the mouse won, and 36px for a
+/// pen or a finger, so they never did. It takes the arena on the first
+/// movement too, deeper, so it is asked first — the transform box's and
+/// the gizmos' law ([OwningPanGestureRecognizer]).
+///
+/// ⚠️A finger it wins while the one-finger slot does not draw is let go at
+/// the start (`_dragStart`, PEN-13), and nothing is lost by the win: the
+/// canvas's flip and pan read raw pointers, which no arena takes away.
+class _CameraPanGestureRecognizer extends OwningPanGestureRecognizer {
   _CameraPanGestureRecognizer({super.debugOwner});
 
   bool Function(PointerDownEvent event)? extraTouchRejected;

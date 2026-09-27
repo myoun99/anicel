@@ -5,11 +5,15 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
 import '../../models/storyboard_coverage.dart' show storyboardDivisionKeys;
+import '../../models/storyboard_timeline_layout.dart'
+    show buildStoryboardTimelineLayout;
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
+import '../../models/track_id.dart';
 import '../../services/commands/cut_command_input_planner.dart'
     show plannedAddLayerCommand;
 import '../../services/editing/default_layer_helpers.dart'
     show bornRowOfKind, coveringCelFor;
+import '../../services/editing/run_id_mint.dart' show mintCutId;
 import '../../services/command.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/project_repository.dart'
@@ -132,6 +136,76 @@ class AutoFrameForStroke {
   }
 
   final Map<CutId, LayerId> _nextConteRow = <CutId, LayerId>{};
+
+  /// 🚨THE CUT A STROKE PAST THE CONTE'S LAST CELL MAKES, named before it
+  /// exists — [conteCelFor], said of a cut (H44, 유저 09-26: 「자동프레임생성
+  /// 켜져있으면 다음컷이나 다음 열에 그리면 컷 만들도록」).
+  ///
+  /// The cut a new cut is (`CutCommandCoordinator.createCut`), at the end of
+  /// the track the sheet ends on: the track of its last cut, or the first
+  /// track while it has none. The sheet lays it with the cuts it has, and
+  /// where its cell falls is where a stroke makes it ([addConteCut]) — so
+  /// the pen that heard the press already stands on the cut it makes.
+  ///
+  /// Null with no track to put it on.
+  ({TrackId trackId, Cut cut})? nextConteCut() {
+    final landing = _nextConteCutLanding();
+    if (landing == null) {
+      return null;
+    }
+    return (
+      trackId: landing.trackId,
+      cut: _project.cutCommandCoordinator.plannedCut(
+        trackId: landing.trackId,
+        // A new cut takes the active cut's canvas (`CutVerbs.createCut`).
+        canvasSize: _project.activeCutOrNull?.canvasSize,
+        placement: landing.placement,
+        cutId: _nextConteCut ??= mintCutId(),
+      ),
+    );
+  }
+
+  CutId? _nextConteCut;
+
+  /// Makes the cut [nextConteCut] named [cutId] — its own undo step, until
+  /// the stroke that made it folds it in with the stroke's. It becomes the
+  /// active cut, as every new cut does. Nothing when no cut was named so.
+  void addConteCut(CutId cutId) {
+    final landing = _nextConteCutLanding();
+    if (landing == null || cutId != _nextConteCut) {
+      return;
+    }
+    _nextConteCut = null;
+    _project.cutCommandCoordinator.createCut(
+      trackId: landing.trackId,
+      canvasSize: _project.activeCutOrNull?.canvasSize,
+      placement: landing.placement,
+      cutId: cutId,
+    );
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
+  }
+
+  /// Where the conte's next cut goes: after the last cut of the track the
+  /// sheet ends on — the sheet reads the tracks in the storyboard's order.
+  ({
+    TrackId trackId,
+    ({int? index, int leadingGapFrames, int? duration}) placement,
+  })?
+  _nextConteCutLanding() {
+    final project = _project.repository.requireProject();
+    final trackId =
+        buildStoryboardTimelineLayout(project).lastOrNull?.trackId ??
+        project.tracks.firstOrNull?.id;
+    final track = trackId == null ? null : _project.trackById(trackId);
+    if (track == null) {
+      return null;
+    }
+    return (
+      trackId: track.id,
+      placement: (index: track.cuts.length, leadingGapFrames: 0, duration: null),
+    );
+  }
 
   /// Makes the cel [conteCelFor] names on [cut] — its own undo step, until
   /// the stroke that made it folds it in with the stroke's.

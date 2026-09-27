@@ -23,7 +23,8 @@ import 'axis_bar_gesture.dart';
 ///
 /// ⚠️ONE WIDGET for every drag verb that sits on a control: the dock
 /// splitter (which wrote these four lines by hand first), the block edge's
-/// comma grip, the cut end, and the sound's span in the SE audio lane. The
+/// comma grip, the cut end, the sound's span in the SE audio lane, and every
+/// scrollbar's lane (`AppScrollbar`, F-202). The
 /// dense rows' chrome routes its grips by rect instead of mounting widgets,
 /// so it wears the recogniser half directly (`TimelineRowEditChromeLayer`).
 /// ⛔It is deliberately NOT inside `AxisGestureDetector`: the rail's swipe

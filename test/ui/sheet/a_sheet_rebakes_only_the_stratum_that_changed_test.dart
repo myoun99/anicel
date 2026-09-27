@@ -9,6 +9,7 @@ import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -22,6 +23,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
+import 'package:anicel/src/ui/conte/conte_book_page.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -29,8 +32,6 @@ import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet/sheet_strata.dart';
-import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailTier;
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview;
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
@@ -117,7 +118,7 @@ void main() {
                 session: session,
                 thumbnails: (
                   resolve:
-                      (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
+                      (cut, frame, {required shownHeight}) =>
                           null,
                   landed: thumbnails,
                 ),
@@ -128,8 +129,8 @@ void main() {
                 imageRepaint: images,
               ),
               () => ink.commitStroke(
-                plane: ConteInkPlane.page,
-                key: conteInkPageKey(0),
+                plane: null,
+                key: conteInkRowKey(const CutId('39'), 'ink-0'),
                 strokeData: oneDab(),
                 historyManager: session.historyManager,
               ),
@@ -205,7 +206,7 @@ void main() {
       Map<SheetStratum, int> bakes() {
         final byLabel = {
           for (final raster in tester.renderObjectList<RenderStaticRaster>(
-            find.byType(StaticRaster),
+            _rastersOf(sheet.sheet),
           ))
             raster.debugLabel: raster.captureCount,
         };
@@ -276,16 +277,19 @@ void main() {
       brushAllowed.value = true;
       await tester.pumpAndSettle();
       StandDownReason ink() => tester
-          .renderObjectList<RenderStaticRaster>(find.byType(StaticRaster))
+          .renderObjectList<RenderStaticRaster>(_rastersOf(sheet.sheet))
           .singleWhere((raster) => raster.debugLabel == '${sheet.sheet}-ink')
           .standDown;
       expect(ink(), StandDownReason.none, reason: 'fixture: baking');
 
-      // The top window's middle, where the pen lands on it.
+      // The middle of the top window that takes the pen, where it lands.
       final layer = tester.widget<SheetInkLayer>(find.byType(SheetInkLayer));
       final at =
           tester.getTopLeft(find.byType(SheetInkLayer)) +
-          layer.windows.last.screenRect(layer.viewport).center;
+          layer.windows
+              .lastWhere((window) => window.refusal == null)
+              .screenRect(layer.viewport)
+              .center;
       final pen = await tester.startGesture(at, pointer: 7);
       await tester.pump();
       await pen.moveTo(at + const Offset(6, 4));
@@ -315,7 +319,7 @@ void main() {
       );
       expect(
         tester
-            .renderObjectList<RenderStaticRaster>(find.byType(StaticRaster))
+            .renderObjectList<RenderStaticRaster>(_rastersOf(sheet.sheet))
             .singleWhere((raster) => raster.debugLabel == '${sheet.sheet}-content')
             .standDown,
         // The envelope prints no length a drag moves.
@@ -379,6 +383,8 @@ void main() {
   }
 }
 
+/// The block at the cut's start is written on: its band prints, and a live
+/// brush's window over it is what stands the print down.
 Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
   id: LayerId('$cutId-sb'),
   name: 'SB',
@@ -392,6 +398,7 @@ Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
       entry.key: TimelineExposure.drawing(
         FrameId('$cutId-${entry.key}'),
         length: entry.value,
+        memo: entry.key == 0 ? const ExposureMemo(inkId: 'ink-0') : null,
       ),
   },
 );
@@ -419,3 +426,20 @@ Project _project() => Project(
     ),
   ],
 );
+
+/// The rasters of the page the test reads. The conte's is its body's
+/// first page: the book lies one page under another and the view stops
+/// at the paper's end (F-201), so a last page opened fitted shows a
+/// sliver of the page above it — with rasters of its own.
+Finder _rastersOf(String sheet) => sheet == 'conte'
+    ? find.descendant(
+        of: find
+            .byWidgetPredicate(
+              (widget) =>
+                  widget is ConteBookPage &&
+                  widget.page.kind == ContePageKind.body,
+            )
+            .first,
+        matching: find.byType(StaticRaster),
+      )
+    : find.byType(StaticRaster);

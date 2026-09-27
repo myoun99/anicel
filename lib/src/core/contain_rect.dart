@@ -4,10 +4,10 @@ import 'dart:ui';
 /// stamp, not a stretched one.
 ///
 /// ⚠️Aspect ratio is PRESERVED (`BoxFit.contain`) — 정본: 「늘어난 도장은
-/// 도장이 아니다」 (the decision is written out at
-/// `timesheet_info_dialog.dart`'s staff stamp cell); this is the law that
-/// decision names, and the envelope stamp, the conte page picture and the
-/// conte PDF picture all draw through it.
+/// 도장이 아니다」. The staff stamp cell that first wrote the decision out
+/// left the sheet window when the staff became names only (`22596a562`),
+/// so this is where it lives now; the envelope stamp, the conte page
+/// picture and the conte PDF picture all draw through it.
 ///
 /// The result is centred in [slot] on both axes. A slot with no area is
 /// the caller's question, not this one's: it answers with an empty rect at

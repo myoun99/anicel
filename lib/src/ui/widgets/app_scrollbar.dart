@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'app_scrollbar_lane.dart';
-import 'axis_gesture_detector.dart';
+import 'owning_axis_grip.dart';
 
 /// The lane vocabulary lives next door so calculation-only files can name
 /// a width without importing a widget; everyone who has the scrollbar has
@@ -202,6 +202,64 @@ class _AppScrollbarState extends State<AppScrollbar> {
             : _hovered
             ? Colors.white
             : AppColors.hairlineStrong;
+        // 🚨F-202 (유저 2026-09-27): 「안에서 동작하는 스크롤이나 드래그는 절대
+        // 밖으로 안새게」. A thumb's drag is the bar's VERB, so the bar wears
+        // the grip every drag verb on a control wears — the claim, and a
+        // drag that takes the arena on its FIRST movement. ↩️It waited for
+        // the slop, and a pull whose first step went across the bar's axis
+        // (a horizontal panbar inside the vertical strip of panels) gave
+        // the strip the drag instead: the strip scrolled, the thumb did not.
+        final lane = OwningAxisGrip(
+          axis: widget.axis,
+          configure: (recognizer) {
+            recognizer.onStart = (details) =>
+                _dragStart(_axisPosition(details.localPosition), geometry);
+            recognizer.onUpdate = (details) =>
+                _dragUpdate(_axisPosition(details.localPosition), geometry);
+            recognizer.onEnd = (_) => _dragEnd();
+            recognizer.onCancel = _dragEnd;
+          },
+          child: MouseRegion(
+            onEnter: (_) => setState(() => _hovered = true),
+            onExit: (_) => setState(() => _hovered = false),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Positioned.fill(child: SizedBox.expand(key: widget.laneKey)),
+                Positioned(
+                  left: horizontal ? geometry.thumbStart : 0,
+                  right: horizontal ? null : 0,
+                  top: horizontal ? 0 : geometry.thumbStart,
+                  bottom: horizontal ? 0 : null,
+                  width: horizontal ? geometry.thumbExtent : null,
+                  height: horizontal ? null : geometry.thumbExtent,
+                  child: Align(
+                    // The lane's thickness is reach; where in it the
+                    // thumb sits is the seat (㉔).
+                    alignment: switch ((widget.thumbSeat, horizontal)) {
+                      (AppScrollbarThumbSeat.centered, _) => Alignment.center,
+                      (AppScrollbarThumbSeat.endEdge, true) =>
+                        Alignment.bottomCenter,
+                      (AppScrollbarThumbSeat.endEdge, false) =>
+                        Alignment.centerRight,
+                    },
+                    child: AnimatedContainer(
+                      key: widget.thumbKey,
+                      duration: _stateAnimation,
+                      curve: Curves.easeOut,
+                      width: horizontal ? double.infinity : _thickness,
+                      height: horizontal ? _thickness : double.infinity,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(_thickness / 2),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
         return Listener(
           // Outside the recognisers on purpose: a tap and a press on a
           // full-lane thumb both have to light the accent, and neither
@@ -209,63 +267,16 @@ class _AppScrollbarState extends State<AppScrollbar> {
           onPointerDown: (_) => _setPressed(true),
           onPointerUp: (_) => _setPressed(false),
           onPointerCancel: (_) => _setPressed(false),
-          child: AxisGestureDetector(
-            axis: widget.axis,
-            behavior: HitTestBehavior.opaque,
-            onTapDown: widget.lanePress == AppScrollbarLanePress.jumpToPointer
-                ? (details) => _lanePressed(
+          child: widget.lanePress == AppScrollbarLanePress.jumpToPointer
+              ? GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) => _lanePressed(
                     _axisPosition(details.localPosition),
                     geometry,
-                  )
-                : null,
-            onDragStart: (details) =>
-                _dragStart(_axisPosition(details.localPosition), geometry),
-            onDragUpdate: (details) =>
-                _dragUpdate(_axisPosition(details.localPosition), geometry),
-            onDragEnd: (_) => _dragEnd(),
-            onDragCancel: _dragEnd,
-            child: MouseRegion(
-              onEnter: (_) => setState(() => _hovered = true),
-              onExit: (_) => setState(() => _hovered = false),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Positioned.fill(child: SizedBox.expand(key: widget.laneKey)),
-                  Positioned(
-                    left: horizontal ? geometry.thumbStart : 0,
-                    right: horizontal ? null : 0,
-                    top: horizontal ? 0 : geometry.thumbStart,
-                    bottom: horizontal ? 0 : null,
-                    width: horizontal ? geometry.thumbExtent : null,
-                    height: horizontal ? null : geometry.thumbExtent,
-                    child: Align(
-                      // The lane's thickness is reach; where in it the
-                      // thumb sits is the seat (㉔).
-                      alignment: switch ((widget.thumbSeat, horizontal)) {
-                        (AppScrollbarThumbSeat.centered, _) =>
-                          Alignment.center,
-                        (AppScrollbarThumbSeat.endEdge, true) =>
-                          Alignment.bottomCenter,
-                        (AppScrollbarThumbSeat.endEdge, false) =>
-                          Alignment.centerRight,
-                      },
-                      child: AnimatedContainer(
-                        key: widget.thumbKey,
-                        duration: _stateAnimation,
-                        curve: Curves.easeOut,
-                        width: horizontal ? double.infinity : _thickness,
-                        height: horizontal ? _thickness : double.infinity,
-                        decoration: BoxDecoration(
-                          color: color,
-                          borderRadius: BorderRadius.circular(_thickness / 2),
-                        ),
-                      ),
-                    ),
                   ),
-                ],
-              ),
-            ),
-          ),
+                  child: lane,
+                )
+              : lane,
         );
       },
     );

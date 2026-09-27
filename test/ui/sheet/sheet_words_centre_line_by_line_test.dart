@@ -147,7 +147,7 @@ void main() {
     final recorder = ui.PictureRecorder();
     SheetCanvasPrinter(
       style: _plainFace,
-      images: SheetMarkImages(pictureFor: (cutId, frame) => picture),
+      images: SheetMarkImages(pictureFor: (cutId, frame, _) => picture),
     ).paint(
       ui.Canvas(recorder),
       const Size(100, 40),
@@ -169,6 +169,7 @@ void main() {
           cutId: 'c',
           pictureFrame: 0,
           slot: Rect.fromLTWH(70, 0, 30, 30),
+          frame: Rect.fromLTWH(70, 0, 30, 30),
           cornerRadius: 6,
         ),
       ],

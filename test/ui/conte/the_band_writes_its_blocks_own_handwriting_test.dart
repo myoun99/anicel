@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -104,7 +105,10 @@ void main() {
             builder: (context, _) => ConteTabHost(
               session: session,
               thumbnails: null,
-              viewport: seedFromRender(tester, CanvasViewport()),
+              viewport: seedFromRender(
+                tester,
+                onConteBody(session, CanvasViewport()),
+              ),
               inkController: ink,
               brushToolState: brush,
               brushAllowed: true,
@@ -114,9 +118,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    return tester.getTopLeft(
-      find.byKey(const ValueKey<String>('conte-form-paint')),
-    );
+    return conteBodyTopLeft(tester);
   }
 
   /// A spot of [cell]'s band in its TIME column — the band's, and no
@@ -136,7 +138,7 @@ void main() {
   /// Whether the band of the block opening at [start] shows handwriting —
   /// under its own id, or the name the pen would write it under.
   bool bandInked(int start) => ink.hasInkFor(
-    ConteInkPlane.row,
+    null,
     conteInkRowKey(
       cutId,
       switch (memoAt(start)?.inkId) {
@@ -177,7 +179,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(memoAt(0)?.inkId ?? '', isEmpty);
     expect(
-      ink.hasInkFor(ConteInkPlane.row, conteInkRowKey(cutId, inkId)),
+      ink.hasInkFor(null, conteInkRowKey(cutId, inkId)),
       isFalse,
     );
 

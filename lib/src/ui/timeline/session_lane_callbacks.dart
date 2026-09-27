@@ -1,11 +1,6 @@
 import '../editor_session_manager.dart';
 import 'property_lane_model.dart' show PropertyLaneEditCallbacks;
-import 'se_audio_lane.dart'
-    show
-        TimelineAudioLaneCallbacks,
-        laneIsSeAudio,
-        parseAudioOffsetInput,
-        seAudioSpanForLaneValue;
+import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 
 /// A rail's lane edits wired to [session] — the one wiring behind the
 /// timeline's lanes and the storyboard's S rows (F-101). [frameIsGlobal] is
@@ -25,27 +20,18 @@ PropertyLaneEditCallbacks sessionLaneEditCallbacks(
         frameIsGlobal: frameIsGlobal,
         description: '${lane.label} keyframe at frame ${frameIndex + 1}',
       ),
-  onSetValue: (layer, lane, frameIndex, input) {
-    // The SE audio lane's value field edits the playhead span's offset
-    // trim instead of a transform property (one undo via the session).
-    if (laneIsSeAudio(lane)) {
-      final offset = parseAudioOffsetInput(input);
-      final span = seAudioSpanForLaneValue(layer, frameIndex);
-      if (offset == null || span == null) {
-        return;
-      }
-      session.audioClips.setAudioClipOffset(layer.id, span.clipIndex, offset);
-      return;
-    }
-    session.laneVerbs.setLaneValueAt(
-      layer.id,
-      lane.laneId,
-      frameIndex,
-      input,
-      frameIsGlobal: frameIsGlobal,
-      description: 'Set ${lane.label} at frame ${frameIndex + 1}',
-    );
-  },
+  // The SE audio lane has no value field any more — a block's offset is
+  // edited in its own edit window (유저 2026-09-27) — so every value that
+  // arrives here is a property's.
+  onSetValue: (layer, lane, frameIndex, input) =>
+      session.laneVerbs.setLaneValueAt(
+        layer.id,
+        lane.laneId,
+        frameIndex,
+        input,
+        frameIsGlobal: frameIsGlobal,
+        description: 'Set ${lane.label} at frame ${frameIndex + 1}',
+      ),
 );
 
 /// The sound edits an SE row's audio band takes, wired to [session] — the

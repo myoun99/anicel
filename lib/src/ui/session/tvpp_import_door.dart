@@ -38,6 +38,8 @@ import '../../services/import/tvp_import_planner.dart';
 import '../../services/import/tvpp_raster_decoder.dart';
 import '../../services/persistence/folder_grant.dart'
     show FileArrival, FolderPicker;
+import '../../services/persistence/provider_documents.dart'
+    show ProviderDocuments;
 import 'import_landing.dart' show ImportLanding;
 import 'media_pool.dart';
 import 'project_file.dart';
@@ -451,11 +453,11 @@ Project _projectOf(
           height: parsed.projectCameraHeight!,
         )
       : defaultProjectCameraSize;
-  final name = tvppPath
-      .replaceAll('\\', '/')
-      .split('/')
-      .last
-      .replaceAll(RegExp(r'\.tvpp$', caseSensitive: false), '');
+  // By the provider's name for a document (PICK-7): its URI's last
+  // segment is an id.
+  final name = ProviderDocuments.nameOf(
+    tvppPath,
+  ).replaceAll(RegExp(r'\.tvpp$', caseSensitive: false), '');
   // The planner still emits each clip's sound as a per-cut SE row (the
   // shape TVPaint stores); SE rows LIVE on the track's global axis now, so
   // the same lift the legacy-file migration uses promotes them — one law

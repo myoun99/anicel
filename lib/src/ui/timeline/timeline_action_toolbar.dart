@@ -513,7 +513,8 @@ class TimelineActionToolbar extends StatelessWidget {
   // (유저 확정, 2026-08-10). They print project values and nothing about the
   // playhead, they are touched about once per project, and they were sitting
   // in the middle of the frame verbs — so they are entries of the settings
-  // pill now ([ProjectSettingsPill]), which rides the 문턱 with the transport.
+  // pill then, and are the project settings of the top strip's ⚙ now
+  // ([ProjectSettingsMenu]).
 
   List<PanelFlyoutEntry> _frameEntries() {
     return [
@@ -1092,12 +1093,17 @@ class TimelineActionToolbar extends StatelessWidget {
                 // ⛔NOT `accent:` — that flag is [AppColors.addGlyph] and
                 // 유저 확정 reserved it for the ＋ glyph 「＋가 있는 모든
                 // 곳에」. This is an ON state, which the app already says in
-                // colour alone (`project_settings_pill`: current ? accent :
+                // colour alone (`project_settings_menu`: current ? accent :
                 // text) — and colour alone is the standing rule for
                 // selection.
                 color: input.autoCreateFrameOnDraw ? AppColors.accent : null,
-                onPressed: () => AppInput.settings.value = input.copyWith(
-                  autoCreateFrameOnDraw: !input.autoCreateFrameOnDraw,
+                // F-191: through the setting's own door, which writes it
+                // down. ↩️It set the live notifier alone, so the toggle came
+                // back off (or on) with every restart.
+                onPressed: () => session.setInputSettings(
+                  input.copyWith(
+                    autoCreateFrameOnDraw: !input.autoCreateFrameOnDraw,
+                  ),
                 ),
               ),
             ),

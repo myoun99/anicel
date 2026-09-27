@@ -1954,11 +1954,11 @@ void _penSpeedGroup() {
       expect(results, hasLength(1));
       // Half speed, identity curve, base 8.
       expect(results.single.last.size, closeTo(4.0, 1e-6));
-      // The opening dab has no move behind it, so the curve scales it to
-      // zero — and the tip-stamp cache's own floor (0.25, `size.clamp`) is
-      // what it lands on. ⚠️Not this round's rule: a speed brush simply
-      // starts each stroke at the smallest mark the cache can resolve.
-      expect(results.single.first.size, closeTo(0.25, 1e-6));
+      // 🗣️The press has no move behind it, and it waits for the first one:
+      // it is drawn at that move's speed (유저 2026-09-27,
+      // `opening-dab-speed-Q1`: 「첫 이동의 속도로 — 필압과 같은 법」). It
+      // used to stand still, and landed on the tip-stamp cache's 0.25 floor.
+      expect(results.single.first.size, closeTo(4.0, 1e-6));
     });
   });
 }

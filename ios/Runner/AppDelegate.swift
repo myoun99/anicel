@@ -748,4 +748,55 @@ class AnicelViewController: FlutterViewController {
   override var prefersStatusBarHidden: Bool {
     return true
   }
+
+  // MARK: The pen ledger (H43)
+  //
+  // UIKit states, for every Apple Pencil sample, whether its force is still
+  // an ESTIMATE (the Pencil's Bluetooth report has not landed), and later
+  // sends the measured force through touchesEstimatedPropertiesUpdated.
+  // Flutter's engine keeps neither: it reads `touch.force` once and never
+  // hears the update, so the first samples of every stroke were painted
+  // with UIKit's stand-in — the heavy start the user reported (H43,
+  // 2026-09-26). Each call below hands the touches to qa_native's
+  // QaPenLedger BEFORE super, so the ledger holds the sample by the time
+  // Flutter's pointer event reaches the brush, which asks it through FFI.
+  //
+  // Looked up by name, not linked by symbol: without the plugin the calls
+  // do nothing and touches flow exactly as before.
+  //
+  // UNVERIFIED-ON-DEVICE like the rest of this file: the input inspector's
+  // `ledger` line says whether the brush heard it.
+
+  private static let penLedger: AnyObject? =
+    NSClassFromString("QaPenLedger").map { $0 as AnyObject }
+
+  private static func noteToPenLedger(_ touches: Set<UITouch>) {
+    _ = penLedger?.perform(NSSelectorFromString("noteTouches:"), with: touches)
+  }
+
+  override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+    Self.noteToPenLedger(touches)
+    super.touchesBegan(touches, with: event)
+  }
+
+  override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+    Self.noteToPenLedger(touches)
+    super.touchesMoved(touches, with: event)
+  }
+
+  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+    Self.noteToPenLedger(touches)
+    super.touchesEnded(touches, with: event)
+  }
+
+  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+    Self.noteToPenLedger(touches)
+    super.touchesCancelled(touches, with: event)
+  }
+
+  override func touchesEstimatedPropertiesUpdated(_ touches: Set<UITouch>) {
+    _ = Self.penLedger?.perform(
+      NSSelectorFromString("updateTouches:"), with: touches)
+    super.touchesEstimatedPropertiesUpdated(touches)
+  }
 }

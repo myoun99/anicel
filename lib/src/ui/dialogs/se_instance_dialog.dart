@@ -1,14 +1,26 @@
 import 'package:flutter/material.dart';
 
+import '../../models/project_frame_rate.dart';
+import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
+import 'se_offset_strip.dart';
 import '../input/control_press_claim.dart';
 
 /// A sound the edited SE instance carries: what to show, and the opaque
-/// token the host uses to find it again (R5 #19).
-typedef SeInstanceAudioLink = ({String label, int token});
+/// token the host uses to find it again (R5 #19) — and, for its start
+/// offset (09-27), where in the file it starts, the block it plays in, and
+/// its waveform ([SeOffsetStrip]).
+typedef SeInstanceAudioLink = ({
+  String label,
+  int token,
+  int offsetFrames,
+  int blockFrames,
+  ProjectFrameRate frameRate,
+  AudioPeaks? peaks,
+});
 
 /// What the SE instance dialog resolved to: the (possibly empty) speaker
 /// name, the dialogue text, and the sounds the user took off.
@@ -17,6 +29,7 @@ class SeInstanceDialogResult {
     required this.seName,
     required this.dialogue,
     this.unlinkedAudioTokens = const {},
+    this.audioOffsets = const {},
   });
 
   final String seName;
@@ -26,6 +39,10 @@ class SeInstanceDialogResult {
   /// sitting. Empty on every dialog that never showed one — unlinking is a
   /// decision made HERE and applied on OK, so Cancel keeps the sound.
   final Set<int> unlinkedAudioTokens;
+
+  /// The start offsets moved in this sitting, by token — only the sounds
+  /// that stay linked. Applied on OK like everything else here.
+  final Map<int, int> audioOffsets;
 }
 
 /// The SE layer's instance editor — name (speaker/effect, accent box) +
@@ -90,12 +107,19 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
   /// Tokens struck through in this sitting, applied on OK.
   final Set<int> _unlinked = <int>{};
 
+  /// Start offsets moved in this sitting, by token, applied on OK.
+  final Map<int, int> _offsets = <int, int>{};
+
   void _submit() {
     Navigator.of(context).pop(
       SeInstanceDialogResult(
         seName: _seNameController.text.trim(),
         dialogue: _dialogueController.text.trim(),
         unlinkedAudioTokens: Set.unmodifiable(_unlinked),
+        audioOffsets: Map.unmodifiable({
+          for (final MapEntry(key: token, value: offset) in _offsets.entries)
+            if (!_unlinked.contains(token)) token: offset,
+        }),
       ),
     );
   }
@@ -120,7 +144,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final link in remaining)
+                for (final link in remaining) ...[
                   Row(
                     children: [
                       const Icon(Icons.graphic_eq, size: 16),
@@ -143,6 +167,18 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
                       )),
                     ],
                   ),
+                  // Its start offset — the block's own (유저 2026-09-27).
+                  SeOffsetStrip(
+                    key: ValueKey<String>('se-offset-strip-${link.token}'),
+                    offsetFrames: _offsets[link.token] ?? link.offsetFrames,
+                    blockFrames: link.blockFrames,
+                    frameRate: link.frameRate,
+                    peaks: link.peaks,
+                    onChanged: (offset) =>
+                        setState(() => _offsets[link.token] = offset),
+                  ),
+                  const SizedBox(height: 6),
+                ],
               ],
             ),
     );

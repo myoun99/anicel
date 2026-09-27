@@ -51,6 +51,7 @@ import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_layer_controls_header.dart';
 import '../input/pen_friendly_scroll_controller.dart';
+import '../input/scroller_press_hold.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_ruler_cut_end_boundary.dart';
@@ -337,6 +338,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       initialScrollOffset: _frameAxisOffset.value,
     );
     _layerScrollController = PenFriendlyScrollController();
+    // The layers and the frames are the sheet: one surface scrolled two
+    // ways (F-202).
+    scrollTogether(_layerScrollController, _frameScrollController);
     _frameScrollController.addListener(_frameAxis.handleScroll);
     _frameWindowBucket.addListener(_frameScroll.handleFrameWindowBucket);
     widget.hooks.revealSelectionTick?.addListener(_reveal.handleRevealSelection);

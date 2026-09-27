@@ -92,6 +92,23 @@ void main() {
     return s;
   }
 
+  test('standing on the V row in the gap, the cursor holds no cut', () {
+    // The track row's cut under the cursor is the ACTIVE cut only while the
+    // playhead stands inside it. A live scrub that leaves the cut parks in
+    // the gap at [8,12) and keeps cut-1 active for the whole drag (the
+    // release lands the one seek) — and there is no cut under the cursor.
+    final s = session();
+    s.selectRow(const TrackRowAddress(trackId));
+    s.selectGlobalFrame(3);
+    s.frameScrub.scrubGlobalFrame(10);
+    expect(
+      [s.editingPlayheadInGap, s.activeCutOrNull?.id],
+      [true, const CutId('cut-1')],
+      reason: '⛔fixture premise: parked in the gap, cut-1 still active',
+    );
+    expect(s.storyboardCursor.canDeleteBlockAtStoryboardCursor, isFalse);
+  });
+
   test('the fixture: standing inside the sound, the cursor holds a block', () {
     final s = standingOnSeAt(3);
     expect(s.trackSeGlobalLayerById(seLayerId)!.timeline.keys, [2]);

@@ -36,6 +36,7 @@ class _InteractiveCanvasBuild {
   late final LayerPoseSample? _interactivePose;
   late final CanvasSize _canvasSize;
   late final double _cutFadeOpacity;
+  late final List<TransitionVeil> _cutVeils;
   late final bool _showFadeWash;
   late final Cut? _activeCutForTags;
   late final List<ResolvedSeNameTag> _seNameTags;
@@ -120,7 +121,11 @@ class _InteractiveCanvasBuild {
     // faded frames are worked with fx off). It is the track's static opacity
     // times the TRANSITION row's ramp now.
     _cutFadeOpacity = session.opacityVerbs.activeCutEditingFadeOpacity();
-    _showFadeWash = !_isPlaybackActive && _cutFadeOpacity < 1;
+    // F-192: and the screens one-sided transitions lay over it — the same
+    // veils the playback and the export paint.
+    _cutVeils = session.opacityVerbs.activeCutEditingVeils();
+    _showFadeWash =
+        !_isPlaybackActive && (_cutFadeOpacity < 1 || _cutVeils.isNotEmpty);
     // The SE rows' on-canvas name tags (R5b, §6-z15) — the editing
     // canvas's copy of what playback and export draw. Playback renders its
     // own (through the frame painter), so this stands down there exactly
@@ -384,7 +389,8 @@ class _InteractiveCanvasBuild {
       // `onCoordinatorChanged` above uses.
       onStrokeLanderChanged: (lander) =>
           session.liveStrokeLanding.lander = lander,
-      // R15-⑤: _selection drags block seeks/cut switches entirely.
+      // A selection drag holds the prerender's warming. ↩️F-196: it also
+      // blocked seeks and cut switches (R15-⑤) — only a stroke does now.
       onSelectionInteractionChanged: (active) => active
           ? session.beginSelectionInteraction()
           : session.endSelectionInteraction(),
@@ -398,9 +404,11 @@ class _InteractiveCanvasBuild {
       // nothing, so neither wants a block made underneath — and
       // neither earns a 「no frame here」 notice either.
       //
-      // Then make the block if the toggle and the row allow it —
-      // every one of those gates already lives inside
-      // `beginAutoFrameForStroke`, so nothing re-asks them — and
+      // Then make the block if the row, the toggle and the layer
+      // allow it — the row in `_strokeNeedsCel` (H19's question is
+      // the shell's; ↩️F-196: it was missing, and a lane's press made
+      // a block), the rest inside `beginAutoFrameForStroke`, so
+      // nothing re-asks them — and
       // otherwise say WHY at the cursor, which only the shell can
       // answer because the refusal is a SECTION question.
       onPressNeedsCel: () {
@@ -662,6 +670,7 @@ class _InteractiveCanvasBuild {
             _canvasSize,
             frame.session,
             _cutFadeOpacity,
+            _cutVeils,
             context,
           ),
         if (_cameraOverlayVisible)

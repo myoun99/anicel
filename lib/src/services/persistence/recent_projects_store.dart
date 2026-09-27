@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'app_support_path.dart';
+import 'provider_documents.dart';
 import 'recent_projects.dart';
 
 /// PICK-4: the recent-projects list on disk.
@@ -58,12 +59,30 @@ class RecentProjectsStore {
 /// is already at the front returns the same object, so a save-heavy session
 /// does not rewrite this file on every Ctrl+S.
 void recordRecentProject(RecentProject project, {RecentProjectsStore? store}) {
-  final next = AppRecent.projects.value.withOpened(project);
+  final next = AppRecent.projects.value.withOpened(_asRecorded(project));
   if (identical(next, AppRecent.projects.value)) {
     return;
   }
   AppRecent.projects.value = next;
   (store ?? RecentProjectsStore()).save(next);
+}
+
+/// [project] as the row the NEXT launch can open (PICK-7): a working copy
+/// goes when its run does, so a project worked on in one is recorded as the
+/// document behind it — by its URI, under the provider's name for it.
+/// Everything else is recorded as it is.
+RecentProject _asRecorded(RecentProject project) {
+  final document =
+      ProviderDocuments.documentBehind(project.path) ??
+      ProviderDocuments.known(project.path);
+  if (document == null) {
+    return project;
+  }
+  return RecentProject(
+    path: document.uri,
+    needsReconnect: project.needsReconnect,
+    displayName: document.name,
+  );
 }
 
 /// Persists a mutation produced by one of [RecentProjects]' `with…` methods.

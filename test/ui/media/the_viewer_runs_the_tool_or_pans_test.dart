@@ -64,9 +64,15 @@ void main() {
     session.dispose();
   });
 
-  Future<void> pumpViewer(WidgetTester tester) async {
+  /// A view zoomed in past the page — one a pan can move: the view stops
+  /// at the paper (F-201), so a page smaller than the viewer stands still
+  /// in its middle whatever the hand does.
+  final pannable = CanvasViewport(zoom: 3, panX: -600, panY: -600);
+
+  Future<void> pumpViewer(WidgetTester tester, {CanvasViewport? view}) async {
     slot.framedFor.value = path;
-    slot.viewport.value = CanvasViewport(zoom: 0.34, panX: 40, panY: 40);
+    slot.viewport.value =
+        view ?? CanvasViewport(zoom: 0.34, panX: 40, panY: 40);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -146,7 +152,7 @@ void main() {
       tester,
     ) async {
       tool.value = BrushToolState.defaults.copyWith(tool: other);
-      await pumpViewer(tester);
+      await pumpViewer(tester, view: pannable);
       final before = slot.viewport.value!;
 
       await mouseDrag(tester);

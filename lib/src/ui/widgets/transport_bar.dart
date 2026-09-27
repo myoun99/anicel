@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'app_icon_button.dart';
+import 'owning_axis_grip.dart';
 import 'drag_value_label.dart';
 import '../text/app_strings.dart' show AppText;
 import '../repaint_props.dart';
@@ -293,6 +294,12 @@ class _TransportTrackState extends State<TransportTrack> {
   _Grab _grab = _Grab.seek;
   double _width = 0;
 
+  /// The frame this press last reported. A press that never moves is
+  /// still a drag the arena starts on the release (it is alone there), and
+  /// that start lands where the press already did — reported once, the way
+  /// the raw [Listener] this track used to be reported a tap (F-200).
+  int? _reported;
+
   int get _lastFrame => widget.frameCount <= 1 ? 0 : widget.frameCount - 1;
 
   double _xFor(int frame) =>
@@ -307,6 +314,7 @@ class _TransportTrackState extends State<TransportTrack> {
   }
 
   void _begin(Offset local) {
+    _reported = null;
     if (!widget.showRange) {
       _grab = _Grab.seek;
       _apply(local);
@@ -328,6 +336,10 @@ class _TransportTrackState extends State<TransportTrack> {
 
   void _apply(Offset local) {
     final frame = _frameFor(local.dx);
+    if (frame == _reported) {
+      return;
+    }
+    _reported = frame;
     switch (_grab) {
       case _Grab.seek:
         widget.onSeek(frame);
@@ -349,15 +361,24 @@ class _TransportTrackState extends State<TransportTrack> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _width = constraints.maxWidth;
-        // A Listener, not a GestureDetector: a scrub track has to move on
-        // the press itself. A drag recognizer would hold the first ~18px
-        // of every scrub waiting to see whether this is a drag, and the
-        // handle you grabbed would sit still while your finger left it.
-        return Listener(
+        // A scrub track has to move on the press itself. A stock drag
+        // recognizer would hold the first ~18px of every scrub waiting to
+        // see whether this is a drag, and the handle you grabbed would sit
+        // still while your finger left it — so the press seeks from `onDown`
+        // and the drag takes the arena on its first movement.
+        //
+        // F-200: and a press on the track is the track's — the grip every
+        // drag verb on a control wears (the claim, and that owning drag), so
+        // no scroller around it gets there first. ↩️It was a raw
+        // [Listener], which takes no part in the arena and so held nothing.
+        return OwningAxisGrip(
           key: const ValueKey<String>('transport-track'),
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (event) => _begin(event.localPosition),
-          onPointerMove: (event) => _apply(event.localPosition),
+          axis: Axis.horizontal,
+          configure: (recognizer) {
+            recognizer.onDown = (details) => _begin(details.localPosition);
+            recognizer.onStart = (details) => _apply(details.localPosition);
+            recognizer.onUpdate = (details) => _apply(details.localPosition);
+          },
           child: CustomPaint(
             size: Size(constraints.maxWidth, widget.height),
             painter: _TrackPainter(

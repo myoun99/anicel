@@ -8,6 +8,7 @@ import '../../models/standing_place.dart';
 import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
+import '../../models/track.dart' show Track;
 import '../../models/track_transform_lane_carrier.dart'
     show trackIdOfTransformLaneCarrier;
 import '../../models/working_panel.dart';
@@ -59,6 +60,7 @@ class Standing {
     required RangeSelections rangeSelections,
     required RailView railView,
     required bool Function(LayerId layerId) fxEnabledOf,
+    required bool Function(LayerId? layerId) activeCutHasLayer,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -71,7 +73,8 @@ class Standing {
        _trackSe = trackSe,
        _rangeSelections = rangeSelections,
        _railView = railView,
-       _fxEnabledOf = fxEnabledOf;
+       _fxEnabledOf = fxEnabledOf,
+       _activeCutHasLayer = activeCutHasLayer;
 
   final RangeSelections _rangeSelections;
 
@@ -79,6 +82,10 @@ class Standing {
   /// the standing law's two inputs besides the stack ([keepStandingShown]).
   final RailView _railView;
   final bool Function(LayerId layerId) _fxEnabledOf;
+
+  /// Whether the active cut SHOWS a row (`ActiveCutSpan.activeCutHasLayer`),
+  /// asked through the session for the construction cycle that note names.
+  final bool Function(LayerId? layerId) _activeCutHasLayer;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -707,20 +714,40 @@ class Standing {
   /// ([layerACutStandSeats]). A row the cut does not show — a gap has no
   /// cut, a V lane's carrier is no layer — seats nothing.
   ///
-  /// ⚠️A flip, a ruler seek and playback cross cuts the way they always have
-  /// — whether they follow too is the user's to say
-  /// (storyboard-flip-crosses-cut).
+  /// A flip, a ruler seek and playback that cross a cut give the same answer
+  /// ([layerACutSwitchSeats]).
   void _seatTimelineOnStoryboardStand({required LayerId? before}) {
-    final seat = switch (storyboardStandingRow) {
-      LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
-          when _internals.activeCutHasLayer(layerId) =>
-        layerId,
-      TrackRowAddress() => layerACutStandSeats(before: before),
-      _ => null,
-    };
+    final seat = _layerTheStoryboardStandSeats(before: before);
     if (seat != null) {
       _seatLayer(seat);
     }
+  }
+
+  LayerId? _layerTheStoryboardStandSeats({required LayerId? before}) =>
+      switch (storyboardStandingRow) {
+        LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
+            when _activeCutHasLayer(layerId) =>
+          layerId,
+        TrackRowAddress() => layerACutStandSeats(before: before),
+        _ => null,
+      };
+
+  /// 🚨The layer a CUT SWITCH lands the timeline on — every door that
+  /// switches the cut asks this: [selectCut] (a flip, a ruler seek, a
+  /// scrub's landing) and playback's follow.
+  ///
+  /// 🗣️유저 (storyboard-flip-crosses-cut, 2026-09-27 답): 「따라간다 — 컷을
+  /// 넘는 이동도 누를 때와 같은 답」. Working in the storyboard, a cut
+  /// crossed is stood on the way a press stands on it (F-187,
+  /// [_layerTheStoryboardStandSeats]). Anywhere else — or when that has no
+  /// answer — the cut comes back on the row it was left on.
+  ///
+  /// ⚠️Asked AFTER the new cut is active: both halves ask what it shows.
+  LayerId? layerACutSwitchSeats(CutId cutId, {required LayerId? before}) {
+    final storyboard = _working.value == WorkingPanel.storyboard
+        ? _layerTheStoryboardStandSeats(before: before)
+        : null;
+    return storyboard ?? _lastLayerByCut[cutId];
   }
 
   /// The layer standing on the active CUT seats (F-187): its conte row when
@@ -737,7 +764,7 @@ class Standing {
     if (conte != null) {
       return conte.id;
     }
-    return _internals.activeCutHasLayer(before) ? before : null;
+    return _activeCutHasLayer(before) ? before : null;
   }
 
   /// Selects a row of the storyboard's rail by ADDRESS — the rail taps and
@@ -748,7 +775,7 @@ class Standing {
   void selectRow(TimelineRowAddress row) {
     switch (row) {
       case LayerRowAddress(:final layerId):
-        if (_internals.editingInteractionBusy) {
+        if (_internals.strokeInFlight) {
           return;
         }
         // The row lives on a track, so picking it picks that track too —
@@ -817,8 +844,8 @@ class Standing {
 
   /// Records the layer a cut is being LEFT on — one funnel instead of a
   /// hook on every path that can move the active layer. Stale ids need no
-  /// cleanup: [_internals.activeCutHasLayer] already drops a layer the cut no longer
-  /// has, and the rebuild falls back to the top row.
+  /// cleanup: `ActiveCutSpan.activeCutHasLayer` already drops a layer the cut
+  /// no longer has, and the rebuild falls back to the top row.
   ///
   /// SE rows are recorded like any other: what the timeline shows for them
   /// is a cut-local PROJECTION of the track layer, so "the row this cut was
@@ -836,12 +863,12 @@ class Standing {
     if (cutId == _timeline.editingSession.activeCutId) {
       return;
     }
-    // R15-⑤: never switch cuts under a live editing interaction.
-    if (_internals.editingInteractionBusy) {
+    // R15-⑤: never switch cuts under a live stroke.
+    if (_internals.strokeInFlight) {
       return;
     }
+    final before = _selection.activeLayerId;
     rememberActiveLayerForCut();
-    final nextActiveLayerId = _lastLayerByCut[cutId];
 
     final fromGap =
         _selection.gapGlobalFrame != null ||
@@ -859,9 +886,13 @@ class Standing {
           _timeline.editingSession.selectedTrackId,
     );
     _selection.clearFrameRangeSelection();
-    // The cut comes back on the row it was left on; never visited (or the
-    // layer is gone — the rebuild's own guard) falls back to the top row.
-    _controllers.rebuild(preferredActiveLayerId: nextActiveLayerId);
+    // The cut comes back on the row it was left on — or, working in the
+    // storyboard, where a press would stand ([layerACutSwitchSeats]); never
+    // visited (or the layer is gone — the rebuild's own guard) falls back
+    // to the top row.
+    _controllers.rebuild(
+      preferredActiveLayerId: layerACutSwitchSeats(cutId, before: before),
+    );
     // F-169: the row is the program's pick, not yours — and the rail's view
     // may have changed since you left it.
     keepStandingShown(filterSparesStanding: false);
@@ -1050,6 +1081,7 @@ class Standing {
     bool reveal = false,
     bool filterSparesStanding = true,
   }) {
+    _keepStoryboardStandingShown();
     final activeId = _selection.activeLayerId;
     final stack = _project.layers;
     final activeIndex = stack.indexWhere((layer) => layer.id == activeId);
@@ -1089,6 +1121,50 @@ class Standing {
       _seatLayer(standIn.id);
       _rangeSelections.revealSelection();
     }
+  }
+
+  /// 🗣️F-199 (유저 2026-09-27): 「콘티패널도 타임라인이랑 동일하게 se나
+  /// 카메라섹션 접을수있게 로직통일」. The storyboard's rail leaves a hidden
+  /// section out by the set the timeline's grids read, so a storyboard
+  /// standing on one of its rows goes where the fold law sends a row that
+  /// vanished — its track's V row ([handOffOnFold]). F-169's hand-off, said
+  /// of the other rail.
+  void _keepStoryboardStandingShown() {
+    final hidden = _railView.hiddenSections.value;
+    if (hidden.isEmpty) {
+      return;
+    }
+    Track? hiddenRowTrack(TimelineRowAddress address) {
+      final layerId = switch (address) {
+        LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId) =>
+          layerId,
+        TrackRowAddress() => null,
+      };
+      final track = layerId == null
+          ? null
+          : _trackSe.trackOwnedRailOwner(layerId);
+      if (track == null) {
+        return null;
+      }
+      final layer = [
+        track.transitionLayer,
+        ...track.seLayers,
+      ].where((candidate) => candidate.id == layerId).firstOrNull;
+      return layer != null &&
+              hidden.contains(timelineSectionForLayerKind(layer.kind))
+          ? track
+          : null;
+    }
+
+    final track = hiddenRowTrack(storyboardStandingRow);
+    if (track == null) {
+      return;
+    }
+    handOffOnFold(
+      swallower: TrackRowAddress(track.id),
+      vanished: (address) => hiddenRowTrack(address) != null,
+      panel: WorkingPanel.storyboard,
+    );
   }
 
   /// [keepStandingShown]'s reveal: the section [layer] sits in shows, and

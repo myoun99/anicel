@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -36,13 +37,14 @@ import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
+import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
-import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 
 /// 🚨A CONTE PICTURE TAKES THE PEN INTO ITS BLOCK'S CEL (유저 2026-09-25,
 /// conte-drawing-target: 「그림 칸 안의 부분은 그 블록의 콘티 레이어
@@ -174,7 +176,7 @@ void main() {
                 height: metrics.pageHeight,
                 child: ConteInkLayer(
                   controller: ink,
-                  page: page,
+                  pages: [(page: page, at: Offset.zero)],
                   brushToolState: brush,
                   historyManager: history,
                   viewport: CanvasViewport(),
@@ -254,7 +256,7 @@ void main() {
         unwrittenInkIdOf: bandOf,
       ).singleWhere((window) => window.key == conteInkRowKey(cutId, 'band-0'));
       BitmapSurface rowSurface() => ink
-          .sessionStateFor(ConteInkPlane.row, row.key)
+          .sessionStateFor(null, row.key)
           .canvasState
           .currentSurface;
       // The picture's middle is the pose's centre: the camera at rest.
@@ -274,14 +276,14 @@ void main() {
         inkAt(store.bakedSurfaceOrNull(picture.window.key), underInside),
         isFalse,
       );
-      expect(ink.hasInkFor(ConteInkPlane.row, row.key), isFalse);
+      expect(ink.hasInkFor(null, row.key), isFalse);
 
       history.redo();
       expect(
         inkAt(store.bakedSurfaceOrNull(picture.window.key), underInside),
         isTrue,
       );
-      expect(ink.hasInkFor(ConteInkPlane.row, row.key), isTrue);
+      expect(ink.hasInkFor(null, row.key), isTrue);
     });
 
     testWidgets('🚨the slot\'s rounded corner is not the picture\'s: a stroke '
@@ -308,7 +310,7 @@ void main() {
       ]);
 
       final surface = ink
-          .sessionStateFor(ConteInkPlane.row, row.key)
+          .sessionStateFor(null, row.key)
           .canvasState
           .currentSurface;
       expect(
@@ -358,7 +360,10 @@ void main() {
             builder: (context, _) => ConteTabHost(
               session: session,
               thumbnails: null,
-              viewport: seedFromRender(tester, CanvasViewport()),
+              viewport: seedFromRender(
+                tester,
+                onConteBody(session, CanvasViewport()),
+              ),
               inkController: ink,
               pictures: cels,
               brushToolState: brush,
@@ -380,9 +385,7 @@ void main() {
       const ValueKey<String>('conte-picture-live-picture-39-0'),
     );
     expect(live, findsOneWidget);
-    final pageTopLeft = tester.getTopLeft(
-      find.byKey(const ValueKey<String>('conte-form-paint')),
-    );
+    final pageTopLeft = conteBodyTopLeft(tester);
     final centre = pageTopLeft + cell.pictureRect.center;
     final at = centre - tester.getTopLeft(live);
 
@@ -427,12 +430,13 @@ void main() {
       reason: 'the composite paints the pen\'s live stroke in the cel\'s place',
     );
     final stack = tester.widget<CanvasLayerStackView>(live);
+    // This picture's window — the page's free row has the next cut's too.
     final pen = tester
         .widgetList<SheetInkLayer>(find.byType(SheetInkLayer))
         .single
         .windows
         .whereType<SheetPictureWindow>()
-        .single;
+        .singleWhere((window) => window.id == 'picture-39-0');
     expect(
       identical(stack.activeSurfacePainter!.overlayModel, pen.overlay),
       isTrue,
@@ -450,7 +454,7 @@ void main() {
     );
     expect(
       ink.hasInkFor(
-        ConteInkPlane.row,
+        null,
         conteInkRowKey(
           cutId,
           session.storyboardCursor.conteInkIdFor(cutId, 0),
@@ -470,6 +474,9 @@ void main() {
     const blue = Color(0xFF0000FF);
     late EditorSessionManager session;
     late ValueNotifier<bool> brushOn;
+
+    /// Every height the panel asked the printed picture at, in order.
+    final askedHeights = <double>[];
 
     /// The cut framed by its camera at [zoom] about the canvas's middle,
     /// held over its one block — two keys, so the page prints IN and OUT
@@ -525,12 +532,33 @@ void main() {
       );
     }
 
-    /// The panel on [project], its brush off, with the block's cel inked
-    /// and the page's printed picture [printed].
+    /// The block's cel black over the whole canvas — the cut filled black.
+    BitmapSurface filledBlack() {
+      const size = defaultCelTileSize;
+      final pixels = Uint8List(size * size * 4);
+      for (var i = 3; i < pixels.length; i += 4) {
+        pixels[i] = 0xFF;
+      }
+      return BitmapSurface(
+        canvasSize: canvas,
+        tileSize: size,
+        tiles: {
+          for (var y = 0; y * size < canvas.height; y += 1)
+            for (var x = 0; x * size < canvas.width; x += 1)
+              TileCoord(x: x, y: y): BitmapTile(size: size, pixels: pixels),
+        },
+      );
+    }
+
+    /// The panel on [project], its brush off, with the block's cel [cel]
+    /// (inked, unless told) and the page's printed picture [printed], seen
+    /// through [view].
     Future<Rect> pumpPanel(
       WidgetTester tester,
       Project project, {
       ui.Image? printed,
+      BitmapSurface? cel,
+      CanvasViewport? view,
     }) async {
       session = EditorSessionManager(initialProject: project);
       addTearDown(session.dispose);
@@ -548,7 +576,7 @@ void main() {
           .single;
       session.renderCaches.brushFrameStore.storeBakedSurface(
         session.brushFrameKeyForCut(drawn, layerId, frameId),
-        inked(),
+        cel ?? inked(),
       );
       await tester.binding.setSurfaceSize(const Size(900, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -568,11 +596,17 @@ void main() {
                               (
                                 cut,
                                 frame, {
-                                tier = StoryboardThumbnailTier.sheet,
-                              }) => printed,
+                                required shownHeight,
+                              }) {
+                                askedHeights.add(shownHeight);
+                                return printed;
+                              },
                           landed: const _NeverLands(),
                         ),
-                  viewport: seedFromRender(tester, CanvasViewport()),
+                  viewport: seedFromRender(
+                    tester,
+                    onConteBody(session, view ?? CanvasViewport()),
+                  ),
                   inkController: ink,
                   pictures: cels,
                   brushToolState: brush,
@@ -591,9 +625,7 @@ void main() {
         ),
       ).first;
       final pageTopLeft =
-          tester.getTopLeft(
-            find.byKey(const ValueKey<String>('conte-form-paint')),
-          ) -
+          conteBodyTopLeft(tester) -
           tester.getTopLeft(find.byKey(boundary));
       return contePictureSlot(
         page.cells.single,
@@ -720,6 +752,108 @@ void main() {
         const Color(0xFFFFFFFF),
         reason: 'the row\'s pose is where the picture puts it',
       );
+    });
+
+    // 🗣️F-197 (유저 2026-09-27): 「해당컷 채우기로 전면 검정색됫는데
+    // 콘티프리뷰패널에서 줌하거나 팬할때 그림이랑 실루엣 경계에 흰 여백? 선이
+    // 생김」 · 「팬은 아니고 줌할때마다 생김」.
+    testWidgets('🚨with the brush on, a cut filled black meets the silhouette '
+        'with no light line across any side of its window, at any zoom', (
+      tester,
+    ) async {
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(const Color(0xFF000000), BlendMode.src);
+        return recorder.endRecording().toImage(64, 36);
+      }))!;
+      addTearDown(printed.dispose);
+      final seams = <String>[];
+      var scans = 0;
+      for (final zoom in const [0.83, 1.37, 1.9]) {
+        await pumpPanel(
+          tester,
+          framed(zoom: 1),
+          printed: printed,
+          cel: filledBlack(),
+          view: CanvasViewport(zoom: zoom, panX: 11, panY: 7),
+        );
+        brushOn.value = true;
+        final on = await shoot(tester);
+        expect(
+          find.byKey(const ValueKey<String>('conte-picture-live-picture-39-0')),
+          findsOneWidget,
+          reason: 'fixture: the live picture is up',
+        );
+
+        // Where the page is on the screen: the form's own printer's view.
+        final form = conteBodyForm();
+        final painter =
+            tester.widget<CustomPaint>(form).painter! as ContePagePainter;
+        final view = renderSnappedViewport(
+          painter.viewport!,
+          painter.effectiveRatio,
+        );
+        final origin =
+            tester.getTopLeft(form) - tester.getTopLeft(find.byKey(boundary));
+        Offset onScreen(Offset paper) =>
+            origin +
+            Offset(
+              view.panX + view.zoom * paper.dx,
+              view.panY + view.zoom * paper.dy,
+            );
+        final slot = contePictureSlot(
+          painter.page.cells.single,
+          painter.page.metrics,
+        );
+        final middle = onScreen(slot.center);
+        // Across each side: three device pixels either way of the edge.
+        for (final (side, edge, across) in [
+          ('left', onScreen(slot.centerLeft).dx, true),
+          ('right', onScreen(slot.centerRight).dx, true),
+          ('top', onScreen(slot.topCenter).dy, false),
+          ('bottom', onScreen(slot.bottomCenter).dy, false),
+        ]) {
+          final device = edge * on.ratio;
+          for (var d = device.floor() - 3; d <= device.ceil() + 3; d += 1) {
+            final point = across
+                ? Offset((d + 0.5) / on.ratio, middle.dy)
+                : Offset(middle.dx, (d + 0.5) / on.ratio);
+            final red = (on.colorAt(point).r * 255).round();
+            scans += 1;
+            if (red > 64) {
+              seams.add('zoom $zoom, $side side, device pixel $d: $red');
+            }
+          }
+        }
+      }
+      expect(scans, greaterThan(50), reason: 'fixture: the edges are read');
+      expect(seams, isEmpty);
+    });
+
+    testWidgets('🗣️the panel asks a cell\'s picture at the height it shows '
+        'it, in device pixels — and twice as tall at twice the zoom '
+        '(유저 2026-09-25 「화면이 필요한 만큼(최대 원본)」)', (tester) async {
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(const Color(0xFFFF0000), BlendMode.src);
+        return recorder.endRecording().toImage(64, 36);
+      }))!;
+      addTearDown(printed.dispose);
+      final ratio = tester.view.devicePixelRatio;
+
+      askedHeights.clear();
+      final slot = await pumpPanel(tester, framed(zoom: 1), printed: printed);
+      expect(askedHeights, isNotEmpty, reason: 'fixture: the cell asks');
+      final atOne = askedHeights.last;
+      expect(atOne, closeTo(slot.height * ratio, 2));
+
+      await pumpPanel(
+        tester,
+        framed(zoom: 1),
+        printed: printed,
+        view: CanvasViewport(zoom: 2),
+      );
+      expect(askedHeights.last, closeTo(atOne * 2, 2));
     });
   });
 }

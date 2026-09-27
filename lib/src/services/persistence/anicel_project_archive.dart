@@ -29,7 +29,6 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 
 import '../../core/path_names.dart';
-import '../../models/audio_clip.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/media_asset.dart'
     show
@@ -91,7 +90,7 @@ String projectDisplayName(String path) {
 const int anicelFormatVersion = 4;
 
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
-/// [remapProjectMediaPaths]), its baked cels in COLD form (headers parsed,
+/// `projectWithMediaMoved`), its baked cels in COLD form (headers parsed,
 /// pixels still compressed) and the saved relative-path manifest
 /// ({absolute path at save time: save-dir-relative path}).
 class AnicelArchiveContents {
@@ -716,52 +715,6 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
     cels: cels,
     mediaRelativePaths: document.mediaRelativePaths,
     session: document.session,
-  );
-}
-
-/// Rewrites the project's media references ({old path: new path}) — the
-/// pool entries AND every SE audio clip (cut- and track-owned) so links
-/// stay consistent. Unmapped paths pass through.
-Project remapProjectMediaPaths(Project project, Map<String, String> oldToNew) {
-  if (oldToNew.isEmpty) {
-    return project;
-  }
-  String remap(String path) => oldToNew[path] ?? path;
-  List<AudioClip> remapClips(List<AudioClip> clips) => [
-    for (final clip in clips) clip.copyWith(filePath: remap(clip.filePath)),
-  ];
-
-  return project.copyWith(
-    mediaAssets: [
-      for (final asset in project.mediaAssets)
-        asset.copyWith(path: remap(asset.path)),
-    ],
-    tracks: [
-      for (final track in project.tracks)
-        track.copyWith(
-          seLayers: [
-            for (final layer in track.seLayers)
-              if (layer.audioClips.isEmpty)
-                layer
-              else
-                layer.copyWith(audioClips: remapClips(layer.audioClips)),
-          ],
-          cuts: [
-            for (final cut in track.cuts)
-              cut.copyWith(
-                layers: [
-                  for (final layer in cut.layers)
-                    if (layer.audioClips.isEmpty)
-                      layer
-                    else
-                      layer.copyWith(
-                        audioClips: remapClips(layer.audioClips),
-                      ),
-                ],
-              ),
-          ],
-        ),
-    ],
   );
 }
 

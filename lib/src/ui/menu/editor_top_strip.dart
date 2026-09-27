@@ -14,6 +14,7 @@ import '../../services/persistence/cel_places.dart';
 import '../../services/persistence/failed_save_copies.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart';
+import '../../services/persistence/provider_documents.dart';
 import '../../services/persistence/save_failure.dart';
 import '../../services/persistence/recent_projects.dart';
 import '../../services/persistence/recent_projects_store.dart';
@@ -28,6 +29,7 @@ import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
 import '../../models/import/import_warning.dart';
+import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
 import '../text/model_vocabulary.dart';
 import '../text/place_lines.dart' show celPlaceLine;
@@ -52,6 +54,7 @@ import '../export/export_dialog.dart';
 import '../import/import_dialog.dart';
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
+import 'project_settings_menu.dart';
 import '../session/project_file_door.dart'
     show SaveAsked, StagedArchive, readProjectFile;
 import '../session/tvpp_import_door.dart' show readTvppProject;
@@ -188,13 +191,16 @@ class EditorTopStrip extends StatelessWidget {
     ProjectPick pick,
   ) async {
     final path = pick.path;
-    if (path.toLowerCase().endsWith('.tvpp')) {
+    // By NAME: a provider document's URI says nothing of what it is (PICK-7).
+    if (ProviderDocuments.nameOf(path).toLowerCase().endsWith('.tvpp')) {
       await _openTvppAsProject(context, path);
       return;
     }
     // A file already open is SHOWN, not opened again: two sessions on one
-    // file would be two writers on one archive.
-    if (projects.boundTo(path) case final open?) {
+    // file would be two writers on one archive. A document's session is
+    // bound to its working copy.
+    if (projects.boundTo(ProviderDocuments.workingCopyOf(path) ?? path)
+        case final open?) {
       projects.activate(open);
       return;
     }
@@ -294,7 +300,11 @@ class EditorTopStrip extends StatelessWidget {
     }
     // A project from a build that kept its media in a sibling folder.
     // Said AFTER the open, because a file that failed to parse has no
-    // media to absorb and the folder is still the only copy.
+    // media to absorb and the folder is still the only copy. A provider
+    // document (PICK-7) has no folder around it to hold one.
+    if (ProviderDocuments.isDocumentUri(path)) {
+      return;
+    }
     final layout = ProjectAssetLayout(path);
     if (layout.hasLegacyAssetsDirectory) {
       final name = layout.assetsDirectory.split('/').last;
@@ -469,9 +479,9 @@ class EditorTopStrip extends StatelessWidget {
             PanelFlyoutItem(
               keyValue: 'menu-recent-${entry.path}',
               label: entry.needsReconnect
-                  ? '${projectDisplayName(entry.path)} — '
+                  ? '${projectDisplayName(entry.name)} — '
                         '${strings.recentReconnect}'
-                  : projectDisplayName(entry.path),
+                  : projectDisplayName(entry.name),
               // ⛔Only the ones that need something: a broken link is news,
               // "this is a recent project" is what the list already is.
               icon: entry.needsReconnect ? Icons.link_off_outlined : null,
@@ -526,7 +536,12 @@ class EditorTopStrip extends StatelessWidget {
         bookmark = relinked.folderBookmark;
       }
     }
-    if (!File(path).existsSync()) {
+    if (ProviderDocuments.isDocumentUri(path)) {
+      // PICK-7: a document is reopened through its URI — the grant kept
+      // from the pick is what reads it — and the name comes from the row,
+      // the one place a new run has it.
+      ProviderDocuments.remember(ProviderDocument(uri: path, name: entry.name));
+    } else if (!File(path).existsSync()) {
       // No bookmark, or a bookmark that resolved to a folder the project has
       // since left. Offer the picker here too: without this the row wears a
       // "Reconnect" label that nothing honours, and on Android — where there
@@ -703,10 +718,23 @@ class EditorTopStrip extends StatelessWidget {
           dialog: (_) => WorkSettingsWindow(
             initialInfo: session.timesheetInfo,
             projectName: session.repository.requireProject().name,
+            pictures: [
+              for (final asset in session.mediaPool.mediaAssets)
+                if (asset.kind == MediaAssetKind.image) asset,
+            ],
           ),
           commit: session.updateTimesheetInfo,
         ),
       ),
+    ),
+    // 유저 답 playback-quality-home-Q1 「프로젝트 설정으로 같이」 — 「다만
+    // 프로젝트 설정이랑 작품설정이랑 나누는게 깔끔할지도?」: the project's own
+    // values beside the work's, one level in — the sill's ⚙ rows, moved.
+    _item(
+      id: 'project-settings',
+      label: 'Project settings',
+      icon: Icons.video_settings_outlined,
+      submenuBuilder: () => ProjectSettingsMenu(session).entries(context),
     ),
     const PanelFlyoutDivider(),
     _item(
@@ -1646,12 +1674,16 @@ Future<ProjectPick?> pickProjectFile(
   required List<String> supportedExtensions,
   String? initialDirectory,
 }) async {
-  final grants = await pickFileGrantsForUser(
+  // A project opens from a document with no filesystem path through a
+  // working copy (PICK-7, Drive on Android).
+  final grant = await pickProjectGrantForUser(
     context,
     supportedExtensions: supportedExtensions,
     initialDirectory: initialDirectory,
   );
-  final grant = grants.isEmpty ? null : grants.first;
+  if (grant?.document case final document?) {
+    return (path: document.uri, folderBookmark: null, placed: false);
+  }
   final path = grant?.path;
   if (path == null) {
     return null;
@@ -1680,6 +1712,12 @@ Future<ProjectPick?> pickProjectFile(
 /// save meant to fill it (실측 iPhone+Drive, 08-26). What the picker
 /// places is a COMPLETE, CURRENT project — which is why the caller adopts
 /// it rather than writing over it (`placed: true`).
+///
+/// On a scoped platform a destination with no filesystem path (PICK-7,
+/// Drive on Android) is answered with its WORKING COPY — what the picker
+/// poured in, kept for the saves that follow ([placeStagedFileForUser]).
+/// A caller that does not go on saving there lets it go
+/// ([ProviderDocuments.letGo]).
 @visibleForTesting
 Future<ProjectPick?> pickProjectSaveTarget(
   BuildContext context,
@@ -1759,6 +1797,7 @@ Future<ProjectPick?> _pickScopedSaveTarget(
   final grant = await placeStagedFileForUser(
     context,
     suggestedName: name,
+    keepsSavingThere: true,
     write: (stagingPath) async {
       try {
         // WRITTEN, whole, from the live session — never copied from the
@@ -2116,6 +2155,9 @@ Future<void> backUpFailedCopy(
       return;
     }
     if (pick.placed) {
+      // A backup is a copy to keep, not where the project saves from now
+      // on: a working copy kept for a document it went into goes (PICK-7).
+      ProviderDocuments.letGo(pick.path);
       await _sayFailedCopyBackedUp(context);
       return;
     }

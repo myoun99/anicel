@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'timeline_cell_style.dart' show timelineSelectedFrameBorderColor;
 import 'timeline_frame_window.dart';
 import '../repaint_props.dart';
+import '../widgets/tick_layer.dart';
 import 'memo_token.dart';
 
 /// Which stretches of the frames `[start, endExclusive)` are READY to
@@ -49,6 +50,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     required this.readyRunsIn,
     this.axis = Axis.horizontal,
     this.onPaintedRuns,
+    this.runsToDraw,
   }) : super(
          repaint: Listenable.merge([?playhead, ?repaintSignal, windowBucket]),
        );
@@ -57,6 +59,17 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   /// a signal's answer against.
   final void Function(List<({int startIndex, int endIndexExclusive})> runs)?
   onPaintedRuns;
+
+  /// The runs a paint draws, when something keeps the last reading — null
+  /// reads them afresh ([readyRuns]).
+  ///
+  /// 🚨I-22 ③: a playback tick repaints this strip for the tint alone, and
+  /// every paint used to read how ready the whole window is (the storyboard
+  /// at 0.16px, profile build: 50ms of a 908ms tick sample). What turns a
+  /// frame ready or not arrives on the signal, and the gate reads again
+  /// there ([TimelineRulerCursorOverlay]).
+  final List<({int startIndex, int endIndexExclusive})> Function()?
+  runsToDraw;
 
   /// The FRAME axis. Horizontal rulers (timeline, storyboard) run frames
   /// left-to-right and hug the bar to the bottom edge; the X-sheet rail runs
@@ -124,7 +137,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   void paint(Canvas canvas, Size size) {
     final horizontal = axis == Axis.horizontal;
     final barPaint = Paint()..color = readyBarColor;
-    final runs = readyRuns();
+    final runs = runsToDraw?.call() ?? readyRuns();
     onPaintedRuns?.call(runs);
     for (final run in runs) {
       final start = run.startIndex * cellWidth;
@@ -250,6 +263,8 @@ class _TimelineRulerCursorOverlayState
 
   @override
   Widget build(BuildContext context) {
+    // A rebuild may hand the strip another answer: read it anew.
+    _gate.forget();
     _painter = TimelineRulerCursorOverlayPainter(
       playhead: widget.playhead,
       repaintSignal: _gate,
@@ -260,9 +275,11 @@ class _TimelineRulerCursorOverlayState
       readyRunsIn: widget.readyRunsIn,
       axis: widget.axis,
       onPaintedRuns: _gate.drew,
+      runsToDraw: _gate.runsToDraw,
     );
     return IgnorePointer(
-      child: RepaintBoundary(
+      // What a tick moves, on the one layer every tick rides (I-22 ③).
+      child: TickLayer(
         child: CustomPaint(
           key: ValueKey<String>(widget.keyValue),
           painter: _painter,
@@ -275,18 +292,41 @@ class _TimelineRulerCursorOverlayState
 /// The overlay's [TimelineRulerCursorOverlay.repaintSignal], passed on
 /// only when the ready runs the current painter reads differ from the runs
 /// it last drew.
+///
+/// And the runs a paint draws: the last reading, while nothing that could
+/// move it has come — a signal, a rebuild or another window.
 class _ReadyRunsGate extends ChangeNotifier {
   _ReadyRunsGate(this._painter);
 
   final TimelineRulerCursorOverlayPainter Function() _painter;
   List<({int startIndex, int endIndexExclusive})>? _drawn;
+  ({
+    ({int startIndex, int endIndexExclusive}) window,
+    List<({int startIndex, int endIndexExclusive})> runs,
+  })?
+  _read;
 
   void drew(List<({int startIndex, int endIndexExclusive})> runs) =>
       _drawn = runs;
 
+  void forget() => _read = null;
+
+  List<({int startIndex, int endIndexExclusive})> runsToDraw() {
+    final painter = _painter();
+    final window = painter._visibleWindow();
+    final read = _read;
+    if (read != null && read.window == window) {
+      return read.runs;
+    }
+    final runs = painter.readyRuns();
+    _read = (window: window, runs: runs);
+    return runs;
+  }
+
   void recheck() {
+    forget();
     final drawn = _drawn;
-    if (drawn != null && listEquals(drawn, _painter().readyRuns())) {
+    if (drawn != null && listEquals(drawn, runsToDraw())) {
       return;
     }
     notifyListeners();

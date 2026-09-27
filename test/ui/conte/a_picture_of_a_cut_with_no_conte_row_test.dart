@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -158,7 +159,10 @@ void main() {
             builder: (context, _) => ConteTabHost(
               session: session,
               thumbnails: null,
-              viewport: seedFromRender(tester, CanvasViewport()),
+              viewport: seedFromRender(
+                tester,
+                onConteBody(session, CanvasViewport()),
+              ),
               inkController: ink,
               pictures: cels,
               brushToolState: brush,
@@ -177,7 +181,7 @@ void main() {
     ).first;
     final cell = page.cells.singleWhere((cell) => cell.cutId == of.value);
     return cell.pictureRect.shift(
-      tester.getTopLeft(find.byKey(const ValueKey<String>('conte-form-paint'))),
+      conteBodyTopLeft(tester),
     );
   }
 
@@ -218,6 +222,7 @@ void main() {
       reason: 'on top: nothing is selected on a cut the canvas is not on',
     );
     expect(row.frames, hasLength(1), reason: 'born covering the cut');
+    expect(row.name, 'Conte', reason: 'named as the layer panel names it');
     // The picture's middle is the camera's centre, the canvas's middle.
     expect(celInkAt(row, const Offset(320, 180)), isTrue);
     expect(
@@ -339,12 +344,12 @@ void main() {
 
     expect(storyboardLayerForCut(cutOf(empty)), isNull);
     expect(
-      [
-        for (var page = 0; page < 4; page++)
-          if (ink.hasInkFor(ConteInkPlane.page, conteInkPageKey(page))) page,
-      ],
-      isEmpty,
-      reason: 'the paper under the picture keeps none of it either',
+      ink.hasInkFor(
+        null,
+        conteInkRowKey(empty, session.storyboardCursor.conteInkIdFor(empty, 0)),
+      ),
+      isFalse,
+      reason: 'the band under the picture keeps none of it either',
     );
     expect(
       find.byKey(const ValueKey<String>('conte-picture-live-picture-39-0')),

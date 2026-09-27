@@ -55,10 +55,21 @@ class BrushHandSettingsStore {
       ) ??
       const {};
 
+  /// Writes the bank — SYNCHRONOUSLY, so saves land in the order they are
+  /// asked.
+  ///
+  /// 🔬F-181 (2026-09-27): two unawaited ASYNC saves raced. A debounced save
+  /// of the old bank, started just before a library reset, finished AFTER
+  /// the reset's save of the emptied one and put the forgotten values back
+  /// on disk — `writeAsString` promises nothing about the order two writes
+  /// to one file finish in. A synchronous write cannot be overtaken, and the
+  /// bank is a few hundred bytes written once a slider settles (the
+  /// workspace debounces it), far below a frame. ⛔Queuing the async writes
+  /// instead left a write still open when the next thing touched the file.
   Future<void> save(Map<String, BrushHandSettings> bank) async {
     final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
+    file.parent.createSync(recursive: true);
+    file.writeAsStringSync(
       jsonEncode({
         'version': version,
         'brushes': brushHandSettingsBankToJson(bank),

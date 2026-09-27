@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/folder_grant.dart';
+import '../../services/persistence/provider_documents.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import 'open_file_flow.dart';
@@ -42,20 +43,35 @@ Future<String?> pickFolderForUser(
 bool folderPickNeedsStorageGrant(String operatingSystem) =>
     operatingSystem == 'android';
 
-/// PICK-6: whether a CANCELLED folder pick might really be Google Drive's
-/// greyed-out Open.
+/// PICK-6: whether a CANCELLED folder pick might really be a person looking
+/// for Google Drive, which no folder window can give them.
 ///
-/// 🚨Apple only — and **not for the reason `referencesExpireForPlatform`
-/// names the same two platforms.** There it is the sandbox; here it is that
-/// Android answers `noFilesystemPath` for a Drive tree and raises its own
-/// notice, while on Apple the Open button is simply DEAD: the delegate
-/// never fires, so the app receives a plain cancel and cannot tell the two
-/// apart.
+/// On Apple the Open button is DEAD in Drive: the delegate never fires, so
+/// the app receives a plain cancel and cannot tell the two apart. On
+/// Android Drive is not even LISTED — the system's folder window shows only
+/// the providers that can hand over a folder, and Drive's cannot (Google's
+/// own tracker, issue 135636079) — so a person looking for it can only
+/// cancel. 🪦Android was left out until 2026-09-27 on the belief that its
+/// window lists Drive and answers `noFilesystemPath` for it; that answer
+/// only ever comes from a provider that DOES hand over a folder with no
+/// path behind it, and it keeps its own notice.
 ///
-/// Same tuple, different question — borrowing the other predicate would
-/// leave this silently wrong the day either answer moves.
+/// Its own predicate, not borrowed from one that names the same platforms
+/// for another reason — that would leave this silently wrong the day either
+/// answer moves.
 bool folderPickCancelMayBeDrive(String operatingSystem) =>
-    operatingSystem == 'ios' || operatingSystem == 'macos';
+    operatingSystem == 'ios' ||
+    operatingSystem == 'macos' ||
+    operatingSystem == 'android';
+
+/// What the Drive notice tells a person on [operatingSystem] to use instead:
+/// where a folder CAN come from there — iCloud Drive and Dropbox on Apple
+/// (실측 2026-08-13, iPhone), this device on Android, where a sync app can
+/// keep a Drive folder.
+String folderPickDriveNoticeFor(String operatingSystem) =>
+    operatingSystem == 'android'
+    ? AppText.strings.folderPickDriveNoticeAndroid
+    : AppText.strings.folderPickDriveNotice;
 
 /// Test seam for the OS the flow branches on.
 ///
@@ -134,19 +150,76 @@ Future<FolderGrant?> pickFolderGrantForUser(
 /// is refused after relaunch unless the app can produce the token it was
 /// granted.
 ///
+/// [acceptsDocuments] answers ONE question — can the caller work from a
+/// file with no filesystem path (PICK-7, Drive on Android)? The media
+/// import can: it reads one through a copy of its own and carries it
+/// (유저 2026-09-27: 「안한것 다 해줘. 임포트 드라이브로 할때라던가」). A
+/// relink cannot — a reference has to point at a file that is still there
+/// next time — and is told what a Drive folder is told.
+///
 /// Empty when the user backed out or was told why they cannot use what
 /// they chose.
 Future<List<FolderGrant>> pickFileGrantsForUser(
   BuildContext context, {
   required List<String> supportedExtensions,
   bool allowMultiple = false,
+  bool acceptsDocuments = false,
+}) async {
+  final grants = await _pickedFileGrants(
+    context,
+    allowMultiple: allowMultiple,
+  );
+  if (grants == null || !context.mounted) {
+    return const [];
+  }
+  return _grantsTheCallerTakes(
+    context,
+    grants,
+    supportedExtensions,
+    acceptsDocuments: acceptsDocuments,
+  );
+}
+
+/// The PROJECT door's pick (PICK-7): one file — and a file with no
+/// filesystem path is taken too, as the provider document it is. A project
+/// opens one through a working copy ([ProviderDocuments]).
+///
+/// Null when the user backed out or was told why they cannot use what
+/// they chose.
+Future<FolderGrant?> pickProjectGrantForUser(
+  BuildContext context, {
+  required List<String> supportedExtensions,
+  String? initialDirectory,
+}) async {
+  final grants = await _pickedFileGrants(
+    context,
+    allowMultiple: false,
+    initialDirectory: initialDirectory,
+  );
+  if (grants == null || !context.mounted) {
+    return null;
+  }
+  final taken = await _grantsTheCallerTakes(
+    context,
+    grants,
+    supportedExtensions,
+    acceptsDocuments: true,
+  );
+  return taken.isEmpty ? null : taken.first;
+}
+
+/// The pick itself, behind the storage gate, with a failure that answers
+/// for the whole batch said out loud — null when there is nothing to take.
+Future<List<FolderGrant>?> _pickedFileGrants(
+  BuildContext context, {
+  required bool allowMultiple,
   String? initialDirectory,
 }) async {
   // The same gate as the folder flow, for the same reason: Android resolves
   // the system document back to a real path, and that probe fails without
   // the All-Files grant.
   if (!await _storageGrantCleared(context)) {
-    return const [];
+    return null;
   }
   // 🚨★★★**NO TYPE FILTER — the dialog shows everything.** 유저 2026-08-29:
   // 「픽커는 어떤플랫폼이든 어떤 확장자던 선택할수 있게하고, 대응만
@@ -163,27 +236,59 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
     initialDirectory: initialDirectory,
   );
   if (!context.mounted) {
-    return const [];
+    return null;
   }
   // Never empty, and a failure arrives as ONE grant carrying the status —
-  // so the first entry answers for the batch.
-  if (await _spokenFor(context, grants.first) == null) {
-    return const [];
+  // so the first entry answers for the batch. A document answers for
+  // itself ([_grantsTheCallerTakes]): a batch can hold real files beside it.
+  if (grants.first.document == null &&
+      await _spokenFor(context, grants.first) == null) {
+    return null;
   }
-  if (!context.mounted) {
-    return const [];
-  }
+  return grants;
+}
+
+/// What the caller takes of [grants]: the files of a kind it supports —
+/// judged by NAME, a document's own, since its URI says nothing of what it
+/// is — and the documents only where [acceptsDocuments]. What it turns away
+/// is said once for the documents and once for the unsupported files.
+///
+/// A document taken is REMEMBERED here, by its name: every step after the
+/// pick has only its URI, and the copy it is read from is named after it
+/// ([ProviderDocuments.copyIn]) — an asset or a tab called by a URI's id
+/// would be the result of a caller forgetting.
+Future<List<FolderGrant>> _grantsTheCallerTakes(
+  BuildContext context,
+  List<FolderGrant> grants,
+  List<String> supportedExtensions, {
+  required bool acceptsDocuments,
+}) async {
   final accepted = <FolderGrant>[];
   final refused = <String>[];
+  var documentsRefused = false;
   for (final grant in grants) {
-    final path = grant.path;
-    if (path == null) {
+    final document = grant.document;
+    if (document != null && !acceptsDocuments) {
+      documentsRefused = true;
       continue;
     }
-    if (fileIsSupported(path, supportedExtensions)) {
+    final name = grant.path ?? document?.name;
+    if (name == null) {
+      continue;
+    }
+    if (fileIsSupported(name, supportedExtensions)) {
+      if (document != null) {
+        ProviderDocuments.remember(document);
+      }
       accepted.add(grant);
     } else {
-      refused.add(path);
+      refused.add(name);
+    }
+  }
+  if (documentsRefused) {
+    await _showNoFilesystemPathNotice(context);
+    if (!context.mounted) {
+      return const [];
     }
   }
   if (refused.isNotEmpty) {
@@ -217,7 +322,9 @@ Future<FolderGrant?> exportFileForUser(
   if (!context.mounted) {
     return null;
   }
-  return _spokenFor(context, grant);
+  // A document is a place the bytes LANDED (PICK-7: poured in through the
+  // provider), not a refusal.
+  return _spokenFor(context, grant, acceptsDocuments: true);
 }
 
 /// The DESKTOP half of Save As: the system save dialog answers with a
@@ -268,16 +375,23 @@ Future<FolderGrant?> _spokenFor(
   BuildContext context,
   FolderGrant grant, {
   bool folderMode = false,
+  bool acceptsDocuments = false,
 }) async {
   switch (grant.status) {
     case FolderPickStatus.granted:
       return grant;
+    case FolderPickStatus.providerDocument:
+      if (acceptsDocuments) {
+        return grant;
+      }
+      await _showNoFilesystemPathNotice(context);
+      return null;
     case FolderPickStatus.cancelled:
       // Backing out is not an event — except in the one case the app cannot
-      // see. Google Drive greys out Open in FOLDER mode, and a greyed-out
-      // button never calls the delegate, so a user who walked into Drive and
-      // found Open dead arrives here looking exactly like someone who
-      // changed their mind.
+      // see. Google Drive gives no folder to any folder window — Open is
+      // dead in it on Apple, and on Android it is not listed at all — so a
+      // person who went looking for it arrives here looking exactly like
+      // someone who changed their mind ([folderPickCancelMayBeDrive]).
       //
       // Said ONCE per session, and only where it can happen: a real cancel
       // costs the user one line they can ignore, and the alternative is
@@ -290,7 +404,7 @@ Future<FolderGrant?> _spokenFor(
           context,
           windowKey: const ValueKey<String>('folder-pick-drive-notice'),
           title: AppText.strings.commonNotice,
-          message: AppText.strings.folderPickDriveNotice,
+          message: folderPickDriveNoticeFor(_operatingSystem),
         );
       }
       return null;
@@ -422,11 +536,14 @@ Future<String?> handWrittenFileToUser(
     _discardQuietly(File(picked));
     return null;
   }
-  return (await placeStagedFileForUser(
+  final grant = await placeStagedFileForUser(
     context,
     suggestedName: suggestedName,
     write: write,
-  ))?.path;
+  );
+  // A document (PICK-7) is where it landed too — by its URI, having no
+  // path.
+  return grant?.path ?? grant?.document?.uri;
 }
 
 /// THE SCOPED ROAD: writes a file called [suggestedName] into a staging
@@ -449,10 +566,18 @@ Future<String?> handWrittenFileToUser(
 /// with a path for the later atomic temp+rename save and asks the F-14
 /// replace question; an export desktop writes immediately. Two laws, and a
 /// flag choosing between them would be the invented kind.
+///
+/// [keepsSavingThere] answers ONE question — will the caller go on saving
+/// into what it placed? Only Save As does. Where the picker answered with a
+/// document that has no filesystem path (PICK-7, Drive on Android), the
+/// staged file is poured into it and then either becomes that document's
+/// working copy — moved, never copied, and answered as a path — or goes
+/// with the staging folder like any other placed file.
 Future<FolderGrant?> placeStagedFileForUser(
   BuildContext context, {
   required String suggestedName,
   required Future<bool> Function(String stagingPath) write,
+  bool keepsSavingThere = false,
 }) async {
   // Its own directory so the cleanup below cannot reach anything else.
   final stagingDirectory = Directory.systemTemp.createTempSync(
@@ -472,10 +597,18 @@ Future<FolderGrant?> placeStagedFileForUser(
     sourcePath: staged.path,
     suggestedName: suggestedName,
   );
+  final document = grant?.document;
+  final placed = keepsSavingThere && document != null
+      ? FolderGrant.granted(
+          path: ProviderDocuments.adoptAsWorkingCopy(document, staged.path),
+          kind: GrantKind.file,
+        )
+      : grant;
   // On success the staged file was MOVED out and only the empty directory
-  // is left; on cancel it is still in it. Same cleanup.
+  // is left; on cancel it is still in it — and poured into a document it
+  // is still in it too, unless it became the working copy. Same cleanup.
   _discardStaging(stagingDirectory);
-  return grant;
+  return placed;
 }
 
 /// A leaked file must never fail an export — or a cancel, which is the path

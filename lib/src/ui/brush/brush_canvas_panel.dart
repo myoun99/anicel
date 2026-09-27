@@ -79,7 +79,9 @@ import '../../core/dev_profile.dart';
 import 'canvas_selection_commands.dart';
 import 'transform_tool_options.dart';
 import 'selection_shape_history_command.dart';
+import 'canvas_book.dart';
 import 'canvas_view_commands.dart';
+import 'canvas_view_limit.dart';
 import 'canvas_viewport_pan_metrics.dart';
 import 'canvas_visible_rect.dart';
 import '../widgets/app_icon_button.dart';
@@ -101,6 +103,7 @@ part 'canvas_panel/canvas_panel_selection.dart';
 part 'canvas_panel/canvas_panel_tool_cursor.dart';
 part 'canvas_panel/canvas_panel_tap.dart';
 part 'canvas_panel/canvas_panel_lift.dart';
+part 'canvas_panel/canvas_panel_book.dart';
 part 'canvas_panel/canvas_panel_viewport.dart';
 part 'canvas_panel/viewport_bottom_bar_build.dart';
 part 'canvas_panel/canvas_panel_build.dart';
@@ -177,6 +180,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.floorBottomOverlaySpan = 0,
     this.autoFrame,
     this.unframedFit,
+    this.viewLimit,
+    this.book,
     this.contentStrokeActive,
     this.sampleColorAt,
     this.paperColor = ProjectBackground.defaultPaperArgb,
@@ -599,6 +604,31 @@ class BrushCanvasPanel extends StatefulWidget {
   /// identity. Re-arming the fit is `notifier.value = null`.
   final Rect? unframedFit;
 
+  /// THE VIEW'S LIMIT (canvas space) — the paper the view stops at; null
+  /// for a canvas that pans freely, which is the drawing canvas.
+  ///
+  /// 🗣️F-201 (유저 2026-09-27): 「스크롤 최대치가 너무 커서? 그림이 밖으로
+  /// 빠져나가는데 좀 줄여서 … 다른 미디어 뷰어 프로그램이 그러니까」,
+  /// answered `edge` (F-201-pan-limit-Q1: 「끝이 화면 가장자리에 딱
+  /// 닿는다」) — see [viewHeldTo] for the law.
+  ///
+  /// 🎯**Held in the one store, not at each road.** A drag, a pinch, the
+  /// wheel, a pan bar, a pill press, a fit, an owner's write — every road
+  /// that moves the view ends in `_CanvasPanelViewport`, so it is held
+  /// there: the read shows the view held in the window you look through,
+  /// the write stores it held, and a write that came from outside (the
+  /// owner's) or a window or a limit that changed under a stored view is
+  /// put back the same way. The pan bars span the limit and nothing past
+  /// it.
+  final Rect? viewLimit;
+
+  /// THE BOOK — this canvas's pages laid one under another, and the page
+  /// its reader is on (F-201); null for a canvas without pages. Writing
+  /// the reader's page turns to it, the view moving there; the panel
+  /// writes it back as the view leaves it (`_CanvasPanelBook`), and Fit
+  /// frames it when no [fitFocusRect] is given.
+  final CanvasBook? book;
+
   /// Raised by contentOverride content that hosts its OWN brush input (the
   /// timesheet ink layer): while true, the panel's gesture layer holds
   /// navigation exactly as it does for the panel's own strokes.
@@ -782,8 +812,9 @@ class BrushCanvasPanel extends StatefulWidget {
   /// mounted — see [InteractiveBrushEditCanvasView.onStrokeLanderChanged].
   final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
-  /// Selection-drag lifecycle for the host (R15-⑤): the session blocks
-  /// frame seeks/cut switches while a selection interaction is live.
+  /// Selection-drag lifecycle for the host: the session holds prerender
+  /// warming while it is live, as it does for a stroke. ↩️F-196: it also
+  /// blocked frame seeks and cut switches (R15-⑤) — only a stroke does now.
   final ValueChanged<bool>? onSelectionInteractionChanged;
 
   /// False hides the rotate/flip toolbar controls and disables the
@@ -839,6 +870,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     with SingleTickerProviderStateMixin {
   // The viewport (Round 6): own, owner's, published, and the editor size.
   late final _CanvasPanelViewport _viewportState = _CanvasPanelViewport(this);
+
+  // The book (F-201): the page its reader is on, kept true to the view.
+  late final _CanvasPanelBook _bookState = _CanvasPanelBook(this);
 
   /// True while a brush stroke is in progress; the viewport gesture layer
   /// ignores wheel zooms and new pans so they cannot disturb the stroke.
@@ -1068,6 +1102,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     CanvasPanHold.held.addListener(_onPanHoldChanged);
     _viewportState._listenedViewport = _viewportState.viewportNotifier
       ..addListener(_viewportState.handleViewportMovedByOwner);
+    _bookState.bind();
     widget.selectionCommands?.addListener(_selectionSeat.handleSelectionChannelChanged);
     _builtFor = BrushCanvasPanel.structureOf(_brush);
     widget.brushToolState?.addListener(_handleBrushChanged);
@@ -1195,9 +1230,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
     _viewportState._listenedViewport = null;
     _viewportState._ownViewport.dispose();
+    // The reader's page is the owner's too, for the same reason.
+    _bookState.unbind();
     // A mid-stroke teardown must release the session's warm hold — a
-    // leaked hold would gate prerendering forever. Same for a mid-drag
-    // selection interaction (R15-⑤: a leaked hold would block seeks).
+    // leaked hold would gate prerendering forever (and a stroke's would
+    // hold the playhead). Same for a mid-drag selection interaction.
     if (_strokeActive) {
       widget.onStrokeInputActiveChanged?.call(false);
     }
@@ -1435,6 +1472,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!identical(_viewportState._listenedViewport, notifier)) {
       _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
       _viewportState._listenedViewport = notifier..addListener(_viewportState.handleViewportMovedByOwner);
+    }
+    // A host can hand over another reader (F-201).
+    _bookState.bind();
+    // A new limit holds a stored view elsewhere (F-201) — stored after the
+    // frame, because the owner hears the write and this is its build.
+    if (widget.viewLimit != oldWidget.viewLimit) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _viewportState._holdTheStoredView();
+        }
+      });
     }
     rebindListener(
       oldWidget.selectionCommands,
@@ -1911,6 +1959,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // An empty frame stands the view DOWN rather than unmounting it —
       // the mount was the expensive half of a flip that crosses a block.
       editable: widget.celEditable,
+      // H19's other question, carried down (F-196): the row decides what a
+      // press may DO, so a lane over a cel draws no line at all.
+      rowAcceptsStrokes: widget.rowAcceptsStrokes,
       // Guides are stored in canvas space, but this view's strokes record
       // in artwork coordinates (the draw-through wrap below). They make the
       // same trip the pointers do, or the axis sits where the pen is not.
@@ -2194,8 +2245,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   void _commitSourceStroke(BrushStrokeCommitData rawStrokeData) {
-    // Only reachable from the interactive canvas, which requires the
-    // coordinator to exist.
+    // Only reachable from a stroke the interactive canvas began, and it
+    // begins one only on a cel whose row takes strokes — the two halves
+    // [_editableCoordinator] asks. ↩️F-196: the view used to hear only the
+    // cel half, so a lane's stroke reached this and threw.
     final coordinator = widget._editableCoordinator!;
     final strokeData = _selectionSeat.clipStrokeToSelection(
       rawStrokeData,
@@ -2276,6 +2329,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.rightStripBar,
     required this.horizontalStripBar,
     required this.cover,
+    required this.onFloor,
     this.pageStrip = const <Widget>[],
     this.bottomOverlaySpan = 0,
     this.railBand,
@@ -2284,6 +2338,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   final Widget child;
   final Widget bottomBar;
   final Widget rightStripBar;
+
+  /// Whether this panel is the FLOOR under the others — the canvas or the
+  /// viewer — rather than a panel docked in a rail ([_capsuleTrack]).
+  final bool onFloor;
 
   /// The horizontal panbar, its own capsule on the top edge.
   final Widget horizontalStripBar;
@@ -2330,9 +2388,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// second rail.
   static const double _pageStripWidth = 32;
 
-  /// What a scrollbar capsule spans, as a share of the edge it rides —
-  /// clamped, because the point of a capsule is that it says where you are
-  /// and lets you drag back, not that it maps the whole pasteboard.
+  /// What a scrollbar capsule spans ON THE FLOOR, as a share of the edge it
+  /// rides — clamped, because the point of a capsule is that it says where
+  /// you are and lets you drag back, not that it maps the whole pasteboard.
+  /// A docked panel's runs its whole edge ([_capsuleTrack]).
   static const double _capsuleTrackFraction = 0.34;
   static const double _capsuleTrackMin = 80;
 
@@ -2343,6 +2402,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     // has nowhere to travel — a scrollbar that cannot be dragged is not a
     // scrollbar, and dragging is the ONLY way back from a runaway pan.
     final room = math.max(0.0, edge - 2 * _capsuleMargin);
+    // 🗣️F-201 (유저 2026-09-27): 「바탕에 깔린 캔버스나 뷰어말고 도킹된
+    // 패널은 스크롤바 알약 최대치로 늘리자 길이」 — a DOCKED panel's capsule
+    // runs its whole edge; only the floor's keeps the short one below.
+    if (!onFloor) {
+      return room;
+    }
     final wanted = (edge * _capsuleTrackFraction).clamp(
       _capsuleTrackMin,
       _capsuleTrackMax,
@@ -2982,6 +3047,7 @@ class CanvasViewportHorizontalScrollbar extends StatelessWidget {
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
+    this.limit,
     required this.onViewportChanged,
     this.onViewportChangeEnd,
     this.enabled = true,
@@ -2989,6 +3055,7 @@ class CanvasViewportHorizontalScrollbar extends StatelessWidget {
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
+  final ({Rect rect, Rect window})? limit;
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback? onViewportChangeEnd;
   final bool enabled;
@@ -2998,6 +3065,7 @@ class CanvasViewportHorizontalScrollbar extends StatelessWidget {
     viewport: viewport,
     editorViewportSize: editorViewportSize,
     canvasSize: canvasSize,
+    limit: limit,
     onViewportChanged: onViewportChanged,
     onViewportChangeEnd: onViewportChangeEnd,
     enabled: enabled,
@@ -3010,6 +3078,7 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
+    this.limit,
     required this.onViewportChanged,
     this.onViewportChangeEnd,
     this.enabled = true,
@@ -3017,6 +3086,7 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
+  final ({Rect rect, Rect window})? limit;
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback? onViewportChangeEnd;
   final bool enabled;
@@ -3026,6 +3096,7 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
     viewport: viewport,
     editorViewportSize: editorViewportSize,
     canvasSize: canvasSize,
+    limit: limit,
     onViewportChanged: onViewportChanged,
     onViewportChangeEnd: onViewportChangeEnd,
     enabled: enabled,
@@ -3038,6 +3109,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
+    required this.limit,
     required this.onViewportChanged,
     this.onViewportChangeEnd,
     required this.enabled,
@@ -3046,6 +3118,9 @@ class _CanvasViewportPanbar extends StatelessWidget {
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
+
+  /// The view's limit and its window — the span the bar covers (F-201).
+  final ({Rect rect, Rect window})? limit;
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback? onViewportChangeEnd;
 
@@ -3060,6 +3135,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
       viewport: viewport,
       editorViewportSize: editorViewportSize,
       canvasSize: canvasSize,
+      limit: limit,
     );
     return SizedBox(
       key: ValueKey<String>(

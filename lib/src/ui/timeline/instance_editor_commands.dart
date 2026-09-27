@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/audio_clip.dart' show AudioClip;
 import '../../models/camera_instruction.dart';
 import '../../models/pill_subject.dart';
 import '../../models/frame.dart' show Frame;
@@ -250,20 +251,41 @@ Future<void> _editSeLabel(
   // token — a clip has no id, and it is read once here so the dialog and the
   // unlink below address the same list.
   final linked = session.audioClips.selectedSeAudioClips;
+  final blockFrames = session.audioClips.selectedSeBlockFrames;
+  final layerId = session.activeLayer!.id;
   await _editSeEntryWithDialog(
     context,
     initialSeName: session.seEntries.selectedFrameSeName ?? '',
     initialDialogue: session.selectedFrameName ?? '',
     linkedAudio: [
       for (final entry in linked)
-        (label: mediaFileName(entry.clip.filePath), token: entry.index),
+        _audioLink(session, entry.clip, entry.index, blockFrames),
     ],
     previewAxis: previewAxis,
     commit: (dialogue, seName) =>
         session.seEntries.updateSelectedSeEntry(dialogue: dialogue, seName: seName),
+    setOffset: (token, offset) =>
+        session.audioClips.setAudioClipOffset(layerId, token, offset),
     unlink: session.audioClips.unlinkAudioClipsFromActiveLayer,
   );
 }
+
+/// One sound of the edited instance as the window shows it — its start
+/// offset strip reads the block the sound plays in and the waveform the
+/// timeline draws.
+SeInstanceAudioLink _audioLink(
+  EditorSessionManager session,
+  AudioClip clip,
+  int index,
+  int blockFrames,
+) => (
+  label: mediaFileName(clip.filePath),
+  token: index,
+  offsetFrames: clip.offsetFrames,
+  blockFrames: blockFrames,
+  frameRate: session.projectSettings.projectFrameRate,
+  peaks: session.voiceRecording.audioPeaksForDisplay(clip.filePath),
+);
 
 /// The S row's DOUBLE TAP on the storyboard (I-9: 「빈 칸이면 만들고, 찬 칸이면
 /// 연다」): an empty cell creates an entry at the storyboard cursor, a covered
@@ -358,10 +380,7 @@ Future<void> editSeEntryInstance(
     linkedAudio: [
       for (var index = 0; index < layer.audioClips.length; index += 1)
         if (layer.audioClips[index].frameId == entryId)
-          (
-            label: mediaFileName(layer.audioClips[index].filePath),
-            token: index,
-          ),
+          _audioLink(session, layer.audioClips[index], index, block.length),
     ],
     previewAxis: previewAxis,
     commit: (dialogue, seName) => session.seEntries.updateSeEntryForLayer(
@@ -370,6 +389,8 @@ Future<void> editSeEntryInstance(
       dialogue: dialogue,
       seName: seName,
     ),
+    setOffset: (token, offset) =>
+        session.audioClips.setAudioClipOffset(layerId, token, offset),
     unlink: (tokens) => session.audioClips.unlinkAudioClipsFromLayer(layerId, tokens),
   );
 }
@@ -381,9 +402,10 @@ Future<void> _editSeEntryWithDialog(
   BuildContext context, {
   required String initialSeName,
   required String initialDialogue,
-  required List<({String label, int token})> linkedAudio,
+  required List<SeInstanceAudioLink> linkedAudio,
   required Axis previewAxis,
   required void Function(String dialogue, String? seName) commit,
+  required void Function(int token, int offsetFrames) setOffset,
   required void Function(Iterable<int> tokens) unlink,
 }) async {
   final result = await showDialogVerb<SeInstanceDialogResult>(
@@ -403,6 +425,12 @@ Future<void> _editSeEntryWithDialog(
   final seName = result.seName.isEmpty ? null : result.seName;
   // SE edits never hit the link-conflict flow (duplicates allowed).
   commit(result.dialogue, seName);
+  // ⚠️The offsets BEFORE the unlink: a token is the clip's index, and taking
+  // a sound off shifts every index after it.
+  for (final MapEntry(key: token, value: offset)
+      in result.audioOffsets.entries) {
+    setOffset(token, offset);
+  }
   if (result.unlinkedAudioTokens.isNotEmpty) {
     unlink(result.unlinkedAudioTokens);
   }

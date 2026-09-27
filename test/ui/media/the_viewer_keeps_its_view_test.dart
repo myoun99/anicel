@@ -138,6 +138,9 @@ void main() {
     );
     slot.viewport.value = zoomed;
     await tester.pump();
+    // Held to the page (F-201) — the view the user has is this one.
+    final kept = slot.viewport.value;
+    expect(kept!.zoom, zoomed.zoom, reason: '⛔전제: the zoom the user set');
 
     // Close the panel — the host unmounts entirely, which is what a docked
     // panel does when its tab goes away, and it takes the State that used to
@@ -165,7 +168,7 @@ void main() {
     );
     expect(
       slot.viewport.value,
-      zoomed,
+      kept,
       reason: 'and the view the user set is still the one stored',
     );
   });

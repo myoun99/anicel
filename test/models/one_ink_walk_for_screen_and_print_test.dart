@@ -12,8 +12,7 @@ import 'package:anicel/src/models/frame_id.dart';
 /// SOMETHING THE USER NEVER SAW.
 ///
 /// The panel painter and the PDF writer both walk this, so it is one
-/// function — and the ORDER is part of it, because the page ink lies under
-/// the rows.
+/// function — and the ORDER is part of it: the cells' bands, in cell order.
 void main() {
   const metrics = ConteSheetMetrics();
 
@@ -51,19 +50,14 @@ void main() {
         metrics: metrics,
       );
 
-  test('the PAGE ink comes first and covers the whole page — it lies under '
-      'the rows', () {
-    final windows = conteInkMarks(page(const []), metrics).toList();
-
-    expect(windows, hasLength(1));
-    expect(windows.single.key, conteInkPageKey(0));
-    expect(
-      windows.single.placement.window,
-      Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
-    );
+  test('⛔a page with no cells has NO ink window — the paper takes no ink, '
+      'the cells alone do', () {
+    // 유저 09-26 (H44): 「칸에만 넣고싶거든? 그래서 컷 이동하면 따라오도록
+    // 구조적으로 강제하고싶으니까 칸에만 그려지도록」.
+    expect(conteInkMarks(page(const []), metrics), isEmpty);
   });
 
-  test('each cell adds its ROW BAND, after the page and in cell order', () {
+  test('each cell adds its ROW BAND, in cell order', () {
     final windows = conteInkMarks(
       page([
         cell(cutId: 'c1', rowOnPage: 0, frameId: 'f1', inkId: 'i1'),
@@ -73,7 +67,6 @@ void main() {
     ).toList();
 
     expect(windows.map((w) => w.key), [
-      conteInkPageKey(0),
       conteInkRowKey(const CutId('c1'), 'i1'),
       conteInkRowKey(const CutId('c2'), 'i2'),
     ]);
@@ -90,7 +83,6 @@ void main() {
     ]);
 
     expect(conteInkMarks(sheet, metrics).map((w) => w.key), [
-      conteInkPageKey(0),
       conteInkRowKey(const CutId('c2'), 'i2'),
     ], reason: 'the printers name nothing ahead, so they print no band');
     expect(
@@ -100,7 +92,6 @@ void main() {
         unwrittenInkIdOf: (placed) => 'named-${placed.cutId}',
       ).map((w) => w.key),
       [
-        conteInkPageKey(0),
         conteInkRowKey(const CutId('c1'), 'named-c1'),
         conteInkRowKey(const CutId('c2'), 'i2'),
       ],
@@ -113,9 +104,7 @@ void main() {
       cell(cutId: 'c1', rowOnPage: 0, frameId: 'f1', startFrame: 4),
     ]);
 
-    expect(conteInkMarks(sheet, metrics).map((w) => w.key), [
-      conteInkPageKey(0),
-    ]);
+    expect(conteInkMarks(sheet, metrics), isEmpty);
     expect(
       conteInkMarks(
         sheet,
@@ -123,7 +112,7 @@ void main() {
         unwrittenInkIdOf: (placed) =>
             'named-${placed.cutId}-${placed.source.startFrame}',
       ).map((w) => w.key),
-      [conteInkPageKey(0), conteInkRowKey(const CutId('c1'), 'named-c1-4')],
+      [conteInkRowKey(const CutId('c1'), 'named-c1-4')],
     );
   });
 
@@ -154,7 +143,7 @@ void main() {
       metrics,
     ).toList();
 
-    expect(windows.map((w) => w.key).skip(1), [
+    expect(windows.map((w) => w.key), [
       conteInkRowKey(const CutId('c1'), 'i1'),
       conteInkRowKey(const CutId('c1'), 'i2'),
     ]);
@@ -181,23 +170,11 @@ void main() {
     expect(band.right, metrics.bodyRight);
   });
 
-  test('the page key follows the PAGE INDEX — page two must not ink over '
-      'page one', () {
-    final windows = conteInkMarks(
-      page(const [], pageIndex: 2),
-      metrics,
-    ).toList();
-
-    expect(windows.single.key, conteInkPageKey(2));
-    expect(windows.single.key, isNot(conteInkPageKey(0)));
-  });
-
   test('a row key is the CUT and the BLOCK\'s id — the same id under two '
       'cuts is two windows, and the key reads back its id', () {
     final key = conteInkRowKey(const CutId('a'), 'i');
 
     expect(key, isNot(conteInkRowKey(const CutId('b'), 'i')));
     expect(conteInkRowIdOf(key), 'i');
-    expect(conteInkRowIdOf(conteInkPageKey(0)), isNull);
   });
 }

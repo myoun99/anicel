@@ -61,35 +61,17 @@ void main() {
     );
   });
 
-  test('the audio lane value field reads the playhead span offset and '
-      'scrubs at 4px per frame', () {
+  /// ↩️The label cell showed and scrubbed ONE offset for the whole row —
+  /// the playhead block's — while every block carries its own, and the
+  /// scrub moved the number but not the waveform (유저 2026-09-27: 「이거
+  /// 블록별로 오프셋이 맞지않나? 그래서 블록 편집창에서 하는게 맞을듯」).
+  /// The block's edit window holds the offset now.
+  test('the audio lane has NO value field — a block\'s offset is edited in '
+      'the block\'s own window', () {
     final lane = seAudioLanesFor(_seLayer(offsetFrames: 3)).single;
 
-    // Frame 4 sits inside the 2..10 block; outside frames fall back to the
-    // first span so the field stays usable anywhere.
-    expect(lane.valueLabel!(4), '3f');
-    expect(lane.valueLabel!(11), '3f');
-
-    expect(lane.scrubValue!('3f', const Offset(8, 0)), '5f');
-    expect(lane.scrubValue!('3f', const Offset(-40, 0)), '0f');
-    expect(lane.scrubValue!('bogus', const Offset(8, 0)), isNull);
-  });
-
-  test('a clip without a carrying block hides the value field', () {
-    final lane = seAudioLanesFor(
-      _seLayer().copyWith(timeline: const {}, frames: const []),
-    ).single;
     expect(lane.valueLabel, isNull);
     expect(lane.scrubValue, isNull);
-  });
-
-  test('parseAudioOffsetInput accepts counts with optional sign and f', () {
-    expect(parseAudioOffsetInput('12'), 12);
-    expect(parseAudioOffsetInput('12f'), 12);
-    expect(parseAudioOffsetInput('-12f'), 12);
-    expect(parseAudioOffsetInput(' 7 '), 7);
-    expect(parseAudioOffsetInput(''), isNull);
-    expect(parseAudioOffsetInput('abc'), isNull);
   });
 
   Future<void> pumpLane(

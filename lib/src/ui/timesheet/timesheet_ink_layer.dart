@@ -9,6 +9,7 @@ import '../../models/timesheet_ink_keys.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
+import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../sheet/sheet_ink_layer.dart';
 import 'timesheet_document_painter.dart';
 import 'timesheet_ink_controller.dart';
@@ -18,10 +19,14 @@ import 'timesheet_ink_controller.dart';
 /// the column grid goes to the frame-anchored strip plane and everything
 /// else (header, memo band, margins, gaps) goes to the page plane — one
 /// stroke, split where it crosses ([sheetInkRegions]).
+///
+/// [pages] are the pages of the page view to lay windows for — every
+/// page the layout prints when null.
 List<SheetInkWindow> timesheetInkWindows({
   required TimesheetDocumentLayout layout,
   required TimesheetDocumentLayout pagedLayout,
   required CutId cutId,
+  Iterable<int>? pages,
 }) {
   final document = layout.document;
   final windows = <SheetInkWindow>[];
@@ -76,9 +81,7 @@ List<SheetInkWindow> timesheetInkWindows({
     return windows;
   }
 
-  // Page view mounts windows for the page ON SCREEN only (R26 #41) — the
-  // off-screen pages' surfaces keep their ink, they just have no window.
-  final visiblePages = layout.visiblePageIndexes;
+  final visiblePages = pages ?? layout.visiblePageIndexes;
   for (final pageIndex in visiblePages) {
     windows.add(
       window(
@@ -152,11 +155,22 @@ class TimesheetInkLayer extends StatelessWidget {
   final CacheInvalidationSink? cacheInvalidationSink;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => _windowsOver(box.biggest),
+  );
+
+  /// The layer for a [box] of the panel: in the page view, windows for
+  /// the pages on screen only — the pages off it keep their ink on their
+  /// surfaces (the sheet's strata print it), they just have no window
+  /// to draw through. Every page's three would be a brush view each.
+  Widget _windowsOver(Size box) {
     final windows = timesheetInkWindows(
       layout: layout,
       pagedLayout: pagedLayout,
       cutId: cutId,
+      pages: layout.continuous
+          ? null
+          : layout.pageStack.pagesMeeting(canvasRectShown(viewport, box)),
     );
     return SheetInkLayer(
       windows: windows,
