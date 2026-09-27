@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/source_body.dart';
+
 /// 🗣️F-193 (유저 2026-09-27): 「안드로이드, 도구버튼 위에서 펜 호버하다 펜
 /// 아예때서 사라지면 버튼 활성화색? 흰색배경된채로 유지되있음」.
 ///
@@ -15,14 +17,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// device: it can say the activity turns a pen's exit into that hover; what
 /// the tablet does with it is the device's to show.
 void main() {
-  final dispatch = _bodyOf(
-    File(
-      'android/app/src/main/kotlin/com/myoun/anicel/MainActivity.kt',
-    ).readAsStringSync(),
-    'override fun dispatchGenericMotionEvent(',
-  );
-
   test('a pen\'s hover exit is handed on as a hover far outside', () {
+    final dispatch = sourceBodyOf(
+      File(
+        'android/app/src/main/kotlin/com/myoun/anicel/MainActivity.kt',
+      ).readAsStringSync(),
+      'override fun dispatchGenericMotionEvent(',
+    );
     expect(dispatch, contains('super.dispatchGenericMotionEvent(ev)'));
     expect(dispatch, contains('MotionEvent.ACTION_HOVER_EXIT'));
     expect(dispatch, contains('MotionEvent.TOOL_TYPE_STYLUS'));
@@ -35,25 +36,4 @@ void main() {
           'then dropped would read the same above',
     );
   });
-}
-
-/// The body of the function whose declaration starts with [signature]:
-/// from its opening brace to the one that closes it.
-String _bodyOf(String source, String signature) {
-  final start = source.indexOf(signature);
-  expect(start, isNot(-1), reason: 'premise: $signature is in the file');
-  final open = source.indexOf('{', start);
-  var depth = 0;
-  for (var i = open; i < source.length; i += 1) {
-    switch (source[i]) {
-      case '{':
-        depth += 1;
-      case '}':
-        depth -= 1;
-        if (depth == 0) {
-          return source.substring(open, i + 1);
-        }
-    }
-  }
-  fail('$signature never closes');
 }

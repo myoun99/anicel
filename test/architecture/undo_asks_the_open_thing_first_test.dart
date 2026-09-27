@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_body.dart';
 
 /// 🚨★★★**UNDO ASKS WHAT IS OPEN BEFORE IT ASKS THE DOCUMENT.**
 ///
@@ -26,17 +27,8 @@ import '../helpers/dart_sources.dart';
 void main() {
   const verbs = 'lib/src/ui/brush/history_verbs.dart';
 
-  /// ⚠️LF, whatever the checkout wrote: a Windows working tree holds CRLF,
-  /// and a method's end is found by its newline.
-  String bodyOf(String raw, String signature) {
-    final source = raw.replaceAll('\r\n', '\n');
-    final start = source.indexOf(signature);
-    expect(start, isNonNegative, reason: '$signature is where the order lives');
-    return source.substring(start, source.indexOf('\n  }\n', start));
-  }
-
   test('undo asks polygon, then transform, then the document', () {
-    final undo = bodyOf(
+    final undo = sourceBodyOf(
       File(verbs).readAsStringSync(),
       'VoidCallback? _undo()',
     );
@@ -72,7 +64,7 @@ void main() {
   });
 
   test('redo is the same shape, and says so by asking the trace first', () {
-    final redo = bodyOf(
+    final redo = sourceBodyOf(
       File(verbs).readAsStringSync(),
       'VoidCallback? _redo()',
     );
