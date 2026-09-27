@@ -152,6 +152,7 @@ void main() {
             isPsd: false,
             placing: true,
             hasActiveCut: true,
+            lasting: true,
             spot: spot,
           );
       expect(resolve(cell).sound, isTrue);

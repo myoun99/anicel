@@ -17,12 +17,14 @@ void main() {
     bool isPsd = false,
     bool placing = true,
     bool hasActiveCut = true,
+    bool lasting = true,
   }) => resolvedImportSettings(
     settings,
     kind: kind,
     isPsd: isPsd,
     placing: placing,
     hasActiveCut: hasActiveCut,
+    lasting: lasting,
   );
 
   group('the file column is the POOL\'s question', () {
@@ -117,7 +119,11 @@ void main() {
       expect(trimmed.isTrimmed, isTrue);
       expect(resolve(trimmed).mode, ImportFileMode.keepInside);
       expect(
-        importModeAllowed(mode: ImportFileMode.reference, trimmed: true),
+        importModeAllowed(
+          mode: ImportFileMode.reference,
+          trimmed: true,
+          lasting: true,
+        ),
         isFalse,
       );
     });
@@ -134,11 +140,51 @@ void main() {
 
     test('carrying is never refused', () {
       for (final trimmed in [false, true]) {
-        expect(
-          importModeAllowed(mode: ImportFileMode.keepInside, trimmed: trimmed),
-          isTrue,
-        );
+        for (final lasting in [false, true]) {
+          expect(
+            importModeAllowed(
+              mode: ImportFileMode.keepInside,
+              trimmed: trimmed,
+              lasting: lasting,
+            ),
+            isTrue,
+          );
+        }
       }
+    });
+  });
+
+  group('a file that will not be there next time (PICK-7)', () {
+    test('🎯cannot be a reference — a Drive document is read through a copy '
+        'in this run\'s room, and a pointer at that copy points at nothing '
+        'the next time the project opens', () {
+      expect(
+        importModeAllowed(
+          mode: ImportFileMode.reference,
+          trimmed: false,
+          lasting: false,
+        ),
+        isFalse,
+      );
+      expect(
+        resolve(
+          defaults.copyWith(mode: ImportFileMode.reference),
+          lasting: false,
+        ).mode,
+        ImportFileMode.keepInside,
+        reason: 'the row says Keep — the answer the save would reach anyway',
+      );
+    });
+
+    test('a file that stays where it is keeps the reference it was given', () {
+      expect(
+        importModeAllowed(
+          mode: ImportFileMode.reference,
+          trimmed: false,
+          lasting: true,
+        ),
+        isTrue,
+      );
     });
   });
 
@@ -160,6 +206,7 @@ void main() {
         isPsd: false,
         placing: true,
         hasActiveCut: true,
+        lasting: true,
         spot: const LayerSlotSpot(1),
       );
       expect(resolved.into, ImportDestination.activeCutLayer);
@@ -172,6 +219,7 @@ void main() {
         isPsd: false,
         placing: true,
         hasActiveCut: true,
+        lasting: true,
         spot: const AboveActiveLayerSpot(),
       );
       expect(resolved.into, ImportDestination.newCut);
@@ -192,6 +240,7 @@ void main() {
         isPsd: true,
         placing: true,
         hasActiveCut: true,
+        lasting: true,
         spot: spot,
       );
       expect(resolved.bake, isTrue);

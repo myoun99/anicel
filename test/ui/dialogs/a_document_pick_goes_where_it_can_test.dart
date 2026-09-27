@@ -186,4 +186,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(grants?.map((grant) => grant.path), ['/sdcard/Pictures/a.png']);
   });
+
+  testWidgets('🎯a door that reads a document through a copy of its own '
+      'takes it — and its NAME is kept, for the copy to be called what the '
+      'provider calls it', (tester) async {
+    pickerAnswers(const [
+      FolderGrant.providerDocument(
+        ProviderDocument(uri: 'content://drive/doc/3', name: 'A1.png'),
+      ),
+      FolderGrant.granted(path: '/sdcard/Pictures/a.png', kind: GrantKind.file),
+    ]);
+    List<FolderGrant>? grants;
+
+    await run(tester, (context) async {
+      grants = await pickFileGrantsForUser(
+        context,
+        supportedExtensions: const ['png'],
+        allowMultiple: true,
+        acceptsDocuments: true,
+      );
+    });
+
+    expect(find.byKey(noPath), findsNothing);
+    expect(grants?.map((grant) => grant.document?.uri ?? grant.path), [
+      'content://drive/doc/3',
+      '/sdcard/Pictures/a.png',
+    ]);
+    expect(ProviderDocuments.nameOf('content://drive/doc/3'), 'A1.png');
+  });
 }

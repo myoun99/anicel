@@ -459,6 +459,8 @@ enum AppStrings {
   /// cannot tell that apart from a real cancel — the delegate is never
   /// called — so this is the only moment left to say it.
   String get folderPickDriveNotice => _s('folderPickDriveNotice');
+  String get folderPickDriveNoticeAndroid =>
+      _s('folderPickDriveNoticeAndroid');
   String get fileNameEmpty => _s('fileNameEmpty');
   String get recentProjectsTitle => _s('recentProjectsTitle');
   String get recentReconnect => _s('recentReconnect');
@@ -1878,6 +1880,9 @@ enum AppStrings {
     'folderPickDriveNotice':
         'Google Drive cannot hand over a folder. Use iCloud Drive, Dropbox, '
         'or this device.',
+    'folderPickDriveNoticeAndroid':
+        'Google Drive cannot hand over a folder. Use a folder on this device '
+        '— a sync app (Autosync …) can keep a Drive folder there.',
     'fileNameEmpty': 'File name cannot be empty.',
     'recentProjectsTitle': 'Recent projects',
     'recentReconnect': 'Reconnect',
@@ -3028,6 +3033,10 @@ enum AppStrings {
     'folderPickDriveNotice':
         'Google ドライブはフォルダーを渡せません。iCloud Drive・Dropbox・'
         'この端末をお使いください。',
+    'folderPickDriveNoticeAndroid':
+        'Google ドライブはフォルダーを渡せません。この端末のフォルダーを'
+        'お使いください — 同期アプリ（Autosync など）でドライブのフォルダーを'
+        '端末に置けます。',
     'fileNameEmpty': 'ファイル名を入力してください。',
     'recentProjectsTitle': '最近使ったプロジェクト',
     'recentReconnect': '再接続',
@@ -4366,6 +4375,10 @@ enum AppStrings {
     'folderPickDriveNotice':
         '구글 드라이브는 폴더를 넘겨주지 못합니다. iCloud Drive·Dropbox·'
         '이 기기를 사용하세요.',
+    'folderPickDriveNoticeAndroid':
+        '구글 드라이브는 폴더를 넘겨주지 못합니다. 이 기기의 폴더를 '
+        '사용하세요 — 동기화 앱(Autosync 등)으로 드라이브 폴더를 이 기기에 '
+        '둘 수 있습니다.',
     'fileNameEmpty': '파일 이름을 입력하세요.',
     'recentProjectsTitle': '최근 프로젝트',
     'recentReconnect': '다시 연결',
@@ -5704,6 +5717,10 @@ enum AppStrings {
     'folderPickDriveNotice':
         'Google Drive ne peut pas fournir de dossier. Utilisez iCloud Drive, '
         'Dropbox ou cet appareil.',
+    'folderPickDriveNoticeAndroid':
+        'Google Drive ne peut pas fournir de dossier. Utilisez un dossier de '
+        'cet appareil — une app de synchronisation (Autosync …) peut y garder '
+        'un dossier Drive.',
     'fileNameEmpty': 'Le nom de fichier ne peut pas être vide.',
     'recentProjectsTitle': 'Projets récents',
     'recentReconnect': 'Reconnecter',
@@ -7090,6 +7107,9 @@ enum AppStrings {
     'folderPickUnavailable': '无法打开文件夹选择器。',
     'folderPickDriveNotice':
         'Google 云端硬盘无法提供文件夹。请使用 iCloud Drive、Dropbox 或本设备。',
+    'folderPickDriveNoticeAndroid':
+        'Google 云端硬盘无法提供文件夹。请使用本设备上的文件夹 — 同步应用'
+        '（Autosync 等）可以把云端硬盘文件夹放到本设备上。',
     'fileNameEmpty': '文件名不能为空。',
     'recentProjectsTitle': '最近的项目',
     'recentReconnect': '重新连接',

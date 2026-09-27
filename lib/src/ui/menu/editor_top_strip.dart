@@ -1682,7 +1682,6 @@ Future<ProjectPick?> pickProjectFile(
     initialDirectory: initialDirectory,
   );
   if (grant?.document case final document?) {
-    ProviderDocuments.remember(document);
     return (path: document.uri, folderBookmark: null, placed: false);
   }
   final path = grant?.path;

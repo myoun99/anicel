@@ -1,5 +1,7 @@
-/// PICK-7: projects in a document provider with no filesystem path behind
-/// them — Google Drive and its kind on Android.
+/// PICK-7: files in a document provider with no filesystem path behind them
+/// — Google Drive and its kind on Android. A project is worked on in a copy
+/// and handed back; a medium the import window takes is read through a copy
+/// and carried.
 library;
 
 import 'dart:async';
@@ -106,15 +108,17 @@ abstract final class ProviderDocuments {
   static void debugReset() {
     debugChannel = null;
     _known.clear();
-    _workingCopies.clear();
+    _documentOfCopy.clear();
   }
 
   /// Every document this run has been handed, by URI.
   static final Map<String, ProviderDocument> _known = {};
 
-  /// The working copy each document is worked on in, by URI — the latest
-  /// one, when a document was opened again after its tab closed.
-  static final Map<String, String> _workingCopies = {};
+  /// The document each working copy stands for, by the COPY's path, latest
+  /// last. By the copy and not by the document: one document can be brought
+  /// in more than once in a run — opened again after its tab closed, picked
+  /// twice for an import — and each copy is let go of on its own ([letGo]).
+  static final Map<String, String> _documentOfCopy = {};
 
   /// Whether [path] names a provider document rather than a file.
   static bool isDocumentUri(String path) => path.startsWith('content://');
@@ -133,19 +137,28 @@ abstract final class ProviderDocuments {
   static String nameOf(String pathOrUri) =>
       _known[pathOrUri]?.name ?? fileNameOfPath(pathOrUri);
 
-  /// The working copy [uri] is being worked on in this run, if any.
-  static String? workingCopyOf(String uri) => _workingCopies[uri];
+  /// The working copy [uri] is being worked on in this run, if any — the
+  /// latest one.
+  static String? workingCopyOf(String uri) {
+    String? latest;
+    for (final MapEntry(key: copy, value: document)
+        in _documentOfCopy.entries) {
+      if (document == uri) {
+        latest = copy;
+      }
+    }
+    return latest;
+  }
 
   /// The document [path] is the working copy of — or null for every other
   /// file, which is to say nearly always.
   static ProviderDocument? documentBehind(String path) {
     final spelled = path.replaceAll(r'\', '/');
-    for (final MapEntry(key: uri, value: copy) in _workingCopies.entries) {
-      if (copy == spelled) {
-        return _known[uri] ?? ProviderDocument(uri: uri, name: nameOf(copy));
-      }
+    final uri = _documentOfCopy[spelled];
+    if (uri == null) {
+      return null;
     }
-    return null;
+    return _known[uri] ?? ProviderDocument(uri: uri, name: nameOf(spelled));
   }
 
   /// Starts bringing [uri] into a fresh working copy.
@@ -156,9 +169,12 @@ abstract final class ProviderDocuments {
       'destinationPath': destination,
     }).then((answer) {
       if (answer?['status'] != 'granted') {
+        // What came so far is gone already (the native side drops its part
+        // file); the folder made for it goes too.
+        _discardFolderOf(destination);
         return false;
       }
-      _workingCopies[uri] = destination;
+      _documentOfCopy[destination] = uri;
       return true;
     });
     return ProviderCopy._(destination, done);
@@ -178,7 +194,7 @@ abstract final class ProviderDocuments {
       File(staged).deleteSync();
     }
     remember(document);
-    _workingCopies[document.uri] = destination;
+    _documentOfCopy[destination] = document.uri;
     return destination;
   }
 
@@ -186,13 +202,17 @@ abstract final class ProviderDocuments {
   /// the file and the document's claim on it. Anything else is left alone:
   /// a real file a picker placed is the person's.
   static void letGo(String path) {
-    final document = documentBehind(path);
-    if (document == null) {
-      return;
+    final spelled = path.replaceAll(r'\', '/');
+    if (_documentOfCopy.remove(spelled) != null) {
+      _discardFolderOf(spelled);
     }
-    _workingCopies.remove(document.uri);
+  }
+
+  /// The folder of its own a working copy was made in ([_freshWorkingCopy]),
+  /// and whatever it holds.
+  static void _discardFolderOf(String copy) {
     try {
-      File(path).parent.deleteSync(recursive: true);
+      File(copy).parent.deleteSync(recursive: true);
     } on FileSystemException {
       // The room is swept when the run ends.
     }

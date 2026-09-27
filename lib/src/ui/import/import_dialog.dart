@@ -14,6 +14,7 @@ import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker, MaterializeCancelled;
+import '../../services/persistence/provider_documents.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
@@ -130,6 +131,20 @@ class _ImportDialogState extends State<ImportDialog> {
   /// 표시도안되고. 제대로 효율좋게 하자」).
   double? _tableWidth;
 
+  /// The copies this window read documents through — files the picker
+  /// handed over with no filesystem path (PICK-7, Drive on Android), each
+  /// brought into this run's room under the document's own name.
+  ///
+  /// 🗣️유저 2026-09-27: 「안한것 다 해줘. 임포트 드라이브로 할때라던가」.
+  /// Such a file is CARRIED — its copy goes with the run, so there is
+  /// nothing lasting to point at ([importModeAllowed]) — and once carried
+  /// the copy is let go of: the staged bytes are the project's, and a second
+  /// copy is what 유저 08-27 refused (「사본 남으면 진짜 용서안할게」).
+  final Set<String> _intakeCopies = {};
+
+  /// Whether [path] will still be where it is when the project opens next.
+  bool _lasting(String path) => !_intakeCopies.contains(path);
+
   ImportFileSettings _settingsFor(String path) {
     final kind = mediaAssetKindForPath(path);
     final resolved = resolvedImportSettings(
@@ -140,6 +155,7 @@ class _ImportDialogState extends State<ImportDialog> {
       isPsd: importPathIsPsd(path),
       placing: _placing,
       hasActiveCut: widget.session.activeCutOrNull != null,
+      lasting: _lasting(path),
       spot: widget.spot,
     );
     // A file the pool already holds has answered the pool's question: the
@@ -275,6 +291,12 @@ class _ImportDialogState extends State<ImportDialog> {
     }
   }
 
+  @override
+  void dispose() {
+    _intakeCopies.forEach(ProviderDocuments.letGo);
+    super.dispose();
+  }
+
   /// What the picker granted for the files in [_files], kept until Import
   /// runs so the session can record it.
   ///
@@ -300,7 +322,7 @@ class _ImportDialogState extends State<ImportDialog> {
       paths = await injected();
       grants = const [];
     } else {
-      grants = await pickFileGrantsForUser(
+      final picked = await pickFileGrantsForUser(
         context,
         // The POOL group, not the placeable one: this window is the
         // media pool's entrance now, and the browser registers
@@ -310,8 +332,11 @@ class _ImportDialogState extends State<ImportDialog> {
         // did not list it.
         supportedExtensions: FileTypeGroups.poolMedia.extensions ?? const [],
         allowMultiple: true,
+        acceptsDocuments: true,
       );
-      paths = [for (final grant in grants) ?grant.path];
+      // A document's copy is carried, and carrying records no token.
+      grants = [for (final grant in picked) if (grant.path != null) grant];
+      paths = await _readablePathsOf(picked);
     }
     if (paths.isEmpty || !mounted) {
       return;
@@ -326,6 +351,59 @@ class _ImportDialogState extends State<ImportDialog> {
         ..clear()
         ..addAll(grants);
     });
+    _letGoOfUnlistedCopies();
+    // A picked movie is asked about its sound as a dropped one is — the
+    // 「소리」 column used to open only for movies handed in at the start.
+    paths.forEach(_probeMovieSound);
+  }
+
+  /// What each of [picked] is read from: its own path, or — a document with
+  /// no filesystem path (PICK-7) — a copy brought into this run's room
+  /// ([_intakeCopies]) under the wait, the clock and the Stop a cloud file's
+  /// placement waits with ([_readableForImport]). A document that does not
+  /// come is left out and named on the status line.
+  Future<List<String>> _readablePathsOf(List<FolderGrant> picked) async {
+    final paths = <String>[];
+    final missed = <String>[];
+    for (final grant in picked) {
+      if (grant.document case final document?) {
+        final copy = await _readableForImport(document.uri);
+        if (!mounted) {
+          // The window went while the copy came: nothing will let go of it.
+          if (copy != null) {
+            ProviderDocuments.letGo(copy);
+          }
+          return const [];
+        }
+        if (copy == null) {
+          missed.add(document.name);
+        } else {
+          _intakeCopies.add(copy);
+          paths.add(copy);
+        }
+      } else if (grant.path case final path?) {
+        paths.add(path);
+      }
+    }
+    if (picked.any((grant) => grant.document != null)) {
+      setState(
+        () => _status = missed.map(AppText.strings.imUnreadable).join(' · '),
+      );
+    }
+    return paths;
+  }
+
+  /// Lets go of every copy [_files] no longer lists — replaced by another
+  /// pick, imported (its bytes are staged), or the window closing.
+  void _letGoOfUnlistedCopies() {
+    final unlisted = [
+      for (final copy in _intakeCopies)
+        if (!_files.contains(copy)) copy,
+    ];
+    for (final copy in unlisted) {
+      _intakeCopies.remove(copy);
+      ProviderDocuments.letGo(copy);
+    }
   }
 
   Future<void> _pickFolder() async {
@@ -344,6 +422,7 @@ class _ImportDialogState extends State<ImportDialog> {
       _folder = path;
       _reparseFolder();
     });
+    _letGoOfUnlistedCopies();
   }
 
   /// The folder's entries, scanned ONCE per folder pick — re-parsing on
@@ -389,7 +468,11 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   bool get _canImport =>
-      !_running && (_files.isNotEmpty || (_folder != null && _parsed != null));
+      !_busy && (_files.isNotEmpty || (_folder != null && _parsed != null));
+
+  /// Importing, or waiting on a document's bytes after a pick — either way
+  /// the sources are not to be changed or run from under it.
+  bool get _busy => _running || _waitingForFile;
 
   /// True while the import is WAITING on somebody else's bytes rather
   /// than doing its own work — which is the only stretch of a run that
@@ -484,6 +567,7 @@ class _ImportDialogState extends State<ImportDialog> {
           ? AppText.strings.imStatusNothing
           : tally.warnings.take(3).join(' · ');
     });
+    _letGoOfUnlistedCopies();
   }
 
   /// Runs the picked import, whichever door it goes through. Answers
@@ -1208,6 +1292,7 @@ class _ImportDialogState extends State<ImportDialog> {
       return importModeAllowed(
         mode: value! as ImportFileMode,
         trimmed: _settingsFor(path).isTrimmed,
+        lasting: _lasting(path),
       );
     },
     onPick: (paths, value) => _setSettings(
@@ -1367,7 +1452,11 @@ class _ImportDialogState extends State<ImportDialog> {
         : _files.isEmpty
         ? AppText.strings.imNoSource
         : _files.length == 1
-        ? _files.single
+        // A document's copy lies in this run's room, which is nowhere the
+        // person keeps anything — the bar names the document instead.
+        ? (_lasting(_files.single)
+              ? _files.single
+              : mediaFileName(_files.single))
         : AppText.strings.imFileCount(_files.length);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1383,13 +1472,13 @@ class _ImportDialogState extends State<ImportDialog> {
           const SizedBox(width: 8),
           OutlinedButton(
             key: const ValueKey<String>('import-browse-files-button'),
-            onPressed: _running ? null : _pickFiles,
+            onPressed: _busy ? null : _pickFiles,
             child: Text(AppText.strings.imFilesButton),
           ),
           const SizedBox(width: 6),
           OutlinedButton(
             key: const ValueKey<String>('import-browse-folder-button'),
-            onPressed: _running ? null : _pickFolder,
+            onPressed: _busy ? null : _pickFolder,
             child: Text(AppText.strings.imCutFolderButton),
           ),
         ],

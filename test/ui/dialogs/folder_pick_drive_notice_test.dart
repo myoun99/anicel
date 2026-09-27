@@ -5,11 +5,12 @@ import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 
 /// PICK-6: the one thing the app cannot see.
 ///
-/// Google Drive greys out Open in FOLDER mode, and a greyed-out button never
-/// calls the picker's delegate — so a user who walked into Drive and found
-/// Open dead arrives at exactly the same place as someone who changed their
-/// mind. This notice is the only moment left to say it, which is why it is
-/// pinned rather than left to read well.
+/// Google Drive gives no folder to any folder window: on Apple it greys out
+/// Open in FOLDER mode, and a greyed-out button never calls the picker's
+/// delegate; on Android it is not listed at all. Either way a person who
+/// went looking for it arrives at exactly the same place as someone who
+/// changed their mind. This notice is the only moment left to say it, which
+/// is why it is pinned rather than left to read well.
 void main() {
   const notice = ValueKey<String>('folder-pick-drive-notice');
 
@@ -51,15 +52,34 @@ void main() {
         debugOperatingSystemOverride = os;
         await pumpAndPickFolder(tester);
         expect(find.byKey(notice), findsOneWidget);
+        expect(
+          find.textContaining('iCloud Drive'),
+          findsOneWidget,
+          reason: 'where a folder CAN come from on Apple (실측 08-13)',
+        );
       });
     }
+
+    testWidgets('🎯android: Drive is not even LISTED in the folder window — a '
+        'cancel may be someone who looked for it, and they are told where a '
+        'folder can come from there (유저 2026-09-27: 「폴더 고르는창은 '
+        '드라이브 어쩔수없나?」)', (tester) async {
+      debugOperatingSystemOverride = 'android';
+      await pumpAndPickFolder(tester);
+      expect(find.byKey(notice), findsOneWidget);
+      expect(
+        find.textContaining('iCloud Drive'),
+        findsNothing,
+        reason: 'there is no iCloud Drive on Android to send anyone to',
+      );
+      expect(find.textContaining('Autosync'), findsOneWidget);
+    });
   });
 
   group('where it cannot', () {
-    // Android reaches Drive too, but its tree resolves to `noFilesystemPath`
-    // and raises its OWN notice — a second one here would be two answers to
-    // one question. Windows and Linux have no Drive provider at all.
-    for (final os in const ['android', 'windows', 'linux']) {
+    // Windows and Linux have no Drive provider in a folder window at all —
+    // Drive for desktop is a drive letter, and it hands over folders.
+    for (final os in const ['windows', 'linux']) {
       testWidgets('$os: a cancel stays a cancel', (tester) async {
         debugOperatingSystemOverride = os;
         await pumpAndPickFolder(tester);
@@ -132,14 +152,12 @@ void main() {
   });
 
   test('the predicate is its own, not borrowed', () {
-    // It happens to name the same two platforms as
-    // `referencesExpireForPlatform`, for a DIFFERENT reason (that one is the
-    // sandbox; this one is that Android has its own notice and Apple's
-    // button is simply dead). Pinned so a future edit to either does not
-    // quietly move the other.
+    // Pinned so a future edit to a predicate that names some of the same
+    // platforms for another reason does not quietly move this one.
     expect(folderPickCancelMayBeDrive('ios'), isTrue);
     expect(folderPickCancelMayBeDrive('macos'), isTrue);
-    for (final os in const ['android', 'windows', 'linux', 'fuchsia']) {
+    expect(folderPickCancelMayBeDrive('android'), isTrue);
+    for (final os in const ['windows', 'linux', 'fuchsia']) {
       expect(folderPickCancelMayBeDrive(os), isFalse, reason: os);
     }
   });

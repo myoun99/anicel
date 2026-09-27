@@ -155,8 +155,16 @@ void main() {
       expect(ProviderDocuments.workingCopyOf(uri), isNull);
     });
 
-    test('a document the provider will not give says it could not be read',
-        () async {
+    test('a document the provider will not give says it could not be read '
+        '— and leaves no folder behind in the room', () async {
+      List<String> roomFolders() {
+        final room = Directory(SessionScratch.openedFolder());
+        return room.existsSync()
+            ? [for (final entry in room.listSync()) entry.path]
+            : const [];
+      }
+
+      final before = roomFolders();
       await expectLater(
         FolderPicker.materializeOpenedFile(
           'content://drive/doc/gone',
@@ -165,6 +173,34 @@ void main() {
         ),
         throwsA(isA<FileSystemException>()),
       );
+      expect(roomFolders(), before);
+    });
+
+    test('🎯a document brought in TWICE keeps a copy each — and each is let '
+        'go of on its own', () async {
+      final uri = await projectDocument('A1.png');
+      Future<String> bringIn() async => (await FolderPicker
+          .materializeOpenedFile(uri, within: null, isCancelled: () => false))
+          .path;
+
+      final first = await bringIn();
+      final second = await bringIn();
+
+      expect(first, isNot(second));
+      expect(ProviderDocuments.documentBehind(first)?.uri, uri);
+      expect(ProviderDocuments.documentBehind(second)?.uri, uri);
+      expect(ProviderDocuments.workingCopyOf(uri), second);
+
+      ProviderDocuments.letGo(first);
+
+      expect(File(first).parent.existsSync(), isFalse);
+      expect(File(second).existsSync(), isTrue);
+      expect(ProviderDocuments.workingCopyOf(uri), second);
+
+      ProviderDocuments.letGo(second);
+
+      expect(File(second).parent.existsSync(), isFalse);
+      expect(ProviderDocuments.workingCopyOf(uri), isNull);
     });
 
     test('a name a path cannot hold is made one', () async {

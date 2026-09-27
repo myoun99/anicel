@@ -145,12 +145,18 @@ bool importPathIsPsd(String path) {
 /// The user decided on 2026-09-11 to lift this (「구간 잘라도 참조 그대로:
 /// 푼다 … 빈틈없이」) — it goes when every reader of a layer's reference
 /// honours its start frame, not before.
+///
+/// A pointer is refused, too, for a file that is not [lasting] — one that
+/// will not be where it is when the project opens next: a document with no
+/// filesystem path (PICK-7, Drive on Android) is read through a copy in
+/// this run's room, which goes with the run.
 bool importModeAllowed({
   required ImportFileMode mode,
   required bool trimmed,
+  required bool lasting,
 }) => switch (mode) {
   ImportFileMode.keepInside => true,
-  ImportFileMode.reference => !trimmed,
+  ImportFileMode.reference => !trimmed && lasting,
 };
 
 /// Whether the BAKE question is asked of a file of [kind] at all: only where
@@ -232,13 +238,15 @@ bool importFitLocked(ImportFileSettings settings, {required bool placing}) =>
 /// stores what the user pressed and asks here what that MEANS for this
 /// file. A trimmed file set to Link comes back Keep, and the row says
 /// Keep — the same answer the save would have reached anyway, arrived at
-/// before the user is surprised by it.
+/// before the user is surprised by it. So does one that is not [lasting]
+/// ([importModeAllowed]).
 ImportFileSettings resolvedImportSettings(
   ImportFileSettings settings, {
   required MediaAssetKind? kind,
   required bool isPsd,
   required bool placing,
   required bool hasActiveCut,
+  required bool lasting,
   ImportLayerSpot? spot,
 }) {
   final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;
@@ -254,6 +262,7 @@ ImportFileSettings resolvedImportSettings(
   final mode = importModeAllowed(
     mode: settings.mode,
     trimmed: settings.isTrimmed,
+    lasting: lasting,
   )
       ? settings.mode
       // Carrying is never refused, so a refused pointer lands there.
