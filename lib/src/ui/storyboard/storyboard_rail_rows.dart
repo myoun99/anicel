@@ -21,42 +21,38 @@ class _StoryboardRailRows {
       _state.widget.railExtent ??
       (_state._ownedRailExtent ??= LayerRailExtent());
 
-  /// Rebuilds [builder] with the cut under the storyboard playhead on track
-  /// [trackIndex] whenever THAT cut changes — the cursor-layer subscription
-  /// the ruler and the playhead overlay already take (F-19), asking only
-  /// what the row shows of it.
+  /// Follows the cut under the storyboard playhead on track [trackIndex],
+  /// for the one cell of the V row that shows it — the eye
+  /// ([StoryboardTrackLabelRow.followsSubject]) — rebuilding it whenever
+  /// THAT cut changes: the cursor-layer subscription the ruler and the
+  /// playhead overlay already take (F-19), asking only what the row shows
+  /// of it. A gap follows as the active cut, as the row always did.
   ///
   /// I-22 ③: it rebuilt on every move of the playhead, so the row — its
   /// buttons, their faces and tooltips — was rebuilt at the playback rate
   /// while a cut of 96 frames kept the same subject for four seconds.
+  /// 🚨And it rebuilt the WHOLE row per crossing — at a far zoom a scrub
+  /// crosses into another cut on nearly every move, and the eye is the only
+  /// cell that shows which cut stands there (09-28): the row stands now,
+  /// and the eye follows on a tick layer of its own
+  /// ([StoryboardTrackLabelRow]'s — a layer because the row rebuilt bare in
+  /// the body's layout scope laid the body out again and repainted the
+  /// whole panel on each move, measured at 0.16px: 30ms of a 366ms scrub
+  /// sample).
   ///
-  /// Returns the built widget UNWRAPPED when there is no playhead channel:
-  /// a host that never publishes one has nothing for the subscription to
-  /// listen to, and a builder that never fires is a rebuild boundary paid
-  /// for nothing.
-  Widget _cutAtPlayheadFollowing(
-    int trackIndex,
-    Widget Function(Cut? subject) builder,
-  ) {
+  /// Null when there is no playhead channel: a host that never publishes
+  /// one has nothing for the subscription to listen to, and a builder that
+  /// never fires is a rebuild boundary paid for nothing.
+  Widget Function(Widget Function(Cut? subject) eye)?
+  _followsTheCutUnderThePlayhead(int trackIndex, Cut? activeCut) {
     final playhead = _state.widget.playheadFrame;
     if (playhead == null) {
-      return builder(null);
+      return null;
     }
-    // 🚨A TICK LAYER (I-22 ③): at a far zoom a scrub crosses into another
-    // cut on nearly every move, and the row rebuilt bare in the body's
-    // layout scope laid the body out again and repainted the whole panel on
-    // each (measured at 0.16px: 30ms of a 366ms scrub sample). The row is
-    // the V rail row — the rail's width by the V lane's height.
-    return SizedBox(
-      width: StoryboardPanel.railWidthIn(_state.context),
-      height: _state.widget.trackLaneHeight,
-      child: TickLayer(
-        child: _FollowsTheCutUnderThePlayhead(
-          playhead: playhead,
-          cutAt: () => _state._standing.cutAtPlayheadOn(trackIndex),
-          builder: builder,
-        ),
-      ),
+    return (eye) => _FollowsTheCutUnderThePlayhead(
+      playhead: playhead,
+      cutAt: () => _state._standing.cutAtPlayheadOn(trackIndex),
+      builder: (subject) => eye(subject ?? activeCut),
     );
   }
 
@@ -690,10 +686,12 @@ class _StoryboardRailRows {
           // frame had been at the last panel rebuild, which during a drag is
           // where the drag STARTED.
           //
-          // ★So this row subscribes, the way the overlay does. One row per
-          // track rebuilds per move — the cost the ruler beside it already
-          // pays — and the alternative (rebuilding the panel) is the very
-          // thing the split exists to avoid.
+          // ★So this row subscribes, the way the overlay does — through the
+          // one cell that shows which cut stands there, the eye (09-28: it
+          // was the whole row). One eye per track rebuilds per crossing —
+          // less than the ruler beside it already pays — and the
+          // alternative (rebuilding the panel) is the very thing the split
+          // exists to avoid.
           //
           // ⛔NOT by making the ruler switch the active cut, which is what the
           // report wondered aloud about (「애초에 룰러에 따라 액티브컷 전환하도록
@@ -701,53 +699,51 @@ class _StoryboardRailRows {
           // preview machinery (D6's no-flash rules, the territory flag) exists
           // because the active cut does not follow a drag — and switching it
           // per move would put a cut activation on every pointer move.
-          _cutAtPlayheadFollowing(
-            index,
-            (subject) => StoryboardTrackLabelRow(
-              track: track,
-              trackLabel: _vRowName(index),
-              laneHeight: _state.widget.trackLaneHeight,
-              laneExpanded: _state.widget.expandedTransformTracks.contains(
-                track.id.value,
-              ),
-              onToggleLane: _state.widget.onToggleTrackLane == null
-                  ? null
-                  : () => _state.widget.onToggleTrackLane!(track),
-              // V-track selection (UI-R18 #6): tapping selects the track (its
-              // playhead-index cut becomes active). The highlight says THIS ROW
-              // IS SELECTED — not "the active cut lives here", which is what the
-              // cut block's own active border already says, and which could light
-              // at the same time as an S row.
-              active: _state.widget.selectedRow == TrackRowAddress(track.id),
-              onSelectTrack: _state.widget.onSelectTrack == null
-                  ? null
-                  : () => _state.widget.onSelectTrack!(track.id),
-              activeCut: activeCut,
-              // UI-R13 #2: the fx/eye act on THIS track's cut at the current
-              // global index (each track independently) — no stand-down, no
-              // parked look. A gap simply means no cut exists there: the
-              // buttons stay normal and a press is a no-op.
-              subjectCut: subject ?? activeCut,
-              cutPictureVisibleOf: _state.widget.cutPictureVisibleOf,
-              onToggleCutPictureVisibility:
-                  _state.widget.onToggleCutPictureVisibility,
-              // R9 #21: the track's own display columns.
-              trackFxState:
-                  _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
-              onToggleTrackFx: _state.widget.onToggleTrackFx == null
-                  ? null
-                  : () => _state.widget.onToggleTrackFx!(track),
-              trackOpacity: _state.widget.trackOpacityOf?.call(track) ?? 1.0,
-              onTrackOpacityChanged: _state.widget.onTrackOpacityChanged == null
-                  ? null
-                  : (opacity) =>
-                        _state.widget.onTrackOpacityChanged!(track, opacity),
-              onTrackOpacityChangeEnd:
-                  _state.widget.onTrackOpacityChangeEnd == null
-                  ? null
-                  : (opacity) =>
-                        _state.widget.onTrackOpacityChangeEnd!(track, opacity),
+          StoryboardTrackLabelRow(
+            track: track,
+            trackLabel: _vRowName(index),
+            laneHeight: _state.widget.trackLaneHeight,
+            laneExpanded: _state.widget.expandedTransformTracks.contains(
+              track.id.value,
             ),
+            onToggleLane: _state.widget.onToggleTrackLane == null
+                ? null
+                : () => _state.widget.onToggleTrackLane!(track),
+            // V-track selection (UI-R18 #6): tapping selects the track (its
+            // playhead-index cut becomes active). The highlight says THIS ROW
+            // IS SELECTED — not "the active cut lives here", which is what the
+            // cut block's own active border already says, and which could light
+            // at the same time as an S row.
+            active: _state.widget.selectedRow == TrackRowAddress(track.id),
+            onSelectTrack: _state.widget.onSelectTrack == null
+                ? null
+                : () => _state.widget.onSelectTrack!(track.id),
+            activeCut: activeCut,
+            // UI-R13 #2: the fx/eye act on THIS track's cut at the current
+            // global index (each track independently) — no stand-down, no
+            // parked look. A gap simply means no cut exists there: the
+            // buttons stay normal and a press is a no-op.
+            subjectCut: activeCut,
+            followsSubject: _followsTheCutUnderThePlayhead(index, activeCut),
+            cutPictureVisibleOf: _state.widget.cutPictureVisibleOf,
+            onToggleCutPictureVisibility:
+                _state.widget.onToggleCutPictureVisibility,
+            // R9 #21: the track's own display columns.
+            trackFxState:
+                _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
+            onToggleTrackFx: _state.widget.onToggleTrackFx == null
+                ? null
+                : () => _state.widget.onToggleTrackFx!(track),
+            trackOpacity: _state.widget.trackOpacityOf?.call(track) ?? 1.0,
+            onTrackOpacityChanged: _state.widget.onTrackOpacityChanged == null
+                ? null
+                : (opacity) =>
+                      _state.widget.onTrackOpacityChanged!(track, opacity),
+            onTrackOpacityChangeEnd:
+                _state.widget.onTrackOpacityChangeEnd == null
+                ? null
+                : (opacity) =>
+                      _state.widget.onTrackOpacityChangeEnd!(track, opacity),
           ),
         ),
       ),
@@ -1619,7 +1615,7 @@ class _StoryboardRailRows {
 
 /// Rebuilds [builder] when the cut under the playhead changes — never on a
 /// playhead move that stays inside it ([_StoryboardRailRows.
-/// _cutAtPlayheadFollowing]).
+/// _followsTheCutUnderThePlayhead]).
 class _FollowsTheCutUnderThePlayhead extends StatefulWidget {
   const _FollowsTheCutUnderThePlayhead({
     required this.playhead,

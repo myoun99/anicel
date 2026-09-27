@@ -4160,6 +4160,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
     this.onSelectTrack,
     this.activeCut,
     this.subjectCut,
+    this.followsSubject,
     this.cutPictureVisibleOf,
     this.onToggleCutPictureVisibility,
     this.trackFxState = LayerFxState.on,
@@ -4212,6 +4213,13 @@ class StoryboardTrackLabelRow extends StatelessWidget {
   /// look, no stand-down; null (a gap on this track) just makes a press
   /// a no-op, because no cut exists at the index.
   final Cut? subjectCut;
+
+  /// Where the subject comes from when it MOVES — the cut under the
+  /// playhead, which a scrub changes on nearly every move at a far zoom.
+  /// Handed the eye's builder, it rebuilds the eye alone, on a tick layer
+  /// of its own, and the row around it stands; [subjectCut] is not read.
+  /// Null: the eye shows [subjectCut] as given.
+  final Widget Function(Widget Function(Cut? subject) eye)? followsSubject;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
   final ValueChanged<CutId>? onToggleCutPictureVisibility;
 
@@ -4224,6 +4232,22 @@ class StoryboardTrackLabelRow extends StatelessWidget {
   final double trackOpacity;
   final ValueChanged<double>? onTrackOpacityChanged;
   final ValueChanged<double>? onTrackOpacityChangeEnd;
+
+  /// The eye on [subject] — the SAME eye the layer and folder rows mount;
+  /// this was a sixth inline copy (R28 follow-up).
+  Widget _eye(Cut? subject) => LayerVisibilityToggleButton(
+    keyValue:
+        'storyboard-cut-visibility-'
+        '${subject?.id.value ?? 'none-${track.id.value}'}',
+    subject: RailSubject.track,
+    isVisible:
+        subject == null || (cutPictureVisibleOf?.call(subject.id) ?? true),
+    onToggle: () {
+      if (subject != null) {
+        onToggleCutPictureVisibility!(subject.id);
+      }
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -4352,24 +4376,12 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                     : RailSwipeColumnPointer(
                         child: SizedBox(
                           height: 26,
-                          // The SAME eye the layer and folder rows mount —
-                          // this was a sixth inline copy (R28 follow-up).
-                          child: LayerVisibilityToggleButton(
-                            keyValue:
-                                'storyboard-cut-visibility-'
-                                '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                            subject: RailSubject.track,
-                            isVisible:
-                                subjectCut == null ||
-                                (cutPictureVisibleOf?.call(subjectCut!.id) ??
-                                    true),
-                            onToggle: () {
-                              final subject = subjectCut;
-                              if (subject != null) {
-                                onToggleCutPictureVisibility!(subject.id);
-                              }
-                            },
-                          ),
+                          child: switch (followsSubject) {
+                            null => _eye(subjectCut),
+                            // The one cell of the row the playhead moves
+                            // — laid out and painted alone (I-22 ③).
+                            final follow => TickLayer(child: follow(_eye)),
+                          },
                         ),
                       ),
                 // R9 #21: the track's STATIC opacity — this slot was empty
