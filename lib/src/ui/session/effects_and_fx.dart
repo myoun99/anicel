@@ -382,7 +382,7 @@ class EffectsAndFx {
   }
 
   /// A V-track effect group's RESET (R5) — the track twin of
-  /// [SessionInternals.resetLaneGroup]. Track effects have no lane-range
+  /// `LaneVerbs.resetLaneGroup`. Track effects have no lane-range
   /// selection of their own, so the scope is always the playhead.
   bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) =>
       _editTrackEffects(

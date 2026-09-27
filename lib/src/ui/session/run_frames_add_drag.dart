@@ -16,18 +16,18 @@ class RunFramesAddDragVerbs {
     required ProjectAccess project,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required RetimeLaw retime,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _changes = changes,
        _controllers = controllers,
-       _internals = internals,
+       _retime = retime,
        _dragPreview = dragPreview;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+  final RetimeLaw _retime;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
   /// The in-flight "+ add frames" drag ([RunFramesAddDrag]), or null. The
@@ -46,7 +46,7 @@ class RunFramesAddDragVerbs {
       layerId: layerId,
       blockStartIndex: blockStartIndex,
       atEnd: atEnd,
-      blockMoveEligible: _internals.blockMoveEligible,
+      blockMoveEligible: _retime.blockMoveEligible,
       layerById: _project.layerById,
       activeCutFrameCount: () => _project.activeCutFrameCount,
       preview: _dragPreview,

@@ -59,7 +59,7 @@ void main() {
     }
 
     void stroke(double x) {
-      final outcome = session.pixelEditingCoordinator!.commitSourceStroke(
+      final outcome = session.pixelEditing.coordinator!.commitSourceStroke(
         sourceDabs: [
           BrushDab(
             center: CanvasPoint(x: x, y: 20),
@@ -81,7 +81,7 @@ void main() {
     /// the store calls the cel's truth. Same object = one picture.
     void expectOnePicture(CutId cutId, {required String when}) {
       final key = keyOf(cutId);
-      final surface = session.pixelEditingCoordinator!.currentSurfaceOf(key);
+      final surface = session.pixelEditing.coordinator!.currentSurfaceOf(key);
       expect(
         identical(surface, store.bakedSurfaceOrNull(store.canonicalKeyOf(key))),
         isTrue,

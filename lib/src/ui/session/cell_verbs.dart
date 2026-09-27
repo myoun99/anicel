@@ -16,6 +16,7 @@ import 'session_roles.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/canvas_selection_region.dart';
 import 'lane_verbs.dart';
+import 'pixel_editing.dart';
 import 'range_selections.dart';
 import 'frame_clipboard.dart';
 import 'transition_range_hold.dart';
@@ -54,7 +55,7 @@ class CellVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required PixelEditing pixelEditing,
     required RenderCaches renderCaches,
     required LaneVerbs laneVerbs,
     required RangeSelections rangeSelections,
@@ -64,7 +65,7 @@ class CellVerbs {
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _internals = internals,
+       _pixelEditing = pixelEditing,
        _renderCaches = renderCaches,
        _laneVerbs = laneVerbs,
        _rangeSelections = rangeSelections,
@@ -78,7 +79,7 @@ class CellVerbs {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+  final PixelEditing _pixelEditing;
   final RenderCaches _renderCaches;
   final LaneVerbs _laneVerbs;
   final RangeSelections _rangeSelections;
@@ -190,7 +191,7 @@ class CellVerbs {
   /// Whether a pixel verb has anything to do — the buttons' gate, and the
   /// same question the press runs (T25: one answer behind both).
   bool get canRunPixelVerb =>
-      _internals.pixelEditingCoordinator != null &&
+      _pixelEditing.coordinator != null &&
       pixelVerbSubject != PixelVerbSubject.nothing;
 
   /// 색 변환 (`CelPixelChannel.colour`) and 픽셀 비우기 (`.alpha`) — one
@@ -204,7 +205,7 @@ class CellVerbs {
   ///
   /// One undo step across every cel, however many the ladder named.
   void runPixelVerb(CelPixelVerb verb) {
-    final coordinator = _internals.pixelEditingCoordinator;
+    final coordinator = _pixelEditing.coordinator;
     if (coordinator == null) {
       return;
     }

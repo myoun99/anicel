@@ -305,7 +305,7 @@ void main() {
   testWidgets('the buttons dim rather than the press throwing when no canvas '
       'coordinator has been published', (tester) async {
     final session = await pump(tester);
-    session.pixelEditingCoordinator = null;
+    session.pixelEditing.coordinator = null;
     expect(cellVerbsOf(session).canRunPixelVerb, isFalse);
     // ⛔And the press is a no-op rather than an exception: a gate and a verb
     // that disagree is the bug T25 exists to prevent.
@@ -323,7 +323,7 @@ void main() {
   /// on the PIXELS has to put the drawing where the verb will look.
   void inkThroughCoordinator(EditorSessionManager session) {
     final key = cellVerbsOf(session).pixelVerbCellKeys().single;
-    final coordinator = session.pixelEditingCoordinator!;
+    final coordinator = session.pixelEditing.coordinator!;
     final base = coordinator.currentSurfaceOf(key);
     final bytes = base.tileSize * base.tileSize * 4;
     coordinator.restoreSurfaceSnapshot(
@@ -342,7 +342,7 @@ void main() {
 
   int alphaAt(EditorSessionManager session, int x, int y) {
     final key = cellVerbsOf(session).pixelVerbCellKeys().single;
-    final tile = session.pixelEditingCoordinator!
+    final tile = session.pixelEditing.coordinator!
         .currentSurfaceOf(key)
         .tileAt(TileCoord(x: 0, y: 0))!;
     return tile.pixels[tile.byteOffsetForPixel(x: x, y: y) + 3];

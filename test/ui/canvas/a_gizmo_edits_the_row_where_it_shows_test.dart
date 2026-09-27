@@ -105,7 +105,7 @@ void main() {
     final session = sessionOf(tester);
     session.selectLayer(row);
     await pumpFrames(tester);
-    final landed = session.pixelEditingCoordinator!.commitSourceStroke(
+    final landed = session.pixelEditing.coordinator!.commitSourceStroke(
       sourceDabs: [
         BrushDab(
           center: CanvasPoint(x: centre.x + 30, y: centre.y + 20),

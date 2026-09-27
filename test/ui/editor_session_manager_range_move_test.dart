@@ -45,7 +45,7 @@ void main() {
           selection: s,
           changes: s,
           controllers: s.activeCutControllers,
-          internals: s,
+          retime: s,
           dragPreview: s.dragPreview,
           blockMove: s.drawingBlockMove,
           renderCaches: s.renderCaches,

@@ -18,7 +18,6 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
-import '../../services/brush_frame_editing_coordinator.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
@@ -102,8 +101,19 @@ abstract interface class ChangeSink {
     bool filterSparesStanding = true,
   });
   void refreshLiveAudioSchedule();
-  bool standsDownFromRetime(LayerId layerId);
   void warmActiveCut();
+}
+
+/// THE RETIME LAW — whether a row's timing is its own to move, asked two
+/// ways: [standsDownFromRetime] by the RESHAPING verbs, [blockMoveEligible]
+/// by a block MOVE. One law's two halves, so one role (the audit's
+/// nineteenth family, 2026-09-28): the first had been sorted into
+/// `ChangeSink` by the role generator, the second sat among the session's
+/// internals, and the session's own comments already read one through the
+/// other.
+abstract interface class RetimeLaw {
+  bool blockMoveEligible(LayerId layerId);
+  bool standsDownFromRetime(LayerId layerId);
 }
 
 abstract interface class FrameIds {
@@ -117,16 +127,4 @@ abstract interface class TimelineAccess {
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
   TransformPose layerPoseAtFrame(Layer layer, int frameIndex);
   TrackFrameAxis trackFrameAxis();
-}
-
-/// What collaborators still reach into the session for beyond the
-/// roles above — the measured remainder of the coupling, and a list
-/// that only shrinks: each member either moves into the one
-/// collaborator that uses it, becomes a role, or is injected as the
-/// sibling it really is. ⛔Nothing is added here.
-abstract interface class SessionInternals {
-  bool blockMoveEligible(LayerId layerId);
-  int commitBlockStart(LayerId layerId, int displayStart);
-  BrushFrameEditingCoordinator? get pixelEditingCoordinator;
-  void selectTrackCutAtPlayhead(TrackId trackId);
 }

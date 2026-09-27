@@ -20,6 +20,5 @@ typedef EdgeDragRoles = ({
   ProjectAccess project,
   ChangeSink changes,
   ActiveCutControllers controllers,
-  SessionInternals internals,
   ValueNotifier<TimelineDragPreview?> dragPreview,
 });

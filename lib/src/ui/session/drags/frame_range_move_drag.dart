@@ -137,8 +137,8 @@ int _commitOffsetFor(
   LayerId layerId,
   int spanStart, {
   required bool onTrackAxis,
-  required SessionInternals internals,
-}) => onTrackAxis ? 0 : internals.commitBlockStart(layerId, spanStart) - spanStart;
+  required TrackSeDisplay trackSe,
+}) => onTrackAxis ? 0 : trackSe.commitBlockStart(layerId, spanStart) - spanStart;
 
 /// The layer-stated span a TRACK-axis selection moves, or null when the
 /// track selection names no owning layer.
@@ -323,7 +323,7 @@ typedef FrameRangeMoveRoles = ({
   SelectionAccess selection,
   ChangeSink changes,
   ActiveCutControllers controllers,
-  SessionInternals internals,
+  RetimeLaw retime,
   ValueNotifier<TimelineDragPreview?> dragPreview,
   DrawingBlockMoveDragVerbs blockMove,
   RenderCaches renderCaches,
@@ -367,7 +367,7 @@ class FrameRangeMoveDrag {
        _selection = roles.selection,
        _changes = roles.changes,
        _controllers = roles.controllers,
-       _internals = roles.internals,
+       _retime = roles.retime,
        _dragPreview = roles.dragPreview,
        _blockMove = roles.blockMove,
        _renderCaches = roles.renderCaches,
@@ -469,7 +469,7 @@ class FrameRangeMoveDrag {
         ? _multiSourceSubjects(
             span,
             keys,
-            internals: roles.internals,
+            trackSe: roles.trackSe,
             folders: folders,
             rangeSelections: rangeSelections,
           )
@@ -504,7 +504,7 @@ class FrameRangeMoveDrag {
   static _MoveSubjects? _multiSourceSubjects(
     TimelineFrameRangeSelection span,
     KeySources keys, {
-    required SessionInternals internals,
+    required TrackSeDisplay trackSe,
     required FoldersAndAttachments folders,
     required RangeSelections rangeSelections,
   }) {
@@ -527,7 +527,7 @@ class FrameRangeMoveDrag {
             row.id,
             span.startIndex,
             onTrackAxis: false,
-            internals: internals,
+            trackSe: trackSe,
           ),
         ));
       }
@@ -586,7 +586,7 @@ class FrameRangeMoveDrag {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+  final RetimeLaw _retime;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final DrawingBlockMoveDragVerbs _blockMove;
   final RenderCaches _renderCaches;
@@ -735,7 +735,7 @@ class FrameRangeMoveDrag {
     layerId,
     spanStart,
     onTrackAxis: _onTrackAxis,
-    internals: _internals,
+    trackSe: _trackSe,
   );
 
   /// A ROW-CHANGE drag step (P3b-4): returns true when it OWNED the step
@@ -869,7 +869,7 @@ class FrameRangeMoveDrag {
     );
     return [
       for (final layer in ordered)
-        if (_internals.blockMoveEligible(layer.id)) layer,
+        if (_retime.blockMoveEligible(layer.id)) layer,
     ];
   }
 
@@ -1075,7 +1075,7 @@ class FrameRangeMoveDrag {
   /// Which [HopCast] the row [id] is for this hop, given whether a row
   /// [carriesBlockInRange].
   HopCast _castRowForHop(LayerId id, bool Function(Layer) carriesBlockInRange) {
-    if (_internals.blockMoveEligible(id)) {
+    if (_retime.blockMoveEligible(id)) {
       final layer = _project.layerById(id);
       return layer != null && carriesBlockInRange(layer)
           ? HopCast.drawingSource
@@ -1531,7 +1531,7 @@ class FrameRangeMoveDrag {
   Layer? _singleRowMoveTarget(Layer source, LayerId? targetLayerId) {
     Layer? target = source;
     if (targetLayerId != null && targetLayerId != source.id) {
-      target = _internals.blockMoveEligible(targetLayerId)
+      target = _retime.blockMoveEligible(targetLayerId)
           ? _project.layerById(targetLayerId)
           : null;
       // Cross-row drops stay within the SAME SECTION (UI-R20 #2 P3b-3:

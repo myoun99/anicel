@@ -326,7 +326,7 @@ void main() {
     final standingOn = tester
         .widget<InteractiveBrushEditCanvasView>(canvasView)
         .frameId;
-    expect(session.pixelEditingCoordinator, isNull);
+    expect(session.pixelEditing.coordinator, isNull);
 
     final press = await tester.startGesture(
       visibleCanvasPoint(tester),
@@ -357,7 +357,7 @@ void main() {
           'left standing on a name nothing uses',
     );
     expect(
-      session.pixelEditingCoordinator?.activeFrameKey.frameId,
+      session.pixelEditing.coordinator?.activeFrameKey.frameId,
       standingOn,
       reason: 'and the stack is the session\'s once it stands on a cel',
     );

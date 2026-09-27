@@ -213,8 +213,5 @@ class _RecordingChanges implements ChangeSink {
   void refreshLiveAudioSchedule() {}
 
   @override
-  bool standsDownFromRetime(LayerId layerId) => false;
-
-  @override
   void warmActiveCut() {}
 }

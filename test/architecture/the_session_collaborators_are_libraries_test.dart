@@ -20,7 +20,7 @@
 // It is an instrument, so here is what it looks like when it lies:
 //   - it reads DIRECTIVE LINES textually, so a `part` written inside a block
 //     comment counts -> a violation nobody can execute
-//   - it counts `SessionInternals` members by the AST, so a member added in
+//   - it looks for `SessionInternals` by the AST, so one declared in
 //     a `part` of the roles file (there is none) would be invisible
 //   - it says nothing about what a collaborator does with a role once it has
 //     one: this is a boundary test, not a design test
@@ -61,11 +61,11 @@ const _mayNameTheSession = <String, String>{
       'never constructs it or keeps one.',
 };
 
-/// What `SessionInternals` still carries: the MEASURED remainder of the
+/// What `SessionInternals` carried: the MEASURED remainder of the
 /// coupling, after the roles took what they could name and the siblings took
 /// what belonged to another collaborator.
 ///
-/// ⛔This number only falls. It started at 117 when the interface was first
+/// ⛔This number only fell. It started at 117 when the interface was first
 /// generated (G0-2, 2026-09-06), stood at 82 after the sibling promotion,
 /// and reached 56 when G3's four clusters landed (the rows and their drags,
 /// the cut/track surface, the media pool, the audio and SE rows); every
@@ -176,7 +176,18 @@ const _mayNameTheSession = <String, String>{
 /// member of `ProjectAccess`, the role they all hold. Thirteen of them held
 /// internals for nothing else and name none now; the picture carry and the
 /// editing stack map take the project role in its place.
-const _sessionInternalsMembers = 4;
+/// 4 → 0 (same day, the nineteenth family) — PAID OFF, and the interface is
+/// deleted: the block start a move commits at is the SE window's own answer
+/// and moved into `TrackSeDisplay`, which every asker but one already held
+/// (the block shift takes it now); the live editing coordinator is a SIBLING
+/// the canvas fills in, `PixelEditing`, beside `LiveStrokeLanding`; the V
+/// row's track-cut select comes to `Standing` as a question (it selects cuts
+/// and parks the playhead, which are the session's); and a block move's
+/// eligibility joined `standsDownFromRetime` — one law's two halves, which
+/// the role generator had sorted into `ChangeSink` — in a role of their
+/// own, `RetimeLaw`. The range selections held `ChangeSink` for that one
+/// question alone and no longer take it.
+const _paidOffInterface = 'SessionInternals';
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())
@@ -242,7 +253,7 @@ void main() {
     }
   });
 
-  test('SessionInternals only shrinks', () {
+  test('SessionInternals is paid off, and stays gone', () {
     final unit = parseString(
       content: File(_rolesFile).readAsStringSync(),
       featureSet: FeatureSet.latestLanguageVersion(),
@@ -250,29 +261,17 @@ void main() {
     ).unit;
     final internals = unit.declarations
         .whereType<ClassDeclaration>()
-        .where((c) => c.namePart.typeName.lexeme == 'SessionInternals')
+        .where((c) => c.namePart.typeName.lexeme == _paidOffInterface)
         .toList();
-    expect(
-      internals,
-      hasLength(1),
-      reason: 'SessionInternals is the measured remainder — it has one home.',
-    );
-    final members = internals.single.body.members.length;
 
     expect(
-      members,
-      lessThanOrEqualTo(_sessionInternalsMembers),
+      internals,
+      isEmpty,
       reason:
-          'SessionInternals grew. ⛔Nothing is added to it: a host name a '
-          'collaborator needs is either a ROLE, a SIBLING it takes by '
-          'constructor, or code that moves INTO the collaborator.',
-    );
-    expect(
-      _sessionInternalsMembers - members,
-      lessThan(25),
-      reason:
-          'the SessionInternals ceiling is slack — lower it to $members so '
-          'the ratchet keeps its bite',
+          '$_paidOffInterface came back. ⛔A host name a collaborator needs '
+          'is either a ROLE, a SIBLING it takes by constructor, or code that '
+          'moves INTO the collaborator — the grab-bag was counted down from '
+          '117 to nothing and deleted (2026-09-28).',
     );
   });
 }

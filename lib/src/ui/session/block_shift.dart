@@ -8,6 +8,7 @@ import '../../models/timeline_row_address.dart';
 import 'active_cut_controllers.dart';
 import 'cut_shift.dart';
 import 'session_roles.dart';
+import 'track_se_display.dart';
 
 /// THE SHOVE — push and pull, aimed at whatever is selected.
 ///
@@ -33,20 +34,23 @@ class BlockShift {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required SessionInternals internals,
+    required RetimeLaw retime,
+    required TrackSeDisplay trackSe,
     required ActiveCutControllers controllers,
     required CutShift cutShift,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _internals = internals,
+       _retime = retime,
+       _trackSe = trackSe,
        _controllers = controllers,
        _cutShift = cutShift;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final SessionInternals _internals;
+  final RetimeLaw _retime;
+  final TrackSeDisplay _trackSe;
   final ActiveCutControllers _controllers;
   final CutShift _cutShift;
 
@@ -79,10 +83,10 @@ class BlockShift {
     final selection = _selection.frameRangeSelection.value;
     if (selection != null) {
       // Rows whose timing is not their own stand down —
-      // [ChangeSink.standsDownFromRetime].
+      // [RetimeLaw.standsDownFromRetime].
       final rows = [
         for (final id in selection.spanLayerIds)
-          if (!_changes.standsDownFromRetime(id) &&
+          if (!_retime.standsDownFromRetime(id) &&
               _project.rangeLayerById(id) != null)
             id,
       ];
@@ -109,7 +113,7 @@ class BlockShift {
     final index = _controllers.timelineController.currentFrameIndex;
     if (layerId == null ||
         index < 0 ||
-        _changes.standsDownFromRetime(layerId) ||
+        _retime.standsDownFromRetime(layerId) ||
         _project.rangeLayerById(layerId) == null) {
       return null;
     }
@@ -138,7 +142,7 @@ class BlockShift {
       // be translated before it can address their blocks. A global one is
       // already there.
       !anchorIsGlobal && _project.isTrackSeLayerId(layerId)
-      ? _internals.commitBlockStart(layerId, anchorIndex)
+      ? _trackSe.commitBlockStart(layerId, anchorIndex)
       : anchorIndex;
 
   bool canPushFrames({TimelineRowAddress? currentRow}) =>

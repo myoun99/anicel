@@ -97,7 +97,7 @@ void main() {
     final workspace = tester.widget<EditorWorkspace>(
       find.byType(EditorWorkspace),
     );
-    final coordinator = workspace.session.pixelEditingCoordinator;
+    final coordinator = workspace.session.pixelEditing.coordinator;
     expect(coordinator, isNotNull, reason: '⛔fixture: the canvas built one');
     final surface = coordinator!.currentSurfaceOf(keyFor(frameId));
     final size = surface.canvasSize;

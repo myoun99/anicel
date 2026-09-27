@@ -787,7 +787,7 @@ class FrameClipboard implements BringsMedia {
 
   /// Where [selection] starts on [layerId]'s own row. A selection is a run of
   /// CELLS — 「the range means exactly its cells」 — so it moves by the row's
-  /// axis offset. ⛔Not [SessionInternals.commitBlockStart]: that names the
+  /// axis offset. ⛔Not `TrackSeDisplay.commitBlockStart`: that names the
   /// BLOCK a display start stands for, and at 0 over a block spilling in from
   /// an earlier cut it answered that block's start there (F-115).
   int _rangeStartOn(LayerId layerId, TimelineFrameRangeSelection selection) =>

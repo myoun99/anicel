@@ -49,7 +49,7 @@ class RowSelection {
   /// (1개/여러 개), 그 다음이 드래그. 타임라인 프레임과 **완전히 같은 순서**」.
   ///
   /// The rail's ROW selection: what the row verbs act on. Separate from
-  /// [SessionInternals.currentRow] on purpose — standing is where the frame
+  /// `Standing.currentRow` on purpose — standing is where the frame
   /// verbs aim, this is a set the row verbs sweep — and separate from the
   /// frame range, whose rows are the cells the selection covers rather than
   /// the rows themselves.

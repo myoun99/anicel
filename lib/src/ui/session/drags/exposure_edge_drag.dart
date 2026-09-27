@@ -34,12 +34,14 @@ typedef CutSyncCapture = ({
 typedef CutResize = ({Map<CutId, int> durations, Map<CutId, int> gaps});
 
 /// What an exposure comma BEGIN is handed beyond [EdgeDragRoles]: the
-/// cut-local SE lens — the one of these the drag keeps — and the three it
-/// asks ONCE and never again (does this row own its own timing, what does
-/// the live selection cover, which of its rows may a retime touch).
+/// cut-local SE lens — the one of these the drag keeps — and the four it
+/// asks ONCE and never again (does this row own its own timing, does the
+/// retime law stand the gripped row down, what does the live selection
+/// cover, which of its rows may a retime touch).
 typedef ExposureBeginRoles = ({
   TrackSeDisplay trackSe,
   FoldersAndAttachments folders,
+  RetimeLaw retime,
   SelectionAccess selection,
   RangeSelections rangeSelections,
 });
@@ -60,7 +62,7 @@ Map<LayerId, BulkRetimeRow>? _captureBulk({
       // A row that reshapes never — a movie kept as a reference — is left
       // out of the selection's retime, so a grip on it trims its own block
       // alone rather than retiming every other row and not it.
-      roles.changes.standsDownFromRetime(grip.layerId) ||
+      beginRoles.retime.standsDownFromRetime(grip.layerId) ||
       !live.coversLayer(grip.layerId) ||
       !live.contains(grip.blockStartIndex)) {
     return null;
@@ -78,7 +80,7 @@ Map<LayerId, BulkRetimeRow>? _captureBulk({
     rows[row.id] = (
       starts: [
         for (final start in starts)
-          roles.internals.commitBlockStart(row.id, start),
+          beginRoles.trackSe.commitBlockStart(row.id, start),
       ],
       before: row.commit,
     );

@@ -21,7 +21,7 @@ import 'session_roles.dart';
 /// not need the session to own them: this object is the one that plans with
 /// them, so it holds the LAYER SET, and the UI reads `session.onionSkin` —
 /// the first family of ARCH-session-state's state move (2026-09-16), which
-/// the session's `SessionInternals` ledger counts down by the two getters it
+/// the session's `SessionInternals` ledger counted down by the two getters it
 /// no longer carries. The peg [settings] are the user's, one value for every
 /// open project, so they are the app's (`EditorAppSettings.onionSkinSettings`,
 /// I-7) and this object plans with that notifier.

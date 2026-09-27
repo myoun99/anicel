@@ -9,6 +9,7 @@ import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart' show Track;
+import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart'
     show trackIdOfTransformLaneCarrier;
 import '../../models/working_panel.dart';
@@ -52,7 +53,7 @@ class Standing {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required void Function(TrackId trackId) selectTrackCutAtPlayhead,
     required ValueListenable<bool> brushInputActive,
     required bool Function() sessionDisposed,
     required PlaybackRig playbackRig,
@@ -68,7 +69,7 @@ class Standing {
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
+       _selectTrackCutAtPlayhead = selectTrackCutAtPlayhead,
        _brushInputActive = brushInputActive,
        _sessionDisposed = sessionDisposed,
        _playbackRig = playbackRig,
@@ -96,7 +97,12 @@ class Standing {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+
+  /// Standing on a V row: its track's cut under the playhead becomes the
+  /// active cut (`selectTrackCutAtPlayhead`). The session's own verb — it
+  /// selects cuts and parks the playhead, which are the session's — so it
+  /// comes as the question, the ninth family's cure for a cycle edge.
+  final void Function(TrackId trackId) _selectTrackCutAtPlayhead;
 
   /// Whether a stroke is in flight — the session's `brushInputActive`.
   final ValueListenable<bool> _brushInputActive;
@@ -823,7 +829,7 @@ class Standing {
           _changes.notifyChanged();
         }
       case TrackRowAddress(:final trackId):
-        _internals.selectTrackCutAtPlayhead(trackId);
+        _selectTrackCutAtPlayhead(trackId);
     }
     // Every arm can move the drawn row, and the track arm does it through
     // a path of its own — publishing once here beats three call sites that

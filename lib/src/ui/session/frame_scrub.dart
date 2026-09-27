@@ -20,7 +20,7 @@ import 'session_roles.dart';
 /// raises and drops them, so it holds them, and the UI reads
 /// `session.frameScrub` — ARCH-session-state's second family (2026-09-23),
 /// the same move the onion skin made first, and the `SessionInternals`
-/// ledger counts down by the two getters it no longer carries.
+/// ledger counted down by the two getters it no longer carries.
 class FrameScrub {
   FrameScrub({
     required ProjectAccess project,

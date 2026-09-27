@@ -38,9 +38,8 @@ class RangeSelections {
   RangeSelections({
     required ProjectAccess project,
     required SelectionAccess selection,
-    required ChangeSink changes,
+    required RetimeLaw retime,
     required TimelineAccess timeline,
-    required SessionInternals internals,
     required TimelineRowAddress Function() currentRow,
     required PlaybackRig playbackRig,
     required StoryboardRows storyboardRows,
@@ -53,9 +52,8 @@ class RangeSelections {
     standOnRow,
   }) : _project = project,
        _selection = selection,
-       _changes = changes,
+       _retime = retime,
        _timeline = timeline,
-       _internals = internals,
        _currentRow = currentRow,
        _playbackRig = playbackRig,
        _storyboardRows = storyboardRows,
@@ -68,9 +66,8 @@ class RangeSelections {
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
-  final ChangeSink _changes;
+  final RetimeLaw _retime;
   final TimelineAccess _timeline;
-  final SessionInternals _internals;
 
   /// The row the user stands on — `Standing.currentRow`, asked when needed.
   final TimelineRowAddress Function() _currentRow;
@@ -98,9 +95,9 @@ class RangeSelections {
   /// the fifth kind [hasAnySelection] counts.
   ///
   /// ⚠️Kept HERE, by the one collaborator that asks, and not on the session:
-  /// `SessionInternals` only shrinks (ARCH-session-state, the eleventh
-  /// family). The workspace publishes it while its canvas is mounted and
-  /// clears it when the project goes behind.
+  /// `SessionInternals` only shrank, until it was deleted (ARCH-session-state,
+  /// the eleventh family). The workspace publishes it while its canvas is
+  /// mounted and clears it when the project goes behind.
   bool Function()? canvasHasSelection;
 
   /// Lets go of the marquee, published by whoever owns it — the fifth kind
@@ -336,7 +333,7 @@ class RangeSelections {
     for (final id in selection.spanLayerIds) {
       // Rows whose timing is not their own stand down — see
       // [EditorSessionManager.standsDownFromRetime].
-      if (_changes.standsDownFromRetime(id)) {
+      if (_retime.standsDownFromRetime(id)) {
         continue;
       }
       final display = _project.rangeLayerById(id);
@@ -853,7 +850,7 @@ class RangeSelections {
       //
       // and SINGLE-CEL (image) rows with them — see
       // [EditorSessionManager.standsDownFromRetime].
-      if (_changes.standsDownFromRetime(id)) {
+      if (_retime.standsDownFromRetime(id)) {
         continue;
       }
       final layer = _project.rangeLayerById(id);
@@ -867,7 +864,7 @@ class RangeSelections {
       );
       if (starts.isNotEmpty) {
         byLayer[id] = [
-          for (final start in starts) _internals.commitBlockStart(id, start),
+          for (final start in starts) _trackSe.commitBlockStart(id, start),
         ];
       }
     }

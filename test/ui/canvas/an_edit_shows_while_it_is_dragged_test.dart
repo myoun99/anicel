@@ -132,7 +132,7 @@ void main() {
     session.selectLayer(row);
     await pumpFrames(tester);
     // Ink, so the box has a picture to frame.
-    final landed = session.pixelEditingCoordinator!.commitSourceStroke(
+    final landed = session.pixelEditing.coordinator!.commitSourceStroke(
       sourceDabs: [
         BrushDab(
           center: CanvasPoint(x: centre.x + 30, y: centre.y + 20),

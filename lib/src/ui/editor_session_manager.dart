@@ -32,7 +32,6 @@ import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
-import '../services/brush_frame_editing_coordinator.dart';
 import '../models/layer_id.dart';
 import '../models/standing_place.dart';
 import '../models/layer_kind.dart';
@@ -89,6 +88,7 @@ import 'brush/canvas_selection_commands.dart' show CanvasSelectionDocument;
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'session/live_stroke_landing.dart';
+import 'session/pixel_editing.dart';
 import 'session/session_roles.dart';
 import 'session/media_fingerprint_ledger.dart';
 import 'session/media_grant_ledger.dart';
@@ -172,7 +172,7 @@ class EditorSessionManager extends ChangeNotifier
         ChangeSink,
         FrameIds,
         TimelineAccess,
-        SessionInternals {
+        RetimeLaw {
   EditorSessionManager({
     required Project initialProject,
     EditorAppSettings? appSettings,
@@ -718,7 +718,7 @@ class EditorSessionManager extends ChangeNotifier
   final CanvasSelectionDocument canvasSelection = CanvasSelectionDocument();
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, selectTrackCutAtPlayhead: selectTrackCutAtPlayhead, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
 
   // I-41: every door that MOVES where the user stands — the cut, the row,
   // the frame, the gap — first settles the last edit where it left them
@@ -889,12 +889,11 @@ class EditorSessionManager extends ChangeNotifier
   late final RangeSelections rangeSelections = RangeSelections(
     project: this,
     selection: this,
-    changes: this,
+    retime: this,
     timeline: this,
     storyboardRows: storyboardRows,
     trackSe: trackSe,
     rowSpans: rowSpans,
-    internals: this,
     currentRow: () => standing.currentRow,
     playbackRig: playbackRig,
     // Lazily: RowSelection is built FROM rangeSelections.
@@ -1033,20 +1032,15 @@ class EditorSessionManager extends ChangeNotifier
     return ids.isEmpty ? const {} : inBand(ids, selection);
   }
 
-  /// The live editing coordinator, published by the canvas host.
-  ///
-  /// 🚨Null before the canvas has built one — a fresh project, a gap parking,
-  /// a test that mounts the timeline alone. Every pixel verb asks, and the
-  /// buttons dim rather than the press throwing.
-  @override
-  BrushFrameEditingCoordinator? pixelEditingCoordinator;
+  /// Where the canvas leaves the live editing coordinator — a SIBLING the
+  /// pixel verbs take ([PixelEditing] says why).
+  final PixelEditing pixelEditing = PixelEditing();
 
   /// Where the canvas leaves 「land the stroke the pen is holding」, and
   /// where the save door picks it up.
   ///
-  /// 🚨Filled in exactly the way [pixelEditingCoordinator] is, from the same
-  /// build — but it is a SIBLING object rather than a name on
-  /// [SessionInternals], because that interface only shrinks. See
+  /// 🚨Filled in exactly the way [pixelEditing] is, from the same build — a
+  /// SIBLING object rather than a name on the session. See
   /// [LiveStrokeLanding] for the rest of the reason.
   final LiveStrokeLanding liveStrokeLanding = LiveStrokeLanding();
 
@@ -1054,7 +1048,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions, internals: this, renderCaches: renderCaches);
+  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions, pixelEditing: pixelEditing, renderCaches: renderCaches);
 
   TimelineRowAddress get selectedRow => standing.selectedRow;
 
@@ -1115,7 +1109,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/track_se_display.dart). ⛔The forwarders are
   // gone (G3, 2026-09-07): callers say `session.trackSe.x`. What is left
   // below is the session IMPLEMENTING a role — those three are members of
-  // `ProjectAccess`/`SessionInternals`, not a second name for a verb.
+  // `ProjectAccess`, not a second name for a verb.
   late final TrackSeDisplay trackSe = TrackSeDisplay(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, transitions: transitions, voiceRecording: voiceRecording);
 
   @override
@@ -2123,6 +2117,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
+    retime: this,
     controllers: activeCutControllers,
     folders: folders,
     rangeSelections: rangeSelections,
@@ -2130,7 +2125,6 @@ class EditorSessionManager extends ChangeNotifier
     trackSe: trackSe,
     transitions: transitions,
     exposureVerbs: exposureVerbs,
-    internals: this,
     dragPreview: dragPreview,
   );
 
@@ -2257,6 +2251,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     project: this,
     changes: this,
+    retime: this,
     controllers: activeCutControllers,
     camera: camera,
     rangeSelections: rangeSelections,
@@ -2572,7 +2567,8 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    internals: this,
+    retime: this,
+    trackSe: trackSe,
     controllers: activeCutControllers,
     cutShift: cutShift,
   );
@@ -2681,20 +2677,6 @@ class EditorSessionManager extends ChangeNotifier
     return global == null ? null : trackSe.trackSeWindow.displayLayer(global);
   }
 
-  /// Maps a DISPLAY block start to the layer's COMMIT form key: identity
-  /// for cut layers; the global-axis start for track-SE rows.
-  @override
-  int commitBlockStart(LayerId layerId, int displayStart) {
-    if (!isTrackSeLayerId(layerId)) {
-      return displayStart;
-    }
-    final global = trackSeGlobalLayerById(layerId);
-    if (global == null) {
-      return displayStart;
-    }
-    return trackSe.trackSeWindow.globalBlockStartFor(global, displayStart);
-  }
-
   /// The layer ops COMMIT against: the GLOBAL form for track-SE rows.
   @override
   Layer? commitLayerById(LayerId layerId) => isTrackSeLayerId(layerId)
@@ -2705,7 +2687,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/drawing_block_move_drag.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, internals: this, dragPreview: dragPreview);
+  late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, retime: this, dragPreview: dragPreview);
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
 
@@ -2729,7 +2711,7 @@ class EditorSessionManager extends ChangeNotifier
     blockMove: drawingBlockMove,
     transitions: transitions,
     trackSe: trackSe,
-    internals: this,
+    retime: this,
     dragPreview: dragPreview,
     renderCaches: renderCaches,
   );
@@ -2758,7 +2740,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     controllers: activeCutControllers,
-    internals: this,
+    retime: this,
     dragPreview: dragPreview,
   );
 
@@ -3182,7 +3164,6 @@ class EditorSessionManager extends ChangeNotifier
   /// fx/eye subject rule). The landing keeps the global position: the new
   /// cut's local frame is the same global frame. A gap on the tapped
   /// track is a no-op, like the fx/eye buttons there.
-  @override
   void selectTrackCutAtPlayhead(TrackId trackId) {
     if (strokeInFlight) {
       return;

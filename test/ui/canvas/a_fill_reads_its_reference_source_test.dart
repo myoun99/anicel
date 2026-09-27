@@ -100,7 +100,7 @@ void main() {
       workspaceOf(tester).session;
 
   List<int> pixelsOf(WidgetTester tester, LayerId layer, FrameId frame) {
-    final coordinator = sessionOf(tester).pixelEditingCoordinator!;
+    final coordinator = sessionOf(tester).pixelEditing.coordinator!;
     final surface = coordinator.currentSurfaceOf(
       BrushFrameKey(
         projectId: const ProjectId('fr-project'),

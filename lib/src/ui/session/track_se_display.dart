@@ -99,6 +99,19 @@ class TrackSeDisplay {
     return null;
   }
 
+  /// Maps a DISPLAY block start to the layer's COMMIT form key: identity
+  /// for cut layers; the global-axis start for track-SE rows.
+  int commitBlockStart(LayerId layerId, int displayStart) {
+    if (!isTrackSeLayerId(layerId)) {
+      return displayStart;
+    }
+    final global = trackSeGlobalLayerById(layerId);
+    if (global == null) {
+      return displayStart;
+    }
+    return trackSeWindow.globalBlockStartFor(global, displayStart);
+  }
+
   /// Display-clone cache (UI-R20 #4): the clones used to be rebuilt on
   /// EVERY read, so every session notify handed the grids fresh Layer
   /// identities — defeating all the identity-keyed row memos and
