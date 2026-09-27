@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
+import '../../helpers/repaint_strays.dart';
+
 /// 🚨I-22 ③: A PLAYBACK TICK REPAINTS ITS TICK LAYERS AND THE CANVAS —
 /// NOTHING ELSE.
 ///
@@ -74,11 +76,7 @@ void main() {
     ],
   );
 
-  String nameOf(RenderObject node) {
-    final creator = node.debugCreator;
-    return '${node.runtimeType} <- '
-        '${creator is DebugCreator ? creator.element.debugGetCreatorChain(40) : '?'}';
-  }
+  String nameOf(RenderObject node) => nameOfBoundary(node, depth: 40);
 
   Future<void> tap(WidgetTester tester, String key) async {
     await tester.tap(find.byKey(ValueKey<String>(key)));
@@ -88,48 +86,11 @@ void main() {
   /// Every boundary waiting to repaint that is not a tick layer's (or
   /// inside one) and not a canvas's.
   Set<RenderObject> strays(WidgetTester tester) {
-    final allowed = <RenderObject>{
-      // A tick layer's first render object is its boundary.
-      for (final layer in find.byType(TickLayer).evaluate())
-        layer.renderObject!,
-      for (final canvas in find
-          .byKey(const ValueKey<String>('canvas-editor-panel-content'))
-          .evaluate())
-        tester.renderObject(
-          find
-              .ancestor(
-                of: find.byElementPredicate((e) => identical(e, canvas)),
-                matching: find.byType(RepaintBoundary),
-              )
-              .first,
-        ),
+    final allowed = tickLayersAndCanvas(tester);
+    return {
+      for (final view in tester.binding.renderViews)
+        ...repaintStrays(view, allowed: allowed),
     };
-    bool inAllowed(RenderObject boundary) {
-      for (RenderObject? up = boundary; up != null; up = up.parent) {
-        if (allowed.contains(up)) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    final found = <RenderObject>{};
-    void walk(RenderObject node) {
-      // Only a boundary in the scene repaints: one under an `Offstage`
-      // (a folded panel's grid) waits forever and costs nothing.
-      if (node.isRepaintBoundary &&
-          node.debugNeedsPaint &&
-          (node.debugLayer?.attached ?? false) &&
-          !inAllowed(node)) {
-        found.add(node);
-      }
-      node.visitChildren(walk);
-    }
-
-    for (final view in tester.binding.renderViews) {
-      walk(view);
-    }
-    return found;
   }
 
   final variants = <String, List<String>>{
@@ -143,6 +104,10 @@ void main() {
       'timeline-orientation-toggle-button',
     ],
     'folded timeline': ['floating-bottom-collapse'],
+    'folded storyboard': [
+      'timeline-mode-storyboard-button',
+      'floating-bottom-collapse',
+    ],
     'storyboard': ['timeline-mode-storyboard-button'],
     'storyboard with its lanes open': [
       'timeline-mode-storyboard-button',

@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
+import '../../helpers/repaint_strays.dart';
+
 /// 🚨I-22 ③: A SCRUB REPAINTS ITS PANEL'S TICK LAYERS AND NOTHING ELSE OF IT.
 ///
 /// A scrub moves the playhead the way a tick does, and at a far zoom every
@@ -56,12 +58,6 @@ void main() {
     ],
   );
 
-  String nameOf(RenderObject node) {
-    final creator = node.debugCreator;
-    return '${node.runtimeType} <- '
-        '${creator is DebugCreator ? creator.element.debugGetCreatorChain(24) : '?'}';
-  }
-
   /// Every boundary of the dock region around [panel] waiting to repaint in
   /// the scene that is not a tick layer's, or inside one. The REGION, not the
   /// panel: a layout in the panel marks the boundary above it, and that is
@@ -70,34 +66,18 @@ void main() {
     final region = find
         .ancestor(of: panel, matching: find.byType(StillRaster))
         .first;
-    final layers = <RenderObject>{
-      for (final layer in find
-          .descendant(of: region, matching: find.byType(TickLayer))
-          .evaluate())
-        layer.renderObject!,
-    };
-    bool inLayer(RenderObject node) {
-      for (RenderObject? up = node; up != null; up = up.parent) {
-        if (layers.contains(up)) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    final found = <String>[];
-    void walk(RenderObject node) {
-      if (node.isRepaintBoundary &&
-          node.debugNeedsPaint &&
-          (node.debugLayer?.attached ?? false) &&
-          !inLayer(node)) {
-        found.add(nameOf(node));
-      }
-      node.visitChildren(walk);
-    }
-
-    walk(tester.renderObject(region));
-    return found;
+    return [
+      for (final stray in repaintStrays(
+        tester.renderObject(region),
+        allowed: {
+          for (final layer in find
+              .descendant(of: region, matching: find.byType(TickLayer))
+              .evaluate())
+            layer.renderObject!,
+        },
+      ))
+        nameOfBoundary(stray),
+    ];
   }
 
   for (final storyboard in [false, true]) {
