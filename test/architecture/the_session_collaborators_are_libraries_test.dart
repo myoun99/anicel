@@ -133,7 +133,13 @@ const _mayNameTheSession = <String, String>{
 /// sibling `PlaybackRig` and `ProjectSettings` take by constructor — the
 /// only thing either asked, so neither names internals now — and the cut
 /// reorder planner, stateless and asked only by `CutVerbs`, is theirs.
-const _sessionInternalsMembers = 20;
+/// 20 → 17 (2026-09-27, the thirteenth family): the readings BESIDE their
+/// kin. The anchor at a frame joins the pose at a frame in the timeline
+/// role; whether the playhead stands in a gap joins the gap it reads in the
+/// selection role; and the opacity at a frame was a second name for the
+/// model's `resolveOpacityTrackAt` — the lane rows already call that, so
+/// `LaneVerbs` does too and the session's copy is gone.
+const _sessionInternalsMembers = 17;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

@@ -64,6 +64,7 @@ abstract interface class SelectionAccess {
     )
     inBand,
   );
+  bool get editingPlayheadInGap;
   int? get gapGlobalFrame;
   set gapGlobalFrame(int? value);
   Layer? get activeLayer;
@@ -114,6 +115,7 @@ abstract interface class TimelineAccess {
   TrackFrameAxis axisForTrack(TrackId trackId);
   EditingSessionState get editingSession;
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex);
+  CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
   TransformPose layerPoseAtFrame(Layer layer, int frameIndex);
   TrackFrameAxis trackFrameAxis();
 }
@@ -133,9 +135,6 @@ abstract interface class SessionInternals {
   ValueNotifier<TimelineDragPreview?> get dragPreview;
   ValueNotifier<int> get editingFrameCursor;
   bool get strokeInFlight;
-  bool get editingPlayheadInGap;
-  CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
-  double layerOpacityAtFrame(Layer layer, int frameIndex);
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   bool rowIsSelected(TimelineRowAddress row);
   void selectLayer(LayerId layerId);

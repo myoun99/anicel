@@ -116,7 +116,7 @@ void main() {
       final anchor = session.layerAnchorPointAtFrame(layer, 0);
       expect(anchor.x, canvasSize.width / 2);
       expect(anchor.y, canvasSize.height / 2);
-      expect(session.layerOpacityAtFrame(layer, 0), 1);
+      expect(resolveOpacityTrackAt(layer.transformTrack.opacity, 0), 1);
 
       session.updateLayerTransformTrack(
         layer.id,
@@ -125,7 +125,10 @@ void main() {
         ),
       );
       final updated = session.activeLayer!;
-      expect(session.layerOpacityAtFrame(updated, 4), closeTo(0.5, 1e-9));
+      expect(
+        resolveOpacityTrackAt(updated.transformTrack.opacity, 4),
+        closeTo(0.5, 1e-9),
+      );
     });
   });
 }

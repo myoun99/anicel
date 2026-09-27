@@ -189,7 +189,7 @@ class StoryboardCursor {
         // Not parked in a gap ⇒ the cut-local playhead sits inside the
         // ACTIVE cut, so the cut under the cursor is that cut by
         // construction (the storyboard's cell press promotes it).
-        if (_internals.editingPlayheadInGap) {
+        if (_selection.editingPlayheadInGap) {
           return null;
         }
         final cut = _project.activeCutOrNull;

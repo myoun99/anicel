@@ -1681,9 +1681,8 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
-  /// The layer's resolved anchor point at [frameIndex] — the anchor-point
-  /// lane's value column and key-freeze source (canvas center while
-  /// unkeyed).
+  /// The layer's resolved anchor point at [frameIndex] (canvas center while
+  /// unkeyed) — the lane key-freeze source and the canvas gizmo's anchor.
   @override
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex) {
     return resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex) ??
@@ -1691,13 +1690,6 @@ class EditorSessionManager extends ChangeNotifier
           x: requireActiveCut.canvasSize.width / 2,
           y: requireActiveCut.canvasSize.height / 2,
         );
-  }
-
-  /// The layer's animated Opacity sample (0..1; 1 while unkeyed) — the
-  /// opacity lane's value column and key-freeze source.
-  @override
-  double layerOpacityAtFrame(Layer layer, int frameIndex) {
-    return resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex);
   }
 
   // --- Visibility solo mode (session view state, not persisted) ------------
