@@ -23,6 +23,7 @@ import '../text/text_measure.dart';
 import '../text/byte_size_label.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart' show AppWindowActionEmphasis;
+import '../widgets/overflow_scrollers.dart';
 import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
 import 'media_asset_drag_chip.dart';
@@ -388,41 +389,11 @@ class MediaPoolPanel extends StatelessWidget {
   }).ceilToDouble();
 
   @override
-  Widget build(BuildContext context) {
-    final minBodyWidth = _minBodyWidth + _extensionRoom(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final tooNarrow =
-            constraints.hasBoundedWidth && constraints.maxWidth < minBodyWidth;
-        final tooShort =
-            constraints.hasBoundedHeight &&
-            constraints.maxHeight < _minBodyHeight;
-        if (!tooNarrow && !tooShort) {
-          return _body(context);
-        }
-        Widget content = SizedBox(
-          width: tooNarrow ? minBodyWidth : null,
-          height: tooShort
-              ? _minBodyHeight
-              : (constraints.hasBoundedHeight ? constraints.maxHeight : null),
-          child: _body(context),
-        );
-        // Each axis takes its own viewport, innermost first: the vertical
-        // one is what gives the SizedBox room to be its minimum instead of
-        // being squeezed back to the constraint it is escaping.
-        if (tooShort) {
-          content = SingleChildScrollView(child: content);
-        }
-        if (tooNarrow) {
-          content = SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: content,
-          );
-        }
-        return content;
-      },
-    );
-  }
+  Widget build(BuildContext context) => OverflowScrollers(
+    minWidth: _minBodyWidth + _extensionRoom(context),
+    minHeight: _minBodyHeight,
+    child: _body(context),
+  );
 
   /// RELINK-2: the loss banner — one line, above the list, INSIDE this
   /// panel. The user chose that over an app-wide strip: 「미디어 풀

@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/boolean_dot.dart';
+import '../widgets/overflow_scrollers.dart';
 import '../input/control_press_claim.dart';
 
 /// The import window's file list: one row per file, one COLUMN per question.
@@ -273,26 +274,13 @@ class _ImportFileTableState extends State<ImportFileTable> {
       rows: widget.rows,
       columns: widget.columns,
     );
-    final minimum = metrics.tableWidthFor(ImportFileTable.nameMinWidth);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final table = _table(theme, metrics);
-        // Below the width that keeps every column and a readable name, the
-        // table scrolls sideways at that width instead of overflowing — the
-        // media pool's rule for its own rows (R10-①), in the same shape. A
-        // long translation or a large text scale is what brings it here.
-        if (!constraints.hasBoundedWidth || constraints.maxWidth >= minimum) {
-          return table;
-        }
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: minimum,
-            height: constraints.hasBoundedHeight ? constraints.maxHeight : null,
-            child: table,
-          ),
-        );
-      },
+    // Below the width that keeps every column and a readable name, the
+    // table scrolls sideways at that width instead of overflowing — the
+    // media pool's rule for its own rows (R10-①). A long translation or a
+    // large text scale is what brings it here.
+    return OverflowScrollers(
+      minWidth: metrics.tableWidthFor(ImportFileTable.nameMinWidth),
+      child: _table(theme, metrics),
     );
   }
 
