@@ -394,7 +394,7 @@ class _WorkspaceTabs {
                             onGroupsReordered:
                                 _state._presetLibrary.reorderGroups,
                             onLibraryReset:
-                                _state._presetLibrary.resetToDefaults,
+                                _state._brushPresets.resetLibrary,
                             onPresetExported: (id) {
                               unawaited(
                                 _state._brushPresets._exportAndNotice([

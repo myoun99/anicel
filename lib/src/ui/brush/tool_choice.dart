@@ -180,22 +180,49 @@ void resumeToolChoice(
   for (final tile in choice.railTiles.values) {
     tools.value = tools.value.copyWith(tool: tile);
   }
+  takeUpBrushes(
+    tools,
+    presets: choice.presets,
+    inHand: choice.tool,
+    brushFor: brushFor,
+  );
+}
+
+/// Each paint tool in [presets] takes up the brush named for it, THROUGH THE
+/// ONE SETTER, and [inHand] is taken up again last — what a project's
+/// resumed tools do ([resumeToolChoice], F-123) and what a library reset
+/// does (F-181), one road for both.
+///
+/// [brushFor] is [resumeToolChoice]'s: null when the library has no such
+/// preset, and then that tool keeps what it holds.
+void takeUpBrushes(
+  PaintToolStateNotifier tools, {
+  required Map<CanvasTool, BrushPresetId> presets,
+  required CanvasTool? inHand,
+  required BrushToolState? Function(
+    BrushToolState from,
+    CanvasTool tool,
+    BrushPresetId preset,
+  )
+  brushFor,
+}) {
   // The tool in hand takes its brush LAST, so the switch below finds it
   // already there and every other paint tool's brush already banked.
   final brushes = [
-    for (final entry in choice.presets.entries)
-      if (canvasToolPaints(entry.key) && entry.key != choice.tool) entry,
-    for (final entry in choice.presets.entries)
-      if (canvasToolPaints(entry.key) && entry.key == choice.tool) entry,
+    for (final entry in presets.entries)
+      if (canvasToolPaints(entry.key) && entry.key != inHand) entry,
+    for (final entry in presets.entries)
+      if (canvasToolPaints(entry.key) && entry.key == inHand) entry,
   ];
   for (final entry in brushes) {
     final brush = brushFor(tools.value, entry.key, entry.value);
     if (brush != null) {
-      tools.value = brush;
+      // Whole: a brush equal to the one beside it is still this brush, not
+      // a switch back to the bank's (F-181).
+      tools.holdBrush(brush);
     }
   }
-  final tool = choice.tool;
-  if (tool != null) {
-    tools.value = tools.value.copyWith(tool: tool);
+  if (inHand != null) {
+    tools.value = tools.value.copyWith(tool: inHand);
   }
 }

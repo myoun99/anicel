@@ -242,6 +242,71 @@ void main() {
     );
   });
 
+  testWidgets('🚨F-181: a library reset forgets what the hand set on its '
+      'brushes — and every paint tool lets go of it', (tester) async {
+    // 유저 2026-09-27 (F-181-Q1): 「pc로는 초기화해도 남아있던데 폰으로보니
+    // 안골라져있음 … 초기화가 제대로 브러시 설정도 기본값으로 초기화
+    // 안하는걸지도」 — the G-pen's remembered paper grain came back after a
+    // reset. A size is the same memory (the hand bank) and the strip shows it.
+    await pumpWithPresets(tester);
+    final one = onScreen(tester).first;
+    await pick(tester, one);
+    final own = size(tester);
+    await setSizeAt(tester, 0.8);
+    expect(size(tester), isNot(own), reason: 'premise: the hand set it');
+    // The eraser holds the same brush and the hand sets it too.
+    await takeUp(tester, 'eraser');
+    await pick(tester, one);
+    await setSizeAt(tester, 0.3);
+    expect(size(tester), isNot(own), reason: 'premise: and on the eraser');
+    await takeUp(tester, 'brush');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reset brush library').first);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-reset-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(size(tester), own, reason: 'the brush in hand is the reset brush');
+    await pick(tester, one);
+    expect(size(tester), own, reason: 'and picking it finds nothing kept');
+    await takeUp(tester, 'eraser');
+    expect(size(tester), own, reason: 'the eraser let go of it too');
+
+    // And nothing waits on disk to bring it back at the next launch. The
+    // write is real file IO started on the fake clock: a real-time window
+    // for each step and a pump for each continuation, until it lands.
+    final bank = File(BrushHandSettingsStore.defaultBrushHandSettingsFilePath());
+    bool forgotten() {
+      try {
+        final json = jsonDecode(bank.readAsStringSync());
+        return json is Map<String, dynamic> &&
+            (json['brushes'] as Map<String, dynamic>).isEmpty;
+      } on Object {
+        return false;
+      }
+    }
+
+    for (var tries = 0; tries < 40 && !forgotten(); tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    expect(
+      forgotten(),
+      isTrue,
+      reason: 'the bank on disk is emptied too — a save of the old bank '
+          'started just before the reset must not land after it. It holds: '
+          '${bank.existsSync() ? bank.readAsStringSync() : 'no file'}',
+    );
+  });
+
   testWidgets('🚨H36: the eraser shows the brush it holds from the first '
       'time it is taken up, and each tool keeps its own', (tester) async {
     await pumpWithPresets(tester);

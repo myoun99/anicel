@@ -303,16 +303,51 @@ class _WorkspaceBrushPresets {
       if (!_state.mounted) {
         return;
       }
-      resumeToolChoice(
-        _state._brushTool,
-        choice,
-        brushFor: (from, tool, id) {
-          final preset = _presetNamed(id);
-          return preset == null ? null : _brushFromPreset(from, preset, tool);
-        },
-      );
+      resumeToolChoice(_state._brushTool, choice, brushFor: _brushNamed);
     }),
   );
+
+  /// 「초기화」 — the library re-seeded, what the hand left on its brushes
+  /// forgotten, and every paint tool holding its brush again from the reset
+  /// preset.
+  ///
+  /// 🗣️F-181 (유저 2026-09-27, `F-181-Q1`: 「pc로는 초기화해도 남아있던데
+  /// 폰으로보니 안골라져있음 … 초기화가 제대로 브러시 설정도 기본값으로 초기화
+  /// 안하는걸지도」). The reset re-seeded the presets and kept the hand bank,
+  /// so picking the G-pen after it laid the paper grain and the old 5%
+  /// spacing the bank remembered straight back over the reset defaults. A
+  /// reset to defaults forgets the hand too.
+  ///
+  /// ⚠️The tools are taken up again as well, down the road a project's
+  /// resumed tools take ([takeUpBrushes]): a tool left holding the old
+  /// settings would file them into the emptied bank at its next move. A tool
+  /// whose preset the reset removed — a brush the user made — keeps what it
+  /// holds, the answer a resumed project gives a preset it no longer has.
+  void resetLibrary() {
+    final held = toolChoiceOf(_state._brushTool);
+    _state._presetLibrary.resetToDefaults();
+    // A save still pending would write the old bank back over the empty one.
+    _brushHandSettingsSave?.cancel();
+    _brushHandSettings.clear();
+    saveHandSettings();
+    takeUpBrushes(
+      _state._brushTool,
+      presets: held.presets,
+      inHand: held.tool,
+      brushFor: _brushNamed,
+    );
+  }
+
+  /// [from] holding the brush of the library's preset [id] for [tool] — null
+  /// when the library has no such preset.
+  BrushToolState? _brushNamed(
+    BrushToolState from,
+    CanvasTool tool,
+    BrushPresetId id,
+  ) {
+    final preset = _presetNamed(id);
+    return preset == null ? null : _brushFromPreset(from, preset, tool);
+  }
 
   /// The library's preset with [id], or null when it holds none.
   BrushPreset? _presetNamed(BrushPresetId id) {

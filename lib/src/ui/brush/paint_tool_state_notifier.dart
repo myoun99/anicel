@@ -89,6 +89,31 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
   // installed the guard after that, so the seam, its branch and its notice
   // hook ran only in their own tests until they were removed (2026-09-16).
 
+  /// True while [holdBrush] is assigning — the one assignment the setter
+  /// must not read as a pure switch.
+  bool _holding = false;
+
+  /// [next] taken up WHOLE — its tool and the brush it holds — through the
+  /// one setter below, even when its settings happen to equal the tool it
+  /// replaces.
+  ///
+  /// 🚨F-181 (2026-09-27): the setter reads a switch that changes nothing
+  /// but the tool as a PURE switch and hands the incoming tool its banked
+  /// brush. A brush taken up again from its preset can equal the brush
+  /// beside it exactly — two paint tools on one preset, nothing set by hand
+  /// — and then that tool's OLD banked brush came back in its place: a
+  /// library reset left the brush holding the size the hand had set.
+  /// Equality answered two questions (「did the caller change anything
+  /// else?」 and 「should the bank win?」), so the caller says which.
+  void holdBrush(BrushToolState next) {
+    _holding = true;
+    try {
+      value = next;
+    } finally {
+      _holding = false;
+    }
+  }
+
   @override
   set value(BrushToolState next) {
     final previous = value;
@@ -98,8 +123,10 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
       }
       // Restore ONLY on a pure tool switch (the caller changed nothing but
       // the tool) — an assignment that also carries new settings (a preset
-      // application landing on the brush) must win over the bank.
-      final pureToolSwitch = next.copyWith(tool: previous.tool) == previous;
+      // application landing on the brush) must win over the bank, and so
+      // must a brush taken up whole ([holdBrush]).
+      final pureToolSwitch =
+          !_holding && next.copyWith(tool: previous.tool) == previous;
       final stored = pureToolSwitch && canvasToolPaints(next.tool)
           ? _paintToolBank[next.tool]
           : null;
