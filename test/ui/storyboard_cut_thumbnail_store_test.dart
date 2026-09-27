@@ -41,6 +41,10 @@ void main() {
   /// [paint]'s asks, made again whenever a picture lands — the way every
   /// surface that shows these pictures repaints on its landings — until
   /// nothing is left to render.
+  ///
+  /// ⛔Bounded: a store that never comes to rest fails here in two seconds,
+  /// not at the runner's ten-minute limit (a mutant that never ended a
+  /// render held the machine that long per test).
   Future<void> shownUntilIdle(
     WidgetTester tester,
     StoryboardCutThumbnailStore store,
@@ -50,7 +54,10 @@ void main() {
     try {
       await tester.runAsync(() async {
         paint();
-        while (store.debugBusy) {
+        for (var wait = 0; store.debugBusy; wait += 1) {
+          if (wait == 400) {
+            fail('the store never came to rest');
+          }
           await Future<void>.delayed(const Duration(milliseconds: 5));
         }
       });
