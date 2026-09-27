@@ -81,13 +81,20 @@ void main() {
   /// The viewer at a DISPLAY zoom of 34% — the user's own example — and
   /// already framed, so the view stays where it was put: [on]'s medium at
   /// [open], or the plain session's reference.
+  /// A view zoomed in past the page — one a pan can move: the view stops
+  /// at the paper (F-201), so a page smaller than the viewer stands still
+  /// in its middle whatever the hand does.
+  final pannable = CanvasViewport(zoom: 3, panX: -600, panY: -600);
+
   Future<void> pumpViewer(
     WidgetTester tester, {
     EditorSessionManager? on,
     String open = path,
+    CanvasViewport? view,
   }) async {
     slot.framedFor.value = open;
-    slot.viewport.value = CanvasViewport(zoom: 0.34, panX: 40, panY: 40);
+    slot.viewport.value =
+        view ?? CanvasViewport(zoom: 0.34, panX: 40, panY: 40);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -189,7 +196,7 @@ void main() {
     AppInput.settings.value = AppInput.settings.value.copyWith(
       touchDragOneFinger: CanvasTouchDragAction.draw,
     );
-    await pumpViewer(tester);
+    await pumpViewer(tester, view: pannable);
     final before = slot.viewport.value!;
 
     await drag(

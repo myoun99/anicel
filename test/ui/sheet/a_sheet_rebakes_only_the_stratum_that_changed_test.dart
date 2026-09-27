@@ -23,6 +23,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
+import 'package:anicel/src/ui/conte/conte_book_page.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -204,7 +206,7 @@ void main() {
       Map<SheetStratum, int> bakes() {
         final byLabel = {
           for (final raster in tester.renderObjectList<RenderStaticRaster>(
-            find.byType(StaticRaster),
+            _rastersOf(sheet.sheet),
           ))
             raster.debugLabel: raster.captureCount,
         };
@@ -275,7 +277,7 @@ void main() {
       brushAllowed.value = true;
       await tester.pumpAndSettle();
       StandDownReason ink() => tester
-          .renderObjectList<RenderStaticRaster>(find.byType(StaticRaster))
+          .renderObjectList<RenderStaticRaster>(_rastersOf(sheet.sheet))
           .singleWhere((raster) => raster.debugLabel == '${sheet.sheet}-ink')
           .standDown;
       expect(ink(), StandDownReason.none, reason: 'fixture: baking');
@@ -317,7 +319,7 @@ void main() {
       );
       expect(
         tester
-            .renderObjectList<RenderStaticRaster>(find.byType(StaticRaster))
+            .renderObjectList<RenderStaticRaster>(_rastersOf(sheet.sheet))
             .singleWhere((raster) => raster.debugLabel == '${sheet.sheet}-content')
             .standDown,
         // The envelope prints no length a drag moves.
@@ -424,3 +426,20 @@ Project _project() => Project(
     ),
   ],
 );
+
+/// The rasters of the page the test reads. The conte's is its body's
+/// first page: the book lies one page under another and the view stops
+/// at the paper's end (F-201), so a last page opened fitted shows a
+/// sliver of the page above it — with rasters of its own.
+Finder _rastersOf(String sheet) => sheet == 'conte'
+    ? find.descendant(
+        of: find
+            .byWidgetPredicate(
+              (widget) =>
+                  widget is ConteBookPage &&
+                  widget.page.kind == ContePageKind.body,
+            )
+            .first,
+        matching: find.byType(StaticRaster),
+      )
+    : find.byType(StaticRaster);

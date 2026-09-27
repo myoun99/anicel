@@ -219,25 +219,14 @@ class _CanvasPanelViewport {
     const margin = 24.0;
     var panX = _viewport.panX;
     var panY = _viewport.panY;
-    final unpanned = _viewport.copyWith(panX: 0, panY: 0);
-    var minX = double.infinity;
-    var minY = double.infinity;
-    var maxX = double.negativeInfinity;
-    var maxY = double.negativeInfinity;
-    for (final corner in [
-      rect.topLeft,
-      rect.topRight,
-      rect.bottomRight,
-      rect.bottomLeft,
-    ]) {
-      final mapped = unpanned.canvasToViewport(
-        CanvasPoint(x: corner.dx, y: corner.dy),
-      );
-      minX = math.min(minX, mapped.x);
-      maxX = math.max(maxX, mapped.x);
-      minY = math.min(minY, mapped.y);
-      maxY = math.max(maxY, mapped.y);
-    }
+    // The rect's mapped AABB with the pan taken out — the one projection
+    // the pan bars and the view's limit read too ([viewportSpan]).
+    final across = viewportSpan(Axis.horizontal, _viewport, rect);
+    final down = viewportSpan(Axis.vertical, _viewport, rect);
+    final minX = across.start;
+    final maxX = across.start + across.extent;
+    final minY = down.start;
+    final maxY = down.start + down.extent;
     // Reveal into the window, not into the box: the 24px breathing room is
     // worthless if it is measured against an edge that is covered.
     if (maxY + panY > visible.bottom - margin) {
