@@ -137,9 +137,10 @@ class _ImportDialogState extends State<ImportDialog> {
   ///
   /// 🗣️유저 2026-09-27: 「안한것 다 해줘. 임포트 드라이브로 할때라던가」.
   /// Such a file is CARRIED — its copy goes with the run, so there is
-  /// nothing lasting to point at ([importModeAllowed]) — and once carried
-  /// the copy is let go of: the staged bytes are the project's, and a second
-  /// copy is what 유저 08-27 refused (「사본 남으면 진짜 용서안할게」).
+  /// nothing lasting to point at ([importModeAllowed]) — and the copy is let
+  /// go of when a pick replaces it or the window closes: by then the staged
+  /// bytes are the project's, and a second copy that stays is what 유저
+  /// 08-27 refused (「사본 남으면 진짜 용서안할게」).
   final Set<String> _intakeCopies = {};
 
   /// Whether [path] will still be where it is when the project opens next.
@@ -393,8 +394,9 @@ class _ImportDialogState extends State<ImportDialog> {
     return paths;
   }
 
-  /// Lets go of every copy [_files] no longer lists — replaced by another
-  /// pick, imported (its bytes are staged), or the window closing.
+  /// Lets go of every copy [_files] no longer lists — a pick replaced it.
+  /// What is still listed goes when the window does ([dispose]): imported
+  /// by then (its bytes are staged) or never imported at all.
   void _letGoOfUnlistedCopies() {
     final unlisted = [
       for (final copy in _intakeCopies)
@@ -567,7 +569,6 @@ class _ImportDialogState extends State<ImportDialog> {
           ? AppText.strings.imStatusNothing
           : tally.warnings.take(3).join(' · ');
     });
-    _letGoOfUnlistedCopies();
   }
 
   /// Runs the picked import, whichever door it goes through. Answers

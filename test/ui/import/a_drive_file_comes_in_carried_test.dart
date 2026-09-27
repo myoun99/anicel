@@ -80,7 +80,10 @@ void main() {
             grants;
   }
 
-  Future<EditorSessionManager> openWindow(WidgetTester tester) async {
+  Future<EditorSessionManager> openWindow(
+    WidgetTester tester, {
+    Future<String?> Function()? directoryPicker,
+  }) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     await tester.pumpWidget(
@@ -90,7 +93,11 @@ void main() {
             builder: (context) => TextButton(
               onPressed: () => showDialog<void>(
                 context: context,
-                builder: (_) => ImportDialog(session: s, poolOnly: true),
+                builder: (_) => ImportDialog(
+                  session: s,
+                  poolOnly: true,
+                  directoryPicker: directoryPicker,
+                ),
               ),
               child: const Text('import'),
             ),
@@ -242,6 +249,40 @@ void main() {
         fileNameOfPath(asset.path): asset.carried,
     };
     expect(carried, {'A1.png': true, 'local.png': false});
+  });
+
+  testWidgets('a pick that REPLACES a Drive file lets go of its copy at once '
+      '— another file or a cut folder alike', (tester) async {
+    const second = ProviderDocument(
+      uri: 'content://drive/doc/2',
+      name: 'B1.png',
+    );
+    final (bytes, folder) = (await tester.runAsync(() async {
+      final bytes = await writeSolidPng(temp, 'doc.png');
+      final folder = Directory('${temp.path}/cut_01_001_lo')..createSync();
+      await writeSolidPng(folder, 'A1.png');
+      return (bytes, folder.path);
+    }))!;
+    documents[uri] = bytes;
+    documents[second.uri] = bytes;
+    await openWindow(tester, directoryPicker: () async => folder);
+
+    pickerAnswers(const [FolderGrant.providerDocument(drive)]);
+    await pickFiles(tester);
+    final first = ProviderDocuments.workingCopyOf(uri)!;
+    pickerAnswers(const [FolderGrant.providerDocument(second)]);
+    await pickFiles(tester);
+
+    expect(File(first).parent.existsSync(), isFalse);
+    final then = ProviderDocuments.workingCopyOf(second.uri)!;
+    expect(File(then).existsSync(), isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-browse-folder-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(File(then).parent.existsSync(), isFalse);
   });
 
   testWidgets('🚨Stop while the copy comes: nothing is listed, the file is '
