@@ -132,14 +132,11 @@ class _SeOffsetStripState extends State<SeOffsetStrip> {
 
   @override
   Widget build(BuildContext context) {
-    final peaks = widget.peaks;
-    final theme = Theme.of(context);
     return SizedBox(
       height: SeOffsetStrip.height,
       child: LayoutBuilder(
         builder: (context, constraints) {
           _pixelsPerFrame = _scaleFor(constraints.maxWidth);
-          final window = widget.blockFrames * _pixelsPerFrame;
           return OwningAxisGrip(
             axis: Axis.horizontal,
             configure: _configureDrag,
@@ -149,59 +146,70 @@ class _SeOffsetStripState extends State<SeOffsetStrip> {
                   : MouseCursor.defer,
               child: Stack(
                 clipBehavior: Clip.hardEdge,
-                children: [
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: window,
-                    child: SePaperSpan(
-                      axis: Axis.horizontal,
-                      frameCellExtent: _pixelsPerFrame,
-                      startFrame: 0,
-                    ),
-                  ),
-                  if (peaks != null) ...[
-                    Positioned.fill(
-                      child: CustomPaint(
-                        key: const ValueKey<String>('se-offset-cut-off'),
-                        painter: _waveform(
-                          peaks,
-                          theme.colorScheme.onSurface.withValues(alpha: 0.2),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                      width: window,
-                      child: ClipRect(
-                        child: CustomPaint(
-                          key: const ValueKey<String>('se-offset-plays'),
-                          painter: _waveform(
-                            peaks,
-                            timelineDrawingInkColor.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                  Positioned(
-                    right: 4,
-                    top: 2,
-                    child: Text(
-                      formatAudioOffset(_offset),
-                      key: const ValueKey<String>('se-offset-value'),
-                      style: theme.textTheme.labelSmall,
-                    ),
-                  ),
-                ],
+                children: _layers(
+                  Theme.of(context),
+                  window: widget.blockFrames * _pixelsPerFrame,
+                ),
               ),
             ),
           );
         },
       ),
     );
+  }
+
+  /// The block's paper as long as the block, the sound across the strip —
+  /// faint where the block cuts it off, in the block's ink where it plays —
+  /// and the offset.
+  List<Widget> _layers(ThemeData theme, {required double window}) {
+    final peaks = widget.peaks;
+    return [
+      Positioned(
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: window,
+        child: SePaperSpan(
+          axis: Axis.horizontal,
+          frameCellExtent: _pixelsPerFrame,
+          startFrame: 0,
+        ),
+      ),
+      if (peaks != null) ...[
+        Positioned.fill(
+          child: CustomPaint(
+            key: const ValueKey<String>('se-offset-cut-off'),
+            painter: _waveform(
+              peaks,
+              theme.colorScheme.onSurface.withValues(alpha: 0.2),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: window,
+          child: ClipRect(
+            child: CustomPaint(
+              key: const ValueKey<String>('se-offset-plays'),
+              painter: _waveform(
+                peaks,
+                timelineDrawingInkColor.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        ),
+      ],
+      Positioned(
+        right: 4,
+        top: 2,
+        child: Text(
+          formatAudioOffset(_offset),
+          key: const ValueKey<String>('se-offset-value'),
+          style: theme.textTheme.labelSmall,
+        ),
+      ),
+    ];
   }
 }
