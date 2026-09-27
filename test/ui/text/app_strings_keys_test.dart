@@ -207,6 +207,7 @@ void main() {
     'folderStorageOffTitle': (s) => s.folderStorageOffTitle,
     'folderPickUnavailable': (s) => s.folderPickUnavailable,
     'folderPickDriveNotice': (s) => s.folderPickDriveNotice,
+    'folderPickDriveNoticeAndroid': (s) => s.folderPickDriveNoticeAndroid,
     'fileNameEmpty': (s) => s.fileNameEmpty,
     'recentProjectsTitle': (s) => s.recentProjectsTitle,
     'recentReconnect': (s) => s.recentReconnect,
