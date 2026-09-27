@@ -249,7 +249,8 @@ void main() {
     // 안하는걸지도」 — the G-pen's remembered paper grain came back after a
     // reset. A size is the same memory (the hand bank) and the strip shows it.
     await pumpWithPresets(tester);
-    final one = onScreen(tester).first;
+    final one = onScreen(tester)[0];
+    final two = onScreen(tester)[1];
     await pick(tester, one);
     final own = size(tester);
     await setSizeAt(tester, 0.8);
@@ -261,17 +262,28 @@ void main() {
     expect(size(tester), isNot(own), reason: 'premise: and on the eraser');
     await takeUp(tester, 'brush');
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-menu-button')).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Reset brush library').first);
-    await tester.pumpAndSettle();
+    Future<void> fromTheMenu(String verb) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-preset-menu-button')).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(verb).first);
+      await tester.pumpAndSettle();
+    }
+
+    // The library itself has changed too: a brush is deleted.
+    await pick(tester, two);
+    await fromTheMenu('Delete selected brush');
+    expect(tileOf(two), findsNothing, reason: 'premise: it is gone');
+    await pick(tester, one);
+
+    await fromTheMenu('Reset brush library');
     await tester.tap(
       find.byKey(const ValueKey<String>('brush-preset-reset-confirm-button')),
     );
     await tester.pumpAndSettle();
 
+    expect(tileOf(two), findsOneWidget, reason: 'the built-ins are back');
     expect(size(tester), own, reason: 'the brush in hand is the reset brush');
     await pick(tester, one);
     expect(size(tester), own, reason: 'and picking it finds nothing kept');
