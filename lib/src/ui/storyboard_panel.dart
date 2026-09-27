@@ -837,8 +837,9 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Where the FRAME axis stands, in pixels — kept by the host beside
   /// [railExtent] because it has to outlive this panel (F-143: a fold
-  /// remounts it, and the offset that lived here went with it). Null = a
-  /// session-local one of our own, as with the rail.
+  /// remounted it until 09-28, and the offset that lived here went with it)
+  /// and because the folded row turns it. Null = a session-local one of our
+  /// own, as with the rail.
   final ValueNotifier<double>? frameAxisOffset;
 
   final ProjectFrameRate projectFrameRate;
@@ -1196,10 +1197,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   final ScrollController _verticalController = ScrollController();
 
-  /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounts
-  /// this panel, and a newborn 0 was read back after layout and recorded as
-  /// a scroll over the position the host had kept. The timeline grids'
-  /// controllers are born the same way.
+  /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounted
+  /// this panel until 09-28, and a newborn 0 was read back after layout and
+  /// recorded as a scroll over the position the host had kept. A panel
+  /// built afresh is still born there. The timeline grids' controllers are
+  /// born the same way.
   late final ScrollController _horizontalController = ScrollController(
     initialScrollOffset: _horizontalScrollOffset.value,
   );

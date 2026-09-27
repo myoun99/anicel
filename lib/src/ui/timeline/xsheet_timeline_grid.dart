@@ -333,8 +333,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     super.initState();
     // PEN-10: pen-friendly positions — while a stylus is nearby, a
     // coasting fling stops hiding the cells from hit-testing.
-    // Born where the axis stands, as on the rail (F-143) — a fold remounts
-    // this sheet too, and a newborn 0 would be recorded as a scroll.
+    // Born where the axis stands, as on the rail (F-143) — an orientation
+    // switch builds this sheet afresh (a fold did too, until 09-28), and a
+    // newborn 0 would be recorded as a scroll.
     _frameScrollController = PenFriendlyScrollController(
       initialScrollOffset: _frameAxisOffset.value,
     );

@@ -316,8 +316,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // coasting fling stops hiding the cells from hit-testing.
     //
     // 🚨★★BORN WHERE THE AXIS STANDS, NOT AT ZERO (F-143). Folding and
-    // unfolding the panel REMOUNT this grid (measured: a new controller each
-    // time). A controller born at 0 has no clients in its first layout, so
+    // unfolding the panel remounted this grid (measured: a new controller
+    // each time) until the workspace keyed the region (09-28); switching
+    // the orientation still builds it afresh while the axis it shares stands
+    // elsewhere. A controller born at 0 has no clients in its first layout, so
     // the sync there cannot pull it anywhere — and then the follower's
     // after-layout re-read (F-95) found the newborn 0 and recorded it as a
     // scroll, over the position the host had kept. Born at the kept offset,

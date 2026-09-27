@@ -142,9 +142,9 @@ void main() {
 
   testWidgets('🚨the SHEET keeps its place through a fold too', (tester) async {
     // ⛔THE WHOLE FAMILY, not the reported half. The x-sheet's frame axis
-    // lived in its grid exactly as the timeline's did, and a fold remounts
-    // it the same way — 유저 reported the timeline, and the sheet is the
-    // same grid transposed.
+    // lived in its grid exactly as the timeline's did, and a fold remounted
+    // it the same way (until 09-28) — 유저 reported the timeline, and the
+    // sheet is the same grid transposed.
     await openTimeline(tester);
     await tapToolbarButton(
       tester,

@@ -712,8 +712,10 @@ class _TimelinePanelState extends State<TimelinePanel> {
           //
           // The `Expanded` stays too, and it is what makes the arithmetic
           // work out: at the collapsed height the bar takes the whole
-          // column, this gets zero, and an offstage child does not lay out
-          // at all — so there is nothing to overflow.
+          // column and this gets zero. ↩️It said an offstage child 「does not
+          // lay out at all」: it does (measured 09-27: the grid at 936×0, its
+          // frame axis 472×168), it is only never painted — so nothing
+          // reports an overflow.
           Expanded(
             child: Offstage(
               offstage: collapsed,
