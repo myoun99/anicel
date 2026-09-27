@@ -201,38 +201,32 @@ class _ExportScrubBar extends StatelessWidget {
           onChanged(axis.clamp((fraction * axis.length).floor()));
         }
 
-        // F-200: a drag on the scrub bar is the bar's — the grip every drag
+        // F-200: a press on the scrub bar is the bar's — the grip every drag
         // verb on a control wears (the claim, and a drag that takes the
         // arena on its first movement), so no scroller around it gets there
-        // first. A tap is its own verb beside it: alone in the arena the
-        // drag would also start on the release, and seek a second time.
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (details) => seekTo(details.localPosition.dx),
-          child: OwningAxisGrip(
-            axis: Axis.horizontal,
-            configure: (recognizer) {
-              recognizer.onStart = (details) =>
-                  seekTo(details.localPosition.dx);
-              recognizer.onUpdate = (details) =>
-                  seekTo(details.localPosition.dx);
-            },
-            child: SizedBox(
-              height: 26,
-              child: CustomPaint(
-                painter: _ExportScrubPainter(
-                  axis: axis,
-                  position: position,
-                  inMark: inMark,
-                  outMark: outMark,
-                  trackColor: theme.dividerColor,
-                  accent: theme.colorScheme.primary,
-                  dimColor: theme.colorScheme.onSurfaceVariant,
-                  captionStyle: theme.textTheme.labelSmall?.copyWith(
-                    fontSize: 9,
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
+        // first. A tap needs no verb of its own: alone in the arena, the
+        // drag is started by the release too, where the tap pressed.
+        return OwningAxisGrip(
+          axis: Axis.horizontal,
+          configure: (recognizer) {
+            recognizer.onStart = (details) => seekTo(details.localPosition.dx);
+            recognizer.onUpdate = (details) => seekTo(details.localPosition.dx);
+          },
+          child: SizedBox(
+            height: 26,
+            child: CustomPaint(
+              painter: _ExportScrubPainter(
+                axis: axis,
+                position: position,
+                inMark: inMark,
+                outMark: outMark,
+                trackColor: theme.dividerColor,
+                accent: theme.colorScheme.primary,
+                dimColor: theme.colorScheme.onSurfaceVariant,
+                captionStyle: theme.textTheme.labelSmall?.copyWith(
+                  fontSize: 9,
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),

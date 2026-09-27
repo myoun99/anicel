@@ -78,6 +78,21 @@ void main() {
       );
     });
 
+    testWidgets('a flick of one move lands where it lifts', (tester) async {
+      final seeks = <int>[];
+      await pump(tester, frameCount: 100, onSeek: seeks.add);
+      final gesture = await tester.startGesture(trackAt(tester, 0.5));
+      await gesture.moveTo(trackAt(tester, 0.8));
+      await gesture.up();
+      await tester.pump();
+      expect(
+        seeks.last,
+        80,
+        reason: 'the one move is the one the drag STARTS on — the owning drag '
+            'takes the arena with it, so no update follows',
+      );
+    });
+
     testWidgets('a press ON the in handle drags it, not the playhead', (
       tester,
     ) async {
