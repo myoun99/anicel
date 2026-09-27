@@ -97,8 +97,13 @@ class ExportFrameRenderer {
     final frameKey = session.brushFrameKeyForCut(cut, layer.id, frame.id);
     // R19 P3b: the baked raster is the truth — a READ-ONLY reference
     // (valid display cache first, else baked; the coordinator donates
-    // on every commit, undo and redo). Nothing is stored back, so
-    // batch exports don't grow the shared cache; null = an empty cel.
+    // on every commit, undo and redo); null = an empty cel. ⚠️Not free
+    // for a cel that is cold or only in the file: reading one thaws it at
+    // the canvas's size into the hot tier, which the store's budget and
+    // cooling bound (↩️this said 「nothing is stored back」, written before
+    // the cold tier, R20-A1). Measured 09-28: the storyboard's pictures of
+    // a 13-cut film thawed 420MB — why they render one at a time
+    // ([StoryboardCutThumbnailStore]).
     return session.renderCaches.brushFrameStore.currentSurfaceWithoutReplay(
       frameKey,
       canvasSize: cut.canvasSize,
