@@ -87,6 +87,24 @@ void main() {
     });
   });
 
+  // T10 (유저 확정 2026-08-14): a press clears the selection when it moves you
+  // somewhere else, and holds it when it begins a move of what is selected.
+  test('standing on a selected row keeps the rows; standing elsewhere lets '
+      'them go', () {
+    final s = session();
+    final rows = railRows(s);
+    s.rowSelectionVerbs.beginRowSelection(rows.first.address);
+    s.rowSelectionVerbs.updateRowSelection(rows, 1);
+    final both = [rows[0].address, rows[1].address];
+    expect(s.rowSelection.value, both, reason: '⛔premise');
+
+    s.standOnRow(rows[1].address);
+    expect(s.rowSelection.value, both, reason: 'inside: the start of a move');
+
+    s.standOnRow(rows[2].address);
+    expect(s.rowSelection.value, isEmpty, reason: 'outside: a new place');
+  });
+
   // 🚨유저 확정 2026-08-12: 「선택범위는 하나만 작동하도록. 프레임셀
   // 선택범위 작동시키고 레이어쪽 선택범위 작동하면 기존 프레임셀쪽
   // 사라지게. 반대도 마찬가지 (…) 즉 선택한 상태라는건 한 종류만 존재하도록」.
