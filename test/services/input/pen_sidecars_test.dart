@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/pen_sidecars.dart';
 import 'package:anicel/src/services/input/platform_pen_channel_service.dart';
+import 'package:anicel/src/services/input/raw_pen_input_service.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 
 /// PEN-4: the macOS/Linux channel sidecars + the cross-platform facade.
@@ -81,8 +82,6 @@ void main() {
     wintab.debugInjectPacket(
       const QaTabletPacket(
         pressure: 0.9,
-        tiltAzimuthDegrees: 0,
-        altitude: 1,
         timeMs: 1,
         buttons: 1,
       ),
@@ -109,8 +108,6 @@ void main() {
     QaTabletPacket packet({required double pressure, required int buttons}) =>
         QaTabletPacket(
           pressure: pressure,
-          tiltAzimuthDegrees: 0,
-          altitude: 1,
           timeMs: 1,
           buttons: buttons,
         );
@@ -145,5 +142,53 @@ void main() {
     controller.add({'pressure': 0.4});
     await Future<void>.delayed(Duration.zero);
     expect(PenSidecars.freshReading()?.touching, isTrue);
+  });
+
+  test('the lean comes from HID first, then Wintab\'s orientation, and from '
+      'nothing when neither has one (desktop-pen-tilt)', () {
+    final hid = RawPenInputService.instance;
+    addTearDown(hid.debugReset);
+    RawPenInputService.debugClockOverride = () => DateTime(2024);
+    QaPenRawState? report;
+    hid.debugPollOverride = () => report;
+    hid.start();
+    final wintab = WintabPenService.instance;
+    WintabPenService.debugClockOverride = () => DateTime(2024);
+    wintab.debugPollOverride = () => const [];
+    wintab.start();
+
+    expect(PenSidecars.freshLean(), isNull, reason: 'nothing speaks');
+
+    // The top toward the user, half way up — while the pen only hovers.
+    wintab.debugInjectPacket(
+      const QaTabletPacket(
+        pressure: 0,
+        orientation: (bearing: 180, altitude: 0.5),
+        timeMs: 1,
+        buttons: 0,
+      ),
+    );
+    expect(PenSidecars.freshLean(), (azimuthDegrees: 90.0, altitude: 0.5));
+
+    // HID outranks it: the top leans right, half way up.
+    report = const QaPenRawState(flags: 0x01, sequence: 1, tilt: (x: 45, y: 0));
+    expect(PenSidecars.freshLean()?.azimuthDegrees, closeTo(0, 1e-9));
+    expect(PenSidecars.freshLean()?.altitude, closeTo(0.5, 1e-9));
+
+    report = const QaPenRawState(flags: 0x01, sequence: 2);
+    expect(
+      PenSidecars.freshLean()?.azimuthDegrees,
+      90.0,
+      reason: 'a report with no tilt leaves the lean to Wintab',
+    );
+
+    wintab.debugInjectPacket(
+      const QaTabletPacket(pressure: 0, timeMs: 2, buttons: 0),
+    );
+    expect(
+      PenSidecars.freshLean(),
+      isNull,
+      reason: 'a device with no orientation axes leans nowhere',
+    );
   });
 }

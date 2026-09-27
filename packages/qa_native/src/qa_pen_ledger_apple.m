@@ -17,9 +17,9 @@
 // super calls. (Location can be estimated too; the brush does not wait on
 // position, so it is not kept.)
 //
-// macOS — the tablet pressure Flutter's embedder drops. A local event
-// monitor (qa_pen_ledger_start) sees every left-mouse event before the
-// window does and writes its pressure, or that it is not a tablet event.
+// macOS — the tablet pressure and tilt Flutter's embedder drops. A local
+// event monitor (qa_pen_ledger_start) sees every left-mouse event before
+// the window does and writes both, or that it is not a tablet event.
 //
 // Compiled for Apple only, through the ios/ and macos/ Classes forwarders.
 
@@ -48,8 +48,11 @@ typedef struct {
   int64_t update_index;  // UIKit's estimationUpdateIndex; -1 when none.
   double value;          // Force (iOS) or pressure (macOS).
   double altitude;       // Radians from the surface (iOS only).
+  double tilt_x;         // AppKit's scaled tilt, -1..1 (macOS only).
+  double tilt_y;
   int32_t state;
   int32_t altitude_state;
+  int32_t tilt_state;
   int32_t used;
 } QaPenSample;
 
@@ -71,6 +74,7 @@ static int64_t qa_pen_micros(NSTimeInterval timestamp) {
 
 static void qa_pen_record(int64_t micros, double value, int32_t state,
                           double altitude, int32_t altitude_state,
+                          double tilt_x, double tilt_y, int32_t tilt_state,
                           int64_t update_index) {
   os_unfair_lock_lock(&qa_pen_lock);
   QaPenSample *slot = &qa_pen_ring[qa_pen_next];
@@ -79,8 +83,11 @@ static void qa_pen_record(int64_t micros, double value, int32_t state,
   slot->update_index = update_index;
   slot->value = value;
   slot->altitude = altitude;
+  slot->tilt_x = tilt_x;
+  slot->tilt_y = tilt_y;
   slot->state = state;
   slot->altitude_state = altitude_state;
+  slot->tilt_state = tilt_state;
   slot->used = 1;
   os_unfair_lock_unlock(&qa_pen_lock);
 }
@@ -121,7 +128,8 @@ static const QaPenSample *qa_pen_find(int64_t micros) {
         touch.altitudeAngle,
         (awaited & UITouchPropertyAltitude) != 0 ? QA_PEN_ESTIMATED
                                                  : QA_PEN_MEASURED,
-        index != nil ? index.longLongValue : -1);
+        // The lean's direction rides the pointer on iOS.
+        0, 0, QA_PEN_UNREPORTED, index != nil ? index.longLongValue : -1);
   }
 }
 
@@ -164,9 +172,12 @@ static id qa_pen_monitor = nil;
 static void qa_pen_note_event(NSEvent *event) {
   const BOOL tablet = event.type == NSEventTypeTabletPoint ||
                       event.subtype == NSEventSubtypeTabletPoint;
+  // `tilt` is valid for exactly these events (AppKit's own words).
+  const NSPoint tilt = tablet ? event.tilt : NSZeroPoint;
   qa_pen_record(qa_pen_micros(event.timestamp), tablet ? event.pressure : 0,
                 tablet ? QA_PEN_MEASURED : QA_PEN_NO_PRESSURE, 0,
-                QA_PEN_UNREPORTED, -1);
+                QA_PEN_UNREPORTED, tilt.x, tilt.y,
+                tablet ? QA_PEN_MEASURED : QA_PEN_UNREPORTED, -1);
 }
 
 static void qa_pen_install_monitor(void) {
@@ -249,4 +260,21 @@ QA_EXPORT double qa_pen_ledger_altitude(int64_t micros) {
   }
   os_unfair_lock_unlock(&qa_pen_lock);
   return result;
+}
+
+// The pen's tilt for the sample Flutter stamped [micros], as AppKit scaled
+// it (NSEvent.tilt: -1..1 each way): 1 with [xy] filled when the record is
+// a tablet event's, 0 when the ledger holds none — no record, a mouse, or
+// iOS, where the lean rides the pointer itself.
+QA_EXPORT int32_t qa_pen_ledger_tilt(int64_t micros, double *xy) {
+  int32_t found = 0;
+  os_unfair_lock_lock(&qa_pen_lock);
+  const QaPenSample *slot = qa_pen_find(micros);
+  if (slot != NULL && slot->tilt_state == QA_PEN_MEASURED) {
+    xy[0] = slot->tilt_x;
+    xy[1] = slot->tilt_y;
+    found = 1;
+  }
+  os_unfair_lock_unlock(&qa_pen_lock);
+  return found;
 }

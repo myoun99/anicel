@@ -114,15 +114,11 @@ void main() {
     queue = const [
       QaTabletPacket(
         pressure: 0.37,
-        tiltAzimuthDegrees: 12,
-        altitude: 0.8,
         timeMs: 1000,
         buttons: 1,
       ),
       QaTabletPacket(
         pressure: 0.62,
-        tiltAzimuthDegrees: 12,
-        altitude: 0.8,
         timeMs: 1008,
         buttons: 1,
       ),
@@ -161,8 +157,6 @@ void main() {
     service.debugInjectPacket(
       const QaTabletPacket(
         pressure: 0,
-        tiltAzimuthDegrees: 0,
-        altitude: 1,
         timeMs: 1000,
         buttons: 0,
       ),
@@ -170,8 +164,6 @@ void main() {
     queue = const [
       QaTabletPacket(
         pressure: 0.45,
-        tiltAzimuthDegrees: 0,
-        altitude: 1,
         timeMs: 1006,
         buttons: 1,
       ),
@@ -243,8 +235,6 @@ List<QaTabletPacket> _fakePackets(int count) => List<QaTabletPacket>.generate(
   count,
   (i) => QaTabletPacket(
     pressure: 0.5,
-    tiltAzimuthDegrees: 0,
-    altitude: 0.5,
     timeMs: 1000.0 + i,
     buttons: 1,
   ),

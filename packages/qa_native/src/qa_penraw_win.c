@@ -15,6 +15,11 @@
 // (CSR_TYPE is manufacturer-defined, and Wacom's own docs warn it
 // answers with garbage on a freshly plugged tablet).
 //
+// And the pen's LEAN (desktop-pen-tilt): X Tilt 0x3D and Y Tilt 0x3E, read
+// in the unit the descriptor declares (qa_pen_hid_axis.h). Flutter's
+// Windows embedder takes POINTER_PEN_INFO's pressure and rotation and
+// drops its tilt, so a brush that leans with the pen had nothing to read.
+//
 // PURE OBSERVATION, by construction:
 //   - A message-only window on its OWN thread receives WM_INPUT. Flutter's
 //     window and message loop are never touched, so nothing here can
@@ -26,16 +31,19 @@
 //   - hid.dll is loaded DYNAMICALLY and its absence is a normal silent
 //     state, same contract as wintab32.dll next door.
 //
-// ABI v1: qpr_abi_version / qpr_start / qpr_stop / qpr_poll.
+// ABI v2: qpr_abi_version / qpr_start / qpr_stop / qpr_poll.
+//   v2: qpr_poll also hands over the report's tilt (see qpr_poll).
 
 #ifdef _WIN32
 
 #include <windows.h>
 #include <stdint.h>
 
+#include "qa_pen_hid_axis.h"
+
 // ---------------------------------------------------------------------------
 // Hand-declared HID parsing ABI (hidpi.h is in the SDK, but declaring the
-// three entry points we use keeps this file's "no vendor headers, no link
+// entry points we use keeps this file's "no vendor headers, no link
 // dependency" shape identical to the Wintab sidecar's).
 // ---------------------------------------------------------------------------
 
@@ -53,9 +61,52 @@ typedef QPR_NTSTATUS(WINAPI *HidP_GetUsages_t)(int report_type,
                                                PVOID preparsed_data,
                                                PCHAR report, ULONG report_len);
 
-// HID digitizer usage page and the button usages we care about.
+// HIDP_VALUE_CAPS: the declaration of one value — its range, its unit.
+// Every field is at most four bytes wide and none is a pointer, so the
+// layout is the same 72 bytes in a 32-bit and a 64-bit process.
+typedef struct {
+  QPR_USAGE UsagePage;
+  UCHAR ReportID;
+  BOOLEAN IsAlias;
+  USHORT BitField;
+  USHORT LinkCollection;
+  QPR_USAGE LinkUsage;
+  QPR_USAGE LinkUsagePage;
+  BOOLEAN IsRange;
+  BOOLEAN IsStringRange;
+  BOOLEAN IsDesignatorRange;
+  BOOLEAN IsAbsolute;
+  BOOLEAN HasNull;
+  UCHAR Reserved;
+  USHORT BitSize;
+  USHORT ReportCount;
+  USHORT Reserved2[5];
+  ULONG UnitsExp;
+  ULONG Units;
+  LONG LogicalMin;
+  LONG LogicalMax;
+  LONG PhysicalMin;
+  LONG PhysicalMax;
+  USHORT UsageOrRange[8];  // The NotRange / Range union; not read here.
+} QPR_VALUE_CAPS;
+
+typedef char qpr_value_caps_is_72_bytes[sizeof(QPR_VALUE_CAPS) == 72 ? 1 : -1];
+
+typedef QPR_NTSTATUS(WINAPI *HidP_GetSpecificValueCaps_t)(
+    int report_type, QPR_USAGE usage_page, USHORT link_collection,
+    QPR_USAGE usage, QPR_VALUE_CAPS *value_caps, PUSHORT value_caps_length,
+    PVOID preparsed_data);
+
+typedef QPR_NTSTATUS(WINAPI *HidP_GetUsageValue_t)(
+    int report_type, QPR_USAGE usage_page, USHORT link_collection,
+    QPR_USAGE usage, PULONG usage_value, PVOID preparsed_data, PCHAR report,
+    ULONG report_len);
+
+// HID digitizer usage page and the usages we care about.
 #define QPR_USAGE_PAGE_DIGITIZER 0x0D
 #define QPR_USAGE_PEN 0x02
+#define QPR_USAGE_X_TILT 0x3D
+#define QPR_USAGE_Y_TILT 0x3E
 #define QPR_USAGE_INVERT 0x3C
 #define QPR_USAGE_TIP_SWITCH 0x42
 #define QPR_USAGE_BARREL_SWITCH 0x44
@@ -71,6 +122,9 @@ typedef QPR_NTSTATUS(WINAPI *HidP_GetUsages_t)(int report_type,
 
 static HMODULE qpr_hid = NULL;
 static HidP_GetUsages_t qpr_HidP_GetUsages = NULL;
+// The lean's two: allowed to be missing, since the buttons need neither.
+static HidP_GetSpecificValueCaps_t qpr_HidP_GetSpecificValueCaps = NULL;
+static HidP_GetUsageValue_t qpr_HidP_GetUsageValue = NULL;
 
 static HANDLE qpr_thread = NULL;
 static DWORD qpr_thread_id = 0;
@@ -82,11 +136,20 @@ static volatile LONG qpr_started = 0;
 static volatile LONG qpr_flags = 0;
 static volatile LONG qpr_seq = 0;
 
+// The latest report's tilt, as ONE word so a reader never pairs one
+// report's X with another's Y: bit 32 set when the report carried both
+// tilts, then X and Y in hundredths of a degree as two signed 16-bit
+// halves (a pen's reach is ±90°, well inside them).
+static volatile LONG64 qpr_tilt = 0;
+
 // Preparsed data is per DEVICE and immutable, so one slot covers the
 // normal case (a single pen digitizer) without a lock: a different
-// device simply refreshes it.
+// device simply refreshes it — and with it the tilt axes it declares.
 static HANDLE qpr_cached_device = NULL;
 static PVOID qpr_cached_preparsed = NULL;
+static qa_hid_axis qpr_tilt_x_axis;
+static qa_hid_axis qpr_tilt_y_axis;
+static int qpr_device_tilts = 0;
 
 static int qpr_load(void) {
   if (qpr_hid != NULL) {
@@ -103,7 +166,79 @@ static int qpr_load(void) {
     qpr_hid = NULL;
     return 0;
   }
+  qpr_HidP_GetSpecificValueCaps = (HidP_GetSpecificValueCaps_t)GetProcAddress(
+      qpr_hid, "HidP_GetSpecificValueCaps");
+  qpr_HidP_GetUsageValue =
+      (HidP_GetUsageValue_t)GetProcAddress(qpr_hid, "HidP_GetUsageValue");
   return 1;
+}
+
+// How [usage] is declared on [preparsed], into [axis]; 0 when the device
+// declares no such value.
+static int qpr_axis_of(PVOID preparsed, QPR_USAGE usage, qa_hid_axis *axis) {
+  if (qpr_HidP_GetSpecificValueCaps == NULL) {
+    return 0;
+  }
+  // Room for a device that declares the usage in more than one report;
+  // the pen's own is the first.
+  QPR_VALUE_CAPS caps[8];
+  USHORT length = 8;
+  if (qpr_HidP_GetSpecificValueCaps(QPR_HIDP_REPORT_TYPE_INPUT,
+                                    QPR_USAGE_PAGE_DIGITIZER, 0, usage, caps,
+                                    &length, preparsed) !=
+          QPR_HIDP_STATUS_SUCCESS ||
+      length == 0) {
+    return 0;
+  }
+  axis->bit_size = caps[0].BitSize;
+  axis->logical_min = caps[0].LogicalMin;
+  axis->logical_max = caps[0].LogicalMax;
+  axis->physical_min = caps[0].PhysicalMin;
+  axis->physical_max = caps[0].PhysicalMax;
+  axis->units = caps[0].Units;
+  axis->units_exp = caps[0].UnitsExp;
+  return 1;
+}
+
+// [usage]'s angle in [report], in degrees, into *[degrees]; 0 when the
+// report carries none (another report ID) or its axis declares no angle.
+static int qpr_angle_in(PCHAR report, ULONG length, PVOID preparsed,
+                        QPR_USAGE usage, const qa_hid_axis *axis,
+                        double *degrees) {
+  ULONG raw = 0;
+  if (qpr_HidP_GetUsageValue(QPR_HIDP_REPORT_TYPE_INPUT,
+                             QPR_USAGE_PAGE_DIGITIZER, 0, usage, &raw,
+                             preparsed, report,
+                             length) != QPR_HIDP_STATUS_SUCCESS) {
+    return 0;
+  }
+  return qa_hid_axis_degrees(axis, raw, degrees);
+}
+
+// [degrees] as a signed 16-bit count of hundredths.
+static LONG64 qpr_centi(double degrees) {
+  if (degrees > 90.0) {
+    degrees = 90.0;
+  }
+  if (degrees < -90.0) {
+    degrees = -90.0;
+  }
+  const int centi = (int)(degrees * 100.0 + (degrees < 0 ? -0.5 : 0.5));
+  return (LONG64)(uint16_t)(int16_t)centi;
+}
+
+// The tilt word for one report — 0 when it carries no tilt.
+static LONG64 qpr_tilt_word(PCHAR report, ULONG length, PVOID preparsed) {
+  double x = 0;
+  double y = 0;
+  if (!qpr_device_tilts || qpr_HidP_GetUsageValue == NULL ||
+      !qpr_angle_in(report, length, preparsed, QPR_USAGE_X_TILT,
+                    &qpr_tilt_x_axis, &x) ||
+      !qpr_angle_in(report, length, preparsed, QPR_USAGE_Y_TILT,
+                    &qpr_tilt_y_axis, &y)) {
+    return 0;
+  }
+  return ((LONG64)1 << 32) | (qpr_centi(x) << 16) | qpr_centi(y);
 }
 
 static PVOID qpr_preparsed_for(HANDLE device) {
@@ -129,6 +264,10 @@ static PVOID qpr_preparsed_for(HANDLE device) {
   }
   qpr_cached_device = device;
   qpr_cached_preparsed = data;
+  // A lean is two tilts: a device that declares one alone reports none.
+  qpr_device_tilts =
+      qpr_axis_of(data, QPR_USAGE_X_TILT, &qpr_tilt_x_axis) &&
+      qpr_axis_of(data, QPR_USAGE_Y_TILT, &qpr_tilt_y_axis);
   return data;
 }
 
@@ -198,6 +337,7 @@ static void qpr_handle_input(HRAWINPUT handle) {
           break;
       }
     }
+    InterlockedExchange64(&qpr_tilt, qpr_tilt_word(report, stride, preparsed));
     InterlockedExchange(&qpr_flags, flags);
     InterlockedIncrement(&qpr_seq);
   }
@@ -269,7 +409,7 @@ static DWORD WINAPI qpr_thread_main(LPVOID param) {
   return 0;
 }
 
-__declspec(dllexport) int32_t qpr_abi_version(void) { return 1; }
+__declspec(dllexport) int32_t qpr_abi_version(void) { return 2; }
 
 // Starts the observer thread. Returns 1 when raw pen reports will flow.
 // Idempotent; a machine without hid.dll or without a digitizer simply
@@ -312,17 +452,21 @@ __declspec(dllexport) void qpr_stop(void) {
   qpr_thread = NULL;
   qpr_thread_id = 0;
   InterlockedExchange(&qpr_flags, 0);
+  InterlockedExchange64(&qpr_tilt, 0);
   // The observer thread is gone, so nothing else can be reading the
   // cached descriptor.
   if (qpr_cached_preparsed != NULL) {
     HeapFree(GetProcessHeap(), 0, qpr_cached_preparsed);
     qpr_cached_preparsed = NULL;
     qpr_cached_device = NULL;
+    qpr_device_tilts = 0;
   }
 }
 
 // Snapshots the newest decoded report into [out]:
-//   out[0] = flag word (QPR_FLAG_*), out[1] = monotonic report counter.
+//   out[0] = flag word (QPR_FLAG_*), out[1] = monotonic report counter,
+//   and with [cap] of 5 (v2) its lean: out[2] X Tilt and out[3] Y Tilt in
+//   degrees, out[4] 1 when the report carried both, 0 when it carried none.
 // Returns 1 when the observer is live, 0 otherwise.
 __declspec(dllexport) int32_t qpr_poll(float *out, int32_t cap) {
   if (out == NULL || cap < 2 ||
@@ -335,6 +479,12 @@ __declspec(dllexport) int32_t qpr_poll(float *out, int32_t cap) {
   // stall, which reads as "no new report" — the exact opposite of what it
   // is for. Wrapping is harmless; only CHANGE is ever tested.
   out[1] = (float)(InterlockedCompareExchange(&qpr_seq, 0, 0) & 0xFFFFFF);
+  if (cap >= 5) {
+    const LONG64 tilt = InterlockedCompareExchange64(&qpr_tilt, 0, 0);
+    out[2] = (float)(int16_t)(uint16_t)((tilt >> 16) & 0xFFFF) / 100.0f;
+    out[3] = (float)(int16_t)(uint16_t)(tilt & 0xFFFF) / 100.0f;
+    out[4] = (tilt >> 32) & 1 ? 1.0f : 0.0f;
+  }
   return 1;
 }
 

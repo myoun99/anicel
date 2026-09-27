@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart'
     show kPrimaryButton, kPrimaryStylusButton, kSecondaryStylusButton;
 
 import '../../native/qa_pen_ledger.dart';
+import 'pen_lean.dart';
 import 'pencil_interaction_service.dart';
 import 'platform_pen_channel_service.dart';
 import 'raw_pen_input_service.dart';
@@ -77,6 +78,35 @@ abstract final class PenSidecars {
     double pressure, {
     required bool tip,
   }) => (pressure: pressure.clamp(0.0, 1.0), touching: tip || pressure > 0);
+
+  /// How the pen leans as the freshest driver-side stream says — null when
+  /// none speaks for this moment or the one that does reports no lean (a
+  /// pen without a tilt sensor). Windows only: the lean Flutter's embedder
+  /// drops (desktop-pen-tilt).
+  ///
+  /// Raw Input first, as for buttons: HID declares the tilt with its own
+  /// unit and reach. Wintab's orientation is the driver's own account, and
+  /// the one left when the HID report has none.
+  ///
+  /// ⚠️A hovering pen's lean is still its lean — unlike pressure, whose
+  /// hover packet reads 0 (see [freshReading]) — so a fresh report answers
+  /// whether or not the tip is down.
+  static PenLean? freshLean({DateTime? now}) {
+    final tilt = RawPenInputService.instance.freshTilt(now: now);
+    if (tilt != null) {
+      return penLeanFromPlaneTilt(x: tilt.x, y: tilt.y);
+    }
+    final orientation = WintabPenService.instance
+        .freshPacket(now: now)
+        ?.orientation;
+    if (orientation != null) {
+      return penLeanFromWintab(
+        bearing: orientation.bearing,
+        altitude: orientation.altitude,
+      );
+    }
+    return null;
+  }
 
   /// The freshest driver-side BUTTON state, as FLUTTER button bits; null =
   /// no sidecar speaks for this moment (use the pointer event's own).

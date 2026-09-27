@@ -1112,8 +1112,6 @@ void main() {
         service.debugInjectPacket(
           const QaTabletPacket(
             pressure: 0.5,
-            tiltAzimuthDegrees: 0,
-            altitude: 1,
             timeMs: 1,
             buttons: 1,
           ),
@@ -1277,8 +1275,6 @@ void main() {
           service.debugInjectPacket(
             const QaTabletPacket(
               pressure: 0,
-              tiltAzimuthDegrees: 0,
-              altitude: 1,
               timeMs: 1,
               buttons: 0x02,
             ),

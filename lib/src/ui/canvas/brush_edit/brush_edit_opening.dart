@@ -278,6 +278,6 @@ class _WaitingSample {
   final CanvasPoint position;
   double pressure;
   double speed;
-  ({double azimuthDegrees, double altitude})? tilt;
+  PenLean? tilt;
   final void Function() paint;
 }

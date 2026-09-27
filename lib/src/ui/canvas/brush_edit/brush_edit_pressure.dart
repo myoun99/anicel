@@ -174,14 +174,32 @@ class _BrushEditPressure {
   /// sample it holds nothing for.
   final Map<PenLedgerState?, int> _ledgerAnswers = {};
 
-  /// Puts the contact that just ended on the input inspector's `ledger`
-  /// line — the one place a device shows whether the platform's word
-  /// reached the brush — and starts counting afresh.
+  /// How this contact's samples leaned: how many there were, how many read
+  /// a lean, and the lowest and highest altitude among those.
+  var _leanTally = _noLean;
+
+  static const _noLean = (samples: 0, leaned: 0, low: 1.0, high: 0.0);
+
+  /// Puts the contact that just ended on the input inspector — the `ledger`
+  /// line where the platform keeps one, and the `lean` line — the one
+  /// place a device shows whether the platform's word reached the brush —
+  /// and starts counting afresh.
   ///
   /// ⚠️Called on the pointer event's own path (the stroke's end), never
   /// from teardown: a probe that notifies during build kills its own
   /// display (H21).
-  void reportLedger() {
+  void reportReadings() {
+    final tally = _leanTally;
+    if (tally.samples > 0) {
+      InputInspector.note(
+        tally.leaned == 0
+            ? 'lean 0/${tally.samples}'
+            : 'lean ${tally.leaned}/${tally.samples} '
+                  'alt ${tally.low.toStringAsFixed(2)}'
+                  '–${tally.high.toStringAsFixed(2)}',
+      );
+      _leanTally = _noLean;
+    }
     if (_ledgerAnswers.isEmpty) {
       return;
     }
@@ -256,6 +274,21 @@ class _BrushEditPressure {
     if (tilt.read || tiltOpening) {
       _state._currentTilt = tilt.tilt;
     }
+    final lean = tilt.tilt;
+    final tally = _leanTally;
+    _leanTally = lean == null
+        ? (
+            samples: tally.samples + 1,
+            leaned: tally.leaned,
+            low: tally.low,
+            high: tally.high,
+          )
+        : (
+            samples: tally.samples + 1,
+            leaned: tally.leaned + 1,
+            low: math.min(tally.low, lean.altitude),
+            high: math.max(tally.high, lean.altitude),
+          );
     return (
       pressure: pressure.read,
       speed: _noteSpeed(event),
@@ -310,44 +343,42 @@ class _BrushEditPressure {
     _travelled = null;
   }
 
-  /// How the pen leans, as the pair a dab carries: degrees of azimuth and a
-  /// 0..1 altitude (1 = upright).
+  /// How the pen leans, as the pair a dab carries ([PenLean]) — or null
+  /// where nothing measured one.
   ///
-  /// 🚨READ FROM THE POINTER, NOT THE SIDECAR — deliberately, and unlike
-  /// pressure. `PenSidecars` exists because the OS pipeline MISREPORTS
-  /// pressure for some pens (PEN-2); no such defect is known for tilt, and
-  /// the sidecar does not surface it today (`qa_tablet_bridge` carries
-  /// azimuth and altitude, but `PenSidecars` publishes only pressure,
-  /// buttons and inverted). Routing tilt through the sidecar as well is a
-  /// separate round with its own evidence.
+  /// ★FROM WHOEVER CARRIES THE LEAN FOR THIS EVENT (desktop-pen-tilt,
+  /// 2026-09-28): the pointer on iOS and Android; on a desktop, whose
+  /// pointer carries none ([_pointerCarriesTilt]), the platform's own
+  /// record — the NSEvent's, through the pen ledger, on macOS, and the
+  /// driver's, through the sidecars, on Windows. Each speaks its own
+  /// convention, and `pen_lean.dart` is the one place they become one.
+  /// ↩️This used to read the pointer alone, 「deliberately, and unlike
+  /// pressure」, because no defect in tilt was known: the defect was that a
+  /// desktop pointer has no tilt to read.
   ///
-  /// ⚠️Flutter reports tilt as radians FROM VERTICAL and orientation as
-  /// radians around the pen's axis; the app speaks the tablet bridge's
-  /// azimuth/altitude instead, so the conversion happens once, here.
   /// 🚨NULL WHEN THE DEVICE REPORTED NONE — it used to answer "upright pen"
   /// (altitude 1.0), which is a reading a mouse never made. 유저 2026-09-09,
   /// `brush-tilt-no-device-Q1` 답 1: 「기울기 못 재는 기기에서는 傾き 소스를
   /// 건너뛴다」 (「1번이 구조적으로 맞아보여서」). With the invented value, an
   /// imported brush whose tilt minimum is 0% drew nothing at all on a mouse
   /// and nothing on screen could say why.
-  ({double azimuthDegrees, double altitude})? penTilt(PointerEvent event) {
+  PenLean? penTilt(PointerEvent event) {
+    if (!_pointerCarriesTilt) {
+      final appKit = QaPenLedger.tiltAt(event.timeStamp);
+      if (appKit != null) {
+        return penLeanFromAppKitTilt(x: appKit.x, y: appKit.y);
+      }
+      return PenSidecars.freshLean();
+    }
     if (event.kind != PointerDeviceKind.stylus &&
         event.kind != PointerDeviceKind.invertedStylus) {
-      return null;
-    }
-    if (!_pointerCarriesTilt) {
       return null;
     }
     final tilt = event.tilt;
     if (!tilt.isFinite) {
       return null;
     }
-    final altitude = (1.0 - tilt.abs() / (math.pi / 2.0)).clamp(0.0, 1.0);
-    final orientation = event.orientation;
-    final degrees = orientation.isFinite
-        ? ((orientation * 180.0 / math.pi) % 360.0 + 360.0) % 360.0
-        : 0.0;
-    return (azimuthDegrees: degrees, altitude: altitude.toDouble());
+    return penLeanFromPointer(tilt: tilt, orientation: event.orientation);
   }
 
   /// 🚨WHERE THE POINTER CARRIES NO LEAN AT ALL (checked 2026-09-27 on
@@ -356,7 +387,7 @@ class _BrushEditPressure {
   /// macOS and Linux never see a pen. There a 0 is the field's default, not
   /// a pen held upright — the invented reading `brush-tilt-no-device-Q1`
   /// ruled out. Only iOS (UITouch's altitude) and Android (AXIS_TILT) carry
-  /// the lean.
+  /// the lean; everywhere else [penTilt] asks the platform's own record.
   static bool get _pointerCarriesTilt =>
       defaultTargetPlatform == TargetPlatform.iOS ||
       defaultTargetPlatform == TargetPlatform.android;
@@ -366,9 +397,7 @@ class _BrushEditPressure {
   /// it does of its force, and says so through the pen ledger; the same
   /// law as pressure (H43). A device that reports no lean has nothing to
   /// wait for.
-  ({({double azimuthDegrees, double altitude})? tilt, bool read}) tiltOf(
-    PointerEvent event,
-  ) {
+  ({PenLean? tilt, bool read}) tiltOf(PointerEvent event) {
     final own = penTilt(event);
     final recorded = own == null
         ? null
@@ -392,10 +421,7 @@ class _BrushEditPressure {
   /// The lean the platform has by now MEASURED for the sample stamped [at]
   /// — UIKit's altitude sent after the fact, with the sample's own
   /// [azimuthDegrees] — or null when the ledger holds no measurement of it.
-  ({double azimuthDegrees, double altitude})? recordedTilt(
-    Duration at,
-    double azimuthDegrees,
-  ) {
+  PenLean? recordedTilt(Duration at, double azimuthDegrees) {
     final recorded = QaPenLedger.altitudeAt(at);
     if (recorded == null || recorded.state != PenLedgerState.measured) {
       return null;

@@ -137,7 +137,14 @@ static WTOverlap_t qat_WTOverlap = NULL;
 
 static HCTX qat_ctx = NULL;
 static double qat_pressure_scale = 0.0;
-static int qat_altitude_max = 900; // Wintab convention: tenths of degrees.
+// The device's orientation axes (DVC_ORIENTATION): the altitude that is a
+// right angle, and how many units the azimuth's full circle counts —
+// tenths of a degree on every driver seen, but the axis says so.
+// ⛔Both ZERO while the device declares no orientation. These defaulted to
+// 900 once, and a pen with no tilt sensor then read altitude 0/900 on every
+// packet: lying flat, a lean nobody measured (desktop-pen-tilt).
+static int qat_altitude_max = 0;
+static int qat_azimuth_span = 0;
 static WCHAR qat_name[64];
 
 static int qat_load(void) {
@@ -268,16 +275,24 @@ __declspec(dllexport) int32_t qat_open(void) {
   }
   QAT_AXIS orient[3];
   ZeroMemory(orient, sizeof(orient));
+  qat_altitude_max = 0;
+  qat_azimuth_span = 0;
   if (qat_WTInfoW(WTI_DEVICES, DVC_ORIENTATION, orient) != 0 &&
-      orient[1].axMax > 0) {
+      orient[0].axMax > orient[0].axMin && orient[1].axMax > 0) {
+    qat_azimuth_span = orient[0].axMax - orient[0].axMin + 1;
     qat_altitude_max = orient[1].axMax;
   }
   return 1;
 }
 
 // Drains queued packets into [out] as records of 6 floats:
-//   [pressure 0..1, tiltAzimuthDeg, tiltAltitude 0..1, timeMs, buttons,
-//    reserved]
+//   [pressure 0..1, azimuth, altitude, timeMs, buttons, oriented]
+// where the azimuth is the pen top's compass bearing in degrees (0 toward
+// the top of the tablet, clockwise) and the altitude a fraction of a right
+// angle (1 upright; negative with the eraser end down) — both 0 and
+// `oriented` 0 when the device declares no orientation axes. `oriented`
+// was a reserved 0 before desktop-pen-tilt, so an older DLL reads as a
+// device with no lean rather than a wrong one, and the ABI stays v1.
 // Returns the record count (<= cap). 0 = nothing queued (or not open).
 __declspec(dllexport) int32_t qat_poll(float *out, int32_t cap) {
   if (qat_ctx == NULL || out == NULL || cap <= 0) {
@@ -287,6 +302,7 @@ __declspec(dllexport) int32_t qat_poll(float *out, int32_t cap) {
   QAT_PACKET packets[kMax];
   int want = cap < kMax ? cap : kMax;
   int got = qat_WTPacketsGet(qat_ctx, want, packets);
+  const int oriented = qat_altitude_max > 0 && qat_azimuth_span > 0;
   for (int i = 0; i < got; i += 1) {
     float *record = out + (size_t)i * 6;
     double pressure = (double)packets[i].pkNormalPressure * qat_pressure_scale;
@@ -297,14 +313,15 @@ __declspec(dllexport) int32_t qat_poll(float *out, int32_t cap) {
       pressure = 1.0;
     }
     record[0] = (float)pressure;
-    record[1] = (float)(packets[i].pkOrientation.orAzimuth / 10.0);
-    record[2] = qat_altitude_max > 0
-                    ? (float)packets[i].pkOrientation.orAltitude /
-                          (float)qat_altitude_max
-                    : 0.0f;
+    record[1] = oriented ? (float)(packets[i].pkOrientation.orAzimuth * 360.0 /
+                                   qat_azimuth_span)
+                         : 0.0f;
+    record[2] = oriented ? (float)packets[i].pkOrientation.orAltitude /
+                               (float)qat_altitude_max
+                         : 0.0f;
     record[3] = (float)packets[i].pkTime;
     record[4] = (float)packets[i].pkButtons;
-    record[5] = 0.0f;
+    record[5] = oriented ? 1.0f : 0.0f;
   }
   return got;
 }

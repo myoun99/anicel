@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
+import '../../services/input/pen_lean.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../debug/input_inspector.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
@@ -298,7 +299,7 @@ class _InteractiveBrushEditCanvasViewState
   /// reading is present or absent as a whole. Null is what a mouse and a
   /// finger report, and it is NOT the same as an upright pen (유저 2026-09-09,
   /// `brush-tilt-no-device-Q1` 답 1).
-  ({double azimuthDegrees, double altitude})? _currentTilt;
+  PenLean? _currentTilt;
 
   /// How fast the pen travelled into the latest sample, 0..1 against the
   /// user's reference speed. A pen that has just landed — and every stroke's

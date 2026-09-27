@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'dart:io';
 
+import 'package:ffi/ffi.dart' show malloc;
 import 'package:flutter/foundation.dart';
 
 import 'qa_engine_abi.dart';
@@ -18,8 +19,8 @@ import 'qa_engine_abi.dart';
 ///   still an ESTIMATE, and the measured value once UIKit sends it
 ///   (`touchesEstimatedPropertiesUpdated`, which Flutter's engine drops).
 ///   The Runner's view controller writes it.
-/// - macOS: the tablet pressure Flutter's embedder drops — or that the
-///   event is not a tablet's at all. A local event monitor writes it.
+/// - macOS: the tablet pressure and tilt Flutter's embedder drops — or that
+///   the event is not a tablet's at all. A local event monitor writes it.
 enum PenLedgerState {
   /// The platform measured this; the reading's value is it.
   measured,
@@ -33,14 +34,21 @@ enum PenLedgerState {
 
 typedef PenLedgerReading = ({PenLedgerState state, double value});
 
+/// AppKit's scaled tilt of one sample — `NSEvent.tilt`, −1..1 each way.
+typedef PenLedgerTilt = ({double x, double y});
+
+typedef _LedgerReaders = ({
+  double Function(int) force,
+  double Function(int) altitude,
+  int Function(int, Pointer<Double>) tilt,
+});
+
 abstract final class QaPenLedger {
   /// The ledger's readers, or null where there is none: another platform,
   /// or a build whose native side predates it.
-  static final ({double Function(int) force, double Function(int) altitude})?
-  _read = _open();
+  static final _LedgerReaders? _read = _open();
 
-  static ({double Function(int) force, double Function(int) altitude})?
-  _open() {
+  static _LedgerReaders? _open() {
     if (!Platform.isIOS && !Platform.isMacOS) {
       return null;
     }
@@ -56,6 +64,11 @@ abstract final class QaPenLedger {
       final read = (
         force: reader('qa_pen_ledger_value'),
         altitude: reader('qa_pen_ledger_altitude'),
+        tilt: engine
+            .lookupFunction<
+              Int32 Function(Int64, Pointer<Double>),
+              int Function(int, Pointer<Double>)
+            >('qa_pen_ledger_tilt'),
       );
       engine.lookupFunction<Void Function(), void Function()>(
         'qa_pen_ledger_start',
@@ -66,6 +79,11 @@ abstract final class QaPenLedger {
     }
   }
 
+  /// Where the native side writes a tilt's two numbers — one, for the life
+  /// of the process: the brush asks on the UI isolate, one sample at a
+  /// time.
+  static final Pointer<Double> _tiltXy = malloc<Double>(2);
+
   /// Replace the native ledger in tests — the test binding runs on no
   /// platform that keeps one.
   @visibleForTesting
@@ -74,11 +92,17 @@ abstract final class QaPenLedger {
   @visibleForTesting
   static PenLedgerReading? Function(Duration at)? debugAltitude;
 
+  @visibleForTesting
+  static PenLedgerTilt? Function(Duration at)? debugTilt;
+
   /// Starts keeping the ledger now rather than at the first sample, so the
   /// very first stroke is on it too (macOS installs its event monitor
   /// here), and answers whether it is kept at all. Safe to call again.
   static bool start() =>
-      debugForce != null || debugAltitude != null || _read != null;
+      debugForce != null ||
+      debugAltitude != null ||
+      debugTilt != null ||
+      _read != null;
 
   /// What the ledger holds for the FORCE of the sample Flutter stamped [at]
   /// — UIKit force on iOS, NSEvent pressure (0..1) on macOS — or null when
@@ -100,6 +124,21 @@ abstract final class QaPenLedger {
       return override(at);
     }
     return decode(_read?.altitude(at.inMicroseconds));
+  }
+
+  /// AppKit's tilt of the sample Flutter stamped [at] — or null when the
+  /// ledger holds none for it: no record, a mouse, or iOS, where the lean
+  /// rides the pointer itself (desktop-pen-tilt).
+  static PenLedgerTilt? tiltAt(Duration at) {
+    final override = debugTilt;
+    if (override != null) {
+      return override(at);
+    }
+    final read = _read;
+    if (read == null || read.tilt(at.inMicroseconds, _tiltXy) == 0) {
+      return null;
+    }
+    return (x: _tiltXy[0], y: _tiltXy[1]);
   }
 
   /// The native answer (`qa_pen_ledger_value` / `qa_pen_ledger_altitude`)

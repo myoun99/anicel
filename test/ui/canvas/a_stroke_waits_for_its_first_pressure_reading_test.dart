@@ -651,6 +651,165 @@ void main() {
     });
   });
 
+  group('on a desktop the lean is the platform\'s own word '
+      '(desktop-pen-tilt)', () {
+    tearDown(() {
+      QaPenLedger.debugTilt = null;
+    });
+
+    // 30° from vertical is 60° up: two thirds of a right angle.
+    const upright = 2.0 / 3.0;
+
+    testWidgets(
+      'on a Mac, the event\'s own record — AppKit\'s tilt — and none for a '
+      'mouse',
+      (tester) async {
+        // Flutter's macOS embedder calls every pen a mouse; the ledger
+        // knows which events were a tablet's.
+        final tilts = <Duration, PenLedgerTilt>{
+          for (final at in [0, 8, 16]) _ms(at): (x: 30 / 90, y: 0),
+        };
+        QaPenLedger.debugTilt = (at) => tilts[at];
+        final results = await _strokes(tester, _tiltBrush, [
+          _pen(pressureMax: 1, kind: PointerDeviceKind.mouse, [
+            _s(const Offset(4, 8), 0, 0),
+            _s(const Offset(20, 8), 0, 8),
+            _s(const Offset(40, 8), 0, 16),
+          ]),
+          _pen(pressureMax: 1, kind: PointerDeviceKind.mouse, [
+            _s(const Offset(4, 24), 0, 100),
+            _s(const Offset(40, 24), 0, 108),
+          ]),
+        ]);
+
+        expect(
+          results.first.map((dab) => dab.tiltAltitude),
+          everyElement(closeTo(upright, 1e-9)),
+        );
+        expect(
+          results.first.map((dab) => dab.tiltAzimuthDegrees),
+          everyElement(closeTo(0, 1e-9)),
+          reason: 'the top leans right',
+        );
+        expect(
+          results.last.map((dab) => dab.tiltAltitude),
+          everyElement(isNull),
+          reason: 'a mouse leans nowhere, and is not an upright pen',
+        );
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    );
+
+    testWidgets(
+      'on Windows, the driver\'s — the HID report\'s tilt first, Wintab\'s '
+      'orientation where the report has none, and none where neither does',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _tiltBrush, results);
+        final hid = RawPenInputService.instance;
+        final wintab = WintabPenService.instance;
+        RawPenInputService.debugClockOverride = () => DateTime(2024);
+        WintabPenService.debugClockOverride = () => DateTime(2024);
+        ({double x, double y})? hidTilt = (x: 0, y: 30);
+        var sequence = 0;
+        hid.debugPollOverride = () {
+          sequence += 1;
+          return QaPenRawState(flags: 0x01, sequence: sequence, tilt: hidTilt);
+        };
+        hid.start();
+        wintab.debugPollOverride = () => const [];
+        wintab.start();
+        wintab.debugInjectPacket(
+          const QaTabletPacket(
+            pressure: 0.5,
+            orientation: (bearing: 90, altitude: upright),
+            timeMs: 1,
+            buttons: 1,
+          ),
+        );
+
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 8), 0.5, 0),
+            _s(const Offset(40, 8), 0.5, 8),
+          ]),
+        );
+        hidTilt = null;
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 16), 0.5, 100),
+            _s(const Offset(40, 16), 0.5, 108),
+          ]),
+        );
+        wintab.debugInjectPacket(
+          const QaTabletPacket(pressure: 0.5, timeMs: 2, buttons: 1),
+        );
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 24), 0.5, 200),
+            _s(const Offset(40, 24), 0.5, 208),
+          ]),
+        );
+
+        expect(results, hasLength(3));
+        // HID: the top leans toward the user.
+        expect(
+          results[0].map((dab) => dab.tiltAltitude),
+          everyElement(closeTo(upright, 1e-9)),
+        );
+        expect(
+          results[0].map((dab) => dab.tiltAzimuthDegrees),
+          everyElement(closeTo(90, 1e-9)),
+        );
+        // Wintab: the top's bearing is east — it leans right.
+        expect(
+          results[1].map((dab) => dab.tiltAltitude),
+          everyElement(closeTo(upright, 1e-9)),
+        );
+        expect(
+          results[1].map((dab) => dab.tiltAzimuthDegrees),
+          everyElement(closeTo(0, 1e-9)),
+        );
+        expect(
+          results[2].map((dab) => dab.tiltAltitude),
+          everyElement(isNull),
+          reason: 'a device that declares no orientation leans nowhere',
+        );
+        // The poll timers must die BEFORE the binding's pending-timer
+        // invariant check (which runs ahead of tearDown callbacks).
+        hid.debugReset();
+        wintab.debugReset();
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+
+    testWidgets(
+      'the stroke puts how its samples leaned on the inspector\'s lean line',
+      (tester) async {
+        InputInspector.visible.value = true;
+        final tilts = <Duration, PenLedgerTilt>{
+          _ms(0): (x: 30 / 90, y: 0),
+          _ms(8): (x: 60 / 90, y: 0),
+        };
+        QaPenLedger.debugTilt = (at) => tilts[at];
+        await _strokes(tester, _tiltBrush, [
+          _pen(pressureMax: 1, kind: PointerDeviceKind.mouse, [
+            _s(const Offset(4, 8), 0, 0),
+            _s(const Offset(20, 8), 0, 8),
+            // A sample the ledger holds no tilt for.
+            _s(const Offset(40, 8), 0, 16),
+          ]),
+        ]);
+
+        expect(InputInspector.notes['lean'], 'lean 2/3 alt 0.33–0.67');
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    );
+  });
+
   group('speed waits like pressure (opening-dab-speed-Q1)', () {
     setUp(() {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
@@ -1412,8 +1571,6 @@ void _up(
 QaTabletPacket _packet({required double pressure, required int buttons}) =>
     QaTabletPacket(
       pressure: pressure,
-      tiltAzimuthDegrees: 0,
-      altitude: 1,
       timeMs: 1,
       buttons: buttons,
     );

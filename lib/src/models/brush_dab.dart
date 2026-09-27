@@ -94,10 +94,11 @@ class BrushDab {
   /// offline path that built it — nothing in the app ever did.
   final double speed;
 
-  /// Which way the pen leaned, in degrees (0 = along +x). Meaningless while
-  /// [tiltAltitude] is 1.0 — an upright pen leans nowhere — and REQUIRED to
-  /// be 0 when it is null, so "the device said nothing" has exactly one
-  /// spelling (the constructor checks).
+  /// Which way the pen's top leaned, in degrees clockwise from +x — the
+  /// convention every source is converted into (`PenLean`). Meaningless
+  /// while [tiltAltitude] is 1.0 — an upright pen leans nowhere — and
+  /// REQUIRED to be 0 when it is null, so "the device said nothing" has
+  /// exactly one spelling (the constructor checks).
   final double tiltAzimuthDegrees;
 
   /// How upright the pen was: 1.0 vertical, 0.0 flat on the surface — or

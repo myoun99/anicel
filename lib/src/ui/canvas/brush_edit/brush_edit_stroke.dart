@@ -455,7 +455,7 @@ class _BrushEditStroke {
 
   void endStrokeInput() {
     _state.widget.onActiveStrokeChanged?.call(false);
-    _state._pressure.reportLedger();
+    _state._pressure.reportReadings();
     clearStrokeInputState();
   }
 
