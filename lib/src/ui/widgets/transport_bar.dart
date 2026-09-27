@@ -294,6 +294,12 @@ class _TransportTrackState extends State<TransportTrack> {
   _Grab _grab = _Grab.seek;
   double _width = 0;
 
+  /// The frame this press last reported. A press that never moves is
+  /// still a drag the arena starts on the release (it is alone there), and
+  /// that start lands where the press already did — reported once, the way
+  /// the raw [Listener] this track used to be reported a tap (F-200).
+  int? _reported;
+
   int get _lastFrame => widget.frameCount <= 1 ? 0 : widget.frameCount - 1;
 
   double _xFor(int frame) =>
@@ -308,6 +314,7 @@ class _TransportTrackState extends State<TransportTrack> {
   }
 
   void _begin(Offset local) {
+    _reported = null;
     if (!widget.showRange) {
       _grab = _Grab.seek;
       _apply(local);
@@ -329,6 +336,10 @@ class _TransportTrackState extends State<TransportTrack> {
 
   void _apply(Offset local) {
     final frame = _frameFor(local.dx);
+    if (frame == _reported) {
+      return;
+    }
+    _reported = frame;
     switch (_grab) {
       case _Grab.seek:
         widget.onSeek(frame);

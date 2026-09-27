@@ -65,11 +65,17 @@ void main() {
   });
 
   group('the track', () {
-    testWidgets('a press away from the handles seeks there', (tester) async {
-      var seeked = -1;
-      await pump(tester, frameCount: 100, onSeek: (frame) => seeked = frame);
+    testWidgets('a press away from the handles seeks there — once', (
+      tester,
+    ) async {
+      final seeks = <int>[];
+      await pump(tester, frameCount: 100, onSeek: seeks.add);
       await tester.tapAt(trackAt(tester, 0.5));
-      expect(seeked, 50);
+      expect(
+        seeks,
+        [50],
+        reason: 'the drag the release starts lands where the press did',
+      );
     });
 
     testWidgets('a press ON the in handle drags it, not the playhead', (
