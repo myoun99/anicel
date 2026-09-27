@@ -175,4 +175,42 @@ void main() {
     expect(seeks, isNotEmpty, reason: 'the press seeks on the spot');
     expect(seeks.toSet(), {50}, reason: 'a pull straight up stays put');
   });
+
+  testWidgets('a flick of one move on the transport track lands where it '
+      'lifts', (tester) async {
+    final seeks = <int>[];
+    await inAScrollingList(
+      tester,
+      SizedBox(
+        width: 400,
+        child: TransportTrack(
+          showRange: false,
+          frameCount: 101,
+          currentFrame: 0,
+          inFrame: 0,
+          outFrame: 100,
+          onSeek: seeks.add,
+          onRangeChanged: (_, _) {},
+        ),
+      ),
+    );
+    final track = tester.getRect(
+      find.byKey(const ValueKey<String>('transport-track')),
+    );
+    // In a list the arena is CONTESTED, so the move that wins it is the only
+    // one — it is reported as the drag's start, never as an update. (Alone
+    // in the arena the drag is accepted at the press, and the move is an
+    // update: only here does the start carry it.)
+    final gesture = await tester.startGesture(
+      track.centerLeft + Offset(track.width * 0.2, 0),
+    );
+    await gesture.moveBy(Offset(track.width * 0.6, 0));
+    await gesture.up();
+    await tester.pump();
+    expect(
+      seeks.last,
+      80,
+      reason: 'the winning move is applied, not only the press (at 20)',
+    );
+  });
 }
