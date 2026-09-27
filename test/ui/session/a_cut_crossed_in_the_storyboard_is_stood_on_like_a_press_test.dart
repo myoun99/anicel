@@ -60,6 +60,10 @@ void main() {
 
   test('a flip back into a cut with a conte row stands on it', () {
     workInTheStoryboard(vRow, 16);
+    // The V row's panels are the cuts AND the gap between them (12..15):
+    // the first flip back parks in the gap, the second crosses into cut-1.
+    session.frameVerbs.flipRow(forward: false);
+    expect(session.activeCutId, isNull, reason: 'premise: the gap between');
     session.frameVerbs.flipRow(forward: false);
 
     expect(session.activeCutId, cut1, reason: 'premise: the flip crossed');

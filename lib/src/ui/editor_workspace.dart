@@ -1086,9 +1086,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // The marquee, as the fifth selection kind — so one 선택 해제 can let go
     // of everything rather than half of it.
-    // ⛔Two statements, not a cascade: an arrow closure's body runs to the
-    // next cascade section, so `..b = () => x ?? false ..c = …` hands `c`
-    // to the `bool` (09-27, analyze caught it).
+    // ⛔Not a cascade: an arrow closure swallows the next `..` section.
     session.rangeSelections.canvasHasSelection = () =>
         widget.canvasSelectionCommands?.hasRegion ?? false;
     session.rangeSelections.clearCanvasSelection = () =>

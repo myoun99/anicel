@@ -101,8 +101,10 @@ void main() {
     expect(AppInput.settings.value.pressureCurveGamma, dragged);
 
     // What the next run read back is what the file holds: setting it again
-    // writes nothing.
+    // writes nothing. (The restore reads the store asynchronously — asked
+    // before it lands, nothing is held yet and the first commit writes.)
     final session = run(store);
+    await tester.pump();
     session.setInputSettings(AppInput.settings.value);
     await tester.pump();
     expect(store.saves, 1, reason: 'the restored value is already held');
