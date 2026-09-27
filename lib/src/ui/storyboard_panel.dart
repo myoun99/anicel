@@ -553,10 +553,18 @@ class StoryboardPanel extends StatefulWidget {
   /// (유저 2026-09-26, zoom-floor-fixed-marks-Q1 — the painter's `_widthFor`),
   /// so a zero-length cut with a cut right behind it is not drawn at all.
   ///
+  /// ↩️And it is one pixel, not eight (유저 2026-09-27: 「타임라인줌 최대한
+  /// 줄이면 컷블록이 엔드라인 넘거나 해서 원래 있어야할 크기보다 블럭이
+  /// 커지는데 최대한 원래 공간만 차지하도록」). Eight pixels was 64 frames at
+  /// the floor, so a short cut before a gap and the film's last cut grew past
+  /// their frames — the last one over the end line. A block is its frames
+  /// now; only a cut too short to cover a pixel is drawn as one, so it does
+  /// not vanish, and still never past the next cut.
+  ///
   /// Public since D15: the folded storyboard draws the same blocks and
-  /// must not carry a floor of its own — a second `8` over there is a
+  /// must not carry a floor of its own — a second floor over there is a
   /// second answer the day this one moves.
-  static const double cutBlockMinWidth = 8;
+  static const double cutBlockMinWidth = 1;
   static const double _minBlockWidth = cutBlockMinWidth;
 
   // Wide enough for the timeline-style rows (icon + names) the rail mirrors.

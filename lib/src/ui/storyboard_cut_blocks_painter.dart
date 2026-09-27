@@ -403,6 +403,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// 64 frames, and every shorter cut lay over the next one — drawn under it
   /// and pressed as itself. A row of short cuts reads frame for frame now,
   /// as Premiere's does.
+  ///
+  /// 🗣️유저 2026-09-27 (「최대한 원래 공간만 차지하도록」): the floor is one
+  /// pixel ([StoryboardPanel.cutBlockMinWidth]) — it keeps a sub-pixel cut
+  /// from vanishing and grows nothing that covers a pixel of its own.
   double _widthFor(StoryboardTimelineLayoutEntry entry) {
     final width = entry.duration * _cellExtent;
     final next = _nextStartByCut[entry.cutId];
