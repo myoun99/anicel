@@ -253,70 +253,32 @@ void main() {
     expect(_seLayer(repository).audioPan, lessThan(0.0));
   });
 
-  testWidgets('the audio lane value field types an offset trim and scrubs '
-      'AE-style (one undo)', (tester) async {
-    late ProjectRepository repository;
-    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+  /// ↩️The label cell TYPED and SCRUBBED the playhead block's offset here
+  /// since R3-(9b) — one value for the whole row, while every block carries
+  /// its own, and a scrub that moved the number but not the waveform. The
+  /// offset is the block's now, edited in the block's own window
+  /// (유저 2026-09-27: 「이거 블록별로 오프셋이 맞지않나? 그래서 블록
+  /// 편집창에서 하는게 맞을듯」) — `a_block_edits_its_own_sound_offset_test`.
+  testWidgets('the audio lane label carries NO offset cell — the offset is '
+      'the block\'s, edited in the block\'s own window', (tester) async {
+    await _pumpHome(tester, onRepositoryCreated: (_) {});
 
-    // Twirl the SE row down; the audio lane label carries the value cell.
     await _ensureVisibleAndTap(
       tester,
       find.byKey(const ValueKey<String>('timeline-lane-toggle-sea-voice')),
     );
-    final valueCell = find.byKey(
-      const ValueKey<String>('timeline-lane-value-sea-voice-se-audio'),
-    );
-    await tester.ensureVisible(valueCell);
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<Text>(
-            find.descendant(of: valueCell, matching: find.byType(Text)),
-          )
-          .data,
-      '0f',
-    );
 
-    // Tap to type: Enter commits through audioClipsOf(session).setAudioClipOffset.
-    await tester.tap(valueCell);
-    await tester.pumpAndSettle();
-    // F-22 ②: the `f` is CHROME — the box holds the number alone, and a
-    // bare number is what commits.
     expect(
-      tester
-          .widget<TextField>(
-            find.byKey(
-              const ValueKey<String>(
-                'timeline-lane-value-field-sea-voice-se-audio',
-              ),
-            ),
-          )
-          .controller!
-          .text,
-      '0',
+      find.byKey(const ValueKey<String>('timeline-lane-row-sea-voice-se-audio')),
+      findsOneWidget,
+      reason: 'CONTROL: the audio lane is down',
     );
-    await tester.enterText(
+    expect(
       find.byKey(
-        const ValueKey<String>('timeline-lane-value-field-sea-voice-se-audio'),
+        const ValueKey<String>('timeline-lane-value-sea-voice-se-audio'),
       ),
-      '7',
+      findsNothing,
     );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-
-    expect(_seLayer(repository).audioClips.single.offsetFrames, 7);
-
-    // ONE undo restores the untouched trim.
-    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
-    await tester.pumpAndSettle();
-    expect(_seLayer(repository).audioClips.single.offsetFrames, 0);
-
-    // A drag on the value scrubs it: 4px per frame, rightward = deeper.
-    await tester.ensureVisible(valueCell);
-    await tester.pumpAndSettle();
-    await tester.drag(valueCell, const Offset(40, 0));
-    await tester.pumpAndSettle();
-    expect(_seLayer(repository).audioClips.single.offsetFrames, 10);
   });
 
   /// 🚨THE GUARD AND THE CLAMPS EVERY CLIP EDIT SHARES.
