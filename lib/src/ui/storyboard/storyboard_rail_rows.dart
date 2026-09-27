@@ -42,10 +42,21 @@ class _StoryboardRailRows {
     if (playhead == null) {
       return builder(null);
     }
-    return _FollowsTheCutUnderThePlayhead(
-      playhead: playhead,
-      cutAt: () => _state._standing.cutAtPlayheadOn(trackIndex),
-      builder: builder,
+    // 🚨A TICK LAYER (I-22 ③): at a far zoom a scrub crosses into another
+    // cut on nearly every move, and the row rebuilt bare in the body's
+    // layout scope laid the body out again and repainted the whole panel on
+    // each (measured at 0.16px: 30ms of a 366ms scrub sample). The row is
+    // the V rail row — the rail's width by the V lane's height.
+    return SizedBox(
+      width: StoryboardPanel.railWidthIn(_state.context),
+      height: _state.widget.trackLaneHeight,
+      child: TickLayer(
+        child: _FollowsTheCutUnderThePlayhead(
+          playhead: playhead,
+          cutAt: () => _state._standing.cutAtPlayheadOn(trackIndex),
+          builder: builder,
+        ),
+      ),
     );
   }
 
