@@ -1086,11 +1086,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // The marquee, as the fifth selection kind — so one 선택 해제 can let go
     // of everything rather than half of it.
-    session.rangeSelections
-      ..canvasHasSelection = () =>
-          widget.canvasSelectionCommands?.hasRegion ?? false
-      ..clearCanvasSelection = () =>
-          widget.canvasSelectionCommands?.deselect();
+    // ⛔Two statements, not a cascade: an arrow closure's body runs to the
+    // next cascade section, so `..b = () => x ?? false ..c = …` hands `c`
+    // to the `bool` (09-27, analyze caught it).
+    session.rangeSelections.canvasHasSelection = () =>
+        widget.canvasSelectionCommands?.hasRegion ?? false;
+    session.rangeSelections.clearCanvasSelection = () =>
+        widget.canvasSelectionCommands?.deselect();
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
     // ⚠️Left on when the project goes behind: the clock saves a tab that is

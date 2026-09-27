@@ -21,7 +21,6 @@ import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
 import '../services/editing/run_id_mint.dart' as frame_ids;
 import '../services/editing/layer_standing_after_change.dart';
-import '../controllers/timeline_controller.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
