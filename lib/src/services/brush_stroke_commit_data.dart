@@ -26,8 +26,10 @@ import '../models/dirty_region.dart';
 /// surface is still that same object, the commit is a tile PUT: no
 /// re-blend, no re-decode, and the images the user watched hand over to
 /// the new tiles. If the surface moved underneath (anything committed in
-/// between), the commit falls back to the dab route and the promotion is
-/// simply ignored — correctness never depends on the fast path.
+/// between), the commit re-derives the stroke from its dabs — piled up on
+/// an empty buffer and composited once, the way the overlay built it — and
+/// the promotion is simply ignored: correctness never depends on the fast
+/// path.
 class BrushStrokeCommitData {
   BrushStrokeCommitData({
     required List<BrushDab> sourceDabs,

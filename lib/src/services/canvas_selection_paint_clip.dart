@@ -73,15 +73,18 @@ ClippedStrokePixels? clipStrokePixelsToSelection({
   return null;
 }
 
-/// Rasterizes [dabs] into a bounds-local straight-alpha buffer so a
-/// stroke that arrives WITHOUT live pixels (programmatic strokes, a redo
-/// replaying source dabs) can still be clipped.
+/// Rasterizes [dabs] into a bounds-local straight-alpha buffer — the
+/// buffer the live overlay would have piled up — so a stroke that arrives
+/// WITHOUT live pixels (re-derived from its dabs, or a stamp) can still be
+/// clipped and composited once.
 ///
 /// Erase dabs rasterize with the flag flipped OFF: what is wanted here is
 /// the stroke's COVERAGE, which the commit then re-applies as one erase
 /// stamp — the same "accumulate the stroke, composite once" shape the
-/// live rasterizer produces (and unlike the dab-by-dab loop, overlapping
-/// erase dabs do not compound).
+/// live rasterizer produces. ↩️This said the dab-by-dab loop made
+/// overlapping erase dabs compound where this does not; both leave
+/// b·Π(1−s), and what differs is only where the rounding falls
+/// (erase-live-and-dab-route-round-apart).
 ClippedStrokePixels? rasterizeStrokeForClipping({
   required List<BrushDab> dabs,
   required CanvasSize canvasSize,

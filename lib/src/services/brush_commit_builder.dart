@@ -58,25 +58,48 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     );
   }
   // Pen-up fast path: when the interactive view already rasterized the
-  // stroke incrementally while drawing (same per-dab math), commit is a
-  // single composite pass instead of re-running the whole dab loop. A
-  // stroke is homogeneous: every dab shares the tool's erase mode.
+  // stroke incrementally while drawing, commit is a single composite pass
+  // of that buffer. A stroke is homogeneous: every dab shares the tool's
+  // erase mode.
   var strokePixels = prerasterizedStrokePixels;
   var strokeBounds = prerasterizedStrokeBounds;
+  // 🚨★★★A STROKE OF BRUSH DABS LANDS AS THE LIVE OVERLAY LANDED IT
+  // (erase-live-and-dab-route-round-apart, 2026-09-28): its dabs pile up on
+  // an EMPTY buffer and the buffer composites ONCE. Laying the same dabs on
+  // the cel one by one reaches the same sum in exact arithmetic — an erase
+  // leaves b·Π(1−s) and source-over associates either way — but rounds to
+  // a byte after every dab instead of once, so over paint the two answers
+  // part by a level: three eraser dabs at s=0.52 over alpha 95 kept 11
+  // where the screen had shown 10. A stroke arrives here without its live
+  // buffer only when it is re-derived from its dabs — the commit when the
+  // cel moved under the promotion, 확정 laying the last stroke down again —
+  // and what it lands must be what the user watched. ↩️Until then only a
+  // brush blend, 뒤에 그리기 and a stroke opacity took this route (BB-1,
+  // F-12); plain colour and the eraser went dab by dab, on the premise
+  // that the overlay ran "the same per-dab math" — true of each dab, not
+  // of where the rounding falls.
+  //
+  // ⚠️A STAMP keeps its own route. No overlay ever draws one — every stamp
+  // enters through a programmatic commit: a fill, a pasted or stamped
+  // piece, a lift's hole and its landing — one stamp piles up with
+  // nothing, and a lift's landing is not a stroke but a PROGRAM (cut the
+  // hole, then lay the piece) that means what it says only dab by dab.
+  final brushDabs = sequence.firstOrNull?.stamp == null;
   // 🚨F-12: a stroke OPACITY needs the whole stroke as one buffer for
   // exactly the reason a brush blend does — it is a ceiling on what the
   // accumulated stroke may reach, and dab-by-dab it is not a ceiling at all
   // (dabs pile up source-over and converge on 1). So it takes the same
   // route BB-1 built, and the two conditions are one condition.
   final needsWholeStroke =
+      brushDabs ||
       blendMode.isSeparable ||
       blendMode == BrushBlendMode.behind ||
       strokeOpacityCoverage(sequence.opacity) < 255;
   if (needsWholeStroke) {
     // BB-1: a brush blend needs the WHOLE stroke as one buffer (the mode
-    // must never apply dab-by-dab). Without a live raster (programmatic
-    // strokes, a redo without pixels), materialize the dabs onto an
-    // EMPTY surface first — same kernels, same pixels.
+    // must never apply dab-by-dab). Without a live raster (a stroke
+    // re-derived from its dabs, a stamp that blends), materialize the dabs
+    // onto an EMPTY surface first — same kernels, same pixels.
     if (strokePixels == null || strokeBounds == null) {
       // 🚨★★★**THE SAME RASTERIZER THE CLIP PATH USES, and it had to be:
       // this was a second copy of it that had lost the one rule that
