@@ -7,6 +7,7 @@ import 'memo_token.dart';
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
+import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 
 /// The playhead's own writing on a ruler strip, and what of the strip's
 /// writing it stands on (I-16).
@@ -46,10 +47,14 @@ timelineRulerPlayheadWriting({
     pair: pair,
     layout: layout,
   );
+  // The frames the strip writes at, walked as the strip walks them
+  // ([TimelineRulerScale.paintWindow]): I-22 ③ — the neighbourhood is
+  // ~1,200 frames at 0.16px, and a frame off the stride holds no writing.
+  final step = scale.writingStep;
   for (
-    var frameIndex = reach.startIndex;
+    var frameIndex = timelineFirstOnStride(reach.startIndex, step);
     frameIndex < reach.endIndexExclusive;
-    frameIndex += 1
+    frameIndex += step
   ) {
     for (final glyph in layout(scale, frameIndex, current: false)) {
       final rect = glyph.rect;
@@ -201,22 +206,14 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
       layout: layout,
     );
     final window = scale.visibleWindow();
-    final fill = Paint();
-    final line = Paint();
     for (final rect in writing.covered) {
       canvas.save();
       canvas.clipRect(rect);
-      final under = _cellsUnder(rect, window);
-      for (
-        var frameIndex = under.startIndex;
-        frameIndex < under.endIndexExclusive;
-        frameIndex += 1
-      ) {
-        // Inflated: a neighbour's boundary line strokes over the edge.
-        if (scale.cellRectFor(frameIndex).inflate(1).overlaps(rect)) {
-          scale.paintCellPaper(canvas, frameIndex, fill: fill, line: line);
-        }
-      }
+      // The paper laid the way the strip lays it — a stretch of one ground
+      // at a time ([TimelineRulerScale.paintPaperIn]), under the clip. I-22
+      // ③: a cell at a time was hundreds of sixth-of-a-pixel rects under one
+      // glyph at the ten-minute floor, on every playback tick.
+      scale.paintPaperIn(canvas, _cellsUnder(rect, window));
       for (final glyph in writing.standing) {
         if (glyph.rect.overlaps(rect)) {
           glyph.paint(canvas);

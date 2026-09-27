@@ -488,37 +488,6 @@ final class TimelineRulerScale {
     return stride > overlayFloor ? stride : overlayFloor;
   }
 
-  /// The paper under one cell: its ground, and on it THE boundary line —
-  /// the grid law's ink composited onto that ground — turned by [axis]: down
-  /// the ruler's cell edge, across the rail's row edge. The playhead's
-  /// writing lays it when it uncovers a cell (I-16) and both strips lay it a
-  /// stretch at a time ([paintPaperIn]); [fill] and [line] are the caller's,
-  /// reused across its cells.
-  ///
-  /// D8 (2026-08-18): the rail used to stroke a faint RECT around every row
-  /// — no cadence, no 6f/second strengthening, half a pixel off the ruler's
-  /// snap: one of the "미묘하게 다른 가이드선". The snap is the LAW's (it was
-  /// this ruler's own +0.5 first — D8 promoted it so the overlay lands on
-  /// the same pixel).
-  ///
-  /// D43 (유저, 2026-08-21): and the LAW's over-ground treatment too. The ink
-  /// and the position were already shared; the COMPOSITE was not — the ruler
-  /// laid its line over the header paper source-over while a block's
-  /// interior seam multiplied, so one grid read lighter here and darker
-  /// there; the rail was the half still missing it until round 8's grid
-  /// unification. The fill has just laid this cell's paper, so the ground is
-  /// known exactly rather than assumed.
-  void paintCellPaper(
-    Canvas canvas,
-    int frameIndex, {
-    required Paint fill,
-    required Paint line,
-  }) {
-    final ground = modelAt(frameIndex).background;
-    canvas.drawRect(cellRectFor(frameIndex), fill..color = ground);
-    _paintBoundaryLine(canvas, frameIndex, ground, line);
-  }
-
   /// A strip's window, both passes — the ruler's across and the rail's
   /// down, one code: the paper ([paintPaperIn]), then the marks, only on
   /// the frames a mark can stand on ([writingStep]), each where the strip's
@@ -544,15 +513,34 @@ final class TimelineRulerScale {
     }
   }
 
-  /// The paper under [frames] — each stretch of one ground as ONE rect,
-  /// and on it every line THE law rules there: what [paintCellPaper] lays
-  /// one cell at a time, laid for a window at once.
+  /// The paper under [frames] — each stretch of one ground as ONE rect, and
+  /// on it THE boundary line wherever the law rules one: the grid law's ink
+  /// composited onto that ground, turned by [axis] (down the ruler's cell
+  /// edge, across the rail's row edge). Both strips lay their window with
+  /// it, and the playhead's writing lays the paper back with it under a
+  /// glyph it covers (I-16).
   ///
   /// 🚨I-22 (the ten-minute floor): at an eighth of a pixel a window is
   /// ~19,000 cells, and a rect and a line check for every one of them was
   /// this strip's whole cost. A cell's ground moves only at the selected
   /// cell and at the end of playback ([modelAt]), so those are the only
-  /// edges a stretch has; the lines walk [timelineFrameLineStep].
+  /// edges a stretch has; the lines walk [timelineFrameLineStep]. ↩️The
+  /// writing kept laying its paper a cell at a time until 09-27 — hundreds
+  /// of rects under one glyph on every playback tick at that floor.
+  ///
+  /// D8 (2026-08-18): the rail used to stroke a faint RECT around every row
+  /// — no cadence, no 6f/second strengthening, half a pixel off the ruler's
+  /// snap: one of the "미묘하게 다른 가이드선". The snap is the LAW's (it was
+  /// this ruler's own +0.5 first — D8 promoted it so the overlay lands on
+  /// the same pixel).
+  ///
+  /// D43 (유저, 2026-08-21): and the LAW's over-ground treatment too. The ink
+  /// and the position were already shared; the COMPOSITE was not — the ruler
+  /// laid its line over the header paper source-over while a block's
+  /// interior seam multiplied, so one grid read lighter here and darker
+  /// there; the rail was the half still missing it until round 8's grid
+  /// unification. The fill has just laid this stretch's paper, so the ground
+  /// is known exactly rather than assumed.
   void paintPaperIn(
     Canvas canvas,
     ({int startIndex, int endIndexExclusive}) frames,
