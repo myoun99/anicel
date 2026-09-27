@@ -75,7 +75,8 @@ class LaneVerbs {
     required SelectionAccess selection,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required TimelineRowAddress Function() currentRow,
+    required bool Function() sessionDisposed,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required EffectsAndFx effectsAndFx,
     required ChangeSink changes,
@@ -86,7 +87,8 @@ class LaneVerbs {
        _selection = selection,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
+       _currentRow = currentRow,
+       _sessionDisposed = sessionDisposed,
        _dragPreview = dragPreview,
        _effectsAndFx = effectsAndFx,
        _changes = changes,
@@ -100,7 +102,13 @@ class LaneVerbs {
   final SelectionAccess _selection;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+
+  /// The row the user stands on — `Standing.currentRow`, asked when needed.
+  final TimelineRowAddress Function() _currentRow;
+
+  /// Whether the session has been disposed — a plain flag, so it comes as
+  /// the question.
+  final bool Function() _sessionDisposed;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
   /// `Camera.updateActiveCutCameraTrack` — the camera row's lanes go home to
@@ -242,7 +250,7 @@ class LaneVerbs {
         endIndexExclusive: cells.endIndexExclusive,
       );
     }
-    return switch (_internals.currentRow) {
+    return switch (_currentRow()) {
       LaneRowAddress(:final layerId, :final laneId) => _standingSpan(
         layerId,
         laneId,
@@ -461,7 +469,7 @@ class LaneVerbs {
   /// cannot fire while the tree is torn down), and by then the whole
   /// session may have gone with its tab: then there is nothing to drop.
   void endLaneEditPreview() {
-    if (_internals.disposed) {
+    if (_sessionDisposed()) {
       return;
     }
     if (_dragPreview.value is LaneEditPreview) {

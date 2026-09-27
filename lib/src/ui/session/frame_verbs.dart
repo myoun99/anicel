@@ -43,6 +43,7 @@ class FrameVerbs {
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
+    required TimelineRowAddress Function() currentRow,
     required RenderCaches renderCaches,
     required TrackAxisWalk trackAxis,
     required WorkingPanel Function() workingPanel,
@@ -54,6 +55,7 @@ class FrameVerbs {
        _controllers = controllers,
        _internals = internals,
        _dragPreview = dragPreview,
+       _currentRow = currentRow,
        _renderCaches = renderCaches,
        _trackAxis = trackAxis,
        _workingPanel = workingPanel;
@@ -66,6 +68,9 @@ class FrameVerbs {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
+
+  /// The row the user stands on — `Standing.currentRow`, asked when needed.
+  final TimelineRowAddress Function() _currentRow;
   final RenderCaches _renderCaches;
 
   /// The TRACK's axis, walked — the storyboard's rows and a gap's steps.
@@ -437,7 +442,7 @@ class FrameVerbs {
     // RANGE on the sheet; the artwork's marquee is a tool in hand, and a
     // flip is a move to another column, not a 선택 해제.
     _selection.clearTimelineSelections();
-    switch (_internals.currentRow) {
+    switch (_currentRow()) {
       case TrackRowAddress(:final trackId):
         _trackAxis.flipPanels(trackId, forward: forward);
       case LayerRowAddress(:final layerId)

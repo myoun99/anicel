@@ -409,6 +409,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     internals: this,
+    sessionDisposed: () => disposed,
     onEditActivity: () => playbackRig.prerenderScheduler.notifyEditActivity(),
   );
 
@@ -720,7 +721,7 @@ class EditorSessionManager extends ChangeNotifier
   final CanvasSelectionDocument canvasSelection = CanvasSelectionDocument();
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
 
   // I-41: every door that MOVES where the user stands — the cut, the row,
   // the frame, the gap — first settles the last edit where it left them
@@ -733,7 +734,6 @@ class EditorSessionManager extends ChangeNotifier
     standing.selectCut(cutId);
   }
 
-  @override
   TimelineRowAddress get currentRow => standing.currentRow;
 
   /// The panel the arrows, the flip and the bound keys answer to — the one
@@ -898,6 +898,7 @@ class EditorSessionManager extends ChangeNotifier
     trackSe: trackSe,
     rowSpans: rowSpans,
     internals: this,
+    currentRow: () => standing.currentRow,
     playbackRig: playbackRig,
     // Lazily: RowSelection is built FROM rangeSelections.
     rowIsSelected: (row) => rowSelectionVerbs.rowIsSelected(row),
@@ -1556,6 +1557,7 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     internals: this,
     dragPreview: dragPreview,
+    currentRow: () => standing.currentRow,
     renderCaches: renderCaches,
     trackAxis: trackAxisWalk,
     workingPanel: () => standing.workingPanel,
@@ -1677,9 +1679,10 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     controllers: activeCutControllers,
     effectsAndFx: effectsAndFx,
-    internals: this,
     dragPreview: dragPreview,
     changes: this,
+    currentRow: () => standing.currentRow,
+    sessionDisposed: () => disposed,
     // The camera's one write, not the camera — see
     // `LaneVerbs._updateActiveCutCameraTrack`.
     updateActiveCutCameraTrack: (track, {required description}) =>
@@ -1943,7 +1946,7 @@ class EditorSessionManager extends ChangeNotifier
   late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFold: standing.handOffOnFold, keepStandingShown: standing.keepStandingShown);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
-  late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor, internals: this);
+  late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor);
 
   /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
   /// listener and by the SE solo — the one mix switch that bypasses
@@ -2205,7 +2208,6 @@ class EditorSessionManager extends ChangeNotifier
     mediaPool: mediaPool,
   );
 
-  @override
   bool disposed = false;
 
   // --- Voice recording, ADR, input meter, take preview ----------------------
@@ -2248,14 +2250,11 @@ class EditorSessionManager extends ChangeNotifier
   @override
   FrameId mintFrameId(LayerId layerId) => frame_ids.mintFrameId(layerId);
 
-  @override
-  Layer? get targetLayerForKindToggle => activeLayer;
-
   // ── the storyboard cursor: its own object, in its own file ──────────
   //
   // A collaborator (session/storyboard_cursor.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final StoryboardCursor storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: cells, cutVerbs: cutVerbs, transitions: transitions, internals: this);
+  late final StoryboardCursor storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: cells, cutVerbs: cutVerbs, transitions: transitions);
 
   // --- Frame / cell state / commands -------------------------------------
 
@@ -3033,7 +3032,6 @@ class EditorSessionManager extends ChangeNotifier
   /// layer carries a session to the next cel on a seek, and a float writes
   /// nothing until it lands, so nothing is lost ([RangeSelections]'s hold
   /// is only the prerender's now).
-  @override
   bool get strokeInFlight => brushInputActive.value;
 
   // --- Track-global frame axis (R15-①) -----------------------------------
@@ -3290,7 +3288,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     controllers: activeCutControllers,
-    internals: this,
+    brushInputActive: brushInputActive,
     editingFrameCursor: editingFrameCursor,
     playbackRig: playbackRig,
   );

@@ -27,7 +27,7 @@ import 'transitions.dart';
 /// 2026-09-02). Measured before cutting: nothing of its own and seventeen
 /// session members touched. It names the roles it needs in its constructor.
 class StoryboardCursor {
-  StoryboardCursor({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required ActiveCutControllers controllers, required SessionInternals internals, required RangeSelections rangeSelections, required CellVerbs cells, required CutVerbs cutVerbs, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _controllers = controllers, _internals = internals, _rangeSelections = rangeSelections, _cells = cells, _cutVerbs = cutVerbs, _transitions = transitions;
+  StoryboardCursor({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required ActiveCutControllers controllers, required RangeSelections rangeSelections, required CellVerbs cells, required CutVerbs cutVerbs, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _controllers = controllers, _rangeSelections = rangeSelections, _cells = cells, _cutVerbs = cutVerbs, _transitions = transitions;
 
   final CellVerbs _cells;
   final CutVerbs _cutVerbs;
@@ -38,7 +38,6 @@ class StoryboardCursor {
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
   final RangeSelections _rangeSelections;
 
   /// Why the storyboard toggle is refused, or null when it is allowed.
@@ -48,7 +47,7 @@ class StoryboardCursor {
   /// rather than silently doing nothing, and rather than making the second
   /// row that used to red-screen the V row.
   String? get targetLayerStoryboardRefusal {
-    final targetLayer = _internals.targetLayerForKindToggle;
+    final targetLayer = _selection.activeLayer;
     if (targetLayer == null || targetLayer.kind == LayerKind.storyboard) {
       return null;
     }

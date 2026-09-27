@@ -29,14 +29,12 @@ class LayerSwitchVerbs {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required StoryboardCursor storyboardCursor,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
-       _internals = internals,
        _storyboardCursor = storyboardCursor;
 
   final StoryboardCursor _storyboardCursor;
@@ -46,7 +44,6 @@ class LayerSwitchVerbs {
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
 
   void toggleLayerVisibility(LayerId layerId) {
     _controllers.layerController.toggleLayerVisibility(layerId);
@@ -260,7 +257,7 @@ class LayerSwitchVerbs {
   }
 
   bool get canToggleTargetLayerKind {
-    final targetLayer = _internals.targetLayerForKindToggle;
+    final targetLayer = _selection.activeLayer;
     // Only the animation ⇄ storyboard pair; other kinds have their own
     // toggles (SE) or are fixed (camera/instruction/attach rows).
     if (targetLayer == null ||
@@ -280,7 +277,7 @@ class LayerSwitchVerbs {
   }
 
   void toggleTargetLayerKind() {
-    final targetLayer = _internals.targetLayerForKindToggle;
+    final targetLayer = _selection.activeLayer;
     if (targetLayer == null ||
         _storyboardCursor.targetLayerStoryboardRefusal != null) {
       return;

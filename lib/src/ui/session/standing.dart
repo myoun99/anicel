@@ -53,6 +53,8 @@ class Standing {
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required ValueListenable<bool> brushInputActive,
+    required bool Function() sessionDisposed,
     required PlaybackRig playbackRig,
     required RowSelection rowSelectionVerbs,
     required VisibilitySolo solo,
@@ -67,6 +69,8 @@ class Standing {
        _timeline = timeline,
        _controllers = controllers,
        _internals = internals,
+       _brushInputActive = brushInputActive,
+       _sessionDisposed = sessionDisposed,
        _playbackRig = playbackRig,
        _rowSelectionVerbs = rowSelectionVerbs,
        _solo = solo,
@@ -93,6 +97,13 @@ class Standing {
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+
+  /// Whether a stroke is in flight — the session's `brushInputActive`.
+  final ValueListenable<bool> _brushInputActive;
+
+  /// Whether the session has been disposed — a plain flag, so it comes as
+  /// the question.
+  final bool Function() _sessionDisposed;
   final PlaybackRig _playbackRig;
   final RowSelection _rowSelectionVerbs;
   final VisibilitySolo _solo;
@@ -540,7 +551,7 @@ class Standing {
   /// yet) — there is nothing to light in that state, and asking would
   /// throw.
   void publishCurrentRow() {
-    if (_internals.disposed || !_currentRowAnswers) {
+    if (_sessionDisposed() || !_currentRowAnswers) {
       return;
     }
     currentRowListenable.value = currentRow;
@@ -775,7 +786,7 @@ class Standing {
   void selectRow(TimelineRowAddress row) {
     switch (row) {
       case LayerRowAddress(:final layerId):
-        if (_internals.strokeInFlight) {
+        if (_brushInputActive.value) {
           return;
         }
         // The row lives on a track, so picking it picks that track too —
@@ -864,7 +875,7 @@ class Standing {
       return;
     }
     // R15-⑤: never switch cuts under a live stroke.
-    if (_internals.strokeInFlight) {
+    if (_brushInputActive.value) {
       return;
     }
     final before = _selection.activeLayerId;

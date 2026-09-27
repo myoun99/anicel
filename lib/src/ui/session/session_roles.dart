@@ -126,11 +126,7 @@ abstract interface class TimelineAccess {
 abstract interface class SessionInternals {
   bool blockMoveEligible(LayerId layerId);
   int commitBlockStart(LayerId layerId, int displayStart);
-  bool get disposed;
-  Layer? get targetLayerForKindToggle;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
-  TimelineRowAddress get currentRow;
-  bool get strokeInFlight;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   void selectTrackCutAtPlayhead(TrackId trackId);
 }

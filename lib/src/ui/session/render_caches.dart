@@ -41,15 +41,21 @@ class RenderCaches {
     required ProjectAccess project,
     required ChangeSink changes,
     required SessionInternals internals,
+    required bool Function() sessionDisposed,
     required void Function() onEditActivity,
   }) : _project = project,
        _changes = changes,
        _internals = internals,
+       _sessionDisposed = sessionDisposed,
        _onEditActivity = onEditActivity;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final SessionInternals _internals;
+
+  /// Whether the session has been disposed — a plain flag, so it comes as
+  /// the question.
+  final bool Function() _sessionDisposed;
 
   /// What an edit owes the warmer BEFORE anything is re-rendered: yield.
   /// A callback rather than the rig itself — the rig holds this object
@@ -252,7 +258,7 @@ class RenderCaches {
       // route reaches here after teardown. Belt to that brace — kept
       // because the cancel and this check answer the same question from
       // two sides and the cheap one is here.
-      if (_internals.disposed) {
+      if (_sessionDisposed()) {
         return;
       }
       _changes.warmActiveCut();

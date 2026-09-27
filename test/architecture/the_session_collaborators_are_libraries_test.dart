@@ -160,7 +160,17 @@ const _mayNameTheSession = <String, String>{
 /// takes the notifier itself by constructor (the edge and range-move drags
 /// through their roles records). The active cut's controllers, the cut
 /// move, the movie-end drag and the lane move name no internals now.
-const _sessionInternalsMembers = 9;
+/// 9 → 5 (2026-09-28, the seventeenth family): the kind toggle's target was
+/// a second name for the active layer (since the July extraction, with no
+/// reason written) and went — its two askers read `activeLayer`; a stroke
+/// in flight IS the session's `brushInputActive` notifier, handed to the
+/// scrub and to `Standing`; and the two plain answers — whether the session
+/// is disposed, the row the user stands on — come in as questions
+/// (closures), since a bool and a getter cannot be handed over as objects
+/// (the lane verbs' preview drop, which arrived meanwhile, asks the same).
+/// The lane verbs, the scrub, the layer switches and the storyboard cursor
+/// name no internals now.
+const _sessionInternalsMembers = 5;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

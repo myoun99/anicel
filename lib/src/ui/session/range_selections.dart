@@ -41,6 +41,7 @@ class RangeSelections {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required TimelineRowAddress Function() currentRow,
     required PlaybackRig playbackRig,
     required StoryboardRows storyboardRows,
     required TrackSeDisplay trackSe,
@@ -55,6 +56,7 @@ class RangeSelections {
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
+       _currentRow = currentRow,
        _playbackRig = playbackRig,
        _storyboardRows = storyboardRows,
        _trackSe = trackSe,
@@ -69,6 +71,9 @@ class RangeSelections {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+
+  /// The row the user stands on — `Standing.currentRow`, asked when needed.
+  final TimelineRowAddress Function() _currentRow;
   final PlaybackRig _playbackRig;
   final StoryboardRows _storyboardRows;
   final TrackSeDisplay _trackSe;
@@ -973,7 +978,7 @@ class RangeSelections {
   /// row's aggregate runs — so the gate answers true exactly where a drag
   /// would select something (T25).
   ({LayerId layerId, int first, int lastExclusive})? _rowSpanForCurrentRow() {
-    final rowLayerId = switch (_internals.currentRow) {
+    final rowLayerId = switch (_currentRow()) {
       LayerRowAddress(:final layerId) => layerId,
       LaneRowAddress(:final layerId) => layerId,
       TrackRowAddress() => _selection.activeLayerId,

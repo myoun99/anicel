@@ -28,7 +28,7 @@ class FrameScrub {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required ValueListenable<bool> brushInputActive,
     required ValueNotifier<int> editingFrameCursor,
     required PlaybackRig playbackRig,
   }) : _project = project,
@@ -36,7 +36,7 @@ class FrameScrub {
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
+       _brushInputActive = brushInputActive,
        _editingFrameCursor = editingFrameCursor,
        _playbackRig = playbackRig;
 
@@ -45,7 +45,9 @@ class FrameScrub {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+  /// Whether a stroke is in flight — the session's `brushInputActive`:
+  /// a scrub never moves the playhead under a pen that is drawing.
+  final ValueListenable<bool> _brushInputActive;
   final ValueNotifier<int> _editingFrameCursor;
   final PlaybackRig _playbackRig;
 
@@ -99,7 +101,7 @@ class FrameScrub {
   /// lands the ONE full seek, where cut activation and gap deselection
   /// now both live (UI-R10 #13's live empty-out moved there on purpose).
   void scrubGlobalFrame(int globalFrame) {
-    if (_internals.strokeInFlight) {
+    if (_brushInputActive.value) {
       return;
     }
     final axis = _timeline.trackFrameAxis();
@@ -174,7 +176,7 @@ class FrameScrub {
   /// no-op the retarget scope swallows by index.
   void scrubFrameIndex(int frameIndex) {
     // R15-⑤: scrubs are seeks too — refused under a live stroke.
-    if (_internals.strokeInFlight) {
+    if (_brushInputActive.value) {
       return;
     }
     if (frameIndex != _controllers.timelineController.currentFrameIndex) {
@@ -232,7 +234,7 @@ class FrameScrub {
       // R15-⑤: a live stroke refuses the landing seek — the
       // parking stays put (the parked display state) instead of being
       // half-cleared.
-      if (_internals.strokeInFlight) {
+      if (_brushInputActive.value) {
         return;
       }
       // The parking is cleared BEFORE the landing seek: selectCut must
