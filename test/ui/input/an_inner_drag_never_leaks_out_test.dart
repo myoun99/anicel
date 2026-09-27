@@ -153,6 +153,30 @@ void main() {
         });
       }
     }
+
+    // The lane's jump rides its own tap: the grip only takes a MOVING
+    // pointer, and inside a scroller a press that never moves is no drag's.
+    // (Alone in an arena the grip is handed the press at once and would
+    // jump by itself — which is why this is measured inside the strip.)
+    for (final axis in Axis.values) {
+      testWidgets('a tap on the ${axis.name} lane jumps, inside the strip', (
+        tester,
+      ) async {
+        final offsets = <double>[];
+        await inTheStrip(tester, scrollbar(axis, offsets));
+        final lane = tester.getTopLeft(find.byType(AppScrollbar));
+        await tester.tapAt(
+          lane +
+              (axis == Axis.horizontal
+                  ? const Offset(250, 8)
+                  : const Offset(8, 250)),
+        );
+        await tester.pumpAndSettle();
+        // A 100px thumb centred on 250 of a 300px lane: its start at 200 of
+        // 200 to travel, the far end of 600 to scroll.
+        expect(offsets, [600]);
+      });
+    }
   });
 
   group("the viewer panel's panbars", () {
@@ -315,7 +339,11 @@ void main() {
         await tester.pump();
         await gesture.up();
         await tester.pumpAndSettle();
-        expect(taps, 1, reason: 'the hold waits for the slop, as a scroll does');
+        expect(
+          taps,
+          1,
+          reason: 'the hold waits for the slop, as a scroll does',
+        );
       });
     }
 
