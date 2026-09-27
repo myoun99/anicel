@@ -1974,18 +1974,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // The draw-through wrap: display AND hit testing share one screen
     // matrix, so the active layer draws posed and pointers inverse-map to
     // artwork coordinates in lockstep (R3 ⑩ — always-applied transforms).
+    //
+    // ⛔ALWAYS a Transform — the identity while the row stands unposed. The
+    // wrap used to come and go with the pose, and a view that changes parent
+    // is a view mounted again: the expensive half of a flip. Since F-195 the
+    // canvas follows a handle drag as it goes, so an unposed row paid that
+    // mount on the first step of every drag and again when a drag went away.
+    // An identity Transform paints its child in place (a translation by
+    // zero: no layer), so standing still costs nothing.
     final pose = widget.interactiveContentPose;
-    final posedView = pose == null
-        ? interactiveView
-        : Transform(
-            transform: layerPoseViewportWrapMatrix(
+    final posedView = Transform(
+      transform: pose == null
+          ? Matrix4.identity()
+          : layerPoseViewportWrapMatrix(
               pose.pose,
               widget.canvasSize,
               _viewportState._viewport,
               anchorPoint: pose.anchorPoint,
             ),
-            child: interactiveView,
-          );
+      child: interactiveView,
+    );
     if (widget.interactiveContentOpacity >= 1.0) {
       return posedView;
     }

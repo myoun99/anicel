@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -188,5 +189,147 @@ void main() {
       expect(next.scale.isEmpty, isTrue);
       expect(next.position.isEmpty, isTrue);
     });
+  });
+
+  testWidgets('F-195: the grabbed corner stays under the pointer while the '
+      'host hands the scaled pose back per move — the zoom is measured from '
+      'where the grab began', (tester) async {
+    final shown = ValueNotifier<double>(1);
+    addTearDown(shown.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<double>(
+            valueListenable: shown,
+            builder: (context, zoom, _) => LayerTransformBox(
+              bounds: const Rect.fromLTRB(100, 50, 300, 250),
+              pose: TransformPose(center: anchor, zoom: zoom),
+              anchorPoint: anchor,
+              canvasSize: canvasSize,
+              viewport: CanvasViewport(),
+              // The app's loop: the value in flight comes back as the pose.
+              onScaleChanged: (next) => shown.value = next,
+              onScaleCommitted: (_) {},
+              onRotationChanged: (_) {},
+              onRotationCommitted: (_) {},
+              onCancelled: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final corner = find.byKey(
+      const ValueKey<String>('layer-transform-box-corner-2'),
+    );
+    final start = tester.getCenter(corner);
+
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    // The grab is measured from the press, so the corner rides the hand.
+    var pointer = start;
+    for (var step = 0; step < 4; step += 1) {
+      await gesture.moveBy(const Offset(20, 20));
+      pointer += const Offset(20, 20);
+      await tester.pump();
+    }
+
+    expect(
+      (tester.getCenter(corner) - pointer).distance,
+      lessThan(2),
+      reason: 'measured from the pose handed back, each move would compound '
+          'and the corner would run away from the hand',
+    );
+    await gesture.up();
+  });
+
+  testWidgets('a grab that comes back to where it began writes nothing and '
+      'drops what it showed', (tester) async {
+    final zooms = <double>[];
+    var cancels = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LayerTransformBox(
+            bounds: const Rect.fromLTRB(100, 50, 300, 250),
+            pose: TransformPose(center: anchor),
+            anchorPoint: anchor,
+            canvasSize: canvasSize,
+            viewport: CanvasViewport(),
+            onScaleChanged: (_) {},
+            onScaleCommitted: zooms.add,
+            onRotationChanged: (_) {},
+            onRotationCommitted: (_) {},
+            onCancelled: () => cancels += 1,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final corner = find.byKey(
+      const ValueKey<String>('layer-transform-box-corner-2'),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(corner),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(40, 40));
+    await tester.pump();
+    await gesture.moveBy(const Offset(-40, -40));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(zooms, isEmpty, reason: 'the same zoom is no edit');
+    expect(cancels, 1, reason: 'what the grab showed is dropped');
+  });
+
+  testWidgets('a box taken away mid-grab drops what it showed once the tree '
+      'settles', (tester) async {
+    var cancels = 0;
+    final shown = ValueNotifier<bool>(true);
+    addTearDown(shown.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: shown,
+            builder: (context, visible, _) => visible
+                ? LayerTransformBox(
+                    bounds: const Rect.fromLTRB(100, 50, 300, 250),
+                    pose: TransformPose(center: anchor),
+                    anchorPoint: anchor,
+                    canvasSize: canvasSize,
+                    viewport: CanvasViewport(),
+                    onScaleChanged: (_) {},
+                    onScaleCommitted: (_) {},
+                    onRotationChanged: (_) {},
+                    onRotationCommitted: (_) {},
+                    onCancelled: () => cancels += 1,
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      tester.getCenter(
+        find.byKey(const ValueKey<String>('layer-transform-box-corner-2')),
+      ),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(20, 20));
+    await tester.pump();
+
+    shown.value = false;
+    await tester.pump();
+    await tester.pump();
+
+    expect(cancels, 1, reason: 'no release will come to drop it');
+    await gesture.up();
   });
 }

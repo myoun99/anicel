@@ -142,6 +142,8 @@ void main() {
       tester,
     ) async {
       final committed = <CanvasPoint>[];
+      final shown = <CanvasPoint>[];
+      var cancels = 0;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -149,9 +151,9 @@ void main() {
               glyph: HandleGlyph.crosshair,
               point: CanvasPoint(x: 100, y: 80),
               viewport: CanvasViewport(),
-              onChanged: (_) {},
+              onChanged: shown.add,
               onCommitted: committed.add,
-              onCancelled: () {},
+              onCancelled: () => cancels += 1,
             ),
           ),
         ),
@@ -168,6 +170,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(committed, isEmpty);
+      expect(shown, isNotEmpty, reason: 'the premise: the drag was shown');
+      expect(
+        cancels,
+        1,
+        reason: 'F-195: what the drag showed is dropped — no release write '
+            'will do it',
+      );
     });
 
     testWidgets('the crosshair glyph: one circle and four ticks OUTSIDE it '

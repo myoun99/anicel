@@ -385,4 +385,92 @@ void main() {
       expect(committed.single.zoom, closeTo(2, 1e-6));
     });
   });
+
+  testWidgets('F-195: a frame taken away mid-drag drops what it showed once '
+      'the tree settles', (tester) async {
+    var cancels = 0;
+    final shown = ValueNotifier<bool>(true);
+    addTearDown(shown.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: shown,
+            builder: (context, visible, _) => visible
+                ? CameraFrameOverlay(
+                    pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
+                    cameraFrameSize: frameSize,
+                    viewport: CanvasViewport(zoom: 0.5),
+                    dimOpacity: 0.5,
+                    interactive: true,
+                    onPoseChanged: (_) {},
+                    onPoseCommitted: (_) {},
+                    onCancelled: () => cancels += 1,
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+    final origin = tester.getTopLeft(
+      find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
+    );
+    final gesture = await tester.startGesture(
+      origin + const Offset(400, 300),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
+
+    shown.value = false;
+    await tester.pump();
+    await tester.pump();
+
+    expect(cancels, 1, reason: 'no release will come to drop it');
+    await gesture.up();
+  });
+
+  testWidgets('F-195: the frame paints the pose it is HANDED, not a pose of '
+      'its own — the host shows the drag', (tester) async {
+    final changed = <CameraPose>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CameraFrameOverlay(
+            pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
+            cameraFrameSize: frameSize,
+            viewport: CanvasViewport(zoom: 0.5),
+            dimOpacity: 0.5,
+            interactive: true,
+            onPoseChanged: changed.add,
+            onPoseCommitted: (_) {},
+          ),
+        ),
+      ),
+    );
+    final origin = tester.getTopLeft(
+      find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
+    );
+    final gesture = await tester.startGesture(
+      origin + const Offset(400, 300),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
+
+    expect(changed.last.center.x, closeTo(1000 + 120, 1e-6));
+    final painted = tester
+        .widget<CustomPaint>(
+          find.byKey(const ValueKey<String>('camera-frame-overlay')),
+        )
+        .painter! as CameraFramePainter;
+    expect(
+      painted.pose.center.x,
+      1000,
+      reason: 'a host that has not handed the drag back shows none of it',
+    );
+    await gesture.up();
+  });
 }

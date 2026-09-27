@@ -325,28 +325,27 @@ void main() {
       expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
       session.laneMove.updateLaneRangeMoveDrag(frameDelta: 5);
 
-      // 🚨MID-DRAG, the preview AXIS: previewLayers carries the ACTIVE-CUT
-      // DISPLAY CLONE (cut-local keys), never the global form — a
+      // 🚨MID-DRAG, the preview AXIS: the row the cut's rows resolve is the
+      // ACTIVE-CUT DISPLAY CLONE (cut-local keys), never the global form — a
       // global-keyed entry jumps every diamond by the cut's start on any
-      // non-first cut. The global form rides previewGlobalLayers.
+      // non-first cut. The global form is the track axis's to read. Read
+      // through the lookups the rows use, whatever variant carries them
+      // (a lane edit's own since F-195).
       final preview = session.dragPreview.value;
-      expect(preview, isA<BlockMoveDragPreview>());
-      final blockPreview = preview! as BlockMoveDragPreview;
-      final layers = blockPreview.previewLayers;
+      expect(preview, isA<LaneEditPreview>());
       expect(
-        layers[se.id]!.seNameTag!.track!.fontSize.keys.keys.toList(),
+        timelineDragPreviewLayerFor(
+          preview,
+          se.id,
+        )!.seNameTag!.track!.fontSize.keys.keys.toList(),
         [7, 8],
         reason: 'cut-local: the active cut starts at $firstDuration',
       );
       expect(
-        blockPreview
-            .previewGlobalLayers[se.id]!
-            .seNameTag!
-            .track!
-            .fontSize
-            .keys
-            .keys
-            .toList(),
+        timelineDragPreviewGlobalLayerFor(
+          preview,
+          se.id,
+        )!.seNameTag!.track!.fontSize.keys.keys.toList(),
         [firstDuration + 7, firstDuration + 8],
       );
 

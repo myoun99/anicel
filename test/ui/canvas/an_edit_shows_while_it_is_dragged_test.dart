@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -20,9 +21,11 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_point_gizmo.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -531,5 +534,119 @@ void main() {
       isTrue,
       reason: 'a drag with no handle left to release writes nothing',
     );
+  });
+
+  testWidgets('SE × the lane: scrubbing an S row\'s Position moves its name '
+      'tag on the canvas before the release', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+    final session = sessionOf(tester);
+    final se = session.activeTrack.seLayers.first;
+    session.selectLayer(se.id);
+    session.selectFrameIndex(0);
+    session.seEntries.createSeEntryAtCurrentFrame(name: '쿵', seName: 'A');
+    await pumpFrames(tester);
+    await tapKey(tester, 'timeline-lane-toggle-${se.id.value}');
+    await tapKey(
+      tester,
+      'timeline-lane-group-toggle-${se.id.value}-'
+      '${transformGroupHeaderLane.laneId}',
+    );
+    Offset? tagOnTheCanvas() {
+      final overlay = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .firstWhere(
+            (painter) =>
+                painter.runtimeType.toString() == '_SeNameTagOverlayPainter',
+          );
+      // The overlay's painter is private; its tags are read through it.
+      // ignore: avoid_dynamic_calls
+      final tags = (overlay as dynamic).tags as List<ResolvedSeNameTag>;
+      return tags.single.content.position;
+    }
+
+    final before = tagOnTheCanvas();
+    final value = find.byKey(
+      ValueKey<String>('timeline-lane-value-${se.id.value}-position'),
+    );
+    await tester.ensureVisible(value);
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(value),
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var step = 0; step < 3; step += 1) {
+      await gesture.moveBy(const Offset(10, 0));
+      await tester.pump();
+    }
+
+    expect(session.dragPreview.value, isA<LaneEditPreview>());
+    expect(
+      tagOnTheCanvas(),
+      isNot(before),
+      reason: 'the tag the canvas draws follows the scrub',
+    );
+
+    await gesture.up();
+    await tester.pump();
+    expect(session.dragPreview.value, isNull);
+  });
+
+  testWidgets('the drawing surface stays MOUNTED while a drag first poses an '
+      'unposed row, and while the drag goes away', (tester) async {
+    final session = await open(
+      tester,
+      layer: row,
+      standOn: 'position',
+    );
+    expect(
+      session.frameVerbs.layerCanvasPoseSample(row),
+      isNull,
+      reason: 'the premise: the row stands unposed',
+    );
+    State<StatefulWidget> surface() =>
+        tester.state(find.byType(InteractiveBrushEditCanvasView));
+    final mounted = surface();
+    final crosshair = find.byKey(const ValueKey<String>('layer-position-gizmo'));
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(crosshair),
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var step = 0; step < 3; step += 1) {
+      await gesture.moveBy(const Offset(10, 0));
+      await tester.pump();
+    }
+    expect(
+      session.frameVerbs.layerCanvasPoseSample(row),
+      isNotNull,
+      reason: 'the premise: the drag posed the row',
+    );
+    expect(
+      identical(surface(), mounted),
+      isTrue,
+      reason: 'a pose arriving is a matrix, not a remount — the mount is the '
+          'expensive half of a flip, and it would land on the first step of '
+          'every handle drag on an unposed row',
+    );
+
+    session.standOnRow(const LaneRowAddress(row, 'opacity'));
+    await tester.pump();
+    await tester.pump();
+    expect(session.frameVerbs.layerCanvasPoseSample(row), isNull);
+    expect(
+      identical(surface(), mounted),
+      isTrue,
+      reason: 'nor is the pose leaving',
+    );
+    await gesture.up();
+    await tester.pump();
   });
 }
