@@ -1202,9 +1202,8 @@ void main() {
       );
       await store.save(
         AppExportSettings(
-          lastLocation: const GrantedDirectory(
-            path: '/old/deliver',
-            bookmark: 'TOK==',
+          lastDestination: const ExportIntoFolder(
+            GrantedDirectory(path: '/old/deliver', bookmark: 'TOK=='),
           ),
         ),
       );
@@ -1221,8 +1220,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(
-        AppExport.settings.value.lastLocation,
-        const GrantedDirectory(path: '/mounted/deliver', bookmark: 'FRESH=='),
+        AppExport.settings.value.lastDestination,
+        const ExportIntoFolder(
+          GrantedDirectory(path: '/mounted/deliver', bookmark: 'FRESH=='),
+        ),
         reason: 'the pair moved together — a fresh token for the folder the '
             'user renamed, persisted so the NEXT launch starts right',
       );

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/export_spec.dart';
+import '../../services/persistence/app_export_settings.dart'
+    show ExportDestination;
 
 /// A queued export: the SPEC snapshot plus the output location. The job
 /// renders against the project state AT RUN TIME (잡 클릭=복원 편집 —
@@ -24,7 +26,7 @@ class ExportJob {
   const ExportJob({
     required this.id,
     required this.spec,
-    required this.outputDirectory,
+    required this.destination,
     required this.fileName,
     required this.createdAt,
     this.status = ExportJobStatus.queued,
@@ -36,11 +38,13 @@ class ExportJob {
   final int id;
   final ExportTabSpec spec;
 
-  /// The destination directory (위치 선행 — chosen before the job exists).
-  final String outputDirectory;
+  /// Where the outputs go, frozen when the job was queued: the folder
+  /// (위치 선행 — chosen before the job exists), or 「끝나면 고르기」 — handed
+  /// over when the queue is done (drive-folder-windows-Q1).
+  final ExportDestination destination;
 
   /// The single-file name for video/image jobs; null when the job writes a
-  /// file set under [outputDirectory] (sequences, cels, sheets).
+  /// file set (sequences, cels, sheets).
   final String? fileName;
 
   final DateTime createdAt;
@@ -57,7 +61,7 @@ class ExportJob {
 
   ExportJob copyWith({
     ExportTabSpec? spec,
-    String? outputDirectory,
+    ExportDestination? destination,
     Object? fileName = _unset,
     ExportJobStatus? status,
     int? completed,
@@ -66,7 +70,7 @@ class ExportJob {
   }) => ExportJob(
     id: id,
     spec: spec ?? this.spec,
-    outputDirectory: outputDirectory ?? this.outputDirectory,
+    destination: destination ?? this.destination,
     fileName: identical(fileName, _unset)
         ? this.fileName
         : fileName as String?,
@@ -103,14 +107,14 @@ class ExportQueueModel extends ChangeNotifier {
 
   ExportJob enqueue({
     required ExportTabSpec spec,
-    required String outputDirectory,
+    required ExportDestination destination,
     String? fileName,
     DateTime Function() now = DateTime.now,
   }) {
     final job = ExportJob(
       id: _nextId,
       spec: spec,
-      outputDirectory: outputDirectory,
+      destination: destination,
       fileName: fileName,
       createdAt: now(),
     );

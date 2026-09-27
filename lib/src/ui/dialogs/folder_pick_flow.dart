@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/folder_grant.dart';
+import '../../services/persistence/move_into_folder.dart';
 import '../../services/persistence/provider_documents.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -325,6 +326,97 @@ Future<FolderGrant?> exportFileForUser(
   // A document is a place the bytes LANDED (PICK-7: poured in through the
   // provider), not a refusal.
   return _spokenFor(context, grant, acceptsDocuments: true);
+}
+
+/// What became of finished outputs handed to the user
+/// ([handOverFilesForUser]).
+enum HandOver {
+  /// They stand where the user put them — moved there, or poured into the
+  /// document a save window made. What was handed over is spent.
+  placed,
+
+  /// Another app was offered them (Android's share sheet) and reads them
+  /// when it will, so what was handed over has to stay for this run.
+  offered,
+
+  /// The user backed out, or no window could open.
+  declined,
+}
+
+/// The windows that can take finished outputs.
+enum HandOverRoad {
+  /// iOS's export picker: any number, files and folders alike, and the mode
+  /// that reaches Google Drive (실측 2026-08-13 — folder mode does not).
+  exportPicker,
+
+  /// Android's save window: ONE file, anywhere a document can be made —
+  /// Google Drive included.
+  saveWindow,
+
+  /// Android's share sheet: several files, offered to whichever app takes
+  /// them (「드라이브에 저장」). No Android window places more than one.
+  shareSheet,
+
+  /// A folder window, and the outputs moved there — the desktops, where the
+  /// folder window reaches every drive (Google Drive for desktop is one).
+  folderWindow,
+}
+
+/// The road finished outputs take to the user on [operatingSystem] —
+/// [oneFile] when they are a single file. Pure over the OS name so every
+/// road can be pinned from the Windows workstation this is written on,
+/// the seam [folderPickNeedsStorageGrant] uses for the same reason.
+HandOverRoad handOverRoadFor(
+  String operatingSystem, {
+  required bool oneFile,
+}) => switch (operatingSystem) {
+  'ios' => HandOverRoad.exportPicker,
+  'android' => oneFile ? HandOverRoad.saveWindow : HandOverRoad.shareSheet,
+  _ => HandOverRoad.folderWindow,
+};
+
+/// Hands finished outputs — [paths], files or folders — to wherever the
+/// user picks, AFTER they were made (drive-folder-windows-Q1, 유저
+/// 2026-09-27: 「내보내기가 끝나면 드라이브로 넘긴다 — 파일 창을 거쳐」):
+/// the one way an export reaches a place no folder window opens, Google
+/// Drive above all. The road is [handOverRoadFor]'s.
+///
+/// The caller owns [paths] afterwards: gone when [HandOver.placed] (moved,
+/// or poured and theirs to clear), still needed when [HandOver.offered].
+Future<HandOver> handOverFilesForUser(
+  BuildContext context, {
+  required List<String> paths,
+}) async {
+  final oneFile =
+      paths.length == 1 && FileSystemEntity.isFileSync(paths.single);
+  switch (handOverRoadFor(_operatingSystem, oneFile: oneFile)) {
+    case HandOverRoad.exportPicker:
+      final grant = await FolderPicker.exportFiles(paths);
+      if (!context.mounted) {
+        return HandOver.declined;
+      }
+      return await _spokenFor(context, grant) == null
+          ? HandOver.declined
+          : HandOver.placed;
+    case HandOverRoad.saveWindow:
+      return await exportFileForUser(context, sourcePath: paths.single) ==
+              null
+          ? HandOver.declined
+          : HandOver.placed;
+    case HandOverRoad.shareSheet:
+      return await FolderPicker.shareFiles(paths)
+          ? HandOver.offered
+          : HandOver.declined;
+    case HandOverRoad.folderWindow:
+      final folder = await pickFolderForUser(context);
+      if (folder == null) {
+        return HandOver.declined;
+      }
+      for (final path in paths) {
+        moveIntoFolder(path, folder);
+      }
+      return HandOver.placed;
+  }
 }
 
 /// The DESKTOP half of Save As: the system save dialog answers with a

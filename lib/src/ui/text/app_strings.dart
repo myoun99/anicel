@@ -1060,6 +1060,8 @@ enum AppStrings {
   String get exChannels => _s('exChannels');
   String get exAudio => _s('exAudio');
   String get exBrowse => _s('exBrowse');
+  String get exHandOverWhenDone => _s('exHandOverWhenDone');
+  String get exHandOverDeclined => _s('exHandOverDeclined');
   String get exSavePreset => _s('exSavePreset');
   String get exPresetNameEmpty => _s('exPresetNameEmpty');
   String get exBaseName => _s('exBaseName');
@@ -2246,6 +2248,8 @@ enum AppStrings {
     'exChannels': 'Channels',
     'exAudio': 'Audio',
     'exBrowse': 'Browse…',
+    'exHandOverWhenDone': 'Choose when done',
+    'exHandOverDeclined': 'Not handed over — the outputs were let go.',
     'exSavePreset': 'Save preset',
     'exPresetNameEmpty': 'Preset name cannot be empty.',
     'exBaseName': 'Base name',
@@ -3464,6 +3468,8 @@ enum AppStrings {
     'exChannels': 'チャンネル',
     'exAudio': '音声',
     'exBrowse': '参照…',
+    'exHandOverWhenDone': '終わったら選ぶ',
+    'exHandOverDeclined': '渡さなかったため、書き出した結果は破棄しました。',
     'exSavePreset': 'プリセットを保存',
     'exPresetNameEmpty': 'プリセット名を空にはできません。',
     'exBaseName': 'ベース名',
@@ -4804,6 +4810,8 @@ enum AppStrings {
     'exChannels': '채널',
     'exAudio': '오디오',
     'exBrowse': '찾아보기…',
+    'exHandOverWhenDone': '끝나면 고르기',
+    'exHandOverDeclined': '넘기지 않아 내보낸 결과물을 버렸습니다.',
     'exSavePreset': '프리셋 저장',
     'exPresetNameEmpty': '프리셋 이름은 비울 수 없습니다.',
     'exBaseName': '기본 이름',
@@ -6184,6 +6192,8 @@ enum AppStrings {
     'exChannels': 'Canaux',
     'exAudio': 'Audio',
     'exBrowse': 'Parcourir…',
+    'exHandOverWhenDone': 'Choisir à la fin',
+    'exHandOverDeclined': 'Non transmis — les fichiers exportés ont été abandonnés.',
     'exSavePreset': 'Enregistrer le préréglage',
     'exPresetNameEmpty': 'Le nom du préréglage ne peut pas être vide.',
     'exBaseName': 'Nom de base',
@@ -7513,6 +7523,8 @@ enum AppStrings {
     'exChannels': '声道',
     'exAudio': '音频',
     'exBrowse': '浏览…',
+    'exHandOverWhenDone': '完成后选择',
+    'exHandOverDeclined': '未交出，导出的结果已丢弃。',
     'exSavePreset': '保存预设',
     'exPresetNameEmpty': '预设名称不能为空。',
     'exBaseName': '基础名称',

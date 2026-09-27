@@ -21,6 +21,7 @@ import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart'
     show GrantedDirectory;
 import '../../services/persistence/folder_grant.dart' show FolderPicker;
+import '../../services/persistence/session_scratch.dart';
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../editor_session_manager.dart';
 import '../../models/export_overrides.dart';
@@ -150,28 +151,38 @@ class ExportDialogState extends State<ExportDialog> {
 
   ExportTab _tab = ExportTab.sequence;
   late ExportTabSpecs _specs;
-  String? _location;
 
-  /// The security-scoped token for [_location], when the OS issued one
-  /// (macOS/iOS). Persisted with the path so the replayed location can be
-  /// WRITTEN to after a relaunch, not just displayed
-  /// (Q-scoped-folder-settings, 유저 08-26).
+  /// Where the outputs go; null until the user picks. A folder carries the
+  /// security-scoped token the OS issued for it (macOS/iOS), which is what
+  /// lets the replayed location be WRITTEN to after a relaunch, not just
+  /// displayed (Q-scoped-folder-settings, 유저 08-26). 「끝나면 고르기」
+  /// (drive-folder-windows-Q1) writes into an outbox of the run's own
+  /// ([_runOutbox]) and [handOverFilesForUser] takes it from there.
   ///
-  /// ⚠️ The pair moves through [_setLocation] ONLY. Written separately
-  /// they drift, and a bookmark that outlived its path is a grant for
-  /// somewhere else — jobs carry bare paths, so the setter is what
-  /// decides the token's fate on every move.
-  String? _locationBookmark;
+  /// ⚠️ONE value on purpose. The path and its token were two fields kept
+  /// together by one setter — a bookmark that outlived its path is a grant
+  /// for somewhere else — and 「끝나면 고르기」 would have made a third to
+  /// keep apart from them. As one value, no code can leave half of a
+  /// destination behind.
+  ExportDestination? _destination;
+
+  /// The chosen folder's path; null while the outputs are handed over or
+  /// nothing is chosen.
+  String? get _location => switch (_destination) {
+    ExportIntoFolder(:final folder) => folder.path,
+    _ => null,
+  };
+
   bool _presetsOpen = true;
   bool _queueOpen = true;
 
-  /// See [_locationBookmark] — the one door the pair moves through.
-  /// A path with no [bookmark] (a queue job replay, the test seam)
-  /// clears the token: better to re-ask than to write somewhere else.
-  void _setLocation(String? path, {String? bookmark}) {
-    _location = path;
-    _locationBookmark = bookmark;
-  }
+  /// Where the run under way writes when it hands over — its own folder in
+  /// this run's room ([SessionScratch.outboxFolder]); null otherwise.
+  String? _runOutbox;
+
+  /// Where the run under way writes: its outbox when it hands over, the
+  /// chosen folder otherwise.
+  String get _outputDirectory => _runOutbox ?? _location!;
 
   final Map<String, bool> _expanded = {};
   final ExportQueueModel _queue = ExportQueueModel();
@@ -224,10 +235,7 @@ class ExportDialogState extends State<ExportDialog> {
     _anchorCut = _session.activeCutSpan.exportAnchorCutOrNull;
     final restored = AppExport.settings.value;
     _specs = restored.lastSpecs;
-    _setLocation(
-      restored.lastLocation?.path,
-      bookmark: restored.lastLocation?.bookmark,
-    );
+    _destination = restored.lastDestination;
     _presetsOpen = restored.presetsDrawerOpen;
     _queueOpen = restored.queueDrawerOpen;
     final projectName = sanitizeExportFileComponent(
@@ -278,10 +286,7 @@ class ExportDialogState extends State<ExportDialog> {
     AppExport.settings.value = loaded;
     setState(() {
       _specs = loaded.lastSpecs;
-      final location = loaded.lastLocation;
-      if (location != null) {
-        _setLocation(location.path, bookmark: location.bookmark);
-      }
+      _destination = loaded.lastDestination ?? _destination;
       _presetsOpen = loaded.presetsDrawerOpen;
       _queueOpen = loaded.queueDrawerOpen;
       _syncControllersFromSpecs();
@@ -293,19 +298,31 @@ class ExportDialogState extends State<ExportDialog> {
   /// stored path without its resolved bookmark is refused at the first
   /// write, silently. Follows a folder the user renamed, and persists
   /// only when something actually moved. A token that will not resolve
-  /// leaves the pair untouched (unavailable is not deleted).
+  /// leaves the folder untouched (unavailable is not deleted), and so does
+  /// a destination the user changed while the token was resolving.
   Future<void> _resolveLocationGrant() async {
-    final token = _locationBookmark;
+    final replayed = _destination;
+    if (replayed is! ExportIntoFolder) {
+      return;
+    }
+    final token = replayed.folder.bookmark;
     if (token == null) {
       return;
     }
     final grant = await FolderPicker.resolveBookmark(token);
     final path = grant.path;
-    if (!mounted || !grant.isGranted || path == null) {
+    if (!mounted ||
+        !grant.isGranted ||
+        path == null ||
+        !identical(_destination, replayed)) {
       return;
     }
-    final moved = path != _location;
-    setState(() => _setLocation(path, bookmark: grant.bookmark ?? token));
+    final moved = path != replayed.folder.path;
+    setState(
+      () => _destination = ExportIntoFolder(
+        GrantedDirectory(path: path, bookmark: grant.bookmark ?? token),
+      ),
+    );
     if (moved) {
       _persist();
     }
@@ -353,12 +370,9 @@ class ExportDialogState extends State<ExportDialog> {
   // --- state plumbing -------------------------------------------------------
 
   void _persist() {
-    final location = _location;
     final next = AppExport.settings.value.copyWith(
       lastSpecs: _specs,
-      lastLocation: location == null
-          ? null
-          : GrantedDirectory(path: location, bookmark: _locationBookmark),
+      lastDestination: _destination,
       presetsDrawerOpen: _presetsOpen,
       queueDrawerOpen: _queueOpen,
     );
@@ -1315,7 +1329,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// Test seam: sets the destination without the platform picker.
   @visibleForTesting
   void debugSetLocationForTests(String location) {
-    setState(() => _setLocation(location));
+    setState(
+      () => _destination = ExportIntoFolder(GrantedDirectory(path: location)),
+    );
   }
 
   String _sequenceFileNameFor(int index) {
@@ -1876,8 +1892,7 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   String _outputLine() {
-    final location = _location;
-    if (location == null || location.isEmpty) {
+    if (!_hasDestination) {
       return AppText.strings.exChooseLocation;
     }
     final (:name, :more) = _firstOutputFile();
@@ -2071,10 +2086,14 @@ class ExportDialogState extends State<ExportDialog> {
         : const ui.Color(0xFFFFFFFF),
   );
 
-  bool get _hasLocation => _location != null && _location!.isNotEmpty;
+  bool get _hasDestination => switch (_destination) {
+    ExportIntoFolder(:final folder) => folder.path.isNotEmpty,
+    ExportHandOver() => true,
+    null => false,
+  };
 
   bool get _canExport {
-    if (_isExporting || !_hasLocation) {
+    if (_isExporting || !_hasDestination) {
       return false;
     }
     switch (_tab) {
@@ -2099,7 +2118,7 @@ class ExportDialogState extends State<ExportDialog> {
   // --- export runners -------------------------------------------------------
 
   String _joinLocation(String name) =>
-      '$_location${Platform.pathSeparator}$name';
+      '$_outputDirectory${Platform.pathSeparator}$name';
 
   void _reportProgress(int completed, int total) {
     if (mounted) {
@@ -2142,6 +2161,85 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
+  /// [run] where the destination sends it: into [_location] — or, handing
+  /// over, into an outbox of its own, answered with the run's sentence so
+  /// the caller hands the outbox over when its time comes (at once for
+  /// Export, after the last job for the queue). A run that was stopped or
+  /// failed leaves nothing to hand over.
+  Future<({String message, String? outbox})> _runIntoDestination(
+    Future<String> Function() run,
+  ) async {
+    if (_destination is! ExportHandOver) {
+      return (message: await run(), outbox: null);
+    }
+    final outbox = _freshOutbox();
+    _runOutbox = outbox;
+    try {
+      final message = await run();
+      if (_cancelRequested) {
+        _discardOutboxes([outbox]);
+        return (message: message, outbox: null);
+      }
+      return (message: message, outbox: outbox);
+    } on Object {
+      _discardOutboxes([outbox]);
+      rethrow;
+    } finally {
+      _runOutbox = null;
+    }
+  }
+
+  String _freshOutbox() {
+    final outbox =
+        '${SessionScratch.outboxFolder()}${Platform.pathSeparator}'
+        '${DateTime.now().microsecondsSinceEpoch}';
+    Directory(outbox).createSync(recursive: true);
+    return outbox;
+  }
+
+  /// Hands everything the [outboxes] hold to the user in ONE window
+  /// ([handOverFilesForUser]), and answers the sentence the run ends on
+  /// when the hand-over changed it — declined, or failed on the way — or
+  /// null when the run's own sentence stands. Export and the queue end
+  /// their runs through it alike.
+  ///
+  /// What was handed over is gone from the room afterwards — and so is
+  /// what the user declined or what failed to arrive: nothing asks for it
+  /// again. What another app was only offered (Android's share sheet)
+  /// stays for it to read, and goes with the run.
+  Future<String?> _handOverOutboxes(List<String> outboxes) async {
+    var handed = HandOver.declined;
+    try {
+      final outputs = [
+        for (final outbox in outboxes)
+          for (final entry in Directory(outbox).listSync()) entry.path,
+      ];
+      if (outputs.isEmpty || !mounted) {
+        return null;
+      }
+      handed = await handOverFilesForUser(context, paths: outputs);
+      return handed == HandOver.declined
+          ? AppText.strings.exHandOverDeclined
+          : null;
+    } on Object catch (error) {
+      return AppText.strings.exFailed(error);
+    } finally {
+      if (handed != HandOver.offered) {
+        _discardOutboxes(outboxes);
+      }
+    }
+  }
+
+  void _discardOutboxes(List<String> outboxes) {
+    for (final outbox in outboxes) {
+      try {
+        Directory(outbox).deleteSync(recursive: true);
+      } on FileSystemException {
+        // The room goes with the run.
+      }
+    }
+  }
+
   /// The CURRENT tab's export, as one message-returning run — the Export
   /// button wraps it in the guard, the queue runner drives it per job.
   Future<String> _runCurrentTabExport() {
@@ -2170,7 +2268,14 @@ class ExportDialogState extends State<ExportDialog> {
     if (!_canExport) {
       return;
     }
-    await _runGuarded(_runCurrentTabExport);
+    await _runGuarded(() async {
+      final ran = await _runIntoDestination(_runCurrentTabExport);
+      final outbox = ran.outbox;
+      if (outbox == null) {
+        return ran.message;
+      }
+      return await _handOverOutboxes([outbox]) ?? ran.message;
+    });
   }
 
   // --- the render queue (EX7) -----------------------------------------------
@@ -2205,7 +2310,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     _queue.enqueue(
       spec: _specs.specFor(_tab),
-      outputDirectory: _location!,
+      destination: _destination!,
       fileName: _singleFileNameForCurrentTab(),
     );
     setState(() {});
@@ -2222,7 +2327,7 @@ class ExportDialogState extends State<ExportDialog> {
     setState(() {
       _tab = job.tab;
       _specs = _specs.withSpec(job.spec);
-      _setLocation(job.outputDirectory);
+      _destination = job.destination;
       final controller = _fileControllerFor(job.tab);
       final fileName = job.fileName;
       if (controller != null && fileName != null) {
@@ -2263,8 +2368,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     final snapshotTab = _tab;
     final snapshotSpecs = _specs;
-    final snapshotLocation = _location;
-    final snapshotLocationBookmark = _locationBookmark;
+    final snapshotDestination = _destination;
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
@@ -2272,18 +2376,26 @@ class ExportDialogState extends State<ExportDialog> {
     });
     var succeeded = 0;
     var failed = 0;
+    // Every job that hands over leaves its outbox here, and they go to the
+    // user in ONE window once the last job is done — a queue of five does
+    // not ask five times where its outputs go.
+    final outboxes = <String>[];
+    String? handOverSaid;
     try {
       while (!_cancelRequested) {
         final job = _queue.nextQueued;
         if (job == null) {
           break;
         }
-        final status = await _runQueuedJob(job);
+        final status = await _runQueuedJob(job, outboxes);
         if (status == ExportJobStatus.succeeded) {
           succeeded += 1;
         } else if (status == ExportJobStatus.failed) {
           failed += 1;
         }
+      }
+      if (outboxes.isNotEmpty) {
+        handOverSaid = await _handOverOutboxes(outboxes);
       }
     } finally {
       _activeJobId = null;
@@ -2293,9 +2405,10 @@ class ExportDialogState extends State<ExportDialog> {
           _progress = null;
           _tab = snapshotTab;
           _specs = snapshotSpecs;
-          _setLocation(snapshotLocation, bookmark: snapshotLocationBookmark);
+          _destination = snapshotDestination;
           _syncControllersFromSpecs();
-          _statusMessage = _queueRestSentence(succeeded, failed);
+          _statusMessage =
+              handOverSaid ?? _queueRestSentence(succeeded, failed);
         });
         _persist();
         _preview.clear();
@@ -2312,7 +2425,12 @@ class ExportDialogState extends State<ExportDialog> {
   /// ⚠️A failure is caught HERE, which is what 부분 실패 means: the runner
   /// above never sees a throw and carries on to the next job. Cancel ends
   /// the job as cancelled, and the runner counts it as neither.
-  Future<ExportJobStatus> _runQueuedJob(ExportJob job) async {
+  ///
+  /// A job that hands over leaves its outbox in [outboxes] for the runner.
+  Future<ExportJobStatus> _runQueuedJob(
+    ExportJob job,
+    List<String> outboxes,
+  ) async {
     _activeJobId = job.id;
     _queue.update(
       job.id,
@@ -2321,7 +2439,11 @@ class ExportDialogState extends State<ExportDialog> {
     _loadJobIntoForm(job);
     _refreshPreview();
     try {
-      final message = await _runCurrentTabExport();
+      final ran = await _runIntoDestination(_runCurrentTabExport);
+      if (ran.outbox case final outbox?) {
+        outboxes.add(outbox);
+      }
+      final message = ran.message;
       final status = _cancelRequested
           ? ExportJobStatus.cancelled
           : ExportJobStatus.succeeded;
@@ -2373,7 +2495,7 @@ class ExportDialogState extends State<ExportDialog> {
       count: count,
       renderImage: renderImage,
       fileNameFor: fileNameFor,
-      directoryPath: _location!,
+      directoryPath: _outputDirectory,
       encode: encode,
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
@@ -2617,7 +2739,7 @@ class ExportDialogState extends State<ExportDialog> {
       count: 1,
       renderImage: (_) => renderer.renderComposite(task, spec.sizeMode),
       fileNameFor: (_) => fileName,
-      directoryPath: _location!,
+      directoryPath: _outputDirectory,
       encode: _stillEncodeFor(spec.format),
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
@@ -2794,7 +2916,10 @@ class ExportDialogState extends State<ExportDialog> {
       if (directory == null || !mounted) {
         return;
       }
-      setState(() => _setLocation(directory));
+      setState(
+        () =>
+            _destination = ExportIntoFolder(GrantedDirectory(path: directory)),
+      );
       _persist();
       return;
     }
@@ -2806,7 +2931,17 @@ class ExportDialogState extends State<ExportDialog> {
     if (path == null || !mounted) {
       return;
     }
-    setState(() => _setLocation(path, bookmark: grant!.bookmark));
+    setState(
+      () => _destination = ExportIntoFolder(
+        GrantedDirectory(path: path, bookmark: grant!.bookmark),
+      ),
+    );
+    _persist();
+  }
+
+  /// 「끝나면 고르기」: the destination is chosen once the run is done.
+  void _chooseHandOver() {
+    setState(() => _destination = const ExportHandOver());
     _persist();
   }
 
@@ -3074,14 +3209,18 @@ class ExportDialogState extends State<ExportDialog> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _location ?? AppText.strings.exChooseFolder,
+              switch (_destination) {
+                ExportIntoFolder(:final folder) => folder.path,
+                ExportHandOver() => AppText.strings.exHandOverWhenDone,
+                null => AppText.strings.exChooseFolder,
+              },
               key: const ValueKey<String>('export-location-label'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
                 fontFamily: 'monospace',
                 fontSize: 11,
-                color: _hasLocation
+                color: _hasDestination
                     ? theme.colorScheme.onSurface
                     : theme.colorScheme.onSurfaceVariant,
               ),
@@ -3096,6 +3235,16 @@ class ExportDialogState extends State<ExportDialog> {
               padding: const EdgeInsets.symmetric(horizontal: 10),
             ),
             child: Text(AppText.strings.exBrowse),
+          ),
+          const SizedBox(width: 6),
+          OutlinedButton(
+            key: const ValueKey<String>('export-hand-over-button'),
+            onPressed: _isExporting ? null : _chooseHandOver,
+            style: OutlinedButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+            ),
+            child: Text(AppText.strings.exHandOverWhenDone),
           ),
         ],
       ),

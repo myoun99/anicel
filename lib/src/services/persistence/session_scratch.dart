@@ -101,6 +101,16 @@ class SessionScratch {
     return '${thisRunsFolder()}/Opened';
   }
 
+  /// Where an export that hands its outputs over when it is done
+  /// (「끝나면 고르기」, drive-folder-windows-Q1) writes them first — until
+  /// the picker takes them, or for as long as another app offered them may
+  /// still be reading (Android's share sheet). This run's only, like
+  /// everything else in the room.
+  static String outboxFolder() {
+    ensureThisRunsFolder();
+    return '${thisRunsFolder()}/Outbox';
+  }
+
   static String thisRunsFolder() => '${rootFolder()}/$_runId';
 
   /// This run's room NAME: the pid, and the moment this run first asked.

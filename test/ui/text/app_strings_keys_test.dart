@@ -502,6 +502,8 @@ void main() {
     'exChannels': (s) => s.exChannels,
     'exAudio': (s) => s.exAudio,
     'exBrowse': (s) => s.exBrowse,
+    'exHandOverWhenDone': (s) => s.exHandOverWhenDone,
+    'exHandOverDeclined': (s) => s.exHandOverDeclined,
     'exSavePreset': (s) => s.exSavePreset,
     'exPresetNameEmpty': (s) => s.exPresetNameEmpty,
     'exBaseName': (s) => s.exBaseName,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/export_spec.dart';
+import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/ui/export/export_job.dart';
 import 'package:anicel/src/ui/export/export_queue_column.dart';
 
@@ -48,7 +50,7 @@ void main() {
 
   ExportJob enqueue(ExportQueueModel queue, {String? name}) => queue.enqueue(
     spec: const ImageExportSpec(),
-    outputDirectory: '/out',
+    destination: const ExportIntoFolder(GrantedDirectory(path: '/out')),
     fileName: name,
     now: () => DateTime.utc(2026, 9, 5),
   );
@@ -106,12 +108,12 @@ void main() {
 
     final first = queue.enqueue(
       spec: const ImageExportSpec(),
-      outputDirectory: '/out',
+      destination: const ExportIntoFolder(GrantedDirectory(path: '/out')),
       now: () => DateTime.utc(2026),
     );
     final second = queue.enqueue(
       spec: const ImageExportSpec(),
-      outputDirectory: '/out',
+      destination: const ExportIntoFolder(GrantedDirectory(path: '/out')),
       now: () => DateTime.utc(2026),
     );
 

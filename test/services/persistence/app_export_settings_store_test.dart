@@ -43,9 +43,11 @@ void main() {
       lastSpecs: const ExportTabSpecs().withSpec(
         const SequenceExportSpec(inFrame: 23, outFrame: 94),
       ),
-      lastLocation: const GrantedDirectory(
-        path: 'D:/deliver/ep03/rush',
-        bookmark: 'Ym9va21hcms=',
+      lastDestination: const ExportIntoFolder(
+        GrantedDirectory(
+          path: 'D:/deliver/ep03/rush',
+          bookmark: 'Ym9va21hcms=',
+        ),
       ),
       presetsDrawerOpen: false,
     );
@@ -57,10 +59,30 @@ void main() {
     expect(
       AppExportSettings.fromJson(const {
         'lastLocation': 'D:/deliver/legacy',
-      }).lastLocation,
-      const GrantedDirectory(path: 'D:/deliver/legacy'),
+      }).lastDestination,
+      const ExportIntoFolder(GrantedDirectory(path: 'D:/deliver/legacy')),
     );
     expect(restored.presetsFor(ExportTab.cels).single.name, '납품 셀');
+  });
+
+  test('「끝나면 고르기」 round-trips as a destination of its own — never a '
+      'folder beside it', () async {
+    final store = AppExportSettingsStore(filePath: pathIn('hand-over'));
+    final settings = AppExportSettings(lastDestination: const ExportHandOver());
+    await store.save(settings);
+    expect(await store.load(), settings);
+    expect(settings.toJson().containsKey('lastLocation'), isFalse);
+    expect(
+      AppExportSettings(
+        lastDestination: const ExportIntoFolder(GrantedDirectory(path: 'D:/o')),
+      ).toJson().containsKey('handOver'),
+      isFalse,
+    );
+    expect(AppExportSettings().lastDestination, isNull);
+    expect(
+      const ExportIntoFolder(GrantedDirectory(path: 'D:/a')),
+      isNot(const ExportIntoFolder(GrantedDirectory(path: 'D:/b'))),
+    );
   });
 
   test('corrupt JSON loads as null', () async {
