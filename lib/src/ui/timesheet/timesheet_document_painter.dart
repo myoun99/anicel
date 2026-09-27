@@ -40,6 +40,7 @@ part 'document_painter/timesheet_instruction_pass.dart';
 part 'document_painter/timesheet_se_pass.dart';
 part 'document_painter/timesheet_bands_pass.dart';
 part 'document_painter/timesheet_cells_pass.dart';
+part 'document_painter/timesheet_books_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
@@ -252,6 +253,41 @@ class TimesheetDocumentLayout {
       memoBandHeight +
       headerGap +
       columnsHeaderHeight;
+
+  /// Top of the grid — its column header's top edge.
+  double gridTop(int pageIndex) =>
+      halfRowsTop(pageIndex) - columnsHeaderHeight;
+
+  /// A book's tag (D24): its height, the step between two stacked, the size
+  /// its words print at, and what it keeps clear of the memo band's bottom.
+  static const double bookTagHeight = 13;
+  static const double bookTagStep = 15;
+  static const double bookTagFontSize = 9;
+  static const double bookTagFloorGap = 2;
+
+  /// Where each book's tag stands over the ACTION block of [half] of
+  /// [pageIndex]: the x of its boundary and the tag's bottom edge. The last
+  /// book's tag sits on the memo band's bottom and each before it a step
+  /// higher — the reference sheets' diagonal (유저 2026-09-25, 사진 셋),
+  /// stacked up from the band because our form has no empty band over the
+  /// grid (timesheet-book-tag-place-Q1: 「메모 띠 아래쪽에 겹쳐 쌓는다
+  /// (크기 그대로)」).
+  List<({String label, double x, double bottom})> bookTags(
+    int pageIndex,
+    int half,
+  ) {
+    final books = document.books;
+    final left = halfLeft(pageIndex, half);
+    final floor = memoBandRect(pageIndex).bottom - bookTagFloorGap;
+    return [
+      for (var index = 0; index < books.length; index += 1)
+        (
+          label: books[index].label,
+          x: left + columnLeftInHalf(books[index].boundary),
+          bottom: floor - (books.length - 1 - index) * bookTagStep,
+        ),
+    ];
+  }
 
   /// Width fractions of the header boxes when all print; hiding boxes
   /// renormalizes the rest over the band. Proportions follow the user's
@@ -624,6 +660,9 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
         startFrame: 0,
         rowCount: document.rowCount,
       );
+      if (_drawContent) {
+        _books.paintHalf(canvas, pageIndex: 0, half: 0);
+      }
     } else {
       // Every page, one under another.
       for (final pageIndex in layout.visiblePageIndexes) {
@@ -649,6 +688,9 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
                 (strip.half == 0 ? 0 : document.halfFrameCount),
             rowCount: strip.rowCount,
           );
+          if (_drawContent) {
+            _books.paintHalf(canvas, pageIndex: page.index, half: strip.half);
+          }
         }
       }
     }
@@ -703,6 +745,12 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   // A collaborator (timesheet/document_painter/timesheet_se_pass.dart, a part of this
   // library). The painter keeps the passes its paint() calls.
   late final _TimesheetSePass _se = _TimesheetSePass(this);
+
+  // ── the books pass: its own object, in its own file ─────────────────
+  //
+  // A collaborator (timesheet/document_painter/timesheet_books_pass.dart, a part of this
+  // library). The painter keeps the passes its paint() calls.
+  late final _TimesheetBooksPass _books = _TimesheetBooksPass(this);
 
   // ── the instruction pass: its own object, in its own file ───────────
   //

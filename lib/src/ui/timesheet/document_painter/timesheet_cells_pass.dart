@@ -95,7 +95,7 @@ class _TimesheetCellsPass {
     final rowsTop = _painter.layout.halfRowsTop(pageIndex);
     final rowsBottom = rowsTop + rowCount * TimesheetDocumentLayout.rowHeight;
     final right = left + _painter.layout.halfWidth;
-    final columnsTop = rowsTop - _painter.layout.columnsHeaderHeight;
+    final columnsTop = _painter.layout.gridTop(pageIndex);
     final lettersTop = rowsTop - TimesheetDocumentLayout.letterRowHeight;
 
     final lightPaint = Paint()

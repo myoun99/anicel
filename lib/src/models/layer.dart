@@ -16,6 +16,7 @@ import 'layer_effect.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
 import 'layer_mark.dart';
+import 'layer_process.dart';
 import 'media_reference.dart';
 import 'non_negative_index_map.dart';
 import 'se_name_tag.dart';
@@ -610,8 +611,8 @@ bool layerCarriesTimesheetToggle(Layer layer) =>
 /// all read (three inline copies of `animation && onTimesheet` used to
 /// drift apart). The real sheets keep BG/BOOK picture rows out of the
 /// cel columns, so the image kind never qualifies regardless of its
-/// sheet flag — the flag itself STAYS meaningful on image rows (D24
-/// 후반's 끼움 표시 will consume it).
+/// sheet flag — the flag itself STAYS meaningful on image rows: D24
+/// 후반's 끼움 표시 reads it ([layerMarksSheetBook]).
 ///
 /// 🚨IT IS THE SWITCH'S LAW PLUS TWO WORDS: a row can only print what it
 /// can switch, so this asks [layerCarriesTimesheetToggle] FIRST rather
@@ -625,6 +626,19 @@ bool layerTakesSheetCelColumn(Layer layer) =>
     layerCarriesTimesheetToggle(layer) &&
     layer.kind == LayerKind.animation &&
     layer.onTimesheet;
+
+/// D24 후반: whether this layer marks a BOOK on the sheet — an image row
+/// whose colour label is 美術, whatever its revise and whatever its name
+/// (유저 2026-09-26: 「이름 bg든 북이든 구별없이 이미지레이어면서 미술이면
+/// 수정공정뭐던간에 북표시하는거 잊지말고」 — ⛔never by the name BG/BOOK).
+///
+/// The cel column's law with the image row's words: the row's sheet
+/// switch is the flag the note above kept for this.
+bool layerMarksSheetBook(Layer layer) =>
+    layerCarriesTimesheetToggle(layer) &&
+    layer.kind == LayerKind.image &&
+    layer.onTimesheet &&
+    layer.mark.process == LayerProcess.art;
 
 /// Stack-shaped queries over a cut's flat layer list. The list is the
 /// single truth of render/timeline order, so everything that needs to find

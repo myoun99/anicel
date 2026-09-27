@@ -246,6 +246,7 @@ class TimesheetDocument {
     this.transitionHandles = CutTransitionHandles.none,
     required this.pageFrameCount,
     required this.columns,
+    required this.books,
     required this.pages,
   });
 
@@ -396,6 +397,7 @@ class TimesheetDocument {
       transitionHandles: handles,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
+      books: List.unmodifiable(sources.books),
       pages: List.unmodifiable([
         for (var page = 0; page < pageCount; page += 1)
           TimesheetPage(
@@ -538,6 +540,11 @@ class TimesheetDocument {
   final int pageFrameCount;
 
   final List<TimesheetColumn> columns;
+
+  /// The books tagged over the ACTION block, left to right — each at a
+  /// boundary of its cel columns ([SheetBook]).
+  final List<SheetBook> books;
+
   final List<TimesheetPage> pages;
 
   /// Rows per page HALF: the paper page splits into two side-by-side
