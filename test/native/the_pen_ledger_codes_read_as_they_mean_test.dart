@@ -16,6 +16,11 @@ void main() {
       state: PenLedgerState.noPressure,
       value: 0.0,
     ));
+    // An estimate UIKit says it will never correct (build 1065).
+    expect(QaPenLedger.decode(-4), (
+      state: PenLedgerState.estimatedFinal,
+      value: 0.0,
+    ));
     // Every real answer is a force, a pressure or an angle: zero included.
     expect(QaPenLedger.decode(0), (state: PenLedgerState.measured, value: 0.0));
     expect(QaPenLedger.decode(1.39), (

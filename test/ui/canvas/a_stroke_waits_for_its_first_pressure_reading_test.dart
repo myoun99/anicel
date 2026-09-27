@@ -349,28 +349,63 @@ void main() {
         (state: PenLedgerState.measured, value: value);
 
     testWidgets(
-      'UIKit\'s word decides: a sample it calls an estimate waits, whatever '
-      'force it carries',
+      '🚨UIKit\'s estimate is READ — what waits is the press repeated before '
+      'the Pencil measured (build 1065: 「measured 1 · estimated 9」)',
       (tester) async {
-        // Forces that change from the first sample on — the fallback would
-        // take the second as a reading. UIKit says otherwise.
-        ledger[_ms(0)] = _estimatedReading;
-        ledger[_ms(8)] = _estimatedReading;
-        ledger[_ms(16)] = measured(0.8);
-        ledger[_ms(24)] = measured(0.8);
+        // The device's own pattern: UIKit calls nearly every force an
+        // estimate, final or not, and the first four carry the stand-in.
+        for (final at in [0, 8, 16, 24, 32]) {
+          ledger[_ms(at)] = _estimatedReading;
+        }
+        ledger[_ms(40)] = (state: PenLedgerState.estimatedFinal, value: 0.0);
         final results = await _strokes(tester, _pressureBrush, [
           _pencil([
-            _s(const Offset(4, 8), 0.5, 0),
-            _s(const Offset(20, 8), 0.6, 8),
-            _s(const Offset(40, 8), 0.8, 16),
-            _s(const Offset(70, 8), 0.8, 24),
+            _s(const Offset(4, 8), _stand, 0),
+            _s(const Offset(12, 8), _stand, 8),
+            _s(const Offset(20, 8), _stand, 16),
+            _s(const Offset(28, 8), _stand, 24),
+            _s(const Offset(40, 8), 0.16, 32),
+            _s(const Offset(60, 8), 0.12, 40),
           ]),
         ]);
 
-        expect(results.single.first.center.x, 4);
+        final dabs = results.single;
+        expect(dabs.first.center.x, 4);
+        expect(dabs.first.pressure, closeTo(_ipad(0.16), 1e-9));
+        expect(
+          dabs.map((dab) => dab.pressure),
+          everyElement(lessThanOrEqualTo(_ipad(0.16) + 1e-9)),
+          reason: 'no dab carries the stand-in',
+        );
+        expect(
+          dabs.last.pressure,
+          closeTo(_ipad(0.12), 1e-9),
+          reason: 'an estimate UIKit calls final is read like any other',
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'a force UIKit calls MEASURED that repeats the press still waits — and '
+      'is not painted with its record, which is the stand-in',
+      (tester) async {
+        for (final at in [0, 8, 16]) {
+          ledger[_ms(at)] = measured(_stand);
+        }
+        ledger[_ms(24)] = measured(0.16);
+        final results = await _strokes(tester, _pressureBrush, [
+          _pencil([
+            _s(const Offset(4, 8), _stand, 0),
+            _s(const Offset(20, 8), _stand, 8),
+            _s(const Offset(36, 8), _stand, 16),
+            _s(const Offset(52, 8), 0.16, 24),
+          ]),
+        ]);
+
         expect(
           results.single.map((dab) => dab.pressure).toSet(),
-          {closeTo(_ipad(0.8), 1e-9)},
+          {closeTo(_ipad(0.16), 1e-9)},
         );
       },
       variant: ipad,
@@ -480,14 +515,52 @@ void main() {
 
         expect(
           InputInspector.notes['ledger'],
-          'ledger measured=1 estimated=2 none=1',
+          'ledger meas=1 est=2 fin=0 upd=0 rep=1 none=1',
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'the ledger line says how UIKit answered — and whether a correction it '
+      'sent reached the ledger by the stroke\'s end',
+      (tester) async {
+        InputInspector.visible.value = true;
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _pressureBrush, results);
+        ledger[_ms(0)] = _estimatedReading;
+        ledger[_ms(8)] = (state: PenLedgerState.estimatedFinal, value: 0.0);
+        _down(
+          tester,
+          const Offset(4, 8),
+          time: _ms(0),
+          force: 0.5,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _move(
+          tester,
+          const Offset(20, 8),
+          time: _ms(8),
+          force: 0.6,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        // UIKit's correction for the press lands after the move was read.
+        ledger[_ms(0)] = measured(0.7);
+        _up(tester, const Offset(20, 8), time: _ms(12));
+        await tester.pump();
+
+        expect(
+          InputInspector.notes['ledger'],
+          'ledger meas=0 est=1 fin=1 upd=1 rep=1 none=0',
         );
       },
       variant: ipad,
     );
   });
 
-  group('the lean and the direction wait like pressure', () {
+  group('the lean is read as it comes; the direction waits like pressure', () {
     tearDown(() {
       QaPenLedger.debugAltitude = null;
     });
@@ -515,15 +588,16 @@ void main() {
     );
 
     testWidgets(
-      'a lean UIKit still estimates waits too — each sample is drawn with '
-      'the lean measured for it, or the first measured after it',
+      'a lean UIKit estimates is READ as it comes — the stroke does not wait '
+      'on it, and a measurement is the measurement',
       (tester) async {
-        final altitudes = <Duration, PenLedgerReading>{
-          _ms(0): _estimatedReading,
-          _ms(8): _estimatedReading,
-          _ms(16): (state: PenLedgerState.measured, value: 0.6),
-        };
-        QaPenLedger.debugAltitude = (at) => altitudes[at];
+        // ↩️It waited, as the force did, until build 1065 showed UIKit
+        // calling nearly every Pencil sample an estimate.
+        QaPenLedger.debugAltitude = (at) => at == _ms(16)
+            ? (state: PenLedgerState.measured, value: 0.6)
+            : _estimatedReading;
+        final laid = debugStrokeDabsLaid = <BrushDab>[];
+        addTearDown(() => debugStrokeDabsLaid = null);
         final results = <List<BrushDab>>[];
         await _pump(tester, _tiltBrush, results);
         _down(
@@ -535,18 +609,16 @@ void main() {
           pressureMax: _pencilMax,
         );
         await tester.pump();
+        expect(laid, isNotEmpty, reason: 'the press lands at once');
         _move(
           tester,
           const Offset(20, 8),
           time: _ms(8),
           force: 1.1,
-          tilt: 0.1,
+          tilt: 0.3,
           pressureMax: _pencilMax,
         );
         await tester.pump();
-        // UIKit measures the press's lean; the first move's stays an
-        // estimate, and the next sample is measured from the start.
-        altitudes[_ms(0)] = (state: PenLedgerState.measured, value: 0.9);
         _move(
           tester,
           const Offset(36, 8),
@@ -559,13 +631,15 @@ void main() {
         _up(tester, const Offset(36, 8), time: _ms(20));
         await tester.pump();
 
+        double own(double tilt) => 1 - tilt / (math.pi / 2);
         final dabs = results.single;
         expect(dabs.first.center.x, 4);
-        expect(dabs.first.tiltAltitude, closeTo(0.9 / (math.pi / 2), 1e-9));
+        expect(dabs.first.tiltAltitude, closeTo(own(0.1), 1e-9));
         expect(
           dabs.where((dab) => dab.center.x == 20).single.tiltAltitude,
-          closeTo(0.6 / (math.pi / 2), 1e-9),
+          closeTo(own(0.3), 1e-9),
         );
+        expect(dabs.last.tiltAltitude, closeTo(0.6 / (math.pi / 2), 1e-9));
       },
       variant: ipad,
     );
@@ -592,8 +666,8 @@ void main() {
     );
 
     testWidgets(
-      'once measured, a lean UIKit estimates again keeps the last one — and '
-      'a tap never measured lands with its own',
+      'a lean UIKit estimates between two it measured is its own — not the '
+      'last measurement — and a tap lands with its own',
       (tester) async {
         final altitudes = <Duration, PenLedgerReading>{
           _ms(0): (state: PenLedgerState.measured, value: 0.9),
@@ -612,14 +686,16 @@ void main() {
           _pencil([_s(const Offset(60, 24), 1.0, 100, tilt: 0.7)]),
         ]);
 
+        double own(double tilt) => 1 - tilt / (math.pi / 2);
+        const measured = 0.9 / (math.pi / 2);
+        final dabs = results.first;
+        expect(dabs.first.tiltAltitude, closeTo(measured, 1e-9));
         expect(
-          results.first.map((dab) => dab.tiltAltitude),
-          everyElement(closeTo(0.9 / (math.pi / 2), 1e-9)),
+          dabs.where((dab) => dab.center.x == 20).single.tiltAltitude,
+          closeTo(own(0.7), 1e-9),
         );
-        expect(
-          results.last.single.tiltAltitude,
-          closeTo(1 - 0.7 / (math.pi / 2), 1e-9),
-        );
+        expect(dabs.last.tiltAltitude, closeTo(measured, 1e-9));
+        expect(results.last.single.tiltAltitude, closeTo(own(0.7), 1e-9));
       },
       variant: ipad,
     );
@@ -1084,8 +1160,8 @@ void main() {
       'what a cancelled stroke held is not painted by a next press that has '
       'nothing to wait for',
       (tester) async {
-        // UIKit estimates the first contact's force, and measures the next
-        // one's from its press: the second stroke never waits.
+        // The first contact waits on its stand-in and is cancelled; the
+        // second must not paint what it held.
         QaPenLedger.debugForce = (at) => at < _ms(100)
             ? _estimatedReading
             : (state: PenLedgerState.measured, value: 1.0);
@@ -1138,7 +1214,7 @@ void main() {
 
         expect(
           InputInspector.notes['ledger'],
-          'ledger measured=1 estimated=0 none=0',
+          'ledger meas=1 est=0 fin=0 upd=0 rep=1 none=0',
         );
       },
       variant: ipad,

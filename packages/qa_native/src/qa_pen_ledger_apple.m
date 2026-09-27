@@ -9,8 +9,9 @@
 // being handled, cannot arrive late.
 //
 // iOS — UIKit's word on Apple Pencil force and altitude. Either can be an
-// ESTIMATE when a sample is taken (`estimatedPropertiesExpectingUpdates`),
-// and the measured value comes later through
+// ESTIMATE when a sample is taken (`estimatedProperties`), one UIKit will
+// correct (`estimatedPropertiesExpectingUpdates`) or one it calls final,
+// and a correction comes later through
 // `touchesEstimatedPropertiesUpdated`, which Flutter's engine does not
 // implement. The Runner's view controller hands both to
 // +[QaPenLedger noteTouches:] and +[QaPenLedger updateTouches:] ahead of its
@@ -41,6 +42,10 @@ enum {
   QA_PEN_ESTIMATED = 1,
   QA_PEN_NO_PRESSURE = 2,
   QA_PEN_UNREPORTED = 3,  // The platform never reports this property.
+  // UIKit's estimate that no update will correct: `estimatedProperties`
+  // names it and `estimatedPropertiesExpectingUpdates` does not, which
+  // Apple calls final. Final, but nothing measured it (H43, build 1065).
+  QA_PEN_ESTIMATED_FINAL = 4,
 };
 
 typedef struct {
@@ -107,6 +112,26 @@ static const QaPenSample *qa_pen_find(int64_t micros) {
 
 #if TARGET_OS_IOS
 
+// What UIKit says of [property] on one sample: an estimate it will send
+// the measured value for, an estimate it never will, or a measurement.
+//
+// 🚨H43, build 1065: the ledger asked `estimatedPropertiesExpectingUpdates`
+// alone, so an estimate with no update coming read as MEASURED — and the
+// constant 0.33 the Pencil's first samples carry was painted as it always
+// had been. `estimatedProperties` is the set that says a value is an
+// estimate at all.
+static int32_t qa_pen_state_of(UITouchProperties estimated,
+                               UITouchProperties awaited,
+                               UITouchProperties property) {
+  if ((awaited & property) != 0) {
+    return QA_PEN_ESTIMATED;
+  }
+  if ((estimated & property) != 0) {
+    return QA_PEN_ESTIMATED_FINAL;
+  }
+  return QA_PEN_MEASURED;
+}
+
 @interface QaPenLedger : NSObject
 + (void)noteTouches:(NSSet<UITouch *> *)touches;
 + (void)updateTouches:(NSSet<UITouch *> *)touches;
@@ -119,15 +144,14 @@ static const QaPenSample *qa_pen_find(int64_t micros) {
     if (touch.type != UITouchTypePencil) {
       continue;
     }
+    const UITouchProperties estimated = touch.estimatedProperties;
     const UITouchProperties awaited = touch.estimatedPropertiesExpectingUpdates;
     NSNumber *index = touch.estimationUpdateIndex;
     qa_pen_record(
         qa_pen_micros(touch.timestamp), touch.force,
-        (awaited & UITouchPropertyForce) != 0 ? QA_PEN_ESTIMATED
-                                              : QA_PEN_MEASURED,
+        qa_pen_state_of(estimated, awaited, UITouchPropertyForce),
         touch.altitudeAngle,
-        (awaited & UITouchPropertyAltitude) != 0 ? QA_PEN_ESTIMATED
-                                                 : QA_PEN_MEASURED,
+        qa_pen_state_of(estimated, awaited, UITouchPropertyAltitude),
         // The lean's direction rides the pointer on iOS.
         0, 0, QA_PEN_UNREPORTED, index != nil ? index.longLongValue : -1);
   }
@@ -214,7 +238,8 @@ QA_EXPORT void qa_pen_ledger_start(void) {
 
 // What the ledger holds for the sample Flutter stamped [micros], newest
 // record first: -1 when it has none, -2 while UIKit's force is still an
-// estimate, -3 when the sample carries no pressure at all (a mouse on
+// estimate, -4 when it is an estimate UIKit will never correct, -3 when
+// the sample carries no pressure at all (a mouse on
 // macOS); otherwise the value the platform reported — UIKit force on iOS,
 // NSEvent pressure (0..1) on macOS.
 QA_EXPORT double qa_pen_ledger_value(int64_t micros) {
@@ -229,6 +254,9 @@ QA_EXPORT double qa_pen_ledger_value(int64_t micros) {
       case QA_PEN_NO_PRESSURE:
         result = -3;
         break;
+      case QA_PEN_ESTIMATED_FINAL:
+        result = -4;
+        break;
       default:
         result = slot->value;
         break;
@@ -241,7 +269,7 @@ QA_EXPORT double qa_pen_ledger_value(int64_t micros) {
 // The pen's altitude for the sample Flutter stamped [micros], in radians
 // from the surface (UIKit's altitudeAngle): -1 when the ledger has no
 // record or the platform reports none, -2 while it is still UIKit's
-// estimate.
+// estimate, -4 when it is an estimate UIKit will never correct.
 QA_EXPORT double qa_pen_ledger_altitude(int64_t micros) {
   double result = -1;
   os_unfair_lock_lock(&qa_pen_lock);
@@ -250,6 +278,9 @@ QA_EXPORT double qa_pen_ledger_altitude(int64_t micros) {
     switch (slot->altitude_state) {
       case QA_PEN_ESTIMATED:
         result = -2;
+        break;
+      case QA_PEN_ESTIMATED_FINAL:
+        result = -4;
         break;
       case QA_PEN_MEASURED:
         result = slot->altitude;

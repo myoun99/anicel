@@ -60,9 +60,9 @@ class _BrushEditPressure {
   /// 펜다운한 부분? 만 입력한 필압보다 센게나와」) — what the device hands
   /// over in place of a pressure it has not measured yet:
   ///
-  /// * UIKit's force ESTIMATE — said so by UIKit itself through the pen
-  ///   ledger, or, where no ledger answers, recognised by the press's force
-  ///   repeating ([_isUIKitForceEstimate]);
+  /// * the STAND-IN a Pencil's first samples carry — the force the contact
+  ///   pressed with, repeated until the Pencil measures, and wherever it
+  ///   comes back ([_isUIKitForceEstimate]);
   /// * a driver packet taken while the pen was still HOVERING, asked for
   ///   the [opening] of a contact. Once the contact has read, the same
   ///   packet means the pen has lifted, and 0 is the reading. Until then
@@ -75,20 +75,29 @@ class _BrushEditPressure {
   ///
   /// ★THE SAMPLE'S OWN RECORD COMES FIRST (유저 2026-09-27: 「근본
   /// 구조적으로 해결해줘」). Where the platform keeps one ([QaPenLedger] —
-  /// UIKit's word on iOS, the NSEvent on macOS), it says what was measured
-  /// for THIS event: no inference from values, and no race between a
-  /// sidecar's queue and the pointer's.
+  /// UIKit's word on iOS, the NSEvent on macOS), it holds the value for
+  /// THIS event with no race between a sidecar's queue and the pointer's,
+  /// and a correction UIKit sends later reaches a sample that waited
+  /// ([recordedPressure]).
+  ///
+  /// 🚨UIKIT'S ESTIMATE IS NOT THE STAND-IN (유저 2026-09-28, build 1065:
+  /// 「전혀 안고쳐져있어」 — inspector 「measured 1 고정 · estimated 9 ·
+  /// none 0」). UIKit calls nearly every Pencil sample's force an estimate.
+  /// The second round waited for one it called measured, found one per
+  /// stroke, and after the patience painted the stand-ins as before. An
+  /// estimate is UIKit's best value and is READ; the stand-in is the press's
+  /// force repeated, whatever UIKit calls it.
   ({double pressure, bool read}) pressureOf(
     PointerEvent event, {
     required bool opening,
   }) {
     final recorded = QaPenLedger.forceAt(event.timeStamp);
     if (QaPenLedger.start()) {
-      _ledgerAnswers.update(
-        recorded?.state,
-        (count) => count + 1,
-        ifAbsent: () => 1,
-      );
+      _ledgerAnswers[event.timeStamp] = recorded?.state;
+    }
+    final repeat = _isUIKitForceEstimate(event);
+    if (repeat) {
+      _heldRepeats[event.timeStamp] = recorded?.state;
     }
     if (recorded != null) {
       return switch (recorded.state) {
@@ -96,11 +105,11 @@ class _BrushEditPressure {
           pressure: AppInput.applyPressureCurve(
             _platformPressure(recorded.value),
           ),
-          read: true,
+          read: !repeat,
         ),
-        PenLedgerState.estimated => (
+        PenLedgerState.estimated || PenLedgerState.estimatedFinal => (
           pressure: AppInput.applyPressureCurve(_uikitForce(event.pressure)),
-          read: false,
+          read: !repeat,
         ),
         PenLedgerState.noPressure => (pressure: 1.0, read: true),
       };
@@ -125,7 +134,7 @@ class _BrushEditPressure {
     }
     return (
       pressure: AppInput.applyPressureCurve(_normalized(event, range)),
-      read: !_isUIKitForceEstimate(event),
+      read: !repeat,
     );
   }
 
@@ -163,6 +172,9 @@ class _BrushEditPressure {
   /// ledger holds no measurement of it. What a sample that waited is
   /// painted with when it has one of its own.
   double? recordedPressure(Duration at) {
+    if (_heldRepeats[at] == PenLedgerState.measured) {
+      return null;
+    }
     final recorded = QaPenLedger.forceAt(at);
     if (recorded == null || recorded.state != PenLedgerState.measured) {
       return null;
@@ -170,9 +182,16 @@ class _BrushEditPressure {
     return AppInput.applyPressureCurve(_platformPressure(recorded.value));
   }
 
-  /// How the pen ledger answered for this contact's samples — null for a
-  /// sample it holds nothing for.
-  final Map<PenLedgerState?, int> _ledgerAnswers = {};
+  /// What the pen ledger answered for each of this contact's samples when
+  /// it was asked — null for one it held nothing for.
+  final Map<Duration, PenLedgerState?> _ledgerAnswers = {};
+
+  /// This contact's samples held as the press repeated, each with what the
+  /// ledger called it then (null where none answered) — the inspector's
+  /// `rep`. One the ledger called MEASURED has the stand-in for its record,
+  /// so it is painted with the first reading after it, never with its
+  /// record ([recordedPressure]). Emptied when a contact begins.
+  final Map<Duration, PenLedgerState?> _heldRepeats = {};
 
   /// How this contact's samples leaned: how many there were, how many read
   /// a lean, and the lowest and highest altitude among those.
@@ -203,10 +222,26 @@ class _BrushEditPressure {
     if (_ledgerAnswers.isEmpty) {
       return;
     }
-    int count(PenLedgerState? state) => _ledgerAnswers[state] ?? 0;
+    int count(PenLedgerState? state) =>
+        _ledgerAnswers.values.where((answer) => answer == state).length;
+    // The estimates the ledger holds MEASURED by now: whether UIKit's
+    // corrections reach it at all.
+    final corrected = _ledgerAnswers.entries
+        .where(
+          (answer) =>
+              (answer.value == PenLedgerState.estimated ||
+                  answer.value == PenLedgerState.estimatedFinal) &&
+              QaPenLedger.forceAt(answer.key)?.state ==
+                  PenLedgerState.measured,
+        )
+        .length;
+    // Short names: a note row is one line, and the card is narrow.
     InputInspector.note(
-      'ledger measured=${count(PenLedgerState.measured)} '
-      'estimated=${count(PenLedgerState.estimated)} '
+      'ledger meas=${count(PenLedgerState.measured)} '
+      'est=${count(PenLedgerState.estimated)} '
+      'fin=${count(PenLedgerState.estimatedFinal)} '
+      'upd=$corrected '
+      'rep=${_heldRepeats.length} '
       'none=${count(PenLedgerState.noPressure) + count(null)}',
     );
     _ledgerAnswers.clear();
@@ -233,9 +268,9 @@ class _BrushEditPressure {
   /// 0.0 1개, 업 0.0 1개」 — the press and three moves repeated one force,
   /// then the Pencil measured.
   ///
-  /// ⚠️THE FALLBACK. Where the pen ledger answers, UIKit's own word decides
-  /// and this is never asked; it stands only where no ledger does — a
-  /// build whose native side predates it, or a sample it never saw.
+  /// ↩️It was the FALLBACK — asked only where no ledger answered — until
+  /// build 1065 showed UIKit's word missing the stand-in (see [pressureOf]).
+  /// It is asked of every sample now, whatever the ledger says.
   bool _isUIKitForceEstimate(PointerEvent event) =>
       defaultTargetPlatform == TargetPlatform.iOS &&
       event.pressure == _pressedForce;
@@ -261,6 +296,7 @@ class _BrushEditPressure {
   }) {
     if (_travelled == null) {
       _pressedForce = event.pressure;
+      _heldRepeats.clear();
     }
     final pressure = pressureOf(event, opening: opening);
     if (pressure.read || opening) {
@@ -393,10 +429,15 @@ class _BrushEditPressure {
       defaultTargetPlatform == TargetPlatform.android;
 
   /// How the pen leans for this sample ([penTilt]) — and whether it READ
-  /// the lean. UIKit can hand over an ESTIMATE of the Pencil's altitude as
-  /// it does of its force, and says so through the pen ledger; the same
-  /// law as pressure (H43). A device that reports no lean has nothing to
-  /// wait for.
+  /// the lean. Where the ledger holds UIKit's measurement of the Pencil's
+  /// altitude, that is the altitude.
+  ///
+  /// ↩️An altitude UIKit called an estimate used to WAIT, as its force did
+  /// (H43 round two). Build 1065 showed UIKit calling nearly every sample's
+  /// force an estimate, and the lean crosses the same Bluetooth link: a tilt
+  /// brush would have waited the whole patience on every stroke. The
+  /// estimate is UIKit's best value, so it is read — pressure's law, which
+  /// holds only the press repeated (see [pressureOf]).
   ({PenLean? tilt, bool read}) tiltOf(PointerEvent event) {
     final own = penTilt(event);
     final recorded = own == null
@@ -406,7 +447,8 @@ class _BrushEditPressure {
       return (tilt: own, read: true);
     }
     return switch (recorded.state) {
-      PenLedgerState.estimated => (tilt: own, read: false),
+      PenLedgerState.estimated ||
+      PenLedgerState.estimatedFinal => (tilt: own, read: true),
       PenLedgerState.measured => (
         tilt: (
           azimuthDegrees: own.azimuthDegrees,

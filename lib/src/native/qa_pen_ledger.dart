@@ -28,6 +28,11 @@ enum PenLedgerState {
   /// UIKit's estimate: the measured value is still to come.
   estimated,
 
+  /// UIKit's estimate that no update will correct — FINAL, in Apple's word,
+  /// but nothing measured it: the constant a Pencil's first samples carry
+  /// (H43, build 1065, where this read as [measured]).
+  estimatedFinal,
+
   /// The sample carries no pressure at all — a mouse, on macOS.
   noPressure,
 }
@@ -151,6 +156,9 @@ abstract final class QaPenLedger {
     if (value == _estimated) {
       return (state: PenLedgerState.estimated, value: 0.0);
     }
+    if (value == _estimatedFinal) {
+      return (state: PenLedgerState.estimatedFinal, value: 0.0);
+    }
     if (value == _noPressure) {
       return (state: PenLedgerState.noPressure, value: 0.0);
     }
@@ -162,4 +170,5 @@ abstract final class QaPenLedger {
   static const double _none = -1;
   static const double _estimated = -2;
   static const double _noPressure = -3;
+  static const double _estimatedFinal = -4;
 }
