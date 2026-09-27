@@ -378,7 +378,14 @@ class _BrushEditStroke {
         firstSequence: _state._nextSequence,
       ),
     );
+    _lay(emitted);
+  }
+
+  /// Puts [emitted] on the stroke: collected for the commit, queued for the
+  /// overlay, numbered.
+  void _lay(List<BrushDab> emitted) {
     _state._collectedDabs.addAll(emitted);
+    debugStrokeDabsLaid?.addAll(emitted);
     _state._overlay.queueOverlayDabs(emitted);
     _state._nextSequence += emitted.length;
   }
@@ -489,9 +496,7 @@ class _BrushEditStroke {
     // No setState: pointer moves only QUEUE the new dabs (this runs at
     // pointer-sample frequency); the per-frame flush rasterizes the batch
     // and repaints the overlay layer directly, skipping widget rebuilds.
-    _state._collectedDabs.addAll(emitted);
-    _state._overlay.queueOverlayDabs(emitted);
-    _state._nextSequence += emitted.length;
+    _lay(emitted);
     _state._breakCurrentVisibleSegment = false;
   }
 

@@ -717,6 +717,237 @@ void main() {
     );
   });
 
+  group('nothing is held that has nothing to wait for, and a wait ends the '
+      'moment it can', () {
+    // What the canvas has been handed so far — WHEN a sample landed, which
+    // the committed stroke cannot say.
+    late List<BrushDab> laid;
+
+    setUp(() {
+      debugStrokeDabsLaid = laid = <BrushDab>[];
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+        speedReferencePixelsPerSecond: 1000,
+      );
+    });
+    tearDown(() {
+      debugStrokeDabsLaid = null;
+      QaPenLedger.debugForce = null;
+      QaPenLedger.debugAltitude = null;
+      InputInspector.reset();
+    });
+
+    for (final (name, brush) in [
+      ('a brush that reads none of it', BrushEditCanvasInputSettings(size: 10)),
+      (
+        'scatter thrown all around',
+        BrushEditCanvasInputSettings(
+          size: 10,
+          scatterRadiusRatio: 1.0,
+          scatterBothAxes: true,
+        ),
+      ),
+    ]) {
+      testWidgets(
+        '$name lays its press at the down — whatever the press has yet to '
+        'measure',
+        (tester) async {
+          // UIKit calls the press's force AND lean estimates, and no move has
+          // measured a speed or set a direction yet: nothing this brush
+          // draws with.
+          QaPenLedger.debugForce = (_) => _estimatedReading;
+          QaPenLedger.debugAltitude = (_) => _estimatedReading;
+          await _pump(tester, brush, <List<BrushDab>>[]);
+          _down(
+            tester,
+            const Offset(4, 8),
+            time: _ms(0),
+            force: _stand,
+            tilt: 0.3,
+            pressureMax: _pencilMax,
+          );
+          await tester.pump();
+
+          expect(
+            laid,
+            isNotEmpty,
+            reason: 'a wait for an input the brush does not read only makes '
+                'the stroke start late',
+          );
+          _up(tester, const Offset(4, 8), time: _ms(4));
+          await tester.pump();
+        },
+        variant: ipad,
+      );
+    }
+
+    testWidgets(
+      'a stroke that waited lands the moment its last reading comes — not '
+      'when the patience runs out',
+      (tester) async {
+        await _pump(tester, _pressureBrush, <List<BrushDab>>[]);
+        _down(
+          tester,
+          const Offset(4, 8),
+          time: _ms(0),
+          force: _stand,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _move(
+          tester,
+          const Offset(20, 8),
+          time: _ms(8),
+          force: _stand,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        expect(laid, isEmpty, reason: '⛔premise: the stand-in is held');
+
+        _move(
+          tester,
+          const Offset(36, 8),
+          time: _ms(16),
+          force: 0.5,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        expect(laid.first.center.x, 4, reason: 'the press, at the reading');
+        expect(laid.any((dab) => dab.center.x == 36), isTrue);
+
+        _up(tester, const Offset(36, 8), time: _ms(20));
+        await tester.pump();
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'a tap UIKit never measured lands with its stand-in in Apple\'s unit',
+      (tester) async {
+        QaPenLedger.debugForce = (_) => _estimatedReading;
+        final results = await _strokes(tester, _pressureBrush, [
+          _pencil([_s(const Offset(10, 8), 0.5, 0)]),
+        ]);
+
+        expect(results.single.single.pressure, closeTo(_ipad(0.5), 1e-9));
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'samples whose lean was never measured land with their own',
+      (tester) async {
+        QaPenLedger.debugAltitude = (_) => _estimatedReading;
+        final results = await _strokes(tester, _tiltBrush, [
+          _pencil([
+            _s(const Offset(4, 8), 1.0, 0, tilt: 0.1),
+            _s(const Offset(20, 8), 1.1, 8, tilt: 0.5),
+            _s(const Offset(36, 8), 1.2, 16, tilt: 0.9),
+          ]),
+        ]);
+
+        double own(double tilt) => 1 - tilt / (math.pi / 2);
+        final dabs = results.single;
+        expect(dabs.first.tiltAltitude, closeTo(own(0.1), 1e-9));
+        for (final (x, tilt) in const [(20.0, 0.5), (36.0, 0.9)]) {
+          expect(
+            dabs.where((dab) => dab.center.x == x).single.tiltAltitude,
+            closeTo(own(tilt), 1e-9),
+          );
+        }
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'an input the brush does not read is not filled — the press keeps the '
+      'force the device reported',
+      (tester) async {
+        // The press waits for the first move's SPEED; that move is also the
+        // first real force, which this brush never reads.
+        final results = await _strokes(tester, _speedBrush, [
+          _pencil([
+            _s(const Offset(4, 8), _stand, 0),
+            _s(const Offset(24, 8), 0.8, 8),
+            _s(const Offset(44, 8), 0.8, 16),
+          ]),
+        ]);
+
+        expect(results.single.first.pressure, closeTo(_ipad(_stand), 1e-9));
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      '… and likewise the lean the device reported',
+      (tester) async {
+        QaPenLedger.debugAltitude = (at) => at == _ms(0)
+            ? _estimatedReading
+            : (state: PenLedgerState.measured, value: 0.6);
+        final results = await _strokes(tester, _speedBrush, [
+          _pencil([
+            _s(const Offset(4, 8), 1.0, 0, tilt: 0.3),
+            _s(const Offset(24, 8), 1.0, 8, tilt: 0.3),
+            _s(const Offset(44, 8), 1.0, 16, tilt: 0.3),
+          ]),
+        ]);
+
+        expect(
+          results.single.first.tiltAltitude,
+          closeTo(1 - 0.3 / (math.pi / 2), 1e-9),
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'each stroke\'s press follows the way THAT stroke set off',
+      (tester) async {
+        final results = await _strokes(tester, _directionBrush, [
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 4), 0.5, 0),
+            _s(const Offset(24, 24), 0.5, 8),
+            _s(const Offset(44, 24), 0.5, 16),
+          ]),
+          _pen(pressureMax: 1, [
+            _s(const Offset(64, 28), 0.5, 100),
+            // Up and to the right: 45° on the screen.
+            _s(const Offset(84, 8), 0.5, 108),
+            _s(const Offset(104, 8), 0.5, 116),
+          ]),
+        ]);
+
+        expect(results.first.first.tipMask?.id, endsWith('|315'));
+        expect(results.last.first.tipMask?.id, endsWith('|45'));
+      },
+    );
+
+    testWidgets(
+      'each stroke\'s ledger line counts that stroke alone',
+      (tester) async {
+        InputInspector.visible.value = true;
+        final ledger = <Duration, PenLedgerReading>{
+          _ms(0): _estimatedReading,
+          _ms(8): (state: PenLedgerState.measured, value: 0.8),
+          _ms(100): (state: PenLedgerState.measured, value: 0.6),
+        };
+        QaPenLedger.debugForce = (at) => ledger[at];
+        await _strokes(tester, _pressureBrush, [
+          _pencil([
+            _s(const Offset(4, 8), 0.5, 0),
+            _s(const Offset(40, 8), 0.8, 8),
+          ]),
+          _pencil([_s(const Offset(4, 24), 0.6, 100)]),
+        ]);
+
+        expect(
+          InputInspector.notes['ledger'],
+          'ledger measured=1 estimated=0 none=0',
+        );
+      },
+      variant: ipad,
+    );
+  });
+
   group('Wintab', () {
     late List<QaTabletPacket> queue;
 
@@ -913,6 +1144,14 @@ final BrushEditCanvasInputSettings _speedAndPressureBrush =
             BrushPressureCurve.identity(),
       },
     );
+
+final BrushEditCanvasInputSettings _speedBrush = BrushEditCanvasInputSettings(
+  size: 40,
+  curves: {
+    (BrushPressureTarget.size, BrushInputSource.speed):
+        BrushPressureCurve.identity(),
+  },
+);
 
 Duration _ms(int milliseconds) => Duration(milliseconds: milliseconds);
 

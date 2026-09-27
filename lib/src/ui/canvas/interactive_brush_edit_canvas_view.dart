@@ -52,6 +52,14 @@ part 'brush_edit/brush_edit_hold.dart';
 part 'brush_edit/brush_edit_cel_press.dart';
 part 'brush_edit/brush_edit_press.dart';
 
+/// Every dab a stroke on this canvas LAYS, in order, the moment it lays it —
+/// null records nothing. A test sets a list here to ask WHEN a sample
+/// reached the canvas, which the committed stroke cannot say (H43: a press
+/// that waits for nothing must not be held, and a stroke that waited lands
+/// the moment its last reading comes).
+@visibleForTesting
+List<BrushDab>? debugStrokeDabsLaid;
+
 /// Lands the stroke the pen is in the middle of, if any, and answers
 /// whether anything landed — [BrushEditPress.landActiveStroke] handed out
 /// so a caller that is not a pointer event can perform the same landing.
