@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -175,7 +176,7 @@ void main() {
                 height: metrics.pageHeight,
                 child: ConteInkLayer(
                   controller: ink,
-                  page: page,
+                  pages: [(page: page, at: Offset.zero)],
                   brushToolState: brush,
                   historyManager: history,
                   viewport: CanvasViewport(),
@@ -359,7 +360,10 @@ void main() {
             builder: (context, _) => ConteTabHost(
               session: session,
               thumbnails: null,
-              viewport: seedFromRender(tester, CanvasViewport()),
+              viewport: seedFromRender(
+                tester,
+                onConteBody(session, CanvasViewport()),
+              ),
               inkController: ink,
               pictures: cels,
               brushToolState: brush,
@@ -601,7 +605,10 @@ void main() {
                               },
                           landed: const _NeverLands(),
                         ),
-                  viewport: seedFromRender(tester, view ?? CanvasViewport()),
+                  viewport: seedFromRender(
+                    tester,
+                    onConteBody(session, view ?? CanvasViewport()),
+                  ),
                   inkController: ink,
                   pictures: cels,
                   brushToolState: brush,

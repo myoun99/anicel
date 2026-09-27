@@ -5,14 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/identity_memo.dart';
+import '../../core/page_stack.dart';
 import '../../models/app_input_settings.dart';
-import '../../models/brush_frame_key.dart';
-import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart' show conteInkRowIdOf;
-import '../../models/conte/conte_page_marks.dart'
-    show conteCellTextSize, conteInkArgb;
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
@@ -25,26 +22,19 @@ import '../../services/project_lookup.dart'
 import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../input/control_press_claim.dart';
 import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow, SheetWindow;
-import '../sheet/sheet_text_edit_layer.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
-import '../timeline/timeline_drag_preview.dart'
-    show CutTrimDragPreview, TimelineDragPreview;
 import '../text/app_strings.dart';
 import '../widgets/page_turn_strip.dart';
-import '../sheet/sheet_strata.dart';
-import 'conte_fonts.dart';
+import 'conte_book_page.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
 import 'conte_picture_ink.dart';
-import 'conte_picture_live.dart';
 import 'conte_sheet_builder.dart';
-import 'conte_words_in.dart';
 
 /// The conte PANEL: the sheet as paper inside the canvas panel shell —
 /// the timesheet's architecture with conte content (#16, "콘티 패널 =
@@ -129,12 +119,13 @@ class ConteTabHost extends StatefulWidget {
 }
 
 /// What the ink windows are mounted with: the sheet's ink, the brush in
-/// hand, the page on screen as the brush draws on it and the project that
-/// page is laid from (`_brushPageOf`).
+/// hand, the pages on screen as the brush draws on them — each where it
+/// lies in the stack — and the project those pages are laid from
+/// (`_brushPageOf`).
 typedef _InkMount = ({
   ConteInkController controller,
   ValueListenable<BrushToolState> tool,
-  ContePageLayout page,
+  List<ConteShownPage> pages,
   Project project,
 });
 
@@ -146,10 +137,25 @@ class _ConteTabHostState extends State<ConteTabHost> {
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
       BrushEditCacheInvalidationSink();
 
-  /// The page on screen; null until turned — the body's first page, the
-  /// cover and its blank back a turn away (the conte is worked on in its
-  /// body; the book's order is kept for turning and printing).
-  int? _page;
+  /// The page a view nobody has moved yet is fitted to: the body's first
+  /// page until a turn picks another — the cover and its blank back lie
+  /// above it (the conte is worked on in its body; the book's order is kept
+  /// for turning and printing). Once the view has moved, the VIEW says
+  /// which page is on (F-201: the pages lie one under another, and a turn
+  /// scrolls to the next).
+  int? _unframedPage;
+
+  // The book one page under another (F-201), memoized with the pages it
+  // lays.
+  final _stack = IdentityMemo<PageStack>();
+
+  PageStack _stackOf(List<ContePageLayout> pages) => _stack.resolve(
+    identity: pages,
+    build: () => PageStack([
+      for (final page in pages)
+        ui.Size(page.metrics.pageWidth, page.metrics.pageHeight),
+    ]),
+  );
 
   late final SheetStrokeHold _strokeHold = SheetStrokeHold(
     brushInput: (live) => _session.setBrushInputActive(live),
@@ -178,13 +184,35 @@ class _ConteTabHostState extends State<ConteTabHost> {
   void initState() {
     super.initState();
     AppInput.settings.addListener(_onInputSettings);
+    // The page strip reads the view; a caller's own view rebuilds this from
+    // above, this one from here.
+    _ownView.addListener(_onInputSettings);
   }
 
   void _onInputSettings() => setState(() {});
 
+  /// The view when the caller keeps none, seeded from
+  /// [ConteTabHost.viewport] — so a turn always has a view to scroll.
+  late final ValueNotifier<CanvasViewport?> _ownView = ValueNotifier(
+    widget.viewport,
+  );
+
+  /// The one view the panel shows and a turn scrolls, in DEVICE units.
+  ValueNotifier<CanvasViewport?> get _view =>
+      widget.viewportController ?? _ownView;
+
+  @override
+  void didUpdateWidget(covariant ConteTabHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.viewport != oldWidget.viewport) {
+      _ownView.value = widget.viewport;
+    }
+  }
+
   @override
   void dispose() {
     AppInput.settings.removeListener(_onInputSettings);
+    _ownView.dispose();
     _strokeHold.dispose();
     for (final stroke in _strokes.values) {
       stroke.dispose();
@@ -248,52 +276,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
     }
   }
 
-  /// The ACTION column's in-place targets: a tap on a cell's ACTION edits it
-  /// on the paper (유저 2026-09-25: 「액션은 콘티프리뷰에서 해당 칸 누르면
-  /// 텍스트 편집할수있게하고, 데이터는 … 해당 콘티블록에 저장」).
-  ///
-  /// The words land on the exposure that opens the cell — the memo is
-  /// block-owned, so it travels with every move and copy, and a linked or
-  /// same-named block keeps its own (「같은 이름의 콘티블록이랑 링크된다고
-  /// 해도 내용물은 독립」: a link shares the drawing, never the timeline's
-  /// entries). A cell with no block has nowhere to keep them and offers no
-  /// target.
-  List<SheetTextTarget> _actionTargets(ContePageLayout page) {
-    final m = page.metrics;
-    return [
-      for (final cell in page.cells)
-        if (cell.source.frameId != null)
-          SheetTextTarget(
-            keyValue: 'conte-action-edit-${cell.cutId}-${cell.cellIndex}',
-            // The cell's own rows of the column — its words flow past them
-            // on paper, but a tap below belongs to the cell there.
-            box: Rect.fromLTRB(
-              cell.actionRect.left,
-              m.rowTop(cell.rowOnPage),
-              cell.actionRect.right,
-              m.rowTop(cell.rowOnPage + cell.source.rowSpan),
-            ),
-            textRect: Rect.fromLTRB(
-              cell.actionRect.left + 4,
-              m.rowTop(cell.rowOnPage) + 4,
-              cell.actionRect.right - 4,
-              m.rowTop(cell.rowOnPage + cell.source.rowSpan) - 4,
-            ),
-            text: cell.source.action,
-            style: conteTextStyle(
-              conteCellTextSize,
-              color: const Color(conteInkArgb),
-            ),
-            onCommitted: (text) =>
-                _session.storyboardCursor.setStoryboardCellAction(
-                  cutId: CutId(cell.cutId),
-                  cellIndex: cell.cellIndex,
-                  action: text,
-                ),
-          ),
-    ];
-  }
-
   /// A cell's picture at the size its window shows it — the zoom and the
   /// screen's density decide, not a size of the conte's own (유저
   /// 2026-09-25: 「화면이 필요한 만큼(최대 원본)」). ↩️It asked one fixed
@@ -313,32 +295,61 @@ class _ConteTabHostState extends State<ConteTabHost> {
     return null;
   }
 
-  void _turnToPage(int page, int pageCount) {
-    final next = pageCount <= 0 ? 0 : page.clamp(0, pageCount - 1);
-    if (next != _page) {
-      setState(() => _page = next);
+  /// The page the reader is on: the one at the top of the view, as a PDF
+  /// reader counts — the page a turn puts there ([_turnToPage]) is the page
+  /// the strip then reads, at any zoom. While nobody has moved the view, it
+  /// is the page the view is fitted to.
+  int _pageOn(PageStack stack, int firstBody) {
+    final view = _view.value;
+    if (view == null || stack.length == 0) {
+      final last = math.max(0, stack.length - 1);
+      return (_unframedPage ?? firstBody).clamp(0, last);
     }
+    return stack.pageAt(-view.panY / view.zoom + stack.gap);
   }
 
-  /// What the ink windows are mounted with — or null while the sheet's
-  /// drawing is off. ONE gate: the ink layer, the panel's [drawingOn] and
-  /// the painter's live keys all ask this, so none can say 「drawing」
-  /// while another says not.
-  _InkMount? _inkMount(ContePageLayout? page) {
+  /// A turn of the page strip scrolls to [page] — its top at the top of the
+  /// view with half a gap above it, at the zoom the view has (F-201, 유저
+  /// 2026-09-27: 「왼쪽 알약인 페이지 넘기는 버튼은 동시존재해서 그거로
+  /// 다음페이지 스냅」). A view nobody has moved yet stays unmoved: it is
+  /// fitted to [page] instead.
+  void _turnToPage(int page, PageStack stack) {
+    if (stack.length == 0) {
+      return;
+    }
+    final next = page.clamp(0, stack.length - 1);
+    final view = _view.value;
+    if (view == null) {
+      setState(() => _unframedPage = next);
+      return;
+    }
+    _view.value = view.copyWith(
+      panY: -(stack.pageRect(next).top - stack.gap / 2) * view.zoom,
+    );
+  }
+
+  /// Whether the sheet takes ink now. ONE gate: the ink layer, the panel's
+  /// [SheetCanvasPanel.drawingOn] and the painter's live keys all ask this,
+  /// so none can say 「drawing」 while another says not.
+  bool get _drawing =>
+      widget.inkController != null &&
+      widget.brushToolState != null &&
+      widget.brushAllowed;
+
+  /// What the ink windows are mounted with for the pages on screen — or
+  /// null while the sheet's drawing is off.
+  _InkMount? _inkMount(List<ConteShownPage> shown) {
     final controller = widget.inkController;
     final tool = widget.brushToolState;
-    if (page == null ||
-        controller == null ||
-        tool == null ||
-        !widget.brushAllowed) {
+    if (shown.isEmpty || !_drawing || controller == null || tool == null) {
       return null;
     }
-    final drawn = _brushPageOf(page);
+    final drawn = [for (final (:page, :at) in shown) (_brushPageOf(page), at)];
     return (
       controller: controller,
       tool: tool,
-      page: drawn.page,
-      project: drawn.project,
+      pages: [for (final (brush, at) in drawn) (page: brush.page, at: at)],
+      project: drawn.first.$1.project,
     );
   }
 
@@ -386,40 +397,39 @@ class _ConteTabHostState extends State<ConteTabHost> {
   @override
   Widget build(BuildContext context) {
     final (source, pages) = _resolveSheet();
-    final pageCount = pages.length;
-    // The page INDEX is clamped everywhere it is read (readout included):
-    // deleting cuts can shrink the count under a stored _page, and an
-    // unclamped readout printed "5 / 2" with no way back.
-    final firstBody = pages.indexWhere(
-      (page) => page.kind == ContePageKind.body,
-    );
-    final pageIndex = pageCount == 0
-        ? 0
-        : (_page ?? math.max(firstBody, 0)).clamp(0, pageCount - 1);
-    final page = pageCount == 0 ? null : pages[pageIndex];
     final inkController = widget.inkController;
-    final onBrushAllowedChanged = widget.onBrushAllowedChanged;
-    final metrics = page?.metrics;
-    if (inkController != null && metrics != null) {
-      inkController.syncGeometry(metrics);
+    if (inkController != null && pages.isNotEmpty) {
+      // Every page shares one metrics.
+      inkController.syncGeometry(pages.first.metrics);
     }
-    final ink = _inkMount(page);
-    final pictures = ink == null
-        ? const <ContePicture>[]
-        : _picturesOf(ink);
+    return KeyedSubtree(
+      key: const ValueKey<String>('conte-panel'),
+      child: _panel(source, pages),
+    );
+  }
 
-    final panel = SheetCanvasPanel(
+  /// The book on the canvas panel, every page one under another (F-201),
+  /// the page strip reading and turning the page the view is on.
+  Widget _panel(ConteSheetSource source, List<ContePageLayout> pages) {
+    final stack = _stackOf(pages);
+    final firstBody = math.max(
+      0,
+      pages.indexWhere((page) => page.kind == ContePageKind.body),
+    );
+    final pageIndex = _pageOn(stack, firstBody);
+    final onBrushAllowedChanged = widget.onBrushAllowedChanged;
+    return SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
-      canvasSize: metrics == null
+      canvasSize: pages.isEmpty
           // The empty-project stand-in matches the real page's PORTRAIT
           // A4 so the stage geometry holds when pages appear.
           ? const CanvasSize(width: 596, height: 842)
           : CanvasSize(
-              width: metrics.pageWidth.ceil(),
-              height: metrics.pageHeight.ceil(),
+              width: stack.size.width.ceil(),
+              height: stack.size.height.ceil(),
             ),
-      viewport: widget.viewport,
-      viewportController: widget.viewportController,
+      viewport: null,
+      viewportController: _view,
       onViewportChanged: widget.onViewportChanged,
       brushSwitch: onBrushAllowedChanged == null
           ? null
@@ -431,93 +441,102 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13).
       pageStrip: pageTurnStrip(
         keyPrefix: 'conte',
-        page: viewerPage(pageIndex, pageCount),
-        onTurnTo: (page) => _turnToPage(page, pageCount),
+        page: viewerPage(pageIndex, pages.length),
+        onTurnTo: (page) => _turnToPage(page, stack),
       ),
-      bottomBarHostToken: (pageIndex, pageCount),
-      fitFocusRect: metrics == null
-          ? null
-          : Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
-      drawingOn: ink != null,
+      bottomBarHostToken: (pageIndex, pages.length),
+      fitFocusRect: pages.isEmpty ? null : stack.pageRect(pageIndex),
+      unframedFit: pages.isEmpty ? null : stack.pageRect(pageIndex),
+      drawingOn: _drawing && pages.isNotEmpty,
       strokeHold: _strokeHold,
-      content: (context, viewport) {
-        // F-179: off the paper is the canvas panel's backdrop — no fill of
-        // the sheet's own here.
-        return Stack(
-          children: [
-            if (page != null)
-              _pageLayer(page, source, viewport, context, inkController),
-            // Under the ink window: reachable exactly when the brush is off
-            // (the switch doubles as the edit-mode switch, the timesheet's
-            // header-edit rule).
-            if (page != null) _cellTapLayer(viewport, page),
-            if (page != null)
-              Positioned.fill(
-                child: SheetTextEditLayer(
-                  targets: _actionTargets(page),
-                  viewport: viewport,
-                  fieldKey: 'conte-action-field',
-                  barrierKey: 'conte-action-edit-barrier',
-                ),
-              ),
-            // Under the pen, over the page: the pictures the brush draws
-            // into, composited live while it is on.
-            if (ink != null && pictures.isNotEmpty)
-              Positioned.fill(
-                child: ContePictureLive(
-                  // A picture that refuses the pen shows what it prints.
-                  pictures: [
-                    for (final picture in pictures)
-                      if (picture.window.refusal == null) picture,
-                  ],
-                  session: _session,
-                  surfaceOf: (picture) => widget.pictures!
-                      .sessionStateFor(
-                        picture.window.plane! as CanvasSize,
-                        picture.window.key,
-                      )
-                      .canvasState
-                      .currentSurface,
-                  viewport: viewport,
-                  effectiveRatio: EffectiveDevicePixelRatio.of(context),
-                  paper: Size(
-                    ink.page.metrics.pageWidth,
-                    ink.page.metrics.pageHeight,
-                  ),
-                ),
-              ),
-            if (ink != null) _inkLayer(ink, viewport, pictures),
-          ],
-        );
-      },
-    );
-
-    return KeyedSubtree(
-      key: const ValueKey<String>('conte-panel'),
-      child: panel,
+      content: (context, viewport) => LayoutBuilder(
+        builder: (context, box) =>
+            _book(context, viewport, box.biggest),
+      ),
     );
   }
 
-  /// The pictures the brush draws into on [ink]'s page — none without the
-  /// cels' controller. Their cuts and cel keys are the project's the page
-  /// is laid from: the next cut is drawn into on the track it will be made
+  /// The pages the view shows, each drawn through the view moved to where
+  /// it lies in the stack — and ONE ink layer over them all, its windows in
+  /// the stack's own space, so the pen is heard on every page on screen.
+  Widget _book(BuildContext context, CanvasViewport viewport, Size box) {
+    final (source, pages) = _resolveSheet();
+    final stack = _stackOf(pages);
+    final ratio = EffectiveDevicePixelRatio.of(context);
+    final seen = Rect.fromLTWH(
+      -viewport.panX / viewport.zoom,
+      -viewport.panY / viewport.zoom,
+      box.width / viewport.zoom,
+      box.height / viewport.zoom,
+    );
+    final shown = [
+      for (final index in stack.pagesMeeting(seen))
+        (
+          page: pages[index],
+          at: _onDevicePixels(stack.pageRect(index).topLeft, viewport, ratio),
+        ),
+    ];
+    final ink = _inkMount(shown);
+    final pictures = ink == null ? null : _picturesOf(ink);
+    return Stack(
+      children: [
+        for (var index = 0; index < shown.length; index += 1)
+          Positioned.fill(
+            child: ConteBookPage(
+              key: ValueKey<String>(
+                'conte-page-${shown[index].page.pageIndex}',
+              ),
+              page: shown[index].page,
+              source: source,
+              viewport: viewport.translated(
+                dx: viewport.zoom * shown[index].at.dx,
+                dy: viewport.zoom * shown[index].at.dy,
+              ),
+              session: _session,
+              pictureFor: _pictureFor,
+              onSelectCell: _selectCell,
+              drawing: _drawing,
+              strokeHold: _strokeHold,
+              imageFor: widget.imageFor,
+              imageRepaint: widget.imageRepaint,
+              picturesLanded: widget.thumbnails?.landed,
+              inkController: widget.inkController,
+              pictures: pictures?[index] ?? const [],
+              cels: widget.pictures,
+            ),
+          ),
+        if (ink != null) _inkLayer(ink, viewport, pictures!),
+      ],
+    );
+  }
+
+  /// The pictures the brush draws into on each of [ink]'s pages, in the
+  /// pages' order and each in its page's own space — none without the
+  /// cels' controller. Their cuts and cel keys are the project's the pages
+  /// are laid from: the next cut is drawn into on the track it will be made
   /// on.
-  List<ContePicture> _picturesOf(_InkMount ink) {
+  List<List<ContePicture>> _picturesOf(_InkMount ink) {
     if (widget.pictures == null) {
-      return const [];
+      return [for (final _ in ink.pages) const []];
     }
-    final autoFrame = _session.autoFrame;
-    final project = ink.project;
-    return contePictures(ink.page, (
-      cutOf: (cutId) => cutPositionOf(project, cutId)?.cut,
-      celKeyOf: (cut, layerId, frameId) =>
-          brushFrameKeyIn(project, cut, layerId, frameId),
-      cameraPoseOf: _session.camera.cameraPoseForCut,
-      cameraFrameSize: _session.camera.cameraFrameSize,
-      conteCelOf: autoFrame.conteCelFor,
-      rowRefusal: _rowRefusal,
-    ), _strokeOf);
+    final cels = _celsOf(ink.project);
+    return [
+      for (final (:page, at: _) in ink.pages)
+        contePictures(page, cels, _strokeOf),
+    ];
   }
+
+  /// Where the pictures of a sheet laid from [project] find their cuts,
+  /// cels and camera.
+  ContePictureProject _celsOf(Project project) => (
+    cutOf: (cutId) => cutPositionOf(project, cutId)?.cut,
+    celKeyOf: (cut, layerId, frameId) =>
+        brushFrameKeyIn(project, cut, layerId, frameId),
+    cameraPoseOf: _session.camera.cameraPoseForCut,
+    cameraFrameSize: _session.camera.cameraFrameSize,
+    conteCelOf: _session.autoFrame.conteCelFor,
+    rowRefusal: _rowRefusal,
+  );
 
   /// Why a cell with no block takes no ink, picture and band alike — the
   /// canvas's notice, word for word, for a press on a cell it may not fill
@@ -558,10 +577,12 @@ class _ConteTabHostState extends State<ConteTabHost> {
   String _unwrittenInkIdOf(ContePlacedCell cell) => _session.storyboardCursor
       .conteInkIdFor(CutId(cell.cutId), cell.source.startFrame);
 
+  /// The one ink layer over the pages on screen: their bands' windows and
+  /// their pictures' windows, each moved to where its page lies.
   Positioned _inkLayer(
     _InkMount ink,
     CanvasViewport viewport,
-    List<ContePicture> pictures,
+    List<List<ContePicture>> pictures,
   ) {
     return Positioned.fill(
       // The tool-state boundary (R18 UI-3) went one step further down (H40
@@ -570,150 +591,22 @@ class _ConteTabHostState extends State<ConteTabHost> {
       child: ConteInkLayer(
         key: const ValueKey<String>('conte-ink-layer'),
         controller: ink.controller,
-        page: ink.page,
+        pages: ink.pages,
         brushToolState: ink.tool,
         historyManager: _session.historyManager,
         viewport: viewport,
         strokeActive: _strokeHold,
         cacheInvalidationSink: _cacheInvalidationSink,
         pictures: widget.pictures,
-        pictureWindows: [for (final picture in pictures) picture.window],
+        pictureWindows: [
+          for (var index = 0; index < ink.pages.length; index += 1)
+            for (final picture in pictures[index])
+              picture.window.shiftedBy(ink.pages[index].at),
+        ],
         pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
         unwrittenInkIdOf: _unwrittenInkIdOf,
         rowRefusal: _rowRefusal,
         beforeLanding: _makeWhatTheStrokeLandsIn,
-      ),
-    );
-  }
-
-  /// Each cell's picture, a claimed press of its own.
-  ///
-  /// 🚨H24 (2026-09-15): the canvas surface under the sheet takes the arena
-  /// on the first movement, and one tap recogniser over the whole page lost
-  /// its tap to it the moment a finger wobbled. A cell fires from its claim
-  /// instead — the timesheet's header boxes' law — and not for a press the
-  /// canvas turned into a pan or a pinch.
-  ///
-  /// ⚠️REVERSED, so where two pictures overlap (a cell that encroaches with a
-  /// horizontal camera move) the EARLIER cell is on top and takes the press,
-  /// as the page-wide layer's first-match loop gave it.
-  Positioned _cellTapLayer(CanvasViewport viewport, ContePageLayout page) {
-    return Positioned.fill(
-      child: Stack(
-        key: const ValueKey<String>('conte-cell-tap-layer'),
-        children: [
-          for (final cell in page.cells.reversed)
-            Positioned.fromRect(
-              rect: _onScreen(viewport, cell.pictureRect),
-              child: ControlPressClaim(
-                onPressed: () => _selectCell(cell),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: silentPress(() => _selectCell(cell)),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// [documentRect] where [viewport] puts it on screen.
-  Rect _onScreen(CanvasViewport viewport, Rect documentRect) {
-    final topLeft = viewport.canvasToViewport(
-      CanvasPoint(x: documentRect.left, y: documentRect.top),
-    );
-    final bottomRight = viewport.canvasToViewport(
-      CanvasPoint(x: documentRect.right, y: documentRect.bottom),
-    );
-    return Rect.fromPoints(
-      Offset(topLeft.x, topLeft.y),
-      Offset(bottomRight.x, bottomRight.y),
-    );
-  }
-
-  Positioned _pageLayer(
-    ContePageLayout page,
-    ConteSheetSource source,
-    CanvasViewport viewport,
-    BuildContext context,
-    ConteInkController? inkController,
-  ) {
-    ContePagePainter painterOf(
-      SheetStratum stratum, {
-      ValueListenable<TimelineDragPreview?>? dragPreview,
-      Set<BrushFrameKey> liveInkKeys = const {},
-      List<Listenable?> repaint = const [],
-    }) => ContePagePainter(
-      page: page,
-      source: source,
-      // The printed words follow the notation language, as the timesheet's
-      // do.
-      words: conteWordsIn(_session.languageSettings.value.notationLanguage),
-      // No outline marks the cell being worked on (유저 2026-09-25:
-      // 「포커스기능 없애자 … 해당 칸 강조색 실루엣한다던가」) — the sheet
-      // is paper, and paper shows no focus.
-      pictureFor: _pictureFor,
-      imageFor: widget.imageFor,
-      viewport: viewport,
-      effectiveRatio: EffectiveDevicePixelRatio.of(context),
-      layers: stratum.layers,
-      // Saved sheet ink shows whatever the ink mode says (R5); a live input
-      // window's key stands down so translucent ink never composites twice.
-      inkImageFor: inkController == null
-          ? null
-          : (key) => inkController.displayImageFor(null, key),
-      liveInkKeys: liveInkKeys,
-      dragPreview: dragPreview,
-      repaint: repaint.isEmpty ? null : Listenable.merge(repaint),
-    );
-    return Positioned.fill(
-      // The sheet page is the timesheet's answer applied to its sibling. A
-      // `RepaintBoundary` here stopped the page being re-RECORDED, which was
-      // never the cost — the raster thread still replayed the whole display
-      // list every frame the app produced, for any reason, including the pen
-      // moving over the canvas in another panel.
-      //
-      // The surrounding `Stack` already clips `Clip.hardEdge`, so each bake's
-      // own clip is a no-op and the pixels do not move.
-      child: SheetStrata(
-        sheet: 'conte',
-        painters: {
-          SheetStratum.form: painterOf(SheetStratum.form),
-          // F-88: the numbers this page prints follow a cut-length drag, so
-          // the channel is both a VALUE the paint reads and a reason to
-          // repaint. A landed logo — nothing the painter compares changes
-          // for it.
-          SheetStratum.content: painterOf(
-            SheetStratum.content,
-            dragPreview: _session.dragPreview,
-            repaint: [_session.dragPreview, widget.imageRepaint],
-          ),
-          // A landed thumbnail or cover picture, likewise.
-          SheetStratum.picture: painterOf(
-            SheetStratum.picture,
-            repaint: [widget.thumbnails?.landed, widget.imageRepaint],
-          ),
-          if (inkController != null)
-            SheetStratum.ink: painterOf(
-              SheetStratum.ink,
-              liveInkKeys: _inkMount(page) == null
-                  ? const {}
-                  : {for (final window in conteInkWindows(page)) window.key},
-              repaint: [inkController],
-            ),
-        },
-        // ⚠️A stratum stands down while it changes on every step — the ink
-        // while the pen is down, the numbers while a cut-length drag
-        // re-prints them (F-88): capturing costs a full paint PLUS a full
-        // copy a step.
-        liveNow: (stratum) => switch (stratum) {
-          SheetStratum.ink => _strokeHold.value,
-          SheetStratum.content =>
-            _session.dragPreview.value is CutTrimDragPreview,
-          SheetStratum.form || SheetStratum.picture => false,
-        },
-        liveChanges: Listenable.merge([_strokeHold, _session.dragPreview]),
       ),
     );
   }
@@ -732,3 +625,15 @@ Project _withCutAtTheEnd(Project project, TrackId trackId, Cut cut) =>
             track,
       ],
     );
+
+/// Where a page lies, moved onto whole device pixels at [viewport]: the
+/// page's printers cut its view on the device grid again, and the ink
+/// layer places its windows by this same offset — so the printed page
+/// and the pen's windows over it land on the same pixels.
+Offset _onDevicePixels(Offset at, CanvasViewport viewport, double ratio) {
+  final perUnit = viewport.zoom * ratio;
+  return Offset(
+    (at.dx * perUnit).roundToDouble() / perUnit,
+    (at.dy * perUnit).roundToDouble() / perUnit,
+  );
+}

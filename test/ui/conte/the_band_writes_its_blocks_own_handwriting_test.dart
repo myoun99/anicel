@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -104,7 +105,10 @@ void main() {
             builder: (context, _) => ConteTabHost(
               session: session,
               thumbnails: null,
-              viewport: seedFromRender(tester, CanvasViewport()),
+              viewport: seedFromRender(
+                tester,
+                onConteBody(session, CanvasViewport()),
+              ),
               inkController: ink,
               brushToolState: brush,
               brushAllowed: true,

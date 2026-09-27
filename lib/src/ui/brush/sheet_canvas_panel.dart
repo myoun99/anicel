@@ -42,6 +42,7 @@ class SheetCanvasPanel extends StatefulWidget {
     this.pageStrip = const <Widget>[],
     this.bottomBarHostToken,
     this.fitFocusRect,
+    this.unframedFit,
     this.autoFrame,
     this.strokeHold,
     this.brushSwitch,
@@ -58,6 +59,10 @@ class SheetCanvasPanel extends StatefulWidget {
   final List<Widget> pageStrip;
   final Object? bottomBarHostToken;
   final Rect? fitFocusRect;
+
+  /// What a view nobody has framed yet is fitted to
+  /// ([BrushCanvasPanel.unframedFit]) — the conte's page in its book.
+  final Rect? unframedFit;
   final CanvasAutoFrameRequest? autoFrame;
 
   /// The sheet's live-stroke hold, raised by its ink windows. The panel
@@ -143,6 +148,7 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
           ? null
           : (widget.bottomBarHostToken, brush?.allowed),
       fitFocusRect: widget.fitFocusRect,
+      unframedFit: widget.unframedFit,
       autoFrame: widget.autoFrame,
       contentStrokeActive: widget.drawingOn ? widget.strokeHold : null,
       // F-80: a sheet runs the selected tool while its drawing is ON. With

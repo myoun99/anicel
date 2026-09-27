@@ -74,6 +74,10 @@ class ConteInkController extends SheetInkController<Null> {
   }
 }
 
+/// A page of the book on screen, and where it lies in the book's stack of
+/// pages (`PageStack`) — the offset its page-local marks move by.
+typedef ConteShownPage = ({ContePageLayout page, Offset at});
+
 /// The ink windows for one page: a window per cell's band, so a stroke
 /// over several cells leaves each its own piece ([sheetInkRegions]) and a
 /// stroke outside every cell leaves nothing — ink is the cells' alone (유저
@@ -121,7 +125,7 @@ class ConteInkLayer extends StatelessWidget {
   const ConteInkLayer({
     super.key,
     required this.controller,
-    required this.page,
+    required this.pages,
     required this.brushToolState,
     required this.historyManager,
     required this.viewport,
@@ -137,9 +141,10 @@ class ConteInkLayer extends StatelessWidget {
 
   final ConteInkController controller;
 
-  /// The page ON SCREEN — its windows are mounted; the other pages'
+  /// The pages ON SCREEN, each where it lies in the book's stack — their
+  /// windows are mounted in that one space (F-201); the other pages'
   /// surfaces keep their ink, they just have no window.
-  final ContePageLayout page;
+  final List<ConteShownPage> pages;
 
   /// Forwarded to [SheetInkLayer.brushToolState] — heard, not handed over.
   final ValueListenable<BrushToolState> brushToolState;
@@ -182,11 +187,13 @@ class ConteInkLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     return SheetInkLayer(
       windows: [
-        ...conteInkWindows(
-          page,
-          unwrittenInkIdOf: unwrittenInkIdOf,
-          rowRefusal: rowRefusal,
-        ),
+        for (final (:page, :at) in pages)
+          for (final window in conteInkWindows(
+            page,
+            unwrittenInkIdOf: unwrittenInkIdOf,
+            rowRefusal: rowRefusal,
+          ))
+            window.shiftedBy(at),
         ...pictureWindows,
       ],
       keyPrefix: 'conte',

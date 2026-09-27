@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/conte_book.dart';
 import '../helpers/device_viewport.dart';
 import '../helpers/frame_census.dart';
 import 'package:anicel/src/models/app_language.dart';
@@ -125,7 +126,10 @@ Future<EditorSessionManager> _pumpConte(
           // to screen offsets one for one, and an uncontrolled panel now
           // opens at the IDENTITY (one document px per DEVICE px), which
           // is 1/3 on the 3x test view.
-          viewport: seedFromRender(tester, CanvasViewport()),
+          viewport: seedFromRender(
+            tester,
+            onConteBody(session, CanvasViewport()),
+          ),
           inkController: inkController,
           brushToolState: brushToolState,
           brushAllowed: brushAllowed,
@@ -394,7 +398,7 @@ void main() {
               height: metrics.pageHeight,
               child: ConteInkLayer(
                 controller: controller,
-                page: page,
+                pages: [(page: page, at: Offset.zero)],
                 brushToolState: ValueNotifier(BrushToolState.defaults),
                 historyManager: historyManager,
                 // ⛔NOT `seedFromRender`. The device-unit rule is
@@ -489,7 +493,7 @@ void main() {
               height: metrics.pageHeight,
               child: ConteInkLayer(
                 controller: controller,
-                page: page,
+                pages: [(page: page, at: Offset.zero)],
                 brushToolState: ValueNotifier(BrushToolState.defaults),
                 historyManager: historyManager,
                 viewport: CanvasViewport(),

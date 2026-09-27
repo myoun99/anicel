@@ -278,6 +278,12 @@ class SheetInkPlacement {
   /// The window's slice of its surface, in surface pixels.
   Rect get surfaceRect => origin & window.size * scale;
 
+  /// The same window on a page that lies [by] further on — a page in a
+  /// stack of pages. The surface and its slice do not move: every mapping
+  /// here is measured from the window's corner.
+  SheetInkPlacement shiftedBy(Offset by) =>
+      SheetInkPlacement(window: window.shift(by), scale: scale, origin: origin);
+
   @override
   bool operator ==(Object other) =>
       other is SheetInkPlacement &&
