@@ -1966,46 +1966,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       ),
                                     ),
                                     if (playheadListenable != null)
-                                      // Frame-wide accent tint only — no solid
-                                      // edge line over the blocks (user
-                                      // direction); the ruler carries its own
-                                      // current-frame highlight. Subscribes to
-                                      // the cursor itself: a tick moves THIS
-                                      // overlay, the blocks never rebuild.
-                                      ValueListenableBuilder<int?>(
-                                        valueListenable:
-                                            playheadListenable,
-                                        builder:
-                                            (
-                                              context,
-                                              playheadFrame,
-                                              _,
-                                            ) => playheadFrame == null
-                                            ? const SizedBox.shrink()
-                                            : Positioned(
-                                                key:
-                                                    const ValueKey<
-                                                      String
-                                                    >(
-                                                      'storyboard-playhead',
-                                                    ),
-                                                left: frame.scale
-                                                    .leftForFrame(
-                                                      playheadFrame,
-                                                    ),
-                                                top: 0,
-                                                bottom: 0,
-                                                width: frame.scale
-                                                    .pixelsPerFrame,
-                                                child: IgnorePointer(
-                                                  child: ColoredBox(
-                                                    color: timelinePlayheadColor
-                                                        .withValues(
-                                                          alpha: 0.18,
-                                                        ),
-                                                  ),
-                                                ),
-                                              ),
+                                      _playheadTint(
+                                        playheadListenable,
+                                        frame.scale,
                                       ),
                                     // The MOVIE-END line through the
                                     // STRIPS (UI-R20 #3): the ruler's
@@ -2674,6 +2637,50 @@ class _StoryboardLabelShell extends StatelessWidget {
     );
   }
 }
+
+/// A layer that follows the cursor, on its OWN — a move repaints this layer
+/// alone and lays out this layer alone.
+///
+/// 🚨I-22 ③: both halves are needed. The boundary keeps the paint in (R12-⑥
+/// kept the strips out of the playhead's way the same way). The layout half
+/// is Flutter's: a rebuild inside a `LayoutBuilder`'s subtree lays that
+/// LayoutBuilder out again (its build scope), and a layout ends by asking
+/// for a paint of the whole region above it — a tick in a bare overlay laid
+/// the storyboard's body out again and repainted the panel around it on
+/// every playback frame. This LayoutBuilder takes the rebuild's scope, and
+/// its caller hands it tight constraints (a fill), so the layout stays here.
+Widget _cursorLayer(Widget child) =>
+    RepaintBoundary(child: LayoutBuilder(builder: (context, _) => child));
+
+/// The frame-wide accent tint on the playhead's frame — no solid edge line
+/// over the blocks (user direction); the ruler carries its own current-frame
+/// highlight. It subscribes to the cursor itself, on a layer of its own
+/// ([_cursorLayer]): a tick moves THIS overlay, the blocks never rebuild.
+Widget _playheadTint(ValueListenable<int?> playhead, TimelineScale scale) =>
+    Positioned.fill(
+      child: IgnorePointer(
+        child: _cursorLayer(
+          ValueListenableBuilder<int?>(
+            valueListenable: playhead,
+            builder: (context, frame, _) => Stack(
+              children: [
+                if (frame != null)
+                  Positioned(
+                    key: const ValueKey<String>('storyboard-playhead'),
+                    left: scale.leftForFrame(frame),
+                    top: 0,
+                    bottom: 0,
+                    width: scale.pixelsPerFrame,
+                    child: ColoredBox(
+                      color: timelinePlayheadColor.withValues(alpha: 0.18),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
 
 /// A storyboard label row's NAME: the one row-name style every surface
 /// wears ([layerRowNameStyle], F-26 #1226 — 「스토리보드패널도 겸사겸사 싹 다

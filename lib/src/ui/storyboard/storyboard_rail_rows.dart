@@ -879,11 +879,12 @@ class _StoryboardRailRows {
         // every move repainted every strip — at ten minutes every edge grip
         // of the film and the plate grounds under them, on every playback
         // frame. The timeline's playhead rides its own boundary the same way
-        // (`TimelineFrameGridStack`).
+        // (`TimelineFrameGridStack`) — and a layout of its own besides
+        // ([_cursorLayer]).
         Positioned.fill(
           child: IgnorePointer(
-            child: RepaintBoundary(
-              child: _state._standing.trackStandingCellRing(track, scale),
+            child: _cursorLayer(
+              _state._standing.trackStandingCellRing(track, scale),
             ),
           ),
         ),
