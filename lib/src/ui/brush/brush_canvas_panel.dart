@@ -2276,6 +2276,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.rightStripBar,
     required this.horizontalStripBar,
     required this.cover,
+    required this.onFloor,
     this.pageStrip = const <Widget>[],
     this.bottomOverlaySpan = 0,
     this.railBand,
@@ -2284,6 +2285,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   final Widget child;
   final Widget bottomBar;
   final Widget rightStripBar;
+
+  /// Whether this panel is the FLOOR under the others — the canvas or the
+  /// viewer — rather than a panel docked in a rail ([_capsuleTrack]).
+  final bool onFloor;
 
   /// The horizontal panbar, its own capsule on the top edge.
   final Widget horizontalStripBar;
@@ -2330,9 +2335,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// second rail.
   static const double _pageStripWidth = 32;
 
-  /// What a scrollbar capsule spans, as a share of the edge it rides —
-  /// clamped, because the point of a capsule is that it says where you are
-  /// and lets you drag back, not that it maps the whole pasteboard.
+  /// What a scrollbar capsule spans ON THE FLOOR, as a share of the edge it
+  /// rides — clamped, because the point of a capsule is that it says where
+  /// you are and lets you drag back, not that it maps the whole pasteboard.
+  /// A docked panel's runs its whole edge ([_capsuleTrack]).
   static const double _capsuleTrackFraction = 0.34;
   static const double _capsuleTrackMin = 80;
 
@@ -2343,6 +2349,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     // has nowhere to travel — a scrollbar that cannot be dragged is not a
     // scrollbar, and dragging is the ONLY way back from a runaway pan.
     final room = math.max(0.0, edge - 2 * _capsuleMargin);
+    // 🗣️F-201 (유저 2026-09-27): 「바탕에 깔린 캔버스나 뷰어말고 도킹된
+    // 패널은 스크롤바 알약 최대치로 늘리자 길이」 — a DOCKED panel's capsule
+    // runs its whole edge; only the floor's keeps the short one below.
+    if (!onFloor) {
+      return room;
+    }
     final wanted = (edge * _capsuleTrackFraction).clamp(
       _capsuleTrackMin,
       _capsuleTrackMax,
