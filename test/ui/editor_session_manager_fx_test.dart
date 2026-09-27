@@ -186,4 +186,22 @@ void main() {
       expect(key?.value.y, closeTo(200, 1e-9));
     });
   });
+
+  test('a layer transform write is announced — the rails and the canvas '
+      'rebuild off the session, and nothing else says the track moved', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final layer = session.activeLayer!;
+    var announced = 0;
+    session.addListener(() => announced += 1);
+    session.laneVerbs.updateLayerTransformTrack(
+      layer.id,
+      TransformTrack.empty().copyWith(
+        opacity: PropertyTrack<double>().withKey(0, 0.5),
+      ),
+    );
+    expect(announced, greaterThan(0));
+  });
 }
