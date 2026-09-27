@@ -325,6 +325,13 @@ void main() {
         await gesture.moveTo(Offset(list.center.dx, list.top + rowHeight * 1.5));
         await tester.pump(const Duration(milliseconds: 20));
         await walk(tester, gesture, const Offset(0, 2));
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(cell('b2')).top,
+          closeTo(list.top + rowHeight * 2, 0.5),
+          reason: 'the gap it would fill opens under it: Paint\'s second '
+              'brush steps down a row',
+        );
         await gesture.up();
         await tester.pumpAndSettle();
 
@@ -377,6 +384,125 @@ void main() {
 
         expect(order(host, group: chalk), ['b1']);
         expect(order(host, group: ink), ['b0']);
+      });
+
+      testWidgets('I-49: past another group\'s last brush is the end of it', (
+        tester,
+      ) async {
+        final host = await pumpHost(
+          tester,
+          groups: const [
+            BrushGroup(id: ink, name: 'Ink'),
+            BrushGroup(id: paint, name: 'Paint'),
+          ],
+          presets: [
+            brush(0, group: ink),
+            brush(1, group: paint),
+            brush(2, group: paint),
+          ],
+          selected: const BrushPresetId('b0'),
+        );
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(cell('b0')),
+          kind: kind,
+        );
+        await tester.pump();
+        await walk(tester, gesture, const Offset(0, 40));
+        await gesture.moveTo(tester.getCenter(tab('paint')));
+        await tester.pump(const Duration(milliseconds: 20));
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        final list = tester.getRect(
+          find.byKey(const ValueKey<String>('brush-preset-list')),
+        );
+        await gesture.moveTo(Offset(list.center.dx, list.top + rowHeight * 3.5));
+        await tester.pump(const Duration(milliseconds: 20));
+        await walk(tester, gesture, const Offset(0, 2));
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(order(host, group: paint), ['b1', 'b2', 'b0']);
+      });
+
+      testWidgets('a brush carried to another group and back still leaves '
+          'its gap', (tester) async {
+        final host = await pumpHost(
+          tester,
+          groups: const [
+            BrushGroup(id: ink, name: 'Ink'),
+            BrushGroup(id: paint, name: 'Paint'),
+          ],
+          presets: [
+            brush(0, group: ink),
+            brush(1, group: ink),
+            brush(2, group: paint),
+          ],
+          selected: const BrushPresetId('b0'),
+        );
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(cell('b0')),
+          kind: kind,
+        );
+        await tester.pump();
+        await walk(tester, gesture, const Offset(0, 40));
+        for (final group in const ['paint', 'ink']) {
+          await gesture.moveTo(tester.getCenter(tab(group)));
+          await tester.pump(const Duration(milliseconds: 20));
+          await tester.pump(const Duration(milliseconds: 400));
+          await tester.pumpAndSettle();
+        }
+        expect(cell('b1'), findsOneWidget, reason: '⛔premise: Ink is back');
+        expect(
+          find.byKey(const ValueKey<String>('brush-preset-chip-b0')),
+          findsOneWidget,
+          reason: 'only the brush in the hand — the list keeps the gap it '
+              'left, not a second copy',
+        );
+
+        // Let go over the rail: nothing moves.
+        await gesture.up();
+        await tester.pumpAndSettle();
+        expect(order(host, group: ink), ['b0', 'b1']);
+      });
+
+      testWidgets('a brush held at the list\'s edge scrolls the list, as a tab '
+          'held at the rail\'s does', (tester) async {
+        final host = await pumpHost(
+          tester,
+          presets: [for (var n = 0; n < 16; n += 1) brush(n)],
+        );
+        final scroll = listScroll(tester);
+        final list = tester.getRect(
+          find.byKey(const ValueKey<String>('brush-preset-list')),
+        );
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(cell('b0')),
+          kind: kind,
+        );
+        await tester.pump();
+        await walk(tester, gesture, const Offset(0, 40));
+        // Held still with the brush hanging past the bottom edge.
+        await gesture.moveTo(Offset(list.center.dx, list.bottom - 4));
+        for (var i = 0; i < 30; i += 1) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(
+          scroll.position.pixels,
+          greaterThan(rowHeight * 2),
+          reason: 'the list keeps following the brush while it is held there',
+        );
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(
+          order(host).indexOf('b0'),
+          greaterThan(6),
+          reason: 'and it lands where the list took it',
+        );
       });
     });
   }

@@ -435,5 +435,74 @@ void main() {
             'may not be what decides',
       );
     });
+
+    testWidgets('a cell dropped on some other target moves nothing here, '
+        'and the grid lets go of it', (tester) async {
+      final moves = <(int?, int)>[];
+      var ends = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 130,
+                  height: 300,
+                  child: BrushPresetReorderGrid(
+                    itemCount: 4,
+                    cellHeight: 40,
+                    itemKey: (index) => ValueKey<String>('cell-$index'),
+                    onReorder: (oldIndex, newIndex) =>
+                        moves.add((oldIndex, newIndex)),
+                    onDragEnd: () => ends += 1,
+                    itemBuilder: (context, index) =>
+                        ColoredBox(color: Colors.blue, child: Text('$index')),
+                  ),
+                ),
+                DragTarget<int>(
+                  onWillAcceptWithDetails: (_) => true,
+                  onAcceptWithDetails: (_) {},
+                  builder: (context, _, _) => const SizedBox(
+                    key: ValueKey<String>('elsewhere'),
+                    width: 100,
+                    height: 300,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey<String>('cell-0'))),
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 30));
+      await tester.pump();
+      await gesture.moveTo(
+        tester.getCenter(find.byKey(const ValueKey<String>('elsewhere'))),
+      );
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(moves, isEmpty);
+      expect(ends, 1, reason: 'the grid is not left holding a gap');
+
+      // The next drag is an ordinary one: cell 1 down past cell 2.
+      final next = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey<String>('cell-1'))),
+      );
+      await tester.pump();
+      await next.moveBy(const Offset(0, 30));
+      await tester.pump();
+      await next.moveBy(const Offset(0, 20));
+      await tester.pump();
+      await next.up();
+      await tester.pumpAndSettle();
+      expect(moves, [(1, 2)]);
+    });
   });
 }

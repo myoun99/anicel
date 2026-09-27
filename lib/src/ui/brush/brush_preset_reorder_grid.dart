@@ -158,6 +158,10 @@ class BrushPresetReorderGrid extends StatefulWidget {
   State<BrushPresetReorderGrid> createState() => _BrushPresetReorderGridState();
 }
 
+/// Where the carried cell is held: its feedback's global top-left, and the
+/// grid it is aimed into.
+typedef _Drop = ({Offset offset, int columns, double cellWidth});
+
 class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
   /// The cell being carried, by its KEY.
   ///
@@ -183,7 +187,7 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
 
   /// The last place the carried cell was held over, kept so a scroll under
   /// a still pointer re-aims it.
-  ({Offset offset, int columns, double cellWidth})? _lastDrop;
+  _Drop? _lastDrop;
 
   /// Scrolls the list while the carried cell is held at its edge — what
   /// the rail's `ReorderableListView` does for a tab, with the same
@@ -260,7 +264,7 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
   }
 
   /// Aims the drop at the slot under the carried cell held at [drop].
-  void _aimAt(({Offset offset, int columns, double cellWidth}) drop) {
+  void _aimAt(_Drop drop) {
     final box = _contentKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) {
       return;
@@ -279,9 +283,9 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
     }
   }
 
-  /// Scrolls the list when the carried cell, its top-left at [topLeft], is
-  /// held at the list's edge.
-  void _autoScrollNear(Offset topLeft, double cellWidth) {
+  /// Scrolls the list while the carried cell is held at [drop], past its
+  /// edge.
+  void _autoScrollNear(_Drop drop) {
     final content = _contentKey.currentContext;
     final scrollable = content == null ? null : Scrollable.maybeOf(content);
     if (scrollable == null) {
@@ -291,16 +295,23 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
       scrollable,
       onScrollViewScrolled: () {
         final drop = _lastDrop;
-        if (drop != null && mounted) {
-          _aimAt(drop);
+        if (drop == null || !mounted) {
+          return;
         }
+        _aimAt(drop);
+        // Still held past the edge: keep going. A pointer held still sends
+        // no more moves, so this is what carries the scroll on — Flutter's
+        // own reorderable list asks again the same way.
+        _autoScroller?.startAutoScrollIfNecessary(_feedbackRect(drop));
       },
       velocityScalar: _autoScrollVelocity,
     );
-    scroller.startAutoScrollIfNecessary(
-      topLeft & Size(cellWidth, widget.cellHeight),
-    );
+    scroller.startAutoScrollIfNecessary(_feedbackRect(drop));
   }
+
+  /// Where the carried cell is drawn, in global coordinates.
+  Rect _feedbackRect(_Drop drop) =>
+      drop.offset & Size(drop.cellWidth, widget.cellHeight);
 
   @override
   void dispose() {
@@ -462,13 +473,14 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
             : DragTarget<int>(
                 onWillAcceptWithDetails: (_) => true,
                 onMove: (details) {
-                  _lastDrop = (
+                  final drop = (
                     offset: details.offset,
                     columns: columns,
                     cellWidth: cellWidth,
                   );
-                  _aimAt(_lastDrop!);
-                  _autoScrollNear(details.offset, cellWidth);
+                  _lastDrop = drop;
+                  _aimAt(drop);
+                  _autoScrollNear(drop);
                 },
                 onLeave: (_) => _autoScroller?.stopAutoScroll(),
                 onAcceptWithDetails: (_) => _endDrag(accepted: true),
