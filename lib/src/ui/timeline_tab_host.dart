@@ -165,13 +165,12 @@ class TimelineTabHost extends StatefulWidget {
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
 
-  /// The frame cursor the panel's cursor-driven widgets subscribe to
-  /// (playhead, rulers, lane values, frame counter). Playback ticks and
-  /// editing seeks land HERE — never as a panel rebuild; that is the whole
-  /// playback-performance architecture.
-  late final ValueNotifier<int> _frameCursor = ValueNotifier<int>(
-    _session.currentFrameIndex,
-  );
+  // ⛔The frame cursor the panel's cursor-driven widgets subscribe to
+  // (playhead, rulers, lane values, frame counter) is the SESSION's now
+  // ([PlayheadCursors.cutFrame]): the row this panel folds into follows the
+  // same one, and that row is built by the workspace, which could not reach
+  // a cursor kept here (유저 2026-09-27,
+  // folded-row-playhead-during-playback-Q1).
 
   /// Everything that can change whether a frame reads as CACHED: frames
   /// warming in, and pixel edits invalidating composites. The rulers' green
@@ -191,38 +190,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.playbackRig.prerenderScheduler.progress,
     _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
-
-  void _syncFrameCursor() {
-    final playbackGlobalFrame =
-        _session.playbackRig.playback.globalFrameIndexListenable.value;
-    _frameCursor.value = playbackGlobalFrame == null
-        ? _session.currentFrameIndex
-        : _session.playbackRig.playback.position?.localFrameIndex ??
-              _session.currentFrameIndex;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _session.playbackRig.playback.globalFrameIndexListenable.addListener(
-      _syncFrameCursor,
-    );
-    // Scrub moves fire the editing cursor WITHOUT a session notify — this
-    // listener is what keeps the playhead glued to the pointer.
-    _session.editingFrameCursor.addListener(_syncFrameCursor);
-    _session.addListener(_syncFrameCursor);
-  }
-
-  @override
-  void dispose() {
-    _session.playbackRig.playback.globalFrameIndexListenable.removeListener(
-      _syncFrameCursor,
-    );
-    _session.editingFrameCursor.removeListener(_syncFrameCursor);
-    _session.removeListener(_syncFrameCursor);
-    _frameCursor.dispose();
-    super.dispose();
-  }
 
   /// Every kind's twirl-down lanes — the SAME AE Transform lanes on truly
   /// every layer (unified layer controls): the camera rides the cut camera
@@ -457,7 +424,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   );
 
   Widget _panel(BuildContext context) {
-    // Playback ticks flow into the frame cursor (see _syncFrameCursor) —
+    // Playback ticks flow into the frame cursor ([PlayheadCursors]) —
     // NEVER as a panel rebuild: only the cursor-driven widgets (playhead
     // layer, rulers, lane values, counter) subscribe, so the grids'
     // hundreds of cells stay untouched frame to frame. The prerender
@@ -530,12 +497,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // step rebuilds the dragged row's gate + the cursor overlay only,
             // never this host (the release commit is the one session notify).
             dragPreview: _session.dragPreview,
-            frameCursor: _frameCursor,
+            frameCursor: _session.playheadCursors.cutFrame,
             frameReadySignal: _frameReadySignal,
             revealSelectionTick: _session.rangeSelections.revealSelectionTick,
             // F-110: the page-turn tick. This is the same listenable
-            // [_syncFrameCursor] reads playback out of — null while nothing
-            // plays, which is what keeps a keyboard walk on the walk law.
+            // [PlayheadCursors.cutFrameNow] reads playback out of — null while
+            // nothing plays, which is what keeps a keyboard walk on the walk
+            // law.
             playbackFrame:
                 _session.playbackRig.playback.globalFrameIndexListenable,
             readyRunsIn:

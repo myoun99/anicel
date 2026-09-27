@@ -94,7 +94,7 @@ void main() {
     commitStoryboardScrub(s);
     expect(s.activeCutId, isNull, reason: 'the release commits no-cut');
     expect(s.gapParkedGlobalFrame, aEnd + 2, reason: 'parking survives');
-    expect(storyboardPlayheadFrame(s), aEnd + 2);
+    expect(s.playheadCursors.trackFrameNow(), aEnd + 2);
   });
 
   test('selecting a cut FROM the gap lands on ITS first frame '
@@ -112,7 +112,7 @@ void main() {
     expect(s.editingFrameCursor.value, 0, reason: 'index 1 (local 0)');
     expect(s.gapParkedGlobalFrame, isNull, reason: 'parking cleared');
     expect(
-      storyboardPlayheadFrame(s),
+      s.playheadCursors.trackFrameNow(),
       aEnd + 4,
       reason: 'the playhead sits on the cut start, not in the gap',
     );

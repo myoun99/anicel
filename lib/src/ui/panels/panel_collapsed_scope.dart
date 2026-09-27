@@ -38,6 +38,12 @@ class PanelCollapsedScope extends InheritedWidget {
           ?.collapsed ??
       false;
 
+  /// [of], asked at EVENT time — a listener's question, which must not
+  /// register a dependency the way a build's does.
+  static bool isFolded(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<PanelCollapsedScope>()?.collapsed ??
+      false;
+
   @override
   bool updateShouldNotify(PanelCollapsedScope oldWidget) =>
       oldWidget.collapsed != collapsed;

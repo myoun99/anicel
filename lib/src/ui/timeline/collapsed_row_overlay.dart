@@ -11,6 +11,8 @@ import 'inbetween_mark_painter.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'layer_rail_window.dart' show LayerRailExtent, LayerRailWindow;
 import 'timeline_beat_lines.dart';
+import 'timeline_edge_auto_pan.dart'
+    show KeptStep, pageKeptAxis, revealKeptAxis, scrollableIsShown;
 import 'timeline_cell_style.dart'
     show
         TimelineBlockWordGrowth,
@@ -20,7 +22,11 @@ import 'timeline_frame_geometry.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_zoom_anchor_policy.dart'
+    show applyZoomAnchoredScroll, zoomAnchoredScrollOffset;
 import '../repaint_props.dart';
+import '../sliced_value_listenable_builder.dart';
+import '../widgets/tick_layer.dart';
 import 'memo_token.dart';
 
 /// The row you are standing on, drawn over the artwork with NO ground under
@@ -66,6 +72,21 @@ import 'memo_token.dart';
 /// were `0x66` and `0x9E`, and having two was the bug.
 const double collapsedRowOverlayOpacity = 0.7;
 
+/// What a folded row turns its axis by, as the open panel turns its own:
+///
+///  * `playhead` — where the playhead stands, in this axis's frames: the
+///    same channel the open panel's playhead reads ([PlayheadCursors]);
+///  * `playing` — the page turn's gate, as the open grid's (F-110): the
+///    playback position, null while nothing plays, so a hand's seek stays
+///    the walk's business;
+///  * `revealSelectionTick` — the session's "bring the selection back into
+///    view" tick (R5), the walk the open grid answers on its frame axis.
+typedef CollapsedRowFollows = ({
+  ValueListenable<int?> playhead,
+  ValueListenable<int?> playing,
+  ValueListenable<int> revealSelectionTick,
+});
+
 class CollapsedRowOverlay extends StatefulWidget {
   const CollapsedRowOverlay({
     super.key,
@@ -79,6 +100,7 @@ class CollapsedRowOverlay extends StatefulWidget {
     this.frameRowBuilder,
     this.frameAxisOffset,
     this.drawnFrameCount,
+    this.follows,
   });
 
   /// The rail row itself, chromeless — see the class doc. Null on a lane row.
@@ -94,7 +116,20 @@ class CollapsedRowOverlay extends StatefulWidget {
   /// — the host's own value, the one the grid keeps (F-143). The frame half
   /// is laid out from it, so the folded row shows the frames the open one
   /// was showing. Null = the axis at its start.
-  final ValueListenable<double>? frameAxisOffset;
+  ///
+  /// 🚨Written here too (유저 2026-09-27,
+  /// folded-row-playhead-during-playback-Q1: 「스크롤이동이나 다 구조적으로
+  /// 동기화」): while folded this row is the axis's window on screen, so IT
+  /// turns the page under a playing playhead, reveals a walk ([follows])
+  /// and re-anchors a zoom — the grids' own laws ([pageKeptAxis],
+  /// [revealKeptAxis], [zoomAnchoredScrollOffset]) against the width this
+  /// row shows. The grid folded away stands down ([scrollableIsShown]) and
+  /// takes the value up again when it lays out (its layout syncs to it).
+  final ValueNotifier<double>? frameAxisOffset;
+
+  /// What turns [frameAxisOffset] — see [CollapsedRowFollows]. Null leaves
+  /// the axis where the host puts it.
+  final CollapsedRowFollows? follows;
 
   /// ⑩ 뿌리 C: the FRAME half, built by the caller from the same row widget
   /// the timeline draws — the other half of "the overlay owns no drawing
@@ -185,10 +220,103 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
   static const ValueListenable<double> _axisAtItsStart =
       AlwaysStoppedAnimation<double>(0);
 
+  /// How wide the frame half was at its last layout — the window a page or
+  /// a walk is measured against. Zero until it has been laid out, which
+  /// moves nothing.
+  double _viewport = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _listen(widget.follows);
+  }
+
+  @override
+  void didUpdateWidget(covariant CollapsedRowOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final before = oldWidget.follows;
+    final now = widget.follows;
+    if (!identical(before?.playhead, now?.playhead) ||
+        !identical(before?.revealSelectionTick, now?.revealSelectionTick)) {
+      _unlisten(before);
+      _listen(now);
+    }
+    _anchorZoom(oldWidget.pixelsPerFrame);
+  }
+
+  /// A zoom step re-anchors the axis on THIS window, by the open grids' own
+  /// law ([zoomAnchoredScrollOffset]): the playhead stays where it stands on
+  /// screen when it is in view. The grid folded away stands down on a zoom
+  /// ([applyZoomAnchoredScroll]) — it anchored from a scroll position no
+  /// page had moved.
+  ///
+  /// Written here, mid-build, on purpose: this row's frame half is the only
+  /// listener that builds off the axis, and it is below this build; the
+  /// first frame at the new zoom already stands where it should.
+  void _anchorZoom(double oldPixelsPerFrame) {
+    final axis = widget.frameAxisOffset;
+    if (axis == null ||
+        oldPixelsPerFrame == widget.pixelsPerFrame ||
+        oldPixelsPerFrame <= 0) {
+      return;
+    }
+    axis.value = zoomAnchoredScrollOffset(
+      oldOffset: axis.value,
+      oldPixelsPerFrame: oldPixelsPerFrame,
+      newPixelsPerFrame: widget.pixelsPerFrame,
+      viewportExtent: _viewport,
+      anchorFrame: widget.follows?.playhead.value,
+    );
+  }
+
   @override
   void dispose() {
+    _unlisten(widget.follows);
     _geometry.dispose();
     super.dispose();
+  }
+
+  void _listen(CollapsedRowFollows? follows) {
+    follows?.playhead.addListener(_handlePlaybackPage);
+    follows?.revealSelectionTick.addListener(_handleRevealSelection);
+  }
+
+  void _unlisten(CollapsedRowFollows? follows) {
+    follows?.playhead.removeListener(_handlePlaybackPage);
+    follows?.revealSelectionTick.removeListener(_handleRevealSelection);
+  }
+
+  /// F-110 on this row's own window: a playing playhead that leaves it turns
+  /// the page, and nothing moves while nothing plays.
+  void _handlePlaybackPage() {
+    if (widget.follows?.playing.value == null) {
+      return;
+    }
+    _moveAxis(pageKeptAxis);
+  }
+
+  /// R5's walk on this row's own window — after the frame the selection
+  /// moved in, as the open grid answers it.
+  void _handleRevealSelection() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _moveAxis(revealKeptAxis);
+      }
+    });
+  }
+
+  void _moveAxis(void Function(KeptStep axis) law) {
+    final offset = widget.frameAxisOffset;
+    final frame = widget.follows?.playhead.value;
+    if (offset == null || frame == null) {
+      return;
+    }
+    law((
+      offset: offset,
+      viewport: _viewport,
+      extent: widget.pixelsPerFrame,
+      at: frame,
+    ));
   }
 
   @override
@@ -213,51 +341,58 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
       // thing painted SOLIDLY」 still holds, but RELATIVELY: the current cell
       // is still the only full one inside this row, and the row as a whole
       // sits at 70%.
-      child: Opacity(
-        opacity: collapsedRowOverlayOpacity,
-        child: SizedBox(
-          height: widget.height,
-          // ★The rail window is CLAMPED to the room that exists. The stored
-          // width is the splitter's answer for a panel as wide as the region,
-          // and the collapsed row is laid over a region that can be pulled
-          // narrower than that — an inflexible 434 beside an `Expanded` then
-          // overflows by the difference rather than yielding, which is exactly
-          // what the region tests caught. Clamping keeps the rail model's own
-          // rule: the window never exceeds what there is to window.
-          child: LayoutBuilder(
-            builder: (context, constraints) => Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ★THE RAIL MODEL, from the widget that owns it rather than
-                // rebuilt by hand: 「레일은 자기 자연 크기로 눕고, 스플리터는
-                // 그 위의 창을 정하고, 꼬리가 그냥 잘린다」.
-                //
-                // ⛔This was a `SizedBox(min(railWidth, maxWidth))` wrapping a
-                // `ClipRect` + `OverflowBox` — the same three jobs
-                // [LayerRailWindow] does, spelled out a second time. The copy
-                // could not answer the one question that mattered: a stored
-                // extent of null means NATURAL, and only the window widget
-                // knows that. `availableExtent` carries over the clamp the
-                // `min()` was doing, which is what keeps a narrowed region
-                // from overflowing.
-                LayerRailWindow(
-                  axis: Axis.horizontal,
-                  rail: widget.rail ?? (_ownedRail ??= LayerRailExtent()),
-                  naturalExtent: widget.naturalRailWidth,
-                  availableExtent: constraints.maxWidth,
-                  child: _haloed(
-                    context,
-                    // A layer row is the REAL row, chromeless. A property
-                    // lane is its name and its value, which is what the rail
-                    // shows there — so the caller hands null instead.
-                    widget.railChild ?? _rail(row, colorScheme),
+      //
+      // 🚨A LAYER OF ITS OWN (유저 2026-09-27: 「층 최대한 나눠서 굽는다던가」):
+      // the row lies over the artwork with nothing between, so a page turn
+      // or a structure rebuild here repainted whatever boundary stood above
+      // the workspace. The playhead inside is a tick layer of its own again.
+      child: RepaintBoundary(
+        child: Opacity(
+          opacity: collapsedRowOverlayOpacity,
+          child: SizedBox(
+            height: widget.height,
+            // ★The rail window is CLAMPED to the room that exists. The stored
+            // width is the splitter's answer for a panel as wide as the region,
+            // and the collapsed row is laid over a region that can be pulled
+            // narrower than that — an inflexible 434 beside an `Expanded` then
+            // overflows by the difference rather than yielding, which is exactly
+            // what the region tests caught. Clamping keeps the rail model's own
+            // rule: the window never exceeds what there is to window.
+            child: LayoutBuilder(
+              builder: (context, constraints) => Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ★THE RAIL MODEL, from the widget that owns it rather than
+                  // rebuilt by hand: 「레일은 자기 자연 크기로 눕고, 스플리터는
+                  // 그 위의 창을 정하고, 꼬리가 그냥 잘린다」.
+                  //
+                  // ⛔This was a `SizedBox(min(railWidth, maxWidth))` wrapping a
+                  // `ClipRect` + `OverflowBox` — the same three jobs
+                  // [LayerRailWindow] does, spelled out a second time. The copy
+                  // could not answer the one question that mattered: a stored
+                  // extent of null means NATURAL, and only the window widget
+                  // knows that. `availableExtent` carries over the clamp the
+                  // `min()` was doing, which is what keeps a narrowed region
+                  // from overflowing.
+                  LayerRailWindow(
+                    axis: Axis.horizontal,
+                    rail: widget.rail ?? (_ownedRail ??= LayerRailExtent()),
+                    naturalExtent: widget.naturalRailWidth,
+                    availableExtent: constraints.maxWidth,
+                    child: _haloed(
+                      context,
+                      // A layer row is the REAL row, chromeless. A property
+                      // lane is its name and its value, which is what the rail
+                      // shows there — so the caller hands null instead.
+                      widget.railChild ?? _rail(row, colorScheme),
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: ClipRect(
-                    child: LayoutBuilder(
-                      builder: (context, frameConstraints) =>
-                          ValueListenableBuilder<double>(
+                  Expanded(
+                    child: ClipRect(
+                      child: LayoutBuilder(
+                        builder: (context, frameConstraints) {
+                          _viewport = frameConstraints.maxWidth;
+                          return ValueListenableBuilder<double>(
                             valueListenable:
                                 widget.frameAxisOffset ?? _axisAtItsStart,
                             builder: (context, origin, _) => _frameHalf(
@@ -266,11 +401,13 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
                               viewport: frameConstraints.maxWidth,
                               origin: origin,
                             ),
-                          ),
+                          );
+                        },
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -316,16 +453,18 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
     final build = widget.frameRowBuilder;
     final Widget content;
     if (build == null) {
-      content = CustomPaint(
-        key: const ValueKey<String>('collapsed-strip'),
-        painter: _CollapsedStripPainter(
-          snapshot: snapshot,
-          row: row,
-          pixelsPerFrame: cell,
-          colorScheme: colorScheme,
-          baseTextStyle: DefaultTextStyle.of(context).style,
-          frameStartIndex: first,
-        ),
+      content = _CollapsedStrip(
+        snapshot: snapshot,
+        row: row,
+        // The live playhead when the host hands one over; a host that does
+        // not (a bare mount) shows where the snapshot stood.
+        playhead:
+            widget.follows?.playhead ??
+            AlwaysStoppedAnimation<int?>(snapshot.frameIndex),
+        pixelsPerFrame: cell,
+        colorScheme: colorScheme,
+        baseTextStyle: DefaultTextStyle.of(context).style,
+        frameStartIndex: first,
       );
     } else {
       // Republished per layout, value only — the handle's identity is what
@@ -491,6 +630,144 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
   }
 }
 
+/// The fallback strip, following the playhead it is handed (유저 2026-09-27,
+/// folded-row-playhead-during-playback-Q1: 「재생헤드나 인덱스나 … 다 구조적으로
+/// 동기화」): it drew the snapshot's frame, which a playing film — or a
+/// scrub, which moves no snapshot either — left behind.
+///
+/// Split by what moves how often (「층 최대한 나눠서 굽는다던가」): the blocks
+/// and their marks repaint when the playhead crosses into another block —
+/// the block it stands on is the one painted solidly — and the playhead,
+/// with the one cell it selects between blocks, is a tick layer of its own.
+class _CollapsedStrip extends StatelessWidget {
+  const _CollapsedStrip({
+    required this.snapshot,
+    required this.row,
+    required this.playhead,
+    required this.pixelsPerFrame,
+    required this.colorScheme,
+    required this.baseTextStyle,
+    required this.frameStartIndex,
+  });
+
+  final FlipHudSnapshot snapshot;
+  final FlipHudRow row;
+
+  /// Where the playhead stands, in the frames the snapshot counts.
+  final ValueListenable<int?> playhead;
+
+  final double pixelsPerFrame;
+  final ColorScheme colorScheme;
+  final TextStyle baseTextStyle;
+  final int frameStartIndex;
+
+  /// The first frame of the block the playhead stands on; null between
+  /// blocks — the slice the blocks rebuild on.
+  int? _blockUnderPlayhead() {
+    final frame = playhead.value;
+    return frame == null ? null : row.runAt(frame)?.startIndex;
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      SlicedListenableBuilder<int?>(
+        listenable: playhead,
+        slice: _blockUnderPlayhead,
+        builder: (context, standingOn) => CustomPaint(
+          key: const ValueKey<String>('collapsed-strip'),
+          painter: _CollapsedStripPainter(
+            snapshot: snapshot,
+            row: row,
+            pixelsPerFrame: pixelsPerFrame,
+            colorScheme: colorScheme,
+            baseTextStyle: baseTextStyle,
+            frameStartIndex: frameStartIndex,
+            standingOn: standingOn,
+          ),
+        ),
+      ),
+      TickLayer(
+        child: CustomPaint(
+          key: const ValueKey<String>('collapsed-strip-playhead'),
+          painter: _CollapsedStripPlayheadPainter(
+            playhead: playhead,
+            row: row,
+            pixelsPerFrame: pixelsPerFrame,
+            colorScheme: colorScheme,
+            frameStartIndex: frameStartIndex,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+/// The strip's playhead — and, between blocks, the one cell it selects:
+/// 「빈 프레임이면 그 한 칸」, the same selected ink one cell wide. Repaints
+/// on the playhead itself, a tick at a time.
+///
+/// ⚠️Over the `x` markers now, not under them: the cell moved up a layer
+/// with the playhead, and it is translucent, so a marker under it reads
+/// through.
+class _CollapsedStripPlayheadPainter extends CustomPainter
+    with RepaintOnProps {
+  _CollapsedStripPlayheadPainter({
+    required this.playhead,
+    required this.row,
+    required this.pixelsPerFrame,
+    required this.colorScheme,
+    required this.frameStartIndex,
+  }) : super(repaint: playhead);
+
+  final ValueListenable<int?> playhead;
+  final FlipHudRow row;
+  final double pixelsPerFrame;
+  final ColorScheme colorScheme;
+  final int frameStartIndex;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final current = playhead.value;
+    if (current == null || pixelsPerFrame <= 0) {
+      return;
+    }
+    double x(int frame) => (frame - frameStartIndex) * pixelsPerFrame;
+    if (row.runAt(current) == null && x(current + 1) > 0) {
+      final rrect = RRect.fromRectAndRadius(
+        Rect.fromLTRB(x(current) + 1, 4, x(current + 1) - 1, size.height - 4),
+        const Radius.circular(2),
+      );
+      canvas
+        ..drawRRect(
+          rrect,
+          Paint()..color = colorScheme.primary.withValues(alpha: 0.30),
+        )
+        ..drawRRect(
+          rrect,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = colorScheme.primary,
+        );
+    }
+    canvas.drawRect(
+      Rect.fromLTWH(x(current), 0, 2, size.height),
+      Paint()..color = colorScheme.primary,
+    );
+  }
+
+  @override
+  Object get props => (
+    playhead,
+    ByIdentity(row),
+    pixelsPerFrame,
+    colorScheme,
+    frameStartIndex,
+  );
+}
+
 class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
   const _CollapsedStripPainter({
     required this.snapshot,
@@ -498,6 +775,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     required this.pixelsPerFrame,
     required this.colorScheme,
     required this.baseTextStyle,
+    required this.standingOn,
     this.frameStartIndex = 0,
   });
 
@@ -505,6 +783,10 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
   final FlipHudRow row;
   final double pixelsPerFrame;
   final ColorScheme colorScheme;
+
+  /// The first frame of the block the playhead stands on — the one painted
+  /// solidly; null between blocks.
+  final int? standingOn;
 
   /// The ambient text style — the app's face for the strip's words.
   final TextStyle baseTextStyle;
@@ -545,7 +827,6 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     // THE BLOCKS — a translucent body so they read as paper, an outline
     // so they read as blocks, and their name. Uncovered stretches print the
     // sheet's `x` in their FIRST cell and nothing after.
-    final current = snapshot.frameIndex;
     for (final run in row.runs) {
       final left = x(run.startIndex);
       if (left > right) {
@@ -561,7 +842,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
         continue;
       }
       final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(2));
-      final covered = run.covers(current);
+      final covered = run.startIndex == standingOn;
       canvas.drawRRect(
         rrect,
         Paint()
@@ -585,31 +866,9 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
       }
     }
 
-    // The SELECTION when the cursor is not on a block.
-    // 「빈 프레임이면 그 한 칸」 — same selected ink, one cell wide.
-    if (current >= first &&
-        current < visibleFrames &&
-        row.runAt(current) == null) {
-      final cell = Rect.fromLTRB(
-        x(current) + 1,
-        4,
-        x(current + 1) - 1,
-        size.height - 4,
-      );
-      final rrect = RRect.fromRectAndRadius(cell, const Radius.circular(2));
-      canvas
-        ..drawRRect(
-          rrect,
-          Paint()..color = colorScheme.primary.withValues(alpha: 0.30),
-        )
-        ..drawRRect(
-          rrect,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2
-            ..color = colorScheme.primary,
-        );
-    }
+    // The SELECTION when the cursor is not on a block, and the playhead, are
+    // the tick layer's ([_CollapsedStripPlayheadPainter]).
+    //
     // The `x` markers. An empty stretch starts at frame 0 or where a run
     // ends, so only those are asked — never the strip frame by frame (I-22:
     // the ten-minute floor puts ~10,000 frames in it).
@@ -632,12 +891,6 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
         );
       }
     }
-
-    // THE PLAYHEAD over everything this strip draws.
-    canvas.drawRect(
-      Rect.fromLTWH(x(current), 0, 2, size.height),
-      Paint()..color = colorScheme.primary,
-    );
   }
 
   /// A word of the strip, by the law every block word keeps: its type at
@@ -707,5 +960,6 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
         colorScheme,
         baseTextStyle,
         frameStartIndex,
+        standingOn,
       );
 }

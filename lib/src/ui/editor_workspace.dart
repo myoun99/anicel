@@ -7,6 +7,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../core/set_toggle.dart';
@@ -102,7 +103,8 @@ import 'envelope/cut_envelope_tab_host.dart';
 import 'sheet/sheet_image_cache.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_cut_blocks_painter.dart' show storyboardCutBlocksPainterFor;
-import 'storyboard_panel.dart' show StoryboardPanel, StoryboardTrackLabelRow;
+import 'storyboard_panel.dart'
+    show StoryboardPanel, StoryboardPlayheadTint, StoryboardTrackLabelRow;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';

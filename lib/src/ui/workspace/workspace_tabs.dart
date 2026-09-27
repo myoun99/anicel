@@ -904,7 +904,7 @@ class _WorkspaceTabs {
             cameraViewEnabled: _state._views._cameraViewEnabled,
             cameraViewKeyValue: 'storyboard-camera-view-button',
             playbackStartFrame: () =>
-                storyboardPlayheadFrame(_state.widget.session) ?? 0,
+                _state.widget.session.playheadCursors.trackFrameNow() ?? 0,
             onSkipToStart: () =>
                 seekStoryboardPlayheadToTrackStart(_state.widget.session),
           ),

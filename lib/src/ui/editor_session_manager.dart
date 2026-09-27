@@ -60,6 +60,7 @@ import '../services/bitmap_surface_geometry.dart'
 import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import '../core/dev_profile.dart';
+import '../core/identity_memo.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'session/active_cut_span.dart';
 import 'session/cut_placement.dart';
@@ -111,6 +112,7 @@ import 'session/visibility_solo.dart';
 import 'session/transitions.dart';
 import 'session/camera.dart';
 import 'session/cut_under_playhead.dart';
+import 'session/playhead_cursors.dart';
 import 'session/frame_scrub.dart';
 import 'session/row_selection.dart';
 import 'session/row_spans.dart';
@@ -211,6 +213,16 @@ class EditorSessionManager extends ChangeNotifier
     _gapGlobalFrameNotifier.addListener(cutUnderPlayhead.sync);
     frameScrub.active.addListener(cutUnderPlayhead.sync);
     addListener(cutUnderPlayhead.resync);
+    // Where the playhead is drawn re-answers on every channel it moves on —
+    // after the cut follow above, so a tick that crosses into another cut
+    // is answered against the cut it landed in. A scrub move fires the
+    // editing cursor WITHOUT a session notify, so [playheadMoved], which
+    // carries it, is what keeps the playhead glued to the pointer.
+    playbackRig.playback.globalFrameIndexListenable.addListener(
+      playheadCursors.sync,
+    );
+    playheadMoved.addListener(playheadCursors.sync);
+    addListener(playheadCursors.sync);
     // The canvas shows a reference movie's picture at the frame it stands
     // on — asked on every seek and every change, a no-op once the store has
     // it.
@@ -1277,6 +1289,13 @@ class EditorSessionManager extends ChangeNotifier
     () => frameScrub.active.removeListener(cutUnderPlayhead.sync),
     () => removeListener(cutUnderPlayhead.resync),
     cutUnderPlayhead.dispose,
+    // The same: off the rig and the playhead's channels before they go.
+    () => playbackRig.playback.globalFrameIndexListenable.removeListener(
+      playheadCursors.sync,
+    ),
+    () => playheadMoved.removeListener(playheadCursors.sync),
+    () => removeListener(playheadCursors.sync),
+    playheadCursors.dispose,
     // The guard in [_hydrateShownMovieCels] is the belt and this the braces
     // — the same pair as the lane range above.
     () => editingFrameCursor.removeListener(_hydrateShownMovieCels),
@@ -1468,6 +1487,17 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     controllers: activeCutControllers,
     scrubbing: frameScrub.active,
+    playbackRig: playbackRig,
+  );
+
+  // ── where the playhead is drawn: its own object, in its own file ──────
+  //
+  // A collaborator (session/playhead_cursors.dart). The panels and the rows
+  // they fold into read it — `session.playheadCursors.cutFrame`.
+  late final PlayheadCursors playheadCursors = PlayheadCursors(
+    project: this,
+    selection: this,
+    timeline: this,
     playbackRig: playbackRig,
   );
 
@@ -3013,12 +3043,26 @@ class EditorSessionManager extends ChangeNotifier
   TrackFrameAxis trackFrameAxis() {
     final layout = projectSettings.projectLayout();
     final trackId = selectedTrackId;
-    final scoped = [
-      for (final entry in layout)
-        if (entry.trackId == trackId) entry,
-    ];
-    return TrackFrameAxis(scoped.isEmpty ? layout : scoped);
+    return _trackFrameAxis.resolve(
+      identity: layout,
+      key: trackId,
+      build: () {
+        final scoped = [
+          for (final entry in layout)
+            if (entry.trackId == trackId) entry,
+        ];
+        return TrackFrameAxis(scoped.isEmpty ? layout : scoped);
+      },
+    );
   }
+
+  /// [trackFrameAxis] per layout and track: it is asked per playback tick
+  /// ([PlayheadCursors.trackFrameNow]), per scrub move and per repaint of
+  /// the storyboard ruler's green bar — none of them may rebuild the layout
+  /// list each time (R12-⑥, the rule the storyboard host's own memo of this
+  /// kept until it moved here) — and the layout it narrows is already one
+  /// memo per project.
+  final _trackFrameAxis = IdentityMemo<TrackFrameAxis>();
 
   /// Set while the editing playhead is PARKED IN A GAP (R16-⑥, user
   /// semantics: a gap has NO cut — the canvas shows a paperless void).

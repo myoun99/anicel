@@ -79,9 +79,12 @@ class _WorkspaceCollapsedRows {
       return _collapsedTrackRow();
     }
     final rail = _state._railExtents[LayerRailId.timeline];
+    final snapshot = _state._flipHud.flipHudSnapshot(FlipHudAxis.frame);
+    final rowBuilder = _collapsedFrameRowBuilder();
+    final cursors = _state.widget.session.playheadCursors;
     return CollapsedRowOverlay(
       height: collapsedRowHeight(),
-      snapshot: _state._flipHud.flipHudSnapshot(FlipHudAxis.frame),
+      snapshot: snapshot,
       // 유저 확정: 레일 폭은 가로 스플리터를 그대로 따라간다 — the same
       // stored window the panel's own rail lays out against, so narrowing
       // one narrows the other by construction rather than by agreement.
@@ -110,7 +113,29 @@ class _WorkspaceCollapsedRows {
       pixelsPerFrame: _state._timelinePixelsPerFrame.value,
       framesPerSecond: _state.widget.session.projectSettings.projectFrameRate.countingBase,
       railChild: _collapsedRailRow(),
-      frameRowBuilder: _collapsedFrameRowBuilder(),
+      frameRowBuilder: rowBuilder,
+      // The playhead in the frames the row DRAWS: the real row counts the
+      // cut's; the strip it falls back to counts its snapshot's, which is
+      // the track's in a gap (or where the storyboard is being worked).
+      follows: _follows(
+        rowBuilder == null && snapshot.countsTrackFrames
+            ? cursors.trackFrame
+            : cursors.cutFrame,
+      ),
+    );
+  }
+
+  /// What a folded row turns its axis by — the playhead the open panel
+  /// follows, playback's gate on the page, and the walk's reveal tick —
+  /// handed over as ONE set, so the two folded rows cannot wire it two
+  /// ways (유저 2026-09-27, folded-row-playhead-during-playback-Q1:
+  /// 「재생헤드나 인덱스나 스크롤이동이나 다 구조적으로 동기화」).
+  CollapsedRowFollows _follows(ValueListenable<int?> playhead) {
+    final session = _state.widget.session;
+    return (
+      playhead: playhead,
+      playing: session.playbackRig.playback.globalFrameIndexListenable,
+      revealSelectionTick: session.rangeSelections.revealSelectionTick,
     );
   }
 
@@ -129,11 +154,11 @@ class _WorkspaceCollapsedRows {
   /// panel it folded.
   Widget _collapsedTrackRow() {
     final session = _state.widget.session;
-    final trackId = session.selectedTrackId;
-    final entries = [
-      for (final entry in session.projectSettings.projectLayout())
-        if (entry.trackId == trackId) entry,
-    ];
+    // ⛔The session's track axis, not a walk of its own: this narrowed the
+    // layout to the selected track by hand, the same walk
+    // [EditorSessionManager.trackFrameAxis] makes (one track a film, 전제 8,
+    // so its whole-layout fallback answers the same).
+    final entries = session.trackFrameAxis().entries;
     final track = entries.isEmpty
         ? null
         : session.trackOwningCut(entries.first.cutId);
@@ -169,28 +194,46 @@ class _WorkspaceCollapsedRows {
             ),
       frameRowBuilder: track == null
           ? null
-          : (context, geometry) => CustomPaint(
-              key: const ValueKey<String>('collapsed-storyboard-cut-blocks'),
-              painter: storyboardCutBlocksPainterFor(
-                entries: entries,
-                geometry: geometry,
-                crossAxisExtent: height,
-                minBlockWidth: StoryboardPanel.cutBlockMinWidth,
-                activeCutId: session.activeCutOrNull?.id,
-                rowAddress: TrackRowAddress(track.id),
-                colorScheme: Theme.of(context).colorScheme,
-                baseTextStyle:
-                    Theme.of(context).textTheme.labelSmall ??
-                    DefaultTextStyle.of(context).style,
-                showSeconds: _state._showSecondsDisplay.value,
-                countingBase: session.projectSettings.projectFrameRate.countingBase,
-                // D15 ③: the thumbnails come from the store the panel
-                // draws from, so a picture rendered for one is already
-                // rendered for the other.
-                thumbnails: _state._storyboardThumbnails.thumbnails,
-                devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-              ),
+          : (context, geometry) => Stack(
+              fit: StackFit.expand,
+              children: [
+                CustomPaint(
+                  key: const ValueKey<String>(
+                    'collapsed-storyboard-cut-blocks',
+                  ),
+                  painter: storyboardCutBlocksPainterFor(
+                    entries: entries,
+                    geometry: geometry,
+                    crossAxisExtent: height,
+                    minBlockWidth: StoryboardPanel.cutBlockMinWidth,
+                    activeCutId: session.activeCutOrNull?.id,
+                    rowAddress: TrackRowAddress(track.id),
+                    colorScheme: Theme.of(context).colorScheme,
+                    baseTextStyle:
+                        Theme.of(context).textTheme.labelSmall ??
+                        DefaultTextStyle.of(context).style,
+                    showSeconds: _state._showSecondsDisplay.value,
+                    countingBase:
+                        session.projectSettings.projectFrameRate.countingBase,
+                    // D15 ③: the thumbnails come from the store the panel
+                    // draws from, so a picture rendered for one is already
+                    // rendered for the other.
+                    thumbnails: _state._storyboardThumbnails.thumbnails,
+                    devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+                  ),
+                ),
+                // 🚨WHERE YOU ARE, the panel's own tint on its own tick layer
+                // (유저 2026-09-27, folded-row-playhead-during-playback-Q1:
+                // 「접힌 오버레이도 재생헤드나 인덱스나 … 다 구조적으로
+                // 동기화」): the folded track row drew no playhead at all.
+                StoryboardPlayheadTint(
+                  playhead: session.playheadCursors.trackFrame,
+                  pixelsPerFrame: pixelsPerFrame,
+                  firstFrame: geometry.value.frameStartIndex,
+                ),
+              ],
             ),
+      follows: _follows(session.playheadCursors.trackFrame),
     );
   }
 
@@ -455,8 +498,13 @@ class _WorkspaceCollapsedRows {
         // nothing. That is also why the overlay needs no listener of its
         // own: 문답 7's 「커서 = 스냅샷이 정본 / 그림 = 위젯이 정본」 is
         // exactly these two children, in this order.
+        //
+        // 🚨THE OPEN PANEL'S CURSOR, not the editing one (유저 2026-09-27,
+        // folded-row-playhead-during-playback-Q1 「재생을 따른다」): the
+        // editing cursor stands still while the film plays, and this layer
+        // stood with it — measured, playing frame 150, folded playhead 0.
         TimelineCursorLayer(
-          frameCursor: session.editingFrameCursor,
+          frameCursor: session.playheadCursors.cutFrame,
           rows: [displayRow],
           activeLayerId: layer.id,
           currentRow: session.standing.currentRowListenable,

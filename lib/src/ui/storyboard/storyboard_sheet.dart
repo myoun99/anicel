@@ -95,6 +95,7 @@ class _StoryboardSheet {
       // Rightwards never runs out: the axis reaches wherever the playhead
       // stands, past the last cut included.
       frameCount: frame + 1 > end ? frame + 1 : end,
+      countsTrackFrames: true,
     );
   }
 

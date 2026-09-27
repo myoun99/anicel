@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
+import '../panels/panel_collapsed_scope.dart';
+
 /// How far a drag at [pos] has pushed past either end of a [extent]-long
 /// axis, once it enters the [edge]-wide band at either end: negative near
 /// the start, positive near the end, zero in the middle. The caller adds
@@ -97,12 +99,29 @@ double pageScrollOffset(ScrollWindow window, RevealedItem item) {
 /// ⛔The tail is written ONCE. [jumpToReveal] and [jumpToPage] differ in the
 /// offset they ask for and in nothing else; two copies of a clamp-and-jump
 /// is how the two laws start disagreeing about the range.
+///
+/// 🚨A FOLDED PANEL'S SCROLLABLES MOVE NOTHING (유저 2026-09-27,
+/// folded-row-playhead-during-playback-Q1: 「접힌 오버레이도 … 스크롤이동이나
+/// 다 구조적으로 동기화」). A folded panel keeps its grid mounted, and that
+/// grid still heard every playback tick and every walk: it turned the shared
+/// frame axis against a window nobody sees — 19 cells where the folded row
+/// shows 22, measured 09-27 — and in the sheet's orientation the folded
+/// row's axis had nobody turning it at all. The row on screen turns its own
+/// axis now ([pageKeptAxis], [revealKeptAxis]).
+///
+/// ⚠️It is the FOLD that is asked, not the size: the grid folds to zero
+/// height, but its frame axis scrolls inside the rows' viewport and keeps
+/// the size it had (measured: 472×168 inside a 936×0 grid). A scrollable
+/// never laid out has no window to measure either, and stands down too.
 void _jumpUsing(
   ScrollController controller,
   RevealedItem item,
   double Function(ScrollWindow window, RevealedItem item) law,
 ) {
   final position = controller.position;
+  if (!scrollableIsShown(position)) {
+    return;
+  }
   final target = law((
     offset: position.pixels,
     viewport: position.viewportDimension,
@@ -123,6 +142,56 @@ void jumpToReveal(ScrollController controller, RevealedItem item) =>
 /// when it is already inside.
 void jumpToPage(ScrollController controller, RevealedItem item) =>
     _jumpUsing(controller, item, pageScrollOffset);
+
+/// Whether the scrollable behind [position] is laid out and not inside a
+/// folded panel — see [_jumpUsing]. A zoom's re-anchoring asks it too
+/// ([applyZoomAnchoredScroll]): while folded, the row on screen anchors the
+/// axis on its own window.
+bool scrollableIsShown(ScrollPosition position) =>
+    position.hasViewportDimension &&
+    !PanelCollapsedScope.isFolded(position.context.storageContext);
+
+/// One axis kept as a VALUE rather than by a scrollable — the folded row's,
+/// which stands at the host's kept offset (F-143): where it stands, how
+/// long its window is, how long one step is, and which step the playhead
+/// stands on.
+typedef KeptStep = ({
+  ValueNotifier<double> offset,
+  double viewport,
+  double extent,
+  int at,
+});
+
+/// [pageToPlayhead] for a kept axis — the same law ([pageScrollOffset]),
+/// against the window the row itself shows.
+void pageKeptAxis(KeptStep axis) => _moveKept(axis, pageScrollOffset);
+
+/// [revealSelectionOnBothAxes]'s frame-axis law ([revealScrollOffset]) for
+/// a kept axis.
+void revealKeptAxis(KeptStep axis) => _moveKept(axis, revealScrollOffset);
+
+/// A kept axis's one tail, as [_jumpUsing] is a scrollable's: never before
+/// frame 0, and not at all when it would not move. ⚠️No upper end — a kept
+/// axis has no content of its own to end at; a grid that shares it clamps
+/// to its own range when it adopts the value (TimelineFrameAxisFollower).
+void _moveKept(
+  KeptStep axis,
+  double Function(ScrollWindow window, RevealedItem item) law,
+) {
+  if (axis.at < 0 || axis.extent <= 0 || axis.viewport <= 0) {
+    return;
+  }
+  final target = math.max(
+    0.0,
+    law(
+      (offset: axis.offset.value, viewport: axis.viewport),
+      _itemAt(axis.at, axis.extent),
+    ),
+  );
+  if (target != axis.offset.value) {
+    axis.offset.value = target;
+  }
+}
 
 double edgeAutoPanDelta(double pos, double extent, {double edge = 24.0}) {
   if (extent <= 0) {
@@ -244,11 +313,12 @@ bool _axisCanMove(RevealedStep axis) =>
 
 /// Where a step stands along its axis, with ONE step of margin — the margin
 /// a walk reads by and a page ignores on purpose ([pageScrollOffset]).
-RevealedItem _itemOf(RevealedStep axis) => (
-  start: axis.at * axis.extent,
-  extent: axis.extent,
-  margin: axis.extent,
-);
+RevealedItem _itemOf(RevealedStep axis) => _itemAt(axis.at, axis.extent);
+
+/// Step [at] of [extent]-long steps, as [_itemOf] reads it — a scrollable's
+/// axis and a kept one ([KeptStep]) name their step the same way.
+RevealedItem _itemAt(int at, double extent) =>
+    (start: at * extent, extent: extent, margin: extent);
 
 /// Turns the page under ONE axis so the playhead's frame stands at the
 /// window's start, and not at all while it is already inside (F-110).

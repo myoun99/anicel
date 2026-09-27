@@ -1370,19 +1370,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
-    // anchors. Shared policy with the timeline grids.
-    if (oldWidget.pixelsPerFrame != widget.pixelsPerFrame &&
-        _horizontalController.hasClients) {
-      _horizontalController.jumpTo(
-        zoomAnchoredScrollOffset(
-          oldOffset: _horizontalController.position.pixels,
-          oldPixelsPerFrame: oldWidget.pixelsPerFrame,
-          newPixelsPerFrame: widget.pixelsPerFrame,
-          viewportExtent: _horizontalController.position.viewportDimension,
-          anchorFrame: widget.playheadFrame?.value,
-        ),
-      );
-    }
+    // anchors. ⛔The timeline grids' own call, not a third spelling of it:
+    // this jump was the policy written out again, and the one that did not
+    // hear the fold rule the grids' call keeps.
+    applyZoomAnchoredScroll(
+      _horizontalController,
+      oldPixelsPerFrame: oldWidget.pixelsPerFrame,
+      newPixelsPerFrame: widget.pixelsPerFrame,
+      anchorFrame: widget.playheadFrame?.value,
+    );
   }
 
   TimelineScale get _scale => TimelineScale(
@@ -1995,9 +1991,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       ),
                                     ),
                                     if (playheadListenable != null)
-                                      _playheadTint(
-                                        playheadListenable,
-                                        frame.scale,
+                                      Positioned.fill(
+                                        child: StoryboardPlayheadTint(
+                                          playhead: playheadListenable,
+                                          pixelsPerFrame:
+                                              frame.scale.pixelsPerFrame,
+                                        ),
                                       ),
                                     // The MOVIE-END line through the
                                     // STRIPS (UI-R20 #3): the ruler's
@@ -2673,31 +2672,53 @@ class _StoryboardLabelShell extends StatelessWidget {
 /// over the blocks (user direction); the ruler carries its own current-frame
 /// highlight. It subscribes to the cursor itself, on a layer of its own
 /// ([TickLayer]): a tick moves THIS overlay, the blocks never rebuild.
-Widget _playheadTint(ValueListenable<int?> playhead, TimelineScale scale) =>
-    Positioned.fill(
-      child: IgnorePointer(
-        child: TickLayer(
-          child: ValueListenableBuilder<int?>(
-            valueListenable: playhead,
-            builder: (context, frame, _) => Stack(
-              children: [
-                if (frame != null)
-                  Positioned(
-                    key: const ValueKey<String>('storyboard-playhead'),
-                    left: scale.leftForFrame(frame),
-                    top: 0,
-                    bottom: 0,
-                    width: scale.pixelsPerFrame,
-                    child: ColoredBox(
-                      color: timelinePlayheadColor.withValues(alpha: 0.18),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+///
+/// ONE tint for the panel's strips and for the row the storyboard folds
+/// into (유저 2026-09-27, folded-row-playhead-during-playback-Q1: 「접힌
+/// 오버레이도 재생헤드나 인덱스나 … 다 구조적으로 동기화」) — the folded
+/// row had no playhead at all.
+class StoryboardPlayheadTint extends StatelessWidget {
+  const StoryboardPlayheadTint({
+    super.key,
+    required this.playhead,
+    required this.pixelsPerFrame,
+    this.firstFrame = 0,
+  });
+
+  /// The track frame the playhead stands on ([PlayheadCursors.trackFrame]).
+  final ValueListenable<int?> playhead;
+
+  final double pixelsPerFrame;
+
+  /// The frame at this layer's left edge: 0 on the panel's strips, the
+  /// window's first frame on the folded row, which lays out one screenful
+  /// from there (F-143).
+  final int firstFrame;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: TickLayer(
+      child: ValueListenableBuilder<int?>(
+        valueListenable: playhead,
+        builder: (context, frame, _) => Stack(
+          children: [
+            if (frame != null)
+              Positioned(
+                key: const ValueKey<String>('storyboard-playhead'),
+                left: (frame - firstFrame) * pixelsPerFrame,
+                top: 0,
+                bottom: 0,
+                width: pixelsPerFrame,
+                child: ColoredBox(
+                  color: timelinePlayheadColor.withValues(alpha: 0.18),
+                ),
+              ),
+          ],
         ),
       ),
-    );
+    ),
+  );
+}
 
 /// A storyboard label row's NAME: the one row-name style every surface
 /// wears ([layerRowNameStyle], F-26 #1226 — 「스토리보드패널도 겸사겸사 싹 다

@@ -318,7 +318,13 @@ void main() {
 
     final strip = find.byKey(const ValueKey<String>('collapsed-strip'));
     expect(strip, findsOneWidget, reason: '⛔전제: the strip is what painted');
-    final painter = tester.widget<CustomPaint>(strip).painter!;
+    // The strip's playhead is a layer of its own over it
+    // (folded-row-playhead-during-playback), laid from the same origin.
+    final painter = tester
+        .widget<CustomPaint>(
+          find.byKey(const ValueKey<String>('collapsed-strip-playhead')),
+        )
+        .painter!;
     final size = tester.getSize(strip);
     final primary = Theme.of(tester.element(strip)).colorScheme.primary;
 

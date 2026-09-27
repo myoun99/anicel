@@ -45,7 +45,14 @@ void main() {
     final strip = find.byKey(const ValueKey<String>('collapsed-strip'));
     final laid = _Laid()..size = tester.getSize(strip);
     asks = 0;
-    tester.widget<CustomPaint>(strip).painter!.paint(laid, laid.size!);
+    // The strip and the playhead's own layer over it — the cursor's empty
+    // cell went up with the playhead (folded-row-playhead-during-playback).
+    for (final key in ['collapsed-strip', 'collapsed-strip-playhead']) {
+      tester
+          .widget<CustomPaint>(find.byKey(ValueKey<String>(key)))
+          .painter!
+          .paint(laid, laid.size!);
+    }
     return (asks: asks, laid: laid);
   }
 
