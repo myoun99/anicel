@@ -244,21 +244,16 @@ List<Layer> _layersWithRow(List<Layer> layers, Layer? row) {
 }
 
 /// [cut] as the editing canvas shows it while [edit] is in flight — its
-/// edited row and its edited camera substituted in. Display only: the
-/// repository never sees it. [cut] itself when [edit] touches neither.
+/// edited row substituted in. Display only: the repository never sees it.
+/// [cut] itself when [edit] touches none of its rows.
+///
+/// ⛔Not the camera. The picture and the pen's space read no camera; the
+/// camera's readers (its frame on the canvas, its lanes, its marks) take the
+/// one camera answer, `Camera.activeCutCameraTrack`, which reads this
+/// channel itself — a second camera here would be a copy nobody reads.
 Cut cutShowingLaneEdit(Cut cut, LaneEditPreview? edit) {
-  if (edit == null) {
-    return cut;
-  }
-  final cameraTrack = edit.cameraCutId == cut.id ? edit.cameraTrack : null;
   final layers = layersShowingLaneEdit(cut.layers, edit);
-  if (cameraTrack == null && identical(layers, cut.layers)) {
-    return cut;
-  }
-  return cut.copyWith(
-    layers: layers,
-    camera: cameraTrack == null ? null : CutCamera.fromTrack(cameraTrack),
-  );
+  return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
 }
 
 /// A FILE from the pool held over the timeline — 「끄는 동안 보이는 것은
@@ -586,15 +581,12 @@ Project projectWithTimelineDragPreview(
       final trackId = edit.trackId;
       final trackEffects = edit.trackEffects;
       if (trackId != null && trackEffects != null) {
-        return withRow.copyWith(
-          tracks: [
-            for (final track in withRow.tracks)
-              if (track.id == trackId)
-                track.copyWith(effects: trackEffects)
-              else
-                track,
-          ],
-        );
+        return updateTrackById(
+              withRow,
+              trackId,
+              (track) => track.copyWith(effects: trackEffects),
+            ) ??
+            withRow;
       }
       final cutId = edit.cameraCutId;
       final cameraTrack = edit.cameraTrack;

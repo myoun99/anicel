@@ -359,6 +359,16 @@ void main() {
     final cutStart = session.activeCutGlobalStartFrame;
     expect(cutStart, greaterThan(0), reason: 'the premise: a second cut');
     final se = session.activeTrack.seLayers.first;
+    // A line under the playhead, so the row puts a tag on the canvas.
+    session.selectLayer(se.id);
+    session.selectFrameIndex(2);
+    session.seEntries.createSeEntryAtCurrentFrame(name: '쿵', seName: 'A');
+    Offset? tagAt({LaneEditPreview? edit}) => session.seEntries
+        .seNameTagsForCutFrame(session.requireActiveCut, 2, edit: edit)
+        .single
+        .content
+        .position;
+    final tagBefore = tagAt();
 
     session.laneVerbs.previewLaneValueAt(
       se.id,
@@ -369,6 +379,12 @@ void main() {
     );
 
     final preview = session.dragPreview.value;
+    expect(
+      tagAt(edit: laneEditInFlight(preview)),
+      isNot(tagBefore),
+      reason: 'the tag the canvas draws follows the edit in flight',
+    );
+    expect(tagAt(), tagBefore, reason: 'the committed film does not');
     expect(
       timelineDragPreviewLayerFor(preview, se.id)!
           .transformTrack
