@@ -544,7 +544,7 @@ class LaneVerbs {
       case _EffectsEdit(:final next):
         _commitLaneEffects(layer, next, description: description);
       case _TransformEdit(:final next):
-        commitTransformTrack(layer, next, description: description);
+        _commitTransformTrack(layer, next, description: description);
     }
   }
 
@@ -582,7 +582,7 @@ class LaneVerbs {
     if (layer == null) {
       return;
     }
-    commitTransformTrack(
+    _commitTransformTrack(
       layer,
       edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
       description: description,
@@ -619,7 +619,7 @@ class LaneVerbs {
       // ([laneVerbLayerFor]), so the tag goes home as it is.
       seNameTag: isSe ? (layer.seNameTag ?? const SeNameTag()) : null,
       commitTransform: (next, why) =>
-          commitTransformTrack(layer, next, description: why),
+          _commitTransformTrack(layer, next, description: why),
       commitEffects: (next, why) =>
           _commitLaneEffects(layer, next, description: why),
       commitSeNameTag: isSe
@@ -697,7 +697,7 @@ class LaneVerbs {
   }
 
   /// The lane path's NAME TAG commit — the third funnel, beside
-  /// [commitTransformTrack] and [_commitLaneEffects]. The coordinator
+  /// [_commitTransformTrack] and [_commitLaneEffects]. The coordinator
   /// finds an SE row wherever it lives, so the tag goes home as it is.
   void _commitLaneSeNameTag(
     Layer layer,
@@ -733,8 +733,9 @@ class LaneVerbs {
   ///
   /// ↩️The lane MOVE spelled the camera-or-layer half of this again inline
   /// (and without the carrier's arm); it commits through here now
-  /// (ARCH-session-state, the fifteenth family).
-  void commitTransformTrack(
+  /// (ARCH-session-state, the fifteenth family) — by way of
+  /// [laneEditSubjectOf] since F-195, which made this private again.
+  void _commitTransformTrack(
     Layer layer,
     TransformTrack track, {
     required String description,
@@ -754,7 +755,7 @@ class LaneVerbs {
   }
 
   /// [track] on [layer] as a lane edit in flight shows it — the twin of
-  /// [commitTransformTrack], home for home. Null where it shows nothing.
+  /// [_commitTransformTrack], home for home. Null where it shows nothing.
   TimelineDragPreview? _laneTransformPreview(
     Layer layer,
     TransformTrack track,
@@ -800,7 +801,7 @@ class LaneVerbs {
     _changes.notifyChanged();
   }
 
-  /// The lane path's EFFECT commit — the twin of [commitTransformTrack].
+  /// The lane path's EFFECT commit — the twin of [_commitTransformTrack].
   ///
   /// A funnel rather than three call sites: Add, Delete and Reset all
   /// commit chains read off the same layer, and which axis that layer is
@@ -944,7 +945,7 @@ class LaneVerbs {
         ),
       ),
       commit: (track) =>
-          commitTransformTrack(layer, track, description: 'Delete keys'),
+          _commitTransformTrack(layer, track, description: 'Delete keys'),
     );
   }
 
@@ -1255,7 +1256,7 @@ class LaneVerbs {
         return typed ?? named;
       },
       commit: (value) =>
-          commitTransformTrack(layer, value, description: why),
+          _commitTransformTrack(layer, value, description: why),
     );
     return false;
   }
@@ -1328,7 +1329,7 @@ class LaneVerbs {
     if (next == null) {
       return false;
     }
-    commitTransformTrack(layer, next, description: 'Reset group');
+    _commitTransformTrack(layer, next, description: 'Reset group');
     return true;
   }
 
@@ -1469,7 +1470,7 @@ class LaneVerbs {
             : _transformTrackWithKeyToggled(layer, value, laneId, frame),
       ),
       commit: (track) =>
-          commitTransformTrack(layer, track, description: 'Create keys'),
+          _commitTransformTrack(layer, track, description: 'Create keys'),
     );
   }
 }
