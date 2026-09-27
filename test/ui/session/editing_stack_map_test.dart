@@ -73,24 +73,17 @@ void main() {
     );
   }
 
-  CanvasActiveLayerRow activeRowIn(List<CompositeNode<CanvasStackRow>> nodes) {
-    CanvasActiveLayerRow? found;
-    void walk(List<CompositeNode<CanvasStackRow>> list) {
-      for (final node in list) {
-        if (node is CompositeLeaf<CanvasStackRow>) {
-          final payload = node.payload;
-          if (payload is CanvasActiveLayerRow) {
-            found = payload;
-          }
-        } else if (node is CompositeGroup<CanvasStackRow>) {
-          walk(node.children);
-        }
-      }
-    }
+  /// Every row the stack draws, folders walked through.
+  List<CanvasStackRow> rowsIn(List<CompositeNode<CanvasStackRow>> nodes) => [
+    for (final node in nodes)
+      if (node is CompositeLeaf<CanvasStackRow>)
+        node.payload
+      else if (node is CompositeGroup<CanvasStackRow>)
+        ...rowsIn(node.children),
+  ];
 
-    walk(nodes);
-    return found!;
-  }
+  CanvasActiveLayerRow activeRowIn(List<CompositeNode<CanvasStackRow>> nodes) =>
+      rowsIn(nodes).whereType<CanvasActiveLayerRow>().last;
 
   test('the active row keeps the blend it composites with — the SAME field '
       'its cached twin carries', () {
@@ -122,6 +115,25 @@ void main() {
           'someone else\'s and leave this row blank for a frame. (🪦Until '
           '2026-09-17 the same key served the opposite direction, the '
           'first-activation stand-in.)',
+    );
+  });
+
+  test('a row you are NOT drawing on asks for its OWN cel', () {
+    // 🧪Pinned when the audit's eighteenth family (2026-09-28) moved the
+    // brush key onto the project role: a mutant that keyed the image
+    // branch with another row's id survived every suite — only the active
+    // arm's key was measured.
+    final s = sessionOnADressedRow();
+    final drawn = s.activeLayer!;
+    final cel = s.selectedFrame!.id;
+    s.layerStack.addLayer();
+    expect(s.activeLayerId, isNot(drawn.id), reason: '⛔premise');
+    final cut = s.activeCutOrNull!;
+    final (_, nodes) = stackOf(s);
+
+    expect(
+      rowsIn(nodes).whereType<CanvasLayerImageRequest>().map((r) => r.frameKey),
+      contains(s.brushFrameKeyForCut(cut, drawn.id, cel)),
     );
   });
 

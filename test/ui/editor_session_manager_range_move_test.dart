@@ -880,6 +880,65 @@ void main() {
     expect(layer(cId).timeline.keys, isEmpty);
   });
 
+  test('a multi-row row-move carries every row\'s PICTURES: each cel\'s '
+      'brush frame re-keys to the row it landed on, and one undo keys it '
+      'back', () {
+    // 🧪Pinned when the audit's eighteenth family (2026-09-28) moved the
+    // brush key onto the project role: a mutant that keyed either side of
+    // the multi-row re-key wrong survived every suite — the rigid-group
+    // test above reads the cels' timelines, not their pictures.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame(); // block on A
+    final aId = s.activeLayer!.id;
+    s.layerStack.addLayer();
+    final bId = s.activeLayer!.id;
+    s.selectLayer(bId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on B
+    s.layerStack.addLayer();
+    final cId = s.activeLayer!.id; // empty target row below
+
+    Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    final cut = s.requireActiveCut;
+    final store = s.renderCaches.brushFrameStore;
+    final aFrameId = layer(aId).frames.single.id;
+    final bFrameId = layer(bId).frames.single.id;
+    final aFrom = s.brushFrameKeyForCut(cut, aId, aFrameId);
+    final aTo = s.brushFrameKeyForCut(cut, bId, aFrameId);
+    final bFrom = s.brushFrameKeyForCut(cut, bId, bFrameId);
+    final bTo = s.brushFrameKeyForCut(cut, cId, bFrameId);
+    store.getOrCreateFrame(aFrom);
+    store.getOrCreateFrame(bFrom);
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: bId,
+    );
+    expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+    rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    rangeMove(s).endFrameRangeMoveDrag();
+    expect(
+      layer(cId).timeline[0]!.frameId,
+      bFrameId,
+      reason: '⛔premise: the group moved down one row',
+    );
+
+    expect(store.frameOrNull(aFrom), isNull);
+    expect(store.frameOrNull(aTo), isNotNull);
+    expect(store.frameOrNull(bFrom), isNull);
+    expect(store.frameOrNull(bTo), isNotNull);
+
+    s.undo();
+    expect(store.frameOrNull(aFrom), isNotNull);
+    expect(store.frameOrNull(aTo), isNull);
+    expect(store.frameOrNull(bFrom), isNotNull);
+    expect(store.frameOrNull(bTo), isNull);
+  });
+
   test('R26 #2: a MULTI-ROW selection that also covers an SE row carries '
       'that row to its sibling SE row — one undo restores everything', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
