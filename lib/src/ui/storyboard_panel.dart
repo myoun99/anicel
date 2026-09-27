@@ -78,6 +78,7 @@ import 'timeline/layer_row_drag.dart'
         layerRowDragChips;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
+import 'input/scroller_press_hold.dart';
 import 'timeline/transform_lane_policy.dart'
     show laneSelectionCoversBandRow, transformGroupHeader;
 import '../models/app_input_settings.dart' show AppInput;
@@ -1281,6 +1282,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void initState() {
     super.initState();
+    // The rows and the frames are the storyboard: one surface scrolled two
+    // ways (F-202).
+    scrollTogether(_verticalController, _horizontalController);
     _horizontalController.addListener(_frameAxis.handleScroll);
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
     widget.playheadFrame?.addListener(_handlePlaybackPage);

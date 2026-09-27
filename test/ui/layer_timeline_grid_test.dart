@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 
 /// Classic 48×52 geometry for this file's pixel oracles (the slim 24×28
 /// default is pinned in timeline_grid_metrics_test).
@@ -467,6 +468,48 @@ void main() {
           .abs(),
       lessThan(0.1),
     );
+  });
+
+  testWidgets('🚨F-202: under the app\'s scroll behaviour a pull down the '
+      'frames still scrolls the rows — the rows and the frames are ONE '
+      'surface, and the frames hold no press against the rows', (
+    tester,
+  ) async {
+    final manyLayers = List<Layer>.generate(
+      30,
+      (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
+    );
+    await tester.pumpWidget(
+      _grid(
+        layers: manyLayers,
+        playbackFrameCount: 48,
+        scrollBehavior: const AppScrollBehavior(),
+      ),
+    );
+    final frames = tester
+        .state<ScrollableState>(
+          find.descendant(
+            of: find.byKey(
+              const ValueKey<String>('timeline-frame-scroll-viewport'),
+            ),
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .position;
+    expect(
+      frames.maxScrollExtent,
+      greaterThan(0),
+      reason: '⛔fixture premise: the frames scroll too, so they are a '
+          'scroller running across the rows',
+    );
+    final firstFrameRow = find.byKey(
+      const ValueKey<String>('timeline-frame-row-area-layer-1'),
+    );
+    final before = tester.getTopLeft(firstFrameRow).dy;
+
+    await _dragFrameGridVertically(tester, -100);
+
+    expect(tester.getTopLeft(firstFrameRow).dy, lessThan(before));
   });
 
   testWidgets(
@@ -2862,8 +2905,10 @@ Widget _grid({
   TimelineRowDragHooks? rowDragHooks,
   void Function(List<TimelineDisplayRow> rows, int rowDelta)?
   onRowSelectionSpan,
+  ScrollBehavior? scrollBehavior,
 }) {
   return MaterialApp(
+    scrollBehavior: scrollBehavior,
     home: Scaffold(
       body: SizedBox(
         width: width,

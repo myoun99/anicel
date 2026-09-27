@@ -1,6 +1,8 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart'
+    show GestureVelocityTrackerBuilder, PointerDeviceKind, PointerDownEvent;
 import 'package:flutter/material.dart';
 
+import '../input/scroller_press_hold.dart';
 import '../panels/panel_scrollbar.dart';
 
 /// The app's scroll behaviour: ONE scrollbar vocabulary, everywhere.
@@ -79,6 +81,28 @@ class AppScrollBehavior extends MaterialScrollBehavior {
     ...super.dragDevices,
     PointerDeviceKind.mouse,
   };
+
+  /// 🚨★★★F-202 — every scroller in the app is offered its presses here, so
+  /// a press that lands in one is held for it against any scroller running
+  /// across it ([holdThePressForItsScroller] — 유저: 「안에서 동작하는
+  /// 스크롤이나 드래그는 절대 밖으로 안새게」).
+  ///
+  /// ⚠️It rides the tracker builder because nothing else reaches EVERY
+  /// scroller: the scrollbar and overscroll hooks are switched off by
+  /// `copyWith` (the strip of panels takes `scrollbars: false`, the timeline
+  /// grids `overscroll: false`), and a scroller's recogniser takes no other
+  /// input from its behaviour at the moment it takes a press. The tracker it
+  /// hands back is the platform's, untouched.
+  @override
+  GestureVelocityTrackerBuilder velocityTrackerBuilder(BuildContext context) {
+    final track = super.velocityTrackerBuilder(context);
+    return (event) {
+      if (event is PointerDownEvent) {
+        holdThePressForItsScroller(context, event, track);
+      }
+      return track(event);
+    };
+  }
 
   @override
   Widget buildScrollbar(

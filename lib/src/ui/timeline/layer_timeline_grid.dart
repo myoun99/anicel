@@ -45,6 +45,7 @@ import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_frame_body_layout.dart';
 import '../widgets/empty_state_text.dart';
 import '../input/pen_friendly_scroll_controller.dart';
+import '../input/scroller_press_hold.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'memo_token.dart';
@@ -324,6 +325,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       initialScrollOffset: _frameAxisOffset.value,
     );
     _verticalScrollController = PenFriendlyScrollController();
+    // The rows and the frames are the grid: one surface scrolled two ways
+    // (F-202).
+    scrollTogether(_verticalScrollController, _horizontalScrollController);
     _horizontalScrollController.addListener(_frameAxis.handleScroll);
     _verticalScrollController.addListener(_scroll.handleVerticalScroll);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);

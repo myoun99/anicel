@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import '../input/pen_friendly_scroll_controller.dart';
+import '../input/scroller_press_hold.dart';
 import 'package:flutter/material.dart';
 
 import '../layout/device_grid.dart';
@@ -857,6 +858,13 @@ class _OverflowScrollers extends StatefulWidget {
 class _OverflowScrollersState extends State<_OverflowScrollers> {
   final ScrollController _vertical = PenFriendlyScrollController();
   final ScrollController _horizontal = PenFriendlyScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    // One surface scrolled two ways, not a scroller inside a scroller.
+    scrollTogether(_horizontal, _vertical);
+  }
 
   @override
   void dispose() {
