@@ -52,38 +52,36 @@ class _XSheetGridHeaders {
       );
 
   Widget _laneHeader(TimelineDisplayRow entry) {
-    return ValueListenableBuilder<int>(
-      valueListenable: _state.widget.hooks.frameCursor,
-      builder: (context, cursorFrame, _) => TimelineDragPreviewRowGate(
-        dragPreview: _state.widget.hooks.dragPreview,
-        layer: entry.layer,
-        rowBuilder: (context, layer) => TimelineLaneControlsRow(
-          axis: Axis.vertical,
-          keyPrefix: 'xsheet',
-          layer: layer,
-          lane: previewedLaneRow(
-            row: entry,
-            previewLayer: layer,
-            lanesForLayer: _state._lanesFor,
-          ),
-          metrics: _state._metrics,
-          width: _state._metrics.layerRowHeight,
-          // Laid out at the natural extent like every other header; the
-          // rail window above is what cuts it.
-          height: naturalHeaderExtent,
-          currentFrameIndex: cursorFrame,
-          onSelectFrame: _state.widget.hooks.onSelectFrame,
-          laneEdit: _state.widget.hooks.laneEdit,
-          onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
-          onToggleLaneGroupEnabled:
-              _state.widget.hooks.onToggleLaneGroupEnabled,
-          onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
-          currentRowHooks: _state.widget.hooks.currentRowHooks,
-          // The SAME flags the layer's own column header passes, so a
-          // group header's fx lands in the sheet's fx row (R5 #7).
-          hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
-          hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
+    // The header subscribes to the cursor itself, on a layer of its own
+    // ([TimelineLaneControlsRow]).
+    return TimelineDragPreviewRowGate(
+      dragPreview: _state.widget.hooks.dragPreview,
+      layer: entry.layer,
+      rowBuilder: (context, layer) => TimelineLaneControlsRow(
+        axis: Axis.vertical,
+        keyPrefix: 'xsheet',
+        layer: layer,
+        lane: previewedLaneRow(
+          row: entry,
+          previewLayer: layer,
+          lanesForLayer: _state._lanesFor,
         ),
+        metrics: _state._metrics,
+        width: _state._metrics.layerRowHeight,
+        // Laid out at the natural extent like every other header; the
+        // rail window above is what cuts it.
+        height: naturalHeaderExtent,
+        frameCursor: _state.widget.hooks.frameCursor,
+        onSelectFrame: _state.widget.hooks.onSelectFrame,
+        laneEdit: _state.widget.hooks.laneEdit,
+        onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
+        onToggleLaneGroupEnabled: _state.widget.hooks.onToggleLaneGroupEnabled,
+        onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
+        currentRowHooks: _state.widget.hooks.currentRowHooks,
+        // The SAME flags the layer's own column header passes, so a
+        // group header's fx lands in the sheet's fx row (R5 #7).
+        hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
+        hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
       ),
     );
   }

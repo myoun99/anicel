@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
 import '../repaint_props.dart';
+import '../widgets/tick_layer.dart';
 import 'memo_token.dart';
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_frame_window.dart';
@@ -144,7 +145,8 @@ Widget timelineRulerStripWithWriting({
       strip,
       if (held != null)
         Positioned.fill(
-          child: RepaintBoundary(
+          // What a tick moves, on the one layer every tick rides (I-22 ③).
+          child: TickLayer(
             child: CustomPaint(key: writingKey, painter: writing(held)),
           ),
         ),

@@ -204,41 +204,38 @@ class _LayerGridRailRows {
   /// section slot — the section ZONES overlay whole runs (UI-R7 #2).
   Widget _railRow(TimelineDisplayRow row) {
     if (row.isLane) {
-      // Lane labels show the value AT the cursor: subscribe here so a
-      // tick rebuilds only these small cells.
+      // Lane labels show the value AT the cursor: the row subscribes to it
+      // itself, on a layer of its own, so a tick rebuilds only these small
+      // cells and lays out nothing around them ([TimelineLaneControlsRow]).
       //
       // R10: and through the drag gate, so the blue value column follows a
       // key move per step. The band moved live while the number beside it
       // still read the committed track — the label is where you WATCH the
       // value, so it is the half that most needed to be live.
-      return ValueListenableBuilder<int>(
-        valueListenable: _state.widget.hooks.frameCursor,
-        builder: (context, cursorFrame, _) => TimelineDragPreviewRowGate(
-          dragPreview: _state.widget.hooks.dragPreview,
-          layer: row.layer,
-          rowBuilder: (context, layer) => TimelineLaneControlsRow(
-            layer: layer,
-            lane: previewedLaneRow(
-              row: row,
-              previewLayer: layer,
-              lanesForLayer: _state._lanes.lanesFor,
-            ),
-            metrics: _state._metrics,
-            currentFrameIndex: cursorFrame,
-            onSelectFrame: _state.widget.hooks.onSelectFrame,
-            laneEdit: _state.widget.hooks.laneEdit,
-            onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
-            onToggleLaneGroupEnabled:
-                _state.widget.hooks.onToggleLaneGroupEnabled,
-            onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
-            currentRowHooks: _state.widget.hooks.currentRowHooks,
-            leadingInset: layerSectionLabelSlotWidth,
-            // The SAME flags the layer row below passes, so a group
-            // header's fx lands in the layer rows' fx column (R5 #7).
-            hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
-            hasBlendColumn:
-                _state.widget.hooks.onLayerBlendModeSelected != null,
+      return TimelineDragPreviewRowGate(
+        dragPreview: _state.widget.hooks.dragPreview,
+        layer: row.layer,
+        rowBuilder: (context, layer) => TimelineLaneControlsRow(
+          layer: layer,
+          lane: previewedLaneRow(
+            row: row,
+            previewLayer: layer,
+            lanesForLayer: _state._lanes.lanesFor,
           ),
+          metrics: _state._metrics,
+          frameCursor: _state.widget.hooks.frameCursor,
+          onSelectFrame: _state.widget.hooks.onSelectFrame,
+          laneEdit: _state.widget.hooks.laneEdit,
+          onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
+          onToggleLaneGroupEnabled:
+              _state.widget.hooks.onToggleLaneGroupEnabled,
+          onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
+          currentRowHooks: _state.widget.hooks.currentRowHooks,
+          leadingInset: layerSectionLabelSlotWidth,
+          // The SAME flags the layer row below passes, so a group
+          // header's fx lands in the layer rows' fx column (R5 #7).
+          hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
+          hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
         ),
       );
     }

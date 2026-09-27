@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../widgets/command_pill.dart';
+import '../widgets/tick_layer.dart';
 import 'timeline_view_cluster.dart';
 
 /// The ONE command-bar row both frame panels wear: the host's transport and
@@ -79,30 +80,37 @@ class TimelineCommandBar extends StatelessWidget {
     final leading = this.leading;
     return SizedBox(
       height: heightIn(context),
-      child: Padding(
-        padding: padding,
-        child: Row(
-          children: [
-            if (leading != null)
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: leadingInset,
+      // 🚨The bar is a TICK LAYER (I-22 ③): the counter reads the cursor,
+      // and its width moves the row — it grows into the room on its left
+      // ([TimelineViewCluster]) — so a tick lays out and paints THIS bar.
+      // Rebuilt bare, the counter laid out the dock's panel scroller and
+      // repainted the panel and the dock around it on every playback frame.
+      child: TickLayer(
+        child: Padding(
+          padding: padding,
+          child: Row(
+            children: [
+              if (leading != null)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: leadingInset,
+                    ),
+                    // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
+                    // 스크롤바」): the app's bar exists only while the row
+                    // overflows and costs no layout when it does not.
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: leading,
+                    ),
                   ),
-                  // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
-                  // 스크롤바」): the app's bar exists only while the row
-                  // overflows and costs no layout when it does not.
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: leading,
-                  ),
-                ),
-              )
-            else
-              const Spacer(),
-            const SizedBox(width: 8),
-            cluster,
-          ],
+                )
+              else
+                const Spacer(),
+              const SizedBox(width: 8),
+              cluster,
+            ],
+          ),
         ),
       ),
     );

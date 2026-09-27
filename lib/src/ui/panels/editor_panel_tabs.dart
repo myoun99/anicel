@@ -13,6 +13,7 @@ import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/superellipse_clip.dart';
+import '../widgets/tick_layer.dart';
 import 'panel_collapsed_scope.dart';
 import 'panel_flash.dart';
 import 'panel_visibility_scope.dart';
@@ -435,130 +436,143 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
               context,
             ).position(EditorPanelTabs.stripHeight),
             color: colorScheme.surfaceContainerLow,
-            child: Stack(
-              children: [
-                // The append drop target carpets the whole strip BEHIND the
-                // tabs: drops on empty strip space append, drops on a tab
-                // hit its own insertion targets above.
-                if (_dragEnabled)
-                  Positioned.fill(
-                    child: _TabStripTailDropRegion(
-                      willAccept: _willAccept,
-                      onDropped: (data) =>
-                          widget.onTabMoved!(data, tabs.length),
-                    ),
-                  ),
-                // THE SEAM between the tab strip and the panel body (유저,
-                // R4 #1: 패널 아이콘쪽 영역 밑에 가로선 둬서 탭이랑 내용
-                // 구분할 수 있게). The strip and the body are the SAME fill —
-                // `surfaceContainerLow` and `surface` both resolve to
-                // #1E2022 — so with nothing drawn between them the tabs
-                // float in an unbroken field and the panel has no top.
-                //
-                // ★Painted UNDER the tabs on purpose. The selected tab's
-                // fill is opaque and runs the strip's full height, so it
-                // cuts its own gap in this line: the strip is separated from
-                // the body, and the OPEN tab still grows out of it as one
-                // shape — the 「선택 탭은 패널의 발」 contract, which a line
-                // drawn over the top would have broken. One widget keeps
-                // both promises and there is no arithmetic to get wrong.
-                //
-                // The colour is the app's one line: the same
-                // `outlineVariant` the edge docks draw their vertical seam
-                // with and that `ToolsPanel.groupDivider` uses between the
-                // rail's clusters.
-                Positioned(
-                  key: const ValueKey<String>('panel-strip-seam'),
-                  left: 0,
-                  right: 0,
-                  top: widget.stripAtBottom ? 0 : null,
-                  bottom: widget.stripAtBottom ? null : 0,
-                  height: 1,
-                  // Tight on both axes from the `Positioned`, so this leaf
-                  // has a size — unlike the band above, which had to be told.
-                  child: ColoredBox(color: colorScheme.outlineVariant),
-                ),
-                // ★띠는 스크롤하지 않는다 (유저 확정). It used to be a
-                // horizontal scroller, and the reason to stop is not taste
-                // but GESTURE: inside a scrollable, a drag goes to the
-                // scroll arena before the tab under the finger ever sees
-                // it — the same reason long-press was taken out of the app
-                // — and dragging a tab is how a panel is moved. Compressed,
-                // that fight does not exist.
-                //
-                // Buttons STRETCH the strip's full height so the selected
-                // tab meets the content edge-to-edge.
-                //
-                // ★ONE Row, not a Stack overlay (2026-08-10). The trailing
-                // group used to be `Align`ed over the tabs and the tab count
-                // guessed 32px of room for it — which was fine while it held
-                // one chevron and wrong the moment the sill grew a transport
-                // and a settings pill. A Row lays its INFLEXIBLE child out
-                // first and hands the `Flexible` what is left, so the tab
-                // count is measured against the room that actually exists
-                // and cannot drift from what the trailing group costs.
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // ⑪ 유저 2026-08-12: 「타임라인 문턱에 있는 재생이나
-                    // 설정버튼 왜 우측정렬안했지? 말한것들좀 지키자.」
-                    //
-                    // `Expanded`, not `Flexible`. A loose `Flexible` is only
-                    // as wide as the tabs inside it, so the trailing group sat
-                    // immediately after them — reading as left-aligned, and
-                    // sliding sideways every time a tab was added. Taking all
-                    // the room pins the trailing group to the right edge,
-                    // which is the entire reason it was put there (유저
-                    // 2026-08-10: 「왼쪽 정렬이면 패널을 추가할 때 재생 버튼이
-                    // 밀린다」).
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          // How many fit. The overflow button costs one slot,
-                          // so it only appears when it actually buys room.
-                          final fits =
-                              (constraints.maxWidth /
-                                      EditorPanelTabs._tabExtent)
-                                  .floor();
-                          final overflowing = fits < tabs.length;
-                          final shown = overflowing
-                              ? math.max(0, fits - 1)
-                              : tabs.length;
-                          // Room for less than one tab — a timeline or a
-                          // storyboard docked in a rail, whose sill takes
-                          // nearly the rail's whole width — still holds the
-                          // overflow button, the one way to its tabs. It is
-                          // cut at the room's edge rather than laid out
-                          // past it: ↩️the Row overflowed by the button's
-                          // missing width and threw.
-                          return ClipRect(
-                            child: OverflowBox(
-                              alignment: AlignmentDirectional.centerStart,
-                              maxWidth: double.infinity,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  for (var index = 0; index < shown; index += 1)
-                                    _buildTabButton(index),
-                                  if (overflowing)
-                                    _TabOverflowButton(
-                                      groupId: widget.groupId,
-                                      hidden: tabs.sublist(shown),
-                                      activeTabId: widget.activeTabId,
-                                      onTabSelected: widget.onTabSelected,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
+            // 🚨The strip is a TICK LAYER (I-22 ③): the sill carries the
+            // transport, whose readouts move on a tick — the level meter on
+            // every frame played, the drop count on every frame missed.
+            // Rebuilt bare, they laid out the workspace floor and repainted
+            // the PAGE on every playback frame; now a tick lays out and paints
+            // the strip.
+            child: TickLayer(
+              child: Stack(
+                children: [
+                  // The append drop target carpets the whole strip BEHIND the
+                  // tabs: drops on empty strip space append, drops on a tab
+                  // hit its own insertion targets above.
+                  if (_dragEnabled)
+                    Positioned.fill(
+                      child: _TabStripTailDropRegion(
+                        willAccept: _willAccept,
+                        onDropped: (data) =>
+                            widget.onTabMoved!(data, tabs.length),
                       ),
                     ),
-                    _buildSillTrailing(context, active),
-                  ],
-                ),
-              ],
+                  // THE SEAM between the tab strip and the panel body (유저,
+                  // R4 #1: 패널 아이콘쪽 영역 밑에 가로선 둬서 탭이랑 내용
+                  // 구분할 수 있게). The strip and the body are the SAME fill —
+                  // `surfaceContainerLow` and `surface` both resolve to
+                  // #1E2022 — so with nothing drawn between them the tabs
+                  // float in an unbroken field and the panel has no top.
+                  //
+                  // ★Painted UNDER the tabs on purpose. The selected tab's
+                  // fill is opaque and runs the strip's full height, so it
+                  // cuts its own gap in this line: the strip is separated from
+                  // the body, and the OPEN tab still grows out of it as one
+                  // shape — the 「선택 탭은 패널의 발」 contract, which a line
+                  // drawn over the top would have broken. One widget keeps
+                  // both promises and there is no arithmetic to get wrong.
+                  //
+                  // The colour is the app's one line: the same
+                  // `outlineVariant` the edge docks draw their vertical seam
+                  // with and that `ToolsPanel.groupDivider` uses between the
+                  // rail's clusters.
+                  Positioned(
+                    key: const ValueKey<String>('panel-strip-seam'),
+                    left: 0,
+                    right: 0,
+                    top: widget.stripAtBottom ? 0 : null,
+                    bottom: widget.stripAtBottom ? null : 0,
+                    height: 1,
+                    // Tight on both axes from the `Positioned`, so this leaf
+                    // has a size — unlike the band above, which had to be told.
+                    child: ColoredBox(color: colorScheme.outlineVariant),
+                  ),
+                  // ★띠는 스크롤하지 않는다 (유저 확정). It used to be a
+                  // horizontal scroller, and the reason to stop is not taste
+                  // but GESTURE: inside a scrollable, a drag goes to the
+                  // scroll arena before the tab under the finger ever sees
+                  // it — the same reason long-press was taken out of the app
+                  // — and dragging a tab is how a panel is moved. Compressed,
+                  // that fight does not exist.
+                  //
+                  // Buttons STRETCH the strip's full height so the selected
+                  // tab meets the content edge-to-edge.
+                  //
+                  // ★ONE Row, not a Stack overlay (2026-08-10). The trailing
+                  // group used to be `Align`ed over the tabs and the tab count
+                  // guessed 32px of room for it — which was fine while it held
+                  // one chevron and wrong the moment the sill grew a transport
+                  // and a settings pill. A Row lays its INFLEXIBLE child out
+                  // first and hands the `Flexible` what is left, so the tab
+                  // count is measured against the room that actually exists
+                  // and cannot drift from what the trailing group costs.
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ⑪ 유저 2026-08-12: 「타임라인 문턱에 있는 재생이나
+                      // 설정버튼 왜 우측정렬안했지? 말한것들좀 지키자.」
+                      //
+                      // `Expanded`, not `Flexible`. A loose `Flexible` is
+                      // only as wide as the tabs inside it, so the trailing
+                      // group sat immediately after them — reading as
+                      // left-aligned, and sliding sideways every time a tab was
+                      // added. Taking all the room pins the trailing group to
+                      // the right edge, which is the entire reason it was put
+                      // there (유저 2026-08-10: 「왼쪽 정렬이면 패널을 추가할 때
+                      // 재생 버튼이 밀린다」).
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            // How many fit. The overflow button costs one slot,
+                            // so it only appears when it actually buys room.
+                            final fits =
+                                (constraints.maxWidth /
+                                        EditorPanelTabs._tabExtent)
+                                    .floor();
+                            final overflowing = fits < tabs.length;
+                            final shown = overflowing
+                                ? math.max(0, fits - 1)
+                                : tabs.length;
+                            // Room for less than one tab — a timeline or a
+                            // storyboard docked in a rail, whose sill takes
+                            // nearly the rail's whole width — still holds the
+                            // overflow button, the one way to its tabs. It is
+                            // cut at the room's edge rather than laid out
+                            // past it: ↩️the Row overflowed by the button's
+                            // missing width and threw.
+                            return ClipRect(
+                              child: OverflowBox(
+                                alignment: AlignmentDirectional.centerStart,
+                                maxWidth: double.infinity,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    for (
+                                      var index = 0;
+                                      index < shown;
+                                      index += 1
+                                    )
+                                      _buildTabButton(index),
+                                    if (overflowing)
+                                      _TabOverflowButton(
+                                        groupId: widget.groupId,
+                                        hidden: tabs.sublist(shown),
+                                        activeTabId: widget.activeTabId,
+                                        onTabSelected: widget.onTabSelected,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      _buildSillTrailing(context, active),
+                    ],
+                  ),
+                ],
+              ),
             ),
           );
   }

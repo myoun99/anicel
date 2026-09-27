@@ -54,7 +54,10 @@ void main() {
           body: SizedBox(
             width: 600,
             height: 200,
+            // Filled, as every host mounts the layer: it lays out alone only
+            // in a size decided from above (`TickLayer`).
             child: Stack(
+              fit: StackFit.expand,
               children: [
                 TimelineCursorLayer(
                   frameCursor: ValueNotifier<int>(0),
@@ -246,6 +249,7 @@ void main() {
             width: 600,
             height: 200,
             child: Stack(
+              fit: StackFit.expand,
               children: [
                 TimelineCursorLayer(
                   frameCursor: ValueNotifier<int>(0),

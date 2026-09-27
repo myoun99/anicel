@@ -20,6 +20,7 @@ import 'timeline_instruction_row_visual.dart';
 import 'timeline_playhead.dart';
 import 'timeline_selected_exposure_outline.dart';
 import '../text/app_strings.dart' show AppText;
+import '../widgets/tick_layer.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 
 /// Everything of a timeline grid that moves with the frame cursor — the
@@ -28,7 +29,8 @@ import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 /// ONE widget subscribed to the cursor.
 ///
 /// This is the heart of the playback-performance architecture: a playback
-/// tick or an editing seek repaints THIS layer only. Rows and cells never
+/// tick or an editing seek repaints THIS layer only, and lays out this layer
+/// only ([TickLayer]). Rows and cells never
 /// depend on the cursor, so the grid's hundreds of cell widgets stay
 /// untouched frame to frame (the storyboard's cheap-playhead pattern,
 /// generalized). One widget serves both orientations (Axis policy).
@@ -129,16 +131,30 @@ class TimelineCursorLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        frameCursor,
-        ?dragPreview,
-        ?frameRangeSelection,
-        ?laneRangeSelection,
-        ?currentRow,
-        ?windowBucket,
-      ]),
-      builder: (context, _) => _overlay(),
+    // Pointer-transparent (cells keep every gesture); semantics stay.
+    return IgnorePointer(
+      child: acrossBox(
+        axis,
+        crossAxisExtent,
+        // 🚨Laid out alone as well as painted alone (I-22 ③): rebuilt bare,
+        // the listener below laid the grid's frame area out again — and the
+        // panel's scroll viewport with it — on every playback frame. Tight
+        // here: the box above fixes the cross axis, and every mount fixes
+        // the frame axis (the grid stack's slot, the folded row's fill).
+        child: TickLayer(
+          child: ListenableBuilder(
+            listenable: Listenable.merge([
+              frameCursor,
+              ?dragPreview,
+              ?frameRangeSelection,
+              ?laneRangeSelection,
+              ?currentRow,
+              ?windowBucket,
+            ]),
+            builder: (context, _) => _overlay(),
+          ),
+        ),
+      ),
     );
   }
 
@@ -170,14 +186,7 @@ class TimelineCursorLayer extends StatelessWidget {
         cursorVisible: cursorVisible,
       ),
     ];
-    // Pointer-transparent (cells keep every gesture); semantics stay.
-    return IgnorePointer(
-      child: acrossBox(
-        axis,
-        crossAxisExtent,
-        child: Stack(clipBehavior: Clip.none, children: children),
-      ),
-    );
+    return Stack(clipBehavior: Clip.none, children: children);
   }
 
   // ── where things are ──────────────────────────────────────────────────

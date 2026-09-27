@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'timeline_cell_style.dart' show timelineSelectedFrameBorderColor;
 import 'timeline_frame_window.dart';
 import '../repaint_props.dart';
+import '../widgets/tick_layer.dart';
 import 'memo_token.dart';
 
 /// Which stretches of the frames `[start, endExclusive)` are READY to
@@ -277,7 +278,8 @@ class _TimelineRulerCursorOverlayState
       runsToDraw: _gate.runsToDraw,
     );
     return IgnorePointer(
-      child: RepaintBoundary(
+      // What a tick moves, on the one layer every tick rides (I-22 ③).
+      child: TickLayer(
         child: CustomPaint(
           key: ValueKey<String>(widget.keyValue),
           painter: _painter,

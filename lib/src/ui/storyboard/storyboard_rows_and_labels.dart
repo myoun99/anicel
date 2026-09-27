@@ -104,13 +104,13 @@ class _StoryboardRowsAndLabels {
       railColumns: layerRailColumnWidthsIn(_state.context),
     );
     final onToggleGroup = _state.widget.onToggleTransformGroup;
-    Widget row(PropertyLaneRow lane, int frameIndex) => TimelineLaneControlsRow(
+    Widget row(PropertyLaneRow lane) => TimelineLaneControlsRow(
       layer: carrier,
       lane: lane,
       metrics: metrics,
       width: _state._naturalRailWidth,
       height: laneHeight,
-      currentFrameIndex: frameIndex,
+      frameCursor: frameCursor,
       onSelectFrame: active
           ? onSelectFrame
           : null,
@@ -132,19 +132,10 @@ class _StoryboardRowsAndLabels {
     // The track's rows — V and S alike, their keys are the track's — pass the
     // GLOBAL playhead (R4b). ↩️The S rows passed the ACTIVE cut's local cursor
     // until F-102, which put their values and keys at the wrong frame in any
-    // cut but the first. Either way the row SUBSCRIBES, so a committed seek
-    // rebuilds these label cells and nothing else (the timeline rail's own
-    // line).
-    return [
-      for (final lane in lanes)
-        if (frameCursor == null)
-          row(lane, 0)
-        else
-          ValueListenableBuilder<int?>(
-            valueListenable: frameCursor,
-            builder: (context, frameIndex, _) => row(lane, frameIndex ?? 0),
-          ),
-    ];
+    // cut but the first. Either way the row SUBSCRIBES — itself, on a layer
+    // of its own — so a committed seek rebuilds these label cells and lays
+    // out nothing else (the timeline rail's own line).
+    return [for (final lane in lanes) row(lane)];
   }
 
   Widget seLabelRow(Track track, int slot) {

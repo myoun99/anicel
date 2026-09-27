@@ -135,8 +135,11 @@ class TimelineFrameGridStack extends StatelessWidget {
     );
   }
 
-  /// The playhead rides its OWN RepaintBoundary: a cursor move repaints just
-  /// that layer instead of re-rasterizing the whole grid.
+  /// The playhead rides its OWN layer: a cursor move repaints just that
+  /// layer instead of re-rasterizing the whole grid. The layer brings it —
+  /// `TimelineCursorLayer` is a `TickLayer`, which has to hold its boundary
+  /// together with a layout scope of its own (I-22 ③). ⛔So no boundary
+  /// here as well: wrapped around that one it would hold nothing back.
   Widget _playheadSlot() {
     final horizontal = axis == Axis.horizontal;
     return Positioned(
@@ -144,7 +147,7 @@ class TimelineFrameGridStack extends StatelessWidget {
       top: 0,
       width: horizontal ? playheadExtent : null,
       height: horizontal ? null : playheadExtent,
-      child: RepaintBoundary(child: playhead),
+      child: playhead,
     );
   }
 
