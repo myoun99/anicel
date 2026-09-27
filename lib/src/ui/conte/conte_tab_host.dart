@@ -447,6 +447,8 @@ class _ConteTabHostState extends State<ConteTabHost> {
       bottomBarHostToken: (pageIndex, pages.length),
       fitFocusRect: pages.isEmpty ? null : stack.pageRect(pageIndex),
       unframedFit: pages.isEmpty ? null : stack.pageRect(pageIndex),
+      // The book's paper: where the view stops (F-201).
+      viewLimit: pages.isEmpty ? null : stack.paper,
       drawingOn: _drawing && pages.isNotEmpty,
       strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(

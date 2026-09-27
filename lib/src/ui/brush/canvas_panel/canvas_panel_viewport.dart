@@ -76,7 +76,14 @@ class _CanvasPanelViewport {
   /// at the read — so the very first build that sees it already paints
   /// fitted. Nothing is stored, so nothing has to wait for the frame to end
   /// to store it, and there is nothing to put back afterwards.
-  CanvasViewport get _viewport {
+  ///
+  /// 🎯**And it is HELD** to [BrushCanvasPanel.viewLimit] (F-201): what is
+  /// read here is what the window shows, whatever wrote the store.
+  CanvasViewport get _viewport => _held(_unheld);
+
+  /// The view as stored — or as `null` resolves — before
+  /// [BrushCanvasPanel.viewLimit] holds it.
+  CanvasViewport get _unheld {
     final stored = viewportNotifier.value;
     if (stored != null) {
       return _state._zoomScale.fromDevice(stored);
@@ -92,8 +99,51 @@ class _CanvasPanelViewport {
 
   set _viewport(CanvasViewport value) {
     _publishingViewport = true;
-    viewportNotifier.value = _state._zoomScale.toDevice(value);
+    viewportNotifier.value = _state._zoomScale.toDevice(_held(value));
     _publishingViewport = false;
+  }
+
+  /// [view] held to [BrushCanvasPanel.viewLimit] in the window you look
+  /// through — [view] itself on a canvas that has none.
+  CanvasViewport _held(CanvasViewport view) {
+    final limit = _state.widget.viewLimit;
+    return limit == null
+        ? view
+        : viewHeldTo(view, limit: limit, window: _resolvedVisibleRect());
+  }
+
+  /// The limit and the window it is held in, for the pan bars — null on a
+  /// canvas that pans freely.
+  ({Rect rect, Rect window})? get _panLimit {
+    final limit = _state.widget.viewLimit;
+    return limit == null ? null : (rect: limit, window: _resolvedVisibleRect());
+  }
+
+  /// Puts a STORED view back inside [BrushCanvasPanel.viewLimit] when it
+  /// got outside without passing the setter — an owner wrote it, or the
+  /// window or the limit changed under it.
+  ///
+  /// The read already shows it held; this makes the store — the value the
+  /// owner reads (a page strip counts its pages from it) — say the same.
+  /// A view nobody has framed stays unframed: there is nothing stored.
+  ///
+  /// ⛔Not before the panel has been laid out once. Until then the window
+  /// is a stand-in (the canvas's own size), and a view an owner restored
+  /// into the store before the first frame would be held — and stored —
+  /// against a window that does not exist.
+  void _holdTheStoredView() {
+    if (_state.widget.viewLimit == null ||
+        viewportNotifier.value == null ||
+        _editorViewportSize == null) {
+      return;
+    }
+    final unheld = _unheld;
+    final held = _held(unheld);
+    if (identical(held, unheld)) {
+      return;
+    }
+    _viewport = held;
+    _syncViewportParent();
   }
 
   /// The notifier this panel is currently subscribed to — [viewportNotifier]
@@ -121,6 +171,9 @@ class _CanvasPanelViewport {
     if (_publishingViewport || !_state.mounted) {
       return;
     }
+    // An owner's write is held like the panel's own (F-201) — at once, so
+    // the owner's other listeners already read the held value.
+    _holdTheStoredView();
     // The value already lives in the notifier — this call IS the repaint.
     _state._rebuild(() {});
   }
@@ -223,6 +276,8 @@ class _CanvasPanelViewport {
       if (before != null) {
         _reanchorAfterBoxChange(before, after);
       }
+      // Another window holds the view elsewhere (F-201).
+      _holdTheStoredView();
       _state._rebuild(() {});
     });
   }

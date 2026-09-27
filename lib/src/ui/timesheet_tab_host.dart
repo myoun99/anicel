@@ -395,6 +395,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             bottomBarLeading: [..._panelActions(), ..._bottomBarLeading(null)],
             pageStrip: _pageStrip(null),
             bottomBarHostToken: (widget.continuous, _dataSheet, 0, 0),
+            // No cut, no paper: nothing for the view to stop at.
+            viewLimit: null,
             // F-179: the backdrop shows through — no fill of the sheet's own.
             content: (context, viewport) => SizedBox.expand(
               key: const ValueKey<String>('timesheet-empty-no-cut'),
@@ -483,6 +485,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     ),
                     // Fit frames the page on screen.
                     fitFocusRect: layout.pageRect(visiblePage),
+                    viewLimit: layout.paper,
                     autoFrame: autoFrame,
                     drawingOn: ink != null,
                     strokeHold: _strokeHold,

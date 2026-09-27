@@ -25,6 +25,7 @@ void main() {
           body: SheetCanvasPanel(
             cacheInvalidationSink: sink,
             canvasSize: const CanvasSize(width: 200, height: 100),
+            viewLimit: null,
             viewport: raw,
             // This pin is about the SNAP, and it mounts no ink.
             drawingOn: false,

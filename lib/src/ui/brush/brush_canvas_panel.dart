@@ -80,6 +80,7 @@ import 'canvas_selection_commands.dart';
 import 'transform_tool_options.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
+import 'canvas_view_limit.dart';
 import 'canvas_viewport_pan_metrics.dart';
 import 'canvas_visible_rect.dart';
 import '../widgets/app_icon_button.dart';
@@ -177,6 +178,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.floorBottomOverlaySpan = 0,
     this.autoFrame,
     this.unframedFit,
+    this.viewLimit,
     this.contentStrokeActive,
     this.sampleColorAt,
     this.paperColor = ProjectBackground.defaultPaperArgb,
@@ -598,6 +600,24 @@ class BrushCanvasPanel extends StatefulWidget {
   /// that notifier and takes over from the fit exactly as it would from the
   /// identity. Re-arming the fit is `notifier.value = null`.
   final Rect? unframedFit;
+
+  /// THE VIEW'S LIMIT (canvas space) — the paper the view stops at; null
+  /// for a canvas that pans freely, which is the drawing canvas.
+  ///
+  /// 🗣️F-201 (유저 2026-09-27): 「스크롤 최대치가 너무 커서? 그림이 밖으로
+  /// 빠져나가는데 좀 줄여서 … 다른 미디어 뷰어 프로그램이 그러니까」,
+  /// answered `edge` (F-201-pan-limit-Q1: 「끝이 화면 가장자리에 딱
+  /// 닿는다」) — see [viewHeldTo] for the law.
+  ///
+  /// 🎯**Held in the one store, not at each road.** A drag, a pinch, the
+  /// wheel, a pan bar, a pill press, a fit, an owner's write — every road
+  /// that moves the view ends in `_CanvasPanelViewport`, so it is held
+  /// there: the read shows the view held in the window you look through,
+  /// the write stores it held, and a write that came from outside (the
+  /// owner's) or a window or a limit that changed under a stored view is
+  /// put back the same way. The pan bars span the limit and nothing past
+  /// it.
+  final Rect? viewLimit;
 
   /// Raised by contentOverride content that hosts its OWN brush input (the
   /// timesheet ink layer): while true, the panel's gesture layer holds
@@ -1436,6 +1456,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!identical(_viewportState._listenedViewport, notifier)) {
       _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
       _viewportState._listenedViewport = notifier..addListener(_viewportState.handleViewportMovedByOwner);
+    }
+    // A new limit holds a stored view elsewhere (F-201) — stored after the
+    // frame, because the owner hears the write and this is its build.
+    if (widget.viewLimit != oldWidget.viewLimit) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _viewportState._holdTheStoredView();
+        }
+      });
     }
     rebindListener(
       oldWidget.selectionCommands,
@@ -3000,6 +3029,7 @@ class CanvasViewportHorizontalScrollbar extends StatelessWidget {
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
+    this.limit,
     required this.onViewportChanged,
     this.onViewportChangeEnd,
     this.enabled = true,
@@ -3007,6 +3037,7 @@ class CanvasViewportHorizontalScrollbar extends StatelessWidget {
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
+  final ({Rect rect, Rect window})? limit;
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback? onViewportChangeEnd;
   final bool enabled;
@@ -3016,6 +3047,7 @@ class CanvasViewportHorizontalScrollbar extends StatelessWidget {
     viewport: viewport,
     editorViewportSize: editorViewportSize,
     canvasSize: canvasSize,
+    limit: limit,
     onViewportChanged: onViewportChanged,
     onViewportChangeEnd: onViewportChangeEnd,
     enabled: enabled,
@@ -3028,6 +3060,7 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
+    this.limit,
     required this.onViewportChanged,
     this.onViewportChangeEnd,
     this.enabled = true,
@@ -3035,6 +3068,7 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
+  final ({Rect rect, Rect window})? limit;
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback? onViewportChangeEnd;
   final bool enabled;
@@ -3044,6 +3078,7 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
     viewport: viewport,
     editorViewportSize: editorViewportSize,
     canvasSize: canvasSize,
+    limit: limit,
     onViewportChanged: onViewportChanged,
     onViewportChangeEnd: onViewportChangeEnd,
     enabled: enabled,
@@ -3056,6 +3091,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
+    required this.limit,
     required this.onViewportChanged,
     this.onViewportChangeEnd,
     required this.enabled,
@@ -3064,6 +3100,9 @@ class _CanvasViewportPanbar extends StatelessWidget {
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
+
+  /// The view's limit and its window — the span the bar covers (F-201).
+  final ({Rect rect, Rect window})? limit;
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback? onViewportChangeEnd;
 
@@ -3078,6 +3117,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
       viewport: viewport,
       editorViewportSize: editorViewportSize,
       canvasSize: canvasSize,
+      limit: limit,
     );
     return SizedBox(
       key: ValueKey<String>(

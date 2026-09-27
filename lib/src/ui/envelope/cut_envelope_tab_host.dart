@@ -8,6 +8,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/envelope/cut_envelope_source.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
@@ -166,12 +167,8 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
               keyPrefix: 'envelope',
             ),
       bottomBarLeading: _panelActions(),
-      fitFocusRect: Rect.fromLTWH(
-        0,
-        0,
-        paper.width.toDouble(),
-        paper.height.toDouble(),
-      ),
+      fitFocusRect: paper.canvasRect,
+      viewLimit: paper.canvasRect,
       drawingOn: inking,
       strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(

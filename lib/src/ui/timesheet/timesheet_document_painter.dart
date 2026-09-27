@@ -396,6 +396,13 @@ class TimesheetDocumentLayout {
       ? '1/1'
       : '${pageIndex + 1}/${pageCount ?? document.pages.length}';
 
+  /// The paper the document lays out — every page and the gaps between
+  /// them, inside the margin round the whole: where the panel's view stops
+  /// (F-201).
+  Rect get paper => continuous || resolvedSinglePage != null
+      ? pageRect(visiblePageIndexes.first)
+      : _stack.paper;
+
   /// Logical size of the whole document — one paper in continuous and
   /// single-page (R26 #41) modes, the stack otherwise.
   Size get documentSize => continuous || resolvedSinglePage != null

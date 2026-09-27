@@ -46,6 +46,7 @@ void main() {
             child: SheetCanvasPanel(
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               canvasSize: const CanvasSize(width: 600, height: 800),
+              viewLimit: null,
               viewport: CanvasViewport(),
               onViewportChanged: emitted.add,
               drawingOn: drawing,

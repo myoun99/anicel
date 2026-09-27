@@ -44,6 +44,7 @@ class SheetCanvasPanel extends StatefulWidget {
     this.fitFocusRect,
     this.unframedFit,
     this.autoFrame,
+    required this.viewLimit,
     this.strokeHold,
     this.brushSwitch,
     required this.drawingOn,
@@ -64,6 +65,11 @@ class SheetCanvasPanel extends StatefulWidget {
   /// ([BrushCanvasPanel.unframedFit]) — the conte's page in its book.
   final Rect? unframedFit;
   final CanvasAutoFrameRequest? autoFrame;
+
+  /// The sheet's paper, where the view stops ([BrushCanvasPanel.viewLimit],
+  /// F-201). ⚠️Required, so a sheet cannot forget to say it: null only
+  /// for a panel with no paper on it — the timesheet's no-cut gap.
+  final Rect? viewLimit;
 
   /// The sheet's live-stroke hold, raised by its ink windows. The panel
   /// holds navigation on it while [drawingOn], and lets it go when drawing
@@ -150,6 +156,7 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
       fitFocusRect: widget.fitFocusRect,
       unframedFit: widget.unframedFit,
       autoFrame: widget.autoFrame,
+      viewLimit: widget.viewLimit,
       contentStrokeActive: widget.drawingOn ? widget.strokeHold : null,
       // F-80: a sheet runs the selected tool while its drawing is ON. With
       // it off nothing here can act, so the panel makes a plain primary

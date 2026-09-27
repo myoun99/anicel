@@ -59,6 +59,19 @@ class PageStack {
     );
   }
 
+  /// The paper the pages make: from the first page's top to the last one's
+  /// bottom, as wide as the widest — where a view of the stack stops
+  /// (F-201). The margin round it is desk, not paper.
+  Rect get paper {
+    final whole = size;
+    return Rect.fromLTRB(
+      margin,
+      margin,
+      whole.width - margin,
+      whole.height - margin,
+    );
+  }
+
   /// Where page [index] lies in the stack. Past the last page the stack
   /// goes on in pages the last one's size — where the sheet a longer cut
   /// would print lies (the timesheet previews a cut-end drag's rows past

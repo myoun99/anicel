@@ -35,6 +35,7 @@ void main() {
   }) => SheetCanvasPanel(
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
     canvasSize: const CanvasSize(width: 600, height: 800),
+    viewLimit: null,
     viewport: CanvasViewport(),
     bottomBarHostToken: hostToken,
     brushSwitch: (allowed: allowed, onChanged: onChanged, keyPrefix: 'probe'),
@@ -91,6 +92,7 @@ void main() {
         SheetCanvasPanel(
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
           canvasSize: const CanvasSize(width: 600, height: 800),
+          viewLimit: null,
           viewport: CanvasViewport(),
           brushSwitch: (allowed: false, onChanged: (_) {}, keyPrefix: 'probe'),
           bottomBarLeading: [
