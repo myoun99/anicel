@@ -9,6 +9,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import 'brush_canvas_panel.dart';
+import 'canvas_book.dart';
 
 /// A PAPER panel: [BrushCanvasPanel] as the sheets mount it — no editing
 /// coordinator, no frame keys, a host-local invalidation sink, a view that
@@ -45,6 +46,7 @@ class SheetCanvasPanel extends StatefulWidget {
     this.unframedFit,
     this.autoFrame,
     required this.viewLimit,
+    this.book,
     this.strokeHold,
     this.brushSwitch,
     required this.drawingOn,
@@ -70,6 +72,10 @@ class SheetCanvasPanel extends StatefulWidget {
   /// F-201). ⚠️Required, so a sheet cannot forget to say it: null only
   /// for a panel with no paper on it — the timesheet's no-cut gap.
   final Rect? viewLimit;
+
+  /// The sheet's pages and the page its reader is on
+  /// ([BrushCanvasPanel.book], F-201).
+  final CanvasBook? book;
 
   /// The sheet's live-stroke hold, raised by its ink windows. The panel
   /// holds navigation on it while [drawingOn], and lets it go when drawing
@@ -157,6 +163,7 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
       unframedFit: widget.unframedFit,
       autoFrame: widget.autoFrame,
       viewLimit: widget.viewLimit,
+      book: widget.book,
       contentStrokeActive: widget.drawingOn ? widget.strokeHold : null,
       // F-80: a sheet runs the selected tool while its drawing is ON. With
       // it off nothing here can act, so the panel makes a plain primary

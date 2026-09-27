@@ -181,7 +181,7 @@ void main() {
     ).first;
     final cell = page.cells.singleWhere((cell) => cell.cutId == of.value);
     return cell.pictureRect.shift(
-      tester.getTopLeft(find.byKey(const ValueKey<String>('conte-form-paint'))),
+      conteBodyTopLeft(tester),
     );
   }
 

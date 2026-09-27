@@ -34,9 +34,9 @@ class _WorkspaceDocumentViews {
 
   final ValueNotifier<double> _cameraDimOpacity = ValueNotifier(0.5);
 
-  /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
-  /// on screen in page view (R26 #41), the sheet viewport (zoom/pan) and
-  /// the brush switch — owned here so they survive tab switches.
+  /// Timesheet tab view state: paper page-split ⟷ continuous, the page
+  /// read in page view (F-201), the sheet viewport (zoom/pan) and the
+  /// brush switch — owned here so they survive tab switches.
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
 
   final ValueNotifier<int> _timesheetPage = ValueNotifier(0);

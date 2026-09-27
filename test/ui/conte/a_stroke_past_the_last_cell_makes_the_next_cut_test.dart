@@ -148,9 +148,7 @@ void main() {
     final row = last.rowOnPage + last.source.rowSpan + past;
     final top = metrics.rowTop(row);
     final bottom = metrics.rowTop(row + 1);
-    final paper = tester.getTopLeft(
-      find.byKey(const ValueKey<String>('conte-form-paint')),
-    );
+    final paper = conteBodyTopLeft(tester);
     return (
       picture: Rect.fromLTRB(
         metrics.pictureLeft,

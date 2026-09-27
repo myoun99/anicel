@@ -79,6 +79,7 @@ import '../../core/dev_profile.dart';
 import 'canvas_selection_commands.dart';
 import 'transform_tool_options.dart';
 import 'selection_shape_history_command.dart';
+import 'canvas_book.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_view_limit.dart';
 import 'canvas_viewport_pan_metrics.dart';
@@ -102,6 +103,7 @@ part 'canvas_panel/canvas_panel_selection.dart';
 part 'canvas_panel/canvas_panel_tool_cursor.dart';
 part 'canvas_panel/canvas_panel_tap.dart';
 part 'canvas_panel/canvas_panel_lift.dart';
+part 'canvas_panel/canvas_panel_book.dart';
 part 'canvas_panel/canvas_panel_viewport.dart';
 part 'canvas_panel/viewport_bottom_bar_build.dart';
 part 'canvas_panel/canvas_panel_build.dart';
@@ -179,6 +181,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.autoFrame,
     this.unframedFit,
     this.viewLimit,
+    this.book,
     this.contentStrokeActive,
     this.sampleColorAt,
     this.paperColor = ProjectBackground.defaultPaperArgb,
@@ -619,6 +622,13 @@ class BrushCanvasPanel extends StatefulWidget {
   /// it.
   final Rect? viewLimit;
 
+  /// THE BOOK — this canvas's pages laid one under another, and the page
+  /// its reader is on (F-201); null for a canvas without pages. Writing
+  /// the reader's page turns to it, the view moving there; the panel
+  /// writes it back as the view leaves it (`_CanvasPanelBook`), and Fit
+  /// frames it when no [fitFocusRect] is given.
+  final CanvasBook? book;
+
   /// Raised by contentOverride content that hosts its OWN brush input (the
   /// timesheet ink layer): while true, the panel's gesture layer holds
   /// navigation exactly as it does for the panel's own strokes.
@@ -861,6 +871,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The viewport (Round 6): own, owner's, published, and the editor size.
   late final _CanvasPanelViewport _viewportState = _CanvasPanelViewport(this);
 
+  // The book (F-201): the page its reader is on, kept true to the view.
+  late final _CanvasPanelBook _bookState = _CanvasPanelBook(this);
+
   /// True while a brush stroke is in progress; the viewport gesture layer
   /// ignores wheel zooms and new pans so they cannot disturb the stroke.
   bool _strokeActive = false;
@@ -1089,6 +1102,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     CanvasPanHold.held.addListener(_onPanHoldChanged);
     _viewportState._listenedViewport = _viewportState.viewportNotifier
       ..addListener(_viewportState.handleViewportMovedByOwner);
+    _bookState.bind();
     widget.selectionCommands?.addListener(_selectionSeat.handleSelectionChannelChanged);
     _builtFor = BrushCanvasPanel.structureOf(_brush);
     widget.brushToolState?.addListener(_handleBrushChanged);
@@ -1216,6 +1230,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
     _viewportState._listenedViewport = null;
     _viewportState._ownViewport.dispose();
+    // The reader's page is the owner's too, for the same reason.
+    _bookState.unbind();
     // A mid-stroke teardown must release the session's warm hold — a
     // leaked hold would gate prerendering forever (and a stroke's would
     // hold the playhead). Same for a mid-drag selection interaction.
@@ -1457,6 +1473,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
       _viewportState._listenedViewport = notifier..addListener(_viewportState.handleViewportMovedByOwner);
     }
+    // A host can hand over another reader (F-201).
+    _bookState.bind();
     // A new limit holds a stored view elsewhere (F-201) — stored after the
     // frame, because the owner hears the write and this is its build.
     if (widget.viewLimit != oldWidget.viewLimit) {

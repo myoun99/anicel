@@ -58,47 +58,22 @@ class TimesheetDocumentLayout {
   TimesheetDocumentLayout({
     required this.document,
     this.continuous = false,
-    this.singlePage,
   });
 
   final TimesheetDocument document;
   final bool continuous;
 
-  /// R26 #41 — PAGE VIEW shows ONE sheet of paper at a time.
+  /// Page indexes this layout prints, in order: the single strip in
+  /// continuous view, every page one under another otherwise.
   ///
-  /// Non-null (paged mode only) makes the document exactly one page tall
-  /// with that page printed alone at the top margin; the bottom bar's
-  /// ◀ / n/N / ▶ cluster moves the index. Null keeps the pre-#41 stack of
-  /// every page (still what exports and focused tests build).
-  ///
-  /// Every geometry accessor already routes through [pageTop], so the
-  /// painter, the ink windows and the header/memo tap zones follow just by
-  /// iterating [visiblePageIndexes] instead of `document.pages`.
-  final int? singlePage;
-
-  /// The single page actually on screen, clamped into range; null when the
-  /// whole document prints (continuous view, exports, tests).
-  int? get resolvedSinglePage {
-    final page = singlePage;
-    if (page == null || continuous || document.pages.isEmpty) {
-      return null;
-    }
-    return page.clamp(0, document.pages.length - 1);
-  }
-
-  /// Page indexes this layout prints, in order. One entry in continuous
-  /// view (the single strip) and in single-page mode; every page
-  /// otherwise.
-  List<int> get visiblePageIndexes {
-    if (continuous) {
-      return const [0];
-    }
-    final page = resolvedSinglePage;
-    if (page != null) {
-      return [page];
-    }
-    return [for (final page in document.pages) page.index];
-  }
+  /// ↩️R26 #41 (07-23) printed ONE sheet at a time in page view and turned
+  /// the page by swapping the paper under a view that never moved. F-201
+  /// (유저 2026-09-27, F-201-timesheet-pages-Q1: 「타임시트 페이지 보기도
+  /// 쌓는다」) lays them one under another again, as the conte's and the
+  /// viewer's: a turn scrolls to the page (`CanvasBook`).
+  List<int> get visiblePageIndexes => continuous
+      ? const [0]
+      : [for (final page in document.pages) page.index];
 
   static const double rowHeight = 18;
   static const double actionColumnWidth = 24;
@@ -135,11 +110,15 @@ class TimesheetDocumentLayout {
   /// The margin round the document, one sheet or many: the stack's.
   static const double documentMargin = PageStack.defaultMargin;
 
-  /// The pages one under another — what the exports print. The page view
-  /// shows one of them at a time (R26 #41).
+  /// The pages one under another — what the exports print and the page
+  /// view shows.
   late final PageStack _stack = PageStack([
     for (final _ in document.pages) Size(paperWidth, paperHeight),
   ]);
+
+  /// [_stack], for the panel's book: which page the reader is on and
+  /// where a turn takes the view.
+  PageStack get pageStack => _stack;
 
   int _columnCountOf(TimesheetColumnKind kind) {
     var count = 0;
@@ -237,12 +216,9 @@ class TimesheetDocumentLayout {
 
   double get paperLeft => documentMargin;
 
-  /// Top of a page's paper. In single-page mode the visible page is the
-  /// only paper in the document, so it sits at the top margin — the page
-  /// turn is a document swap, not a scroll (R26 #41).
-  double pageTop(int pageIndex) => continuous || resolvedSinglePage != null
-      ? documentMargin
-      : _stack.pageRect(pageIndex).top;
+  /// Top of a page's paper — the strip's in continuous view.
+  double pageTop(int pageIndex) =>
+      continuous ? documentMargin : _stack.pageRect(pageIndex).top;
 
   /// The paper rect of a page (the whole strip in continuous mode).
   Rect pageRect(int pageIndex) {
@@ -399,13 +375,11 @@ class TimesheetDocumentLayout {
   /// The paper the document lays out — every page and the gaps between
   /// them, inside the margin round the whole: where the panel's view stops
   /// (F-201).
-  Rect get paper => continuous || resolvedSinglePage != null
-      ? pageRect(visiblePageIndexes.first)
-      : _stack.paper;
+  Rect get paper => continuous ? pageRect(0) : _stack.paper;
 
-  /// Logical size of the whole document — one paper in continuous and
-  /// single-page (R26 #41) modes, the stack otherwise.
-  Size get documentSize => continuous || resolvedSinglePage != null
+  /// Logical size of the whole document — the one strip in continuous
+  /// view, the stack otherwise.
+  Size get documentSize => continuous
       ? Size(documentMargin * 2 + paperWidth, documentMargin * 2 + paperHeight)
       : _stack.size;
 }
@@ -635,14 +609,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     // only question is whether we spend the ops finding that out.
     _cull = debugDisableCulling || resolvedViewport == null
         ? null
-        : (resolvedViewport.zoom <= 0
-              ? null
-              : Rect.fromLTWH(
-                  -resolvedViewport.panX / resolvedViewport.zoom,
-                  -resolvedViewport.panY / resolvedViewport.zoom,
-                  size.width / resolvedViewport.zoom,
-                  size.height / resolvedViewport.zoom,
-                ));
+        : canvasRectShown(resolvedViewport, size);
 
     if (layout.continuous) {
       _bands.paintPaper(canvas, 0);
@@ -658,8 +625,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
         rowCount: document.rowCount,
       );
     } else {
-      // Page view prints only the page on screen (R26 #41); the stacked
-      // document prints them all.
+      // Every page, one under another.
       for (final pageIndex in layout.visiblePageIndexes) {
         final page = document.pages[pageIndex];
         // A whole page off screen costs nothing at all — this is where
@@ -851,7 +817,6 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   @override
   Object get props => (
     layout.continuous,
-    layout.resolvedSinglePage,
     viewport,
     face,
     // Null means ALL strata, which is a different input from an empty set,
@@ -982,7 +947,6 @@ class TimesheetPlayheadPainter extends CustomPainter with RepaintOnProps {
   Object get props => (
     ByIdentity(document),
     layout.continuous,
-    layout.resolvedSinglePage,
     viewport,
     effectiveRatio,
   );

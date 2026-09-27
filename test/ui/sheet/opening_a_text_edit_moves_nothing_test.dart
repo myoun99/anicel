@@ -209,9 +209,7 @@ void main() {
         cell.actionRect.right,
         m.rowTop(cell.rowOnPage + cell.source.rowSpan),
       );
-      final origin = tester.getTopLeft(
-        find.byKey(const ValueKey<String>('conte-form-paint')),
-      );
+      final origin = conteBodyTopLeft(tester);
       return Rect.fromLTRB(
         origin.dx + zoom * paper.left,
         origin.dy + zoom * paper.top,

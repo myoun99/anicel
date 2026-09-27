@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/page_stack.dart';
@@ -20,6 +21,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
@@ -99,6 +101,7 @@ void main() {
     EditorSessionManager session, {
     CanvasViewport? seed,
     bool brush = false,
+    Size surface = const Size(900, 900),
   }) async {
     final view = ValueNotifier<CanvasViewport?>(
       seed == null ? null : seedFromRender(tester, seed),
@@ -108,7 +111,7 @@ void main() {
     addTearDown(ink.dispose);
     final tool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     addTearDown(tool.dispose);
-    await tester.binding.setSurfaceSize(const Size(900, 900));
+    await tester.binding.setSurfaceSize(surface);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
@@ -139,6 +142,17 @@ void main() {
         ),
       )
       .data!;
+
+  /// The view the pages are printed through: the panel's — held to the
+  /// paper (F-201) — snapped to the device grid as the sheet snaps it.
+  CanvasViewport printedThrough(WidgetTester tester) => renderSnappedViewport(
+    tester
+        .widget<CanvasViewportGestureLayer>(
+          find.byType(CanvasViewportGestureLayer),
+        )
+        .viewport,
+    tester.view.devicePixelRatio,
+  );
 
   EditorSessionManager sessionOf() {
     final session = EditorSessionManager(initialProject: project());
@@ -182,7 +196,9 @@ void main() {
     );
     expect(
       view.viewport,
-      band.shiftedBy(stack.pageRect(3).topLeft).inkViewport(seed),
+      band
+          .shiftedBy(stack.pageRect(3).topLeft)
+          .inkViewport(printedThrough(tester)),
     );
   });
 
@@ -196,7 +212,14 @@ void main() {
       panX: -stack.margin,
       panY: -stack.pageRect(2).top * 0.5,
     );
-    final view = await pump(tester, session, seed: seed);
+    // A view shorter than a page, so no page here is near enough the
+    // paper's end for the view to stop short of its top.
+    final view = await pump(
+      tester,
+      session,
+      seed: seed,
+      surface: const Size(900, 360),
+    );
     expect(readout(tester), '3 / 4', reason: 'the body\'s first page');
     final zoom = view.value!.zoom;
 
@@ -224,8 +247,127 @@ void main() {
     await tester.pumpAndSettle();
     expect(readout(tester), '4 / 4');
     // …and half a gap short of the page, it is still the page above.
-    view.value = view.value!.copyWith(
-      panY: -(stack.pageRect(3).top - stack.gap * 1.5) * zoom,
+    final short = -(stack.pageRect(3).top - stack.gap * 1.5) * zoom;
+    view.value = view.value!.copyWith(panY: short);
+    await tester.pumpAndSettle();
+    expect(readout(tester), '3 / 4');
+    expect(
+      view.value!.panY,
+      closeTo(short, 1e-6),
+      reason: 'the page read follows the hand — the hand is not snapped '
+          'to the page',
+    );
+  });
+
+  testWidgets('a drag that takes the page read off the view reads the page '
+      'at its top', (tester) async {
+    final session = sessionOf();
+    final stack = stackOf(pagesOf(session));
+    await pump(
+      tester,
+      session,
+      seed: CanvasViewport(
+        zoom: 0.5,
+        panX: -stack.margin,
+        panY: -stack.pageRect(2).top * 0.5,
+      ),
+      surface: const Size(900, 360),
+    );
+    expect(readout(tester), '3 / 4', reason: '⛔전제');
+
+    // On the desk beside the paper, where no cell takes the press.
+    final box = tester.getRect(find.byType(CanvasViewportGestureLayer));
+    final gesture = await tester.startGesture(
+      Offset(box.left + 60, box.center.dy),
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var step = 0; step < 6; step += 1) {
+      await gesture.moveBy(Offset(0, -stack.pageRect(2).height / 12 * 1.2));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(readout(tester), '4 / 4');
+  });
+
+  testWidgets('Fit frames the page read', (tester) async {
+    final session = sessionOf();
+    final stack = stackOf(pagesOf(session));
+    await pump(
+      tester,
+      session,
+      seed: CanvasViewport(
+        zoom: 2,
+        panX: -stack.margin * 2,
+        panY: -stack.pageRect(3).top * 2,
+      ),
+    );
+    expect(readout(tester), '4 / 4', reason: '⛔전제');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+    );
+    await tester.pumpAndSettle();
+    final shown = printedThrough(tester);
+    final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
+    final page = stack.pageRect(3);
+    final onScreen = Rect.fromLTWH(
+      page.left * shown.zoom + shown.panX,
+      page.top * shown.zoom + shown.panY,
+      page.width * shown.zoom,
+      page.height * shown.zoom,
+    );
+    // A portrait page fits the view's height, less the fit's own margin —
+    // not the whole book, whose four pages would each take a quarter.
+    expect(onScreen.height, lessThanOrEqualTo(box.height));
+    expect(onScreen.height, greaterThan(box.height * 0.85));
+  });
+
+  testWidgets('a turn to a last page shorter than the view stops at the '
+      'paper\'s end — and reads the last page, which never reached the '
+      'top', (tester) async {
+    final session = sessionOf();
+    final stack = stackOf(pagesOf(session));
+    await pump(
+      tester,
+      session,
+      seed: CanvasViewport(
+        panX: -stack.margin,
+        panY: -stack.pageRect(2).top,
+      ),
+    );
+    expect(readout(tester), '3 / 4', reason: '⛔전제');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('conte-next-page-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(readout(tester), '4 / 4');
+    final shown = printedThrough(tester);
+    final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
+    expect(
+      stack.paper.bottom * shown.zoom + shown.panY,
+      closeTo(box.height, 1),
+      reason: 'the paper\'s end on the view\'s',
+    );
+  });
+
+  testWidgets('a book zoomed out to fit whole moves not at all, and a turn '
+      'still changes the page read', (tester) async {
+    final session = sessionOf();
+    final view = await pump(tester, session, seed: CanvasViewport(zoom: 0.2));
+    expect(readout(tester), '1 / 4', reason: 'the book\'s top at the top');
+    final whole = view.value;
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('conte-next-page-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(readout(tester), '2 / 4');
+    expect(view.value, whole, reason: 'nowhere to move');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('conte-next-page-button')),
     );
     await tester.pumpAndSettle();
     expect(readout(tester), '3 / 4');

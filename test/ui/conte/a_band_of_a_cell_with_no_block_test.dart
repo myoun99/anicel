@@ -186,9 +186,7 @@ void main() {
       metrics: metrics,
     ).first;
     final cell = page.cells.singleWhere((cell) => cell.cutId == of.value);
-    final paper = tester.getTopLeft(
-      find.byKey(const ValueKey<String>('conte-form-paint')),
-    );
+    final paper = conteBodyTopLeft(tester);
     return (
       picture: cell.pictureRect.shift(paper),
       band: cell.rowBandRect(metrics).shift(paper),

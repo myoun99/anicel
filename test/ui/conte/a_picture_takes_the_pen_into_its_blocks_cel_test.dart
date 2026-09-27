@@ -385,9 +385,7 @@ void main() {
       const ValueKey<String>('conte-picture-live-picture-39-0'),
     );
     expect(live, findsOneWidget);
-    final pageTopLeft = tester.getTopLeft(
-      find.byKey(const ValueKey<String>('conte-form-paint')),
-    );
+    final pageTopLeft = conteBodyTopLeft(tester);
     final centre = pageTopLeft + cell.pictureRect.center;
     final at = centre - tester.getTopLeft(live);
 
@@ -627,9 +625,7 @@ void main() {
         ),
       ).first;
       final pageTopLeft =
-          tester.getTopLeft(
-            find.byKey(const ValueKey<String>('conte-form-paint')),
-          ) -
+          conteBodyTopLeft(tester) -
           tester.getTopLeft(find.byKey(boundary));
       return contePictureSlot(
         page.cells.single,
@@ -790,7 +786,7 @@ void main() {
         );
 
         // Where the page is on the screen: the form's own printer's view.
-        final form = find.byKey(const ValueKey<String>('conte-form-paint'));
+        final form = conteBodyForm();
         final painter =
             tester.widget<CustomPaint>(form).painter! as ContePagePainter;
         final view = renderSnappedViewport(

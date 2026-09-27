@@ -13,6 +13,7 @@ import 'brush/sheet_canvas_panel.dart';
 import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/canvas_book.dart';
 import 'dialogs/dialog_verb.dart';
 import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
@@ -39,8 +40,7 @@ class TimesheetTabHost extends StatefulWidget {
     required this.session,
     required this.continuous,
     required this.onContinuousChanged,
-    this.page = 0,
-    this.onPageChanged,
+    this.reading,
     this.viewport,
     this.viewportController,
     this.onViewportChanged,
@@ -56,13 +56,13 @@ class TimesheetTabHost extends StatefulWidget {
   final bool continuous;
   final ValueChanged<bool> onContinuousChanged;
 
-  /// R26 #41: the sheet of paper on screen in page view — one at a time,
-  /// turned by the bottom bar's ◀ / n/N / ▶ cluster (and by playback,
-  /// which turns the page as it crosses into it). Owned above the tab
-  /// group with the viewport so a tab switch doesn't lose the reader's
-  /// place. Ignored in continuous view (one strip).
-  final int page;
-  final ValueChanged<int>? onPageChanged;
+  /// The page the reader is on in page view, the sheets lying one under
+  /// another (F-201) — owned above the tab group with the viewport, so a
+  /// tab switch doesn't lose the reader's place. The panel keeps it true
+  /// to the view ([CanvasBook]); a write to it is a turn — the strip's
+  /// ▲▼, and playback crossing into a page. Ignored in continuous view
+  /// (one strip). Null keeps one of the host's own.
+  final ValueNotifier<int>? reading;
 
   /// Owned above the tab group so zoom/pan survive tab switches.
   final CanvasViewport? viewport;
@@ -117,7 +117,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   int? _documentFps;
   bool? _documentDataSheet;
   bool? _layoutContinuous;
-  int? _layoutPage;
 
   /// DATA-sheet mode (UI-R24 #1): the sheet prints the EXPORT-SOURCE data
   /// (ghost chains verbatim, the labels XDTS/TDTS write) instead of the
@@ -193,40 +192,35 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       _layout = null;
       _pagedLayout = null;
     }
-    if (_layout == null ||
-        _layoutContinuous != widget.continuous ||
-        _layoutPage != widget.page) {
+    if (_layout == null || _layoutContinuous != widget.continuous) {
       _layoutContinuous = widget.continuous;
-      _layoutPage = widget.page;
-      _layout = TimesheetDocumentLayout(
-        document: _document!,
-        continuous: widget.continuous,
-        // R26 #41: page view is ONE sheet of paper at a time.
-        singlePage: widget.continuous ? null : widget.page,
-      );
-      // The ink geometry reference stays the FULL paged form: surfaces are
-      // sized per page/band, so turning pages must not resize them.
-      _pagedLayout = TimesheetDocumentLayout(document: _document!);
+      final paged = TimesheetDocumentLayout(document: _document!);
+      _layout = widget.continuous
+          ? TimesheetDocumentLayout(document: _document!, continuous: true)
+          : paged;
+      // The ink geometry reference is the paged form in both views:
+      // surfaces are sized per page/band, so the toggle must not resize
+      // them.
+      _pagedLayout = paged;
     }
     return _layout!;
   }
 
-  /// The page actually on screen: the stored page, clamped to the document
-  /// (a shorter cut must not strand the reader past the last sheet).
-  int _visiblePage(TimesheetDocumentLayout layout) =>
-      layout.resolvedSinglePage ?? 0;
+  late final ValueNotifier<int> _ownReading = ValueNotifier(0);
 
-  void _turnToPage(int page) {
-    final onPageChanged = widget.onPageChanged;
-    final document = _document;
-    if (onPageChanged == null || document == null) {
-      return;
-    }
-    final next = page.clamp(0, document.pages.length - 1);
-    if (next != widget.page) {
-      onPageChanged(next);
-    }
-  }
+  /// [TimesheetTabHost.reading], or the host's own.
+  ValueNotifier<int> get _reading => widget.reading ?? _ownReading;
+
+  /// The page view's book (F-201): the sheets one under another and the
+  /// page the reader is on.
+  CanvasBook _bookOf(TimesheetDocumentLayout layout) =>
+      CanvasBook(pages: layout.pageStack, reading: _reading);
+
+  /// The page the reader is on — inside the document (a shorter cut must
+  /// not strand the reader past the last sheet); the strip's one page in
+  /// continuous view.
+  int _visiblePage(TimesheetDocumentLayout layout) =>
+      layout.continuous ? 0 : _bookOf(layout).page;
 
   late final SheetStrokeHold _strokeHold = SheetStrokeHold(
     brushInput: (live) => widget.session.setBrushInputActive(live),
@@ -235,6 +229,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   @override
   void dispose() {
     _strokeHold.dispose();
+    _ownReading.dispose();
     super.dispose();
   }
 
@@ -350,7 +345,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         // '1/2' — the spelling shared with the printed ページ header (R26 #41).
         readout: layout?.pageLabel(page) ?? '-',
       ),
-      onTurnTo: widget.continuous ? null : _turnToPage,
+      onTurnTo: layout == null || layout.continuous
+          ? null
+          : _bookOf(layout).turnTo,
     );
   }
 
@@ -368,7 +365,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     // sheet per playhead move was the timesheet's share of the frame-flip
     // hitch. Page-granular playhead facts (auto page turn, Fit target,
     // the frame label) rebuild through the token-gated scope below.
-    final listenable = Listenable.merge([session, ?inkController]);
+    // And the page read, which the panel moves as the view scrolls.
+    final listenable = Listenable.merge([session, ?inkController, _reading]);
 
     return ListenableBuilder(
       listenable: listenable,
@@ -427,13 +425,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                         0,
                         document.pages.length - 1,
                       );
+                  final book = _bookOf(layout);
                   final visiblePage = _visiblePage(layout);
-                  // Playback follows the sheet (③): page view TURNS THE
-                  // PAGE to the playhead's (R26 #41 — the paper swaps
-                  // under a viewport that never moves, where the pre-#41
-                  // sheet scrolled the stack); continuous view scrolls the
-                  // playhead row into view without touching the zoom. Idle
-                  // keeps both the viewport and the page user-owned.
+                  // Playback follows the sheet (③): page view TURNS TO
+                  // the playhead's page — the view moves to it, the
+                  // sheets lying one under another (F-201; ↩️R26 #41
+                  // swapped the paper under a view that never moved);
+                  // continuous view scrolls the playhead row into view
+                  // without touching the zoom. Idle keeps both the
+                  // viewport and the page user-owned.
                   if (playbackGlobalFrame != null &&
                       !widget.continuous &&
                       playheadPage != visiblePage) {
@@ -441,7 +441,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     // this very subtree reads.
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) {
-                        _turnToPage(playheadPage);
+                        book.turnTo(playheadPage);
                       }
                     });
                   }
@@ -483,9 +483,12 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       visiblePage,
                       document.pages.length,
                     ),
-                    // Fit frames the page on screen.
-                    fitFocusRect: layout.pageRect(visiblePage),
+                    // Fit frames the page read — the book's, in page view.
+                    fitFocusRect: layout.continuous
+                        ? layout.pageRect(visiblePage)
+                        : null,
                     viewLimit: layout.paper,
+                    book: layout.continuous ? null : book,
                     autoFrame: autoFrame,
                     drawingOn: ink != null,
                     strokeHold: _strokeHold,

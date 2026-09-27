@@ -25,7 +25,9 @@ import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow, SheetWindow;
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
+import '../brush/canvas_book.dart';
 import '../canvas/active_stroke_overlay.dart';
+import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../text/app_strings.dart';
@@ -137,13 +139,35 @@ class _ConteTabHostState extends State<ConteTabHost> {
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
       BrushEditCacheInvalidationSink();
 
-  /// The page a view nobody has moved yet is fitted to: the body's first
-  /// page until a turn picks another — the cover and its blank back lie
-  /// above it (the conte is worked on in its body; the book's order is kept
-  /// for turning and printing). Once the view has moved, the VIEW says
-  /// which page is on (F-201: the pages lie one under another, and a turn
-  /// scrolls to the next).
-  int? _unframedPage;
+  /// The page the reader is on (F-201) — a write is a turn, and the panel
+  /// keeps it true to the view ([CanvasBook]). A view nobody has moved yet
+  /// is fitted to it.
+  late final ValueNotifier<int> _reading = ValueNotifier(_openingPage());
+
+  /// Where the reader opens: on the body's first page — the cover and its
+  /// blank back lie above it (the conte is worked on in its body; the
+  /// book's order is kept for turning and printing) — or, when the view
+  /// was left somewhere, on the page it was left at, as [pageReadAt]
+  /// reads it from the stored view alone. The panel reads it again once
+  /// it has laid out the window.
+  int _openingPage() {
+    final pages = _resolveSheet().$2;
+    final firstBody = math.max(
+      0,
+      pages.indexWhere((page) => page.kind == ContePageKind.body),
+    );
+    final view = _view.value;
+    if (view == null) {
+      return firstBody;
+    }
+    final top = -view.panY / view.zoom;
+    return pageReadAt(
+      _stackOf(pages),
+      current: firstBody,
+      top: top,
+      bottom: top,
+    );
+  }
 
   // The book one page under another (F-201), memoized with the pages it
   // lays.
@@ -187,6 +211,8 @@ class _ConteTabHostState extends State<ConteTabHost> {
     // The page strip reads the view; a caller's own view rebuilds this from
     // above, this one from here.
     _ownView.addListener(_onInputSettings);
+    // And the reader's page, which the panel moves.
+    _reading.addListener(_onInputSettings);
   }
 
   void _onInputSettings() => setState(() {});
@@ -213,6 +239,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   void dispose() {
     AppInput.settings.removeListener(_onInputSettings);
     _ownView.dispose();
+    _reading.dispose();
     _strokeHold.dispose();
     for (final stroke in _strokes.values) {
       stroke.dispose();
@@ -293,39 +320,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
       }
     }
     return null;
-  }
-
-  /// The page the reader is on: the one at the top of the view, as a PDF
-  /// reader counts — the page a turn puts there ([_turnToPage]) is the page
-  /// the strip then reads, at any zoom. While nobody has moved the view, it
-  /// is the page the view is fitted to.
-  int _pageOn(PageStack stack, int firstBody) {
-    final view = _view.value;
-    if (view == null || stack.length == 0) {
-      final last = math.max(0, stack.length - 1);
-      return (_unframedPage ?? firstBody).clamp(0, last);
-    }
-    return stack.pageAt(-view.panY / view.zoom + stack.gap);
-  }
-
-  /// A turn of the page strip scrolls to [page] — its top at the top of the
-  /// view with half a gap above it, at the zoom the view has (F-201, 유저
-  /// 2026-09-27: 「왼쪽 알약인 페이지 넘기는 버튼은 동시존재해서 그거로
-  /// 다음페이지 스냅」). A view nobody has moved yet stays unmoved: it is
-  /// fitted to [page] instead.
-  void _turnToPage(int page, PageStack stack) {
-    if (stack.length == 0) {
-      return;
-    }
-    final next = page.clamp(0, stack.length - 1);
-    final view = _view.value;
-    if (view == null) {
-      setState(() => _unframedPage = next);
-      return;
-    }
-    _view.value = view.copyWith(
-      panY: -(stack.pageRect(next).top - stack.gap / 2) * view.zoom,
-    );
   }
 
   /// Whether the sheet takes ink now. ONE gate: the ink layer, the panel's
@@ -412,11 +406,8 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// the page strip reading and turning the page the view is on.
   Widget _panel(ConteSheetSource source, List<ContePageLayout> pages) {
     final stack = _stackOf(pages);
-    final firstBody = math.max(
-      0,
-      pages.indexWhere((page) => page.kind == ContePageKind.body),
-    );
-    final pageIndex = _pageOn(stack, firstBody);
+    final book = CanvasBook(pages: stack, reading: _reading);
+    final pageIndex = book.page;
     final onBrushAllowedChanged = widget.onBrushAllowedChanged;
     return SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -442,13 +433,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
       pageStrip: pageTurnStrip(
         keyPrefix: 'conte',
         page: viewerPage(pageIndex, pages.length),
-        onTurnTo: (page) => _turnToPage(page, stack),
+        onTurnTo: book.turnTo,
       ),
       bottomBarHostToken: (pageIndex, pages.length),
-      fitFocusRect: pages.isEmpty ? null : stack.pageRect(pageIndex),
       unframedFit: pages.isEmpty ? null : stack.pageRect(pageIndex),
       // The book's paper: where the view stops (F-201).
       viewLimit: pages.isEmpty ? null : stack.paper,
+      book: pages.isEmpty ? null : book,
       drawingOn: _drawing && pages.isNotEmpty,
       strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(
@@ -465,14 +456,10 @@ class _ConteTabHostState extends State<ConteTabHost> {
     final (source, pages) = _resolveSheet();
     final stack = _stackOf(pages);
     final ratio = EffectiveDevicePixelRatio.of(context);
-    final seen = Rect.fromLTWH(
-      -viewport.panX / viewport.zoom,
-      -viewport.panY / viewport.zoom,
-      box.width / viewport.zoom,
-      box.height / viewport.zoom,
-    );
     final shown = [
-      for (final index in stack.pagesMeeting(seen))
+      for (final index in stack.pagesMeeting(
+        canvasRectShown(viewport, box),
+      ))
         (
           page: pages[index],
           at: _onDevicePixels(stack.pageRect(index).topLeft, viewport, ratio),

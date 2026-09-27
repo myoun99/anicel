@@ -118,9 +118,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    return tester.getTopLeft(
-      find.byKey(const ValueKey<String>('conte-form-paint')),
-    );
+    return conteBodyTopLeft(tester);
   }
 
   /// A spot of [cell]'s band in its TIME column — the band's, and no

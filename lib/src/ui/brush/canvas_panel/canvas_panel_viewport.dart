@@ -101,6 +101,8 @@ class _CanvasPanelViewport {
     _publishingViewport = true;
     viewportNotifier.value = _state._zoomScale.toDevice(_held(value));
     _publishingViewport = false;
+    // The page read follows the view it moved (F-201).
+    _state._bookState.followView();
   }
 
   /// [view] held to [BrushCanvasPanel.viewLimit] in the window you look
@@ -174,6 +176,7 @@ class _CanvasPanelViewport {
     // An owner's write is held like the panel's own (F-201) — at once, so
     // the owner's other listeners already read the held value.
     _holdTheStoredView();
+    _state._bookState.followView();
     // The value already lives in the notifier — this call IS the repaint.
     _state._rebuild(() {});
   }
@@ -391,7 +394,10 @@ class _CanvasPanelViewport {
 
   void _fitToView() {
     final canvasSize = _state.widget.canvasSize;
-    final target = _state.widget.fitFocusRect ?? canvasSize.canvasRect;
+    final target =
+        _state.widget.fitFocusRect ??
+        _state._bookState.fitRect ??
+        canvasSize.canvasRect;
     _state._rebuild(() {
       _viewport = _state._fittedInto(
         _resolvedVisibleRect(),

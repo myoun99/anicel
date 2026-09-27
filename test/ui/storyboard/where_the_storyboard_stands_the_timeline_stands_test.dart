@@ -293,9 +293,7 @@ void main() {
       final cell = pages.first.cells.firstWhere(
         (cell) => cell.cutId == cut.value,
       );
-      final pageTopLeft = tester.getTopLeft(
-        find.byKey(const ValueKey<String>('conte-form-paint')),
-      );
+      final pageTopLeft = conteBodyTopLeft(tester);
       await press(tester, pageTopLeft + cell.pictureRect.center);
     }
 
