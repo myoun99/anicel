@@ -204,7 +204,7 @@ void main() {
 
     // Animate rotation off its default at the playhead.
     session.selectFrameIndex(0);
-    session.updateLayerTransformTrack(
+    session.laneVerbs.updateLayerTransformTrack(
       layerId,
       session.activeLayer!.transformTrack.copyWith(
         rotation: PropertyTrack<double>().withKey(0, 45),

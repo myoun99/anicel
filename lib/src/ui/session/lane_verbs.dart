@@ -73,13 +73,16 @@ class LaneVerbs {
     required SessionInternals internals,
     required EffectsAndFx effectsAndFx,
     required ChangeSink changes,
+    required void Function(TransformTrack track, {required String description})
+    updateActiveCutCameraTrack,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
        _controllers = controllers,
        _internals = internals,
        _effectsAndFx = effectsAndFx,
-       _changes = changes;
+       _changes = changes,
+       _updateActiveCutCameraTrack = updateActiveCutCameraTrack;
 
   final EffectsAndFx _effectsAndFx;
   final ChangeSink _changes;
@@ -89,6 +92,16 @@ class LaneVerbs {
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+
+  /// `Camera.updateActiveCutCameraTrack` — the camera row's lanes go home to
+  /// the CUT, not to a layer.
+  ///
+  /// ⚠️A closure, not the `Camera`: the camera holds the lane move, which
+  /// holds these verbs, so naming it here would close a construction cycle
+  /// (the ninth family's cure; ARCH-session-state, the fifteenth family —
+  /// it was asked through `SessionInternals` before).
+  final void Function(TransformTrack track, {required String description})
+  _updateActiveCutCameraTrack;
 
   /// The transform track that ALREADY holds [name] in this lane's naming
   /// space, or null when the name is free there.
@@ -443,7 +456,7 @@ class LaneVerbs {
     }
     final next = transform(layer, _laneTransformTrackOf(layer), frame);
     if (next != null) {
-      _commitLaneTransformTrack(layer, next, description: description);
+      commitTransformTrack(layer, next, description: description);
     }
   }
 
@@ -464,7 +477,7 @@ class LaneVerbs {
     if (layer == null) {
       return;
     }
-    _commitLaneTransformTrack(
+    commitTransformTrack(
       layer,
       edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
       description: description,
@@ -535,7 +548,7 @@ class LaneVerbs {
   }
 
   /// The lane path's NAME TAG commit — the third funnel, beside
-  /// [_commitLaneTransformTrack] and [_commitLaneEffects]. The coordinator
+  /// [commitTransformTrack] and [_commitLaneEffects]. The coordinator
   /// finds an SE row wherever it lives, so the tag goes home as it is.
   void _commitLaneSeNameTag(
     Layer layer,
@@ -550,13 +563,19 @@ class LaneVerbs {
     _changes.notifyChanged();
   }
 
-  void _commitLaneTransformTrack(
+  /// THE transform commit of a row's lanes — the camera row goes home to the
+  /// cut, a V row's carrier to nowhere, every other row to its layer.
+  ///
+  /// ↩️The lane MOVE spelled the camera-or-layer half of this again inline
+  /// (and without the carrier's arm); it commits through here now
+  /// (ARCH-session-state, the fifteenth family).
+  void commitTransformTrack(
     Layer layer,
     TransformTrack track, {
     required String description,
   }) {
     if (layer.kind == LayerKind.camera) {
-      _internals.updateActiveCutCameraTrack(track, description: description);
+      _updateActiveCutCameraTrack(track, description: description);
       return;
     }
     // A V row's carrier has no transform to go home to any more: the row's
@@ -568,14 +587,34 @@ class LaneVerbs {
     // No window conversion: [laneVerbLayerFor] hands these verbs the
     // GLOBAL layer for a track-SE row, so the track they edited is already
     // on the axis it belongs to. Converting here would shift it twice.
-    _internals.updateLayerTransformTrack(
-      layer.id,
-      track,
-      description: description,
-    );
+    updateLayerTransformTrack(layer.id, track, description: description);
   }
 
-  /// The lane path's EFFECT commit — the twin of [_commitLaneTransformTrack].
+  /// Replaces [layerId]'s transform track (the AE Transform lanes on every
+  /// drawing layer — applied at composite time, never baked); one undo
+  /// step, no-op when unchanged.
+  ///
+  /// ↩️The session's until the fifteenth family: these verbs were the one
+  /// collaborator that asked for it, so it lives beside its funnel.
+  void updateLayerTransformTrack(
+    LayerId layerId,
+    TransformTrack track, {
+    String description = 'Edit layer transform',
+  }) {
+    final cutId = _project.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _project.cutCommandCoordinator.updateLayerTransformTrack(
+      cutId: cutId,
+      layerId: layerId,
+      transformTrack: track,
+      description: description,
+    );
+    _changes.notifyChanged();
+  }
+
+  /// The lane path's EFFECT commit — the twin of [commitTransformTrack].
   ///
   /// A funnel rather than three call sites: Add, Delete and Reset all
   /// commit chains read off the same layer, and which axis that layer is
@@ -690,7 +729,7 @@ class LaneVerbs {
         ),
       ),
       commit: (track) =>
-          _commitLaneTransformTrack(layer, track, description: 'Delete keys'),
+          commitTransformTrack(layer, track, description: 'Delete keys'),
     );
   }
 
@@ -1001,7 +1040,7 @@ class LaneVerbs {
         return typed ?? named;
       },
       commit: (value) =>
-          _commitLaneTransformTrack(layer, value, description: why),
+          commitTransformTrack(layer, value, description: why),
     );
     return false;
   }
@@ -1074,7 +1113,7 @@ class LaneVerbs {
     if (next == null) {
       return false;
     }
-    _commitLaneTransformTrack(layer, next, description: 'Reset group');
+    commitTransformTrack(layer, next, description: 'Reset group');
     return true;
   }
 
@@ -1215,7 +1254,7 @@ class LaneVerbs {
             : _transformTrackWithKeyToggled(layer, value, laneId, frame),
       ),
       commit: (track) =>
-          _commitLaneTransformTrack(layer, track, description: 'Create keys'),
+          commitTransformTrack(layer, track, description: 'Create keys'),
     );
   }
 }

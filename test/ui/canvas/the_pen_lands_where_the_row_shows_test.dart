@@ -114,7 +114,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final base = s.activeLayer!;
-    s.updateLayerTransformTrack(base.id, keyed(twice));
+    s.laneVerbs.updateLayerTransformTrack(base.id, keyed(twice));
     s.folders.addAttachedLayer(AttachedPlacement.above);
     final attach = s.activeLayer!;
     expect(attach.id, isNot(base.id), reason: 'fixture: on the attach row');

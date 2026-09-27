@@ -42,7 +42,7 @@ void main() {
     session = EditorSessionManager(initialProject: createDefaultProject());
     se = session.activeTrack.seLayers.first;
     // The key cut 1 made: Rotation 30° at global frame 2.
-    session.updateLayerTransformTrack(
+    session.laneVerbs.updateLayerTransformTrack(
       se.id,
       TransformTrack.empty().copyWith(
         rotation: PropertyTrack(keys: {2: const PropertyKey(30.0)}),

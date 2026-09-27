@@ -147,7 +147,14 @@ const _mayNameTheSession = <String, String>{
 /// `rowIsSelected` was then a second name for `RowSelection.rowIsSelected`
 /// and went; the three doors stay the session's, since they settle the last
 /// edit before they move you (I-41).
-const _sessionInternalsMembers = 13;
+/// 13 → 11 (same day, the fifteenth family): the two track writes a row's
+/// lanes commit. The lane MOVE spelled the camera-or-layer routing of the
+/// lane verbs' funnel again inline, so it commits through that funnel now;
+/// the layer write then had one asker and moved into `LaneVerbs`, and the
+/// camera write — `Camera`'s own — comes in as a closure (the camera holds
+/// the lane move, which holds the verbs). The session's camera forwarder
+/// went with it; tests name `session.camera` and `session.laneVerbs`.
+const _sessionInternalsMembers = 11;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

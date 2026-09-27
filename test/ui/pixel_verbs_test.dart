@@ -459,7 +459,10 @@ void main() {
         '— its keys do not move the marquee', (tester) async {
       final session = await pump(tester);
       final row = await drawableRow(tester, session);
-      session.updateLayerTransformTrack(row.id, movedRight(session, 100));
+      session.laneVerbs.updateLayerTransformTrack(
+        row.id,
+        movedRight(session, 100),
+      );
       session.effectsAndFx.toggleLayerTransformFx(row.id);
       await tester.pump();
       expect(

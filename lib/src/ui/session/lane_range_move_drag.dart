@@ -139,16 +139,13 @@ class LaneRangeMoveDragVerbs {
       previewSeNameTag: isSe
           ? (next) => _previewOfRow(layer.copyWith(seNameTag: next))
           : null,
-      commitTransform: isCamera
-          ? (next) => _internals.updateActiveCutCameraTrack(
-              next,
-              description: _laneMoveWhy,
-            )
-          : (next) => _internals.updateLayerTransformTrack(
-              layer.id,
-              next,
-              description: _laneMoveWhy,
-            ),
+      // The lane verbs' one transform funnel — camera to the cut, a V
+      // row's carrier to nowhere, every other row to its layer.
+      commitTransform: (next) => _laneVerbs.commitTransformTrack(
+        layer,
+        next,
+        description: _laneMoveWhy,
+      ),
       commitEffects: (next) => _effectsAndFx.updateLayerEffects(
         layer.id,
         next,

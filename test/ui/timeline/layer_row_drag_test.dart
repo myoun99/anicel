@@ -597,7 +597,7 @@ void main() {
     // family), and holds the drop while the question is on screen.
     await _pump(tester);
     final session = _sessionOf(tester);
-    session.updateLayerTransformTrack(
+    session.laneVerbs.updateLayerTransformTrack(
       const LayerId('a'),
       TransformTrack(
         keyframes: {0: TransformPose(center: CanvasPoint(x: 3, y: 4))},

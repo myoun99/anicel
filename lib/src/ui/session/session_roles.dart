@@ -136,13 +136,4 @@ abstract interface class SessionInternals {
   bool get strokeInFlight;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   void selectTrackCutAtPlayhead(TrackId trackId);
-  void updateActiveCutCameraTrack(
-    TransformTrack track, {
-    String description = 'Edit camera keyframes',
-  });
-  void updateLayerTransformTrack(
-    LayerId layerId,
-    TransformTrack track, {
-    String description = 'Edit layer transform',
-  });
 }

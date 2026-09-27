@@ -50,7 +50,7 @@ void main() {
           s.camera.removeCameraKeyframeAtCurrentFrame(),
       'clearActiveCutCamera': (s) => s.camera.clearActiveCutCamera(),
       'updateActiveCutCameraTrack': (s) =>
-          s.updateActiveCutCameraTrack(TransformTrack.empty()),
+          s.camera.updateActiveCutCameraTrack(TransformTrack.empty()),
       if (layerId != null)
         'setLayerMark': (s) =>
             s.layerMarks.setLayerMark(layerId, const LayerMark(process: LayerProcess.key)),

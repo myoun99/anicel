@@ -43,7 +43,7 @@ void main() {
     for (final entry in spec.entries) {
       lane = lane.withKey(entry.key, entry.value);
     }
-    session.updateLayerTransformTrack(
+    session.laneVerbs.updateLayerTransformTrack(
       layer.id,
       layer.transformTrack.copyWith(rotation: lane),
     );

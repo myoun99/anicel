@@ -50,7 +50,7 @@ void main() {
       reason: 'fixture premise: a second cut, active, starting after the first',
     );
     final se = session.activeTrack.seLayers.first;
-    session.updateLayerTransformTrack(
+    session.laneVerbs.updateLayerTransformTrack(
       se.id,
       TransformTrack.empty().copyWith(
         rotation: PropertyTrack(
@@ -200,7 +200,7 @@ void main() {
     );
     addTearDown(session.dispose);
     final layer = session.activeLayer!;
-    session.updateLayerTransformTrack(
+    session.laneVerbs.updateLayerTransformTrack(
       layer.id,
       TransformTrack.empty().copyWith(
         rotation: PropertyTrack(keys: {2: const PropertyKey(30.0)}),

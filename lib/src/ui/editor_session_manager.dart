@@ -1471,11 +1471,6 @@ class EditorSessionManager extends ChangeNotifier
     playbackRig: playbackRig,
   );
 
-  @override
-  void updateActiveCutCameraTrack(
-    TransformTrack track, {
-    String description = 'Edit camera keyframes',
-  }) => camera.updateActiveCutCameraTrack(track, description: description);
   GuideId? _selectedGuideId;
 
   /// Which guide the guide tool is editing.
@@ -1638,32 +1633,12 @@ class EditorSessionManager extends ChangeNotifier
   // and where two cuts overlapping across a boundary can carry different
   // values, which one opacity lane per track never could.
 
-  /// Replaces [layerId]'s transform track (the AE Transform lanes on every
-  /// drawing layer — applied at composite time, never baked); one undo
-  /// step, no-op when unchanged.
-  @override
-  void updateLayerTransformTrack(
-    LayerId layerId,
-    TransformTrack track, {
-    String description = 'Edit layer transform',
-  }) {
-    final cutId = editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    cutCommandCoordinator.updateLayerTransformTrack(
-      cutId: cutId,
-      layerId: layerId,
-      transformTrack: track,
-      description: description,
-    );
-    notifyListeners();
-  }
-
   // ── the lane verbs: their own object, in their own file ─────────────
   //
   // A collaborator (session/lane_verbs.dart). Callers name it: a forwarder here
-  // would be a second name for the same verb (round 8, G4).
+  // would be a second name for the same verb (round 8, G4). The layer
+  // transform write lives there too, beside its funnel (the fifteenth
+  // family): `session.laneVerbs.updateLayerTransformTrack`.
   late final LaneVerbs laneVerbs = LaneVerbs(
     project: this,
     selection: this,
@@ -1672,6 +1647,9 @@ class EditorSessionManager extends ChangeNotifier
     effectsAndFx: effectsAndFx,
     internals: this,
     changes: this,
+    // Lazily: the camera holds the lane move, which holds these verbs.
+    updateActiveCutCameraTrack: (track, {required description}) =>
+        camera.updateActiveCutCameraTrack(track, description: description),
   );
 
   // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,

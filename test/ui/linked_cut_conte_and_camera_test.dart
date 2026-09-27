@@ -46,7 +46,7 @@ void main() {
     for (final MapEntry(key: frame, value: point) in points.entries) {
       position = position.withKey(frame, point);
     }
-    session.updateActiveCutCameraTrack(
+    session.camera.updateActiveCutCameraTrack(
       TransformTrack.empty().copyWith(position: position),
     );
   }
@@ -83,7 +83,7 @@ void main() {
 
   test('a NAMED camera key moved in one cut moves in its 겸용 sibling — an '
       "unnamed one stays each cut's own, and one undo takes both", () {
-    session.updateActiveCutCameraTrack(
+    session.camera.updateActiveCutCameraTrack(
       TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>()
             .withKey(0, CanvasPoint(x: 0, y: 0))
@@ -95,7 +95,7 @@ void main() {
 
     session.selectCut(pair.source);
     final track = cutById(pair.source).camera.track;
-    session.updateActiveCutCameraTrack(
+    session.camera.updateActiveCutCameraTrack(
       track.copyWith(
         position: track.position
             .withKey(0, CanvasPoint(x: 5, y: 5))
@@ -129,7 +129,7 @@ void main() {
     final pair = makeLinkedPair();
     // The linked cut moves its own, unnamed key — nothing crosses.
     final linkedTrack = cutById(pair.linked).camera.track;
-    session.updateActiveCutCameraTrack(
+    session.camera.updateActiveCutCameraTrack(
       linkedTrack.copyWith(
         position: linkedTrack.position.withKey(0, CanvasPoint(x: 9, y: 9)),
       ),
@@ -171,7 +171,7 @@ void main() {
 
   test('a canvas pose write keeps the key HOLD — and the 겸용 sibling '
       'follows in value AND type', () {
-    session.updateActiveCutCameraTrack(
+    session.camera.updateActiveCutCameraTrack(
       TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>()
             .withKey(0, CanvasPoint(x: 0, y: 0))
@@ -210,7 +210,7 @@ void main() {
   });
 
   test('the TYPE alone crosses the 겸용 group on a named key', () {
-    session.updateActiveCutCameraTrack(
+    session.camera.updateActiveCutCameraTrack(
       TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>()
             .withKey(0, CanvasPoint(x: 0, y: 0))

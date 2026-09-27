@@ -74,7 +74,7 @@ void main() {
       // frame 0 — the merged R3 surface area. Position keys are ABSOLUTE
       // canvas points (identity = canvas center).
       session.camera.setCameraKeyframeAtCurrentFrame(session.camera.cameraPoseAtCurrentFrame);
-      session.updateLayerTransformTrack(
+      session.laneVerbs.updateLayerTransformTrack(
         layer.id,
         TransformTrack.empty().copyWith(
           position: PropertyTrack<CanvasPoint>().withKey(
