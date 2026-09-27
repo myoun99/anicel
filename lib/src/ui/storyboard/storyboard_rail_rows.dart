@@ -872,9 +872,19 @@ class _StoryboardRailRows {
         ),
         // Above both bands: standing and selected are two statements, and
         // the ring must stay readable inside a span that covers its row.
+        //
+        // 🚨On its OWN layer (I-22 ③): the ring follows the playhead, and the
+        // strips around it are one RepaintBoundary precisely so a playhead
+        // move re-rasterizes none of them (R12-⑥). Mounted bare inside it,
+        // every move repainted every strip — at ten minutes every edge grip
+        // of the film and the plate grounds under them, on every playback
+        // frame. The timeline's playhead rides its own boundary the same way
+        // (`TimelineFrameGridStack`).
         Positioned.fill(
           child: IgnorePointer(
-            child: _state._standing.trackStandingCellRing(track, scale),
+            child: RepaintBoundary(
+              child: _state._standing.trackStandingCellRing(track, scale),
+            ),
           ),
         ),
       ],
