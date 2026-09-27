@@ -1832,12 +1832,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _openImportWindow(initialPaths: paths);
   }
 
-  /// The one import window, from whichever entrance asked for it.
-  ///
-  /// [poolOnly] is the media pool's ＋: it starts on the pool because
-  /// registering for later is what that panel is for, and the other
-  /// destinations stay on offer because it is the same window. [spot] is
-  /// where a drop put the file — the window shows it locked.
   /// A reference row shows [path] instead of its file (I-47) — no window:
   /// the row keeps every answer it already gave (Q1 2026-09-27: 「창 없이
   /// 바로 바꾼다 (언두 하나)」). A file that would not come in is said, as the
@@ -1857,6 +1851,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
   }
 
+  /// The one import window, from whichever entrance asked for it.
+  ///
+  /// [poolOnly] is the media pool's ＋: it starts on the pool because
+  /// registering for later is what that panel is for, and the other
+  /// destinations stay on offer because it is the same window. [spot] is
+  /// where a drop put the file — the window shows it locked.
   void _openImportWindow({
     List<String> initialPaths = const [],
     bool poolOnly = false,

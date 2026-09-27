@@ -872,7 +872,10 @@ class ProjectImportDoors {
         cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
       ),
     );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: layerId);
+    // The tidy-up every edit that moves the document owes, as its undo gets
+    // it (`_stepHistory`). Where the user stands is the door's to say — a
+    // drop stands on the row it landed on before it swaps.
+    _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
     return true;
   }

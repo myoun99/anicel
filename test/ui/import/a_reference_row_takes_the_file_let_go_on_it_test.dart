@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -306,6 +307,30 @@ void main() {
     expect(find.text(said), findsOneWidget);
     expect(session.layerById(row.id), row);
     expect(centre(session, row), [255, 0, 0, 255]);
+  });
+
+  testWidgets('the swap tidies up as every edit that moves the document does '
+      '— a frame range goes, as the swap\'s undo takes it — and leaves the '
+      'standing to the door', (tester) async {
+    final (:session, :row, :next) = await open(tester);
+    final other = session.requireActiveCut.layers.firstWhere(
+      (layer) => layer.id != row.id,
+    );
+    session.selectLayer(other.id);
+    session.frameRangeSelection.value = TimelineFrameRangeSelection(
+      layerId: other.id,
+      startIndex: 0,
+      endIndexExclusive: 1,
+    );
+
+    final swapped = await tester.runAsync(
+      () => session.importDoors.swapReference(layerId: row.id, path: next),
+    );
+    await tester.pumpAndSettle();
+
+    expect(swapped, isTrue);
+    expect(session.frameRangeSelection.value, isNull);
+    expect(session.activeLayerId, other.id);
   });
 
   testWidgets('a row that changes while its new picture is read is left as it '
