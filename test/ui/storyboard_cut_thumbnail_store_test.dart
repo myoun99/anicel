@@ -558,11 +558,9 @@ void main() {
       'content change retries', (tester) async {
     var renderCount = 0;
     var failFirst = true;
-    final errors = <FlutterErrorDetails>[];
-    final previousHandler = FlutterError.onError;
-    FlutterError.onError = errors.add;
-    addTearDown(() => FlutterError.onError = previousHandler);
-
+    // ⛔The binding's own handler takes the report ([WidgetTester.
+    // takeException]) — an overridden `FlutterError.onError` turns any
+    // failure after it into a ten-minute hang in the binding's assert.
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
       render: (_, _, _) async {
@@ -582,9 +580,15 @@ void main() {
       // Same signature: the failure must NOT re-kick on every build.
       store.thumbnailFor(cut(), 0, shownHeight: 72);
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(renderCount, 1);
-      expect(errors, hasLength(1), reason: 'failures surface, never vanish');
+    });
+    expect(renderCount, 1);
+    expect(
+      tester.takeException(),
+      isStateError,
+      reason: 'failures surface, never vanish',
+    );
 
+    await tester.runAsync(() async {
       // A content change retries and succeeds.
       store.thumbnailFor(cut(layerVisible: false), 0, shownHeight: 72);
       await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -599,10 +603,6 @@ void main() {
 
   testWidgets('a render that throws before it begins is a failed render too '
       '— the store does not stop', (tester) async {
-    final errors = <FlutterErrorDetails>[];
-    final previousHandler = FlutterError.onError;
-    FlutterError.onError = errors.add;
-    addTearDown(() => FlutterError.onError = previousHandler);
     var renders = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
@@ -622,7 +622,11 @@ void main() {
     });
     await tester.pump();
 
-    expect(errors, hasLength(1), reason: 'surfaced, never vanished');
+    expect(
+      tester.takeException(),
+      isStateError,
+      reason: 'surfaced, never vanished',
+    );
     expect(renders, 2, reason: 'the next panel still rendered');
     expect(store.thumbnailFor(cut(), 8, shownHeight: 72), isNotNull);
   });
