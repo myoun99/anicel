@@ -45,6 +45,7 @@ import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
+part 'brush_edit/brush_edit_opening.dart';
 part 'brush_edit/brush_edit_fill.dart';
 part 'brush_edit/brush_edit_pressure.dart';
 part 'brush_edit/brush_edit_overlay.dart';
@@ -537,6 +538,10 @@ class _InteractiveBrushEditCanvasViewState
   // A collaborator (canvas/brush_edit/brush_edit_stroke.dart, a part of this library).
   // The State keeps the entry points its pointer handlers call.
   late final _BrushEditStroke _stroke = _BrushEditStroke(this);
+
+  /// What the stroke's contact has read so far, and what it holds until it
+  /// has (H43).
+  late final _BrushEditOpening _opening = _BrushEditOpening(this);
 
   /// Whether the pen-tail mapping is engaged (the pen is turned
   /// tail-down). Not a button hold: it spans strokes until the pen is

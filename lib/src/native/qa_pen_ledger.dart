@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'qa_engine_abi.dart';
+
 /// What the platform said about one pen sample — the PEN LEDGER `qa_native`
 /// keeps (`qa_pen_ledger_apple.m`, H43): written natively BEFORE Flutter
 /// hears of the sample, read here by the sample's own timestamp.
@@ -42,15 +44,20 @@ abstract final class QaPenLedger {
     if (!Platform.isIOS && !Platform.isMacOS) {
       return null;
     }
+    // Through the ONE door every engine loader uses: on Apple it is the
+    // process the plugin compiled the engine into, behind the ABI gate.
+    final engine = openQaEngineLibrary();
+    if (engine == null) {
+      return null;
+    }
     try {
-      final process = DynamicLibrary.process();
-      double Function(int) reader(String name) => process
+      double Function(int) reader(String name) => engine
           .lookupFunction<Double Function(Int64), double Function(int)>(name);
       final read = (
         force: reader('qa_pen_ledger_value'),
         altitude: reader('qa_pen_ledger_altitude'),
       );
-      process.lookupFunction<Void Function(), void Function()>(
+      engine.lookupFunction<Void Function(), void Function()>(
         'qa_pen_ledger_start',
       )();
       return read;
