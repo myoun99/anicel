@@ -922,6 +922,44 @@ void main() {
     );
 
     testWidgets(
+      'what a cancelled stroke held is not painted by a next press that has '
+      'nothing to wait for',
+      (tester) async {
+        // UIKit estimates the first contact's force, and measures the next
+        // one's from its press: the second stroke never waits.
+        QaPenLedger.debugForce = (at) => at < _ms(100)
+            ? _estimatedReading
+            : (state: PenLedgerState.measured, value: 1.0);
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _pressureBrush, results);
+
+        await _drive(
+          tester,
+          _pencil([
+            _s(const Offset(4, 20), 0.5, 0),
+            _s(const Offset(30, 20), 0.5, 8),
+          ]),
+          end: _End.cancel,
+        );
+        await _drive(
+          tester,
+          _pencil([
+            _s(const Offset(50, 8), 1.0, 100),
+            _s(const Offset(80, 8), 1.0, 108),
+          ]),
+        );
+
+        expect(results, hasLength(1));
+        expect(
+          results.single.map((dab) => dab.center.y).toSet(),
+          {8},
+          reason: 'nothing the cancelled press held is painted',
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
       'each stroke\'s ledger line counts that stroke alone',
       (tester) async {
         InputInspector.visible.value = true;
