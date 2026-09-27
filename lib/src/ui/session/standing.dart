@@ -551,6 +551,11 @@ class Standing {
   /// yet) — there is nothing to light in that state, and asking would
   /// throw.
   void publishCurrentRow() {
+    // ⚠️Mutating the DISPOSED half of this guard away leaves every suite
+    // green (measured 2026-09-28, the audit's seventeenth family): no route
+    // in them reaches it after teardown with a row that moved, and the
+    // notifier ignores an equal value. Kept for the route that would — a
+    // write to a disposed notifier throws.
     if (_sessionDisposed() || !_currentRowAnswers) {
       return;
     }
