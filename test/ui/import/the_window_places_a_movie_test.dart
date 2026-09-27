@@ -202,6 +202,40 @@ void main() {
     expect(cellText(tester, 'sound', movie), AppText.strings.commonOn);
   });
 
+  testWidgets('「소리」 stands for a PICKED movie too — not only one handed in '
+      'at the start', (tester) async {
+    final movie = await writeMovie(tester, 'picked.mp4');
+    debugVideoDecodeBackend = FakeVideoBackend();
+    tester.view.physicalSize = const Size(1400, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final s = EditorSessionManager(
+      initialProject: createDefaultProject(),
+      audioConformStore: soundConformStore(),
+    );
+    addTearDown(s.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, filePicker: () async => [movie]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-browse-files-button')),
+    );
+    await settle(
+      tester,
+      () => tester.any(
+        find.byKey(ValueKey<String>('import-cell-sound-$movie')),
+      ),
+    );
+
+    expect(cellText(tester, 'sound', movie), AppText.strings.commonOn);
+  });
+
   testWidgets('its transport counts PROJECT frames on the sound\'s clock — '
       'a 12 fps take of 12 frames runs 24 in a 24 fps project', (
     tester,

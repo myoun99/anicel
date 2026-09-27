@@ -28,7 +28,11 @@ void main() {
   late Directory temp;
   late Map<String, String> documents;
   late List<String> copiedTo;
-  Completer<void>? holdCopy;
+  late bool stopped;
+
+  /// Holds a copy mid-way while it is open: true lets it land, false is
+  /// the provider answering a stop.
+  Completer<bool>? holdCopy;
 
   /// The native side's contract (`MainActivity.copyDocument`), over files.
   Future<Map<Object?, Object?>?> provider(
@@ -39,9 +43,7 @@ void main() {
       case 'copyDocument':
         final destination = arguments['destinationPath']! as String;
         copiedTo.add(destination);
-        final hold = holdCopy;
-        if (hold != null) {
-          await hold.future;
+        if (!(await holdCopy?.future ?? true)) {
           return {'status': 'cancelled'};
         }
         File(documents[arguments['uri']]!).copySync(destination);
@@ -52,7 +54,10 @@ void main() {
           ],
         };
       case 'cancelDocumentCopy':
-        holdCopy?.complete();
+        stopped = true;
+        if (holdCopy case final hold? when !hold.isCompleted) {
+          hold.complete(false);
+        }
         return null;
       case 'documentTransferred':
         return {'value': 0};
@@ -64,6 +69,7 @@ void main() {
     temp = Directory.systemTemp.createTempSync('anicel-drive-import');
     documents = {};
     copiedTo = [];
+    stopped = false;
     holdCopy = null;
     ProviderDocuments.debugChannel = provider;
   });
@@ -159,6 +165,13 @@ void main() {
     expect(copy, isNotNull);
     expect(fileNameOfPath(copy!), 'A1.png');
     expect(File(copy).readAsBytesSync(), File(bytes).readAsBytesSync());
+    expect(
+      find.text('A1.png'),
+      findsOneWidget,
+      reason: 'the source bar names the document — the room its copy lies '
+          'in is nowhere the person keeps anything',
+    );
+    expect(find.text(copy), findsNothing);
     expect(
       find.descendant(of: fileCell(copy), matching: find.text('Keep')),
       findsOneWidget,
@@ -289,12 +302,23 @@ void main() {
       'named on the status line, and no folder is left in the room', (
     tester,
   ) async {
-    holdCopy = Completer<void>();
+    holdCopy = Completer<bool>();
     pickerAnswers(const [FolderGrant.providerDocument(drive)]);
     await openWindow(tester);
 
     await pickFiles(tester);
     expect(copiedTo, hasLength(1), reason: 'the copy is under way');
+    for (final source in ['files', 'folder']) {
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(ValueKey<String>('import-browse-$source-button')),
+            )
+            .onPressed,
+        isNull,
+        reason: 'no second pick while the first is still coming ($source)',
+      );
+    }
 
     await tester.tap(find.byKey(const ValueKey<String>('import-cancel-button')));
     for (var tries = 0; tries < 10; tries += 1) {
@@ -313,5 +337,54 @@ void main() {
     );
     expect(Directory(File(copiedTo.single).parent.path).existsSync(), isFalse);
     expect(ProviderDocuments.workingCopyOf(uri), isNull);
+  });
+
+  group('the window closing while a Drive file is still coming', () {
+    Future<void> closeMidCopy(WidgetTester tester) async {
+      holdCopy = Completer<bool>();
+      pickerAnswers(const [FolderGrant.providerDocument(drive)]);
+      await openWindow(tester);
+      await pickFiles(tester);
+      expect(copiedTo, hasLength(1), reason: 'the copy is under way');
+
+      await tester.tap(find.byKey(const ValueKey<String>('app-window-close')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey<String>('import-dialog')), findsNothing);
+    }
+
+    testWidgets('🚨STOPS the copy — nothing is left to take it, and a big '
+        'file must not go on coming down for nobody', (tester) async {
+      await closeMidCopy(tester);
+
+      for (var tries = 0; tries < 10; tries += 1) {
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+
+      expect(stopped, isTrue);
+      expect(
+        Directory(File(copiedTo.single).parent.path).existsSync(),
+        isFalse,
+      );
+    });
+
+    testWidgets('a copy that lands in the same breath is let go of — no copy '
+        'is left in the room', (tester) async {
+      documents[uri] = (await tester.runAsync(
+        () => writeSolidPng(temp, 'doc.png'),
+      ))!;
+      await closeMidCopy(tester);
+
+      holdCopy!.complete(true);
+      for (var tries = 0; tries < 10; tries += 1) {
+        await tester.pump();
+      }
+
+      expect(stopped, isFalse, reason: 'it landed rather than being stopped');
+      expect(
+        Directory(File(copiedTo.single).parent.path).existsSync(),
+        isFalse,
+      );
+      expect(ProviderDocuments.workingCopyOf(uri), isNull);
+    });
   });
 }

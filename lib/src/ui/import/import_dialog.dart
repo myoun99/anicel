@@ -294,6 +294,8 @@ class _ImportDialogState extends State<ImportDialog> {
 
   @override
   void dispose() {
+    // A copy still on its way is stopped: nothing is left to take it.
+    _stopWaiting = true;
     _intakeCopies.forEach(ProviderDocuments.letGo);
     super.dispose();
   }
