@@ -2285,6 +2285,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   Positioned _bottomDock(_WorkspaceFrame frame, Widget? bottomContent) {
     return Positioned(
+      // ★KEYED, because the folded row is laid into this stack just before
+      // it: unkeyed, the region's slot was matched to the row's by position
+      // and every fold and every unfold built the whole region afresh
+      // (measured 09-27: a new grid, host and storyboard each time).
+      key: const ValueKey<String>('workspace-bottom-region'),
       left: frame.bottomInset,
       right: frame.bottomInset,
       top: frame.onTop ? 0 : null,

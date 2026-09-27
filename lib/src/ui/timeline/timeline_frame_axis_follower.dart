@@ -1,6 +1,8 @@
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../layout/device_grid_scroll_controller.dart';
+import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_window.dart';
 
@@ -31,7 +33,9 @@ class TimelineFrameAxisFollower {
     required this.baseFrameCount,
     required this.rebuild,
     required this.isMounted,
-  });
+  }) {
+    frameAxisOffset.addListener(_followTheAxis);
+  }
 
   final ScrollController controller;
 
@@ -61,6 +65,8 @@ class TimelineFrameAxisFollower {
 
   bool _rereadScheduled = false;
 
+  bool _followScheduled = false;
+
   /// The offset the axis is PAINTED at: the position itself, read now —
   /// what [ScrollFollower] moves a ruler by, so a press on that ruler
   /// counts its frame from the same number.
@@ -68,6 +74,11 @@ class TimelineFrameAxisFollower {
       singleScrollPixelsOf(controller) ?? frameAxisOffset.value;
 
   /// The controller's listener.
+  ///
+  /// ⛔A scrollable folded away does not write the axis — the row on screen
+  /// owns it then, and this one only follows ([_followTheAxis]). Clamped to
+  /// its own range, or pulled there by its own layout, it would hand the
+  /// row a place the row never turned to.
   void handleScroll() {
     if (!controller.hasClients) {
       return;
@@ -77,7 +88,67 @@ class TimelineFrameAxisFollower {
     if (offset == frameAxisOffset.value) {
       return;
     }
-    frameAxisOffset.value = offset;
+    if (scrollableIsShown(controller.position)) {
+      frameAxisOffset.value = offset;
+    }
+    _standAt(offset);
+  }
+
+  /// 🚨THE SCROLLABLE STANDS WHERE THE AXIS STANDS, whoever turned it
+  /// (유저 2026-09-27: 「접힌 오버레이도 … 스크롤이동이나 다 구조적으로
+  /// 동기화」). A folded panel keeps its whole subtree now, and the folded
+  /// row turns the axis this scrollable shares ([pageKeptAxis]) while it is
+  /// hidden. Caught up only by the open layout's own pull
+  /// ([TimelineScrollOffsetSync]), the first frame open painted the page it
+  /// was folded on and jumped after it — and the storyboard, which has no
+  /// such pull, stayed there for good.
+  ///
+  /// ⚠️Written from the middle of a build (the folded row anchoring a
+  /// zoom), the move waits for the frame's end: moving a position there
+  /// dirties the widgets that follow it while another subtree is building.
+  void _followTheAxis() {
+    if (!controller.hasClients) {
+      return;
+    }
+    final position = controller.position;
+    if (frameAxisOffset.value == position.pixels ||
+        !position.hasContentDimensions) {
+      return;
+    }
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      _followAfterThisFrame();
+      return;
+    }
+    final target = frameAxisOffset.value.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (target == position.pixels) {
+      return;
+    }
+    controller.jumpTo(target);
+    // The jump to the axis's own number finds nothing to write in
+    // [handleScroll], so it cuts the windows here.
+    _standAt(target);
+  }
+
+  void _followAfterThisFrame() {
+    if (_followScheduled) {
+      return;
+    }
+    _followScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _followScheduled = false;
+      if (isMounted()) {
+        _followTheAxis();
+      }
+    });
+  }
+
+  /// The windows and the endless room, cut for the scrollable standing at
+  /// [offset].
+  void _standAt(double offset) {
     final bucket = timelineFrameWindowBucketOf(
       offset: offset,
       cellExtent: cellExtent(),
@@ -156,8 +227,10 @@ class TimelineFrameAxisFollower {
     }
   }
 
-  /// Drops the activity watch; the host disposes the controller itself.
+  /// Drops the activity watch and the axis; the host disposes the
+  /// controller itself.
   void dispose() {
+    frameAxisOffset.removeListener(_followTheAxis);
     _watchedPosition?.isScrollingNotifier.removeListener(handleScrollActivity);
     _watchedPosition = null;
   }
