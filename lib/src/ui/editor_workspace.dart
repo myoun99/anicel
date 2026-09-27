@@ -1099,14 +1099,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       resume: (saved) =>
           _brushPresets.resumeChoice(ToolChoice.fromJson(saved)),
     );
-    _storyboardThumbnails = StoryboardCutThumbnailStore(
-      render: (cut, frameIndex, width) =>
-          _renderStoryboardThumbnail(session, cut, frameIndex, width),
-      invalidationHub: session.renderCaches.cacheInvalidationHub,
-      // The census cannot reach a widget State; the session can be reached.
-      onHeldBytesChanged: (bytes) =>
-          session.renderCaches.storyboardThumbnailBytes = bytes,
-    );
+    _storyboardThumbnails = _panelPicturesOf(session);
     session.memoryPressureTicks.addListener(
       _storyboardThumbnails.respondToMemoryPressure,
     );
@@ -1122,6 +1115,23 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _syncViewersWithProject();
     session.addListener(_syncViewersWithProject);
   }
+
+  /// The panel pictures [session]'s storyboard and conte draw — rendered
+  /// through its camera, never past the camera frame's own size.
+  StoryboardCutThumbnailStore _panelPicturesOf(EditorSessionManager session) =>
+      StoryboardCutThumbnailStore(
+        render: (cut, frameIndex, width) =>
+            _renderStoryboardThumbnail(session, cut, frameIndex, width),
+        originalSize: () {
+          final camera = session.camera.cameraFrameSize;
+          return ui.Size(camera.width.toDouble(), camera.height.toDouble());
+        },
+        invalidationHub: session.renderCaches.cacheInvalidationHub,
+        // The census cannot reach a widget State; the session can be
+        // reached.
+        onHeldBytesChanged: (bytes) =>
+            session.renderCaches.storyboardThumbnailBytes = bytes,
+      );
 
   /// Takes off what [_bindSession] hung on [session] — see there.
   void _unbindSession(EditorSessionManager session) {

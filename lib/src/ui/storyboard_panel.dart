@@ -621,14 +621,14 @@ class StoryboardPanel extends StatefulWidget {
   /// fold (유저 2026-09-25: 「띠는 v행 세로 줄어도 고정으로 그 자리에 두자」),
   /// so at 52 the picture is gone and every word stays whole.
   ///
-  /// The CEILING is the tallest row the born cut's picture stays sharp in
-  /// (⛔해상도로 속도를 사지 않는다): a cut is born 2340×1654
-  /// ([defaultCutCanvasSize]), so its sheet-sized thumbnail — the one a
-  /// strip past the strip-sized one asks for
-  /// ([StoryboardCutBlocksPainter.thumbnailTierFor]) — is 640×452, and the
-  /// bands take 52 more. ⚠️A wider canvas's picture is shorter: a 16:9
-  /// cut's is 360, which the top of this range draws a little stretched.
-  /// ↩️64 · 28 · 160 with two bands.
+  /// The CEILING was set as the tallest row the born cut's picture stayed
+  /// sharp in (⛔해상도로 속도를 사지 않는다) while the tallest picture a strip
+  /// could ask was the conte's fixed 640px one: 452 tall, and the bands
+  /// take 52 more. ⚠️That reason is gone — a strip now asks its picture at
+  /// the height it shows it, up to the camera frame
+  /// (`pictureRenderWidthFor`) — so how much taller the row may go is the
+  /// user's to say (board `storyboard-v-row-ceiling`). ↩️64 · 28 · 160 with
+  /// two bands.
   static const double defaultTrackLaneHeight = 96;
   // Min/max are the height's LEGAL RANGE — the bar's steppers died with B7
   // (2026-08-17), and the V-track splitter (2026-09-26) clamps to the same
@@ -4971,6 +4971,7 @@ class _StoryboardTrackRow extends StatelessWidget {
       showSeconds: showSeconds,
       countingBase: projectFrameRate.countingBase,
       thumbnails: thumbnails,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
       windowBucket: windowBucket,
       viewportMainExtent: viewportWidth,
     );

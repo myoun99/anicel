@@ -30,8 +30,6 @@ import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet/sheet_strata.dart';
-import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailTier;
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview;
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
@@ -118,7 +116,7 @@ void main() {
                 session: session,
                 thumbnails: (
                   resolve:
-                      (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
+                      (cut, frame, {required shownHeight}) =>
                           null,
                   landed: thumbnails,
                 ),

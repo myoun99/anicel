@@ -9,7 +9,11 @@ import 'dart:ui' show Offset, Rect;
 /// Every deflated stream is inflated and read as operators; a font program
 /// inflates too, and its bytes spell no `m`/`l`/`h`/`Td` with numbers
 /// before them.
-Iterable<List<String>> _streamTokens(Uint8List pdf) sync* {
+Iterable<List<String>> _streamTokens(Uint8List pdf) =>
+    _streamContents(pdf).map((content) => content.split(RegExp(r'\s+')));
+
+/// Every deflated stream's content, inflated.
+Iterable<String> _streamContents(Uint8List pdf) sync* {
   final text = latin1.decode(pdf);
   for (final start in RegExp('(?<!end)stream\r?\n').allMatches(text)) {
     final end = text.indexOf('endstream', start.end);
@@ -19,14 +23,30 @@ Iterable<List<String>> _streamTokens(Uint8List pdf) sync* {
     final body = text
         .substring(start.end, end)
         .replaceFirst(RegExp('\r?\n\$'), '');
-    final String content;
     try {
-      content = latin1.decode(ZLibDecoder().convert(latin1.encode(body)));
+      yield latin1.decode(ZLibDecoder().convert(latin1.encode(body)));
     } on FormatException {
       continue;
     }
-    yield content.split(RegExp(r'\s+'));
   }
+}
+
+/// The pixel size of every image the file embeds — the `/Width` and
+/// `/Height` of each image dictionary, wherever the writer put it: in the
+/// file's own text or inside a compressed object stream. An image with an
+/// alpha mask counts twice, once for its mask.
+List<(int, int)> pdfImageSizes(Uint8List pdf) {
+  final image = RegExp(r'<<[^<>]*/Subtype\s*/Image\b[^<>]*>>');
+  int? number(String dictionary, String key) => int.tryParse(
+    RegExp('/$key\\s+(\\d+)').firstMatch(dictionary)?.group(1) ?? '',
+  );
+  return [
+    for (final text in [latin1.decode(pdf), ..._streamContents(pdf)])
+      for (final match in image.allMatches(text))
+        if ((number(match[0]!, 'Width'), number(match[0]!, 'Height'))
+            case (final int width, final int height))
+          (width, height),
+  ];
 }
 
 /// Every closed path the pages draw: `x y m`, then `x y l` …, then `h`.

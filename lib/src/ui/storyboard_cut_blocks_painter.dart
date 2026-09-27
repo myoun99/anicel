@@ -10,8 +10,7 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer_kind.dart';
 import '../models/storyboard_coverage.dart';
-import 'storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailTier, StoryboardThumbnails;
+import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../models/timeline_row_address.dart';
 import '../models/track_frame_range.dart';
 import 'storyboard_layer_policy.dart';
@@ -230,6 +229,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   ValueListenable<TrackFrameRangeSelection?>? selectedRange,
   ValueListenable<CutId?>? hoveredCutId,
   StoryboardThumbnails? thumbnails,
+  required double devicePixelRatio,
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
 }) => StoryboardCutBlocksPainter(
@@ -257,6 +257,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   showSeconds: showSeconds,
   countingBase: countingBase,
   thumbnails: thumbnails,
+  devicePixelRatio: devicePixelRatio,
   windowBucket: windowBucket,
   viewportMainExtent: viewportMainExtent,
 );
@@ -296,6 +297,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     required this.showSeconds,
     required this.countingBase,
     this.thumbnails,
+    required this.devicePixelRatio,
     this.windowBucket,
     this.viewportMainExtent = 0,
   }) : super(
@@ -357,6 +359,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   final StoryboardThumbnails? thumbnails;
 
   bool get showThumbnails => thumbnails != null;
+
+  /// The screen's pixels per logical one: the pictures are asked at the
+  /// device pixels they are drawn with, not the layout's.
+  final double devicePixelRatio;
 
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
@@ -607,11 +613,16 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     if (thumbnails == null) {
       return const [];
     }
-    final tier = thumbnailTierFor(
-      stripBandOf(crossAxisExtent).height,
-      canvasAspect:
-          entry.cut.canvasSize.height / entry.cut.canvasSize.width,
-    );
+    // The picture is drawn the strip's height tall ([_pictureIn]), so that
+    // many device pixels is what it asks for — the conte cell's law.
+    //
+    // 🗣️유저 2026-09-26: 「최대값은 최대한 키울수있으면 좋아」 — a V row may
+    // grow to [StoryboardPanel.maxTrackLaneHeight], and a picture stretched
+    // past the pixels it was rendered with is a picture bought with
+    // resolution (⛔해상도로 속도를 사지 않는다). ↩️It chose between a 128px
+    // and a 640px picture, and read neither the screen's density nor the
+    // camera's shape.
+    final shownHeight = stripBandOf(crossAxisExtent).height * devicePixelRatio;
     return [
       for (final cell in cells)
         thumbnails.resolve(
@@ -620,26 +631,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
             cell,
             pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
           ),
-          tier: tier,
+          shownHeight: shownHeight,
         ),
     ];
   }
-
-  /// The thumbnail a strip [stripHeight] tall draws SHARP: the strip-sized
-  /// one while its own height — its width over the canvas's [canvasAspect]
-  /// (height ÷ width) — covers the strip, the sheet-sized one past that.
-  ///
-  /// 🗣️유저 2026-09-26: 「최대값은 최대한 키울수있으면 좋아」 — a V row may grow
-  /// to [StoryboardPanel.maxTrackLaneHeight], and a picture stretched past
-  /// the pixels it was rendered with is a picture bought with resolution
-  /// (⛔해상도로 속도를 사지 않는다). ↩️The strip always asked for the strip
-  /// size, which a 160px row already stretched to twice its height.
-  static StoryboardThumbnailTier thumbnailTierFor(
-    double stripHeight, {
-    required double canvasAspect,
-  }) => StoryboardThumbnailTier.strip.width * canvasAspect >= stripHeight
-      ? StoryboardThumbnailTier.strip
-      : StoryboardThumbnailTier.sheet;
 
   /// Every block this row would draw, in track order — THE probe surface.
   ///
@@ -1138,6 +1133,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     showSeconds,
     countingBase,
     showThumbnails,
+    devicePixelRatio,
     viewportMainExtent,
   );
 

@@ -188,6 +188,7 @@ class _WorkspaceCollapsedRows {
                 // draws from, so a picture rendered for one is already
                 // rendered for the other.
                 thumbnails: _state._storyboardThumbnails.thumbnails,
+                devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
               ),
             ),
     );

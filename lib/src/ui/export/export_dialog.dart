@@ -1192,6 +1192,7 @@ class ExportDialogState extends State<ExportDialog> {
     required bool Function((String, int) key) have,
     required Future<void> Function((String, int) key, ui.Image image) take,
   }) async {
+    _contePictureSize = size;
     final renderer = ExportFrameRenderer(session: _session);
     for (final page in pages) {
       for (final cell in page.cells) {
@@ -1235,7 +1236,7 @@ class ExportDialogState extends State<ExportDialog> {
       return await renderContePageImage(
         page: page,
         source: source,
-        pictureFor: (cutId, frame) => pictures[(cutId, frame)],
+        pictureFor: (cutId, frame, _) => pictures[(cutId, frame)],
         imageFor: (path) => images[path],
         inkImageFor: (key) => ink[key],
         scale: scale,
@@ -1304,6 +1305,12 @@ class ExportDialogState extends State<ExportDialog> {
   /// `tester.runAsync` so the raster completes).
   @visibleForTesting
   Future<void> debugFlushPreview() => _preview.debugFlushPending();
+
+  /// Test seam: the size the conte's cell pictures were last rendered at —
+  /// what a page-image run asks, which its PNG files cannot tell a test.
+  @visibleForTesting
+  CanvasSize? get debugContePictureSize => _contePictureSize;
+  CanvasSize? _contePictureSize;
 
   /// Test seam: sets the destination without the platform picker.
   @visibleForTesting
@@ -2421,17 +2428,22 @@ class ExportDialogState extends State<ExportDialog> {
     final (source, pages) = _conteSheet();
     final spec = _specs.conte;
     final words = _conteWords;
+    // Every cell's picture at its ORIGINAL, the camera frame, in both
+    // formats (유저 2026-09-25 conte-picture-resolution-Q1: 「내보내기는
+    // 원본」 · 「내보낼땐 용지가 실제크기가 꽤 크니까 그에 맞춰서 해상도
+    // 높기만하면됨」). ↩️320px a sheet-scale step for pages and 640px for
+    // the PDF — about 170dpi on the printed sheet.
+    final cameraSize = _session.camera.cameraFrameSize;
     if (spec.format == ExportConteFormat.pageImage) {
       // Streamed like every image export: ONE page's cell pictures live
       // at a time (a cut spanning two pages re-renders once per page —
       // cheaper than holding the whole film's cells).
-      final cellWidth = 320 * spec.sheetScale;
       return _runImageExport(
         count: pages.length,
         renderImage: (index) => _renderContePage(
           pages[index],
           source,
-          pictureWidth: cellWidth,
+          pictureWidth: cameraSize.width,
           scale: spec.sheetScale.toDouble(),
           words: words,
         ),
@@ -2444,12 +2456,10 @@ class ExportDialogState extends State<ExportDialog> {
     // before the next renders — only the raw copies (the document's own
     // material) live to the end.
     _reportProgress(0, pages.length + 1);
-    final cameraSize = _session.camera.cameraFrameSize;
-    const pictureWidth = 640;
     final pdfPictures = <(String, int), ContePdfPicture>{};
     await _forEachContePicture(
       pages,
-      size: cameraSize.scaledToWidth(pictureWidth),
+      size: cameraSize,
       have: pdfPictures.containsKey,
       take: (key, image) async {
         try {

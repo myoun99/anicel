@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 /// 1/16 of the page: past this a raster is too coarse to be worth keeping,
@@ -43,4 +44,24 @@ double viewerRenderScaleFor(double zoom, ui.Size pageSize) {
     scale /= 2;
   }
   return scale;
+}
+
+/// The width to render a composed picture at — a conte cell's, a strip
+/// block's — when it is drawn [shownHeight] device pixels tall and its
+/// original (the camera frame) is [original].
+///
+/// 🗣️유저 2026-09-25 (conte-picture-resolution-Q1): 「화면이 필요한 만큼(최대
+/// 원본)」, and for the cut blocks 「이 가변로직? 콘티패널의 컷블록 프리뷰에도
+/// 같은로직으로 법 통일하면 좋을듯」. So it is the viewer's ladder
+/// ([viewerRenderScaleFor]) over the original, stopped AT the original: a
+/// composite asked larger than the camera frame has no more pixels to give.
+int pictureRenderWidthFor(double shownHeight, ui.Size original) {
+  if (original.width <= 0 || original.height <= 0) {
+    return 1;
+  }
+  final scale = math.min(
+    1.0,
+    viewerRenderScaleFor(shownHeight / original.height, original),
+  );
+  return math.max(1, (original.width * scale).round());
 }

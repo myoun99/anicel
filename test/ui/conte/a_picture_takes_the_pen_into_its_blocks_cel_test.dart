@@ -44,7 +44,6 @@ import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
-import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 
 /// 🚨A CONTE PICTURE TAKES THE PEN INTO ITS BLOCK'S CEL (유저 2026-09-25,
 /// conte-drawing-target: 「그림 칸 안의 부분은 그 블록의 콘티 레이어
@@ -474,6 +473,9 @@ void main() {
     late EditorSessionManager session;
     late ValueNotifier<bool> brushOn;
 
+    /// Every height the panel asked the printed picture at, in order.
+    final askedHeights = <double>[];
+
     /// The cut framed by its camera at [zoom] about the canvas's middle,
     /// held over its one block — two keys, so the page prints IN and OUT
     /// on the picture — its conte row posed by [rowPose].
@@ -592,8 +594,11 @@ void main() {
                               (
                                 cut,
                                 frame, {
-                                tier = StoryboardThumbnailTier.sheet,
-                              }) => printed,
+                                required shownHeight,
+                              }) {
+                                askedHeights.add(shownHeight);
+                                return printed;
+                              },
                           landed: const _NeverLands(),
                         ),
                   viewport: seedFromRender(tester, view ?? CanvasViewport()),
@@ -820,6 +825,32 @@ void main() {
       }
       expect(scans, greaterThan(50), reason: 'fixture: the edges are read');
       expect(seams, isEmpty);
+    });
+
+    testWidgets('🗣️the panel asks a cell\'s picture at the height it shows '
+        'it, in device pixels — and twice as tall at twice the zoom '
+        '(유저 2026-09-25 「화면이 필요한 만큼(최대 원본)」)', (tester) async {
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(const Color(0xFFFF0000), BlendMode.src);
+        return recorder.endRecording().toImage(64, 36);
+      }))!;
+      addTearDown(printed.dispose);
+      final ratio = tester.view.devicePixelRatio;
+
+      askedHeights.clear();
+      final slot = await pumpPanel(tester, framed(zoom: 1), printed: printed);
+      expect(askedHeights, isNotEmpty, reason: 'fixture: the cell asks');
+      final atOne = askedHeights.last;
+      expect(atOne, closeTo(slot.height * ratio, 2));
+
+      await pumpPanel(
+        tester,
+        framed(zoom: 1),
+        printed: printed,
+        view: CanvasViewport(zoom: 2),
+      );
+      expect(askedHeights.last, closeTo(atOne * 2, 2));
     });
   });
 }

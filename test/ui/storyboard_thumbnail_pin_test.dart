@@ -19,6 +19,8 @@ import '../helpers/boolean_dot_probe.dart';
 
 /// Conte-sheet picture choice: the storyboard block thumbnail can pin to
 /// any cut-local frame (null = first frame), toggled from the cut toolbar.
+ui.Size _original() => const ui.Size(1920, 1080);
+
 void main() {
   group('CutMetadata.thumbnailFrameIndex', () {
     test('serializes, omits null, and copyWith can CLEAR the pin', () {
@@ -72,6 +74,7 @@ void main() {
         'it as the frame the panel asks for', (tester) async {
       var renderCount = 0;
       final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
         render: (_, _, _) {
           renderCount += 1;
           return tinyImage();
@@ -80,13 +83,13 @@ void main() {
       addTearDown(store.dispose);
 
       await tester.runAsync(() async {
-        store.thumbnailFor(cut(), 0);
+        store.thumbnailFor(cut(), 0, shownHeight: 72);
         await Future<void>.delayed(const Duration(milliseconds: 20));
         // A different frame is a different picture.
-        store.thumbnailFor(cut(), 12);
+        store.thumbnailFor(cut(), 12, shownHeight: 72);
         await Future<void>.delayed(const Duration(milliseconds: 20));
         // The same one again is not.
-        store.thumbnailFor(cut(), 12);
+        store.thumbnailFor(cut(), 12, shownHeight: 72);
         await Future<void>.delayed(const Duration(milliseconds: 20));
       });
       await tester.pump();

@@ -32,8 +32,7 @@ import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../editor_session_manager.dart';
-import '../storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailTier, StoryboardThumbnails;
+import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview, TimelineDragPreview;
 import '../text/app_strings.dart';
@@ -295,7 +294,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
     ];
   }
 
-  ui.Image? _pictureFor(String cutId, int frame) {
+  /// A cell's picture at the size its window shows it — the zoom and the
+  /// screen's density decide, not a size of the conte's own (유저
+  /// 2026-09-25: 「화면이 필요한 만큼(최대 원본)」). ↩️It asked one fixed
+  /// 640px picture, which a cell zoomed past about 2.4× stretched.
+  ui.Image? _pictureFor(String cutId, int frame, double shownHeight) {
     final resolver = widget.thumbnails?.resolve;
     if (resolver == null) {
       return null;
@@ -303,10 +306,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
     for (final track in _session.repository.requireProject().tracks) {
       for (final cut in track.cuts) {
         if (cut.id.value == cutId) {
-          // The SHEET tier: a conte cell is a printed frame that also
-          // exports, not a strip block, and asking for the strip's 128px
-          // is what made the pictures look quarter-resolution.
-          return resolver(cut, frame, tier: StoryboardThumbnailTier.sheet);
+          return resolver(cut, frame, shownHeight: shownHeight);
         }
       }
     }

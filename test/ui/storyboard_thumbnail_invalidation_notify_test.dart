@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
@@ -15,11 +16,14 @@ import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 /// thumbnail store itself must notify on hub invalidations - otherwise a
 /// visible storyboard never re-pulls thumbnailFor and freshly drawn
 /// artwork never reaches its cut block.
+ui.Size _original() => const ui.Size(1920, 1080);
+
 void main() {
   test('a brush-frame invalidation notifies listeners once per batch', () {
     fakeAsync((async) {
       final hub = EditorCacheInvalidationHub();
       final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
         render: (_, _, _) async => null,
         invalidationHub: hub,
       );

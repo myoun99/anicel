@@ -306,6 +306,12 @@ class SheetDeviceGrid {
   }
 }
 
+/// A cut's picture at a frame, for a window that draws it [shownHeight]
+/// device pixels tall — what the panel's picture law is asked with. An
+/// export's pictures are rendered before it prints, and ignore it.
+typedef SheetPictureLookup =
+    ui.Image? Function(String cutId, int pictureFrame, double shownHeight);
+
 /// The images a Canvas printer finds by what a mark names.
 class SheetMarkImages {
   const SheetMarkImages({
@@ -315,7 +321,7 @@ class SheetMarkImages {
     this.liveInkKeys = const {},
   });
 
-  final ui.Image? Function(String cutId, int pictureFrame)? pictureFor;
+  final SheetPictureLookup? pictureFor;
   final ui.Image? Function(String assetPath)? imageFor;
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
 
@@ -477,9 +483,11 @@ class _SheetCanvas {
   /// showed through the rest. A pan keeps each edge's place in its pixel
   /// (whole pixels, the snap's phase), so only a zoom ever moved it.
   void _picture(SheetPicture picture) {
+    final frame = grid.snap(picture.frame);
     final image = printer.images.pictureFor?.call(
       picture.cutId,
       picture.pictureFrame,
+      frame.height * grid.devicePixelRatio,
     );
     if (image == null) {
       return;
@@ -490,12 +498,7 @@ class _SheetCanvas {
         grid.rounded(grid.snap(picture.slot), picture.cornerRadius),
       );
     }
-    paintSheetImageIn(
-      canvas,
-      image,
-      grid.snap(picture.frame),
-      FilterQuality.medium,
-    );
+    paintSheetImageIn(canvas, image, frame, FilterQuality.medium);
     canvas.restore();
   }
 

@@ -39,7 +39,7 @@ import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailResolver, StoryboardThumbnailTier;
+    show StoryboardThumbnailResolver;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import '../helpers/fixed_thumbnails.dart';
@@ -931,7 +931,7 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _, {tier = StoryboardThumbnailTier.strip}) =>
+        thumbnailFor: (cut, _, {required shownHeight}) =>
             cut.id == const CutId('cut-a') ? image : null,
       );
 
@@ -993,7 +993,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         thumbnailFor:
-            (cut, frameIndex, {tier = StoryboardThumbnailTier.strip}) {
+            (cut, frameIndex, {required shownHeight}) {
               asked.add((cut.id, frameIndex));
               return null;
             },
@@ -1073,7 +1073,7 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _, {tier = StoryboardThumbnailTier.strip}) =>
+        thumbnailFor: (cut, _, {required shownHeight}) =>
             cut.id == const CutId('cut-a') ? image : null,
       );
 

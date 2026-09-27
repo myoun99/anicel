@@ -74,7 +74,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   /// The finished composite for a cell, or null while it renders (the cell
   /// prints its form and text either way — a conte with no pictures yet is
   /// still a conte).
-  final ui.Image? Function(String cutId, int pictureFrame)? pictureFor;
+  final SheetPictureLookup? pictureFor;
 
   /// A media image by its asset path — the company logo.
   final ui.Image? Function(String assetPath)? imageFor;

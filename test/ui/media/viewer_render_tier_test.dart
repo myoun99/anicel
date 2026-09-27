@@ -95,4 +95,41 @@ void main() {
       expect(viewerRenderScaleFor(0.25, page), 0.25);
     });
   });
+
+  group('a composed picture (a conte cell, a strip block) climbs the same '
+      'ladder, and stops at its original — 유저 2026-09-25 「화면이 필요한 '
+      '만큼(최대 원본)」', () {
+    const camera = ui.Size(1920, 1080);
+
+    test('on the ladder: shown at half its height or less, it renders at half '
+        'its width; a pixel more, and it renders whole', () {
+      expect(pictureRenderWidthFor(400, camera), 960);
+      expect(pictureRenderWidthFor(540, camera), 960);
+      expect(pictureRenderWidthFor(541, camera), 1920);
+    });
+
+    test('⛔never past the original — a camera frame has no more pixels to '
+        'give, however far the view zooms in', () {
+      expect(pictureRenderWidthFor(1080, camera), 1920);
+      expect(pictureRenderWidthFor(20000, camera), 1920);
+    });
+
+    test('the render covers what is shown, or it is the original', () {
+      for (final shown in <double>[1, 44, 67.5, 135, 200, 700, 1080, 3000]) {
+        final width = pictureRenderWidthFor(shown, camera);
+        final height = width * camera.height / camera.width;
+        expect(
+          height >= shown || width == camera.width,
+          isTrue,
+          reason: '$shown tall gave $width wide for no stated reason',
+        );
+      }
+    });
+
+    test('the floor is the viewer\'s, 1/16; a frame with no size asks one '
+        'pixel rather than a division by zero', () {
+      expect(pictureRenderWidthFor(1, camera), 1920 ~/ 16);
+      expect(pictureRenderWidthFor(100, ui.Size.zero), 1);
+    });
+  });
 }
