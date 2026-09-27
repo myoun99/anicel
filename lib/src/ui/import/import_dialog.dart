@@ -1402,6 +1402,10 @@ class _ImportDialogState extends State<ImportDialog> {
             '',
         shownCell + 1,
       ),
+    // Never opens this window — a swap has nothing to ask (I-47) — but a
+    // spot is a spot, and this one names its row.
+    ReferenceSwapSpot(:final layerId) =>
+      widget.session.layerById(layerId)?.name ?? '',
   };
 
   ImportColumn<Object?> _fitColumn(bool placing) => ImportColumn<Object?>(

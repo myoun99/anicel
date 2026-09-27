@@ -1,5 +1,6 @@
 // The doors a MEDIA FILE comes in through: one still or animated image, a
-// Photoshop stack expanded into rows, a PDF's pages as cels.
+// Photoshop stack expanded into rows, a PDF's pages as cels — and the file a
+// reference row is swapped to (I-47).
 //
 // Their own object since round 8 (G1, 2026-09-06). All three do the same
 // four things in the same order — pass the destination gate, plan the
@@ -10,6 +11,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 import 'dart:ui' as ui show Image, ImageByteFormat;
 
+import '../../models/bitmap_surface.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
@@ -21,9 +23,11 @@ import '../../models/media_reference.dart';
 import '../../models/movie_cel.dart';
 import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
+import '../../models/reference_swap.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
+import '../../services/commands/swap_layer_reference_command.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_identity_reader.dart';
@@ -813,6 +817,90 @@ class ProjectImportDoors {
       return true;
     } finally {
       await opened.close();
+    }
+  }
+
+  /// I-47: [layerId] — a reference row of the active cut — shows [path]
+  /// instead of the file it points at, as ONE undo step
+  /// ([SwapLayerReferenceCommand]); how it takes the file is
+  /// [referenceSwapFor]'s answer. A still's new picture is baked at the fit
+  /// the row was PLACED with — the pool's fit for the file it showed
+  /// (`Project.mediaFitModeFor`), the answer [rasterizeMovieReference] reads
+  /// for the same reason — so it stands where the old one stood.
+  ///
+  /// False when nothing changed: a row that does not take [path], a file
+  /// that would not read, or a row that changed while it was being read.
+  Future<bool> swapReference({
+    required LayerId layerId,
+    required String path,
+  }) async {
+    final cut = _project.activeCutOrNull;
+    final layer = _project.layerById(layerId);
+    final reference = layer?.mediaReference;
+    if (cut == null || layer == null || reference == null) {
+      return false;
+    }
+    final swap = referenceSwapFor(layer, path);
+    if (swap == null) {
+      return false;
+    }
+    final picture = swap == ReferenceSwap.still
+        ? await _stillPicture(
+            path,
+            cut.canvasSize,
+            _project.repository.requireProject().mediaFitModeFor(
+              reference.assetPath,
+            ),
+          )
+        : null;
+    if ((swap == ReferenceSwap.still && picture == null) ||
+        _project.layerById(layerId) != layer) {
+      return false;
+    }
+    _project.historyManager.execute(
+      SwapLayerReferenceCommand(
+        repository: _project.repository,
+        cutId: cut.id,
+        layerId: layerId,
+        reference: reference.copyWith(assetPath: path),
+        store: _renderCaches.brushFrameStore,
+        pictures: {
+          if (picture != null)
+            for (final frame in layer.frames)
+              _internals.brushFrameKeyForCut(cut, layerId, frame.id): picture,
+        },
+        cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+      ),
+    );
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: layerId);
+    _changes.notifyChanged();
+    return true;
+  }
+
+  /// [path]'s picture on a [canvas]-sized cel at [fit] — read through the
+  /// project's copy first ([readHeldMediaBytes]), as every door here reads.
+  Future<BitmapSurface?> _stillPicture(
+    String path,
+    CanvasSize canvas,
+    MediaFitMode fit,
+  ) async {
+    final ui.Image? image;
+    try {
+      image = await firstPictureOf(await readHeldMediaBytes(_holdBytes, path));
+    } on Object {
+      return null;
+    }
+    if (image == null) {
+      return null;
+    }
+    try {
+      return await rasterizeImageToSurface(
+        image: image,
+        canvas: canvas,
+        fit: fit,
+      );
+    } finally {
+      image.dispose();
     }
   }
 

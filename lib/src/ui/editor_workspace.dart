@@ -20,7 +20,7 @@ import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
-import '../models/media_asset.dart' show MediaAsset;
+import '../models/media_asset.dart' show MediaAsset, mediaFileName;
 import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
@@ -1838,6 +1838,25 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// registering for later is what that panel is for, and the other
   /// destinations stay on offer because it is the same window. [spot] is
   /// where a drop put the file — the window shows it locked.
+  /// A reference row shows [path] instead of its file (I-47) — no window:
+  /// the row keeps every answer it already gave (Q1 2026-09-27: 「창 없이
+  /// 바로 바꾼다 (언두 하나)」). A file that would not come in is said, as the
+  /// window would have said it.
+  Future<void> _swapReference(LayerId layerId, String path) async {
+    final swapped = await widget.session.importDoors.swapReference(
+      layerId: layerId,
+      path: path,
+    );
+    if (swapped || !mounted) {
+      return;
+    }
+    await showAppNotice(
+      context,
+      title: AppText.strings.commonNotice,
+      message: AppText.strings.imUnreadable(mediaFileName(path)),
+    );
+  }
+
   void _openImportWindow({
     List<String> initialPaths = const [],
     bool poolOnly = false,

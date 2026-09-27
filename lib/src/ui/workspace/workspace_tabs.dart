@@ -812,6 +812,10 @@ class _WorkspaceTabs {
                   LayerRowAddress(layerId),
                   frameIndex: frameIndex,
                 );
+                if (spot is ReferenceSwapSpot) {
+                  unawaited(_state._swapReference(layerId, path));
+                  return;
+                }
                 _state._openImportWindow(
                   initialPaths: [path],
                   placeOnly: true,

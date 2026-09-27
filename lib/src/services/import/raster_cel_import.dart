@@ -71,14 +71,26 @@ Future<List<DecodedImageFrame>> decodeImageFrames(Uint8List bytes) async {
 /// recipe and never learned the PSD detour.
 Future<ui.Image?> readImageFileOrNull(String path) async {
   try {
-    final frames = await decodeImageFrames(await File(path).readAsBytes());
-    for (final frame in frames.skip(1)) {
-      frame.image.dispose();
-    }
-    return frames.isEmpty ? null : frames.first.image;
+    return await firstPictureOf(await File(path).readAsBytes());
   } on Object {
     return null;
   }
+}
+
+/// The picture [bytes] hold as ONE image — a still, a GIF's first frame, a
+/// PSD's composite ([decodeImageFrames]) — or null when they hold none. The
+/// frames after the first are let go of here. Throws what the decoder
+/// throws.
+///
+/// Its own function because a caller that already holds the bytes — a
+/// carried medium read through the project (`readHeldMediaBytes`) — has
+/// no file for [readImageFileOrNull] to open.
+Future<ui.Image?> firstPictureOf(Uint8List bytes) async {
+  final frames = await decodeImageFrames(bytes);
+  for (final frame in frames.skip(1)) {
+    frame.image.dispose();
+  }
+  return frames.isEmpty ? null : frames.first.image;
 }
 
 /// The placement rect [fit] gives [source] on [canvas] (§6-q: fit is a

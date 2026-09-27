@@ -2,7 +2,9 @@ import '../../models/layer_id.dart';
 import 'media_import_planner.dart' show ImportDestination;
 
 /// Where a placement lands, when a DROP decided it: a place in the ACTIVE
-/// cut, or a NEW cut's place on the track.
+/// cut, or a NEW cut's place on the track — or, on a reference row, the
+/// file it shows instead ([ReferenceSwapSpot], the one that lands without
+/// the window).
 ///
 /// "Where does this go" is two questions. Which cut — the active one or a
 /// new one — is [ImportDestination], and the window asks it. Where in that
@@ -116,6 +118,33 @@ final class SeCellSpot extends ImportLayerSpot {
 
   @override
   int get hashCode => Object.hash(SeCellSpot, layerId, trackFrame, shownCell);
+}
+
+/// A file let go on a REFERENCE row's frame area: the row shows that file
+/// instead of the one it pointed at — its name, its transform and its
+/// frames stay (I-47, 유저 2026-09-25: 「기존의 트랜스폼값같은거
+/// 안건들이고 진짜 참조대상만 변경하는느낌」; `referenceSwapFor` says which
+/// rows take which files).
+///
+/// 🚨THE ONE SPOT THAT LANDS WITHOUT THE WINDOW (Q1 2026-09-27: 「창 없이
+/// 바로 바꾼다 (언두 하나)」). Every other drop fills the placement window's
+/// answers and the window asks them; a swap keeps every answer the row
+/// already gave, so there is nothing left to ask.
+final class ReferenceSwapSpot extends ImportLayerSpot {
+  const ReferenceSwapSpot(this.layerId);
+
+  final LayerId layerId;
+
+  @override
+  ImportDestination? get answeredDestination =>
+      ImportDestination.activeCutLayer;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReferenceSwapSpot && other.layerId == layerId;
+
+  @override
+  int get hashCode => Object.hash(ReferenceSwapSpot, layerId);
 }
 
 /// A new layer at a gap between two rows of the layer area — where the

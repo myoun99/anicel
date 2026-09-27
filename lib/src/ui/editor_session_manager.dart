@@ -39,6 +39,7 @@ import '../models/layer_kind.dart';
 import '../models/media_asset.dart'
     show MediaAssetKind, mediaAssetKindForPath, normalizedMediaPath;
 import '../models/movie_cel.dart' show isMovieReference;
+import '../models/reference_swap.dart';
 import '../services/import/import_layer_spot.dart';
 import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
@@ -2016,6 +2017,8 @@ class EditorSessionManager extends ChangeNotifier
           frameIndex: frameIndex,
           path: path,
         );
+      case ReferenceSwapSpot():
+        mediaPlacement.showOnReference(layerId: layerId);
       case _:
         // Nowhere to land: nothing is drawn, which is what the chip's
         // 금지 표시 already says.
@@ -2423,7 +2426,10 @@ class EditorSessionManager extends ChangeNotifier
   /// Where a file let go on ANY row lands — one question, whatever row the
   /// drop found: a picture on a row that takes frames ([frameDropSpot]), a
   /// SOUND on an SE row's empty cell (유저 2026-09-11: 「SE 행의 빈 칸 → 새
-  /// 블록」). Null when it lands nowhere, and the drop does nothing.
+  /// 블록」), the file a REFERENCE row shows instead ([ReferenceSwapSpot],
+  /// I-47 — the one row [acceptsPlacedFrames] turns frames away from, since
+  /// its cells come from its file). Null when it lands nowhere, and the drop
+  /// does nothing.
   ImportLayerSpot? dropSpotFor(LayerId layerId, int frameIndex, String path) {
     if (isTrackSeLayerId(layerId)) {
       final cut = activeCutOrNull;
@@ -2440,6 +2446,10 @@ class EditorSessionManager extends ChangeNotifier
               shownCell: frameIndex,
               path: path,
             );
+    }
+    final layer = layerById(layerId);
+    if (layer != null && referenceSwapFor(layer, path) != null) {
+      return ReferenceSwapSpot(layerId);
     }
     return frameDropSpot(layerId, frameIndex, path);
   }

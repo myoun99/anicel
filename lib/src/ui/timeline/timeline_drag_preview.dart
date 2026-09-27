@@ -484,11 +484,22 @@ class _TimelineDragPreviewRowGateState
     extends State<TimelineDragPreviewRowGate> {
   Layer? _previewLayer;
 
+  /// The cells a hovering file would author on this row
+  /// ([timelineDragSilhouetteFor]) — the OTHER thing a row draws from the
+  /// preview, so the other thing that rebuilds it.
+  ///
+  /// 🚨Watched only the row's preview LAYER, the gate kept a silhouette that
+  /// came with no preview row off the screen: a sound over an SE row's empty
+  /// cell and a file over a reference row (I-47) hand over the span alone,
+  /// because nothing on the row moves — and the row never rebuilt to draw it.
+  ({int startIndex, int endIndexExclusive})? _silhouette;
+
   @override
   void initState() {
     super.initState();
     widget.dragPreview?.addListener(_handlePreviewChanged);
     _previewLayer = _resolvePreviewLayer();
+    _silhouette = _resolveSilhouette();
   }
 
   @override
@@ -502,6 +513,7 @@ class _TimelineDragPreviewRowGateState
     // A parent rebuild mid-drag (or an element re-match after the row
     // window scrolled) must re-derive against the new layer identity.
     _previewLayer = _resolvePreviewLayer();
+    _silhouette = _resolveSilhouette();
   }
 
   @override
@@ -545,15 +557,23 @@ class _TimelineDragPreviewRowGateState
     return null;
   }
 
+  /// Track-global hosts draw no silhouette ([timelineDragSilhouetteFor] is
+  /// the active-cut rows' question).
+  ({int startIndex, int endIndexExclusive})? _resolveSilhouette() =>
+      widget.useGlobalForm
+      ? null
+      : timelineDragSilhouetteFor(widget.dragPreview?.value, widget.layer.id);
+
   void _handlePreviewChanged() {
     final next = _resolvePreviewLayer();
-    if (identical(next, _previewLayer)) {
+    final silhouette = _resolveSilhouette();
+    if (identical(next, _previewLayer) && silhouette == _silhouette) {
       return;
     }
-    if (next == null && _previewLayer == null) {
-      return;
-    }
-    setState(() => _previewLayer = next);
+    setState(() {
+      _previewLayer = next;
+      _silhouette = silhouette;
+    });
   }
 
   @override
