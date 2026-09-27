@@ -255,11 +255,18 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// same route as the selection above, because it is the same kind of
   /// thing: **a mask with no shape.**
   ///
-  /// Opacity cannot ride the dabs. Dabs accumulate source-over, so a
-  /// per-dab factor is not a ceiling — overlap it enough and any factor
-  /// below 1 still converges on opaque, which is the report (「불투명도
+  /// Opacity could not ride the dabs. Dabs accumulated source-over, so a
+  /// per-dab factor was not a ceiling — overlap it enough and any factor
+  /// below 1 still converged on opaque, which is the report (「불투명도
   /// 낮춰도 dab 겹치면 100%까지 진해진다」). It has to scale the ACCUMULATED
   /// stroke, once, which is precisely what this mask already does.
+  ///
+  /// ⚠️Since F-205 a dab's own opacity IS a ceiling (`qa_dab_source_alpha`:
+  /// it settles there), and a constant one settles exactly where this mask
+  /// puts the stroke — in exact arithmetic. The slider stays HERE all the
+  /// same: one scale of the finished stroke rounds once, the dab route
+  /// rounds at every dab, and moving it would shift every stroke under
+  /// 100% by a level.
   ///
   /// Folding it in here rather than adding a scalar to the kernel is what
   /// keeps the native and Dart routes parity-pinned for free: neither one

@@ -23,10 +23,36 @@ RgbaColor blendBrushDabPixelCoverage({
       flow: dab.flow,
     );
   }
-  return rgbaSourceOver(
-    source: RgbaColor.fromArgbInt(dab.color),
+  if (dab.opacity >= 1.0) {
+    return rgbaSourceOver(
+      source: RgbaColor.fromArgbInt(dab.color),
+      destination: destination,
+      opacity: effectiveBrushPixelOpacity(dab: dab, coverage: coverage),
+      flow: dab.flow,
+    );
+  }
+  // 🚨★★★A DAB SETTLES AT ITS OPACITY (F-205) — the law and its reasons
+  // are written once, beside `qa_dab_source_alpha` in qa_engine.c; this is
+  // the reference's copy of its arithmetic, operation by operation.
+  final destinationAlpha = destination.a / 255.0;
+  if (destinationAlpha >= dab.opacity) {
+    return destination;
+  }
+  final source = RgbaColor.fromArgbInt(dab.color);
+  final sourceAlpha =
+      effectiveSourceAlpha(
+        source: source,
+        opacity: coverage.coverage,
+        flow: dab.flow,
+      ) *
+      (dab.opacity - destinationAlpha) /
+      (1.0 - destinationAlpha);
+  if (sourceAlpha == 0.0) {
+    return destination;
+  }
+  return rgbaSourceOverAt(
+    source: source,
     destination: destination,
-    opacity: effectiveBrushPixelOpacity(dab: dab, coverage: coverage),
-    flow: dab.flow,
+    sourceAlpha: sourceAlpha,
   );
 }

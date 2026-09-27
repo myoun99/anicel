@@ -480,6 +480,46 @@ static inline int qa_dab_edge(
   return 1;
 }
 
+// 🚨★★★A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (F-205, 유저 2026-09-28:
+// 「최대 100%로 해두더라도 필압 약하게하면 해당 선들 겹쳐도 필압에맞춰서
+// 10%만큼만 진해진다」). A dab raises what is under it TOWARDS its opacity,
+// at its flow, and never past it: the ink its coverage and flow would lay
+// over nothing, scaled by how much of the way to the ceiling is left —
+// (o - d) / (1 - d). Over nothing that is exactly the old alpha, so a first
+// dab lands what it always did; where dabs pile up they settle at o, not at
+// opaque. ↩️Opacity multiplied the dab's alpha like flow did, and a light
+// press piled up to the full slider wherever a stroke crossed itself.
+//
+// ⚠️What is under the dab is its STROKE's own buffer: a stroke of brush dabs
+// never lands on artwork dab by dab — it piles up on an empty buffer and
+// composites once (brush_commit_builder, erase-live-and-dab-route-round-
+// apart) — so d is how far the stroke itself has got, never the paint below.
+//
+// An opacity of 1 settles at opaque, which is plain source-over — the old
+// arithmetic, kept byte for byte, so a brush whose opacity no dynamic moves
+// lands exactly what it did. An ERASE dab keeps the multiplier: a brush
+// eraser piles up coverage on its buffer (where this applies) and erases
+// once, and nothing else raises an alpha.
+//
+// Same arithmetic, operation by operation, as blendDabTilesDart and the
+// reference blendBrushDabPixelCoverage. Returns a negative alpha where the
+// pixel already stands at the ceiling and the dab lays nothing.
+static inline double qa_dab_source_alpha(
+    const qa_dab_spec* s,
+    double coverage,
+    double effective_opacity,
+    double destination_alpha,
+    int erase) {
+  if (erase || s->dab_opacity >= 1.0) {
+    return s->source_alpha_norm * effective_opacity * s->dab_flow;
+  }
+  if (destination_alpha >= s->dab_opacity) {
+    return -1.0;
+  }
+  return s->source_alpha_norm * coverage * s->dab_flow *
+         (s->dab_opacity - destination_alpha) / (1.0 - destination_alpha);
+}
+
 // 🚨A PLAIN TIPPED DAB BLENDS TWO PIXELS AT A TIME (board `brush-kernel-next`
 // ①, 유저 2026-09-25 「1번 할 생각 있어」 — SIMD). Every canvas dab is a
 // prerendered tip mask (BrushTipStampCache) and most carry no dual or
@@ -610,9 +650,34 @@ static int32_t qa_dab_blend_pairs(
 
     uint8_t* pixel = row + (ptrdiff_t)(x - tile_left) * 4;
     const double lanes_a[2] = {(double)pixel[3], (double)pixel[7]};
-    const qa_d2 source_alpha =
-        qa_d2_mul(qa_d2_mul(alpha_norm, qa_d2_load(effective)), flow);
     const qa_d2 destination_alpha = qa_d2_div(qa_d2_load(lanes_a), byte_max);
+    qa_d2 source_alpha;
+    if (erase || s->dab_opacity >= 1.0) {
+      source_alpha =
+          qa_d2_mul(qa_d2_mul(alpha_norm, qa_d2_load(effective)), flow);
+    } else {
+      // Under its ceiling a dab's alpha depends on what each pixel already
+      // holds (qa_dab_source_alpha), so the lanes take the scalar's own
+      // function one by one.
+      double lanes_d[2];
+      double settled[2] = {0.0, 0.0};
+      qa_d2_store(lanes_d, destination_alpha);
+      for (int i = 0; i < 2; i += 1) {
+        if (!keep[i]) {
+          continue;
+        }
+        settled[i] = qa_dab_source_alpha(s, coverage[i], effective[i],
+                                         lanes_d[i], erase);
+        if (settled[i] < 0.0) {
+          keep[i] = 0;
+          settled[i] = 0.0;
+        }
+      }
+      if (!keep[0] && !keep[1]) {
+        continue;
+      }
+      source_alpha = qa_d2_load(settled);
+    }
     const qa_d2 inverse = qa_d2_sub(one, source_alpha);
     double out_alpha[2];
     double red[2];
@@ -901,8 +966,6 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       if (effective_opacity == 0.0) {
         continue;
       }
-      const double source_alpha =
-          s->source_alpha_norm * effective_opacity * s->dab_flow;
 
       uint8_t* pixel =
           tile_pixels + (ptrdiff_t)(local_row_offset + (x - tile_left)) * 4;
@@ -911,6 +974,11 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       const uint8_t dest_b = pixel[2];
       const uint8_t dest_a = pixel[3];
       const double destination_alpha = (double)dest_a / 255.0;
+      const double source_alpha = qa_dab_source_alpha(
+          s, coverage, effective_opacity, destination_alpha, erase);
+      if (source_alpha < 0.0) {
+        continue;
+      }
 
       int32_t out_r;
       int32_t out_g;

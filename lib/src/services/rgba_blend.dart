@@ -46,6 +46,21 @@ RgbaColor rgbaSourceOver({
   if (sourceAlpha == null) {
     return destination;
   }
+  return rgbaSourceOverAt(
+    source: source,
+    destination: destination,
+    sourceAlpha: sourceAlpha,
+  );
+}
+
+/// [rgbaSourceOver] at a [sourceAlpha] the caller has already resolved —
+/// for a blend whose alpha depends on the destination (a brush dab settling
+/// at its opacity, F-205).
+RgbaColor rgbaSourceOverAt({
+  required RgbaColor source,
+  required RgbaColor destination,
+  required double sourceAlpha,
+}) {
   final destinationAlpha = destination.a / 255.0;
   final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
 

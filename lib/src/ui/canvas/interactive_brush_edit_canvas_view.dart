@@ -592,9 +592,11 @@ class _InteractiveBrushEditCanvasViewState
       size: settings.size,
       // F-12: a dab carries only its OWN variation (the pressure curve and
       // the jitter multiply this). The tool's opacity is the accumulated
-      // stroke's ceiling and rides `BrushDabSequence.opacity` instead —
-      // per dab it is not a ceiling at all, since dabs pile up source-over
-      // and any factor below 1 still converges on opaque.
+      // stroke's ceiling and rides `BrushDabSequence.opacity` instead.
+      // F-205 (유저 2026-09-28): the variation is a ceiling too — a dab
+      // settles at its opacity where dabs pile up (`qa_dab_source_alpha`).
+      // ↩️Per dab it multiplied like flow, and a light press piled up to the
+      // full slider wherever the stroke crossed itself.
       opacity: 1,
       flow: settings.flow,
       hardness: settings.hardness,

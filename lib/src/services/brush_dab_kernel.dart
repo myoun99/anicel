@@ -777,14 +777,10 @@ void blendDabTilesDart(
           }
         }
 
-        // Same grouping as the reference path:
-        // effectiveOpacity = dab.opacity * coverage,
-        // sourceAlpha = ((a/255) * effectiveOpacity) * flow.
         final effectiveOpacity = dabOpacity * coverage;
         if (effectiveOpacity == 0.0) {
           continue;
         }
-        final sourceAlpha = sourceAlphaNorm * effectiveOpacity * dabFlow;
 
         final offset = (localRowOffset + (x - tileLeft)) * 4;
         final destR = buffer[offset];
@@ -793,6 +789,24 @@ void blendDabTilesDart(
         final destA = buffer[offset + 3];
 
         final destinationAlpha = destA / 255.0;
+        // 🚨★★★A DAB SETTLES AT ITS OPACITY (F-205) — the law and its
+        // reasons are written once, beside `qa_dab_source_alpha` in
+        // qa_engine.c; this is its arithmetic, operation by operation.
+        // Opacity 1 (or an erase) is the old grouping,
+        // ((a/255) * (dab.opacity * coverage)) * flow.
+        final double sourceAlpha;
+        if (erase || dabOpacity >= 1.0) {
+          sourceAlpha = sourceAlphaNorm * effectiveOpacity * dabFlow;
+        } else if (destinationAlpha >= dabOpacity) {
+          continue;
+        } else {
+          sourceAlpha =
+              sourceAlphaNorm *
+              coverage *
+              dabFlow *
+              (dabOpacity - destinationAlpha) /
+              (1.0 - destinationAlpha);
+        }
 
         int outRByte;
         int outGByte;
