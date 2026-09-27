@@ -617,7 +617,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // many device pixels is what it asks for — the conte cell's law.
     //
     // 🗣️유저 2026-09-26: 「최대값은 최대한 키울수있으면 좋아」 — a V row may
-    // grow to [StoryboardPanel.maxTrackLaneHeight], and a picture stretched
+    // grow to [StoryboardPanel.maxTrackLaneHeightFor], and a picture stretched
     // past the pixels it was rendered with is a picture bought with
     // resolution (⛔해상도로 속도를 사지 않는다). ↩️It chose between a 128px
     // and a 640px picture, and read neither the screen's density nor the

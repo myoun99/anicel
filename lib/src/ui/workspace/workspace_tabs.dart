@@ -959,12 +959,16 @@ class _WorkspaceTabs {
               // ⛔No steppers any more (B7): the V rows' splitter is the
               // height's one writer, and it asks the NOTIFIER, not the value
               // this build took — a drag's steps outrun the rebuilds.
-              trackLaneHeight: _state._storyboardTrackLaneHeight.value,
+              trackLaneHeight: _state._storyboardLaneHeight(context),
               onResizeTrackLanes: (delta) {
                 final height = _state._storyboardTrackLaneHeight;
-                final before = height.value;
+                final ceiling = _state._storyboardLaneCeiling(context);
+                // From the height the rows are DRAWN at: one set above
+                // today's ceiling moves from where the hand sees it.
+                final before = _state._storyboardLaneHeight(context);
                 height.value = StoryboardPanel.clampTrackLaneHeight(
                   before + delta,
+                  ceiling: ceiling,
                 );
                 return height.value - before;
               },

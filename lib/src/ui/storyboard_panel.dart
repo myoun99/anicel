@@ -624,26 +624,37 @@ class StoryboardPanel extends StatefulWidget {
   /// fold (유저 2026-09-25: 「띠는 v행 세로 줄어도 고정으로 그 자리에 두자」),
   /// so at 52 the picture is gone and every word stays whole.
   ///
-  /// The CEILING was set as the tallest row the born cut's picture stayed
-  /// sharp in (⛔해상도로 속도를 사지 않는다) while the tallest picture a strip
-  /// could ask was the conte's fixed 640px one: 452 tall, and the bands
-  /// take 52 more. ⚠️That reason is gone — a strip now asks its picture at
-  /// the height it shows it, up to the camera frame
-  /// (`pictureRenderWidthFor`) — so how much taller the row may go is the
-  /// user's to say (board `storyboard-v-row-ceiling`). ↩️64 · 28 · 160 with
-  /// two bands.
+  /// The CEILING is the tallest row whose picture stays sharp
+  /// ([maxTrackLaneHeightFor]) — 🗣️유저 2026-09-27
+  /// (storyboard-v-row-ceiling-Q1): 「그림이 선명한 한 최대로(카메라 프레임
+  /// 높이 + 띠)」. ↩️504, while the tallest picture a strip could ask was
+  /// the conte's fixed 640px one. ↩️64 · 28 · 160 with two bands.
   static const double defaultTrackLaneHeight = 96;
-  // Min/max are the height's LEGAL RANGE — the bar's steppers died with B7
-  // (2026-08-17), and the V-track splitter (2026-09-26) clamps to the same
-  // pair ([onResizeTrackLanes]).
+  // The height's LEGAL RANGE — the bar's steppers died with B7 (2026-08-17),
+  // and the V-track splitter (2026-09-26) clamps to it
+  // ([onResizeTrackLanes]).
   static const double minTrackLaneHeight =
       StoryboardCutBlocksPainter.bandHeight * 4;
-  static const double maxTrackLaneHeight = 504;
 
-  /// [height] held to the legal range — what the splitter's drag and a
-  /// saved layout alike may set.
-  static double clampTrackLaneHeight(double height) =>
-      height.clamp(minTrackLaneHeight, maxTrackLaneHeight).toDouble();
+  /// The tallest a V row may grow for a film shot through [cameraFrame] on
+  /// a screen of [devicePixelRatio]: the strip asks its picture at the
+  /// height it shows it, up to the camera frame (`pictureRenderWidthFor`),
+  /// so past the frame's own height in the screen's pixels the picture
+  /// would stretch (⛔해상도로 속도를 사지 않는다) — that height, and the four
+  /// bands over it.
+  static double maxTrackLaneHeightFor(
+    CanvasSize cameraFrame,
+    double devicePixelRatio,
+  ) => minTrackLaneHeight + cameraFrame.height / devicePixelRatio;
+
+  /// [height] held to the legal range under [ceiling] — the height the rows
+  /// are drawn at, whatever the splitter or a saved layout set.
+  static double clampTrackLaneHeight(
+    double height, {
+    required double ceiling,
+  }) => height
+      .clamp(minTrackLaneHeight, math.max(minTrackLaneHeight, ceiling))
+      .toDouble();
 
   /// The vertical scrollbar's lane width — the TIMELINE's
   /// [TimelineGridMetrics.verticalScrollbarWidth] by value (UI-R10 #15/#21

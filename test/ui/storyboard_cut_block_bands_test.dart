@@ -786,7 +786,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     for (final laneHeight in [
       StoryboardPanel.defaultTrackLaneHeight,
-      StoryboardPanel.maxTrackLaneHeight,
+      StoryboardPanel.defaultTrackLaneHeight * 4,
     ]) {
       await pumpAt(laneHeight);
       expect(asked, {

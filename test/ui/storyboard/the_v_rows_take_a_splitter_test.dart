@@ -8,10 +8,13 @@ import 'dart:io';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/project.dart' show defaultProjectCameraSize;
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settings_flyout.dart';
@@ -39,9 +42,10 @@ Future<WorkspaceLayoutStore> _store(WidgetTester tester) async {
 
 Future<void> _openStoryboard(
   WidgetTester tester,
-  WorkspaceLayoutStore store,
-) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1000));
+  WorkspaceLayoutStore store, {
+  Size window = const Size(1600, 1000),
+}) async {
+  await tester.binding.setSurfaceSize(window);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
@@ -131,24 +135,47 @@ void main() {
     expect(saved?[_key], _default + 40);
   });
 
+  test('🗣️the ceiling is the tallest row whose picture stays sharp: the '
+      'camera frame\'s height in the screen\'s pixels, and the four bands '
+      '(유저 2026-09-27: 「그림이 선명한 한 최대로(카메라 프레임 높이 + 띠)」)', () {
+    const bands = StoryboardPanel.minTrackLaneHeight;
+    const camera = CanvasSize(width: 1920, height: 1080);
+    expect(StoryboardPanel.maxTrackLaneHeightFor(camera, 1), bands + 1080);
+    expect(StoryboardPanel.maxTrackLaneHeightFor(camera, 2), bands + 540);
+    expect(
+      StoryboardPanel.clampTrackLaneHeight(9999, ceiling: bands + 540),
+      bands + 540,
+    );
+    expect(
+      StoryboardPanel.clampTrackLaneHeight(0, ceiling: bands + 540),
+      bands,
+      reason: 'the floor is the bands',
+    );
+  });
+
   testWidgets('the height stops at its legal range, and the hand pays back '
       'what ran past it before the edge moves again', (tester) async {
     await _openStoryboard(tester, await _store(tester));
+    // The default project's camera on this screen.
+    final ceiling = StoryboardPanel.maxTrackLaneHeightFor(
+      defaultProjectCameraSize,
+      tester.view.devicePixelRatio,
+    );
     final gesture = await tester.startGesture(
       tester.getCenter(_splitters().first),
       kind: PointerDeviceKind.mouse,
     );
     await gesture.moveBy(const Offset(0, 20));
     await tester.pump();
-    await gesture.moveBy(const Offset(0, 500));
+    await gesture.moveBy(Offset(0, ceiling));
     await tester.pump();
-    expect(_laneHeights(tester), {StoryboardPanel.maxTrackLaneHeight});
+    expect(_laneHeights(tester), {ceiling});
 
     await gesture.moveBy(const Offset(0, -100));
     await tester.pump();
     expect(
       _laneHeights(tester),
-      {StoryboardPanel.maxTrackLaneHeight},
+      {ceiling},
       reason: 'the hand is still past the edge it ran over',
     );
     await gesture.moveBy(const Offset(0, -1000));
@@ -157,6 +184,54 @@ void main() {
     await gesture.up();
     await gesture.removePointer();
     await tester.pumpAndSettle();
+  });
+
+  /// The storyboard opened on a layout that keeps the V rows at [kept] —
+  /// as a layout the app wrote on a bigger camera would — in a window tall
+  /// enough to show a row at today's ceiling to its bottom edge, the bottom
+  /// dock grown to hold it. Answers the ceiling.
+  Future<double> openKeeping(WidgetTester tester, double kept) async {
+    final store = await _store(tester);
+    await _openStoryboard(tester, store);
+    await _dragSplitter(tester, 40);
+    final written = await _saved(tester, store, (file) => file[_key] != null);
+    // Closed first: closing saves the layout it holds.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => store.save({...written!, _key: kept}));
+    await _openStoryboard(tester, store, window: const Size(1600, 1800));
+    await _settleIo(tester, () => _laneHeights(tester).first != _default);
+    await tester.drag(
+      find.byKey(const ValueKey<String>('dock-resize-bottom')),
+      const Offset(0, -420),
+    );
+    await tester.pumpAndSettle();
+    return StoryboardPanel.maxTrackLaneHeightFor(
+      defaultProjectCameraSize,
+      tester.view.devicePixelRatio,
+    );
+  }
+
+  testWidgets('a height kept above today\'s ceiling is drawn at the ceiling, '
+      'by the rows and by the folded row alike', (tester) async {
+    final ceiling = await openKeeping(tester, 5000);
+    expect(_laneHeights(tester), {ceiling});
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('floating-bottom-collapse')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<CollapsedRowOverlay>(find.byType(CollapsedRowOverlay)),
+      isA<CollapsedRowOverlay>().having((row) => row.height, 'height', ceiling),
+    );
+  });
+
+  testWidgets('the splitter moves a height kept above the ceiling from where '
+      'the rows are drawn, not from where it was kept', (tester) async {
+    final ceiling = await openKeeping(tester, 5000);
+    await _dragSplitter(tester, -40);
+    expect(_laneHeights(tester), {ceiling - 40});
   });
 
   testWidgets('the next launch opens at the saved height, and a workspace '

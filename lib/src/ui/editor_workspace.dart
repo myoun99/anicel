@@ -770,10 +770,29 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<double> _storyboardPixelsPerFrame = ValueNotifier(8);
 
   /// The storyboard's V rows share ONE height (user's rule), kept here so
-  /// it survives a tab switch the way the zoom does.
+  /// it survives a tab switch the way the zoom does — as the splitter or a
+  /// saved layout SET it. What the rows are drawn at is
+  /// [_storyboardLaneHeight].
   final ValueNotifier<double> _storyboardTrackLaneHeight = ValueNotifier(
     StoryboardPanel.defaultTrackLaneHeight,
   );
+
+  /// The V rows' ceiling on the screen [context] is on, for the film's
+  /// camera ([StoryboardPanel.maxTrackLaneHeightFor]).
+  double _storyboardLaneCeiling(BuildContext context) =>
+      StoryboardPanel.maxTrackLaneHeightFor(
+        widget.session.camera.cameraFrameSize,
+        MediaQuery.devicePixelRatioOf(context),
+      );
+
+  /// The V rows' height as they are drawn — the set height, held under the
+  /// ceiling: a smaller camera or a denser screen lowers the ceiling, and
+  /// the height set above it comes back when the ceiling does.
+  double _storyboardLaneHeight(BuildContext context) =>
+      StoryboardPanel.clampTrackLaneHeight(
+        _storyboardTrackLaneHeight.value,
+        ceiling: _storyboardLaneCeiling(context),
+      );
 
   /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
   final ValueNotifier<bool> _showSecondsDisplay = ValueNotifier(false);

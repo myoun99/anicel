@@ -134,10 +134,12 @@ class _WorkspaceLayoutPersistence {
   static const _storyboardTrackLaneHeightKey = 'storyboardTrackLaneHeight';
 
   /// The V rows' height as the file kept it — the splitter's: absent is the
-  /// default, and a file's number is held to the legal range like a drag's.
+  /// default, and a file's number is held to the floor like a drag's. The
+  /// ceiling is the camera's and the screen's, so it is held there when the
+  /// rows are drawn (`_storyboardLaneHeight`), not here.
   void _restoreTrackLaneHeight(Object? saved) {
     _state._storyboardTrackLaneHeight.value = saved is num && saved.isFinite
-        ? StoryboardPanel.clampTrackLaneHeight(saved.toDouble())
+        ? math.max(StoryboardPanel.minTrackLaneHeight, saved.toDouble())
         : StoryboardPanel.defaultTrackLaneHeight;
   }
 
