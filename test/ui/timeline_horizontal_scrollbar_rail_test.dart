@@ -135,7 +135,8 @@ void main() {
   });
 
   testWidgets(
-    'rail uses provided external controller and exposes interaction handlers',
+    'rail uses provided external controller, and its lane and thumb act '
+    'on it',
     (tester) async {
       final controller = ScrollController();
       addTearDown(controller.dispose);
@@ -156,21 +157,18 @@ void main() {
       );
       expect(rail.controller, same(controller));
 
-      final trackGestureDetector = tester.widget<GestureDetector>(
-        find.ancestor(
-          of: find.byKey(trackKey),
-          matching: find.byType(GestureDetector),
-        ),
+      // Measured by what they DO, not by which detector they hang on: the
+      // thumb's drag is the bar's grip now (F-202), not a GestureDetector's.
+      await tester.tapAt(
+        tester.getTopLeft(find.byKey(trackKey)) + const Offset(220, 8),
       );
-      expect(trackGestureDetector.onTapDown, isNotNull);
+      await tester.pump();
+      expect(controller.offset, greaterThan(0), reason: 'a lane tap jumps');
+      final jumped = controller.offset;
 
-      final thumbGestureDetector = tester.widget<GestureDetector>(
-        find.ancestor(
-          of: find.byKey(thumbKey),
-          matching: find.byType(GestureDetector),
-        ),
-      );
-      expect(thumbGestureDetector.onHorizontalDragUpdate, isNotNull);
+      await tester.drag(find.byKey(thumbKey), const Offset(-60, 0));
+      await tester.pump();
+      expect(controller.offset, lessThan(jumped), reason: 'the thumb drags');
     },
   );
 }

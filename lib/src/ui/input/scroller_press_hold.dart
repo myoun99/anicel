@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+import '../timeline/axis_turn.dart';
+
 /// 🚨★★★**A PRESS THAT LANDS IN A SCROLLER IS THAT SCROLLER'S** — the
 /// scroller's turn of the law a bar and a canvas already keep.
 ///
@@ -168,7 +170,7 @@ class _PressHold {
       _axis == Axis.horizontal ? offset.dx : offset.dy;
 
   Offset _onTheAxis(double value) =>
-      _axis == Axis.horizontal ? Offset(value, 0) : Offset(0, value);
+      offsetAlong(_axis, along: value, across: 0);
 
   // What `Scrollable` does with its own recogniser's callbacks, fed the part
   // of each movement that runs this scroller's way.
