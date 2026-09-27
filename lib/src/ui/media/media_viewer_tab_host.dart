@@ -1752,6 +1752,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // F-80: with no cut armed nothing here can act on a press, so it
       // moves the page instead.
       runsTheSelectedTool: tool != null,
+      // F-179 (유저 2026-09-25: 「타임시트패널등 캔버스 베이스 패널엔
+      // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —
+      // F-201 names it one — so its paper lies on the panel's backdrop.
+      hasPasteboard: false,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
       autoFrame: framing,
       // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays
@@ -1802,11 +1806,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
           : CanvasBook(pages: book, reading: widget.position),
       contentOverride: (context, viewport) => Stack(
         children: [
-          Positioned.fill(
-            child: ColoredBox(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            ),
-          ),
           if (message != null)
             Positioned.fill(
               child: Padding(
