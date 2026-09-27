@@ -191,6 +191,9 @@ void main() {
       paint();
       for (var landed = 0; landed < 26; landed += 1) {
         await Future<void>.delayed(Duration.zero);
+        // A repaint while it runs (a hover, a scroll) asks again.
+        paint();
+        await Future<void>.delayed(Duration.zero);
         expect(
           running.where((each) => !each.isCompleted),
           hasLength(1),
@@ -585,6 +588,36 @@ void main() {
       );
     });
     await tester.pump();
+  });
+
+  testWidgets('a render that throws before it begins is a failed render too '
+      '— the store does not stop', (tester) async {
+    final errors = <FlutterErrorDetails>[];
+    final previousHandler = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previousHandler);
+    var renders = 0;
+    final store = StoryboardCutThumbnailStore(
+      originalSize: _original,
+      render: (_, frame, _) {
+        renders += 1;
+        if (frame == 0) {
+          throw StateError('no camera');
+        }
+        return tinyImage();
+      },
+    );
+    addTearDown(store.dispose);
+
+    await shownUntilIdle(tester, store, () {
+      store.thumbnailFor(cut(), 0, shownHeight: 72);
+      store.thumbnailFor(cut(), 8, shownHeight: 72);
+    });
+    await tester.pump();
+
+    expect(errors, hasLength(1), reason: 'surfaced, never vanished');
+    expect(renders, 2, reason: 'the next panel still rendered');
+    expect(store.thumbnailFor(cut(), 8, shownHeight: 72), isNotNull);
   });
 
   // 2026-09-11: the store held every panel ever looked at, uncounted. It is
