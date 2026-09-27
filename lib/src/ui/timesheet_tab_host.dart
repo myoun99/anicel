@@ -14,7 +14,7 @@ import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
 import 'brush/brush_tool_state.dart';
 import 'dialogs/dialog_verb.dart';
-import 'dialogs/timesheet_info_dialog.dart';
+import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
 import 'widgets/page_turn_strip.dart';
@@ -265,11 +265,11 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           );
   }
 
-  Future<void> _editSheetInfo() {
+  Future<void> _editSheetFormat() {
     final session = widget.session;
     return askThenCommit<TimesheetInfo>(
       context,
-      dialog: (_) => TimesheetInfoDialog(initialInfo: session.timesheetInfo),
+      dialog: (_) => TimesheetFormatWindow(initialInfo: session.timesheetInfo),
       commit: session.updateTimesheetInfo,
     );
   }
@@ -284,11 +284,11 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   List<Widget> _panelActions() {
     return [
       AppIconButton(
-        keyValue: 'timesheet-info-button',
-        tooltip: AppText.strings.sheetInfoTitle,
+        keyValue: 'timesheet-format-button',
+        tooltip: AppText.strings.sheetFormatTitle,
         icon: const Icon(Icons.edit_note),
         size: AppIconButtonSize.strip,
-        onPressed: _editSheetInfo,
+        onPressed: _editSheetFormat,
       ),
     ];
   }

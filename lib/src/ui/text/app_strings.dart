@@ -613,8 +613,8 @@ enum AppStrings {
   String get accent1Label => _s('accent1Label');
   String get accent1Help => _s('accent1Help');
 
-  // --- Sheet info ---
-  String get sheetInfoTitle => _s('sheetInfoTitle');
+  // --- Sheet format ---
+  String get sheetFormatTitle => _s('sheetFormatTitle');
   String get sheetFieldTitle => _s('sheetFieldTitle');
   String get sheetFieldEpisode => _s('sheetFieldEpisode');
   String get sheetFieldScene => _s('sheetFieldScene');
@@ -635,11 +635,13 @@ enum AppStrings {
   };
   String get staffWorker => _s('staffWorker');
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
-  String get sheetNotation => _s('sheetNotation');
   String get sheetExposureBar => _s('sheetExposureBar');
   String get sheetExposureBarHelp => _s('sheetExposureBarHelp');
-  String get sheetExposureBarN => _s('sheetExposureBarN');
+  String get sheetBarDrawn => _s('sheetBarDrawn');
+  String get sheetBarNotDrawn => _s('sheetBarNotDrawn');
   String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
+  String get sheetFillOn => _s('sheetFillOn');
+  String get sheetFillOff => _s('sheetFillOff');
   String get sheetBrushAllow => _s('sheetBrushAllow');
   String get sheetModeNotation => _s('sheetModeNotation');
   String get sheetModeData => _s('sheetModeData');
@@ -2051,7 +2053,7 @@ enum AppStrings {
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
     'accent1Help': 'Selection, playhead, active toggles.',
-    'sheetInfoTitle': 'Sheet info',
+    'sheetFormatTitle': 'Sheet format',
     'sheetFieldTitle': 'Title',
     'sheetFieldEpisode': 'Episode',
     'sheetFieldScene': 'Scene',
@@ -2065,12 +2067,14 @@ enum AppStrings {
     'workCover': 'Cover picture',
     'staffWorker': 'Artist',
     'sheetVisibleBoxes': 'Visible boxes',
-    'sheetNotation': 'Notation',
     'sheetExposureBar': 'Exposure hold bar',
     'sheetExposureBarHelp':
         'Draw the hold bar from the (N+1)th comma of N+ holds',
-    'sheetExposureBarN': 'N (industry standard 3)',
-    'sheetSeEmptyFill': 'Gray out empty SE stretches',
+    'sheetBarDrawn': 'Drawn',
+    'sheetBarNotDrawn': 'Not drawn',
+    'sheetSeEmptyFill': 'Empty SE stretches',
+    'sheetFillOn': 'Grayed',
+    'sheetFillOff': 'Blank',
     'sheetBrushAllow': 'Allow Brush',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
     'sheetModeData': 'Data Sheet (as exported)',
@@ -3166,7 +3170,7 @@ enum AppStrings {
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
     'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
-    'sheetInfoTitle': 'シート情報',
+    'sheetFormatTitle': 'シート書式',
     'sheetFieldTitle': 'タイトル',
     'sheetFieldEpisode': '話数',
     'sheetFieldScene': 'シーン',
@@ -3180,11 +3184,13 @@ enum AppStrings {
     'workCover': '表紙の絵',
     'staffWorker': '作業者',
     'sheetVisibleBoxes': '表示する枠',
-    'sheetNotation': '表記',
     'sheetExposureBar': '止めの引き伸ばし線',
     'sheetExposureBarHelp': 'N コマ以上の止めで (N+1) コマ目から線を引く',
-    'sheetExposureBarN': 'N（業界標準は3）',
-    'sheetSeEmptyFill': 'セリフのない区間をグレーで塗る',
+    'sheetBarDrawn': '引く',
+    'sheetBarNotDrawn': '引かない',
+    'sheetSeEmptyFill': 'セリフのない区間',
+    'sheetFillOn': '塗る',
+    'sheetFillOff': '塗らない',
     'sheetBrushAllow': 'ブラシを許可',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
     'sheetModeData': 'データシート（書き出しのまま）',
@@ -4500,7 +4506,7 @@ enum AppStrings {
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
     'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',
-    'sheetInfoTitle': '시트 정보',
+    'sheetFormatTitle': '타임시트 서식',
     'sheetFieldTitle': '제목',
     'sheetFieldEpisode': '화수',
     'sheetFieldScene': '씬',
@@ -4514,11 +4520,13 @@ enum AppStrings {
     'workCover': '표지 그림',
     'staffWorker': '작업자',
     'sheetVisibleBoxes': '표시할 칸',
-    'sheetNotation': '표기',
     'sheetExposureBar': '止め 늘림 선',
     'sheetExposureBarHelp': 'N코마 이상 止め에서 (N+1)번째 코마부터 선을 긋기',
-    'sheetExposureBarN': 'N (업계 표준 3)',
-    'sheetSeEmptyFill': '대사 없는 구간을 회색으로 채우기',
+    'sheetBarDrawn': '그음',
+    'sheetBarNotDrawn': '안 그음',
+    'sheetSeEmptyFill': '대사 없는 구간',
+    'sheetFillOn': '칠함',
+    'sheetFillOff': '비움',
     'sheetBrushAllow': '브러시 허용',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
     'sheetModeData': '데이터 시트(내보내는 그대로)',
@@ -5862,7 +5870,7 @@ enum AppStrings {
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
-    'sheetInfoTitle': 'Infos de la feuille',
+    'sheetFormatTitle': 'Format de la feuille',
     'sheetFieldTitle': 'Titre',
     'sheetFieldEpisode': 'Épisode',
     'sheetFieldScene': 'Scène',
@@ -5876,12 +5884,14 @@ enum AppStrings {
     'workCover': 'Image de couverture',
     'staffWorker': 'Artiste',
     'sheetVisibleBoxes': 'Cases visibles',
-    'sheetNotation': 'Notation',
     'sheetExposureBar': 'Trait de maintien',
     'sheetExposureBarHelp':
         'Tracer le trait à partir du (N+1)e comma des maintiens de N+',
-    'sheetExposureBarN': 'N (standard du métier : 3)',
-    'sheetSeEmptyFill': 'Griser les plages sans dialogue',
+    'sheetBarDrawn': 'Tracé',
+    'sheetBarNotDrawn': 'Non tracé',
+    'sheetSeEmptyFill': 'Plages sans dialogue',
+    'sheetFillOn': 'Grisées',
+    'sheetFillOff': 'Vides',
     'sheetBrushAllow': 'Autoriser le pinceau',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
     'sheetModeData': "Feuille de données (telle qu'exportée)",
@@ -7204,7 +7214,7 @@ enum AppStrings {
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
-    'sheetInfoTitle': '摄影表信息',
+    'sheetFormatTitle': '摄影表格式',
     'sheetFieldTitle': '标题',
     'sheetFieldEpisode': '集数',
     'sheetFieldScene': '场',
@@ -7218,11 +7228,13 @@ enum AppStrings {
     'workCover': '封面图',
     'staffWorker': '作业者',
     'sheetVisibleBoxes': '显示的栏位',
-    'sheetNotation': '标注',
     'sheetExposureBar': '保持延长线',
     'sheetExposureBarHelp': '在 N 格以上的保持中，从第 (N+1) 格开始画线',
-    'sheetExposureBarN': 'N（行业标准为 3）',
-    'sheetSeEmptyFill': '将无台词区间置灰',
+    'sheetBarDrawn': '画',
+    'sheetBarNotDrawn': '不画',
+    'sheetSeEmptyFill': '无台词区间',
+    'sheetFillOn': '置灰',
+    'sheetFillOff': '留空',
     'sheetBrushAllow': '允许画笔',
     'sheetModeNotation': '标注表（重复·保持文字）',
     'sheetModeData': '数据表（与导出一致）',

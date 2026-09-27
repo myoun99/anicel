@@ -203,6 +203,7 @@ class ExportPillItem {
     required this.selected,
     this.onTap,
     this.tooltip,
+    this.otherLabel,
   });
 
   /// Tests reach for `ValueKey<String>(keyValue)`, so the key is part of
@@ -215,6 +216,10 @@ class ExportPillItem {
   /// tap (「없다가 생기는 UI 금지」).
   final VoidCallback? onTap;
   final String? tooltip;
+
+  /// What the pill says in its other state, when a press changes its word
+  /// ([ExportTogglePill]).
+  final String? otherLabel;
 }
 
 /// 🚨THE ONE GROUPED-CHOICE CONTROL of the export window (유저 2026-09-09:
@@ -266,6 +271,7 @@ class ExportPillStrip extends StatelessWidget {
     final pill = ExportPill(
       key: ValueKey<String>(item.keyValue),
       label: item.label,
+      otherLabel: item.otherLabel,
       selected: item.selected,
       onTap: item.onTap,
       leadingHairline: !first,
@@ -289,6 +295,7 @@ class ExportPill extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.leadingHairline,
+    this.otherLabel,
   });
 
   final String label;
@@ -299,10 +306,33 @@ class ExportPill extends StatelessWidget {
   /// from the one before.
   final bool leadingHairline;
 
+  /// The word of the pill's other state, held invisible under [label]: the
+  /// pill keeps ONE width whichever word it says, so a press that flips it
+  /// does not pull its edge out from under the pointer and the next press
+  /// lands where this one did (「자리는 항상 예약하고 내용만 바꾼다」).
+  final String? otherLabel;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
+    Text word(String text, {bool shown = true}) => Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelSmall?.copyWith(
+        // A selected pill reads selected even when it takes no tap —
+        // 「커스텀」 is a state the delta puts the row in, not a button.
+        color: !shown
+            ? Colors.transparent
+            : selected
+            ? accent
+            : onTap == null
+            ? theme.disabledColor
+            : theme.colorScheme.onSurface,
+      ),
+    );
+    final other = otherLabel;
     return ControlPressClaim(
       onPressed: onTap,
       child: InkWell(
@@ -315,22 +345,68 @@ class ExportPill extends StatelessWidget {
                 ? Border(left: BorderSide(color: theme.dividerColor))
                 : null,
           ),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall?.copyWith(
-              // A selected pill reads selected even when it takes no tap —
-              // 「커스텀」 is a state the delta puts the row in, not a button.
-              color: selected
-                  ? accent
-                  : onTap == null
-                  ? theme.disabledColor
-                  : theme.colorScheme.onSurface,
-            ),
-          ),
+          child: other == null
+              ? word(label)
+              : Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Held for its width only: set in no colour and never
+                    // read out. ⛔Not an `Opacity` or a `Visibility`: the
+                    // one is a compositing boundary a panel cannot bake
+                    // across, the other takes the slot away.
+                    ExcludeSemantics(child: word(other, shown: false)),
+                    word(label),
+                  ],
+                ),
         ),
       ),
+    );
+  }
+}
+
+/// 🚨A YES/NO IS ONE PILL (유저 2026-09-25: 「SE 빈칸 이런 불리언값 있잖아.
+/// 이런거 누르면 강조색/칠함, 다시누르면 일반색/비움 이렇게 텍스트도
+/// 바뀌게하면 알기쉬울거같은데. 공용ui로서 해도 될듯?」): lit with its ON
+/// word while on, plain with its OFF word while off, so the word says the
+/// state as plainly as the colour does. It is a strip of one, so it wears
+/// the grouped choices' outline.
+///
+/// The app's other yes/no rows (`SettingsSwitchRow`) come over to this in
+/// their own round (board card `pill-group-everywhere`, which the user put
+/// off on 09-13).
+class ExportTogglePill extends StatelessWidget {
+  const ExportTogglePill({
+    super.key,
+    required this.keyValue,
+    required this.on,
+    required this.words,
+    required this.onChanged,
+  });
+
+  /// The pill is keyed `ValueKey<String>(keyValue)`, as a strip's pill is.
+  final String keyValue;
+  final bool on;
+
+  /// What the pill says in each state.
+  final ({String on, String off}) words;
+
+  /// Null = refused: the pill keeps its place and its word, and loses its
+  /// tap.
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final onChanged = this.onChanged;
+    return ExportPillStrip(
+      items: [
+        ExportPillItem(
+          keyValue: keyValue,
+          label: on ? words.on : words.off,
+          otherLabel: on ? words.off : words.on,
+          selected: on,
+          onTap: onChanged == null ? null : () => onChanged(!on),
+        ),
+      ],
     );
   }
 }
