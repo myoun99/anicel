@@ -131,10 +131,12 @@ void main() {
   /// fails wherever it is. Files are counted rather than lines because a
   /// line number drifts the first time anything above it is edited.
   ///
-  /// ⚠️Five of these files close with other sessions' rounds:
+  /// ⚠️Four of these files close with other sessions' rounds:
   /// `tool_settings_panel`, `brush_settings_panel` and `guide_panels`
-  /// (brush and rendering), `export_dialog` and `import_dialog` (import,
-  /// export and saving).
+  /// (brush and rendering), and `import_dialog` (import, export and
+  /// saving). `export_dialog` closed with 「끝나면 고르기」
+  /// (drive-folder-windows-Q1): its destination buttons are one claimed
+  /// builder.
   const bareMaterialControls = <String, int>{
     // ↓2026-09-23, the app's one boolean (guide-sym ⑥⑧): every
     // `SwitchListTile`, radio and filter chip below became a claimed
@@ -155,7 +157,6 @@ void main() {
     'lib/src/ui/dialogs/instruction_event_dialog.dart': 1,
     'lib/src/ui/dialogs/instruction_set_editor_dialog.dart': 1,
     'lib/src/ui/dialogs/language_settings_dialog.dart': 1,
-    'lib/src/ui/export/export_dialog.dart': 1,
     'lib/src/ui/import/import_dialog.dart': 2,
     'lib/src/ui/widgets/app_window.dart': 1,
     'lib/src/ui/widgets/panel_flyout.dart': 1,

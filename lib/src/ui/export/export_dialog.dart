@@ -3171,82 +3171,116 @@ class ExportDialogState extends State<ExportDialog> {
             ),
           ),
           const SizedBox(width: 8),
-          if (singleFile)
-            SizedBox(
-              width: 180,
-              child: TextField(
-                key: const ValueKey<String>('export-file-name-field'),
-                controller: controller,
-                enabled: !_isExporting,
-                style: theme.textTheme.bodySmall,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 5,
-                  ),
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
-            )
-          else
-            Text(
-              _patternPreview(),
-              key: const ValueKey<String>('export-pattern-preview'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: 'monospace',
-                fontSize: 11,
-              ),
-            ),
-          const SizedBox(width: 14),
-          Text(
-            AppText.strings.exLocationLabel,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(width: 8),
+          // The name and the destination share what the buttons leave: the
+          // name takes its width while the destination keeps half the room,
+          // and gives way evenly below that — in a narrow window a name
+          // field of fixed width and the two destination buttons outgrow
+          // the bar.
           Expanded(
-            child: Text(
-              switch (_destination) {
-                ExportIntoFolder(:final folder) => folder.path,
-                ExportHandOver() => AppText.strings.exHandOverWhenDone,
-                null => AppText.strings.exChooseFolder,
-              },
-              key: const ValueKey<String>('export-location-label'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: 'monospace',
-                fontSize: 11,
-                color: _hasDestination
-                    ? theme.colorScheme.onSurface
-                    : theme.colorScheme.onSurfaceVariant,
+            child: LayoutBuilder(
+              builder: (context, room) => Row(
+                children: [
+                  if (singleFile)
+                    SizedBox(
+                      width: math.min(180, room.maxWidth / 2),
+                      child: TextField(
+                        key: const ValueKey<String>('export-file-name-field'),
+                        controller: controller,
+                        enabled: !_isExporting,
+                        style: theme.textTheme.bodySmall,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 5,
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: room.maxWidth / 2,
+                      ),
+                      child: Text(
+                        _patternPreview(),
+                        key: const ValueKey<String>('export-pattern-preview'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 14),
+                  Text(
+                    AppText.strings.exLocationLabel,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      switch (_destination) {
+                        ExportIntoFolder(:final folder) => folder.path,
+                        ExportHandOver() => AppText.strings.exHandOverWhenDone,
+                        null => AppText.strings.exChooseFolder,
+                      },
+                      key: const ValueKey<String>('export-location-label'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: _hasDestination
+                            ? theme.colorScheme.onSurface
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
           const SizedBox(width: 8),
-          OutlinedButton(
-            key: const ValueKey<String>('export-browse-button'),
-            onPressed: _isExporting ? null : _browseLocation,
-            style: OutlinedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-            ),
-            child: Text(AppText.strings.exBrowse),
+          _destinationButton(
+            key: 'export-browse-button',
+            label: AppText.strings.exBrowse,
+            onPressed: _browseLocation,
           ),
           const SizedBox(width: 6),
-          OutlinedButton(
-            key: const ValueKey<String>('export-hand-over-button'),
-            onPressed: _isExporting ? null : _chooseHandOver,
-            style: OutlinedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-            ),
-            child: Text(AppText.strings.exHandOverWhenDone),
+          _destinationButton(
+            key: 'export-hand-over-button',
+            label: AppText.strings.exHandOverWhenDone,
+            onPressed: _chooseHandOver,
           ),
         ],
+      ),
+    );
+  }
+
+  /// A button that picks where the outputs go — dead while a run is under
+  /// way, whose destination is already decided.
+  Widget _destinationButton({
+    required String key,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    final pressed = _isExporting ? null : onPressed;
+    return ControlPressClaim(
+      onPressed: pressed,
+      child: OutlinedButton(
+        key: ValueKey<String>(key),
+        onPressed: silentPress(pressed),
+        style: OutlinedButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
+        child: Text(label),
       ),
     );
   }
