@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../core/page_stack.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
@@ -54,7 +55,7 @@ part 'document_painter/timesheet_cells_pass.dart';
 /// row in sequence (global frame numbers) growing downward, in page half
 /// 0's exact geometry so ink coordinates stay stable across the toggle.
 class TimesheetDocumentLayout {
-  const TimesheetDocumentLayout({
+  TimesheetDocumentLayout({
     required this.document,
     this.continuous = false,
     this.singlePage,
@@ -130,8 +131,15 @@ class TimesheetDocumentLayout {
   static const double headerGap = 10;
   static const double pagePadding = 16;
   static const double halfGap = 24;
-  static const double pageGap = 32;
-  static const double documentMargin = 24;
+
+  /// The margin round the document, one sheet or many: the stack's.
+  static const double documentMargin = PageStack.defaultMargin;
+
+  /// The pages one under another — what the exports print. The page view
+  /// shows one of them at a time (R26 #41).
+  late final PageStack _stack = PageStack([
+    for (final _ in document.pages) Size(paperWidth, paperHeight),
+  ]);
 
   int _columnCountOf(TimesheetColumnKind kind) {
     var count = 0;
@@ -234,7 +242,7 @@ class TimesheetDocumentLayout {
   /// turn is a document swap, not a scroll (R26 #41).
   double pageTop(int pageIndex) => continuous || resolvedSinglePage != null
       ? documentMargin
-      : documentMargin + pageIndex * (paperHeight + pageGap);
+      : _stack.pageRect(pageIndex).top;
 
   /// The paper rect of a page (the whole strip in continuous mode).
   Rect pageRect(int pageIndex) {
@@ -390,15 +398,9 @@ class TimesheetDocumentLayout {
 
   /// Logical size of the whole document — one paper in continuous and
   /// single-page (R26 #41) modes, the stack otherwise.
-  Size get documentSize {
-    final pageCount = document.pages.length;
-    final height = continuous || resolvedSinglePage != null
-        ? documentMargin * 2 + paperHeight
-        : documentMargin * 2 +
-              pageCount * paperHeight +
-              (pageCount - 1) * pageGap;
-    return Size(documentMargin * 2 + paperWidth, height);
-  }
+  Size get documentSize => continuous || resolvedSinglePage != null
+      ? Size(documentMargin * 2 + paperWidth, documentMargin * 2 + paperHeight)
+      : _stack.size;
 }
 
 /// Clips to the panel and enters DOCUMENT SPACE — the prologue every

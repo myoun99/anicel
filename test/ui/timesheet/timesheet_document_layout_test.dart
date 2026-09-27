@@ -1,4 +1,7 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/page_stack.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -28,6 +31,21 @@ TimesheetDocument _document({
 }
 
 void main() {
+  test('the stacked sheets — what the exports print — lie by the one page '
+      'stack every paged surface reads', () {
+    // 150 frames at 24fps on 6-second pages: two sheets.
+    final layout = TimesheetDocumentLayout(document: _document());
+    expect(layout.document.pages, hasLength(2), reason: 'fixture: two sheets');
+    final stack = PageStack([
+      for (final _ in layout.document.pages)
+        Size(layout.paperWidth, layout.paperHeight),
+    ]);
+    for (final page in layout.document.pages) {
+      expect(layout.pageRect(page.index), stack.pageRect(page.index));
+    }
+    expect(layout.documentSize, stack.size);
+  });
+
   group('TimesheetDocumentLayout continuous mode', () {
     test('keeps the paged paper width and header geometry (user rule: the '
         'view toggle never resizes the paper)', () {
