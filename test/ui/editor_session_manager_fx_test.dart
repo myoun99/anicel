@@ -131,4 +131,59 @@ void main() {
       );
     });
   });
+
+  group('a lane key freezes the value the row shows there', () {
+    // AE's rule (`transformTrackWithLaneKeyToggled`): keying a property
+    // freezes its CURRENT value. The model is handed the value; what hands
+    // it over is `LaneVerbs`, and that is what these pin.
+    late EditorSessionManager session;
+
+    setUp(() {
+      session = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(session.dispose);
+    });
+
+    test('opacity, between two keys', () {
+      final layer = session.activeLayer!;
+      session.updateLayerTransformTrack(
+        layer.id,
+        TransformTrack.empty().copyWith(
+          opacity: PropertyTrack<double>().withKey(0, 1).withKey(8, 0),
+        ),
+      );
+      session.laneVerbs.toggleLaneKeyAt(
+        layer.id,
+        'opacity',
+        4,
+        frameIsGlobal: false,
+        description: 'Key opacity',
+      );
+      expect(
+        session.activeLayer!.transformTrack.opacity.keyAt(4)?.value,
+        closeTo(0.5, 1e-9),
+      );
+    });
+
+    test('the anchor point, between two keys', () {
+      final layer = session.activeLayer!;
+      session.updateLayerTransformTrack(
+        layer.id,
+        TransformTrack.empty().copyWith(
+          anchorPoint: PropertyTrack<CanvasPoint>()
+              .withKey(0, CanvasPoint(x: 100, y: 100))
+              .withKey(8, CanvasPoint(x: 200, y: 300)),
+        ),
+      );
+      session.laneVerbs.toggleLaneKeyAt(
+        layer.id,
+        'anchor-point',
+        4,
+        frameIsGlobal: false,
+        description: 'Key anchor point',
+      );
+      final key = session.activeLayer!.transformTrack.anchorPoint.keyAt(4);
+      expect(key?.value.x, closeTo(150, 1e-9));
+      expect(key?.value.y, closeTo(200, 1e-9));
+    });
+  });
 }

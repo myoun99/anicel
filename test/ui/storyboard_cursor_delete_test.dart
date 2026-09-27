@@ -92,6 +92,17 @@ void main() {
     return s;
   }
 
+  test('standing on the V row in the gap, the cursor holds no cut', () {
+    // The track row's cut under the cursor is the ACTIVE cut only while the
+    // playhead stands inside it: parked in the gap at [8,12) there is no cut
+    // under the cursor at all, whichever cut is still the active one.
+    final s = session();
+    s.selectRow(const TrackRowAddress(trackId));
+    s.selectGlobalFrame(10);
+    expect(s.editingPlayheadInGap, isTrue, reason: '⛔fixture premise');
+    expect(s.storyboardCursor.canDeleteBlockAtStoryboardCursor, isFalse);
+  });
+
   test('the fixture: standing inside the sound, the cursor holds a block', () {
     final s = standingOnSeAt(3);
     expect(s.trackSeGlobalLayerById(seLayerId)!.timeline.keys, [2]);
