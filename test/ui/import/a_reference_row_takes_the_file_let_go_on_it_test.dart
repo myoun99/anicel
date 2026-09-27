@@ -211,6 +211,11 @@ void main() {
     final (:session, :row, :next) = await open(tester);
     final old = row.mediaReference!.assetPath;
     expect(centre(session, row), [255, 0, 0, 255]);
+    session.selectLayer(
+      session.requireActiveCut.layers.firstWhere((l) => l.id != row.id).id,
+    );
+    await tester.pumpAndSettle();
+    expect(session.activeLayerId, isNot(row.id), reason: 'premise');
 
     final silhouette = await dragOnto(tester, row, next);
     await settle(tester, () => pointsAt(session, row, next));
