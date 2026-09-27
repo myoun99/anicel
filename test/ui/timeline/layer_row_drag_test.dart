@@ -600,7 +600,7 @@ void main() {
     session.updateLayerTransformTrack(
       const LayerId('a'),
       TransformTrack(
-        keyframes: {0: TransformPose(center: const CanvasPoint(x: 3, y: 4))},
+        keyframes: {0: TransformPose(center: CanvasPoint(x: 3, y: 4))},
       ),
     );
     await tester.pumpAndSettle();
