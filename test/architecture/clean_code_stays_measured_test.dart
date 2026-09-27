@@ -188,7 +188,15 @@ void main() {
   /// pass opens, around the paper and the ink both. 🔬`clean_code_diff`
   /// between master (`76bf3351f`, at 429) and the lane named those two and
   /// nothing else.
-  const longBodies = 431;
+  ///
+  /// ⚠️431 → 432 on 2026-09-27, one named as the rule above asks (F-192, a
+  /// fade clears from its own black or white screen). The printed sheet's
+  /// `_paintInstructionMarkSlice` (62) draws each mark kind in one switch,
+  /// and W.I and W.O became kinds of their own that share the fade wedge's
+  /// case — two case labels and the line that names the mark once for the
+  /// wedge's direction. 🔬`clean_code_diff` between master (`87a5d3c21`, at
+  /// 431) and the integration lane: that one added, nothing else.
+  const longBodies = 432;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

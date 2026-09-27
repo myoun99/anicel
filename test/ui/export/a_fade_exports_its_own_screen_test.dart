@@ -78,8 +78,13 @@ void main() {
     int frame,
     ExportSizeMode mode,
   ) async {
-    final image = await ExportFrameRenderer(session: manager)
-        .renderCompositeForVideo(
+    // The canvas route stands a frame on the renderer's GROUND
+    // (`exportFrameGround` unless named) and the camera route on the
+    // project's paper — green on both, so the paper is one colour.
+    final image = await ExportFrameRenderer(
+      session: manager,
+      background: const ui.Color(green),
+    ).renderCompositeForVideo(
           ExportFrameTask(cut: manager.requireActiveCut, frameIndex: frame),
           mode,
         );

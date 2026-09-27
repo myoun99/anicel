@@ -197,6 +197,17 @@ class ExportFrameRenderer {
   /// frozen while a run streams).
   List<StoryboardTimelineLayoutEntry>? _stackLayout;
 
+  List<StoryboardTimelineLayoutEntry> get _layout =>
+      _stackLayout ??= buildStoryboardTimelineLayout(
+        session.repository.requireProject(),
+      );
+
+  /// [task]'s cut in [_layout] — its place on its own TRACK axis, which a
+  /// transition, its screen and the stack are all read against. Null for a
+  /// cut the layout does not hold.
+  StoryboardTimelineLayoutEntry? _entryOf(ExportFrameTask task) =>
+      _layout.where((entry) => entry.cutId == task.cut.id).firstOrNull;
+
   /// One composited frame. [ExportSizeMode.canvas] renders the identity
   /// camera over the cut's own canvas size (centered, zoom 1, no rotation),
   /// which is exactly the raw canvas at 1:1 pixels on the white paper.
@@ -422,12 +433,9 @@ class ExportFrameRenderer {
 
   /// The screens one-sided transitions lay over [task]'s cut at its frame
   /// ([cutTransitionVeilsAt]) — the frame's place on the cut's own TRACK
-  /// axis, as [_sharedTransitionSpace] finds it.
+  /// axis ([_entryOf]).
   List<TransitionVeil> _veilsOf(ExportFrameTask task) {
-    final layout = _stackLayout ??= buildStoryboardTimelineLayout(
-      session.repository.requireProject(),
-    );
-    final own = layout.where((entry) => entry.cutId == task.cut.id).firstOrNull;
+    final own = _entryOf(task);
     if (own == null) {
       return const [];
     }
@@ -452,17 +460,14 @@ class ExportFrameRenderer {
     int globalFrame,
   })?
   _sharedTransitionSpace(ExportFrameTask task) {
-    final layout = _stackLayout ??= buildStoryboardTimelineLayout(
-      session.repository.requireProject(),
-    );
-    final own = layout.where((entry) => entry.cutId == task.cut.id).firstOrNull;
+    final own = _entryOf(task);
     if (own == null) {
       return null;
     }
     // This cut's own TRACK axis: a transition is a track's, so the partner can
     // only come from here.
     final entries = [
-      for (final entry in layout)
+      for (final entry in _layout)
         if (entry.trackId == own.trackId) entry,
     ];
     final globalFrame = own.startFrame + task.frameIndex;
@@ -587,18 +592,9 @@ class ExportFrameRenderer {
     ExportFrameTask task, {
     required bool preserveAlpha,
   }) async {
-    final layout = _stackLayout ??= buildStoryboardTimelineLayout(
-      session.repository.requireProject(),
-    );
-    var globalFrame = task.frameIndex;
-    for (final entry in layout) {
-      if (entry.cutId == task.cut.id) {
-        globalFrame = entry.startFrame + task.frameIndex;
-        break;
-      }
-    }
+    final globalFrame = (_entryOf(task)?.startFrame ?? 0) + task.frameIndex;
     final positions = resolveTrackStackContributions(
-      layout: layout,
+      layout: _layout,
       spansOf: session.transitions.transitionSpansOfTrack,
       globalFrameIndex: globalFrame,
     );
