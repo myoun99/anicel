@@ -1,5 +1,6 @@
 package com.myoun.anicel
 
+import android.content.ClipData
 import android.content.ContentUris
 import android.content.Intent
 import android.net.Uri
@@ -88,6 +89,8 @@ class MainActivity : FlutterActivity() {
                     )
                 "documentTransferred" ->
                     result.success(transfers[call.argument<String>("path") ?: ""])
+                "shareFiles" ->
+                    shareFiles(call.argument<List<String>>("paths") ?: emptyList(), result)
                 else -> result.notImplemented()
             }
         }
@@ -327,6 +330,57 @@ class MainActivity : FlutterActivity() {
         } finally {
             transfers.remove(source)
         }
+    }
+
+    // drive-folder-windows-Q1 (user 2026-09-27): SEVERAL finished outputs
+    // leave through the share sheet - no system window places more than one
+    // file, and Drive's "Save to Drive" takes them from there. Folders go as
+    // the files inside them: a share carries files only.
+    //
+    // Answered once the sheet is up. Whichever app takes the files reads
+    // them after that, when it will, so they must stay where they are.
+    private fun shareFiles(paths: List<String>, result: MethodChannel.Result) {
+        val files = paths.flatMap { path ->
+            java.io.File(path).walkTopDown().filter { it.isFile }.toList()
+        }
+        if (files.isEmpty()) {
+            result.success(mapOf("status" to "unavailable"))
+            return
+        }
+        val authority = "$packageName.outbox"
+        val uris = ArrayList(files.map { OutboxProvider.offer(authority, it) })
+        val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = sharedTypeOf(files.map { OutboxProvider.mimeTypeOf(it) })
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            // The grant reaches only the URIs the clip names; the chooser
+            // carries both on to whichever app is picked.
+            clipData = ClipData.newRawUri(null, uris.first()).apply {
+                uris.drop(1).forEach { addItem(ClipData.Item(it)) }
+            }
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(Intent.createChooser(send, null))
+        } catch (_: Exception) {
+            result.success(mapOf("status" to "unavailable"))
+            return
+        }
+        result.success(
+            mapOf(
+                "status" to "granted",
+                "items" to paths.map { mapOf("path" to it, "bookmark" to null) },
+            ),
+        )
+    }
+
+    // The one type a share of [types] declares: theirs when they agree, the
+    // family's when only that agrees ("image/*"), anything otherwise.
+    private fun sharedTypeOf(types: List<String>): String {
+        if (types.distinct().size == 1) {
+            return types.first()
+        }
+        val families = types.map { it.substringBefore('/') }.distinct()
+        return if (families.size == 1) "${families.first()}/*" else "*/*"
     }
 
     // PICK-7: bytes moving between the app and a document with no

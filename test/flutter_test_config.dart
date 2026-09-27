@@ -74,6 +74,8 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // PICK-6: export is the one picker with a side effect on disk (it MOVES
   // the file), so a leaked seam here does more than return a wrong path.
   FolderPicker.debugFileExporter = null;
+  FolderPicker.debugFilesExporter = null;
+  FolderPicker.debugFileSharer = null;
   FolderPicker.debugSaveDestinationPicker = null;
   FolderPicker.debugOperatingSystem = null;
   FolderPicker.debugBookmarkResolver = null;
