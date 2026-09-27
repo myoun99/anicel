@@ -276,9 +276,9 @@ class _BrushEditPressure {
       event.pressure == _pressedForce;
 
   /// Reads every input the next dab will carry off one pointer sample, and
-  /// answers which of them the sample READ: its pressure ([pressureOf]), its
-  /// speed ([_noteSpeed]) and its lean ([tiltOf]). [opening] and
-  /// [tiltOpening] say the contact has not read that input yet.
+  /// answers which of them the sample READ: its pressure ([pressureOf]) and
+  /// its speed ([_noteSpeed]). Its lean ([tiltOf]) is always read. [opening]
+  /// says the contact has not read a pressure yet.
   ///
   /// 🚨ONE CALL, because pressure and tilt come off the SAME event and a
   /// dab that mixed one sample's pressure with another's lean would be a
@@ -289,10 +289,9 @@ class _BrushEditPressure {
   /// is one — the rule speed already has for a sample it cannot measure.
   /// Before the first, the device's stand-in is kept as the value the
   /// sample lands with if no reading ever comes.
-  ({bool pressure, bool speed, bool tilt}) noteSample(
+  ({bool pressure, bool speed}) noteSample(
     PointerEvent event, {
     required bool opening,
-    required bool tiltOpening,
   }) {
     if (_travelled == null) {
       _pressedForce = event.pressure;
@@ -305,12 +304,8 @@ class _BrushEditPressure {
     // ⚠️ONE FIELD for the tilt READING, because azimuth without altitude is a
     // lean in a direction nothing reported — and `BrushDab` refuses that pair
     // outright. The same shape as `_travelled` below, and for the same reason.
-    // A lean that is still UIKit's estimate follows pressure's rule.
-    final tilt = tiltOf(event);
-    if (tilt.read || tiltOpening) {
-      _state._currentTilt = tilt.tilt;
-    }
-    final lean = tilt.tilt;
+    final lean = tiltOf(event);
+    _state._currentTilt = lean;
     final tally = _leanTally;
     _leanTally = lean == null
         ? (
@@ -325,11 +320,7 @@ class _BrushEditPressure {
             low: math.min(tally.low, lean.altitude),
             high: math.max(tally.high, lean.altitude),
           );
-    return (
-      pressure: pressure.read,
-      speed: _noteSpeed(event),
-      tilt: tilt.read,
-    );
+    return (pressure: pressure.read, speed: _noteSpeed(event));
   }
 
   /// 速度 off the same event — the one input that needs TWO readings, so it
@@ -428,8 +419,8 @@ class _BrushEditPressure {
       defaultTargetPlatform == TargetPlatform.iOS ||
       defaultTargetPlatform == TargetPlatform.android;
 
-  /// How the pen leans for this sample ([penTilt]) — and whether it READ
-  /// the lean. Where the ledger holds UIKit's measurement of the Pencil's
+  /// How the pen leans for this sample ([penTilt]) — every sample's lean is
+  /// a reading. Where the ledger holds UIKit's measurement of the Pencil's
   /// altitude, that is the altitude.
   ///
   /// ↩️An altitude UIKit called an estimate used to WAIT, as its force did
@@ -438,26 +429,18 @@ class _BrushEditPressure {
   /// brush would have waited the whole patience on every stroke. The
   /// estimate is UIKit's best value, so it is read — pressure's law, which
   /// holds only the press repeated (see [pressureOf]).
-  ({PenLean? tilt, bool read}) tiltOf(PointerEvent event) {
+  PenLean? tiltOf(PointerEvent event) {
     final own = penTilt(event);
     final recorded = own == null
         ? null
         : QaPenLedger.altitudeAt(event.timeStamp);
-    if (own == null || recorded == null) {
-      return (tilt: own, read: true);
+    if (own == null || recorded?.state != PenLedgerState.measured) {
+      return own;
     }
-    return switch (recorded.state) {
-      PenLedgerState.estimated ||
-      PenLedgerState.estimatedFinal => (tilt: own, read: true),
-      PenLedgerState.measured => (
-        tilt: (
-          azimuthDegrees: own.azimuthDegrees,
-          altitude: _altitudeFrom(recorded.value),
-        ),
-        read: true,
-      ),
-      PenLedgerState.noPressure => (tilt: own, read: true),
-    };
+    return (
+      azimuthDegrees: own.azimuthDegrees,
+      altitude: _altitudeFrom(recorded!.value),
+    );
   }
 
   /// The lean the platform has by now MEASURED for the sample stamped [at]

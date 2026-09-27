@@ -45,7 +45,7 @@ class _BrushEditStroke {
         : _state.widget.inputSettings();
     _state._activeStrokeInputSettings = strokeSettings;
     _state._opening.startContact(
-      _state._pressure.noteSample(event, opening: true, tiltOpening: true),
+      _state._pressure.noteSample(event, opening: true),
     );
     _state.widget.onActiveStrokeChanged?.call(true);
     _state._nextSequence = 0;
@@ -129,7 +129,7 @@ class _BrushEditStroke {
   void takeSample(
     CanvasPoint penPosition, {
     required Duration at,
-    required ({bool pressure, bool speed, bool tilt}) read,
+    required ({bool pressure, bool speed}) read,
   }) {
     // The stabilizer smooths BEFORE clipping/interpolation, so every
     // downstream consumer (overlay, commit, replay) sees one chain — the

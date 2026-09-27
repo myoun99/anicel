@@ -325,7 +325,6 @@ class _BrushEditPress {
     final read = _state._pressure.noteSample(
       event,
       opening: _state._opening.pressureUnread,
-      tiltOpening: _state._opening.tiltUnread,
     );
     final penPosition = _state._canvasPositionFromLocal(event.localPosition);
     _state._lastPenPosition = penPosition;
