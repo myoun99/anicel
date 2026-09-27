@@ -1,7 +1,6 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
@@ -9,6 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_playhead_writing.dart';
+import 'package:anicel/src/ui/widgets/tick_layer.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
     show XSheetFrameRailPainter;
 
@@ -413,9 +413,19 @@ void main() {
     playhead.value = 7;
     await tester.pump();
     expect(painter().writtenFrame(), 7);
+    // Its own layer: the first boundary above the writing is its tick
+    // layer's, under the strip's.
+    var boundary = tester.renderObject(writing).parent;
+    while (boundary != null && !boundary.isRepaintBoundary) {
+      boundary = boundary.parent;
+    }
     expect(
-      tester.renderObject(writing).parent,
-      isA<RenderRepaintBoundary>(),
+      boundary,
+      same(
+        tester.renderObject(
+          find.ancestor(of: writing, matching: find.byType(TickLayer)),
+        ),
+      ),
       reason: 'its repaints never re-record the strip',
     );
     final strip =
