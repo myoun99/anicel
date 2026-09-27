@@ -51,7 +51,6 @@ class _BrushEditStroke {
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
     _state._previousRawCanvasPosition = canvasPosition;
-    _state._lastPenPosition = canvasPosition;
     final stabilizerStrength = strokeSettings.stabilizerStrength;
     _state._stabilizer = stabilizerStrength > 0
         ? StrokeStabilizer(
@@ -483,7 +482,6 @@ class _BrushEditStroke {
     _state._groundMixer = null;
     _state._groundSampler = null;
     _state._stabilizer = null;
-    _state._lastPenPosition = null;
     _state._collectedDabs.clear();
     _state._pendingOverlayDabs.clear();
   }

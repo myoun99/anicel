@@ -327,7 +327,6 @@ class _BrushEditPress {
       opening: _state._opening.pressureUnread,
     );
     final penPosition = _state._canvasPositionFromLocal(event.localPosition);
-    _state._lastPenPosition = penPosition;
     _state._stroke.takeSample(penPosition, at: event.timeStamp, read: read);
   }
 
@@ -363,41 +362,43 @@ class _BrushEditPress {
   /// Published as a [StrokeLander] while the view is mounted.
   ///
   /// 🚨★★★**THE ORDER IS THE WHOLE THING, WHICH IS WHY IT HAS A NAME.**
-  /// Four steps that each depend on the one before, and every one of them
-  /// was a bug once: the stabilizer trails the pen so the catch-up has to
-  /// run or the line stops short of where the hand is; the snap settles
-  /// AFTER that catch-up so the extra travel counts towards its decision;
-  /// the commit reads the rasterizer's tiles so dabs still waiting on the
-  /// per-frame flush must be blended first; and the input teardown comes
-  /// last because the steps above read the state it clears.
+  /// Steps that each depend on the one before, and every one of them was a
+  /// bug once: the samples still waiting for the contact's first readings
+  /// land first, so everything after sees the whole stroke; the snap
+  /// settles on that travel; the commit reads the rasterizer's tiles so
+  /// dabs still waiting on the per-frame flush must be blended first; and
+  /// the input teardown comes last because the steps above read the state
+  /// it clears.
   ///
-  /// ⛔**So a second caller must not re-write these four — it calls THIS.**
+  /// ⛔**So a second caller must not re-write these steps — it calls THIS.**
   /// A save that landed the stroke its own way would be the same algorithm
-  /// implemented twice, and the copy would drift on the first of those four
-  /// that anybody improved. That is not hypothetical here: this sequence
-  /// already carries three separate fixes in its ordering.
+  /// implemented twice, and the copy would drift on the first of those
+  /// steps that anybody improved. That is not hypothetical here: this
+  /// sequence already carries separate fixes in its ordering.
   ///
   /// ⚠️Safe to call with no stroke in flight — it answers false and
   /// touches nothing, so a caller never has to ask first (and cannot ask
   /// wrongly).
+  ///
+  /// 🗣️**A STABILISED LINE ENDS WHERE THE BRUSH IS** (유저 2026-09-28, H45
+  /// 「펜업시 마지막 진행방향에 선이 하나 생겨. 정밀하게 멈추고 뗀건데도」 →
+  /// H45-Q1 「따라잡지 않는다 — 선은 붓이 있던 자리에서 끝난다」). The brush
+  /// trails the pen by up to a rope length, and a pen held still leaves it
+  /// there. ↩️P7 (2026-07-11, mine, not the user's) closed that gap at
+  /// pen-up with one straight segment to the pen — the tail drawn in the
+  /// last direction of travel however precisely the pen had stopped.
+  /// Without it a quick stroke ends a rope short of the lift: the cost the
+  /// user took with the answer.
   bool landActiveStroke() {
     if (_state._activeDrawingPointer == null) {
       return false;
     }
-    // Whatever still waits for the contact's first readings lands before the
-    // catch-up that follows it (H43).
+    // Whatever still waits for the contact's first readings lands first
+    // (H43).
     _state._opening.stopWaiting();
-    // Stabilizer catch-up (P7): the brush trails the pen by up to a rope
-    // length — pen-up closes the gap with one straight segment through
-    // the normal pipeline, so line ends land where the pen lifted.
-    final lastPen = _state._lastPenPosition;
-    if (_state._stabilizer != null && lastPen != null) {
-      _state._stroke.advanceStrokeThroughGuides(lastPen);
-    }
     // A stroke can lift before it travelled far enough to name a ray; the
     // snap settles on the best guess it has rather than swallowing a short
-    // flick. Runs AFTER the catch-up so the extra travel counts towards the
-    // decision.
+    // flick.
     final session = _state._snapSession;
     if (session != null) {
       for (final snapped in session.finish()) {

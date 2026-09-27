@@ -357,10 +357,6 @@ class _InteractiveBrushEditCanvasViewState
   /// entry (or none) means no replication.
   List<GuideTransform> _symmetryTransforms = const [];
 
-  /// The last RAW pen position (pre-stabilization) — pen-up catches the
-  /// brush up to it with a straight segment through the normal pipeline.
-  CanvasPoint? _lastPenPosition;
-
   /// Live overlay state. Pointer moves blend new dabs into [_liveRasterizer]
   /// (the exact commit-rasterizer math) and picture the touched overlay
   /// tiles inside the same call; the model's notification repaints the
