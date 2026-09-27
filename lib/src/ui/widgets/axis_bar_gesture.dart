@@ -167,12 +167,12 @@ class _FirstMovePointerState extends MultiDragPointerState {
 
   /// The starter held back while the pointer has not left yet.
   ///
-  /// 🚨**BOTH HALVES WAIT, and the second one is not obvious.** Winning the
-  /// arena and STARTING the drag are two moments: when this recogniser is
-  /// the arena's only member — no tap, no scroller under the pointer — the
-  /// arena grants it the moment it closes, and [accepted] runs before a
-  /// single move has happened. 🧪Measured: holding back only
-  /// [checkForResolutionAfterMove] left a tremor dragging exactly as before.
+  /// 🚨Winning the arena and STARTING the drag are two moments, and only
+  /// the second waits: the arena is taken on the first move
+  /// ([checkForResolutionAfterMove]) — or at once, when this recogniser is
+  /// its only member and it closes on the down — and the drag begins when
+  /// the pointer leaves the thing. 🧪Measured (F-138): holding back only the
+  /// resolution left a tremor dragging exactly as before.
   GestureMultiDragStartCallback? _held;
 
   bool get _stillOn {
@@ -181,21 +181,36 @@ class _FirstMovePointerState extends MultiDragPointerState {
         stillOn(initialPosition + (pendingDelta ?? Offset.zero));
   }
 
+  /// 🚨★★★**THE FIRST MOVE CLAIMS THE POINTER; LEAVING THE THING STARTS
+  /// THE DRAG** (F-198, 유저 2026-09-27: 「브러시 클릭가능하고 드래그 가능하게
+  /// 하란거 그렇게 어렵나? 이번엔 드래그로 위치이동이 안되는더? 그냥 브라시
+  /// 그룹 동작하듯이 하라고」).
+  ///
+  /// ⛔Waiting to RESOLVE until the pointer left the cell handed the arena
+  /// to the list under it: its scroller takes a mouse at one pixel and a
+  /// pen at its slop, both long before a 34px cell is left behind, so a
+  /// brush dragged down its own list scrolled the list instead. That is the
+  /// press law broken from the other side — 「컨트롤 위에서 시작한 제스처는
+  /// 그 컨트롤의 것이다」 — and the group tabs never lost it, because they
+  /// resolved on the move.
+  ///
+  /// So the pointer is claimed on the first move, like every other owning
+  /// recogniser in this file, and only the START waits ([accepted] holds
+  /// it): a tremor stays a press (F-138-Q1), and nothing under a press
+  /// ever scrolls.
   @override
   void checkForResolutionAfterMove() {
-    if (_stillOn) {
-      // Not a drag yet — the finger has not gone anywhere. ⛔A press that
-      // ends here is still a press: nothing is resolved, so the tap under
-      // it is untouched.
-      return;
-    }
     final held = _held;
-    if (held != null) {
-      _held = null;
-      held(initialPosition);
+    if (held == null) {
+      resolve(GestureDisposition.accepted);
       return;
     }
-    resolve(GestureDisposition.accepted);
+    if (_stillOn) {
+      // Not a drag yet — the pointer has not gone anywhere.
+      return;
+    }
+    _held = null;
+    held(initialPosition);
   }
 
   @override

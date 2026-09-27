@@ -31,6 +31,7 @@ class OwningDraggable<T extends Object> extends Draggable<T> {
     super.maxSimultaneousDrags,
     super.onDragStarted,
     super.onDraggableCanceled,
+    super.onDragCompleted,
     super.onDragEnd,
     this.stillOnTheThing,
   });

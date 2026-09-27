@@ -3,6 +3,7 @@ import '../widgets/app_icon_button.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/gestures.dart' show MultiDragGestureRecognizer;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_group.dart';
@@ -18,6 +19,7 @@ import '../panels/editor_panel_frame.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_scrollbar_lane.dart';
 import '../widgets/app_window.dart';
+import '../widgets/axis_bar_gesture.dart' show OwningMultiDragGestureRecognizer;
 import '../widgets/content_scrollbar.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
@@ -224,6 +226,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// A preset is mid-drag: the rail watches the pointer so hovering a tab
   /// opens it, the way a spring-loaded folder does.
   bool _dragging = false;
+
+  /// The brush being carried — what a drop moves, whichever group is open
+  /// by then (I-49).
+  BrushPresetId? _carriedPreset;
 
   /// True while a rail tab is being dragged.
   ///
@@ -596,15 +602,21 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     );
   }
 
-  /// Reorders inside the open tab. One tab shows one group, so a row drag
-  /// can only ever be a move WITHIN it — crossing groups is what the
-  /// spring-loaded tabs are for.
-  void _handleReorder(List<BrushPreset> visible, int oldIndex, int newIndex) {
+  /// Puts the carried brush where it was dropped in the OPEN tab — a move
+  /// within its group, or into this one when a spring-loaded tab opened
+  /// under the drag ([oldIndex] null: it is not in [visible]).
+  ///
+  /// 🗣️I-49 (유저 2026-09-26): 「브러시를 다른 그룹으로 옮길수있게. 그룹에
+  /// 하나밖에 없는 브러시일때든 뭐든 옮기기 허용. 그룹안에 브러시 없으면
+  /// 없는대로 두도록」 — the brush is named by what was CARRIED
+  /// ([_carriedPreset]), never by an index into the list it was dropped in,
+  /// and a group it leaves empty stays.
+  void _handleReorder(List<BrushPreset> visible, int? oldIndex, int newIndex) {
     final onReordered = widget.onPresetsReordered;
-    if (onReordered == null || oldIndex >= visible.length) {
+    final carried = _carriedPreset;
+    if (onReordered == null || carried == null) {
       return;
     }
-    final moved = visible[oldIndex];
     // The grid reports a TARGET too — the same law, from the same file, as
     // the rail above. It used to be spelled out here and only here, which is
     // how the rail came to have a different one.
@@ -616,7 +628,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     onReordered(
       moveBrushPresetInLibrary(
         presets: widget.presets,
-        movedId: moved.id,
+        movedId: carried,
         targetGroupId: _openGroupId,
         insertBeforeId: anchor?.id,
       ),
@@ -935,7 +947,16 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
               // only real tabs drag.
               child: reorderable && group != null
                   ? _dismissTooltipsOnPress(
-                      ReorderableDragStartListener(index: index, child: tab),
+                      // ⛔The Builder is here for its CONTEXT, as the brush
+                      // cell's is: the predicate needs the tab's own box.
+                      Builder(
+                        builder: (tabContext) => _StandOnDragStartListener(
+                          index: index,
+                          stillOnTheThing: (global) =>
+                              pointerIsStillOn(tabContext, global),
+                          child: tab,
+                        ),
+                      ),
                     )
                   : tab,
             );
@@ -990,9 +1011,13 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       maxColumns: tipsOnly ? null : brushPresetMaxColumns,
       itemKey: (index) =>
           ValueKey<String>('brush-preset-entry-${visible[index].id.value}'),
-      onDragStart: () => _dragging = true,
+      onDragStart: (index) {
+        _dragging = true;
+        _carriedPreset = visible[index].id;
+      },
       onDragEnd: () {
         _dragging = false;
+        _carriedPreset = null;
         _cancelSpring();
       },
       onReorder: reorderable
@@ -1144,6 +1169,34 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
 /// A rotated label was the obvious alternative and a bad one — Korean and
 /// Japanese group names do not read sideways. The brush the group starts
 /// with says more anyway.
+/// A group tab's reorder, started by the brush cell's own recogniser.
+///
+/// 🗣️F-198 (유저 2026-09-27: 「그냥 브라시 그룹 동작하듯이 하라고. 펜다운하면
+/// 선택되고 그런거 싹 다 통일하면 해결이잖아」). The tab and the cell are both
+/// things you STAND on — pressing picks — so they take a drag by one rule,
+/// F-138-Q1's: the first move claims the pointer and leaving the thing
+/// starts the drag ([OwningMultiDragGestureRecognizer.stillOnTheThing]).
+/// ⛔Flutter's own listener waited for the device's slop — one pixel for a
+/// mouse, eighteen for a pen — the distance 유저 had struck out on
+/// 2026-08-30 (「1px 이동했는지 같은 px 이동으로 판단하는거 … 싹 깔끔하게
+/// 걷어내」); the tab kept it only because no one had asked it.
+class _StandOnDragStartListener extends ReorderableDragStartListener {
+  const _StandOnDragStartListener({
+    required super.index,
+    required super.child,
+    required this.stillOnTheThing,
+  });
+
+  final bool Function(Offset globalPosition) stillOnTheThing;
+
+  @override
+  MultiDragGestureRecognizer createRecognizer() =>
+      OwningMultiDragGestureRecognizer(
+        debugOwner: this,
+        stillOnTheThing: stillOnTheThing,
+      );
+}
+
 class _BrushGroupTab extends StatelessWidget {
   const _BrushGroupTab({
     required this.keyValue,
@@ -1431,6 +1484,21 @@ class _BrushPresetRow extends StatelessWidget {
       );
 
   Widget _build(BuildContext context, {required bool selected}) {
+    final applied = onApplied;
+    final cell = _cell(context, selected: selected);
+    // 🗣️F-198 (유저 2026-09-27): 「그냥 브라시 그룹 동작하듯이 하라고.
+    // **펜다운하면 선택되고** 그런거 싹 다 통일하면 해결이잖아」 — the pick
+    // rides the raw pointer the way a group tab's does ([_BrushGroupTab]):
+    // a pen or a mouse picks on the DOWN, a finger on a release that did not
+    // travel. It fired on the InkWell's tap before, and a tap is the
+    // arena's: whoever wins a press that moves — the list's scroller then,
+    // the drag's first-move claim now — kills it.
+    return applied == null
+        ? cell
+        : InstantTapRegion(onTap: (_) => applied(preset), child: cell);
+  }
+
+  Widget _cell(BuildContext context, {required bool selected}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: brushPresetCellGap),
@@ -1441,7 +1509,10 @@ class _BrushPresetRow extends StatelessWidget {
           // Key kept from the former chip UI so existing flows/tests hold.
           key: ValueKey<String>('brush-preset-chip-${preset.id.value}'),
           customBorder: AppShapes.container(AppShapes.windowRadius),
-          onTap: onApplied == null ? null : () => onApplied!(preset),
+          // Its ripple and semantics only — the pick is [InstantTapRegion]'s.
+          onTap: silentPress(
+            onApplied == null ? null : () => onApplied!(preset),
+          ),
           child: SizedBox(
             // The ALLOTMENT less the gap this cell insets itself by — the
             // height actually drawn in. ⛔Written out rather than left to

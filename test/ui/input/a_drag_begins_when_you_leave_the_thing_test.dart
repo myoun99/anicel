@@ -31,7 +31,7 @@ void main() {
             itemCount: 6,
             cellHeight: 40,
             itemKey: (index) => ValueKey<String>('cell-$index'),
-            onDragStart: onDragStart,
+            onDragStart: (_) => onDragStart(),
             onReorder: (_, _) {},
             itemBuilder: (context, index) => ColoredBox(
               color: Colors.blue,
@@ -125,12 +125,19 @@ void main() {
     }
     expect(
       waiting,
-      ['lib/src/ui/brush/brush_preset_reorder_grid.dart'],
+      unorderedEquals([
+        // 🗣️F-198 (유저 2026-09-27): 「그냥 브라시 그룹 동작하듯이 하라고.
+        // 펜다운하면 선택되고 그런거 싹 다 통일하면 해결이잖아」 — the group
+        // tab is stood on too (a press picks it), so it drags by the cell's
+        // rule instead of Flutter's slop.
+        'lib/src/ui/brush/brush_preset_panel.dart',
+        'lib/src/ui/brush/brush_preset_reorder_grid.dart',
+      ]),
       reason:
-          '⛔the preset cell is the one drag source you must first STAND on. '
-          'A second name here is either a new standing surface — say so at '
-          'the site — or F-126 quietly coming undone somewhere it was never '
-          'the question',
+          '⛔the brush cell and the group tab are the drag sources you must '
+          'first STAND on. A third name here is either a new standing '
+          'surface — say so at the site — or F-126 quietly coming undone '
+          'somewhere it was never the question',
     );
   });
 

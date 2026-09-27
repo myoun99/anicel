@@ -227,7 +227,7 @@ void main() {
                 cellHeight: brushPresetRowHeight,
                 itemKey: (index) => ValueKey<String>('cell-$index'),
                 onReorder: (oldIndex, newIndex) =>
-                    moves.add((oldIndex, newIndex)),
+                    moves.add((oldIndex!, newIndex)),
                 itemBuilder: (context, index) => ColoredBox(
                   color: Colors.blue,
                   child: Center(child: Text('$index')),
@@ -346,7 +346,7 @@ void main() {
                 cellHeight: brushPresetRowHeight,
                 itemKey: (index) => ValueKey<String>('cell-$index'),
                 onReorder: (_, _) {},
-                onDragStart: () => starts += 1,
+                onDragStart: (_) => starts += 1,
                 onDragEnd: () => ends += 1,
                 itemBuilder: (context, index) =>
                     ColoredBox(color: Colors.blue, child: Text('$index')),
@@ -400,7 +400,7 @@ void main() {
               cellHeight: brushPresetRowHeight,
               itemKey: (index) => ValueKey<String>('cell-$index'),
               onReorder: (_, _) {},
-              onDragStart: onStart,
+              onDragStart: (_) => onStart(),
               itemBuilder: (context, index) =>
                   ColoredBox(color: Colors.blue, child: Text('$index')),
             ),
