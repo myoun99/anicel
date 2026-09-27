@@ -109,10 +109,20 @@ class PlaybackTransportControls extends StatelessWidget {
     };
   }
 
+  /// What the row shows of the playback: the buttons' states. The drop count
+  /// is its slot's own read ([_droppedFramesSlot]).
+  static _TransportShows _rowShows(CanvasPlaybackController controller) => (
+    active: controller.isActive,
+    scope: controller.scope,
+    playing: controller.isPlaying,
+    loop: controller.loopMode,
+  );
+
   @override
   Widget build(BuildContext context) {
-    return _OnWhatTheRowShows(
+    return _OnWhatItShows<_TransportShows>(
       controller: controller,
+      read: _rowShows,
       builder: (context) {
         final controlsThisScope =
             controller.isActive && controller.scope == scope;
@@ -135,7 +145,7 @@ class PlaybackTransportControls extends StatelessWidget {
             // is a fixed width with the text right-aligned INSIDE it, so
             // the count grows leftward into its own space and no button
             // ever moves. That is what keeping 「오른쪽정렬」 buys.
-            _droppedFramesSlot(controlsThisScope, context),
+            _droppedFramesSlot(),
             _skipToStartButton(controlsThisScope),
             // 🚨T28 — ONE button: play, or stop. 「재생, 일시정지상태의
             // 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.
@@ -308,76 +318,86 @@ class PlaybackTransportControls extends StatelessWidget {
     );
   }
 
-  SizedBox _droppedFramesSlot(bool controlsThisScope, BuildContext context) {
-    return SizedBox(
-      width: _dropSlotWidth,
-      child: controlsThisScope && controller.droppedFrames > 0
-          ? Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Text(
-                '${controller.droppedFrames} dropped',
-                key: const ValueKey<String>(
-                  'playback-dropped-indicator',
+  /// The drop count's slot, on a read of its own (I-22 ③): a drop is counted
+  /// on every frame the device misses — exactly when there is no time to
+  /// spare — and while the count was part of what the ROW showed, every drop
+  /// rebuilt every button beside it. It rebuilds this slot alone now.
+  Widget _droppedFramesSlot() => _OnWhatItShows<int>(
+    controller: controller,
+    read: _droppedHere,
+    builder: (context) {
+      final dropped = _droppedHere(controller);
+      return SizedBox(
+        width: _dropSlotWidth,
+        child: dropped > 0
+            ? Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Text(
+                  '$dropped dropped',
+                  key: const ValueKey<String>('playback-dropped-indicator'),
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                 ),
-                textAlign: TextAlign.right,
-                maxLines: 1,
-                overflow: TextOverflow.clip,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.error,
-                ),
-              ),
-            )
-          : null,
-    );
-  }
+              )
+            : null,
+      );
+    },
+  );
+
+  /// The drops this row shows: its own scope's playback's, and none while
+  /// another scope plays.
+  int _droppedHere(CanvasPlaybackController controller) =>
+      controller.isActive && controller.scope == scope
+      ? controller.droppedFrames
+      : 0;
 }
 
-/// What the transport row shows of the playback — the buttons' states and
-/// the drop count, and nothing else it reads.
+/// What the transport row shows of the playback — the buttons' states, and
+/// nothing else it reads.
 typedef _TransportShows = ({
   bool active,
   PlaybackScope scope,
   bool playing,
   PlaybackLoopMode loop,
-  int dropped,
 });
 
-/// Rebuilds the row when what it shows moves, never on a tick.
+/// Rebuilds [builder] when what it shows — [read] — moves, never on a tick.
 ///
 /// I-22 ③: the controller notifies on every frame it plays, and the row
 /// listened to all of it — every button, its face and its tooltip were
 /// rebuilt at the playback rate, in the timeline's transport and the
 /// storyboard's both, while not one of them reads the frame. The level
-/// meter follows the frame on its own listenable.
-class _OnWhatTheRowShows extends StatefulWidget {
-  const _OnWhatTheRowShows({required this.controller, required this.builder});
+/// meter follows the frame on its own listenable. ↩️The drop count rode
+/// with the buttons until the drops were measured: it moves on every frame
+/// missed, so the row rebuilt whole at exactly the frames there was no time
+/// for. The count's slot reads it through a gate of its own.
+class _OnWhatItShows<T> extends StatefulWidget {
+  const _OnWhatItShows({
+    required this.controller,
+    required this.read,
+    required this.builder,
+  });
 
   final CanvasPlaybackController controller;
+  final T Function(CanvasPlaybackController controller) read;
   final WidgetBuilder builder;
 
   @override
-  State<_OnWhatTheRowShows> createState() => _OnWhatTheRowShowsState();
+  State<_OnWhatItShows<T>> createState() => _OnWhatItShowsState<T>();
 }
 
-class _OnWhatTheRowShowsState extends State<_OnWhatTheRowShows> {
+class _OnWhatItShowsState<T> extends State<_OnWhatItShows<T>> {
   /// Read in [initState], never lazily: nothing but a notification would
   /// read it first, and a first read inside one would take the moved state
   /// for the one the row was built with.
-  late _TransportShows _shown;
-
-  _TransportShows _read() {
-    final controller = widget.controller;
-    return (
-      active: controller.isActive,
-      scope: controller.scope,
-      playing: controller.isPlaying,
-      loop: controller.loopMode,
-      dropped: controller.droppedFrames,
-    );
-  }
+  late T _shown;
 
   void _moved() {
-    final shown = _read();
+    final shown = widget.read(widget.controller);
     if (shown != _shown) {
       setState(() => _shown = shown);
     }
@@ -386,17 +406,17 @@ class _OnWhatTheRowShowsState extends State<_OnWhatTheRowShows> {
   @override
   void initState() {
     super.initState();
-    _shown = _read();
+    _shown = widget.read(widget.controller);
     widget.controller.addListener(_moved);
   }
 
   @override
-  void didUpdateWidget(_OnWhatTheRowShows oldWidget) {
+  void didUpdateWidget(_OnWhatItShows<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.controller, widget.controller)) {
       oldWidget.controller.removeListener(_moved);
       widget.controller.addListener(_moved);
-      _shown = _read();
+      _shown = widget.read(widget.controller);
     }
   }
 

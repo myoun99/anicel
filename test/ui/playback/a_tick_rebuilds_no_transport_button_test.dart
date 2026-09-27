@@ -42,8 +42,8 @@ void main() {
     createdAt: DateTime.utc(2026),
   );
 
-  testWidgets('a tick rebuilds none of the row — and a stop, which it shows, '
-      'does', (tester) async {
+  /// The transport of the one cut above, mounted.
+  Future<CanvasPlaybackController> pumpTransport(WidgetTester tester) async {
     final controller = CanvasPlaybackController(
       resolveProject: project,
       resolveActiveCutId: () => const CutId('cut'),
@@ -61,9 +61,17 @@ void main() {
         ),
       ),
     );
-    Row row() => tester.widget<Row>(
-      find.byKey(const ValueKey<String>('playback-transport-activeCut')),
-    );
+    return controller;
+  }
+
+  Row transportRow(WidgetTester tester) => tester.widget<Row>(
+    find.byKey(const ValueKey<String>('playback-transport-activeCut')),
+  );
+
+  testWidgets('a tick rebuilds none of the row — and a stop, which it shows, '
+      'does', (tester) async {
+    final controller = await pumpTransport(tester);
+    Row row() => transportRow(tester);
 
     final stopped = row();
     controller.play(scope: PlaybackScope.activeCut);
@@ -92,5 +100,30 @@ void main() {
       isFalse,
       reason: 'the play button shows the stop, so the row rebuilds for it',
     );
+  });
+
+  // A frame is dropped when the device misses it — exactly when there is no
+  // time to spare. The count is its slot's to show, not the buttons'.
+  testWidgets('a dropped frame rebuilds the drop count and none of the row '
+      'around it', (tester) async {
+    final controller = await pumpTransport(tester);
+    controller.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final playing = transportRow(tester);
+    expect(controller.droppedFrames, 0, reason: 'premise: none dropped yet');
+
+    // Three frames' time in one pump (10 fps): two were never shown.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(controller.droppedFrames, 2, reason: 'premise: two dropped');
+
+    expect(find.text('2 dropped'), findsOneWidget, reason: 'the slot shows it');
+    expect(
+      identical(transportRow(tester), playing),
+      isTrue,
+      reason: 'and not one button was rebuilt for it',
+    );
+    controller.stop();
+    await tester.pump();
   });
 }
