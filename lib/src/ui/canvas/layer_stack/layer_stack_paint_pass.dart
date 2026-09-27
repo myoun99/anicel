@@ -676,14 +676,24 @@ class _LayerStackPaintPass {
     // that the enclosing canvas-resolution buffer then clipped
     // away. Content bounds keep it inside by construction, and
     // this says so where it can fail.
-    final groupRect = effectBufferBounds(
-      _bufferBoundsFor(node, _activeSurfaceExtent),
-      groupPlan.outsetPixels,
-    );
+    //
+    // ⚠️It is the CONTENT that must sit inside, before the effect
+    // grows it. The spread the size hint adds below is deliberate
+    // — artwork just outside the view has to reach the blur at the
+    // view's edge — so there the buffer lies past the composite by
+    // exactly that spread, off screen. ↩️This asserted the grown
+    // rect, and a blurred folder whose ink crossed the view's edge
+    // stopped every debug build at any zoom (board
+    // `a-blurred-folder-outgrows-the-composite`).
+    final contentRect = _bufferBoundsFor(node, _activeSurfaceExtent);
     assert(
-      _contentExtent.expandToInclude(groupRect) == _contentExtent,
+      _contentExtent.expandToInclude(contentRect) == _contentExtent,
       'a group buffer must sit inside the composite it is part '
-      'of: $groupRect is not within $_contentExtent',
+      'of: $contentRect is not within $_contentExtent',
+    );
+    final groupRect = effectBufferBounds(
+      contentRect,
+      groupPlan.outsetPixels,
     );
     // 🚨★★★ONE PICTURE PER NODE — a group IS an image, not a
     // `saveLayer`. [drawSubtreeAsImage] holds the arithmetic and
