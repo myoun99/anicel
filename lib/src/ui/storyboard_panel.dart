@@ -10,7 +10,8 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
-import '../models/layer_effect.dart' show EffectId, effectParameterValueAt;
+import '../models/layer_effect.dart'
+    show EffectId, LayerEffect, effectParameterValueAt;
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
@@ -52,6 +53,7 @@ import 'timeline/property_lane_model.dart'
         PropertyLaneEditCallbacks,
         PropertyLaneRow,
         TimelineDisplayRow,
+        laneAsPreviewed,
         laneGroupKey;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_span_resolver.dart'

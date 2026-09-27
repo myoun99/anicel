@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
@@ -8,6 +9,13 @@ import '../../models/layer_id.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../brush/brush_editor_selection.dart';
 import '../canvas/canvas_layer_stack_view.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show
+        LaneEditPreview,
+        TimelineDragPreview,
+        cutShowingLaneEdit,
+        laneEditInFlight,
+        layersShowingLaneEdit;
 import 'active_cut_controllers.dart';
 import 'editing_stack_map.dart';
 import 'opacity_verbs.dart';
@@ -38,6 +46,7 @@ class EditingCanvas {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required ActiveCutControllers controllers,
     required OpacityVerbs opacityVerbs,
     required TrackSeDisplay trackSe,
@@ -46,6 +55,7 @@ class EditingCanvas {
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
+       _dragPreview = dragPreview,
        _controllers = controllers,
        _opacityVerbs = opacityVerbs,
        _trackSe = trackSe;
@@ -55,6 +65,7 @@ class EditingCanvas {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final ActiveCutControllers _controllers;
   final OpacityVerbs _opacityVerbs;
   final TrackSeDisplay _trackSe;
@@ -90,13 +101,21 @@ class EditingCanvas {
     }
 
     final frameIndex = _controllers.timelineController.currentFrameIndex;
+    // F-195: a lane edit in flight — a value scrubbed, a handle dragged, a
+    // key range slid — substitutes its row (and its cut's camera) in before
+    // the shared visit, so the picture follows the hand with no repo write
+    // per move, exactly as the opacity drag below always has.
+    final edit = laneEditInFlight(_dragPreview.value);
+    final shownCut = cutShowingLaneEdit(cut, edit);
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
     final preview = _opacityVerbs.dragPreview.value;
     final stackCut = preview == null
-        ? cut
-        : cut.copyWith(layers: _withOpacityPreview(cut.layers, preview));
+        ? shownCut
+        : shownCut.copyWith(
+            layers: _withOpacityPreview(shownCut.layers, preview),
+          );
 
     final drawn = stackAt(
       cut: cut,
@@ -111,7 +130,12 @@ class EditingCanvas {
       // transform tracks are stripped, so the plain resolve path
       // suffices). They live outside the cut's stack, so they land at the
       // top level.
-      ..._trackSeDisplayNodes(cut, frameIndex: frameIndex, preview: preview),
+      ..._trackSeDisplayNodes(
+        cut,
+        frameIndex: frameIndex,
+        edit: edit,
+        preview: preview,
+      ),
     ];
     return (
       nodes: List.unmodifiable(nodes),
@@ -181,15 +205,18 @@ class EditingCanvas {
         layer,
   ];
 
-  /// The track's SE rows as cut-local display clones, read-only.
+  /// The track's SE rows as cut-local display clones, read-only — an edited
+  /// one as the edit in flight shows it.
   Iterable<CompositeNode<CanvasStackRow>> _trackSeDisplayNodes(
     Cut cut, {
     required int frameIndex,
+    required LaneEditPreview? edit,
     required ({Set<LayerId> layerIds, double opacity})? preview,
   }) sync* {
+    final shown = layersShowingLaneEdit(_trackSe.trackSeDisplayLayers, edit);
     final rows = preview == null
-        ? _trackSe.trackSeDisplayLayers
-        : _withOpacityPreview(_trackSe.trackSeDisplayLayers, preview);
+        ? shown
+        : _withOpacityPreview(shown, preview);
     for (final layer in rows) {
       if (!layer.isVisible || layer.opacity <= 0) {
         continue;

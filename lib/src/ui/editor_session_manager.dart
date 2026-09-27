@@ -1472,7 +1472,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     controllers: activeCutControllers,
-    laneMove: laneMove,
+    dragPreview: dragPreview,
     activeCut: _activeCutEdits,
     cutUnderPlayhead: cutUnderPlayhead,
   );
@@ -1529,6 +1529,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     internals: this,
+    dragPreview: dragPreview,
     controllers: activeCutControllers,
     opacityVerbs: opacityVerbs,
     trackSe: trackSe,
@@ -1554,6 +1555,7 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     controllers: activeCutControllers,
     internals: this,
+    dragPreview: dragPreview,
     renderCaches: renderCaches,
     trackAxis: trackAxisWalk,
     workingPanel: () => standing.workingPanel,
@@ -1678,9 +1680,11 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     dragPreview: dragPreview,
     changes: this,
-    // Lazily: the camera holds the lane move, which holds these verbs.
+    // The camera's one write, not the camera — see
+    // `LaneVerbs._updateActiveCutCameraTrack`.
     updateActiveCutCameraTrack: (track, {required description}) =>
         camera.updateActiveCutCameraTrack(track, description: description),
+    previewFormsOf: (row) => trackSe.previewFormsOf(row),
   );
 
   // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,
@@ -2668,11 +2672,8 @@ class EditorSessionManager extends ChangeNotifier
   late final LaneRangeMoveDragVerbs laneMove = LaneRangeMoveDragVerbs(
     project: this,
     selection: this,
-    changes: this,
-    laneVerbs: laneVerbs,
-    effectsAndFx: effectsAndFx,
     dragPreview: dragPreview,
-    previewFormsOf: (row) => trackSe.previewFormsOf(row),
+    laneVerbs: laneVerbs,
   );
 
   /// The layer a RANGE selection reads (cut-local DISPLAY indexes): cut

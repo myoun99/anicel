@@ -6,7 +6,9 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/session/drags/lane_range_move_drag.dart';
+import 'package:anicel/src/ui/session/lane_edit_subject.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
@@ -47,7 +49,7 @@ void main() {
     ValueNotifier<TimelineLaneSelection?> outline,
     List<TransformTrack> transformCommits,
     List<List<LayerEffect>> effectCommits,
-    int cameraClears,
+    List<String> descriptions,
   })
   open({
     TransformTrack? track,
@@ -62,7 +64,7 @@ void main() {
     addTearDown(outline.dispose);
     final transformCommits = <TransformTrack>[];
     final effectCommits = <List<LayerEffect>>[];
-    var cameraClears = 0;
+    final descriptions = <String>[];
     final before = selection(
       start: start,
       endExclusive: endExclusive,
@@ -72,26 +74,35 @@ void main() {
     return (
       drag: LaneRangeMoveDrag.begin(
         selection: before,
-        subject: LaneMoveSubject(
+        subject: LaneEditSubject(
           transformTrack: subjectTrack,
           effects: const [],
-          commitTransform: transformCommits.add,
-          commitEffects: effectCommits.add,
-          previewTransform: (next) =>
-              const BlockMoveDragPreview(previewLayers: {}),
-          previewEffects: (next) =>
-              const BlockMoveDragPreview(previewLayers: {}),
+          commitTransform: (next, why) {
+            transformCommits.add(next);
+            descriptions.add(why);
+          },
+          commitEffects: (next, why) {
+            effectCommits.add(next);
+            descriptions.add(why);
+          },
+          previewTransform: (next) => const LaneEditPreview.track(
+            trackId: TrackId('t'),
+            trackEffects: [],
+          ),
+          previewEffects: (next) => LaneEditPreview.track(
+            trackId: const TrackId('t'),
+            trackEffects: next,
+          ),
         ),
         laneVerbTargets: (spanLaneIds, {effects = const []}) => spanLaneIds,
         preview: preview,
         selectionChannel: outline,
-        clearCameraPreview: () => cameraClears += 1,
       ),
       preview: preview,
       outline: outline,
       transformCommits: transformCommits,
       effectCommits: effectCommits,
-      cameraClears: cameraClears,
+      descriptions: descriptions,
     );
   }
 
@@ -182,6 +193,12 @@ void main() {
     session.drag!.commit();
 
     expect(session.transformCommits, hasLength(1));
+    expect(
+      session.descriptions,
+      ['Move lane keys'],
+      reason: 'the subject is every lane edit\'s now (F-195) — the undo line '
+          'names the move, which only the drag knows',
+    );
     expect(session.outline.value?.startIndex, 4);
     expect(session.preview.value, isNull);
   });

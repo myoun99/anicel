@@ -55,9 +55,6 @@ String effectLaneId(EffectId effectId, String parameterId) =>
   );
 }
 
-bool laneIsEffectLane(PropertyLaneRow lane) =>
-    parseEffectLaneId(lane.laneId) != null;
-
 /// The lane rows for [effects]: each effect's header, and its parameter
 /// lanes while [isExpanded] says the header is twirled open (AE group
 /// collapse, exactly like the Transform group).

@@ -29,7 +29,6 @@ import 'storyboard/storyboard_rows_channel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
 import 'timeline/timeline_section_policy.dart' show TimelineSection;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
-import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks, parseLaneGroupKey;
 import 'timeline/layer_row_drag.dart'
@@ -229,38 +228,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// ([timelineRowOwnsTransform]). Keys land on the GLOBAL axis and commit as
   /// ONE undo through [LaneVerbs], exactly as a layer effect's do.
   ///
-  /// A transform lane cannot reach here any more: the rail builds none for a
-  /// track row, so the dispatch is effects or nothing.
-  PropertyLaneEditCallbacks _trackLaneEditFor(Track track) {
-    final carrierId = trackTransformLaneCarrierId(track.id);
-    return PropertyLaneEditCallbacks(
-      onToggleKeyAt: (_, lane, frameIndex) {
-        if (!laneIsEffectLane(lane)) {
-          return;
-        }
-        _session.laneVerbs.toggleLaneKeyAt(
-          carrierId,
-          lane.laneId,
-          frameIndex,
-          frameIsGlobal: true,
-          description: '${lane.label} keyframe at frame ${frameIndex + 1}',
-        );
-      },
-      onSetValue: (_, lane, frameIndex, input) {
-        if (!laneIsEffectLane(lane)) {
-          return;
-        }
-        _session.laneVerbs.setLaneValueAt(
-          carrierId,
-          lane.laneId,
-          frameIndex,
-          input,
-          frameIsGlobal: true,
-          description: 'Set ${lane.label} at frame ${frameIndex + 1}',
-        );
-      },
-    );
-  }
+  /// ↩️F-195: this was a copy of [sessionLaneEditCallbacks] addressed to the
+  /// track's carrier, each hook fenced to effect lanes — and a value's
+  /// preview would have been its third copied hook. The rail hands the hooks
+  /// the CARRIER as the row's layer, so the carrier id arrives as the row's
+  /// own; [LaneVerbs] sends it home to the track ([laneVerbLayerFor]), and a
+  /// transform edit there lands nowhere by the verbs' own answer
+  /// (`_TransformHome.nowhere`), so the fence answered a question the verbs
+  /// already answer. One wiring, as the S rows take it.
+  PropertyLaneEditCallbacks _trackLaneEditFor(Track track) => _layerLaneEdit;
 
   // ⛔The host's lane-span head walk is GONE (C②): it walked TRANSFORM
   // lanes for a V rail that draws FX lanes and answered null for every SE

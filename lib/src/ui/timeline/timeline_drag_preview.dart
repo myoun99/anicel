@@ -11,6 +11,7 @@ import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/track_id.dart';
+import '../../models/transform_track.dart';
 import '../../services/project_tree_editor.dart';
 import '../listenable_rebind.dart';
 import '../collection_equality.dart';
@@ -124,6 +125,139 @@ class BlockMoveDragPreview extends TimelineDragPreview {
     cameraCutId,
     mapHash(cameraKeyframes),
     identityHashCode(cameraMarkerLayer),
+  );
+}
+
+/// A LANE EDIT in flight (F-195): one row's keyed values as the release
+/// would leave them — a value scrubbed on a lane's label, a canvas handle
+/// dragged, a key range slid along a lane.
+///
+/// 유저 2026-09-27: 「카메라레이어든 트랜스폼이든 fx든 다 편집이 실시간으로
+/// 화면에 보이도록. 레이어에서 값편집이든 캔버스에서 편집이든」. Each of those
+/// held its value in the widget being dragged — a label's text, a handle's
+/// offset, a box's zoom, the camera frame's pose — and nothing else saw it
+/// until the release. The value in flight lives HERE, and whatever shows the
+/// row reads it: every panel's lane labels and key markers (the row gates),
+/// the editing canvas's picture and pose, the handles, the camera frame.
+///
+/// ⛔ITS OWN VARIANT, not a [BlockMoveDragPreview] (which carried the lane
+/// moves until F-195). The canvas follows THIS one and not a block move: a
+/// block move re-times cels, and the row being drawn on shows the cel the
+/// brush is bound to, so a canvas following one would show half of it —
+/// the other rows' cels moved and the active row's not. One variant for
+/// both would make the canvas answer 「follow it?」 once for two edits.
+///
+/// Exactly one subject is set — a ROW ([row], with [globalRow] for a
+/// track-owned one), a V TRACK's chain ([trackId]) or the open cut's CAMERA
+/// ([cameraCutId]) — because a lane lives on exactly one of them.
+class LaneEditPreview extends TimelineDragPreview {
+  /// [row] as the open cut shows it — a track-owned row's cut-local display
+  /// clone, whose [globalRow] is the track's own (the pair
+  /// `TrackSeDisplay.previewFormsOf` decides).
+  const LaneEditPreview.row({required Layer this.row, this.globalRow})
+    : trackId = null,
+      trackEffects = null,
+      cameraCutId = null,
+      cameraTrack = null,
+      cameraMarkerLayer = null;
+
+  /// A V track's EFFECT chain — all a track row's lanes edit.
+  const LaneEditPreview.track({
+    required TrackId this.trackId,
+    required List<LayerEffect> this.trackEffects,
+  }) : row = null,
+       globalRow = null,
+       cameraCutId = null,
+       cameraTrack = null,
+       cameraMarkerLayer = null;
+
+  /// [cameraCutId]'s camera track. The camera row's lanes are built from
+  /// the CUT, not from the row's Layer, so a clone of the row rides along
+  /// ([cameraMarkerLayer]) only to trip that row's gate — a FRESH one per
+  /// step, since the gate compares identities (the P3b-2 contract).
+  const LaneEditPreview.camera({
+    required CutId this.cameraCutId,
+    required TransformTrack this.cameraTrack,
+    this.cameraMarkerLayer,
+  }) : row = null,
+       globalRow = null,
+       trackId = null,
+       trackEffects = null;
+
+  final Layer? row;
+  final Layer? globalRow;
+  final TrackId? trackId;
+  final List<LayerEffect>? trackEffects;
+  final CutId? cameraCutId;
+  final TransformTrack? cameraTrack;
+  final Layer? cameraMarkerLayer;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LaneEditPreview &&
+      other.row == row &&
+      other.globalRow == globalRow &&
+      other.trackId == trackId &&
+      listEquals(other.trackEffects, trackEffects) &&
+      other.cameraCutId == cameraCutId &&
+      other.cameraTrack == cameraTrack &&
+      identical(other.cameraMarkerLayer, cameraMarkerLayer);
+
+  @override
+  int get hashCode => Object.hash(
+    row,
+    globalRow,
+    trackId,
+    trackEffects == null ? null : Object.hashAll(trackEffects!),
+    cameraCutId,
+    cameraTrack,
+    identityHashCode(cameraMarkerLayer),
+  );
+}
+
+/// The lane edit in flight on [preview]'s channel, or null — what the
+/// editing canvas follows ([LaneEditPreview]'s ⛔ says why only this one).
+LaneEditPreview? laneEditInFlight(TimelineDragPreview? preview) =>
+    preview is LaneEditPreview ? preview : null;
+
+/// [layers] as they show while [edit] is in flight: the edited row in its
+/// SHOWN form (a track-owned row's cut-local clone), every other row as it
+/// is. The same list back when [edit] touches none of them.
+List<Layer> layersShowingLaneEdit(List<Layer> layers, LaneEditPreview? edit) =>
+    _layersWithRow(layers, edit?.row);
+
+/// The same for a track's OWN rows (its SE rows on the global axis): the
+/// edited row in its GLOBAL form.
+List<Layer> globalLayersShowingLaneEdit(
+  List<Layer> layers,
+  LaneEditPreview? edit,
+) => _layersWithRow(layers, edit?.globalRow);
+
+List<Layer> _layersWithRow(List<Layer> layers, Layer? row) {
+  if (row == null || !layers.any((layer) => layer.id == row.id)) {
+    return layers;
+  }
+  return [
+    for (final layer in layers)
+      if (layer.id == row.id) row else layer,
+  ];
+}
+
+/// [cut] as the editing canvas shows it while [edit] is in flight — its
+/// edited row and its edited camera substituted in. Display only: the
+/// repository never sees it. [cut] itself when [edit] touches neither.
+Cut cutShowingLaneEdit(Cut cut, LaneEditPreview? edit) {
+  if (edit == null) {
+    return cut;
+  }
+  final cameraTrack = edit.cameraCutId == cut.id ? edit.cameraTrack : null;
+  final layers = layersShowingLaneEdit(cut.layers, edit);
+  if (cameraTrack == null && identical(layers, cut.layers)) {
+    return cut;
+  }
+  return cut.copyWith(
+    layers: layers,
+    camera: cameraTrack == null ? null : CutCamera.fromTrack(cameraTrack),
   );
 }
 
@@ -280,8 +414,31 @@ Layer? timelineDragPreviewLayerFor(
     // the timeline row follows the same one preview the strip renders.
     return preview.previewLayers[layerId];
   }
+  if (preview is LaneEditPreview) {
+    // The camera row's marker, as for a block move: its lanes re-derive
+    // through the session's camera track, which reads this same preview.
+    if (preview.cameraMarkerLayer?.id == layerId) {
+      return preview.cameraMarkerLayer;
+    }
+    return preview.row?.id == layerId ? preview.row : null;
+  }
   return null;
 }
+
+/// The EFFECT chain [preview] shows for [trackId]'s V row, or null when it
+/// does not touch that track — a block move carrying the chain's keys, or a
+/// lane edit of one of its values.
+List<LayerEffect>? timelineDragPreviewTrackEffectsFor(
+  TimelineDragPreview? preview,
+  TrackId trackId,
+) => switch (preview) {
+  BlockMoveDragPreview(:final previewTrackEffects) =>
+    previewTrackEffects?[trackId],
+  LaneEditPreview(trackId: final edited, :final trackEffects)
+      when edited == trackId =>
+    trackEffects,
+  _ => null,
+};
 
 /// The cells [preview] would AUTHOR on [layerId] — not there yet, and
 /// painted as such — or null where this row gains none.
@@ -315,6 +472,9 @@ Layer? timelineDragPreviewGlobalLayerFor(
   }
   if (preview is BlockMoveDragPreview) {
     return preview.previewGlobalLayers[layerId];
+  }
+  if (preview is LaneEditPreview && preview.row?.id == layerId) {
+    return preview.globalRow;
   }
   return null;
 }
@@ -416,6 +576,37 @@ Project projectWithTimelineDragPreview(
       return _projectWithLayersSubstituted(project, previewLayers);
     case MovieEndDragPreview(:final trailingFrames):
       return project.copyWith(trailingFrames: trailingFrames);
+    case final LaneEditPreview edit:
+      // The edited row, its track's chain or its cut's camera — reaching the
+      // project views the way a block move's rows and camera keys do.
+      final row = edit.row;
+      final withRow = row == null
+          ? project
+          : _projectWithLayersSubstituted(project, {row.id: row});
+      final trackId = edit.trackId;
+      final trackEffects = edit.trackEffects;
+      if (trackId != null && trackEffects != null) {
+        return withRow.copyWith(
+          tracks: [
+            for (final track in withRow.tracks)
+              if (track.id == trackId)
+                track.copyWith(effects: trackEffects)
+              else
+                track,
+          ],
+        );
+      }
+      final cutId = edit.cameraCutId;
+      final cameraTrack = edit.cameraTrack;
+      if (cutId == null || cameraTrack == null) {
+        return withRow;
+      }
+      return updateCutAnywhere(
+            withRow,
+            cutId,
+            (cut) => cut.copyWith(camera: CutCamera.fromTrack(cameraTrack)),
+          ) ??
+          withRow;
   }
 }
 

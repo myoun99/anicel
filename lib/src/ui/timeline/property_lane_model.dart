@@ -1,4 +1,4 @@
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, VoidCallback;
 
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
@@ -373,6 +373,8 @@ class PropertyLaneEditCallbacks {
   const PropertyLaneEditCallbacks({
     required this.onToggleKeyAt,
     this.onSetValue,
+    this.onPreviewValue,
+    this.onEndPreview,
   });
 
   /// Adds a key (freezing the property's current value, AE-style) or
@@ -403,6 +405,22 @@ class PropertyLaneEditCallbacks {
     String input,
   )?
   onSetValue;
+
+  /// A value being SCRUBBED: what [onSetValue] would write, to be SHOWN
+  /// while the drag lasts (F-195) — the label reads it back through the
+  /// row gate like every other panel showing the row, so it follows the
+  /// hand with the picture instead of ahead of it.
+  final void Function(
+    Layer layer,
+    PropertyLaneRow lane,
+    int frameIndex,
+    String input,
+  )?
+  onPreviewValue;
+
+  /// A scrub that went away without a release: what [onPreviewValue]
+  /// showed is dropped.
+  final VoidCallback? onEndPreview;
 }
 
 /// The folder row's aggregate band (the TVP-latest display): the UNION of
@@ -454,7 +472,17 @@ PropertyLaneRow previewedLaneRow({
   if (identical(previewLayer, row.layer)) {
     return committed;
   }
-  for (final lane in lanesForLayer(previewLayer)) {
+  return laneAsPreviewed(committed, lanesForLayer(previewLayer));
+}
+
+/// [committed] as [previewed] — the lanes re-derived from a preview — show
+/// it: the lane with its id. The storyboard's labels re-derive their own
+/// lists and take the same answer here.
+PropertyLaneRow laneAsPreviewed(
+  PropertyLaneRow committed,
+  Iterable<PropertyLaneRow> previewed,
+) {
+  for (final lane in previewed) {
     if (lane.laneId == committed.laneId) {
       return lane;
     }

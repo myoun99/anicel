@@ -110,9 +110,12 @@ class _StoryboardRailRows {
   /// timeline twin never draws.
   List<PropertyLaneRow> _seLanes(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
-    if (layer == null) {
-      return const [];
-    }
+    return layer == null ? const [] : _seLanesOf(track, layer);
+  }
+
+  /// [_seLanes] read off [layer] — the S row as committed, or as a lane edit
+  /// in flight shows it (its labels re-derive through here, F-195).
+  List<PropertyLaneRow> _seLanesOf(Track track, Layer layer) {
     return propertyLanesForRow(
       layer: layer,
       rows: track.seLayers,
@@ -618,6 +621,19 @@ class _StoryboardRailRows {
       carrier: layer,
       groupKeyOf: (lane) => laneGroupKey(layer.id, lane.laneId),
       lanes: _seLanes(track, slot),
+      // F-195: a value scrubbed here, or on the timeline's copy of this row,
+      // is shown in its GLOBAL form — the axis this rail draws.
+      follow: (_, lane, row) => TimelineDragPreviewRowGate(
+        dragPreview: _state.widget.dragPreview,
+        layer: layer,
+        useGlobalForm: true,
+        rowBuilder: (context, shown) => row(
+          shown,
+          identical(shown, layer)
+              ? lane
+              : laneAsPreviewed(lane, _seLanesOf(track, shown)),
+        ),
+      ),
       laneEdit: _state.widget.layerLaneEdit,
       onToggleGroupEnabled: onToggleEnabled == null
           ? null
@@ -772,6 +788,20 @@ class _StoryboardRailRows {
                     );
             },
             lanes: _trackEffectLanes(track),
+            // F-195: the V row's chain as an edit in flight shows it — the
+            // one function its key strips read too.
+            follow: (carrier, lane, row) => _followingTrackEffects(
+              track,
+              (previewed) => row(
+                carrier,
+                previewed == null
+                    ? lane
+                    : laneAsPreviewed(
+                        lane,
+                        _trackEffectLanes(track.copyWith(effects: previewed)),
+                      ),
+              ),
+            ),
             laneEdit: _state.widget.trackLaneEditFor?.call(track),
             onToggleGroupEnabled:
                 _state.widget.onToggleTrackEffectEnabled == null
@@ -1501,15 +1531,9 @@ class _StoryboardRailRows {
       // before 2026-08-08 because nothing could MOVE here: the lane-move path
       // looked at a track's transform and never at its effects, so the drag
       // answered "nothing to move" and refused in silence.
-      ValueListenableBuilder(
-        valueListenable:
-            _state.widget.dragPreview ??
-            const AlwaysStoppedAnimation<TimelineDragPreview?>(null),
-        builder: (context, preview, _) {
-          final previewEffects = preview is BlockMoveDragPreview
-              ? preview.previewTrackEffects
-              : null;
-          final previewed = previewEffects?[track.id];
+      _followingTrackEffects(
+        track,
+        (previewed) {
           final lanes = previewed == null
               ? _trackEffectLanes(track)
               : _trackEffectLanes(track.copyWith(effects: previewed));
@@ -1535,6 +1559,22 @@ class _StoryboardRailRows {
       ),
     ];
   }
+
+  /// [build] with [track]'s EFFECT chain as the drag channel shows it — a
+  /// key range slid along it, a value scrubbed in it — or null as
+  /// committed, rebuilt whenever the channel moves. The V row's strips and
+  /// its labels both read the chain through here, so the two cannot come to
+  /// show different chains mid-drag.
+  Widget _followingTrackEffects(
+    Track track,
+    Widget Function(List<LayerEffect>? previewed) build,
+  ) => ValueListenableBuilder<TimelineDragPreview?>(
+    valueListenable:
+        _state.widget.dragPreview ??
+        const AlwaysStoppedAnimation<TimelineDragPreview?>(null),
+    builder: (context, preview, _) =>
+        build(timelineDragPreviewTrackEffectsFor(preview, track.id)),
+  );
 
   /// One S row's lane strips, row for row with [_seLaneLabels]: CONTINUOUS
   /// rows on the slot layer's OWN track-global axis (R4b — the per-cut spans

@@ -96,6 +96,18 @@ class _StoryboardRowsAndLabels {
     /// The header's RESET (R5, AE's group Reset). Null hides the button —
     /// a header whose group has no reset route must not show one.
     void Function(PropertyLaneRow lane)? onResetGroup,
+
+    /// How a row FOLLOWS a lane edit in flight (F-195): [row] rebuilt with
+    /// the carrier and the lane as the edit shows them, whenever the edit
+    /// moves. The timeline's rail does this through its row gate; these
+    /// labels are built from lists of their own, so each list says how it
+    /// re-derives. Null shows the rows as committed.
+    Widget Function(
+      Layer carrier,
+      PropertyLaneRow lane,
+      Widget Function(Layer carrier, PropertyLaneRow lane) row,
+    )?
+    follow,
   }) {
     final laneHeight = _state._rowHeights.lane;
     final metrics = TimelineGridMetrics(
@@ -104,8 +116,8 @@ class _StoryboardRowsAndLabels {
       railColumns: layerRailColumnWidthsIn(_state.context),
     );
     final onToggleGroup = _state.widget.onToggleTransformGroup;
-    Widget row(PropertyLaneRow lane) => TimelineLaneControlsRow(
-      layer: carrier,
+    Widget row(Layer shown, PropertyLaneRow lane) => TimelineLaneControlsRow(
+      layer: shown,
       lane: lane,
       metrics: metrics,
       width: _state._naturalRailWidth,
@@ -135,7 +147,10 @@ class _StoryboardRowsAndLabels {
     // cut but the first. Either way the row SUBSCRIBES — itself, on a layer
     // of its own — so a committed seek rebuilds these label cells and lays
     // out nothing else (the timeline rail's own line).
-    return [for (final lane in lanes) row(lane)];
+    return [
+      for (final lane in lanes)
+        if (follow == null) row(carrier, lane) else follow(carrier, lane, row),
+    ];
   }
 
   Widget seLabelRow(Track track, int slot) {

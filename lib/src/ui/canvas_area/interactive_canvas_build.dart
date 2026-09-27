@@ -145,6 +145,8 @@ class _InteractiveCanvasBuild {
         : session.seEntries.seNameTagsForCutFrame(
             _activeCutForTags,
             session.currentFrameIndex,
+            // F-195: the tag follows a lane edit on its row while it moves.
+            edit: laneEditInFlight(session.dragPreview.value),
           );
     // R5 #10: WHAT IS SELECTED IS WHAT YOU CAN GRAB.
     //

@@ -134,9 +134,15 @@ List<Offset> cameraFrameCornersInViewport({
 /// manipulation handles: dragging a corner square scales the zoom around the
 /// camera center, dragging the lever knob above the top edge rotates around
 /// the center, and dragging anywhere else moves the camera. Every drag
-/// previews live and commits ONE keyframe on release via [onPoseCommitted]
-/// (one undo entry per drag). When not interactive the overlay ignores
-/// pointers so canvas panning/drawing still works below it.
+/// reports its pose per move ([onPoseChanged]) and commits ONE keyframe on
+/// release via [onPoseCommitted] (one undo entry per drag). When not
+/// interactive the overlay ignores pointers so canvas panning/drawing still
+/// works below it.
+///
+/// 🚨F-195: the frame does NOT draw its own drag. It used to paint a pose
+/// of its own while the camera lanes and everything else that reads the
+/// camera waited for the release; the host shows the dragged pose as the
+/// camera track the display reads, and hands it back as [pose].
 class CameraFrameOverlay extends StatefulWidget {
   const CameraFrameOverlay({
     super.key,
@@ -145,7 +151,9 @@ class CameraFrameOverlay extends StatefulWidget {
     required this.viewport,
     required this.dimOpacity,
     this.interactive = false,
+    this.onPoseChanged,
     this.onPoseCommitted,
+    this.onCancelled,
   });
 
   /// The app's accent, like every other thing on screen that says "this is
@@ -187,7 +195,12 @@ class CameraFrameOverlay extends StatefulWidget {
   final double dimOpacity;
 
   final bool interactive;
+  final ValueChanged<CameraPose>? onPoseChanged;
   final ValueChanged<CameraPose>? onPoseCommitted;
+
+  /// A drag went away with nothing to keep — what [onPoseChanged] showed is
+  /// to be dropped.
+  final VoidCallback? onCancelled;
 
   @override
   State<CameraFrameOverlay> createState() => _CameraFrameOverlayState();
@@ -196,7 +209,12 @@ class CameraFrameOverlay extends StatefulWidget {
 enum _CameraDragMode { move, zoom, rotate }
 
 class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
+  /// The drag's pose so far, and the pose it started from — the gesture's
+  /// own accounting, never what is painted ([CameraFrameOverlay.pose] is).
+  /// Moves accumulate here because several can arrive before the host's
+  /// next frame hands the pose back.
   CameraPose? _dragPose;
+  CameraPose? _startPose;
   _CameraDragMode _dragMode = _CameraDragMode.move;
   double _zoomStartDistance = 0;
   double _zoomStartZoom = 1;
@@ -219,10 +237,10 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
 
   static const double _touchCommitSlop = 18;
 
-  CameraPose get _displayPose => _dragPose ?? widget.pose;
+  CameraPose get _gesturePose => _dragPose ?? _startPose ?? widget.pose;
 
   Offset get _centerInViewport =>
-      cameraCenterInViewport(pose: _displayPose, viewport: widget.viewport);
+      cameraCenterInViewport(pose: _gesturePose, viewport: widget.viewport);
 
   double _pointerAngleDegrees(Offset position) {
     final fromCenter = position - _centerInViewport;
@@ -244,6 +262,8 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
     }
     final position = details.localPosition;
     final pose = widget.pose;
+    _startPose = pose;
+    _dragPose = null;
 
     final knob = cameraRotateLeverInViewport(
       pose: pose,
@@ -283,21 +303,21 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
     if (_touchDrag) {
       _touchDragDistance += details.delta.distance;
     }
-    final pose = _displayPose;
+    final pose = _gesturePose;
     switch (_dragMode) {
       case _CameraDragMode.move:
         final canvasDelta = widget.viewport.viewportDeltaToCanvasDelta(
           dx: details.delta.dx,
           dy: details.delta.dy,
         );
-        setState(() {
-          _dragPose = pose.copyWith(
+        _moveTo(
+          pose.copyWith(
             center: CanvasPoint(
               x: pose.center.x + canvasDelta.x,
               y: pose.center.y + canvasDelta.y,
             ),
-          );
-        });
+          ),
+        );
       case _CameraDragMode.zoom:
         // The corner sits at a distance ∝ 1/zoom from the center, so
         // dragging it outward zooms out and inward zooms in.
@@ -309,7 +329,7 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
           CameraFrameOverlay.minZoom,
           CameraFrameOverlay.maxZoom,
         );
-        setState(() => _dragPose = pose.copyWith(zoom: zoom));
+        _moveTo(pose.copyWith(zoom: zoom));
       case _CameraDragMode.rotate:
         // Accumulate wrapped angular deltas so the rotation stays continuous
         // across the ±180° seam and supports full extra turns (0 → 360
@@ -329,24 +349,41 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
         if (widget.viewport.flipHorizontal) {
           delta = -delta;
         }
-        setState(() {
-          _dragPose = pose.copyWith(
-            rotationDegrees: pose.rotationDegrees + delta,
-          );
-        });
+        _moveTo(pose.copyWith(rotationDegrees: pose.rotationDegrees + delta));
     }
+  }
+
+  void _moveTo(CameraPose pose) {
+    _dragPose = pose;
+    widget.onPoseChanged?.call(pose);
   }
 
   void _dragEnd() {
     final dragPose = _dragPose;
+    final start = _startPose;
     final aborted = _touchDragAborted;
     _touchDrag = false;
     _touchDragAborted = false;
     _touchDragDistance = 0;
-    setState(() => _dragPose = null);
-    if (!aborted && dragPose != null && dragPose != widget.pose) {
+    _dragPose = null;
+    _startPose = null;
+    if (!aborted && dragPose != null && dragPose != start) {
       widget.onPoseCommitted?.call(dragPose);
+    } else {
+      widget.onCancelled?.call();
     }
+  }
+
+  @override
+  void dispose() {
+    // A frame taken away mid-drag never sees its release: what it was
+    // showing is dropped once the tree settles — a notifier fired while the
+    // tree is being torn down would be too soon.
+    final cancel = widget.onCancelled;
+    if (_dragPose != null && cancel != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => cancel());
+    }
+    super.dispose();
   }
 
   /// A second finger landing during a SUB-SLOP touch drag: the pair is a
@@ -361,7 +398,8 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
         !_touchDragAborted &&
         _touchDragDistance < _touchCommitSlop) {
       _touchDragAborted = true;
-      setState(() => _dragPose = null);
+      _dragPose = null;
+      widget.onCancelled?.call();
     }
   }
 
@@ -374,7 +412,7 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
     final paint = CustomPaint(
       key: const ValueKey<String>('camera-frame-overlay'),
       painter: CameraFramePainter(
-        pose: _displayPose,
+        pose: widget.pose,
         cameraFrameSize: widget.cameraFrameSize,
         viewport: widget.viewport,
         dimOpacity: widget.dimOpacity,

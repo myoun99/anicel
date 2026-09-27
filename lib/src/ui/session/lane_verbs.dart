@@ -43,8 +43,12 @@ import '../timeline/se_name_tag_lane_policy.dart'
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, timelineDragPreviewGlobalLayerFor;
+    show
+        LaneEditPreview,
+        TimelineDragPreview,
+        timelineDragPreviewGlobalLayerFor;
 import 'active_cut_controllers.dart';
+import 'lane_edit_subject.dart';
 import 'session_roles.dart';
 import 'effects_and_fx.dart';
 
@@ -77,6 +81,7 @@ class LaneVerbs {
     required ChangeSink changes,
     required void Function(TransformTrack track, {required String description})
     updateActiveCutCameraTrack,
+    required ({Layer shown, Layer? global}) Function(Layer row) previewFormsOf,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
@@ -85,7 +90,8 @@ class LaneVerbs {
        _dragPreview = dragPreview,
        _effectsAndFx = effectsAndFx,
        _changes = changes,
-       _updateActiveCutCameraTrack = updateActiveCutCameraTrack;
+       _updateActiveCutCameraTrack = updateActiveCutCameraTrack,
+       _previewFormsOf = previewFormsOf;
 
   final EffectsAndFx _effectsAndFx;
   final ChangeSink _changes;
@@ -104,8 +110,23 @@ class LaneVerbs {
   /// holds these verbs, so naming it here would close a construction cycle
   /// (the ninth family's cure; ARCH-session-state, the fifteenth family —
   /// it was asked through `SessionInternals` before).
+  /// ↩️F-195: the camera no longer holds the lane move — its in-flight track
+  /// rides the preview channel, which the camera is handed as the notifier
+  /// itself — so that cycle is gone. The closure stays: the verbs need the
+  /// camera's one write, not the camera.
   final void Function(TransformTrack track, {required String description})
   _updateActiveCutCameraTrack;
+
+  /// What the open cut shows of a row in flight — the preview's two forms,
+  /// the pair `TrackSeDisplay.previewFormsOf` decides.
+  ///
+  /// 🚨THE FUNCTION, NOT THE OBJECT (2026-09-16, when the range move held
+  /// it). Taking the VALUE closed a construction cycle four links long —
+  /// `trackSe` builds `transitions`, `transitions` takes `camera` — and a
+  /// `TrackSeDisplay Function()` left the IMPORT, which
+  /// `no_import_cycles_test` reads as the same loop. The one method this
+  /// calls needs neither: the record it returns is made of `Layer`.
+  final ({Layer shown, Layer? global}) Function(Layer row) _previewFormsOf;
 
   /// The transform track that ALREADY holds [name] in this lane's naming
   /// space, or null when the name is free there.
@@ -365,22 +386,32 @@ class LaneVerbs {
     int frameIndex, {
     required bool frameIsGlobal,
     required String description,
-  }) => _editLaneAt(
-    layerId,
-    laneId,
-    frameIndex,
-    frameIsGlobal: frameIsGlobal,
+  }) => _commitLaneEdit(
+    _laneEditAt(
+      layerId,
+      laneId,
+      frameIndex,
+      frameIsGlobal: frameIsGlobal,
+      edits: (
+        nameTag: (tag, frame) =>
+            seNameTagWithLaneKeyToggled(tag, laneId: laneId, frameIndex: frame),
+        effects: (effects, frame) => effectsWithLaneKeyToggled(
+          effects,
+          laneId: laneId,
+          frameIndex: frame,
+        ),
+        transform: (layer, track, frame) =>
+            _transformTrackWithKeyToggled(layer, track, laneId, frame),
+      ),
+    ),
     description: description,
-    nameTag: (tag, frame) =>
-        seNameTagWithLaneKeyToggled(tag, laneId: laneId, frameIndex: frame),
-    effects: (effects, frame) =>
-        effectsWithLaneKeyToggled(effects, laneId: laneId, frameIndex: frame),
-    transform: (layer, track, frame) =>
-        _transformTrackWithKeyToggled(layer, track, laneId, frame),
   );
 
   /// A value typed or scrubbed into [laneId] of [layerId] at [frameIndex] —
   /// one undo, on the row and at the frame [toggleLaneKeyAt] takes.
+  ///
+  /// It ends a scrub: the value [previewLaneValueAt] was showing is dropped
+  /// in the same call that writes it, so no frame shows neither.
   void setLaneValueAt(
     LayerId layerId,
     String laneId,
@@ -388,12 +419,58 @@ class LaneVerbs {
     String input, {
     required bool frameIsGlobal,
     required String description,
-  }) => _editLaneAt(
-    layerId,
-    laneId,
-    frameIndex,
-    frameIsGlobal: frameIsGlobal,
+  }) => _commitLaneEdit(
+    _laneEditAt(
+      layerId,
+      laneId,
+      frameIndex,
+      frameIsGlobal: frameIsGlobal,
+      edits: _valueEdits(laneId, input),
+    ),
     description: description,
+  );
+
+  /// A value being SCRUBBED into [laneId] of [layerId] at [frameIndex]: the
+  /// edit [setLaneValueAt] would write, shown and not written (F-195).
+  ///
+  /// ⛔THE SAME EDIT, NOT A LOOK-ALIKE. It is computed by the very dispatch
+  /// the commit runs and handed to the preview channel instead of the
+  /// history, so what the drag shows is what the release keeps — the key a
+  /// value makes at the playhead included. An input that changes nothing
+  /// shows the committed row.
+  void previewLaneValueAt(
+    LayerId layerId,
+    String laneId,
+    int frameIndex,
+    String input, {
+    required bool frameIsGlobal,
+  }) => _previewLaneEdit(
+    _laneEditAt(
+      layerId,
+      laneId,
+      frameIndex,
+      frameIsGlobal: frameIsGlobal,
+      edits: _valueEdits(laneId, input),
+    ),
+  );
+
+  /// Drops a lane edit in flight without writing it — a scrub or a handle
+  /// drag cancelled. Another drag's preview is not this verb's to drop.
+  ///
+  /// A handle taken away mid-drag drops its edit a frame late (a notifier
+  /// cannot fire while the tree is torn down), and by then the whole
+  /// session may have gone with its tab: then there is nothing to drop.
+  void endLaneEditPreview() {
+    if (_internals.disposed) {
+      return;
+    }
+    if (_dragPreview.value is LaneEditPreview) {
+      _dragPreview.value = null;
+    }
+  }
+
+  /// [input] written into [laneId] — of whichever family [laneId] names.
+  _LaneEdits _valueEdits(String laneId, String input) => (
     nameTag: (tag, frame) => seNameTagWithLaneValueEdited(
       tag,
       laneId: laneId,
@@ -414,58 +491,81 @@ class LaneVerbs {
     ),
   );
 
-  /// The ONE dispatch behind [toggleLaneKeyAt] and [setLaneValueAt]: which
-  /// of a row's three keyed families [laneId] names, the row and frame to
-  /// edit it on, and the funnel that family commits through.
-  void _editLaneAt(
+  /// The ONE dispatch behind every lane verb at a frame: which of a row's
+  /// three keyed families [laneId] names, the row and frame to edit it on,
+  /// and what [edits] leaves that family at — or null when it changes
+  /// nothing. Committing it and showing it are the caller's.
+  ({Layer layer, _LaneEdit edit})? _laneEditAt(
     LayerId layerId,
     String laneId,
     int frameIndex, {
     required bool frameIsGlobal,
-    required String description,
-    required SeNameTag? Function(SeNameTag tag, int frame) nameTag,
-    required List<LayerEffect>? Function(List<LayerEffect> effects, int frame)
-    effects,
-    required TransformTrack? Function(
-      Layer layer,
-      TransformTrack track,
-      int frame,
-    )
-    transform,
+    required _LaneEdits edits,
   }) {
     final layer = laneVerbLayerFor(layerId);
     if (layer == null) {
-      return;
+      return null;
     }
     final frame = _laneVerbFrameAt(
       layerId,
       frameIndex,
       frameIsGlobal: frameIsGlobal,
     );
-    // R5 #7: the name tag is a fixed FIELD on the row, so it commits
-    // through its own funnel — not the transform track, not the chain.
+    // R5 #7: the name tag is a fixed FIELD on the row, so it lands through
+    // its own funnel — not the transform track, not the chain.
+    final _LaneEdit? edit;
     if (laneIsSeNameTag(laneId)) {
-      final next = nameTag(layer.seNameTag ?? const SeNameTag(), frame);
-      if (next != null) {
+      final next = edits.nameTag(layer.seNameTag ?? const SeNameTag(), frame);
+      edit = next == null ? null : _NameTagEdit(next);
+    } else if (parseEffectLaneId(laneId) != null) {
+      final next = edits.effects(layer.effects, frame);
+      edit = next == null ? null : _EffectsEdit(next);
+    } else {
+      final next = edits.transform(layer, _laneTransformTrackOf(layer), frame);
+      edit = next == null ? null : _TransformEdit(next);
+    }
+    return edit == null ? null : (layer: layer, edit: edit);
+  }
+
+  /// Writes [target] as one undo step — after dropping any lane edit in
+  /// flight, since this is the release that edit was showing.
+  void _commitLaneEdit(
+    ({Layer layer, _LaneEdit edit})? target, {
+    required String description,
+  }) {
+    endLaneEditPreview();
+    if (target == null) {
+      return;
+    }
+    final layer = target.layer;
+    switch (target.edit) {
+      case _NameTagEdit(:final next):
         _commitLaneSeNameTag(layer, next, description: description);
-      }
-      return;
-    }
-    if (parseEffectLaneId(laneId) != null) {
-      final next = effects(layer.effects, frame);
-      if (next != null) {
+      case _EffectsEdit(:final next):
         _commitLaneEffects(layer, next, description: description);
-      }
-      return;
-    }
-    final next = transform(layer, _laneTransformTrackOf(layer), frame);
-    if (next != null) {
-      commitTransformTrack(layer, next, description: description);
+      case _TransformEdit(:final next):
+        commitTransformTrack(layer, next, description: description);
     }
   }
 
+  /// Shows [target] on the preview channel — the committed row when it is
+  /// null.
+  void _previewLaneEdit(({Layer layer, _LaneEdit edit})? target) {
+    if (target == null) {
+      endLaneEditPreview();
+      return;
+    }
+    final layer = target.layer;
+    _dragPreview.value = switch (target.edit) {
+      _NameTagEdit(:final next) => _rowPreview(layer.copyWith(seNameTag: next)),
+      _EffectsEdit(:final next) => _laneEffectsPreview(layer, next),
+      _TransformEdit(:final next) => _laneTransformPreview(layer, next),
+    };
+  }
+
   /// A canvas handle's drag landing on [layerId]'s transform: [edit] writes
-  /// ONE key at the playhead (the AE rule), committed as one undo.
+  /// ONE key at the playhead (the AE rule), committed as one undo — and the
+  /// handle's preview dropped with it.
   ///
   /// 🚨F-102: the handles wrote the ACTIVE row back as they found it, and a
   /// track-SE row's active row is its cut-local clone — so in any cut but
@@ -477,6 +577,7 @@ class LaneVerbs {
     TransformTrack Function(TransformTrack track, int frameIndex) edit, {
     required String description,
   }) {
+    endLaneEditPreview();
     final layer = laneVerbLayerFor(layerId);
     if (layer == null) {
       return;
@@ -485,6 +586,50 @@ class LaneVerbs {
       layer,
       edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
       description: description,
+    );
+  }
+
+  /// A canvas handle mid-drag: the edit [editLayerTransformAtPlayhead]
+  /// would write at the release, shown on the preview channel (F-195) — the
+  /// same [edit] of the same track at the same frame.
+  void previewLayerTransformAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit,
+  ) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return;
+    }
+    _dragPreview.value = _laneTransformPreview(
+      layer,
+      edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
+    );
+  }
+
+  /// WHAT a lane edit on [layer] edits — the homes its three families land
+  /// in and show in, answered by the same funnels every verb here commits
+  /// and previews through. The range move asks for it ([LaneEditSubject]).
+  LaneEditSubject laneEditSubjectOf(Layer layer) {
+    final isSe = layer.kind == LayerKind.se;
+    return LaneEditSubject(
+      transformTrack: _laneTransformTrackOf(layer),
+      effects: layer.effects,
+      // The name-tag arm (C①) is armed only on SE rows: the commit verb
+      // throws elsewhere. The layer is GLOBAL for a track-SE row
+      // ([laneVerbLayerFor]), so the tag goes home as it is.
+      seNameTag: isSe ? (layer.seNameTag ?? const SeNameTag()) : null,
+      commitTransform: (next, why) =>
+          commitTransformTrack(layer, next, description: why),
+      commitEffects: (next, why) =>
+          _commitLaneEffects(layer, next, description: why),
+      commitSeNameTag: isSe
+          ? (next, why) => _commitLaneSeNameTag(layer, next, description: why)
+          : null,
+      previewTransform: (next) => _laneTransformPreview(layer, next),
+      previewEffects: (next) => _laneEffectsPreview(layer, next),
+      previewSeNameTag: isSe
+          ? (next) => _rowPreview(layer.copyWith(seNameTag: next))
+          : null,
     );
   }
 
@@ -567,6 +712,22 @@ class LaneVerbs {
     _changes.notifyChanged();
   }
 
+  /// Where [layer]'s TRANSFORM lanes live — asked ONCE for the commit and
+  /// the preview below, which switch on it exhaustively: a home added here
+  /// is a compile error in both until each says what it does there.
+  _TransformHome _transformHomeOf(Layer layer) {
+    if (layer.kind == LayerKind.camera) {
+      return _TransformHome.cutCamera;
+    }
+    // A V row's carrier has no transform to go home to any more: the row's
+    // lanes are its EFFECT chain alone, so a transform edit here would be
+    // writing where nothing reads.
+    if (trackIdOfTransformLaneCarrier(layer.id) != null) {
+      return _TransformHome.nowhere;
+    }
+    return _TransformHome.row;
+  }
+
   /// THE transform commit of a row's lanes — the camera row goes home to the
   /// cut, a V row's carrier to nowhere, every other row to its layer.
   ///
@@ -578,20 +739,41 @@ class LaneVerbs {
     TransformTrack track, {
     required String description,
   }) {
-    if (layer.kind == LayerKind.camera) {
-      _updateActiveCutCameraTrack(track, description: description);
-      return;
+    switch (_transformHomeOf(layer)) {
+      case _TransformHome.cutCamera:
+        _updateActiveCutCameraTrack(track, description: description);
+      case _TransformHome.nowhere:
+        return;
+      case _TransformHome.row:
+        // No window conversion: [laneVerbLayerFor] hands these verbs the
+        // GLOBAL layer for a track-SE row, so the track they edited is
+        // already on the axis it belongs to. Converting here would shift it
+        // twice.
+        updateLayerTransformTrack(layer.id, track, description: description);
     }
-    // A V row's carrier has no transform to go home to any more: the row's
-    // lanes are its EFFECT chain alone, so a transform commit here would be
-    // writing where nothing reads.
-    if (trackIdOfTransformLaneCarrier(layer.id) != null) {
-      return;
+  }
+
+  /// [track] on [layer] as a lane edit in flight shows it — the twin of
+  /// [commitTransformTrack], home for home. Null where it shows nothing.
+  TimelineDragPreview? _laneTransformPreview(
+    Layer layer,
+    TransformTrack track,
+  ) {
+    switch (_transformHomeOf(layer)) {
+      case _TransformHome.cutCamera:
+        final cut = _project.activeCutOrNull;
+        return cut == null
+            ? null
+            : LaneEditPreview.camera(
+                cameraCutId: cut.id,
+                cameraTrack: track,
+                cameraMarkerLayer: _project.layerById(layer.id)?.copyWith(),
+              );
+      case _TransformHome.nowhere:
+        return null;
+      case _TransformHome.row:
+        return _rowPreview(layer.copyWith(transformTrack: track));
     }
-    // No window conversion: [laneVerbLayerFor] hands these verbs the
-    // GLOBAL layer for a track-SE row, so the track they edited is already
-    // on the axis it belongs to. Converting here would shift it twice.
-    updateLayerTransformTrack(layer.id, track, description: description);
   }
 
   /// Replaces [layerId]'s transform track (the AE Transform lanes on every
@@ -643,6 +825,35 @@ class LaneVerbs {
       effects,
       description: description,
     );
+  }
+
+  /// [effects] on [layer] as a lane edit in flight shows them — the twin of
+  /// [_commitLaneEffects]: a V row's chain is its TRACK's.
+  TimelineDragPreview _laneEffectsPreview(
+    Layer layer,
+    List<LayerEffect> effects,
+  ) {
+    final carrierTrackId = trackIdOfTransformLaneCarrier(layer.id);
+    if (carrierTrackId != null) {
+      return LaneEditPreview.track(
+        trackId: carrierTrackId,
+        trackEffects: effects,
+      );
+    }
+    return _rowPreview(layer.copyWith(effects: effects));
+  }
+
+  /// [row] as an edit in flight leaves it, on its OWN axis: what the open cut
+  /// shows of it and, for a track-owned row, the track's own form.
+  ///
+  /// ⛔ONE for all three families (transform, effects, name tag). The
+  /// name-tag arm was fixed alone once (d524af02) and the other two went on
+  /// publishing the GLOBAL row into the slot that carries the cut's display
+  /// clones — so on any non-first cut every diamond of a moving track-SE row
+  /// sat a cut's start to the right for the length of the drag.
+  TimelineDragPreview _rowPreview(Layer row) {
+    final forms = _previewFormsOf(row);
+    return LaneEditPreview.row(row: forms.shown, globalRow: forms.global);
   }
 
   /// Folds [step] over [laneIds] from [start] and hands the result to
@@ -1281,4 +1492,46 @@ T? _foldedEdits<T, I>(
     result = step(result ?? start, item) ?? result;
   }
   return result;
+}
+
+/// The edits a lane verb makes of each family at a frame — null where it
+/// leaves that family alone. Which one runs is [LaneVerbs]' dispatch.
+typedef _LaneEdits = ({
+  SeNameTag? Function(SeNameTag tag, int frame) nameTag,
+  List<LayerEffect>? Function(List<LayerEffect> effects, int frame) effects,
+  TransformTrack? Function(Layer layer, TransformTrack track, int frame)
+  transform,
+});
+
+/// One lane edit's result: the family it lands in and what it leaves there
+/// — computed once, then committed or shown.
+sealed class _LaneEdit {
+  const _LaneEdit();
+}
+
+class _NameTagEdit extends _LaneEdit {
+  const _NameTagEdit(this.next);
+  final SeNameTag next;
+}
+
+class _EffectsEdit extends _LaneEdit {
+  const _EffectsEdit(this.next);
+  final List<LayerEffect> next;
+}
+
+class _TransformEdit extends _LaneEdit {
+  const _TransformEdit(this.next);
+  final TransformTrack next;
+}
+
+/// Where a row's TRANSFORM lanes live ([LaneVerbs._transformHomeOf]).
+enum _TransformHome {
+  /// The camera row's: the open cut's camera track.
+  cutCamera,
+
+  /// A V row's carrier: none since the track transform teardown.
+  nowhere,
+
+  /// Every other row's: its own.
+  row,
 }

@@ -54,11 +54,17 @@ import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import 'timeline/memo_token.dart' show ByList;
+import 'timeline/timeline_drag_preview.dart'
+    show
+        LaneEditPreview,
+        TimelineDragPreview,
+        laneEditInFlight,
+        layersShowingLaneEdit;
 import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
 import '../services/layer_pose_matrix.dart'
     show LayerPoseSample, artworkToCanvas, canvasToArtwork;
 import '../models/canvas_point.dart';
-import '../models/transform_track.dart' show TransformPose;
+import '../models/transform_track.dart' show TransformPose, TransformTrack;
 import '../models/transition_geometry.dart' show TransitionVeil;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
@@ -400,6 +406,21 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
+    // F-195: a LANE EDIT in flight redraws the canvas per step — the picture,
+    // the pen's space, the handles and the camera frame all read it. Sliced,
+    // so the channel's other drags (a block move, a comma) wake nothing here:
+    // the canvas does not follow those ([LaneEditPreview]'s ⛔ says why).
+    return SlicedValueListenableBuilder<
+      TimelineDragPreview?,
+      LaneEditPreview?
+    >(
+      valueListenable: session.dragPreview,
+      slice: laneEditInFlight,
+      builder: (context, _) => _buildFollowingSession(session),
+    );
+  }
+
+  Widget _buildFollowingSession(EditorSessionManager session) {
     return ListenableBuilder(
       // The session subscription lives HERE now (HomePage no longer
       // setStates the world). Committed seeks retarget the editing stack
@@ -716,6 +737,47 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
+  /// [layer] as the canvas shows it — the lane edit in flight on it, if one
+  /// is (F-195), so a handle stands where the picture is, not where the
+  /// release will have put it.
+  static Layer _shownRow(EditorSessionManager session, Layer layer) =>
+      layersShowingLaneEdit([
+        layer,
+      ], laneEditInFlight(session.dragPreview.value)).single;
+
+  /// A canvas handle's ONE edit, landed two ways (F-195): shown while the
+  /// handle moves, written when it lets go, dropped when it is cancelled.
+  ///
+  /// ⛔[editOf] is the SAME edit for both landings — the release keeps what
+  /// the drag showed because it is the drag's own computation, not a second
+  /// one that happens to agree.
+  ({
+    ValueChanged<T> onChanged,
+    ValueChanged<T> onCommitted,
+    VoidCallback onCancelled,
+  })
+  _handleLandings<T>(
+    EditorSessionManager session,
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) Function(
+      T value,
+    )
+    editOf, {
+    required String description,
+  }) {
+    final verbs = session.laneVerbs;
+    return (
+      onChanged: (value) =>
+          verbs.previewLayerTransformAtPlayhead(layerId, editOf(value)),
+      onCommitted: (value) => verbs.editLayerTransformAtPlayhead(
+        layerId,
+        editOf(value),
+        description: description,
+      ),
+      onCancelled: verbs.endLaneEditPreview,
+    );
+  }
+
   Positioned _anchorGizmo(
     EditorSessionManager session,
     Layer activeLayer,
@@ -724,10 +786,21 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // The handle stands where the row's value IS: for a track-SE row that is
     // the track's row at the global frame, not the cut's clone (F-102).
     final at = session.laneVerbs.laneValueSourceAt(
-      activeLayer,
+      _shownRow(session, activeLayer),
       session.currentFrameIndex,
     );
     final parent = _parentSpaceOf(session, activeLayer);
+    final landings = _handleLandings<CanvasPoint>(
+      session,
+      activeLayer.id,
+      (dropped) =>
+          (track, frameIndex) => transformTrackWithAnchorDragged(
+            track,
+            frameIndex: frameIndex,
+            anchorPoint: parent.fromCanvas(dropped),
+          ),
+      description: 'Anchor ${activeLayer.name}',
+    );
     return Positioned.fill(
       // Unwrapped like the position handle, for the same
       // reason.
@@ -737,16 +810,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           session.layerAnchorPointAtFrame(at.layer, at.frame),
         ),
         viewport: viewport,
-        onCommitted: (dropped) =>
-            session.laneVerbs.editLayerTransformAtPlayhead(
-              activeLayer.id,
-              (track, frameIndex) => transformTrackWithAnchorDragged(
-                track,
-                frameIndex: frameIndex,
-                anchorPoint: parent.fromCanvas(dropped),
-              ),
-              description: 'Anchor ${activeLayer.name}',
-            ),
+        onChanged: landings.onChanged,
+        onCommitted: landings.onCommitted,
+        onCancelled: landings.onCancelled,
       ),
     );
   }
@@ -757,10 +823,25 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasViewport viewport,
   ) {
     final at = session.laneVerbs.laneValueSourceAt(
-      activeLayer,
+      _shownRow(session, activeLayer),
       session.currentFrameIndex,
     );
     final parent = _parentSpaceOf(session, activeLayer);
+    // ONE key at the playhead per drag (AE rule, one undo) — on the row the
+    // project holds, at the playhead on its own axis. ⚠️Not on [activeLayer]
+    // as found: a track-SE row's is its cut-local clone, and writing that
+    // back erased the keys of earlier cuts (F-102).
+    final landings = _handleLandings<CanvasPoint>(
+      session,
+      activeLayer.id,
+      (dropped) =>
+          (track, frameIndex) => transformTrackWithPositionDragged(
+            track,
+            frameIndex: frameIndex,
+            position: parent.fromCanvas(dropped),
+          ),
+      description: 'Move ${activeLayer.name}',
+    );
     return Positioned.fill(
       // No cut-pose wrap: the V row's transform is gone. The
       // crosshair stands in the row's PARENT space — the canvas
@@ -771,22 +852,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           session.layerPoseAtFrame(at.layer, at.frame).center,
         ),
         viewport: viewport,
-        // ONE key at the playhead per drag (AE rule,
-        // one undo) — on the row the project holds, at
-        // the playhead on its own axis. ⚠️Not on
-        // [activeLayer] as found: a track-SE row's is its
-        // cut-local clone, and writing that back erased
-        // the keys of earlier cuts (F-102).
-        onCommitted: (dropped) =>
-            session.laneVerbs.editLayerTransformAtPlayhead(
-              activeLayer.id,
-              (track, frameIndex) => transformTrackWithPositionDragged(
-                track,
-                frameIndex: frameIndex,
-                position: parent.fromCanvas(dropped),
-              ),
-              description: 'Move ${activeLayer.name}',
-            ),
+        onChanged: landings.onChanged,
+        onCommitted: landings.onCommitted,
+        onCancelled: landings.onCancelled,
       ),
     );
   }
@@ -799,7 +867,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasViewport viewport,
   ) {
     final at = session.laneVerbs.laneValueSourceAt(
-      activeLayer,
+      _shownRow(session, activeLayer),
       session.currentFrameIndex,
     );
     final own = session.layerPoseAtFrame(at.layer, at.frame);
@@ -810,6 +878,28 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // are those less the parent's.
     final parentZoom = parent.placement?.pose.zoom ?? 1;
     final parentTurn = parent.placement?.pose.rotationDegrees ?? 0;
+    final scale = _handleLandings<double>(
+      session,
+      activeLayer.id,
+      (zoom) =>
+          (track, frameIndex) => transformTrackWithScaleDragged(
+            track,
+            frameIndex: frameIndex,
+            zoom: zoom / parentZoom,
+          ),
+      description: 'Scale ${activeLayer.name}',
+    );
+    final rotation = _handleLandings<double>(
+      session,
+      activeLayer.id,
+      (degrees) =>
+          (track, frameIndex) => transformTrackWithRotationDragged(
+            track,
+            frameIndex: frameIndex,
+            rotationDegrees: degrees - parentTurn,
+          ),
+      description: 'Rotate ${activeLayer.name}',
+    );
     return Positioned.fill(
       // R5 #10: the box frames the PICTURE, and its
       // corners scale while its rotate handle turns —
@@ -825,26 +915,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         anchorPoint: session.layerAnchorPointAtFrame(at.layer, at.frame),
         canvasSize: canvasSize,
         viewport: viewport,
-        onScaleCommitted: (zoom) =>
-            session.laneVerbs.editLayerTransformAtPlayhead(
-              activeLayer.id,
-              (track, frameIndex) => transformTrackWithScaleDragged(
-                track,
-                frameIndex: frameIndex,
-                zoom: zoom / parentZoom,
-              ),
-              description: 'Scale ${activeLayer.name}',
-            ),
-        onRotationCommitted: (degrees) =>
-            session.laneVerbs.editLayerTransformAtPlayhead(
-              activeLayer.id,
-              (track, frameIndex) => transformTrackWithRotationDragged(
-                track,
-                frameIndex: frameIndex,
-                rotationDegrees: degrees - parentTurn,
-              ),
-              description: 'Rotate ${activeLayer.name}',
-            ),
+        onScaleChanged: scale.onChanged,
+        onScaleCommitted: scale.onCommitted,
+        onRotationChanged: rotation.onChanged,
+        onRotationCommitted: rotation.onCommitted,
+        onCancelled: scale.onCancelled,
       ),
     );
   }
@@ -854,6 +929,20 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasViewport viewport,
     bool isCameraLayerActive,
   ) {
+    // The frame is dragged on the CAMERA ROW's transform — the cut's camera
+    // track — through the one handle path the layer handles take (「트랜스폼
+    // 이나 카메라나 법 하나」): one key at the playhead, shown while it moves.
+    final cameraRow = isCameraLayerActive ? session.activeLayer : null;
+    final landings = cameraRow == null
+        ? null
+        : _handleLandings<TransformPose>(
+            session,
+            cameraRow.id,
+            (pose) =>
+                (track, frameIndex) => track.withKeyframe(frameIndex, pose),
+            description:
+                'Set camera keyframe at frame ${session.currentFrameIndex + 1}',
+          );
     return Positioned.fill(
       // The cursor subscription keeps the frame gliding
       // along its animated pose during scrubs (and after
@@ -886,7 +975,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   ? widget.cameraDimOpacity.value
                   : 0,
               interactive: isCameraLayerActive,
-              onPoseCommitted: session.camera.setCameraKeyframeAtCurrentFrame,
+              onPoseChanged: landings?.onChanged,
+              onPoseCommitted: landings?.onCommitted,
+              onCancelled: landings?.onCancelled,
             );
           },
         ),

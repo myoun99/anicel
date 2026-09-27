@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/camera_instruction.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
@@ -17,7 +18,8 @@ import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'cut_under_playhead.dart';
 import 'session_roles.dart';
-import 'lane_range_move_drag.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, laneEditInFlight;
 
 /// The CAMERA — the frame size, the pose at a frame, the keyframes and the
 /// track that holds them, the instruction set and the block preview — as its
@@ -34,7 +36,7 @@ class Camera {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required LaneRangeMoveDragVerbs laneMove,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required ActiveCutEdits activeCut,
     required CutUnderPlayhead cutUnderPlayhead,
   }) : _project = project,
@@ -42,7 +44,7 @@ class Camera {
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
-       _laneMove = laneMove,
+       _dragPreview = dragPreview,
        _activeCut = activeCut,
        _cutUnderPlayhead = cutUnderPlayhead;
 
@@ -54,7 +56,7 @@ class Camera {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final LaneRangeMoveDragVerbs _laneMove;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
   CutCamera get activeCutCamera => _project.requireActiveCut.camera;
 
@@ -114,12 +116,18 @@ class Camera {
   }
 
   /// The resolved camera pose at the current playhead frame (keyframe,
-  /// interpolation, or the default pose when the cut has no camera work).
-  CameraPose get cameraPoseAtCurrentFrame => resolveCameraPoseAt(
-    camera: _project.requireActiveCut.camera,
-    canvasSize: _project.requireActiveCut.canvasSize,
-    frameIndex: _controllers.timelineController.currentFrameIndex,
-  );
+  /// interpolation, or the default pose when the cut has no camera work) —
+  /// of the track the display reads ([activeCutCameraTrack]), so the frame
+  /// on the canvas follows a camera edit while it is still in flight.
+  CameraPose get cameraPoseAtCurrentFrame {
+    final cut = _project.requireActiveCut;
+    final shown = activeCutCameraTrack;
+    return resolveCameraPoseAt(
+      camera: shown == null ? cut.camera : CutCamera.fromTrack(shown),
+      canvasSize: cut.canvasSize,
+      frameIndex: _controllers.timelineController.currentFrameIndex,
+    );
+  }
 
   /// The camera pose the canvas should FRAME right now — not always the
   /// ACTIVE cut's (㊲).
@@ -308,16 +316,25 @@ class Camera {
     return _cameraBlockPreviewTrackMemo;
   }
 
-  /// The camera track THE DISPLAY reads — the in-flight LANE-move preview,
-  /// the in-flight BLOCK-ride preview (P3b-2), or the committed track. The
-  /// lane provider, the union summary markers and the row's exposure states
-  /// all read THIS one answer (B4, 2026-08-17), so a camera key follows any
-  /// drag live instead of jumping on release — and every reader moves in
-  /// the same frame.
-  TransformTrack? get activeCutCameraTrack =>
-      _laneMove.cameraLaneTrackPreview ??
-      _cameraBlockPreviewTrack ??
-      _project.activeCutOrNull?.camera.track;
+  /// The camera track THE DISPLAY reads — the in-flight LANE edit (a value
+  /// scrubbed, the frame dragged on the canvas, a key range slid), the
+  /// in-flight BLOCK-ride preview (P3b-2), or the committed track. The lane
+  /// provider, the union summary markers, the row's exposure states and the
+  /// canvas's camera frame all read THIS one answer (B4, 2026-08-17), so a
+  /// camera key follows any drag live instead of jumping on release — and
+  /// every reader moves in the same frame.
+  ///
+  /// 🚨F-195: the camera FRAME was the reader B4 missed — it resolved the
+  /// committed camera, so dragging a camera value in its lane moved every
+  /// marker and label and left the frame where it was until the release.
+  TransformTrack? get activeCutCameraTrack {
+    final cut = _project.activeCutOrNull;
+    final edit = laneEditInFlight(_dragPreview.value);
+    if (cut != null && edit?.cameraCutId == cut.id) {
+      return edit!.cameraTrack;
+    }
+    return _cameraBlockPreviewTrack ?? cut?.camera.track;
+  }
 
   /// The in-flight camera-key preview the cell resolution consults
   /// (exposureStateForLayer): the camera row's cells follow the drag

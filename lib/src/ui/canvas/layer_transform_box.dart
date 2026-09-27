@@ -39,14 +39,18 @@ class LayerTransformBox extends StatefulWidget {
     required this.anchorPoint,
     required this.canvasSize,
     required this.viewport,
+    required this.onScaleChanged,
     required this.onScaleCommitted,
+    required this.onRotationChanged,
     required this.onRotationCommitted,
+    required this.onCancelled,
   });
 
   /// The layer's tight ink bounds in ARTWORK coordinates.
   final Rect bounds;
 
-  /// The layer's resolved pose at the playhead.
+  /// The layer's resolved pose at the playhead — mid-drag, the dragged value
+  /// as the host shows it (F-195).
   final TransformPose pose;
 
   /// The resolved anchor point (artwork coordinates); the pose turns about
@@ -56,40 +60,46 @@ class LayerTransformBox extends StatefulWidget {
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
 
-  /// The dragged zoom (1.0 = 100%), fired once on release.
+  /// The dragged zoom (1.0 = 100%), per move and then once on release.
+  final ValueChanged<double> onScaleChanged;
   final ValueChanged<double> onScaleCommitted;
 
-  /// The dragged rotation in clockwise degrees, fired once on release.
+  /// The dragged rotation in clockwise degrees, per move and then once on
+  /// release.
+  final ValueChanged<double> onRotationChanged;
   final ValueChanged<double> onRotationCommitted;
+
+  /// A grab went away without a release — what the per-move callbacks
+  /// showed is to be dropped.
+  final VoidCallback onCancelled;
 
   @override
   State<LayerTransformBox> createState() => _LayerTransformBoxState();
 }
 
 class _LayerTransformBoxState extends State<LayerTransformBox> {
-  /// The live drag, or null. Held as the FULL live value rather than a
-  /// delta so the box previews exactly what the release will commit —
-  /// same discipline the position handle's ghost follows.
+  /// The grab in flight, or null, and the value it has reached — held as
+  /// the FULL value rather than a delta, so the release commits exactly
+  /// what the last move showed.
+  ///
+  /// 🚨F-195: the box does NOT draw it. It drew its live zoom and turn over
+  /// a picture that sat still until the release; the host shows the grabbed
+  /// value as the canvas shows it and hands it back as [LayerTransformBox.
+  /// pose], so the outline and the picture move as one.
   LayerBoxGrab? _grab;
-  double? _liveZoom;
-  double? _liveRotation;
+  double? _grabbed;
 
-  /// Where the pivot was when the drag started, and the pointer's angle /
-  /// distance from it then. Captured once: the pose does not change until
-  /// release, so re-reading it mid-drag would measure against a preview.
+  /// The value the grab started from, and where the pivot was then with
+  /// the pointer's angle / distance from it. Captured once: [LayerTransformBox.
+  /// pose] is the grabbed value mid-drag, and measuring against it would
+  /// count every move twice.
+  double _start = 0;
   Offset _pivot = Offset.zero;
   double _grabAngle = 0;
   double _grabDistance = 1;
 
   static const double _handleSize = 10;
   static const double _rotateReach = 26;
-
-  /// The pose the box is DRAWN with: the live drag's, or the committed one.
-  TransformPose get _drawnPose => TransformPose(
-    center: widget.pose.center,
-    zoom: _liveZoom ?? widget.pose.zoom,
-    rotationDegrees: _liveRotation ?? widget.pose.rotationDegrees,
-  );
 
   /// An artwork point in SCREEN coordinates, through the pose and then the
   /// viewport — the same matrix every composite route uses, so the box
@@ -147,11 +157,12 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
     // Never zero: a grab exactly on the pivot would make every ratio
     // infinite, and the box would jump to nothing on the first move.
     _grabDistance = math.max(away.distance, 0.001);
-    setState(() {
-      _grab = grab;
-      _liveZoom = widget.pose.zoom;
-      _liveRotation = widget.pose.rotationDegrees;
-    });
+    _start = switch (grab) {
+      LayerBoxGrab.scale => widget.pose.zoom,
+      LayerBoxGrab.rotation => widget.pose.rotationDegrees,
+    };
+    _grab = grab;
+    _grabbed = null;
   }
 
   void _updateGrab(Offset globalPosition) {
@@ -162,51 +173,57 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
     final box = context.findRenderObject() as RenderBox?;
     final local = box == null ? globalPosition : box.globalToLocal(globalPosition);
     final away = local - _pivot;
-    setState(() {
-      switch (grab) {
-        case LayerBoxGrab.scale:
-          // Distance from the pivot scales linearly with zoom, so the
-          // ratio IS the zoom change — no need to unproject the corner.
-          final ratio = math.max(away.distance, 0.001) / _grabDistance;
-          _liveZoom = math.max(widget.pose.zoom * ratio, 0.001);
-        case LayerBoxGrab.rotation:
-          final swept = math.atan2(away.dy, away.dx) - _grabAngle;
-          _liveRotation =
-              widget.pose.rotationDegrees + swept * 180 / math.pi;
-      }
-    });
+    switch (grab) {
+      case LayerBoxGrab.scale:
+        // Distance from the pivot scales linearly with zoom, so the
+        // ratio IS the zoom change — no need to unproject the corner.
+        final ratio = math.max(away.distance, 0.001) / _grabDistance;
+        final zoom = math.max(_start * ratio, 0.001);
+        _grabbed = zoom;
+        widget.onScaleChanged(zoom);
+      case LayerBoxGrab.rotation:
+        final swept = math.atan2(away.dy, away.dx) - _grabAngle;
+        final rotation = _start + swept * 180 / math.pi;
+        _grabbed = rotation;
+        widget.onRotationChanged(rotation);
+    }
   }
 
   void _endGrab() {
     final grab = _grab;
-    final zoom = _liveZoom;
-    final rotation = _liveRotation;
-    setState(() {
-      _grab = null;
-      _liveZoom = null;
-      _liveRotation = null;
-    });
-    if (grab == null) {
+    final grabbed = _grabbed;
+    _grab = null;
+    _grabbed = null;
+    // ONE member per drag — the one the handle names (R5 #10).
+    if (grab == null || grabbed == null || grabbed == _start) {
+      widget.onCancelled();
       return;
     }
-    // ONE member per drag — the one the handle names (R5 #10).
     switch (grab) {
       case LayerBoxGrab.scale:
-        if (zoom != null && zoom != widget.pose.zoom) {
-          widget.onScaleCommitted(zoom);
-        }
+        widget.onScaleCommitted(grabbed);
       case LayerBoxGrab.rotation:
-        if (rotation != null && rotation != widget.pose.rotationDegrees) {
-          widget.onRotationCommitted(rotation);
-        }
+        widget.onRotationCommitted(grabbed);
     }
   }
 
-  void _cancelGrab() => setState(() {
+  void _cancelGrab() {
     _grab = null;
-    _liveZoom = null;
-    _liveRotation = null;
-  });
+    _grabbed = null;
+    widget.onCancelled();
+  }
+
+  @override
+  void dispose() {
+    // A box taken away mid-grab never sees its release: what it was showing
+    // is dropped once the tree settles — a notifier fired while the tree is
+    // being torn down would be too soon.
+    if (_grab != null) {
+      final cancel = widget.onCancelled;
+      WidgetsBinding.instance.addPostFrameCallback((_) => cancel());
+    }
+    super.dispose();
+  }
 
   Widget _handle({
     required String keyValue,
@@ -266,7 +283,7 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
 
   @override
   Widget build(BuildContext context) {
-    final pose = _drawnPose;
+    final pose = widget.pose;
     final corners = _corners(pose);
     final rotate = _rotateHandle(pose);
     return Stack(

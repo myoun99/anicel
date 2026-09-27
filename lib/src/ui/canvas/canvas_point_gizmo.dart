@@ -52,15 +52,24 @@ enum HandleGlyph {
   final double tickOuter;
 }
 
-/// The on-canvas point-drag gizmo: a handle at a point in canvas space that
-/// ghosts along with the drag and fires [onCommitted] ONCE on release, with
-/// the screen delta mapped back through the viewport.
+/// The on-canvas point-drag gizmo: a handle at a point in canvas space whose
+/// drag reports the dragged point per move ([onChanged]) and ONCE on
+/// release ([onCommitted]), the screen delta mapped back through the
+/// viewport.
+///
+/// 🚨F-195 (유저 2026-09-27 「캔버스에서 편집이든 … 실시간으로 화면에
+/// 보이도록」): the handle does NOT draw its own drag. It used to ghost along
+/// on an offset of its own while the picture it moves sat still until the
+/// release. The host shows the dragged value as the canvas shows it and
+/// hands it back as [point], so the handle and the picture move as one; the
+/// drag keeps only what a gesture must — where it started and how far it
+/// has gone.
 ///
 /// Position wears [HandleGlyph.crosshair] at the active layer's posed
-/// center. Dragging it moves the layer's Position — the handle ghosts along
-/// during the drag and the release commits ONE key at the playhead (AE
-/// semantics, one undo). Shown only while the layer's Transform lanes are
-/// twirled open, so the handle never sits in the way of ordinary drawing.
+/// center. Dragging it moves the layer's Position and the release commits
+/// ONE key at the playhead (AE semantics, one undo). Shown only while the
+/// layer's Transform lanes are twirled open, so the handle never sits in
+/// the way of ordinary drawing.
 ///
 /// The ANCHOR POINT (R5 #10) wears [HandleGlyph.anchor] at the layer's
 /// resolved anchor, dragged to place the point scale and rotation turn
@@ -78,70 +87,119 @@ class CanvasPointGizmo extends StatefulWidget {
     required this.point,
     required this.viewport,
     required this.glyph,
+    required this.onChanged,
     required this.onCommitted,
+    required this.onCancelled,
   });
 
   /// The point the handle sits on, resolved at the playhead (the identity
   /// pose's centre or the canvas centre while the lane is unkeyed —
-  /// dragging then creates the first key).
+  /// dragging then creates the first key) — mid-drag, the dragged value as
+  /// the host shows it.
   final CanvasPoint point;
 
   final CanvasViewport viewport;
 
   final HandleGlyph glyph;
 
+  /// The dragged point in canvas coordinates, per move.
+  final ValueChanged<CanvasPoint> onChanged;
+
   /// The dragged point in canvas coordinates, fired once on release.
   final ValueChanged<CanvasPoint> onCommitted;
+
+  /// The drag went away without a release — what [onChanged] showed is to
+  /// be dropped.
+  final VoidCallback onCancelled;
 
   @override
   State<CanvasPointGizmo> createState() => _CanvasPointGizmoState();
 }
 
 class _CanvasPointGizmoState extends State<CanvasPointGizmo> {
+  /// Where the drag started, in canvas space. Captured once: [point] is the
+  /// dragged value mid-drag, and measuring against it would count every
+  /// move twice.
+  CanvasPoint? _origin;
+
+  /// How far the pointer has gone, on screen.
   Offset _dragDelta = Offset.zero;
-  bool _dragging = false;
 
   Offset get _screenPoint {
     final mapped = widget.viewport.canvasToViewport(widget.point);
     return Offset(mapped.x, mapped.y);
   }
 
-  void _endDrag() {
+  CanvasPoint get _dragged {
+    final origin = _origin ?? widget.point;
     final canvasDelta = widget.viewport.viewportDeltaToCanvasDelta(
       dx: _dragDelta.dx,
       dy: _dragDelta.dy,
     );
-    final committed = CanvasPoint(
-      x: widget.point.x + canvasDelta.x,
-      y: widget.point.y + canvasDelta.y,
+    return CanvasPoint(
+      x: origin.x + canvasDelta.x,
+      y: origin.y + canvasDelta.y,
     );
+  }
+
+  void _startDrag() => setState(() {
+    _origin = widget.point;
+    _dragDelta = Offset.zero;
+  });
+
+  void _moveDrag(Offset delta) {
+    _dragDelta += delta;
+    widget.onChanged(_dragged);
+  }
+
+  void _endDrag() {
     final moved = _dragDelta != Offset.zero;
+    final dragged = _dragged;
     setState(() {
-      _dragging = false;
+      _origin = null;
       _dragDelta = Offset.zero;
     });
     if (moved) {
-      widget.onCommitted(committed);
+      widget.onCommitted(dragged);
+    } else {
+      widget.onCancelled();
     }
+  }
+
+  void _cancelDrag() {
+    setState(() {
+      _origin = null;
+      _dragDelta = Offset.zero;
+    });
+    widget.onCancelled();
+  }
+
+  @override
+  void dispose() {
+    // A handle taken away mid-drag (the row changed under it) never sees
+    // its release: what it was showing is dropped once the tree settles —
+    // a notifier fired while the tree is being torn down would be too soon.
+    if (_origin != null) {
+      final cancel = widget.onCancelled;
+      WidgetsBinding.instance.addPostFrameCallback((_) => cancel());
+    }
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => _gizmoHandle(
     key: ValueKey<String>(widget.glyph.key),
-    center: _screenPoint + _dragDelta,
+    center: _screenPoint,
     handleSize: widget.glyph.handleSize,
     painter: _HandlePainter(
       glyph: widget.glyph,
       color: AppColors.accent,
-      active: _dragging,
+      active: _origin != null,
     ),
-    onDragStart: () => setState(() => _dragging = true),
-    onDragDelta: (delta) => setState(() => _dragDelta += delta),
+    onDragStart: _startDrag,
+    onDragDelta: _moveDrag,
     onDragEnd: _endDrag,
-    onDragCancel: () => setState(() {
-      _dragging = false;
-      _dragDelta = Offset.zero;
-    }),
+    onDragCancel: _cancelDrag,
   );
 }
 

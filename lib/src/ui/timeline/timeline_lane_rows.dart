@@ -208,6 +208,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   @override
   void dispose() {
     _disposeValueControllers();
+    // A label taken away mid-scrub (its row folded under it) never sees the
+    // release: what it was showing is dropped once the tree settles — a
+    // notifier fired while the tree is being torn down would be too soon.
+    final endPreview = widget.laneEdit?.onEndPreview;
+    if (_scrubbed != null && endPreview != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => endPreview());
+    }
     super.dispose();
   }
 
@@ -250,15 +257,25 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   // AE-style value scrubbing: the drag's TOTAL delta (positions against
   // the pointer-down origin — slop never eats into the value) maps the
-  // label captured at the start; a live preview repaints only this row and
-  // the release commits ONCE through the normal onSetValue path — one undo.
+  // label captured at the start, and the release commits ONCE through the
+  // normal onSetValue path — one undo.
+  //
+  // 🚨F-195 (유저 2026-09-27 「레이어에서 값편집이든 … 실시간으로 화면에
+  // 보이도록」): each step is SHOWN through the host's preview, not here.
+  // This row used to print the scrubbed text on its own while the picture,
+  // the handles and every other panel's copy of the value waited for the
+  // release; now the value in flight is the session's, and this label reads
+  // it back through the row gate like everything else that shows the row.
+  // What stays is the gesture's own accounting — where it started, and the
+  // last value it reached, for the release to write.
   String? _scrubBaseLabel;
   Offset? _scrubOrigin;
-  String? _scrubPreview;
+  String? _scrubbed;
 
   void _startScrub(Offset globalPosition, String currentLabel) {
     _scrubBaseLabel = currentLabel;
     _scrubOrigin = globalPosition;
+    _scrubbed = null;
   }
 
   void _updateScrub(Offset globalPosition) {
@@ -268,35 +285,32 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (base == null || origin == null || scrub == null) {
       return;
     }
-    final preview = scrub(base, globalPosition - origin);
-    if (preview != null) {
-      setState(() => _scrubPreview = preview);
+    final value = scrub(base, globalPosition - origin);
+    // A move inside one step of the value changes nothing to show.
+    if (value == null || value == _scrubbed) {
+      return;
     }
+    _scrubbed = value;
+    widget.laneEdit?.onPreviewValue?.call(layer, lane, _frame, value);
   }
 
   void _endScrub() {
-    final preview = _scrubPreview;
-    setState(() {
-      _scrubPreview = null;
-      _scrubBaseLabel = null;
-      _scrubOrigin = null;
-    });
-    if (preview != null) {
-      widget.laneEdit?.onSetValue?.call(
-        layer,
-        lane,
-        _frame,
-        preview,
-      );
+    final value = _scrubbed;
+    _scrubBaseLabel = null;
+    _scrubOrigin = null;
+    _scrubbed = null;
+    if (value != null) {
+      widget.laneEdit?.onSetValue?.call(layer, lane, _frame, value);
+    } else {
+      widget.laneEdit?.onEndPreview?.call();
     }
   }
 
   void _cancelScrub() {
-    setState(() {
-      _scrubPreview = null;
-      _scrubBaseLabel = null;
-      _scrubOrigin = null;
-    });
+    _scrubBaseLabel = null;
+    _scrubOrigin = null;
+    _scrubbed = null;
+    widget.laneEdit?.onEndPreview?.call();
   }
 
   void _commitValueEdit() {
@@ -565,7 +579,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // AE's blue value.
           child: widget.axis == Axis.horizontal
               ? Text(
-                  _scrubPreview ?? valueLabel,
+                  valueLabel,
                   maxLines: 1,
                   softWrap: false,
                   overflow: TextOverflow.ellipsis,
@@ -574,7 +588,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                     color: colorScheme.primary,
                   ),
                 )
-              : _stackedValue(_scrubPreview ?? valueLabel, colorScheme),
+              : _stackedValue(valueLabel, colorScheme),
         ),
       ),
     );
