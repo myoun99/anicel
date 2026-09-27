@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'dart:collection';
 
 import '../../models/layer_id.dart';
@@ -37,6 +39,7 @@ class FrameRangeMoveDragVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required RowSpans rowSpans,
     required DrawingBlockMoveDragVerbs blockMove,
     required RenderCaches renderCaches,
@@ -51,6 +54,7 @@ class FrameRangeMoveDragVerbs {
          changes: changes,
          controllers: controllers,
          internals: internals,
+         dragPreview: dragPreview,
          blockMove: blockMove,
          renderCaches: renderCaches,
          camera: camera,

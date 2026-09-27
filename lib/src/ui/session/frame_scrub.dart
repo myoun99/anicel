@@ -29,6 +29,7 @@ class FrameScrub {
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required ValueNotifier<int> editingFrameCursor,
     required PlaybackRig playbackRig,
   }) : _project = project,
        _selection = selection,
@@ -36,6 +37,7 @@ class FrameScrub {
        _timeline = timeline,
        _controllers = controllers,
        _internals = internals,
+       _editingFrameCursor = editingFrameCursor,
        _playbackRig = playbackRig;
 
   final ProjectAccess _project;
@@ -44,6 +46,7 @@ class FrameScrub {
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final ValueNotifier<int> _editingFrameCursor;
   final PlaybackRig _playbackRig;
 
   /// True while a ruler scrub is in flight.
@@ -176,7 +179,7 @@ class FrameScrub {
     }
     if (frameIndex != _controllers.timelineController.currentFrameIndex) {
       _controllers.timelineController.selectFrameIndex(frameIndex);
-      _internals.editingFrameCursor.value = frameIndex;
+      _editingFrameCursor.value = frameIndex;
       // Each crossed frame plays its slice of the mix (2D audio scrub).
       _playbackRig.audioScrubber.onScrubFrame(frameIndex);
       if (!active.value) {
@@ -186,7 +189,7 @@ class FrameScrub {
         _changes.warmActiveCut();
       }
     } else {
-      _internals.editingFrameCursor.value = frameIndex;
+      _editingFrameCursor.value = frameIndex;
     }
   }
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/transform_track.dart';
@@ -42,7 +43,7 @@ import '../timeline/se_name_tag_lane_policy.dart'
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
 import '../timeline/timeline_drag_preview.dart'
-    show timelineDragPreviewGlobalLayerFor;
+    show TimelineDragPreview, timelineDragPreviewGlobalLayerFor;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'effects_and_fx.dart';
@@ -71,6 +72,7 @@ class LaneVerbs {
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required EffectsAndFx effectsAndFx,
     required ChangeSink changes,
     required void Function(TransformTrack track, {required String description})
@@ -80,6 +82,7 @@ class LaneVerbs {
        _timeline = timeline,
        _controllers = controllers,
        _internals = internals,
+       _dragPreview = dragPreview,
        _effectsAndFx = effectsAndFx,
        _changes = changes,
        _updateActiveCutCameraTrack = updateActiveCutCameraTrack;
@@ -92,6 +95,7 @@ class LaneVerbs {
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
   /// `Camera.updateActiveCutCameraTrack` — the camera row's lanes go home to
   /// the CUT, not to a layer.
@@ -329,7 +333,7 @@ class LaneVerbs {
   ({Layer layer, int frame}) laneValueSourceAt(Layer shown, int frameIndex) {
     final global = _project.isTrackSeLayerId(shown.id)
         ? timelineDragPreviewGlobalLayerFor(
-                _internals.dragPreview.value,
+                _dragPreview.value,
                 shown.id,
               ) ??
               _project.trackSeGlobalLayerById(shown.id)

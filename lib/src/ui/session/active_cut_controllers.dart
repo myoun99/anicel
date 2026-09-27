@@ -14,6 +14,7 @@
 // that reached back out for them could not be built at all. They arrive
 // as [onRebuilt].
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'dart:math' as math;
 
 import '../../controllers/layer_controller.dart';
@@ -30,7 +31,7 @@ class ActiveCutControllers {
     required ProjectAccess project,
     required SelectionAccess selection,
     required TimelineAccess timeline,
-    required SessionInternals internals,
+    required ValueNotifier<int> editingFrameCursor,
     required int Function() playbackFrameCount,
     required bool Function(LayerId? layerId) activeCutHasLayer,
     required List<Layer> Function() trackSeDisplayLayers,
@@ -39,7 +40,7 @@ class ActiveCutControllers {
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
-       _internals = internals,
+       _editingFrameCursor = editingFrameCursor,
        _playbackFrameCount = playbackFrameCount,
        _activeCutHasLayer = activeCutHasLayer,
        _trackSeDisplayLayers = trackSeDisplayLayers,
@@ -49,7 +50,7 @@ class ActiveCutControllers {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final TimelineAccess _timeline;
-  final SessionInternals _internals;
+  final ValueNotifier<int> _editingFrameCursor;
   final int Function() _playbackFrameCount;
 
   /// `ActiveCutSpan.activeCutHasLayer`, asked LAZILY for the reason the
@@ -101,7 +102,7 @@ class ActiveCutControllers {
       frameOffsetForLayer: _project.rowAxisOffset,
       trackSeLayers: () => _selection.activeTrack.seLayers,
     );
-    _internals.editingFrameCursor.value = timelineController.currentFrameIndex;
+    _editingFrameCursor.value = timelineController.currentFrameIndex;
     _onRebuilt();
   }
 }

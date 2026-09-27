@@ -154,7 +154,13 @@ const _mayNameTheSession = <String, String>{
 /// camera write — `Camera`'s own — comes in as a closure (the camera holds
 /// the lane move, which holds the verbs). The session's camera forwarder
 /// went with it; tests name `session.camera` and `session.laneVerbs`.
-const _sessionInternalsMembers = 11;
+/// 11 → 9 (same day, the sixteenth family): the two notifiers — the drag
+/// preview channel and the editing frame cursor — are SIBLINGS, plain
+/// objects the session owns, and every collaborator that published on them
+/// takes the notifier itself by constructor (the edge and range-move drags
+/// through their roles records). The active cut's controllers, the cut
+/// move, the movie-end drag and the lane move name no internals now.
+const _sessionInternalsMembers = 9;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

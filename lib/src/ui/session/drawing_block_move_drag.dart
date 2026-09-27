@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'drags/drawing_block_move_drag.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -23,12 +25,14 @@ class DrawingBlockMoveDragVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required FoldersAndAttachments folders,
     required RenderCaches renderCaches,
   }) : _project = project,
        _changes = changes,
        _controllers = controllers,
        _internals = internals,
+       _dragPreview = dragPreview,
        _folders = folders,
        _renderCaches = renderCaches;
 
@@ -36,6 +40,7 @@ class DrawingBlockMoveDragVerbs {
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final FoldersAndAttachments _folders;
   final RenderCaches _renderCaches;
 
@@ -63,7 +68,7 @@ class DrawingBlockMoveDragVerbs {
       noticeIneligible: _folders.noticeSyncedAttachRefusal,
       bankOf: _controllers.timelineController.bankLanesOf,
       cutFrameCount: () => _project.activeCutFrameCount,
-      preview: _internals.dragPreview,
+      preview: _dragPreview,
       land: _landDrawingBlockMove,
     );
     if (drag == null) {
@@ -94,7 +99,7 @@ class DrawingBlockMoveDragVerbs {
   }
 
   /// Applies the drag's cumulative deltas as a live preview on
-  /// [_internals.dragPreview] (repository untouched). [targetLayerId] is the layer row
+  /// [_dragPreview] (repository untouched). [targetLayerId] is the layer row
   /// currently under the pointer (null or the source id = plain slide).
   /// Blocks in the way are pushed in the direction of travel (R12-②) and
   /// ride the preview live; the rare still-illegal landing (mark collision,

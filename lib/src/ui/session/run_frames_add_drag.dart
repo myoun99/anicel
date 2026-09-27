@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'drags/run_frames_add_drag.dart';
 import '../../models/layer_id.dart';
 import 'active_cut_controllers.dart';
@@ -15,15 +17,18 @@ class RunFramesAddDragVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _changes = changes,
        _controllers = controllers,
-       _internals = internals;
+       _internals = internals,
+       _dragPreview = dragPreview;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
   /// The in-flight "+ add frames" drag ([RunFramesAddDrag]), or null. The
   /// deterministic id reservation that keeps preview == commit lives on
@@ -44,7 +49,7 @@ class RunFramesAddDragVerbs {
       blockMoveEligible: _internals.blockMoveEligible,
       layerById: _project.layerById,
       activeCutFrameCount: () => _project.activeCutFrameCount,
-      preview: _internals.dragPreview,
+      preview: _dragPreview,
       commitLayerDrag: ({required before, required after}) {
         _controllers.timelineController.commitLayerTimelineDrag(
           before: before,

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'drags/lane_range_move_drag.dart';
 import '../../models/layer.dart';
 import '../../models/transform_track.dart';
@@ -24,14 +25,14 @@ class LaneRangeMoveDragVerbs {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required LaneVerbs laneVerbs,
     required EffectsAndFx effectsAndFx,
     required ({Layer shown, Layer? global}) Function(Layer row) previewFormsOf,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _internals = internals,
+       _dragPreview = dragPreview,
        _laneVerbs = laneVerbs,
        _effectsAndFx = effectsAndFx,
        _previewFormsOf = previewFormsOf;
@@ -41,7 +42,7 @@ class LaneRangeMoveDragVerbs {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final LaneVerbs _laneVerbs;
 
   /// What the open cut shows of a row — the preview's two forms, the pair
@@ -209,7 +210,7 @@ class LaneRangeMoveDragVerbs {
       selection: selection,
       subject: subject,
       laneVerbTargets: _laneVerbs.laneVerbTargets,
-      preview: _internals.dragPreview,
+      preview: _dragPreview,
       selectionChannel: _selection.laneRangeSelection,
       clearCameraPreview: () => _cameraLaneTrackPreview = null,
     );
@@ -222,7 +223,7 @@ class LaneRangeMoveDragVerbs {
 
   /// A lane-move drag step: shifts EVERY spanned lane's ranged keys by
   /// [frameDelta] (R26 #3 — one rigid group, all-or-nothing across lanes)
-  /// and previews via [_internals.dragPreview]. A blocked landing HOLDS the last valid
+  /// and previews via [_dragPreview]. A blocked landing HOLDS the last valid
   /// preview (UI-R23 #10 — no snap-back).
   void updateLaneRangeMoveDrag({required int frameDelta}) =>
       _laneMoveDrag?.update(frameDelta: frameDelta);

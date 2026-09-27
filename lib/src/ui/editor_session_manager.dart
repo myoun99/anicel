@@ -610,7 +610,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     timeline: this,
-    internals: this,
+    editingFrameCursor: editingFrameCursor,
     playbackFrameCount: () => activeCutSpan.activeCutPlaybackFrameCount,
     activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId),
     trackSeDisplayLayers: () => trackSe.trackSeDisplayLayers,
@@ -1676,6 +1676,7 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     effectsAndFx: effectsAndFx,
     internals: this,
+    dragPreview: dragPreview,
     changes: this,
     // Lazily: the camera holds the lane move, which holds these verbs.
     updateActiveCutCameraTrack: (track, {required description}) =>
@@ -2129,6 +2130,7 @@ class EditorSessionManager extends ChangeNotifier
     transitions: transitions,
     exposureVerbs: exposureVerbs,
     internals: this,
+    dragPreview: dragPreview,
   );
 
   // --- Media import (R3b): stills, GIF sequences, cut folders -------------
@@ -2317,7 +2319,6 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The scoped edit-drag preview channel (exposure commas + cut trims).
   /// Value-only: per-step updates never fire a session notify.
-  @override
   final ValueNotifier<TimelineDragPreview?> dragPreview =
       ValueNotifier<TimelineDragPreview?>(null);
 
@@ -2336,7 +2337,7 @@ class EditorSessionManager extends ChangeNotifier
   late final MovieEndDragVerbs movieEnd = MovieEndDragVerbs(
     project: this,
     changes: this,
-    internals: this,
+    dragPreview: dragPreview,
   );
 
   // --- Storyboard cut RANGE selection (UI-R18 #1, O2c) ----------------------
@@ -2381,7 +2382,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     storyboardRows: storyboardRows,
-    internals: this,
+    dragPreview: dragPreview,
   );
 
   // --- Whole-block move drags (R10-④b) --------------------------------------
@@ -2670,7 +2671,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     laneVerbs: laneVerbs,
     effectsAndFx: effectsAndFx,
-    internals: this,
+    dragPreview: dragPreview,
     previewFormsOf: (row) => trackSe.previewFormsOf(row),
   );
 
@@ -2713,7 +2714,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/drawing_block_move_drag.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, internals: this);
+  late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, internals: this, dragPreview: dragPreview);
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
 
@@ -2738,6 +2739,7 @@ class EditorSessionManager extends ChangeNotifier
     transitions: transitions,
     trackSe: trackSe,
     internals: this,
+    dragPreview: dragPreview,
     renderCaches: renderCaches,
   );
 
@@ -2766,6 +2768,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     controllers: activeCutControllers,
     internals: this,
+    dragPreview: dragPreview,
   );
 
   // --- Run-edge properties (UI-R9 #10 N/H/R tags) ----------------------------
@@ -3287,6 +3290,7 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     controllers: activeCutControllers,
     internals: this,
+    editingFrameCursor: editingFrameCursor,
     playbackRig: playbackRig,
   );
 
@@ -3400,7 +3404,6 @@ class EditorSessionManager extends ChangeNotifier
   /// included — lands here, so cursor-driven widgets (timeline cursor
   /// layer, frame counter, the canvas scrub preview) follow pointer-fast
   /// without a session notify rebuilding the tree.
-  @override
   final ValueNotifier<int> editingFrameCursor = ValueNotifier<int>(0);
 
   /// Bumped once per committed seek ([selectFrameIndex]) — a serial, not a

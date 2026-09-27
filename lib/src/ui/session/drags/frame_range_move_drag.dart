@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'dart:collection' show SplayTreeMap;
 
 import '../../../models/camera_instruction.dart';
@@ -323,6 +324,7 @@ typedef FrameRangeMoveRoles = ({
   ChangeSink changes,
   ActiveCutControllers controllers,
   SessionInternals internals,
+  ValueNotifier<TimelineDragPreview?> dragPreview,
   DrawingBlockMoveDragVerbs blockMove,
   RenderCaches renderCaches,
   Camera camera,
@@ -366,6 +368,7 @@ class FrameRangeMoveDrag {
        _changes = roles.changes,
        _controllers = roles.controllers,
        _internals = roles.internals,
+       _dragPreview = roles.dragPreview,
        _blockMove = roles.blockMove,
        _renderCaches = roles.renderCaches,
        _camera = roles.camera,
@@ -584,6 +587,7 @@ class FrameRangeMoveDrag {
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final DrawingBlockMoveDragVerbs _blockMove;
   final RenderCaches _renderCaches;
   final Camera _camera;
@@ -793,7 +797,7 @@ class FrameRangeMoveDrag {
       // the cross-row drop live through the same one gate.
       final sourceForms = _trackSe.previewFormsOf(plan.sourceAfter);
       final targetForms = _trackSe.previewFormsOf(plan.targetAfter);
-      _internals.dragPreview.value = BlockMoveDragPreview(
+      _dragPreview.value = BlockMoveDragPreview(
         previewLayers: {
           selection.layerId: sourceForms.shown,
           targetLayerId: targetForms.shown,
@@ -830,7 +834,7 @@ class FrameRangeMoveDrag {
       }
       _directionRowChange = (plan: plan, source: sourceLayer);
       final frames = _project.activeCutFrameCount;
-      _internals.dragPreview.value = BlockMoveDragPreview(
+      _dragPreview.value = BlockMoveDragPreview(
         previewLayers: {
           selection.layerId: rederiveRunBehaviors(
             plan.sourceAfter,
@@ -1316,7 +1320,7 @@ class FrameRangeMoveDrag {
       },
       ..._transitionPreviewForms(instructionShifted),
     };
-    _internals.dragPreview.value = BlockMoveDragPreview(
+    _dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
         if (plan != null)
           for (final entry in plan.layersAfter.entries)
@@ -1443,7 +1447,7 @@ class FrameRangeMoveDrag {
   /// cannot do by dying.
   void _dropPreviewChannels() {
     _camera.showCameraKeysDragPreview(null);
-    _internals.dragPreview.value = null;
+    _dragPreview.value = null;
   }
 
   /// A range-moved TRANSITION row's in-flight forms, in the track-SE rows'
@@ -1470,7 +1474,7 @@ class FrameRangeMoveDrag {
   };
 
   /// A range-move drag step: live preview on
-  /// [SessionInternals.dragPreview] (repository untouched), the selection
+  /// the session's `dragPreview` (repository untouched), the selection
   /// outline riding the previewed landing.
   void update({required int frameDelta, LayerId? targetLayerId}) {
     final selection = _selectionBefore;
@@ -1551,7 +1555,7 @@ class FrameRangeMoveDrag {
     int groupStart,
   ) {
     _plan = plan;
-    _internals.dragPreview.value = BlockMoveDragPreview(
+    _dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
         plan.sourceAfter.id: rederiveRunBehaviors(
           plan.sourceAfter,
@@ -1710,7 +1714,7 @@ class FrameRangeMoveDrag {
         previewGlobalLayers[entry.key] = global;
       }
     }
-    _internals.dragPreview.value = BlockMoveDragPreview(
+    _dragPreview.value = BlockMoveDragPreview(
       previewLayers: previewLayers,
       previewGlobalLayers: previewGlobalLayers,
       cameraCutId: cameraShifted == null ? null : _project.activeCutOrNull?.id,

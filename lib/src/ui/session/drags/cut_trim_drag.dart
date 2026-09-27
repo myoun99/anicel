@@ -166,7 +166,7 @@ sealed class CutTrimDrag implements EditorDragSession {
 
   /// What the release would commit; null while the drag has not left its
   /// frame. Fields, never the preview channel: a consumer clearing
-  /// [SessionInternals.dragPreview] mid-drag must not void the commit.
+  /// the session's `dragPreview` mid-drag must not void the commit.
   CutTrimResult? _after;
 
   /// The durations and gaps this edge resolves [cumulativeDelta] to. The
@@ -183,7 +183,7 @@ sealed class CutTrimDrag implements EditorDragSession {
   ) => const [];
 
   /// Applies the drag's cumulative frame delta as a live preview on
-  /// [SessionInternals.dragPreview] (the repository is NOT touched).
+  /// the session's `dragPreview` (the repository is NOT touched).
   @override
   void update(int cumulativeDelta) {
     final planned = _plan(cumulativeDelta);
@@ -206,7 +206,7 @@ sealed class CutTrimDrag implements EditorDragSession {
           )
         : null;
     _after = after;
-    _roles.internals.dragPreview.value = after == null
+    _roles.dragPreview.value = after == null
         ? null
         : CutTrimDragPreview(
             previewDurations: after.durations,
@@ -222,7 +222,7 @@ sealed class CutTrimDrag implements EditorDragSession {
   @override
   void commit() {
     final after = _after;
-    _roles.internals.dragPreview.value = null;
+    _roles.dragPreview.value = null;
     if (after == null) {
       return;
     }
@@ -280,7 +280,7 @@ sealed class CutTrimDrag implements EditorDragSession {
   /// repository was never written during the drag).
   @override
   void cancel() {
-    _roles.internals.dragPreview.value = null;
+    _roles.dragPreview.value = null;
   }
 
   /// The storyboard-row rewrites a duration change owes, one per resized cut

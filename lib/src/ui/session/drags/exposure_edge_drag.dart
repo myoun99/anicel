@@ -459,7 +459,7 @@ class ExposureEdgeDrag implements EditorDragSession {
   ({List<({Layer before, Layer after})> edits, CutResize? resize})? _result;
 
   /// Applies the drag's current cumulative frame delta as a live preview on
-  /// [SessionInternals.dragPreview] — the repository is NOT touched.
+  /// the session's `dragPreview` — the repository is NOT touched.
   @override
   void update(int cumulativeDelta) {
     // Bulk selection retime (UI-R17 #3/#8): the edge delta becomes a LENGTH
@@ -479,7 +479,7 @@ class ExposureEdgeDrag implements EditorDragSession {
     // fake test clock.
     if (after == _before) {
       _result = null;
-      _roles.internals.dragPreview.value = null;
+      _roles.dragPreview.value = null;
       return;
     }
     // A storyboard row's comma moves its cut's end with it (feedback #9):
@@ -487,7 +487,7 @@ class ExposureEdgeDrag implements EditorDragSession {
     final resize = _cutSyncResizeFor(after);
     _result = (edits: [(before: _before, after: after)], resize: resize);
     if (resize != null) {
-      _roles.internals.dragPreview.value = CutTrimDragPreview(
+      _roles.dragPreview.value = CutTrimDragPreview(
         previewDurations: resize.durations,
         previewGaps: resize.gaps,
         previewLayers: {after.id: after},
@@ -499,7 +499,7 @@ class ExposureEdgeDrag implements EditorDragSession {
     // storyboard's track-global strips (UI-R7 #7); the commit uses
     // [_result].
     final forms = _trackSe.previewFormsOf(after);
-    _roles.internals.dragPreview.value = ExposureEdgeDragPreview(
+    _roles.dragPreview.value = ExposureEdgeDragPreview(
       previewLayer: forms.shown,
       globalPreviewLayer: forms.global,
     );
@@ -530,14 +530,14 @@ class ExposureEdgeDrag implements EditorDragSession {
     }
     if (edits.isEmpty) {
       _result = null;
-      _roles.internals.dragPreview.value = null;
+      _roles.dragPreview.value = null;
       return;
     }
     // A storyboard row in the bulk drags its cut's length along (feedback
     // #9) — one preview, one release.
     final resize = _bulkCutSyncResize(edits);
     _result = (edits: edits, resize: resize);
-    _roles.internals.dragPreview.value = resize != null
+    _roles.dragPreview.value = resize != null
         ? CutTrimDragPreview(
             previewDurations: resize.durations,
             previewGaps: resize.gaps,
@@ -629,7 +629,7 @@ class ExposureEdgeDrag implements EditorDragSession {
   @override
   void commit() {
     final result = _result;
-    _roles.internals.dragPreview.value = null;
+    _roles.dragPreview.value = null;
     if (result == null) {
       return;
     }
@@ -665,7 +665,7 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// repository was never written during the drag).
   @override
   void cancel() {
-    _roles.internals.dragPreview.value = null;
+    _roles.dragPreview.value = null;
   }
 }
 

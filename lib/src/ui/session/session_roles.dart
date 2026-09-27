@@ -30,7 +30,6 @@ import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/history_manager.dart';
 import '../../services/project_repository.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
-import '../timeline/timeline_drag_preview.dart';
 
 abstract interface class ProjectAccess {
   int get activeCutFrameCount;
@@ -131,8 +130,6 @@ abstract interface class SessionInternals {
   Layer? get targetLayerForKindToggle;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
   TimelineRowAddress get currentRow;
-  ValueNotifier<TimelineDragPreview?> get dragPreview;
-  ValueNotifier<int> get editingFrameCursor;
   bool get strokeInFlight;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   void selectTrackCutAtPlayhead(TrackId trackId);

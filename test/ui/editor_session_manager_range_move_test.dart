@@ -46,6 +46,7 @@ void main() {
           changes: s,
           controllers: s.activeCutControllers,
           internals: s,
+          dragPreview: s.dragPreview,
           blockMove: s.drawingBlockMove,
           renderCaches: s.renderCaches,
           camera: s.camera,
