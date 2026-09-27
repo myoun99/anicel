@@ -63,9 +63,17 @@ class TimelineFrameAxisFollower {
 
   ScrollPosition? _watchedPosition;
 
-  bool _rereadScheduled = false;
+  late final _OnceAfterThisFrame _reread = _OnceAfterThisFrame(() {
+    if (isMounted()) {
+      handleScroll();
+    }
+  });
 
-  bool _followScheduled = false;
+  late final _OnceAfterThisFrame _follow = _OnceAfterThisFrame(() {
+    if (isMounted()) {
+      _followTheAxis();
+    }
+  });
 
   /// The offset the axis is PAINTED at: the position itself, read now —
   /// what [ScrollFollower] moves a ruler by, so a press on that ruler
@@ -117,7 +125,7 @@ class TimelineFrameAxisFollower {
     }
     if (SchedulerBinding.instance.schedulerPhase ==
         SchedulerPhase.persistentCallbacks) {
-      _followAfterThisFrame();
+      _follow.ask();
       return;
     }
     final target = frameAxisOffset.value.clamp(
@@ -131,19 +139,6 @@ class TimelineFrameAxisFollower {
     // The jump to the axis's own number finds nothing to write in
     // [handleScroll], so it cuts the windows here.
     _standAt(target);
-  }
-
-  void _followAfterThisFrame() {
-    if (_followScheduled) {
-      return;
-    }
-    _followScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _followScheduled = false;
-      if (isMounted()) {
-        _followTheAxis();
-      }
-    });
   }
 
   /// The windows and the endless room, cut for the scrollable standing at
@@ -185,18 +180,7 @@ class TimelineFrameAxisFollower {
   /// The host calls this from the layout that sizes the axis's viewport:
   /// that pass is where every such correction happens. One callback a
   /// frame, however many layouts ask.
-  void rereadAfterLayout() {
-    if (_rereadScheduled) {
-      return;
-    }
-    _rereadScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _rereadScheduled = false;
-      if (isMounted()) {
-        handleScroll();
-      }
-    });
-  }
+  void rereadAfterLayout() => _reread.ask();
 
   void _watchScrollActivity() {
     final position = controller.position;
@@ -233,5 +217,27 @@ class TimelineFrameAxisFollower {
     frameAxisOffset.removeListener(_followTheAxis);
     _watchedPosition?.isScrollingNotifier.removeListener(handleScrollActivity);
     _watchedPosition = null;
+  }
+}
+
+/// A job run ONCE after this frame, however many times it is asked for
+/// before then — the follower's two frame-end jobs, the re-read after a
+/// layout and the follow held back from a build, were one body written
+/// twice.
+class _OnceAfterThisFrame {
+  _OnceAfterThisFrame(this._job);
+
+  final VoidCallback _job;
+  bool _asked = false;
+
+  void ask() {
+    if (_asked) {
+      return;
+    }
+    _asked = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _asked = false;
+      _job();
+    });
   }
 }
