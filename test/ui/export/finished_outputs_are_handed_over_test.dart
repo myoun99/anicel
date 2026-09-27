@@ -46,11 +46,7 @@ void main() {
 
   Directory outbox() => Directory(SessionScratch.outboxFolder());
 
-  void clearOutbox() {
-    if (outbox().existsSync()) {
-      outbox().deleteSync(recursive: true);
-    }
-  }
+  void clearOutbox() => deleteTempQuietly(outbox());
 
   setUp(() {
     AppExport.settings.value = AppExportSettings();
