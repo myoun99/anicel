@@ -735,7 +735,6 @@ class EditorSessionManager extends ChangeNotifier
   TimelineRowAddress get storyboardStandingRow =>
       standing.storyboardStandingRow;
 
-  @override
   void standOnRow(
     TimelineRowAddress row, {
     WorkingPanel panel = WorkingPanel.timeline,
@@ -751,7 +750,6 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
-  @override
   void selectLayer(LayerId layerId) {
     historyManager.places.settle();
     standing.selectLayer(layerId);
@@ -864,13 +862,13 @@ class EditorSessionManager extends ChangeNotifier
 
   late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections, history: historyManager);
 
-  /// ⚠️Two ROLE members, not forwarders: [SessionInternals.rowIsSelected]
-  /// and [SelectionAccess.clearRowSelection] are asked of the SESSION by
-  /// collaborators that must not name this one (RowSelection already holds
-  /// RangeSelections, so the edge back would close a construction cycle).
-  @override
-  bool rowIsSelected(TimelineRowAddress row) =>
-      rowSelectionVerbs.rowIsSelected(row);
+  /// ⚠️A ROLE member, not a forwarder: [SelectionAccess.clearRowSelection]
+  /// is asked of the SESSION by collaborators that must not name this one
+  /// (RowSelection already holds RangeSelections, so the edge back would
+  /// close a construction cycle). ↩️Whether a row is selected was the second
+  /// such member; its one collaborator, [RangeSelections], takes the question
+  /// as a closure now (the ninth family's cure for a cycle edge), and every
+  /// other reader names [rowSelectionVerbs].
   @override
   void clearRowSelection() => rowSelectionVerbs.clearRowSelection();
 
@@ -878,7 +876,22 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/range_selections.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final RangeSelections rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: storyboardRows, trackSe: trackSe, rowSpans: rowSpans, internals: this, playbackRig: playbackRig);
+  late final RangeSelections rangeSelections = RangeSelections(
+    project: this,
+    selection: this,
+    changes: this,
+    timeline: this,
+    storyboardRows: storyboardRows,
+    trackSe: trackSe,
+    rowSpans: rowSpans,
+    internals: this,
+    playbackRig: playbackRig,
+    // Lazily: RowSelection is built FROM rangeSelections.
+    rowIsSelected: (row) => rowSelectionVerbs.rowIsSelected(row),
+    selectTrackRow: selectTrackRow,
+    selectLayer: selectLayer,
+    standOnRow: standOnRow,
+  );
 
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
@@ -1038,7 +1051,6 @@ class EditorSessionManager extends ChangeNotifier
   /// seek. The cells press wants this half on its own: the frame it presses
   /// decides the cut, so promoting the playhead's cut first would switch
   /// cuts twice for one press.
-  @override
   void selectTrackRow(TrackId trackId) {
     if (strokeInFlight) {
       return;

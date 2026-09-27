@@ -45,6 +45,11 @@ class RangeSelections {
     required StoryboardRows storyboardRows,
     required TrackSeDisplay trackSe,
     required RowSpans rowSpans,
+    required bool Function(TimelineRowAddress row) rowIsSelected,
+    required void Function(TrackId trackId) selectTrackRow,
+    required void Function(LayerId layerId) selectLayer,
+    required void Function(TimelineRowAddress row, {WorkingPanel panel})
+    standOnRow,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -53,7 +58,11 @@ class RangeSelections {
        _playbackRig = playbackRig,
        _storyboardRows = storyboardRows,
        _trackSe = trackSe,
-       _rowSpans = rowSpans;
+       _rowSpans = rowSpans,
+       _rowIsSelected = rowIsSelected,
+       _selectTrackRow = selectTrackRow,
+       _selectLayer = selectLayer,
+       _standOnRow = standOnRow;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -64,6 +73,21 @@ class RangeSelections {
   final StoryboardRows _storyboardRows;
   final TrackSeDisplay _trackSe;
   final RowSpans _rowSpans;
+
+  /// The four doors onto where the user stands that the selections pass
+  /// through — the row selection's question and the session's standing
+  /// doors (which settle the last edit before they move you, I-41).
+  ///
+  /// ⚠️Taken as CLOSURES, not as the `Standing` and `RowSelection` they end
+  /// in: both of those hold this object, so naming either here would close a
+  /// construction cycle — the ninth family's cure for a cycle edge
+  /// (ARCH-session-state, the fourteenth family; they were asked through
+  /// `SessionInternals` before).
+  final bool Function(TimelineRowAddress row) _rowIsSelected;
+  final void Function(TrackId trackId) _selectTrackRow;
+  final void Function(LayerId layerId) _selectLayer;
+  final void Function(TimelineRowAddress row, {WorkingPanel panel})
+  _standOnRow;
 
   /// Whether the artwork carries a marquee, published by whoever owns it —
   /// the fifth kind [hasAnySelection] counts.
@@ -81,7 +105,7 @@ class RangeSelections {
   /// 🚨T10 — whether standing on ([row], [frameIndex]) lands INSIDE whatever
   /// is currently selected.
   ///
-  /// The one question [_internals.standOnRow] asks before it clears. 유저 확정
+  /// The one question `Standing.standOnRow` asks before it clears. 유저 확정
   /// 2026-08-14: 「탭다운 하면 **먼저 기존 선택된거 삭제**하게 하면, 바꾸면
   /// 선택삭제고 거기서 이동하면 선택 새로 추가니까 문제없을거같은데」 — a
   /// press clears when it moves you somewhere else, and holds when it is the
@@ -97,7 +121,7 @@ class RangeSelections {
   /// being named here, exactly like [claimSelection]'s switch.
   ///
   /// ⚠️A null [frameIndex] means "no cell is in question", so only the ROW
-  /// selection can answer. [_internals.standOnRow] does not pass null — it substitutes
+  /// selection can answer. `Standing.standOnRow` does not pass null — it substitutes
   /// the playhead, because standing on a row without naming a frame IS
   /// standing there at the playhead.
   bool standingInsideSelection(
@@ -105,7 +129,7 @@ class RangeSelections {
     int? frameIndex,
     bool frameIsGlobal = false,
   ]) {
-    if (_internals.rowIsSelected(row)) {
+    if (_rowIsSelected(row)) {
       return true;
     }
     final cells = _selection.frameRangeSelection.value;
@@ -510,7 +534,7 @@ class RangeSelections {
       if (_project.trackById(carrierTrackId) == null) {
         return;
       }
-      _internals.selectTrackRow(carrierTrackId);
+      _selectTrackRow(carrierTrackId);
     } else {
       if (_project.layerById(layerId) == null) {
         // A REAL track row that just is not the ACTIVE track's (its lane
@@ -527,11 +551,11 @@ class RangeSelections {
         case WorkingPanel.timeline when _selection.activeLayerId != layerId:
           // selectLayer first: it drops the OLD selection (a different
           // layer's), then the fresh span lands for the new active layer.
-          _internals.selectLayer(layerId);
+          _selectLayer(layerId);
         case WorkingPanel.storyboard
             when _selection.storyboardStandingRow.owningLayerId != layerId:
           // The rail's row, the way the V track's lanes above take theirs.
-          _internals.standOnRow(
+          _standOnRow(
             LayerRowAddress(layerId),
             panel: WorkingPanel.storyboard,
           );

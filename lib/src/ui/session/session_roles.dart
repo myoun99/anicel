@@ -22,7 +22,6 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
-import '../../models/working_panel.dart';
 import '../../models/track.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
@@ -136,16 +135,7 @@ abstract interface class SessionInternals {
   ValueNotifier<int> get editingFrameCursor;
   bool get strokeInFlight;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
-  bool rowIsSelected(TimelineRowAddress row);
-  void selectLayer(LayerId layerId);
   void selectTrackCutAtPlayhead(TrackId trackId);
-  void selectTrackRow(TrackId trackId);
-  void standOnRow(
-    TimelineRowAddress row, {
-    WorkingPanel panel = WorkingPanel.timeline,
-    int? frameIndex,
-    int? globalFrameIndex,
-  });
   void updateActiveCutCameraTrack(
     TransformTrack track, {
     String description = 'Edit camera keyframes',

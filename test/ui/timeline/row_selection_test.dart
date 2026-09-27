@@ -78,7 +78,7 @@ void main() {
       );
 
       s.rowSelectionVerbs.beginRowSelection(camera.address);
-      expect(s.rowIsSelected(camera.address), isTrue);
+      expect(s.rowSelectionVerbs.rowIsSelected(camera.address), isTrue);
       expect(
         s.layerVerbs.deletableSelectedLayerIds(),
         isEmpty,

@@ -944,9 +944,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // MOVE — that rule lives with the drop policy, where it
                       // can say which rows accept what — but it may not
                       // refuse to be SELECTED.
-                      isInRowSelection: (subject) => _session.rowIsSelected(
-                        timelineRowAddressOfDragSubject(subject),
-                      ),
+                      isInRowSelection: (subject) =>
+                          _session.rowSelectionVerbs.rowIsSelected(
+                            timelineRowAddressOfDragSubject(subject),
+                          ),
                       onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
                         timelineRowAddressOfDragSubject(subject),
                       ),

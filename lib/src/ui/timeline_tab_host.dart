@@ -828,9 +828,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // now, exactly as a layer row's move is. Start outside the
               // selection and the drag selects; start inside it and the drag
               // re-orders the chain.
-              isInRowSelection: (subject) => _session.rowIsSelected(
-                timelineRowAddressOfDragSubject(subject),
-              ),
+              isInRowSelection: (subject) =>
+                  _session.rowSelectionVerbs.rowIsSelected(
+                    timelineRowAddressOfDragSubject(subject),
+                  ),
               onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
                 timelineRowAddressOfDragSubject(subject),
               ),

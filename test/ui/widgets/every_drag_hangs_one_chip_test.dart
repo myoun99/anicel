@@ -124,7 +124,10 @@ void main() {
     expect(
       [
         for (final id in ['a', 'b', 'c'])
-          if (session.rowIsSelected(LayerRowAddress(LayerId(id)))) id,
+          if (session.rowSelectionVerbs.rowIsSelected(
+            LayerRowAddress(LayerId(id)),
+          ))
+            id,
       ],
       ['a', 'b'],
       reason: 'premise: B and A are the selection',

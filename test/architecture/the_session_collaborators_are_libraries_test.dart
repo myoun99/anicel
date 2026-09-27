@@ -139,7 +139,15 @@ const _mayNameTheSession = <String, String>{
 /// selection role; and the opacity at a frame was a second name for the
 /// model's `resolveOpacityTrackAt` — the lane rows already call that, so
 /// `LaneVerbs` does too and the session's copy is gone.
-const _sessionInternalsMembers = 17;
+/// 17 → 13 (same day, the fourteenth family): the four doors onto where
+/// the user stands that `RangeSelections` passes through — whether a row is
+/// selected, standing on a row, selecting a layer, selecting a V row. Both
+/// `Standing` and `RowSelection` hold the selections, so it takes the four
+/// as CLOSURES (the ninth family's cure for a cycle edge). The session's
+/// `rowIsSelected` was then a second name for `RowSelection.rowIsSelected`
+/// and went; the three doors stay the session's, since they settle the last
+/// edit before they move you (I-41).
+const _sessionInternalsMembers = 13;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())
