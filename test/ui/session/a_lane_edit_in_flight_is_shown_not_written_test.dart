@@ -423,12 +423,61 @@ void main() {
     );
   });
 
-  test('a handle\'s late drop after its session went does nothing', () {
+  test('a handle\'s late drop after its session went does nothing — even '
+      'with an edit still on the channel it went with', () {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
+    session.laneVerbs.previewLaneValueAt(
+      session.activeLayer!.id,
+      'position',
+      0,
+      '40, 30',
+      frameIsGlobal: false,
+    );
+    expect(
+      session.dragPreview.value,
+      isA<LaneEditPreview>(),
+      reason: 'the premise: the tab closes mid-drag',
+    );
     session.dispose();
 
-    expect(session.laneVerbs.endLaneEditPreview, returnsNormally);
+    expect(
+      session.laneVerbs.endLaneEditPreview,
+      returnsNormally,
+      reason: 'dropping it would write to a channel that is already gone',
+    );
+  });
+
+  test('an SE row\'s Opacity lane in flight thins its picture on the canvas '
+      '— the track\'s rows join the stack through the same substitution', () {
+    final session = open();
+    final se = session.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.se,
+    );
+    session.selectLayer(se.id);
+    session.selectFrameIndex(0);
+    session.seEntries.createSeEntryAtCurrentFrame(name: '쿵');
+    double? seOpacity() {
+      for (final node in session.editingCanvas.stack.nodes) {
+        if (node case CompositeLeaf(payload: final CanvasLayerImageRequest r)
+            when r.frameKey.layerId == se.id) {
+          return r.opacity;
+        }
+      }
+      return null;
+    }
+
+    expect(seOpacity(), closeTo(1, 1e-9), reason: 'the premise');
+
+    session.laneVerbs.previewLaneValueAt(
+      se.id,
+      'opacity',
+      0,
+      '40%',
+      frameIsGlobal: false,
+    );
+
+    expect(seOpacity(), closeTo(0.4, 1e-9));
   });
 }
