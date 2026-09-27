@@ -78,8 +78,20 @@ class BrushDab {
   final double pressure;
 
   /// How fast the pen was travelling when this dab was laid, normalized to
-  /// 0..1 by the pen door — see `BrushInputSample.speed`, which explains why
-  /// the raw px/s never travels.
+  /// 0..1 against `AppInputSettings.speedReferencePixelsPerSecond`.
+  ///
+  /// 🚨**NORMALIZED AT THE DOOR, like pressure and tilt.** The raw px/s never
+  /// reaches a dab, because the ratio's ceiling is a user setting and a
+  /// reader holding raw pixels would have to fetch that setting to mean
+  /// anything — sixteen readers, sixteen chances to fetch a different one.
+  /// The pen door divides once (`AppInput.normalizedSpeed`) and everything
+  /// downstream reads a plain 0..1, exactly as it does for the other two.
+  ///
+  /// ⚠️Speed is a property of the MOVE, not of the point: every dab placed
+  /// along one segment carries that segment's speed. 0.0 is a pen that has
+  /// just landed and has no move behind it yet.
+  /// ↩️This lived on `BrushInputSample.speed` until that model went with the
+  /// offline path that built it — nothing in the app ever did.
   final double speed;
 
   /// Which way the pen leaned, in degrees (0 = along +x). Meaningless while

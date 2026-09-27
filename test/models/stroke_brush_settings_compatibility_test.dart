@@ -1,5 +1,4 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/brush_input_sample.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
@@ -71,13 +70,11 @@ void main() {
         name: 'Preset 1',
         settings: brushSettings.copyWith(size: 9),
       );
-      final inputSample = BrushInputSample(x: 1, y: 2);
 
       expect(stroke.points, isA<List<StrokePoint>>());
       expect(stroke.points.single, isA<StrokePoint>());
       expect(stroke.brushSettings, same(brushSettings));
       expect(stroke.brushSettings, isNot(preset));
-      expect(stroke.points.single, isNot(inputSample));
     });
 
     test('Stroke keeps BrushSettings as a value snapshot', () {
