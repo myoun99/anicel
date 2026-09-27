@@ -87,9 +87,10 @@ void main() {
       await tester.pump();
       expect(
         seeks.last,
-        80,
+        closeTo(80, 1),
         reason: 'the one move is the one the drag STARTS on — the owning drag '
-            'takes the arena with it, so no update follows',
+            'takes the arena with it, so no update follows (the press put '
+            'it at 50; the frame rounds on 99 steps)',
       );
     });
 
