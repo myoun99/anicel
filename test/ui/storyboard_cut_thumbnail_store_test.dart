@@ -38,6 +38,27 @@ void main() {
     }
   }
 
+  /// [paint]'s asks, made again whenever a picture lands — the way every
+  /// surface that shows these pictures repaints on its landings — until
+  /// nothing is left to render.
+  Future<void> shownUntilIdle(
+    WidgetTester tester,
+    StoryboardCutThumbnailStore store,
+    void Function() paint,
+  ) async {
+    store.addListener(paint);
+    try {
+      await tester.runAsync(() async {
+        paint();
+        while (store.debugBusy) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+      });
+    } finally {
+      store.removeListener(paint);
+    }
+  }
+
   Cut cut({bool layerVisible = true}) => Cut(
     id: const CutId('cut'),
     name: 'Cut',
@@ -120,11 +141,11 @@ void main() {
     );
     addTearDown(store.dispose);
 
-    await tester.runAsync(() async {
+    // Three surfaces showing the one panel at three sizes.
+    await shownUntilIdle(tester, store, () {
       store.thumbnailFor(cut(), 0, shownHeight: 60); // a strip block
       store.thumbnailFor(cut(), 0, shownHeight: 400); // a conte cell
       store.thumbnailFor(cut(), 0, shownHeight: 5000); // zoomed far in
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
 
     // 60 of 1080 → the ladder's floor, 1/16; 400 → up to 1/2; 5000 → the
@@ -132,13 +153,109 @@ void main() {
     expect(widths, [120, 960, 1920]);
     // Each width caches on its own, and a height the ladder rounds to a
     // width already held renders nothing new.
-    await tester.runAsync(() async {
+    await shownUntilIdle(tester, store, () {
       store.thumbnailFor(cut(), 0, shownHeight: 60);
       store.thumbnailFor(cut(), 0, shownHeight: 300);
       store.thumbnailFor(cut(), 0, shownHeight: 5000);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     expect(widths, hasLength(3));
+  });
+
+  testWidgets('🚨ONE render at a time, however many panels a paint asks for '
+      '(유저 09-28: V행을 키우다 튕겼다)', (tester) async {
+    // Measured on the user's film: every panel on screen started its own
+    // render in the paint that asked, and each thaws its cut's cels at the
+    // canvas's full size — 104 at once while the V rows grew for a second.
+    final running = <Completer<ui.Image?>>[];
+    var mostAtOnce = 0;
+    final store = StoryboardCutThumbnailStore(
+      originalSize: _original,
+      render: (_, _, _) {
+        final render = Completer<ui.Image?>();
+        running.add(render);
+        final open = running.where((each) => !each.isCompleted).length;
+        mostAtOnce = open > mostAtOnce ? open : mostAtOnce;
+        return render.future;
+      },
+    );
+    addTearDown(store.dispose);
+    void paint() {
+      for (var panel = 0; panel < 26; panel += 1) {
+        store.thumbnailFor(cut(), panel, shownHeight: 72);
+      }
+    }
+
+    store.addListener(paint);
+    addTearDown(() => store.removeListener(paint));
+    await tester.runAsync(() async {
+      paint();
+      for (var landed = 0; landed < 26; landed += 1) {
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          running.where((each) => !each.isCompleted),
+          hasLength(1),
+          reason: 'render ${landed + 1} of 26 runs alone',
+        );
+        running.last.complete(await tinyImage());
+        await Future<void>.delayed(Duration.zero);
+      }
+    });
+    await tester.pump();
+
+    expect(running, hasLength(26), reason: 'and every panel shown is drawn');
+    expect(mostAtOnce, 1);
+    expect(store.debugBusy, isFalse);
+  });
+
+  testWidgets('🚨a width the hand has passed is never rendered — after each '
+      'render, only what the surfaces show NOW is', (tester) async {
+    final rendered = <(int, int)>[];
+    final running = <Completer<ui.Image?>>[];
+    final store = StoryboardCutThumbnailStore(
+      originalSize: _original,
+      render: (_, frame, width) {
+        rendered.add((frame, width));
+        final render = Completer<ui.Image?>();
+        running.add(render);
+        return render.future;
+      },
+    );
+    addTearDown(store.dispose);
+    // A V row being dragged taller: every paint shows the four panels at
+    // the height the hand is at.
+    var height = 60.0;
+    void paint() {
+      for (final panel in [0, 8, 16, 24]) {
+        store.thumbnailFor(cut(), panel, shownHeight: height);
+      }
+    }
+
+    store.addListener(paint);
+    addTearDown(() => store.removeListener(paint));
+    await tester.runAsync(() async {
+      paint();
+      await Future<void>.delayed(Duration.zero);
+      // The drag goes on while the first render runs: two more steps of
+      // the picture ladder, and a paint at each.
+      for (final step in [400.0, 5000.0]) {
+        height = step;
+        paint();
+      }
+      await Future<void>.delayed(Duration.zero);
+      while (store.debugBusy) {
+        running.last.complete(await tinyImage());
+        await Future<void>.delayed(Duration.zero);
+      }
+    });
+    await tester.pump();
+
+    expect(rendered, [
+      (0, 120), // begun before the hand moved on
+      (0, 1920),
+      (8, 1920),
+      (16, 1920),
+      (24, 1920),
+    ], reason: 'no panel at 120 or 960 past the first');
   });
 
   testWidgets('until its own width lands, a panel shows the SHARPEST picture '
@@ -169,11 +286,16 @@ void main() {
     late ui.Image small;
     late ui.Image whole;
     await tester.runAsync(() async {
-      store.thumbnailFor(cut(), 0, shownHeight: 60);
-      store.thumbnailFor(cut(), 0, shownHeight: 5000);
-      pending[(0, 120)]!.complete(small = await imageOf(120));
-      pending[(0, 1920)]!.complete(whole = await imageOf(1920));
-      await Future<void>.delayed(Duration.zero);
+      // The panel in a strip, then zoomed far in — one render each, in
+      // turn.
+      for (final (height, width) in [(60.0, 120), (5000.0, 1920)]) {
+        store.thumbnailFor(cut(), 0, shownHeight: height);
+        await Future<void>.delayed(Duration.zero);
+        final image = await imageOf(width);
+        width == 120 ? small = image : whole = image;
+        pending[(0, width)]!.complete(image);
+        await Future<void>.delayed(Duration.zero);
+      }
     });
 
     expect(
@@ -186,12 +308,13 @@ void main() {
       isNull,
       reason: 'another panel\'s picture never stands in',
     );
+    // The 960 render was asked in the test's fake zone, so it starts, and
+    // later lands, in that zone's queue.
+    await tester.pump();
     late ui.Image own;
     await tester.runAsync(() async {
       pending[(0, 960)]!.complete(own = await imageOf(960));
     });
-    // The 960 render was asked in the test's fake zone, so its landing
-    // waits in that zone's queue.
     await tester.pump();
     expect(store.thumbnailFor(cut(), 0, shownHeight: 400), same(own));
     expect(store.thumbnailFor(cut(), 0, shownHeight: 60), same(small));

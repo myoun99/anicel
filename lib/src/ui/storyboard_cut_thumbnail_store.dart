@@ -61,10 +61,25 @@ typedef StoryboardThumbnails = ({
 /// Renders and caches the composites the storyboard's panels show.
 ///
 /// [thumbnailFor] is a synchronous paint-time resolver: it returns whatever
-/// is cached (possibly stale, possibly null) and kicks one async render at
-/// the width the surface's size asks when the panel's signature changed.
-/// Renders finish → [notifyListeners] → the painters that asked repaint
-/// with the fresh image ([thumbnails]).
+/// is cached (possibly stale, possibly null) and puts the panel on the list
+/// of what to render, at the width the surface's size asks, when its
+/// signature changed. Renders finish → [notifyListeners] → the painters
+/// that asked repaint with the fresh image ([thumbnails]).
+///
+/// 🚨★★★ONE RENDER AT A TIME, AND ONLY WHAT IS SHOWN NOW (2026-09-28 —
+/// 유저: 「fu파일로, 콘티패널 v행 크기 늘리던 도중에 튕겻어」). Every ask
+/// used to start its own render on the spot. A render thaws its cut's cels
+/// at the CANVAS's size whatever width it is asked for (2540×1654 in the
+/// user's film), and growing the V rows walks up the picture ladder, so
+/// each step asked every panel on screen afresh: measured on that film
+/// (13 cuts, 26 panels, the whole film on screen), one second of dragging
+/// the rows from the floor to 400 had 104 renders running at once, and the
+/// first 26 alone took the process from 674MB to 1244MB. That is the
+/// crash on a tablet. Now an ask only puts the panel on the list, one
+/// render runs, and when it ends the list is emptied: its landing repaints
+/// every surface that asks (they have to, to show it), and they ask again
+/// for exactly what they show NOW — a width the hand has already passed or
+/// a panel scrolled away is never rendered at all.
 ///
 /// Invalidation: a structural signature (canvas size, duration, per-layer
 /// visibility/opacity/frames/EXPOSURES, camera track, layer transforms and
@@ -111,8 +126,25 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   final Map<StoryboardThumbnailKey, ui.Image> _images = {};
   final Map<StoryboardThumbnailKey, String> _renderedSignatures = {};
   final Map<CutId, int> _editGenerations = {};
-  final Set<StoryboardThumbnailKey> _rendering = {};
+
+  /// What the surfaces asked to have rendered since the last render ended,
+  /// in the order they asked — each with the cut and the signature it was
+  /// asked at.
+  final Map<StoryboardThumbnailKey, ({Cut cut, String signature})> _wanted =
+      {};
+
+  /// The one render running, if any. It is not asked for again while it
+  /// runs: its landing repaints the surfaces, which ask again then if the
+  /// panel moved on meanwhile.
+  StoryboardThumbnailKey? _rendering;
+  bool _nextScheduled = false;
   bool _disposed = false;
+
+  /// Whether a render runs or waits to. ⚠️TEST ONLY — what a test waits
+  /// on, as the timeline's tiles do: silence for N ms misreads a slow
+  /// render for a finished one.
+  @visibleForTesting
+  bool get debugBusy => _rendering != null || _wanted.isNotEmpty;
 
   /// Told whenever [thumbnailBytes] changes, so an owner the memory census
   /// CAN reach is able to report a store that lives in a widget State — the
@@ -138,7 +170,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   );
 
   /// The cached picture of [cut] at [frameIndex] for a surface drawing it
-  /// [shownHeight] device pixels tall; kicks an async (re)render when that
+  /// [shownHeight] device pixels tall; asks for a (re)render when that
   /// width's signature changed, returning the stale image meanwhile.
   ///
   /// A width that has never landed shows the panel's picture at another
@@ -156,9 +188,9 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
       width: pictureRenderWidthFor(shownHeight, _originalSize()),
     );
     final signature = _signatureFor(cut);
-    if (_renderedSignatures[key] != signature && !_rendering.contains(key)) {
-      _rendering.add(key);
-      _startRender(cut, key, signature);
+    if (_renderedSignatures[key] != signature && key != _rendering) {
+      _wanted[key] = (cut: cut, signature: signature);
+      _scheduleNext();
     }
     final held = _images.remove(key);
     if (held != null) {
@@ -184,51 +216,83 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     return sharpest;
   }
 
-  void _startRender(Cut cut, StoryboardThumbnailKey key, String signature) {
+  /// Starts the next render off the paint that asked — a microtask, so a
+  /// picture can land within a frame or two.
+  void _scheduleNext() {
+    if (_rendering != null || _nextScheduled) {
+      return;
+    }
+    _nextScheduled = true;
+    scheduleMicrotask(_renderNext);
+  }
+
+  /// The panel asked for first, rendered alone.
+  void _renderNext() {
+    _nextScheduled = false;
+    if (_disposed || _rendering != null || _wanted.isEmpty) {
+      return;
+    }
+    final key = _wanted.keys.first;
+    final ask = _wanted.remove(key)!;
+    _rendering = key;
     unawaited(
-      _render(cut, key.frameIndex, key.width)
-          .then((image) {
-            _rendering.remove(key);
-            if (_disposed) {
-              image?.dispose();
-              return;
-            }
-            final previous = _images.remove(key);
-            if (previous != null) {
-              _heldBytes -= ViewerRasterBudget.costOf(previous);
-              _retire(previous);
-            }
-            if (image != null) {
-              _images[key] = image;
-              _heldBytes += ViewerRasterBudget.costOf(image);
-            }
-            // A signature change DURING the render re-kicks on the repaint
-            // this notify triggers.
-            _renderedSignatures[key] = signature;
-            _evictBeyondBudget();
-            _reportHeldBytes();
-            notifyListeners();
-          })
-          .catchError((Object error, StackTrace stack) {
-            _rendering.remove(key);
-            // Remember the failed signature: silently swallowing AND
-            // forgetting re-kicked the same failing render on every
-            // rebuild (a hot loop behind a permanently empty block). The
-            // next CONTENT change retries; the failure itself is surfaced.
-            _renderedSignatures[key] = signature;
-            FlutterError.reportError(
-              FlutterErrorDetails(
-                exception: error,
-                stack: stack,
-                library: 'storyboard thumbnails',
-                context: ErrorDescription(
-                  'rendering the storyboard thumbnail for cut '
-                  '${cut.id.value} at frame ${key.frameIndex}',
-                ),
+      Future.sync(() => _render(ask.cut, key.frameIndex, key.width)).then(
+        (image) => _landed(key, ask.signature, image),
+        onError: (Object error, StackTrace stack) {
+          // Remember the failed signature: silently swallowing AND
+          // forgetting re-kicked the same failing render on every
+          // rebuild (a hot loop behind a permanently empty block). The
+          // next CONTENT change retries; the failure itself is surfaced.
+          _renderedSignatures[key] = ask.signature;
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stack,
+              library: 'storyboard thumbnails',
+              context: ErrorDescription(
+                'rendering the storyboard thumbnail for cut '
+                '${ask.cut.id.value} at frame ${key.frameIndex}',
               ),
-            );
-          }),
+            ),
+          );
+          _renderEnded();
+        },
+      ),
     );
+  }
+
+  void _landed(StoryboardThumbnailKey key, String signature, ui.Image? image) {
+    if (_disposed) {
+      image?.dispose();
+      return;
+    }
+    final previous = _images.remove(key);
+    if (previous != null) {
+      _heldBytes -= ViewerRasterBudget.costOf(previous);
+      _retire(previous);
+    }
+    if (image != null) {
+      _images[key] = image;
+      _heldBytes += ViewerRasterBudget.costOf(image);
+    }
+    // A signature change DURING the render re-kicks on the repaint the
+    // notify below triggers.
+    _renderedSignatures[key] = signature;
+    _evictBeyondBudget();
+    _reportHeldBytes();
+    _renderEnded();
+  }
+
+  /// A render is over, landed or failed: the list goes, and the notify
+  /// makes every surface that asks repaint and ask again for what it shows
+  /// now — which is the next list.
+  void _renderEnded() {
+    _rendering = null;
+    if (_disposed) {
+      return;
+    }
+    _wanted.clear();
+    notifyListeners();
   }
 
   /// Lets go of the least recently asked-for pictures until the held ones
@@ -390,6 +454,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _hub?.removeBrushFrameListener(_onBrushFrameInvalidated);
+    _wanted.clear();
     for (final image in _images.values) {
       image.dispose();
     }

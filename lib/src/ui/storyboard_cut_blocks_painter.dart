@@ -543,7 +543,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
               countingBase: countingBase,
             )
           : null,
-      thumbnails: _thumbnailsFor(entry, cells),
+      thumbnails: _thumbnailsFor(entry, cells, strip: bands.strip),
     );
   }
 
@@ -609,12 +609,19 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// One picture per PANEL, each at the frame that panel is about — asked
   /// ONLY for blocks the window keeps: the row used to request every
   /// cut's picture on every build.
+  ///
+  /// ⛔And not at all for a [strip] that shows none ([_stripShowsPictures]):
+  /// a V row at its floor keeps its bands and no picture, and it still
+  /// asked for every panel's — a render each, and a render thaws its cut's
+  /// cels at the canvas's full size whatever width it is for (measured
+  /// 09-28 on the user's film: 26 pictures nobody could see, +570MB).
   List<ui.Image?> _thumbnailsFor(
     StoryboardTimelineLayoutEntry entry,
-    List<StoryboardCoverageCell> cells,
-  ) {
+    List<StoryboardCoverageCell> cells, {
+    required Rect strip,
+  }) {
     final thumbnails = this.thumbnails;
-    if (thumbnails == null) {
+    if (thumbnails == null || !_stripShowsPictures(strip)) {
       return const [];
     }
     // The picture is drawn the strip's height tall ([_pictureIn]), so that
@@ -626,7 +633,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // resolution (⛔해상도로 속도를 사지 않는다). ↩️It chose between a 128px
     // and a 640px picture, and read neither the screen's density nor the
     // camera's shape.
-    final shownHeight = stripBandOf(crossAxisExtent).height * devicePixelRatio;
+    final shownHeight = strip.height * devicePixelRatio;
     return [
       for (final cell in cells)
         thumbnails.resolve(
@@ -1025,8 +1032,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   ) sync* {
     final inner = block.strip;
     if (!showThumbnails ||
-        inner.width <= 0 ||
-        inner.height <= 0 ||
+        !_stripShowsPictures(inner) ||
         block.cells.isEmpty ||
         block.thumbnails.length != block.cells.length) {
       return;
@@ -1044,6 +1050,12 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       }
     }
   }
+
+  /// Whether a block's [strip] has room for its panels' pictures — the one
+  /// answer for what is drawn there ([_picturesOf]) and what is asked for
+  /// it ([_thumbnailsFor]).
+  static bool _stripShowsPictures(Rect strip) =>
+      strip.width > 0 && strip.height > 0;
 
   /// Where [image] lands in [slot] — before the slot clips it.
   ///

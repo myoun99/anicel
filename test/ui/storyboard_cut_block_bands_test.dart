@@ -793,6 +793,13 @@ void main() {
         StoryboardCutBlocksPainter.stripBandOf(laneHeight).height * 2,
       }, reason: 'a $laneHeight row, at twice the density');
     }
+
+    // 🚨And at the floor, where the strip has no room, it asks for none: it
+    // shows none, and every ask is a render that thaws its cut at the
+    // canvas's full size (유저 2026-09-28: V행을 키우다 튕겼다 — measured on
+    // the user's film, 26 pictures nobody could see took +570MB).
+    await pumpAt(StoryboardPanel.minTrackLaneHeight);
+    expect(asked, isEmpty, reason: 'a row at its floor shows no picture');
   });
 
   test('🗣️the V row\'s heights are the user\'s: 96 by default and the four '
