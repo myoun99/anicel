@@ -66,6 +66,17 @@ void main() {
     expect(Directory('${from.path}/CUT001').existsSync(), isFalse);
   });
 
+  test('a folder not there yet is made there, with all it holds', () {
+    final layer = Directory('${from.path}/CUT002/B')
+      ..createSync(recursive: true);
+    File('${layer.path}/0001.png').writeAsStringSync('1');
+
+    moveIntoFolder('${from.path}/CUT002', into.path);
+
+    expect(contentsOf(into), {'CUT002/B/0001.png': '1'});
+    expect(Directory('${from.path}/CUT002').existsSync(), isFalse);
+  });
+
   test('a folder standing where a file would land refuses it — the move '
       'fails rather than lose either', () {
     Directory('${into.path}/frame_0001.png').createSync();
