@@ -498,6 +498,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// [MediaViewerTabHost.position]) and [_turnToPage] asks it to move.
   int get _page => widget.position.value;
 
+  /// The page on show: [_page], inside the document.
+  int get _pageShown {
+    final count = _pageCount;
+    return count == 0 ? 0 : _page.clamp(0, count - 1);
+  }
+
   /// Guards every async landing against a newer load.
   int _generation = 0;
 
@@ -1585,9 +1591,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   }
 
   /// The pages the view shows now and where each lies — every page on
-  /// screen in a [book], the [page] on show otherwise — each asked for at
-  /// the zoom the view has — none while [asking] is false (a fit is about
-  /// to replace the view).
+  /// screen in the book ([_book]), the page on show ([_pageShown])
+  /// otherwise — each asked for at the zoom the view has — none while
+  /// [asking] is false (a fit is about to replace the view).
   ///
   /// 🚨★★★THE ZOOM THE VIEW HAS, read HERE, from the view the panel hands
   /// this builder. It was read in `build` from `widget.viewport` — a seed
@@ -1618,8 +1624,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     BuildContext context,
     CanvasViewport viewport,
     Size box, {
-    required PageStack? book,
-    required int page,
     required bool asking,
   }) {
     final document = _document;
@@ -1627,6 +1631,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       _shownPages = const {};
       return const [];
     }
+    final book = _book;
+    final page = _pageShown;
     final shown = [
       if (book == null)
         (page: page, rect: Offset.zero & document.pageSize(page))
@@ -1662,7 +1668,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final strings = AppText.strings;
     final request = _currentRequest;
     final pageCount = _pageCount;
-    final pageIndex = pageCount == 0 ? 0 : _page.clamp(0, pageCount - 1);
+    final pageIndex = _pageShown;
 
     // Document space: the page/frame being shown. ONE answer now — the
     // document knows its own page size, whether that is PDF points, image
@@ -1833,8 +1839,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                         context,
                         viewport,
                         box.biggest,
-                        book: book,
-                        page: pageIndex,
                         asking: !framingPending,
                       ),
                       // PDF paper is opaque white; a transparent image
