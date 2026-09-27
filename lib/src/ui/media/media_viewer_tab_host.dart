@@ -6,6 +6,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/identity_memo.dart';
+import '../../core/page_stack.dart';
 import '../../models/app_input_settings.dart' show CanvasTouchDragAction;
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
@@ -33,6 +35,7 @@ import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
+import '../brush/canvas_book.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
@@ -54,6 +57,7 @@ import '../widgets/cursor_notice.dart' show cursorNotices;
 import '../listenable_rebind.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../repaint_props.dart';
+import '../timeline/memo_token.dart' show ByList;
 
 /// What the media viewer is looking at. Owned by the workspace (the
 /// dockable-panel view-state rule) so the choice survives tab switches
@@ -162,8 +166,7 @@ class MediaViewerTabHost extends StatefulWidget {
     required this.viewerId,
     required this.session,
     required this.request,
-    this.position = 0,
-    this.onPositionChanged,
+    required this.position,
     this.onRequestPicked,
     this.onSwapViewers,
     this.onRegisterAsset,
@@ -208,8 +211,13 @@ class MediaViewerTabHost extends StatefulWidget {
   /// Owned above the panel, like the viewport, because a rail group the
   /// user folds away unmounts the panel inside it — and coming back to
   /// page 1 of a hundred-page conte is not "where I was".
-  final int position;
-  final ValueChanged<int>? onPositionChanged;
+  ///
+  /// The OBJECT, not a value and a callback: in a document read as a book
+  /// (F-201 — a PDF, a picture) it is the page the reader is on, which
+  /// the panel keeps true to the view ([CanvasBook]) — writing it turns
+  /// to the page, and the view moving writes it back. One object, for
+  /// the reason the viewport is one ([BrushCanvasPanel.viewportController]).
+  final ValueNotifier<int> position;
 
   /// Where the panel's own file button puts its answer. Null hides that
   /// button: a viewer with nowhere to put the reply should not ask.
@@ -363,6 +371,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   ViewerDocument? _document;
   final Map<int, _RenderedPage> _pageCache = {};
 
+  /// The pages the view shows now — every one on screen in a book, the
+  /// page in a document that turns its own. Set where they are drawn;
+  /// the cache never lets one of them go ([_evictToBudget]).
+  Set<int> _shownPages = const {};
+
+  // A book's pages one under another, memoized with the document.
+  final _stack = IdentityMemo<PageStack>();
+
   /// 🪦A `_lastDrawnPage` stood here: when a page's raster had not landed,
   /// the painter was handed the LAST one instead, so playback kept moving
   /// while the picture did not.
@@ -441,19 +457,22 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     for (final page in _pageCache.values) {
       total += ViewerRasterBudget.costOf(page.image);
     }
+    // ⛔Never a page on screen: in a book several are (F-201), and one let
+    // go would only be rendered again for the next frame. So the loop
+    // ends when only those are left — over the budget by what the
+    // screen shows, which no eviction could give back.
+    final kept = {keeping, ..._shownPages};
     // A cut's read is billed beside the pages (I-14), so they make room.
-    while (total + _cutReadBytes > _budget.byteBudget &&
-        _pageCache.length > 1) {
-      // Two or more entries and at most one of them is [keeping], so a
-      // candidate always exists and it is always in the map. Asserted with
-      // `!` rather than guarded: a guard here would answer an impossible
-      // case by silently LEAVING the cache over budget, which is the one
-      // outcome this method exists to prevent.
-      final farthest = _pageCache.keys
-          .where((page) => page != keeping)
-          .reduce(
-            (a, b) => _evictionDistance(a) >= _evictionDistance(b) ? a : b,
-          );
+    while (total + _cutReadBytes > _budget.byteBudget) {
+      final candidates = _pageCache.keys.where(
+        (page) => !kept.contains(page),
+      );
+      if (candidates.isEmpty) {
+        break;
+      }
+      final farthest = candidates.reduce(
+        (a, b) => _evictionDistance(a) >= _evictionDistance(b) ? a : b,
+      );
       final dropped = _pageCache.remove(farthest)!;
       total -= ViewerRasterBudget.costOf(dropped.image);
       dropped.image.dispose();
@@ -477,7 +496,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   /// Read-only here — the workspace holds it (see
   /// [MediaViewerTabHost.position]) and [_turnToPage] asks it to move.
-  int get _page => widget.position;
+  int get _page => widget.position.value;
 
   /// Guards every async landing against a newer load.
   int _generation = 0;
@@ -558,6 +577,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// previous asset can never leave the new one entirely off-screen.
   Object? _loadedToken;
 
+  /// The document ([_loadedToken]) whose first framing has gone out. Until
+  /// it has, the view on screen is the one the fit is about to replace —
+  /// pages asked for through it would be rendered at a scale nobody sees,
+  /// and in a book (F-201) for pages the fit takes off screen.
+  Object? _framingSent;
+
   /// What identifies the DOCUMENT this viewer is showing — the file it came
   /// from, since that is what「이 문서를 이미 맞춰 놓았나」 has to be asked
   /// about. ⛔Not the page: turning a page inside one document must not
@@ -597,6 +622,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     super.initState();
     widget.request.addListener(_onRequestChanged);
     widget.session.memoryPressureTicks.addListener(_onMemoryPressure);
+    widget.position.addListener(_onPosition);
     widget.session.playbackRig.transports.add(this);
     unawaited(_load(_currentRequest));
   }
@@ -616,29 +642,41 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       oldWidget.session.playbackRig.transports.remove(this);
       widget.session.playbackRig.transports.add(this);
     }
-    if (oldWidget.position != widget.position) {
-      // 🚨★★★**TURNING A PAGE IS ASKING AGAIN**, and until now only a RUN
-      // was. `_onPlayTick` was the sole place a refusal was forgotten, and
-      // it exists only while `_playTimer` does — which needs a document
-      // that turns its own pages or carries sound. A PDF has neither, so a
-      // page whose render the engine once refused stayed blank for the life
-      // of the panel: the round that stopped the hot loop had traded a
-      // livelock for a surrender, which is the half of 유저 2026-08-31's
-      // 「로드할때까지 멈춰있어야지」 that says a WAIT, not a giving up.
-      // Found by the 2026-09-09 audit of that round.
-      //
-      // ⛔Not a second clock, and not a rebuild-driven clear: this fires on
-      // a USER ACTION, so it cannot feed itself. A refusal is still
-      // remembered for as long as the reader is looking at the same page —
-      // nothing about that page changed, so there is nothing to re-ask for.
-      _renders.removeWhere((_, ask) => ask == _RenderAsk.failed);
+    if (rebindListener(oldWidget.position, widget.position, _onPosition)) {
+      _forgetRefusals();
     }
+  }
+
+  /// The page moved — a turn, the view scrolling a book, a playhead.
+  void _onPosition() {
+    if (mounted) {
+      setState(_forgetRefusals);
+    }
+  }
+
+  void _forgetRefusals() {
+    // 🚨★★★**TURNING A PAGE IS ASKING AGAIN**, and until now only a RUN
+    // was. `_onPlayTick` was the sole place a refusal was forgotten, and
+    // it exists only while `_playTimer` does — which needs a document
+    // that turns its own pages or carries sound. A PDF has neither, so a
+    // page whose render the engine once refused stayed blank for the life
+    // of the panel: the round that stopped the hot loop had traded a
+    // livelock for a surrender, which is the half of 유저 2026-08-31's
+    // 「로드할때까지 멈춰있어야지」 that says a WAIT, not a giving up.
+    // Found by the 2026-09-09 audit of that round.
+    //
+    // ⛔Not a second clock, and not a rebuild-driven clear: this fires on
+    // a USER ACTION, so it cannot feed itself. A refusal is still
+    // remembered for as long as the reader is looking at the same page —
+    // nothing about that page changed, so there is nothing to re-ask for.
+    _renders.removeWhere((_, ask) => ask == _RenderAsk.failed);
   }
 
   @override
   void dispose() {
     widget.request.removeListener(_onRequestChanged);
     widget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
+    widget.position.removeListener(_onPosition);
     // ⚠️Before [_disposeContent]: it stops the timer, and a transport that
     // is still registered would report the flip to a gate that is about to
     // lose the object anyway. Leaving it registered is the real hazard —
@@ -666,6 +704,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     _pageCache.clear();
     _buffering = false;
     _renderScale = null;
+    _shownPages = const {};
     widget.session.renderCaches.viewerRasterBytesByViewer[widget.viewerId] = 0;
     _renders.clear();
     final document = _document;
@@ -1003,9 +1042,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   void _turnToPage(int page) {
     final count = _pageCount;
     final next = count <= 0 ? 0 : page.clamp(0, count - 1);
-    if (next != _page) {
-      widget.onPositionChanged?.call(next);
-    }
+    widget.position.value = next;
   }
 
   /// Whether this document turns its own pages — 유저 2026-08-29:
@@ -1014,6 +1051,30 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// what a movie is.
   bool get _turnsItsOwnPages =>
       (_document?.framesPerSecond ?? 0) > 0 && _pageCount > 1;
+
+  /// The document's pages one under another, read as a book (F-201, 유저
+  /// 2026-09-27: 「뷰어든 콘티 프리뷰든 pdf같은거 여러페이지 동시에
+  /// 볼수있게」) — a PDF's pages, a picture's or a waveform's one; null
+  /// for a document that turns its own pages, which shows the frame its
+  /// playhead is on alone.
+  ///
+  /// ⚠️No margin round it, where the conte's and the timesheet's have one:
+  /// the view never shows past the paper ([BrushCanvasPanel.viewLimit]),
+  /// so a desk round the pages would be canvas nobody sees — and the first
+  /// page stays where a one-page document always lay, at the origin.
+  PageStack? get _book {
+    final document = _document;
+    if (document == null || _pageCount == 0 || _turnsItsOwnPages) {
+      return null;
+    }
+    return _stack.resolve(
+      identity: document,
+      build: () => PageStack([
+        for (var page = 0; page < document.pageCount; page += 1)
+          document.pageSize(page),
+      ], margin: 0),
+    );
+  }
 
   /// The file whose SOUND this viewer would play, or null when the thing
   /// on screen cannot carry any.
@@ -1422,9 +1483,42 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// cut before it, a document being let go of — and a page turned in the
   /// meantime would have the outline cut out of the wrong page (audit
   /// 09-25).
+  ///
+  /// In a book (F-201) the page is the one the outline lies on most — the
+  /// pages lie one under another — and the outline moves into that page's
+  /// own space. An outline on the desk between pages cuts nothing.
   void _cutFromPage(CanvasSelectionShape shape) {
-    final page = _page;
-    _cuts = _cuts.then((_) => _cut(shape, page));
+    final book = _book;
+    if (book == null) {
+      final page = _page;
+      _cuts = _cuts.then((_) => _cut(shape, page));
+      return;
+    }
+    final page = _pageUnder(book, shape);
+    if (page == null) {
+      return;
+    }
+    final at = book.pageRect(page).topLeft;
+    final onPage = shape.translated(dx: -at.dx, dy: -at.dy);
+    _cuts = _cuts.then((_) => _cut(onPage, page));
+  }
+
+  /// The page of [book] the outline [shape] covers most — null when it
+  /// covers none.
+  int? _pageUnder(PageStack book, CanvasSelectionShape shape) {
+    final b = CanvasSelectionRegion.shape(shape).selectedBounds;
+    final bounds = Rect.fromLTRB(b.left, b.top, b.right, b.bottom);
+    int? most;
+    var mostArea = 0.0;
+    for (final page in book.pagesMeeting(bounds)) {
+      final overlap = book.pageRect(page).intersect(bounds);
+      final area = overlap.width * overlap.height;
+      if (area > mostArea) {
+        mostArea = area;
+        most = page;
+      }
+    }
+    return most;
   }
 
   Future<void> _cut(CanvasSelectionShape shape, int page) async {
@@ -1490,6 +1584,79 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     });
   }
 
+  /// The pages the view shows now and where each lies — every page on
+  /// screen in a [book], the [page] on show otherwise — each asked for at
+  /// the zoom the view has — none while [asking] is false (a fit is about
+  /// to replace the view).
+  ///
+  /// 🚨★★★THE ZOOM THE VIEW HAS, read HERE, from the view the panel hands
+  /// this builder. It was read in `build` from `widget.viewport` — a seed
+  /// the workspace never passes (it hands over the controller) — so in
+  /// the app every page was asked for at a zoom of 1 whatever the view
+  /// showed, and a zoomed-in page was that render stretched (found reading
+  /// the viewer for its book, F-201).
+  ///
+  /// 🚨The tier is chosen from DEVICE coverage, not from the render zoom.
+  /// The viewer is a document view, so R11 excludes it from the UI scale
+  /// by DIVIDING its render zoom when the scale goes up — so reading the
+  /// raw zoom made raising the interface LOWER the tier while the page
+  /// deliberately stayed the same size on screen: same dimensions,
+  /// visibly softer, and the only thing the user changed was how big the
+  /// chrome is.
+  ///
+  /// 🚨★★★**IMAGES COME THROUGH HERE.** They used to skip the tier and draw
+  /// a decode of the ORIGINAL file, which is the 17× the card measured.
+  ///
+  /// 🚨THE SCALE AXIS ONLY. [_RenderedPage] says a wrong-SCALE image draws
+  /// while the right one renders — a blurrier render of the SAME page is
+  /// not a lie about which frame this is. 🪦A page-axis twin once drew
+  /// the LAST page when this one's raster had not landed, answering the
+  /// white flashes 유저 2026-08-31 reported (「첫 재생때 … 흰 화면이
+  /// 엄청나게 깜빡이면서 재생됨」) by making the picture lie; the playhead
+  /// does not reach a frame that is not there instead.
+  List<({Rect rect, ui.Image? image})> _pagesShown(
+    BuildContext context,
+    CanvasViewport viewport,
+    Size box, {
+    required PageStack? book,
+    required int page,
+    required bool asking,
+  }) {
+    final document = _document;
+    if (document == null || _pageCount == 0) {
+      _shownPages = const {};
+      return const [];
+    }
+    final shown = [
+      if (book == null)
+        (page: page, rect: Offset.zero & document.pageSize(page))
+      else
+        for (final index in book.pagesMeeting(
+          canvasRectShown(viewport, box),
+        ))
+          (page: index, rect: book.pageRect(index)),
+    ];
+    _shownPages = {for (final entry in shown) entry.page};
+    if (asking) {
+      final coverage = CanvasZoomScale.of(context).display(viewport.zoom);
+      for (final entry in shown) {
+        final scale = viewerRenderScaleFor(
+          coverage,
+          document.pageSize(entry.page),
+        );
+        if (entry.page == page) {
+          _renderScale = scale;
+        }
+        _ensurePageRendered(entry.page, scale);
+      }
+      _fillPlaybackBuffer();
+    }
+    return [
+      for (final entry in shown)
+        (rect: entry.rect, image: _pageCache[entry.page]?.image),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
@@ -1517,42 +1684,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         ? null
         : widget.session.audioConformStore.durationSecondsFor(_soundPath!);
 
-    // The lazy render for the visible page, at the current zoom's tier.
-    //
-    // 🚨★★★**IMAGES COME THROUGH HERE NOW.** They used to skip the tier
-    // entirely and draw a decode of the ORIGINAL file, which is the 17×
-    // the card measured. Nothing about the tier was image-specific — it
-    // was only ever written inside an `if (pdf)`.
-    ui.Image? pageImage;
-    if (document != null && pageCount > 0) {
-      // 🚨The tier is chosen from DEVICE coverage, not from the render
-      // zoom. The viewer is a document view, so R11 excludes it from the
-      // UI scale by DIVIDING its render zoom when the scale goes up — so
-      // reading the raw zoom made raising the interface LOWER the tier
-      // while the page deliberately stayed the same size on screen: same
-      // dimensions, visibly softer, and the only thing the user changed was
-      // how big the chrome is.
-      final zoom = widget.viewport?.zoom ?? 1.0;
-      final scale = viewerRenderScaleFor(
-        CanvasZoomScale.of(context).display(zoom),
-        docSize,
-      );
-      // 🚨THE SCALE AXIS ONLY. [_RenderedPage] says a wrong-SCALE image
-      // draws while the right one renders — a blurrier render of the SAME
-      // page is not a lie about which frame this is.
-      //
-      // 🪦A page-axis twin stood here and drew the LAST page when this
-      // one's raster had not landed. It was answering the white flashes
-      // 유저 2026-08-31 reported 「첫 재생때 … 흰 화면이 엄청나게
-      // 깜빡이면서 재생됨」, and it answered them by making the picture lie
-      // instead. The flashes are gone for the right reason now: the
-      // playhead does not reach a frame that is not there, so what is on
-      // screen is the frame the playhead is on.
-      _renderScale = scale;
-      _ensurePageRendered(pageIndex, scale);
-      _fillPlaybackBuffer();
-      pageImage = _pageCache[pageIndex]?.image;
-    }
 
     final message = request == null ? strings.mediaViewerEmpty : _message;
 
@@ -1560,9 +1691,38 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // (F-201). None while a message stands in for it or the document is
     // still on its way — a stand-in's size would hold a view the slot
     // restored somewhere the page is not.
+    final book = message == null ? _book : null;
     final paper = message == null && document != null && pageCount > 0
-        ? Rect.fromLTWH(0, 0, docSize.width, docSize.height)
+        ? (book?.paper ?? Rect.fromLTWH(0, 0, docSize.width, docSize.height))
         : null;
+    // What the canvas spans: the book, or the one page.
+    final canvas = book?.size ?? docSize;
+
+    // Reframe ONCE per loaded document: the workspace-owned viewport
+    // survives asset switches, and a deep zoom/pan from a large scan would
+    // otherwise leave a small next document entirely off-screen — a blank
+    // panel this viewer promises never to show.
+    // 🚨THE TOKEN IS THE DOCUMENT, NOT THE LOAD. It used to be this State's
+    // own load counter, and a State dies with the panel — so reopening
+    // minted a fresh one and the fit ran again over a view the user had
+    // set. What the slot remembers is what makes 「once per document」 true
+    // across a close.
+    final framing = paper != null && _loadedToken != null && _needsFraming
+        ? CanvasAutoFrameRequest(
+            token: _loadedToken!,
+            rect: book?.pageRect(pageIndex) ?? paper,
+          )
+        : null;
+    // The pages wait for the fit: it lands after this frame, and the build
+    // it leads to asks for them through the view they will be seen in.
+    final framingPending = framing != null && _framingSent != _loadedToken;
+    if (framingPending) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() => _framingSent = _loadedToken);
+        }
+      });
+    }
 
     BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
         BrushCanvasPanel(
@@ -1570,8 +1730,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       availableFrameKeys: const [],
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: CanvasSize(
-        width: docSize.width.ceil().clamp(1, 1 << 14).toInt(),
-        height: docSize.height.ceil().clamp(1, 1 << 14).toInt(),
+        width: canvas.width.ceil().clamp(1, 1 << 14).toInt(),
+        height: canvas.height.ceil().clamp(1, 1 << 14).toInt(),
       ),
       viewport: widget.viewport,
       viewportController: widget.viewportController,
@@ -1593,18 +1753,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // moves the page instead.
       runsTheSelectedTool: tool != null,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
-      // Reframe ONCE per loaded document: the workspace-owned viewport
-      // survives asset switches, and a deep zoom/pan from a large scan
-      // would otherwise leave a small next document entirely off-screen
-      // — a blank panel this viewer promises never to show.
-      // 🚨THE TOKEN IS THE DOCUMENT, NOT THE LOAD. It used to be this
-      // State's own load counter, and a State dies with the panel — so
-      // reopening minted a fresh one and the fit ran again over a view the
-      // user had set. What the slot remembers is what makes 「once per
-      // document」 true across a close.
-      autoFrame: paper != null && _loadedToken != null && _needsFraming
-          ? CanvasAutoFrameRequest(token: _loadedToken!, rect: paper)
-          : null,
+      autoFrame: framing,
       // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays
       // on the pill. Register and swap are a session's worth of taps
       // between them, and every control that stays costs the pill 44px of
@@ -1645,8 +1794,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // this one in the pool" can change. ⚠️It has to: the list captures
       // the entries when the BAR is built, not when the list opens.
       bottomBarHostToken: (pageIndex, pageCount, _canRegister),
-      fitFocusRect: paper,
+      // A book's Fit frames the page read — the panel's to know.
+      fitFocusRect: book == null ? paper : null,
       viewLimit: paper,
+      book: book == null
+          ? null
+          : CanvasBook(pages: book, reading: widget.position),
       contentOverride: (context, viewport) => Stack(
         children: [
           Positioned.fill(
@@ -1671,21 +1824,29 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
               // pages: a light table that changes when you page or pan
               // and not otherwise, which was being re-rastered on every
               // frame the app produced for any reason at all.
-              child: StaticRaster(
-                debugLabel: _key('page'),
-                child: CustomPaint(
-                  key: ValueKey<String>(_key('page')),
-                  painter: _MediaPagePainter(
-                    image: pageImage,
-                    docSize: docSize,
-                    // PDF paper is opaque white; a transparent image
-                    // shows the checker-free paper too — the viewer is a
-                    // light table, not a compositor.
-                    paperFill: document != null,
-                    viewport: viewport,
-                    effectiveRatio: EffectiveDevicePixelRatio.of(context),
+              child: LayoutBuilder(
+                builder: (context, box) => StaticRaster(
+                  debugLabel: _key('page'),
+                  child: CustomPaint(
+                    key: ValueKey<String>(_key('page')),
+                    painter: _MediaPagePainter(
+                      pages: _pagesShown(
+                        context,
+                        viewport,
+                        box.biggest,
+                        book: book,
+                        page: pageIndex,
+                        asking: !framingPending,
+                      ),
+                      // PDF paper is opaque white; a transparent image
+                      // shows the checker-free paper too — the viewer is
+                      // a light table, not a compositor.
+                      paperFill: document != null,
+                      viewport: viewport,
+                      effectiveRatio: EffectiveDevicePixelRatio.of(context),
+                    ),
+                    child: const SizedBox.expand(),
                   ),
-                  child: const SizedBox.expand(),
                 ),
               ),
             ),
@@ -1765,20 +1926,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
 class _MediaPagePainter extends CustomPainter with RepaintOnProps {
   const _MediaPagePainter({
-    required this.image,
-    required this.docSize,
+    required this.pages,
     required this.paperFill,
     required this.viewport,
     required this.effectiveRatio,
   });
 
-  /// The page raster; null draws the paper alone (a PDF page still
-  /// rendering).
-  final ui.Image? image;
-
-  /// Document space — the image draws scaled INTO this rect, so a
-  /// higher-tier PDF raster stays sharp under zoom.
-  final ui.Size docSize;
+  /// The pages on screen, each where it lies in document space with its
+  /// raster — null draws the paper alone (a page still rendering). A
+  /// raster draws scaled INTO its rect, so a higher-tier render stays
+  /// sharp under zoom.
+  final List<({Rect rect, ui.Image? image})> pages;
 
   final bool paperFill;
   final CanvasViewport viewport;
@@ -1792,26 +1950,27 @@ class _MediaPagePainter extends CustomPainter with RepaintOnProps {
     // P8's ONE transform. ⛔The snap already happened at the host, so the
     // ratio here keeps the helper's own snap idempotent.
     applyViewportTransform(canvas, viewport, devicePixelRatio: effectiveRatio);
-    final docRect = Rect.fromLTWH(0, 0, docSize.width, docSize.height);
-    if (paperFill) {
-      canvas.drawRect(docRect, Paint()..color = const Color(0xFFFFFFFF));
-    }
-    final page = image;
-    if (page != null) {
-      canvas.drawImageRect(
-        page,
-        Rect.fromLTWH(0, 0, page.width.toDouble(), page.height.toDouble()),
-        docRect,
-        Paint()
-          ..filterQuality = FilterQuality.high
-          ..isAntiAlias = true,
-      );
+    for (final (:rect, :image) in pages) {
+      if (paperFill) {
+        canvas.drawRect(rect, Paint()..color = const Color(0xFFFFFFFF));
+      }
+      if (image != null) {
+        canvas.drawImageRect(
+          image,
+          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+          rect,
+          Paint()
+            ..filterQuality = FilterQuality.high
+            ..isAntiAlias = true,
+        );
+      }
     }
     canvas.restore();
   }
 
+  /// ⚠️The pages by their CONTENTS: the list is built afresh every build.
   @override
-  Object get props => (image, docSize, paperFill, viewport, effectiveRatio);
+  Object get props => (ByList(pages), paperFill, viewport, effectiveRatio);
 }
 
 /// The line that says where in the sound you are.

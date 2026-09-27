@@ -59,8 +59,7 @@ void main() {
       viewerId: viewerId,
       session: session,
       request: slot.request,
-      position: position,
-      onPositionChanged: (next) => slot.position.value = next,
+      position: slot.position,
       viewport: viewport,
       onViewportChanged: onViewportChanged,
     ),
@@ -192,7 +191,7 @@ void main() {
   testWidgets('a PDF request pages through the fake document: readout, '
       'next/previous stepping, lazy per-page renders', (tester) async {
     final fake = FakePdfDocument(
-      pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
+      pageSizes: List<ui.Size>.filled(4, const ui.Size(595, 842)),
     );
     PdfRenderService.debugOpenerOverride = (_) async => fake;
     await pumpViewer(tester);
@@ -208,19 +207,26 @@ void main() {
       find.byKey(const ValueKey<String>('media-viewer-page')),
       findsOneWidget,
     );
-    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.text('1 / 4'), findsOneWidget);
+    // Lazy (§6-m): only the pages ON SCREEN are asked for. The pages lie one
+    // under another (F-201), so the fit of the first shows the top of the
+    // second under it — and nothing further down is asked for.
     expect(
-      fake.renderRequests.map((request) => request.$1),
-      [0],
-      reason: 'only the visible page rendered (§6-m lazy)',
+      fake.renderRequests.map((request) => request.$1).toSet(),
+      {0, 1},
+      reason: 'the pages on screen, and only those',
     );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('media-viewer-next-page-button')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('2 / 2'), findsOneWidget);
-    expect(fake.renderRequests.map((request) => request.$1), [0, 1]);
+    expect(find.text('2 / 4'), findsOneWidget);
+    expect(
+      fake.renderRequests.map((request) => request.$1),
+      isNot(contains(3)),
+      reason: 'the last page is still off screen',
+    );
   });
 
   testWidgets('a PDF request with NO renderer states the absence instead '
@@ -359,6 +365,7 @@ void main() {
                   viewerId: 'media-viewer',
                   session: session,
                   request: slot.request,
+                  position: slot.position,
                   onAssetDropped: dropped.add,
                 ),
               ),

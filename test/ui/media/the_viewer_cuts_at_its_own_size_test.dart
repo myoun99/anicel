@@ -81,10 +81,11 @@ void main() {
   /// The viewer at a DISPLAY zoom of 34% — the user's own example — and
   /// already framed, so the view stays where it was put: [on]'s medium at
   /// [open], or the plain session's reference.
-  /// A view zoomed in past the page — one a pan can move: the view stops
-  /// at the paper (F-201), so a page smaller than the viewer stands still
-  /// in its middle whatever the hand does.
-  final pannable = CanvasViewport(zoom: 3, panX: -600, panY: -600);
+  /// A view zoomed in past the page — one a pan can move, and one page on
+  /// screen at a time: the view stops at the paper (F-201), so a page
+  /// smaller than the viewer stands still in its middle whatever the
+  /// hand does, and the pages lying one under another all show at once.
+  final pannable = CanvasViewport(zoom: 3, panX: -300, panY: -300);
 
   Future<void> pumpViewer(
     WidgetTester tester, {
@@ -104,8 +105,7 @@ void main() {
               viewerId: 'media-viewer',
               session: on ?? session,
               request: slot.request,
-              position: position,
-              onPositionChanged: (next) => slot.position.value = next,
+              position: slot.position,
               viewportController: slot.viewport,
               framedFor: slot.framedFor,
               brushTool: tool,
@@ -150,12 +150,23 @@ void main() {
     await tester.pump();
   }
 
-  Future<void> cutDrag(WidgetTester tester) => drag(
-    tester,
-    onScreen(tester, 300, 200),
-    onScreen(tester, 600, 500),
-    kind: PointerDeviceKind.mouse,
-  );
+  /// A cut across the page the reader is on: the page's own (300, 200) to
+  /// (600, 500), where that page lies — a book's pages lie one under
+  /// another (F-201), read from the book the panel was handed.
+  Future<void> cutDrag(WidgetTester tester) {
+    final book = tester
+        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+        .book;
+    final at = book == null
+        ? Offset.zero
+        : book.pages.pageRect(book.page).topLeft;
+    return drag(
+      tester,
+      onScreen(tester, at.dx + 300, at.dy + 200),
+      onScreen(tester, at.dx + 600, at.dy + 500),
+      kind: PointerDeviceKind.mouse,
+    );
+  }
 
   testWidgets('🎯a cut at 34% holds the SOURCE\'s pixels at their own size '
       '— not the size on screen', (tester) async {
@@ -286,7 +297,12 @@ void main() {
       opened.add(fresh);
       return fresh;
     };
-    await pumpViewer(tester, on: carried, open: carriedPath);
+    await pumpViewer(
+      tester,
+      on: carried,
+      open: carriedPath,
+      view: pannable,
+    );
     final cutFrom = opened.single..holdRegionReads();
     await cutDrag(tester);
     expect(cutFrom.regionReads, hasLength(1), reason: 'the read is out');
@@ -322,7 +338,12 @@ void main() {
       opened.add(fresh);
       return fresh;
     };
-    await pumpViewer(tester, on: carried, open: carriedPath);
+    await pumpViewer(
+      tester,
+      on: carried,
+      open: carriedPath,
+      view: pannable,
+    );
     final was = opened.single..holdRender(1);
     slot.position.value = 1;
     await tester.pump();
@@ -377,7 +398,12 @@ void main() {
       opened.add(fresh);
       return fresh;
     };
-    await pumpViewer(tester, on: carried, open: carriedPath);
+    await pumpViewer(
+      tester,
+      on: carried,
+      open: carriedPath,
+      view: pannable,
+    );
     return (session: carried, opened: opened);
   }
 
@@ -483,7 +509,7 @@ void main() {
     );
     // What ONE cached page costs in this harness, measured rather than
     // worked out: the tier follows the effective ratio.
-    await pumpViewer(tester);
+    await pumpViewer(tester, view: pannable);
     final page = session.renderCaches.viewerRasterBytes;
     expect(page, greaterThan(0), reason: 'fixture: a page is cached');
     await tester.pumpWidget(const SizedBox());
@@ -494,7 +520,7 @@ void main() {
         math.max(2 * page, page + read) + math.min(page, read) ~/ 2;
     ViewerRasterBudget.debugPageBytesOverride = budget ~/ 4;
     slot.position.value = 0;
-    await pumpViewer(tester);
+    await pumpViewer(tester, view: pannable);
     for (final next in [1, 2]) {
       slot.position.value = next;
       await tester.pumpAndSettle();

@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
@@ -12,6 +13,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
 import 'package:anicel/src/ui/session/render_caches.dart';
 
+import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
 
 /// 🚨★★★**A COUNT IS NOT A BOUND.**
@@ -71,6 +73,7 @@ void main() {
   Future<FakePdfDocument> openConte(
     WidgetTester tester, {
     required int pages,
+    CanvasViewport? view,
   }) async {
     opens += 1;
     // Unmount whatever is there so the next pump builds a new State, and
@@ -84,6 +87,15 @@ void main() {
       pageSizes: List<ui.Size>.filled(pages, const ui.Size(595, 842)),
     );
     PdfRenderService.debugOpenerOverride = (_) async => fake;
+    // ONE page on screen at a time, at ONE scale: the view is the user's
+    // (no fit of its own to follow) and a page stands taller than the
+    // viewer. The pages lie one under another (F-201), so a view fitted to
+    // a page shows the top of the next one too — and the budget below is
+    // counted in pages the reader is on, one at a time — unless the test
+    // hands it a [view] of its own.
+    final path = 'C:/work/conte-$opens.pdf';
+    slot.framedFor.value = path;
+    slot.viewport.value = view ?? CanvasViewport(zoom: 3);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -93,8 +105,9 @@ void main() {
               viewerId: 'media-viewer',
               session: session,
               request: slot.request,
-              position: position,
-              onPositionChanged: (next) => slot.position.value = next,
+              position: slot.position,
+              viewportController: slot.viewport,
+              framedFor: slot.framedFor,
             ),
           ),
         ),
@@ -102,7 +115,7 @@ void main() {
     );
     await tester.pump();
     slot.request.value = MediaViewerRequest(
-      path: 'C:/work/conte-$opens.pdf',
+      path: path,
       kind: MediaAssetKind.pdf,
       name: 'conte',
     );
@@ -148,8 +161,11 @@ void main() {
   /// panel's own framing, so a number written here by hand would be a
   /// guess — and a wrong guess makes every budget assertion below vacuous
   /// rather than red.
-  Future<int> measureOnePage(WidgetTester tester) async {
-    final probe = await openConte(tester, pages: 2);
+  Future<int> measureOnePage(
+    WidgetTester tester, {
+    CanvasViewport? view,
+  }) async {
+    final probe = await openConte(tester, pages: 2, view: view);
     final first = probe.renderRequests.first;
     final bytes = first.$2 * first.$3 * 4;
     expect(bytes, greaterThan(0));
@@ -301,6 +317,44 @@ void main() {
       reason:
           'evicting the visible page would only force it straight back — '
           'the floor is one page, and it is not negotiable',
+    );
+  });
+
+  testWidgets('🚨every page ON SCREEN survives every warning — a book shows '
+      'several (F-201), and a page let go would be asked for again by the '
+      'very frame that draws it', (tester) async {
+    // Zoomed out to half: the first two pages on screen at once.
+    final twoPages = seedFromRender(tester, CanvasViewport(zoom: 0.5));
+    ViewerRasterBudget.debugPageBytesOverride = await measureOnePage(
+      tester,
+      view: twoPages,
+    );
+    final fake = await openConte(tester, pages: 3, view: twoPages);
+    expect(
+      fake.renderRequests.map((request) => request.$1).toSet(),
+      {0, 1},
+      reason: 'fixture: the first two pages are on screen',
+    );
+    final before = fake.renderRequests.length;
+
+    // Down to the floor — one page — with two on screen.
+    for (var i = 0; i < 6; i += 1) {
+      session.respondToMemoryPressure();
+      // Bounded: a page on screen let go comes straight back, and its
+      // landing lets the other one go — for ever.
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        const Duration(seconds: 10),
+      );
+    }
+
+    expect(
+      fake.renderRequests.length,
+      before,
+      reason:
+          'the cache stays over its budget by what the screen shows — no '
+          'eviction could give that back',
     );
   });
 }

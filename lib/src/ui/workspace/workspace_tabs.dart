@@ -70,20 +70,15 @@ class _WorkspaceTabs {
       // Keeps its decoded pages/PDF document across tab switches.
       keepAlive: true,
       builder: (context) => PanelAwareListenableBuilder(
-        // The request is the HOST's own subscription; the position and
-        // the viewport are read as VALUES here, so they rebuild from
-        // this side.
-        listenable: Listenable.merge([
-          slot.viewport,
-          slot.position,
-          _state.widget.session.languageSettings,
-        ]),
+        // The request, the position and the viewport are the HOST's own
+        // subscriptions (the page read moves with the view, F-201) — so
+        // nothing here rebuilds it for them.
+        listenable: _state.widget.session.languageSettings,
         builder: (context) => MediaViewerTabHost(
           viewerId: tabId,
           session: _state.widget.session,
           request: slot.request,
-          position: slot.position.value,
-          onPositionChanged: (position) => slot.position.value = position,
+          position: slot.position,
           onRequestPicked: slot.open,
           viewportController: slot.viewport,
           framedFor: slot.framedFor,

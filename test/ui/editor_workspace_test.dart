@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
@@ -776,6 +777,37 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(EditorCanvasArea), findsOneWidget);
       expect(find.byType(MediaViewerTabHost), findsNothing);
+    });
+
+    testWidgets('the viewer\'s page is the slot\'s — the viewer the '
+        'workspace builds again reads the page the one before it was on', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      await tester.tap(
+        find.byKey(const ValueKey<String>('top-strip-floor-media-viewer')),
+      );
+      await tester.pumpAndSettle();
+      MediaViewerTabHost viewer() =>
+          tester.widget<MediaViewerTabHost>(find.byType(MediaViewerTabHost));
+      final page = viewer().position;
+      page.value = 2;
+
+      // Another language builds the viewer again — through the builder
+      // that hands it its page.
+      final settings = session.languageSettings.value;
+      session.languageSettings.value = settings.copyWith(
+        notationLanguage: settings.notationLanguage == AppLanguage.ko
+            ? AppLanguage.ja
+            : AppLanguage.ko,
+      );
+      await tester.pumpAndSettle();
+
+      expect(viewer().position, same(page));
+      expect(viewer().position.value, 2);
     });
 
     testWidgets('a panel that ends up on the floor keeps a way back', (

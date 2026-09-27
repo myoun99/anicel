@@ -75,8 +75,7 @@ void main() {
               viewerId: 'media-viewer',
               session: session,
               request: slot.request,
-              position: position,
-              onPositionChanged: (next) => slot.position.value = next,
+              position: slot.position,
             ),
           ),
         ),
@@ -101,12 +100,20 @@ void main() {
     final paint = tester.widget<CustomPaint>(
       find.byKey(const ValueKey<String>('media-viewer-page')),
     );
-    return (paint.painter as dynamic).image as ui.Image?;
+    // One page — a sound's waveform, a movie's frame: the painter's
+    // pages are the ones on screen, and these documents show one.
+    final pages =
+        (paint.painter as dynamic).pages
+            as List<({Rect rect, ui.Image? image})>;
+    return pages.single.image;
   }
 
   testWidgets('🚨a page whose raster has not landed draws NOTHING — never '
       'the page before it', (tester) async {
-    final fake = await open(tester, pages: 3);
+    // A document that shows ONE page at a time — a movie's frame. A book's
+    // pages each draw at their own place (F-201), so no page there can
+    // stand in for another.
+    final fake = await open(tester, pages: 3, framesPerSecond: 24);
     final first = drawnImage(tester);
     expect(first, isNotNull, reason: 'fixture: page 0 landed');
 

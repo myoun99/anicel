@@ -132,7 +132,7 @@ void main() {
               viewerId: 'media-viewer',
               session: session!,
               request: slot.request,
-              position: 0,
+              position: slot.position,
             ),
           ),
         ),
@@ -149,7 +149,12 @@ void main() {
       final paint = tester.widget<CustomPaint>(
         find.byKey(const ValueKey<String>('media-viewer-page')),
       );
-      return (paint.painter as dynamic).image as ui.Image?;
+      // One page — a sound's waveform, a movie's frame: the painter's
+    // pages are the ones on screen, and these documents show one.
+    final pages =
+        (paint.painter as dynamic).pages
+            as List<({Rect rect, ui.Image? image})>;
+    return pages.single.image;
     }
 
     testWidgets('a readable sound draws its waveform, and says nothing', (
