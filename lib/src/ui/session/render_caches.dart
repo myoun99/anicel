@@ -40,18 +40,15 @@ class RenderCaches {
   RenderCaches({
     required ProjectAccess project,
     required ChangeSink changes,
-    required SessionInternals internals,
     required bool Function() sessionDisposed,
     required void Function() onEditActivity,
   }) : _project = project,
        _changes = changes,
-       _internals = internals,
        _sessionDisposed = sessionDisposed,
        _onEditActivity = onEditActivity;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final SessionInternals _internals;
 
   /// Whether the session has been disposed — a plain flag, so it comes as
   /// the question.
@@ -220,7 +217,7 @@ class RenderCaches {
       CutFrameCompositeCache(
         layerImages: layerFrameImageCache,
         frameStore: brushFrameStore,
-        frameKeyOf: _internals.brushFrameKeyForCut,
+        frameKeyOf: _project.brushFrameKeyForCut,
       );
 
   /// A5 — the trailing edge of an edit burst, so the warming queue

@@ -44,6 +44,7 @@ abstract interface class ProjectAccess {
   CutId? get activeCutId;
   Cut? get activeCutOrNull;
   Cut? cutById(CutId cutId);
+  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
   bool isTrackSeLayerId(LayerId layerId);
   int rowAxisOffset(LayerId layerId);
   bool isTrackTransitionLayerId(LayerId layerId);
@@ -126,7 +127,6 @@ abstract interface class TimelineAccess {
 abstract interface class SessionInternals {
   bool blockMoveEligible(LayerId layerId);
   int commitBlockStart(LayerId layerId, int displayStart);
-  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   void selectTrackCutAtPlayhead(TrackId trackId);
 }

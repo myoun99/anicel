@@ -265,7 +265,7 @@ void carrySurfaces<S>({
 /// a paste (F-161), whose source may be in another cut, drawn over since, or
 /// cut away.
 void carryBakedPictures({
-  required SessionInternals internals,
+  required ProjectAccess project,
   required BrushFrameStore store,
   required Cut cut,
   required LayerId to,
@@ -284,7 +284,7 @@ void carryBakedPictures({
     final surface? => resizeBitmapSurfaceCanvas(surface, cut.canvasSize),
     null => null,
   },
-  keyOfCopy: (minted) => internals.brushFrameKeyForCut(cut, to, minted.value),
+  keyOfCopy: (minted) => project.brushFrameKeyForCut(cut, to, minted.value),
 );
 
 /// The pictures [cels] show as they are NOW, each under the key [keyOf]

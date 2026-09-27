@@ -41,7 +41,6 @@ class FrameVerbs {
     required FrameIds frameIds,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required TimelineRowAddress Function() currentRow,
     required RenderCaches renderCaches,
@@ -53,7 +52,6 @@ class FrameVerbs {
        _frameIds = frameIds,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
        _dragPreview = dragPreview,
        _currentRow = currentRow,
        _renderCaches = renderCaches,
@@ -66,7 +64,6 @@ class FrameVerbs {
   final FrameIds _frameIds;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
   /// The row the user stands on — `Standing.currentRow`, asked when needed.
@@ -268,13 +265,13 @@ class FrameVerbs {
     if (cut != null) {
       final store = _renderCaches.brushFrameStore;
       carryBakedPictures(
-        internals: _internals,
+        project: _project,
         store: store,
         cut: cut,
         to: layer.id,
         minted: placed.minted,
         pictureOf: (source) => store.bakedSurfaceOrNull(
-          _internals.brushFrameKeyForCut(cut, layer.id, source),
+          _project.brushFrameKeyForCut(cut, layer.id, source),
         ),
       );
       final ink = _renderCaches.conteInkRowStore;

@@ -33,14 +33,12 @@ class LayerVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required ActiveCutEdits activeCut,
-    required SessionInternals internals,
     required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
        _activeCutEdits = activeCut,
-       _internals = internals,
        _renderCaches = renderCaches;
 
   final ProjectAccess _project;
@@ -48,8 +46,7 @@ class LayerVerbs {
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
 
-  /// Where a duplicate's pictures are, and the keys they go under.
-  final SessionInternals _internals;
+  /// Where a duplicate's pictures are.
   final RenderCaches _renderCaches;
 
   /// The active-row cut-command envelope — the session's one instance,
@@ -219,13 +216,13 @@ class LayerVerbs {
     final cut = _project.requireActiveCut;
     final store = _renderCaches.brushFrameStore;
     carryBakedPictures(
-      internals: _internals,
+      project: _project,
       store: store,
       cut: cut,
       to: copy.layerId,
       minted: copy.minted,
       pictureOf: (source) => store.bakedSurfaceOrNull(
-        _internals.brushFrameKeyForCut(cut, layerId, source),
+        _project.brushFrameKeyForCut(cut, layerId, source),
       ),
     );
     final ink = _renderCaches.conteInkRowStore;

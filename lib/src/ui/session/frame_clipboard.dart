@@ -36,7 +36,6 @@ class FrameClipboard implements BringsMedia {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required RenderCaches renderCaches,
     required MediaByteSource Function(String poolPath) mediaBytesOf,
     required MediaStagingStore staging,
@@ -46,7 +45,6 @@ class FrameClipboard implements BringsMedia {
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
-       _internals = internals,
        _renderCaches = renderCaches,
        _mediaBytesOf = mediaBytesOf,
        _staging = staging;
@@ -69,7 +67,6 @@ class FrameClipboard implements BringsMedia {
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
   final RenderCaches _renderCaches;
 
   _CopiedFrameReference? get _copiedFrame => _board._copy;
@@ -235,7 +232,7 @@ class FrameClipboard implements BringsMedia {
     return picturesShownBy(
       store: _renderCaches.brushFrameStore,
       cels: cels,
-      keyOf: (cel) => _internals.brushFrameKeyForCut(cut, row.id, cel),
+      keyOf: (cel) => _project.brushFrameKeyForCut(cut, row.id, cel),
     );
   }
 
@@ -707,7 +704,7 @@ class FrameClipboard implements BringsMedia {
         break; // Gap state: no cut, so no key to store a picture under.
       }
       carryBakedPictures(
-        internals: _internals,
+        project: _project,
         store: _renderCaches.brushFrameStore,
         cut: cut,
         to: targetId,
@@ -924,13 +921,13 @@ class FrameClipboard implements BringsMedia {
       final store = _renderCaches.brushFrameStore;
       for (final (layerId, minted) in mintedByLayer) {
         carryBakedPictures(
-          internals: _internals,
+          project: _project,
           store: store,
           cut: cut,
           to: layerId,
           minted: minted,
           pictureOf: (source) => store.bakedSurfaceOrNull(
-            _internals.brushFrameKeyForCut(cut, layerId, source),
+            _project.brushFrameKeyForCut(cut, layerId, source),
           ),
         );
       }

@@ -36,18 +36,15 @@ class OnionSkin {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _controllers = controllers,
-       _internals = internals;
+       _controllers = controllers;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
 
   /// The peg settings — the app's one notifier (see the class doc), so the
   /// canvas underlay and the onion panel subscribe without whole-session
@@ -196,7 +193,7 @@ class OnionSkin {
             settings: pegs,
           ))
             CanvasLayerImageRequest(
-              frameKey: _internals.brushFrameKeyForCut(
+              frameKey: _project.brushFrameKeyForCut(
                 cut,
                 layer.id,
                 plan.frameId,

@@ -23,16 +23,16 @@ import 'session_roles.dart';
 class EditingStackMap {
   EditingStackMap({
     required OpacityVerbs opacityVerbs,
-    required SessionInternals internals,
+    required ProjectAccess project,
     required this.cut,
     required this.stackCut,
     required this.frameIndex,
     required this.activeLayerId,
   }) : _opacityVerbs = opacityVerbs,
-       _internals = internals;
+       _project = project;
 
   final OpacityVerbs _opacityVerbs;
-  final SessionInternals _internals;
+  final ProjectAccess _project;
   final Cut cut;
   final Cut stackCut;
   final int frameIndex;
@@ -93,7 +93,7 @@ class EditingStackMap {
     if (entry.layer.id != activeLayerId ||
         !layerAcceptsBrushInput(entry.layer)) {
       return CanvasLayerImageRequest(
-        frameKey: _internals.brushFrameKeyForCut(
+        frameKey: _project.brushFrameKeyForCut(
           cut,
           entry.layer.id,
           entry.frame.id,
@@ -126,7 +126,7 @@ class EditingStackMap {
       // stack reads it off the widget it replaces and composes the cel's
       // image on the spot, so the row does not go blank for the frames an
       // asynchronous build takes ([CanvasActiveLayerRow.frameKey]).
-      frameKey: _internals.brushFrameKeyForCut(
+      frameKey: _project.brushFrameKeyForCut(
         cut,
         entry.layer.id,
         entry.frame.id,

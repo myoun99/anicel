@@ -43,7 +43,6 @@ class CutVerbs {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required StoryboardRows storyboardRows,
     required ActiveCutEdits activeCut,
     required CutPlacement placement,
@@ -53,7 +52,6 @@ class CutVerbs {
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
        _storyboardRows = storyboardRows,
        _activeCut = activeCut,
        _placement = placement,
@@ -73,7 +71,6 @@ class CutVerbs {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
 
   /// Where a cut may step to and which index that is. Stateless, and asked
   /// by nobody but these verbs — so it is theirs, not a name on the session.
@@ -127,13 +124,13 @@ class CutVerbs {
     final store = _renderCaches.brushFrameStore;
     for (final row in source.layers) {
       carryBakedPictures(
-        internals: _internals,
+        project: _project,
         store: store,
         cut: into,
         to: copy.rows[row.id]!,
         minted: {for (final cel in row.frames) cel.id: copy.minted[cel.id]!},
         pictureOf: (cel) => store.bakedSurfaceOrNull(
-          _internals.brushFrameKeyForCut(source, row.id, cel),
+          _project.brushFrameKeyForCut(source, row.id, cel),
         ),
       );
     }

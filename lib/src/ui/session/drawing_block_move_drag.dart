@@ -175,8 +175,8 @@ class DrawingBlockMoveDragVerbs {
           pairs: [
             for (final frameId in plan.movedFrameIds)
               (
-                _internals.brushFrameKeyForCut(cut, source.id, frameId),
-                _internals.brushFrameKeyForCut(cut, plan.targetAfter!.id, frameId),
+                _project.brushFrameKeyForCut(cut, source.id, frameId),
+                _project.brushFrameKeyForCut(cut, plan.targetAfter!.id, frameId),
               ),
           ],
         ),

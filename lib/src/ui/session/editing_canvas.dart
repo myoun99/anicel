@@ -45,7 +45,6 @@ class EditingCanvas {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
-    required SessionInternals internals,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required ActiveCutControllers controllers,
     required OpacityVerbs opacityVerbs,
@@ -54,7 +53,6 @@ class EditingCanvas {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals,
        _dragPreview = dragPreview,
        _controllers = controllers,
        _opacityVerbs = opacityVerbs,
@@ -64,7 +62,6 @@ class EditingCanvas {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-  final SessionInternals _internals;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final ActiveCutControllers _controllers;
   final OpacityVerbs _opacityVerbs;
@@ -166,7 +163,7 @@ class EditingCanvas {
     final shown = stackCut ?? cut;
     final walk = EditingStackMap(
       opacityVerbs: _opacityVerbs,
-      internals: _internals,
+      project: _project,
       cut: cut,
       stackCut: shown,
       frameIndex: frameIndex,
@@ -237,7 +234,7 @@ class EditingCanvas {
       }
       yield CompositeLeaf(
         CanvasLayerImageRequest(
-          frameKey: _internals.brushFrameKeyForCut(cut, layer.id, frame.id),
+          frameKey: _project.brushFrameKeyForCut(cut, layer.id, frame.id),
           opacity: opacity,
           pose: null,
           anchorPoint: null,

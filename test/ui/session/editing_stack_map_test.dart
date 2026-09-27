@@ -61,7 +61,7 @@ void main() {
     final cut = s.activeCutOrNull!;
     final map = EditingStackMap(
       opacityVerbs: s.opacityVerbs,
-      internals: s,
+      project: s,
       cut: cut,
       stackCut: cut,
       frameIndex: 0,

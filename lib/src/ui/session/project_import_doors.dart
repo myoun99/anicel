@@ -69,7 +69,6 @@ class ProjectImportDoors {
   ProjectImportDoors({
     required ProjectAccess project,
     required ChangeSink changes,
-    required SessionInternals internals,
     required RenderCaches renderCaches,
     required ImportLanding landing,
     required MediaFingerprintLedger fingerprints,
@@ -79,7 +78,6 @@ class ProjectImportDoors {
     required HoldMediaBytes holdBytes,
   }) : _project = project,
        _changes = changes,
-       _internals = internals,
        _renderCaches = renderCaches,
        _landing = landing,
        _fingerprints = fingerprints,
@@ -90,7 +88,6 @@ class ProjectImportDoors {
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final SessionInternals _internals;
   final RenderCaches _renderCaches;
   final ImportLanding _landing;
   final MediaFingerprintLedger _fingerprints;
@@ -370,7 +367,7 @@ class ProjectImportDoors {
       for (final cel in expansion.cels) {
         bakeCelSurface(
           _renderCaches.brushFrameStore,
-          _internals.brushFrameKeyForCut(bakedCut, cel.layerId, cel.frameId),
+          _project.brushFrameKeyForCut(bakedCut, cel.layerId, cel.frameId),
           cel.surface,
         );
       }
@@ -867,7 +864,7 @@ class ProjectImportDoors {
         pictures: {
           if (picture != null)
             for (final frame in layer.frames)
-              _internals.brushFrameKeyForCut(cut, layerId, frame.id): picture,
+              _project.brushFrameKeyForCut(cut, layerId, frame.id): picture,
         },
         cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
       ),
@@ -1062,7 +1059,7 @@ class ProjectImportDoors {
             );
             bakeCelSurface(
               _renderCaches.brushFrameStore,
-              _internals.brushFrameKeyForCut(
+              _project.brushFrameKeyForCut(
                 cut,
                 rowId ?? bake.layerId,
                 bake.frameId,

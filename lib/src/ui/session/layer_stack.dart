@@ -43,7 +43,6 @@ class LayerStack {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required LayerIdMint layerIds,
     required LayerVerbs layerVerbs,
     required Standing standing,
@@ -55,7 +54,6 @@ class LayerStack {
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
-       _internals = internals,
        _layerIds = layerIds,
        _layerVerbs = layerVerbs,
        _standing = standing,
@@ -68,7 +66,6 @@ class LayerStack {
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
   final LayerIdMint _layerIds;
   final LayerVerbs _layerVerbs;
   final Standing _standing;
@@ -295,7 +292,7 @@ class LayerStack {
 
   bool _storeHoldsAPicture(Cut cut, LayerId layerId, FrameId frameId) =>
       _renderCaches.brushFrameStore.celHasRenderableContent(
-        _internals.brushFrameKeyForCut(cut, layerId, frameId),
+        _project.brushFrameKeyForCut(cut, layerId, frameId),
       );
 
   /// Bumps whenever [celHasContentForLayer] can have changed anywhere: the

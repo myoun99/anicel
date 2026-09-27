@@ -146,7 +146,7 @@ class CellVerbs {
       if (frame == null) {
         return;
       }
-      final key = _internals.brushFrameKeyForCut(cut, layer.id, frame.id);
+      final key = _project.brushFrameKeyForCut(cut, layer.id, frame.id);
       // 🚨AND IT HAS TO HAVE A DRAWING IN IT. 유저 2026-08-27: 「색변환은
       // 레이어에 그림이 존재 해야 활성화시키는게 맞고. 픽셀삭제는 그림이
       // 있어야 활성화시키는게 맞고」.

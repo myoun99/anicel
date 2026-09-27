@@ -26,7 +26,6 @@ class CutFolderImportDoor {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required SessionInternals internals,
     required RenderCaches renderCaches,
     required TimelineAccess timeline,
     required ImportLanding landing,
@@ -36,7 +35,6 @@ class CutFolderImportDoor {
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _internals = internals,
        _renderCaches = renderCaches,
        _timeline = timeline,
        _landing = landing,
@@ -46,7 +44,6 @@ class CutFolderImportDoor {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final SessionInternals _internals;
   final RenderCaches _renderCaches;
   final TimelineAccess _timeline;
   final ImportLanding _landing;
@@ -176,7 +173,7 @@ class CutFolderImportDoor {
           );
           bakeCelSurface(
             _renderCaches.brushFrameStore,
-            _internals.brushFrameKeyForCut(
+            _project.brushFrameKeyForCut(
               bakedCut,
               bake.layerId,
               bake.frameId,

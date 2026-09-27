@@ -27,7 +27,6 @@ class LayerClipboard implements BringsMedia {
     required SelectionAccess selection,
     required ChangeSink changes,
     required LayerStack layerStack,
-    required SessionInternals internals,
     required RenderCaches renderCaches,
     required MediaByteSource Function(String poolPath) mediaBytesOf,
     required MediaStagingStore staging,
@@ -36,7 +35,6 @@ class LayerClipboard implements BringsMedia {
        _selection = selection,
        _changes = changes,
        _layerStack = layerStack,
-       _internals = internals,
        _renderCaches = renderCaches,
        _mediaBytesOf = mediaBytesOf,
        _staging = staging;
@@ -48,7 +46,6 @@ class LayerClipboard implements BringsMedia {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final LayerStack _layerStack;
-  final SessionInternals _internals;
   final RenderCaches _renderCaches;
 
   /// Where this project keeps a medium's bytes ([CopiedNames.bytesOf]).
@@ -84,7 +81,7 @@ class LayerClipboard implements BringsMedia {
       pictures: picturesShownBy(
         store: _renderCaches.brushFrameStore,
         cels: activeLayer.frames,
-        keyOf: (cel) => _internals.brushFrameKeyForCut(
+        keyOf: (cel) => _project.brushFrameKeyForCut(
           _project.requireActiveCut,
           activeLayer.id,
           cel,
@@ -185,7 +182,7 @@ class LayerClipboard implements BringsMedia {
     PastedLayer pasted,
   ) {
     carryBakedPictures(
-      internals: _internals,
+      project: _project,
       store: _renderCaches.brushFrameStore,
       cut: cut,
       to: pasted.layerId,

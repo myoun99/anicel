@@ -67,14 +67,12 @@ typedef _MoviePicture = (_Movie movie, int movieFrame, CanvasSize canvas);
 class MovieCelHydrator {
   MovieCelHydrator({
     required ProjectAccess project,
-    required SessionInternals internals,
     required ChangeSink changes,
     required RenderCaches renderCaches,
     required ProjectFrameRate Function() frameRate,
     required HoldMediaBytes holdBytes,
     required MediaCarry? Function(String path) carryFor,
   }) : _project = project,
-       _internals = internals,
        _changes = changes,
        _renderCaches = renderCaches,
        _frameRate = frameRate,
@@ -82,7 +80,6 @@ class MovieCelHydrator {
        _carryFor = carryFor;
 
   final ProjectAccess _project;
-  final SessionInternals _internals;
   final ChangeSink _changes;
   final RenderCaches _renderCaches;
   final ProjectFrameRate Function() _frameRate;
@@ -168,7 +165,7 @@ class MovieCelHydrator {
       if (movieCel == null || reference == null) {
         continue;
       }
-      final key = _internals.brushFrameKeyForCut(
+      final key = _project.brushFrameKeyForCut(
         cut,
         entry.layer.id,
         entry.frame.id,

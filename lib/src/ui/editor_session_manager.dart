@@ -408,7 +408,6 @@ class EditorSessionManager extends ChangeNotifier
   late final RenderCaches renderCaches = RenderCaches(
     project: this,
     changes: this,
-    internals: this,
     sessionDisposed: () => disposed,
     onEditActivity: () => playbackRig.prerenderScheduler.notifyEditActivity(),
   );
@@ -461,7 +460,6 @@ class EditorSessionManager extends ChangeNotifier
   /// warmer before each frame, the canvas at the frame it stands on.
   late final MovieCelHydrator movieCels = MovieCelHydrator(
     project: this,
-    internals: this,
     changes: this,
     renderCaches: renderCaches,
     frameRate: () => projectSettings.projectFrameRate,
@@ -637,8 +635,8 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_clipboard.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
-  late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, internals: this, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
+  late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
+  late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
 
   /// What the boards above hold — the APP's, handed to every open project
   /// by the shell (I-7, 유저 2026-09-26: 「탭사이에 복사나 붙여넣기 뭐든
@@ -652,7 +650,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits, internals: this, renderCaches: renderCaches);
+  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits, renderCaches: renderCaches);
 
   // ── the cut's row stack: its own object ─────────────────────────────
   //
@@ -668,7 +666,6 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     frameIds: this,
     controllers: activeCutControllers,
-    internals: this,
     layerIds: layerIds,
     layerVerbs: layerVerbs,
     standing: standing,
@@ -1427,7 +1424,6 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     controllers: activeCutControllers,
     storyboardRows: storyboardRows,
-    internals: this,
     activeCut: _activeCutEdits,
     placement: cutPlacement,
     renderCaches: renderCaches,
@@ -1529,7 +1525,6 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     timeline: this,
-    internals: this,
     dragPreview: dragPreview,
     controllers: activeCutControllers,
     opacityVerbs: opacityVerbs,
@@ -1555,7 +1550,6 @@ class EditorSessionManager extends ChangeNotifier
     frameIds: this,
     timeline: this,
     controllers: activeCutControllers,
-    internals: this,
     dragPreview: dragPreview,
     currentRow: () => standing.currentRow,
     renderCaches: renderCaches,
@@ -2170,7 +2164,6 @@ class EditorSessionManager extends ChangeNotifier
   late final ProjectImportDoors importDoors = ProjectImportDoors(
     project: this,
     changes: this,
-    internals: this,
     renderCaches: renderCaches,
     landing: importLanding,
     fingerprints: mediaFingerprints,
@@ -2184,7 +2177,6 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    internals: this,
     renderCaches: renderCaches,
     timeline: this,
     landing: importLanding,
@@ -2201,7 +2193,6 @@ class EditorSessionManager extends ChangeNotifier
   late final TvppImportDoor tvppDoor = TvppImportDoor(
     project: this,
     changes: this,
-    internals: this,
     renderCaches: renderCaches,
     file: projectFile,
     projectDoor: projectDoor,
@@ -3303,7 +3294,6 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     controllers: activeCutControllers,
-    internals: this,
   );
 
   // ── the pool's content fingerprints: their own object ────────────────

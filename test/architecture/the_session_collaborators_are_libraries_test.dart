@@ -170,7 +170,13 @@ const _mayNameTheSession = <String, String>{
 /// (the lane verbs' preview drop, which arrived meanwhile, asks the same).
 /// The lane verbs, the scrub, the layer switches and the storyboard cursor
 /// name no internals now.
-const _sessionInternalsMembers = 5;
+/// 5 → 4 (same day, the eighteenth family): the brush store key of a cel
+/// is a PROJECT answer — the session derived it from the project alone
+/// (`brushFrameKeyIn`) — and seventeen collaborators asked it, so it is a
+/// member of `ProjectAccess`, the role they all hold. Thirteen of them held
+/// internals for nothing else and name none now; the picture carry and the
+/// editing stack map take the project role in its place.
+const _sessionInternalsMembers = 4;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

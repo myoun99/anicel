@@ -1882,8 +1882,8 @@ class FrameRangeMoveDrag {
           pairs: [
             for (final rekey in multiRowPlan!.rekeys)
               (
-                _internals.brushFrameKeyForCut(cut, rekey.from, rekey.frameId),
-                _internals.brushFrameKeyForCut(cut, rekey.to, rekey.frameId),
+                _project.brushFrameKeyForCut(cut, rekey.from, rekey.frameId),
+                _project.brushFrameKeyForCut(cut, rekey.to, rekey.frameId),
               ),
           ],
         ),
