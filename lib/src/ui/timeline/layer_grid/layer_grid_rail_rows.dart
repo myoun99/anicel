@@ -215,6 +215,7 @@ class _LayerGridRailRows {
       return TimelineDragPreviewRowGate(
         dragPreview: _state.widget.hooks.dragPreview,
         layer: row.layer,
+        slice: (layer) => laneRowSlice(layer, row.lane!.laneId),
         rowBuilder: (context, layer) => TimelineLaneControlsRow(
           layer: layer,
           lane: previewedLaneRow(

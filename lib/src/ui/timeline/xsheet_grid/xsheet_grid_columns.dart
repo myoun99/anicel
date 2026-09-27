@@ -67,6 +67,9 @@ class _XSheetGridColumns {
       child: TimelineDragPreviewRowGate(
         dragPreview: _state.widget.hooks.dragPreview,
         layer: entry.layer,
+        slice: entry.isLane
+            ? (layer) => laneRowSlice(layer, entry.lane!.laneId)
+            : null,
         rowBuilder: (context, layer) =>
             _columnFor(entry, layer, frameRange, plan, viewportExtent),
       ),

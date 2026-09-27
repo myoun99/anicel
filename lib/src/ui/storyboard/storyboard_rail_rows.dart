@@ -627,6 +627,7 @@ class _StoryboardRailRows {
         dragPreview: _state.widget.dragPreview,
         layer: layer,
         useGlobalForm: true,
+        slice: (shown) => laneRowSlice(shown, lane.laneId),
         rowBuilder: (context, shown) => row(
           shown,
           identical(shown, layer)

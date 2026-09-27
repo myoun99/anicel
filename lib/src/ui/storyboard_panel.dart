@@ -98,6 +98,7 @@ import 'timeline/timeline_double_tap.dart'
         timelineCellDoubleTapActivation,
         timelineCellDoubleTapRecord,
         timelineLabelDoubleTapDetector;
+import 'timeline/lane_row_slice.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show

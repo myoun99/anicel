@@ -15,6 +15,7 @@ import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'memo_token.dart';
+import 'lane_row_slice.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_cel_content_source.dart';
@@ -598,6 +599,9 @@ class _TimelineFrameRowsScrollBodyState
       child: TimelineDragPreviewRowGate(
         dragPreview: widget.dragPreview,
         layer: row.layer,
+        slice: row.isLane
+            ? (layer) => laneRowSlice(layer, row.lane!.laneId)
+            : null,
         // R10: a FOLDER row is a cells row. Its band arrives as the display
         // clone's own timeline, so it takes the shared painter, the shared
         // press policy — the playhead can be put on it at last — and the

@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
@@ -645,6 +646,42 @@ void main() {
       identical(surface(), mounted),
       isTrue,
       reason: 'nor is the pose leaving',
+    );
+    await gesture.up();
+    await tester.pump();
+  });
+
+  testWidgets('a scrub rebuilds the rows of the lane it edits — not every row '
+      'of its layer (the rebuild budget of a step)', (tester) async {
+    await open(tester, layer: row, standOn: 'position');
+    final value = find.byKey(
+      ValueKey<String>('timeline-lane-value-${row.value}-position'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(value),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(10, 0));
+    await tester.pump();
+
+    final rebuilt = <String>[];
+    debugOnRebuildDirtyWidget = (element, _) {
+      final widget = element.widget;
+      if (widget is TimelineLaneControlsRow) {
+        rebuilt.add(widget.lane.laneId);
+      }
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+    await gesture.moveBy(const Offset(10, 0));
+    await tester.pump();
+    debugOnRebuildDirtyWidget = null;
+
+    expect(
+      rebuilt.toSet(),
+      {'position', transformGroupHeaderLane.laneId},
+      reason: 'the edited lane and the header whose keys it joins — the '
+          'scale, rotation and anchor rows show what they showed, and '
+          'rebuilding them was most of a step',
     );
     await gesture.up();
     await tester.pump();

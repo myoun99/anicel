@@ -642,7 +642,16 @@ class TimelineDragPreviewRowGate extends StatefulWidget {
     required this.layer,
     required this.rowBuilder,
     this.useGlobalForm = false,
+    this.slice,
   });
+
+  /// What of the layer this row SHOWS: a preview rebuilds the row only when
+  /// this answer changes (by identity) or the silhouette moves —
+  /// `SlicedListenableBuilder`'s rule for a row. A lane row answers with its own lane (`laneRowSlice`), so a
+  /// value scrubbed on one lane stops rebuilding every other row of its
+  /// layer (F-195). Null = the whole layer, which is every row's answer
+  /// until it states a narrower one.
+  final Object Function(Layer layer)? slice;
 
   /// The session's preview channel; null renders the base row untouched
   /// (grids hosted without a session, e.g. focused widget tests).
@@ -753,10 +762,18 @@ class _TimelineDragPreviewRowGateState
     if (identical(next, _previewLayer) && silhouette == _silhouette) {
       return;
     }
-    setState(() {
-      _previewLayer = next;
-      _silhouette = silhouette;
-    });
+    final slice = widget.slice;
+    final shown = _previewLayer ?? widget.layer;
+    final silhouetteMoved = silhouette != _silhouette;
+    // Held either way, so any rebuild from elsewhere builds the newest.
+    _previewLayer = next;
+    _silhouette = silhouette;
+    if (!silhouetteMoved &&
+        slice != null &&
+        identical(slice(next ?? widget.layer), slice(shown))) {
+      return;
+    }
+    setState(() {});
   }
 
   @override

@@ -57,6 +57,7 @@ class _XSheetGridHeaders {
     return TimelineDragPreviewRowGate(
       dragPreview: _state.widget.hooks.dragPreview,
       layer: entry.layer,
+      slice: (layer) => laneRowSlice(layer, entry.lane!.laneId),
       rowBuilder: (context, layer) => TimelineLaneControlsRow(
         axis: Axis.vertical,
         keyPrefix: 'xsheet',

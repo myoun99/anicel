@@ -24,6 +24,7 @@ import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
 import 'timeline_frame_ruler_painter.dart' show TimelineRulerScale;
 import 'timeline_ruler_playhead_writing.dart';
 import 'timeline_cut_end_handle.dart';
+import 'lane_row_slice.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
