@@ -326,8 +326,6 @@ class _WorkspaceBrushPresets {
   void resetLibrary() {
     final held = toolChoiceOf(_state._brushTool);
     _state._presetLibrary.resetToDefaults();
-    // A save still pending would write the old bank back over the empty one.
-    _brushHandSettingsSave?.cancel();
     _brushHandSettings.clear();
     saveHandSettings();
     takeUpBrushes(
