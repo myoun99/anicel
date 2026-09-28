@@ -244,6 +244,28 @@ void main() {
       );
     });
 
+    test('F-235: a push carries on through the blocks that touch, and stops '
+        'at the first empty cell that can take it', () {
+      final clip = captureTimelineRun(
+        timeline: _row('PPP'),
+        index: 0,
+        count: 3,
+      );
+
+      final row = spliceTimeline(
+        timeline: _row('AA.BBCC...DD'),
+        index: 2,
+        clip: clip,
+      );
+
+      expect(
+        _render(row, 12),
+        'AAPPPBBCC.DD',
+        reason: 'B took the push and passed it to C, which touched it; the '
+            'empty cells after C took what was left, and D never moved',
+      );
+    });
+
     test('the cut length is never asked — a push past the end line stays '
         'past the end line', () {
       final clip = captureTimelineRun(
