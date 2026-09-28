@@ -457,6 +457,45 @@ void main() {
       shown.center,
       'the release keys what the drag showed',
     );
+    final keyed = session.requireActiveCut.camera.track;
+    expect(keyed.scale.isEmpty, isTrue, reason: 'a move keys no zoom');
+    expect(keyed.rotation.isEmpty, isTrue, reason: 'nor a turn');
+  });
+
+  testWidgets('CAMERA × the canvas: a corner of the frame keys the zoom '
+      'ALONE — the lever and the middle key nothing with it', (tester) async {
+    // 유저 2026-09-28 camera-frame-keys-what-you-grab-Q1 「잡은 것만 — 레이어
+    // 핸들과 같은 법」. The frame used to key position, scale and rotation
+    // together whatever it was grabbed by.
+    final session = await open(
+      tester,
+      layer: camera,
+      standOn: 'position',
+      openGroups: const [],
+    );
+    // The frame's own gesture → member mapping is pinned by real drags in
+    // `camera_frame_overlay_test` (its corners lie off this view: the frame
+    // is the 1300-wide page). What changed HERE is the host's wiring, so
+    // this drives the very landings the canvas area handed the frame.
+    final frame = tester.widget<CameraFrameOverlay>(
+      find.byType(CameraFrameOverlay),
+    );
+    for (final zoom in [1.4, 1.8, 2.0]) {
+      frame.onZoomChanged!(zoom);
+      await tester.pump();
+    }
+    expect(
+      session.requireActiveCut.camera.isEmpty,
+      isTrue,
+      reason: 'nothing is written before the release',
+    );
+    frame.onZoomCommitted!(2.0);
+    await tester.pump();
+
+    final track = session.requireActiveCut.camera.track;
+    expect(track.scale.keyAt(0)?.value, 2.0, reason: 'the zoom keys');
+    expect(track.position.isEmpty, isTrue, reason: 'the centre does not');
+    expect(track.rotation.isEmpty, isTrue, reason: 'nor does the turn');
   });
 
   testWidgets('CAMERA × the lane: scrubbing the camera\'s Position moves the '

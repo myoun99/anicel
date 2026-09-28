@@ -134,10 +134,9 @@ List<Offset> cameraFrameCornersInViewport({
 /// manipulation handles: dragging a corner square scales the zoom around the
 /// camera center, dragging the lever knob above the top edge rotates around
 /// the center, and dragging anywhere else moves the camera. Every drag
-/// reports its pose per move ([onPoseChanged]) and commits ONE keyframe on
-/// release via [onPoseCommitted] (one undo entry per drag). When not
-/// interactive the overlay ignores pointers so canvas panning/drawing still
-/// works below it.
+/// reports the ONE member its handle drives per move and commits it once on
+/// release (one undo entry per drag). When not interactive the overlay
+/// ignores pointers so canvas panning/drawing still works below it.
 ///
 /// 🚨F-195: the frame does NOT draw its own drag. It used to paint a pose
 /// of its own while the camera lanes and everything else that reads the
@@ -151,8 +150,12 @@ class CameraFrameOverlay extends StatefulWidget {
     required this.viewport,
     required this.dimOpacity,
     this.interactive = false,
-    this.onPoseChanged,
-    this.onPoseCommitted,
+    this.onMoveChanged,
+    this.onMoveCommitted,
+    this.onZoomChanged,
+    this.onZoomCommitted,
+    this.onRotationChanged,
+    this.onRotationCommitted,
     this.onCancelled,
   });
 
@@ -195,11 +198,23 @@ class CameraFrameOverlay extends StatefulWidget {
   final double dimOpacity;
 
   final bool interactive;
-  final ValueChanged<CameraPose>? onPoseChanged;
-  final ValueChanged<CameraPose>? onPoseCommitted;
 
-  /// A drag went away with nothing to keep — what [onPoseChanged] showed is
-  /// to be dropped.
+  /// 🗣️ONE MEMBER PER DRAG — the one its handle names, as the layer's
+  /// transform box does (R5 #10; 유저 2026-09-28
+  /// `camera-frame-keys-what-you-grab-Q1` 「잡은 것만 — 레이어 핸들과 같은
+  /// 법」): the middle moves the centre, a corner the zoom, the lever the
+  /// turn. ↩️The frame reported its whole pose and the host keyed all three
+  /// members at the playhead, so a zoom alone put a position key there and
+  /// broke the position's ease through that frame.
+  final ValueChanged<CanvasPoint>? onMoveChanged;
+  final ValueChanged<CanvasPoint>? onMoveCommitted;
+  final ValueChanged<double>? onZoomChanged;
+  final ValueChanged<double>? onZoomCommitted;
+  final ValueChanged<double>? onRotationChanged;
+  final ValueChanged<double>? onRotationCommitted;
+
+  /// A drag went away with nothing to keep — what its changes showed is to
+  /// be dropped.
   final VoidCallback? onCancelled;
 
   @override
@@ -355,7 +370,30 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
 
   void _moveTo(CameraPose pose) {
     _dragPose = pose;
-    widget.onPoseChanged?.call(pose);
+    _tellMember(
+      pose,
+      move: widget.onMoveChanged,
+      zoom: widget.onZoomChanged,
+      turn: widget.onRotationChanged,
+    );
+  }
+
+  /// [pose]'s ONE member this drag drives, handed to its own listener — the
+  /// same answer whether the drag is showing it or committing it.
+  void _tellMember(
+    CameraPose pose, {
+    required ValueChanged<CanvasPoint>? move,
+    required ValueChanged<double>? zoom,
+    required ValueChanged<double>? turn,
+  }) {
+    switch (_dragMode) {
+      case _CameraDragMode.move:
+        move?.call(pose.center);
+      case _CameraDragMode.zoom:
+        zoom?.call(pose.zoom);
+      case _CameraDragMode.rotate:
+        turn?.call(pose.rotationDegrees);
+    }
   }
 
   void _dragEnd() {
@@ -367,11 +405,16 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
     _touchDragDistance = 0;
     _dragPose = null;
     _startPose = null;
-    if (!aborted && dragPose != null && dragPose != start) {
-      widget.onPoseCommitted?.call(dragPose);
-    } else {
+    if (aborted || dragPose == null || dragPose == start) {
       widget.onCancelled?.call();
+      return;
     }
+    _tellMember(
+      dragPose,
+      move: widget.onMoveCommitted,
+      zoom: widget.onZoomCommitted,
+      turn: widget.onRotationCommitted,
+    );
   }
 
   @override

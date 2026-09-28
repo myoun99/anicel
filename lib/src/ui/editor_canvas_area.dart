@@ -931,17 +931,49 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   ) {
     // The frame is dragged on the CAMERA ROW's transform — the cut's camera
     // track — through the one handle path the layer handles take (「트랜스폼
-    // 이나 카메라나 법 하나」): one key at the playhead, shown while it moves.
+    // 이나 카메라나 법 하나」): one key at the playhead, shown while it moves,
+    // on the ONE member the handle drives — the layer box's writers, as the
+    // user chose (camera-frame-keys-what-you-grab-Q1 「잡은 것만」).
     final cameraRow = isCameraLayerActive ? session.activeLayer : null;
-    final landings = cameraRow == null
+    final at = 'at frame ${session.currentFrameIndex + 1}';
+    final move = cameraRow == null
         ? null
-        : _handleLandings<TransformPose>(
+        : _handleLandings<CanvasPoint>(
             session,
             cameraRow.id,
-            (pose) =>
-                (track, frameIndex) => track.withKeyframe(frameIndex, pose),
-            description:
-                'Set camera keyframe at frame ${session.currentFrameIndex + 1}',
+            (center) =>
+                (track, frameIndex) => transformTrackWithPositionDragged(
+                  track,
+                  frameIndex: frameIndex,
+                  position: center,
+                ),
+            description: 'Move camera $at',
+          );
+    final zoom = cameraRow == null
+        ? null
+        : _handleLandings<double>(
+            session,
+            cameraRow.id,
+            (zoom) =>
+                (track, frameIndex) => transformTrackWithScaleDragged(
+                  track,
+                  frameIndex: frameIndex,
+                  zoom: zoom,
+                ),
+            description: 'Zoom camera $at',
+          );
+    final rotation = cameraRow == null
+        ? null
+        : _handleLandings<double>(
+            session,
+            cameraRow.id,
+            (degrees) =>
+                (track, frameIndex) => transformTrackWithRotationDragged(
+                  track,
+                  frameIndex: frameIndex,
+                  rotationDegrees: degrees,
+                ),
+            description: 'Rotate camera $at',
           );
     return Positioned.fill(
       // The cursor subscription keeps the frame gliding
@@ -975,9 +1007,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   ? widget.cameraDimOpacity.value
                   : 0,
               interactive: isCameraLayerActive,
-              onPoseChanged: landings?.onChanged,
-              onPoseCommitted: landings?.onCommitted,
-              onCancelled: landings?.onCancelled,
+              onMoveChanged: move?.onChanged,
+              onMoveCommitted: move?.onCommitted,
+              onZoomChanged: zoom?.onChanged,
+              onZoomCommitted: zoom?.onCommitted,
+              onRotationChanged: rotation?.onChanged,
+              onRotationCommitted: rotation?.onCommitted,
+              // The three cancel the same way: the one lane edit in flight.
+              onCancelled: move?.onCancelled,
             );
           },
         ),
