@@ -26,6 +26,7 @@ import '../widgets/app_window.dart' show AppWindowActionEmphasis;
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/static_raster.dart';
 import 'media_asset_drag_chip.dart';
 import 'media_asset_drag_data.dart';
 import 'media_asset_kind_icon.dart';
@@ -388,11 +389,15 @@ class MediaPoolPanel extends StatelessWidget {
     for (final asset in assets) mediaFileNameParts(asset.path).extension,
   }).ceilToDouble();
 
+  // ★The bake goes INSIDE the floor's scrollers. They are always mounted
+  // (a narrowing past the floor keeps the list where it was), and a
+  // viewport is a repaint boundary — so the dock's bake around this panel
+  // yields to this one, the placement `EditorPanelBody` explains.
   @override
   Widget build(BuildContext context) => OverflowScrollers(
     minWidth: _minBodyWidth + _extensionRoom(context),
     minHeight: _minBodyHeight,
-    child: _body(context),
+    child: StaticRaster(debugLabel: 'body:media', child: _body(context)),
   );
 
   /// RELINK-2: the loss banner — one line, above the list, INSIDE this
