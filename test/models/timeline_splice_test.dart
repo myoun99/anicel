@@ -203,6 +203,47 @@ void main() {
       );
     });
 
+    // 🗣️F-235 (유저 2026-09-29): 「블록, 빈 공간에 붙여넣는건데 대체 왜 뒤가
+    // 밀려나냐니까?」 · 「겹치는 공간이 전혀 없는 붙여넣기인데도 뒤가
+    // 밀려나니까 하는소리임」.
+    test('🚨F-235: a paste that fits in empty space moves nothing', () {
+      final clip = captureTimelineRun(
+        timeline: _row('PP'),
+        index: 0,
+        count: 2,
+      );
+
+      final row = spliceTimeline(
+        timeline: _row('AA....BB'),
+        index: 3,
+        clip: clip,
+      );
+
+      expect(_render(row, 8), 'AA.PP.BB', reason: '↩️was AA.PP...BB');
+    });
+
+    test('🚨F-235: a paste longer than its empty space pushes only as far as '
+        'it reaches — the next empty cells take the rest', () {
+      final clip = captureTimelineRun(
+        timeline: _row('PPPP'),
+        index: 0,
+        count: 4,
+      );
+
+      final row = spliceTimeline(
+        timeline: _row('AA..BB..CC'),
+        index: 2,
+        clip: clip,
+      );
+
+      expect(
+        _render(row, 12),
+        'AAPPPPBBCC..',
+        reason: 'B moved the two cells the clip overlapped; the gap after it '
+            'took the rest, so C stayed — ↩️AAPPPP..BB..CC',
+      );
+    });
+
     test('the cut length is never asked — a push past the end line stays '
         'past the end line', () {
       final clip = captureTimelineRun(

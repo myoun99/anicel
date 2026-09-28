@@ -1,12 +1,12 @@
 import 'dart:collection';
 import 'dart:math' as math;
 
-import 'block_run_move.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
+import 'timeline_splice.dart';
 
 /// TVP-style "+ add frames" at a run edge (UI-R8): [count] NEW one-frame
 /// drawings glued onto the run containing the block at [blockStartIndex].
@@ -40,25 +40,13 @@ import 'timeline_repeat.dart';
 
   if (atEnd) {
     final insertStart = run.endIndexExclusive;
-    final next = SplayTreeMap<int, TimelineExposure>();
-    base.forEach((index, entry) {
-      if (index < insertStart) {
-        next[index] = entry;
-      }
-    });
     // Downstream drawings overlap-push (gaps absorb) — the push every
-    // insertion on either axis makes ([startsClearingFrontier]).
-    final downstream = [
-      for (final index in base.keys)
-        if (index >= insertStart) index,
-    ];
-    final starts = startsClearingFrontier([
-      for (final index in downstream)
-        (start: index, length: base[index]!.length!),
-    ], frontier: insertStart + count);
-    for (final (position, index) in downstream.indexed) {
-      next[starts[position]] = base[index]!;
-    }
+    // insertion on either axis makes, a paste's included.
+    final next = clearTimelineFrom(
+      base,
+      insertStart,
+      frontier: insertStart + count,
+    );
     final ids = <FrameId>[];
     for (var i = 0; i < count; i += 1) {
       final id = frameIdAt(i);

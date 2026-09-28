@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'block_run_move.dart';
 import 'timeline_exposure.dart';
 
 /// 🚨★★★ THE ONE SPLICE — 유저 확정 2026-08-13 (T2·T3).
@@ -13,9 +14,16 @@ import 'timeline_exposure.dart';
 ///
 /// | verb | N |
 /// |---|---|
-/// | 붙여넣기, 선택 없음 | 0 — nothing comes out, everything after moves right |
+/// | 붙여넣기, 선택 없음 | 0 — nothing comes out, and what follows moves only as far as the clip reaches it |
 /// | 붙여넣기, 선택 있음 | the selection's length — 갈아끼우기 |
 /// | 잘라내기 | the selection's length, with no clip going in |
+///
+/// 🗣️F-235 (유저 2026-09-29): 「블록, 빈 공간에 붙여넣는건데 대체 왜 뒤가
+/// 밀려나냐니까? 컷블록이든 프레임이든」 · 「겹치는 공간이 전혀 없는
+/// 붙여넣기인데도 뒤가 밀려나니까 하는소리임」. ↩️N = 0 moved EVERYTHING
+/// after the insertion point right by the clip's length, into empty space
+/// or not; it pushes the way every other insertion does now
+/// ([clearTimelineFrom]).
 ///
 /// The length difference is absorbed by the TAIL: a longer clip pushes, a
 /// shorter one pulls. ⛔Nothing outside the lifted run is ever overwritten —
@@ -127,6 +135,33 @@ SplayTreeMap<int, TimelineExposure> shiftTimelineFrom(
   return next;
 }
 
+/// Everything starting at or after [index] made to clear [frontier] — THE
+/// push an insertion makes ([startsClearingFrontier]): the empty cells
+/// ahead of each block absorb it before it reaches the block behind them,
+/// and a block it never reaches stays where it is.
+SplayTreeMap<int, TimelineExposure> clearTimelineFrom(
+  Map<int, TimelineExposure> timeline,
+  int index, {
+  required int frontier,
+}) {
+  final next = SplayTreeMap<int, TimelineExposure>();
+  final downstream = <int>[];
+  for (final key in SplayTreeMap<int, TimelineExposure>.from(timeline).keys) {
+    if (key < index) {
+      next[key] = timeline[key]!;
+    } else {
+      downstream.add(key);
+    }
+  }
+  final starts = startsClearingFrontier([
+    for (final key in downstream) (start: key, length: timeline[key]!.length!),
+  ], frontier: frontier);
+  for (final (position, key) in downstream.indexed) {
+    next[starts[position]] = timeline[key]!;
+  }
+  return next;
+}
+
 /// Reads [count] cells starting at [index] off the row, without changing it.
 ///
 /// Boundaries are split first, so a range that starts or ends inside a hold
@@ -197,7 +232,11 @@ SplayTreeMap<int, TimelineExposure> spliceTimeline({
   if (!replacing) {
     return next;
   }
-  next = shiftTimelineFrom(next, index, inserting.length);
+  // A replace absorbs its own difference in the tail (the T2·T3 table
+  // above); a bare insert pushes the way every insertion does (F-235).
+  next = liftCount > 0
+      ? shiftTimelineFrom(next, index, inserting.length)
+      : clearTimelineFrom(next, index, frontier: index + inserting.length);
   for (final entry in inserting.exposures.entries) {
     next[index + entry.key] = entry.value;
   }
