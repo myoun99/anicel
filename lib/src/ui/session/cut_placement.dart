@@ -1,3 +1,4 @@
+import '../../core/timeline/timeline_defaults.dart';
 import '../../models/track_frame_axis.dart';
 import '../../models/track_id.dart';
 import 'session_roles.dart';
@@ -54,10 +55,11 @@ class CutPlacement {
     }
     final parked = _selection.gapGlobalFrame;
     if (parked != null) {
+      final axis = _timeline.trackFrameAxis();
       return _cutCreationAt(
-        _timeline.trackFrameAxis(),
+        axis,
         parked,
-        duration: null,
+        duration: _lengthThatFits(axis, parked),
       );
     }
     // The active-cut posture keeps its shape: the coordinator anchors to
@@ -68,6 +70,26 @@ class CutPlacement {
       leadingGapFrames: 0,
       duration: null,
     );
+  }
+
+  /// A new cut's length from a gap parking at [globalFrame]: the default
+  /// when it fits in front of the next cut, the room up to that cut when it
+  /// does not, and the default (null) past the last cut, where nothing
+  /// follows to be pushed.
+  ///
+  /// 🗣️F-204 (유저 2026-09-28): 「빈공간에서 컷 추가 누르면, 예를들어
+  /// 20부터 컷 존재하고 10에서 만들면 1초만큼 강제로 만들어서 뒤를
+  /// 밀어버리거든? 그게아니라 기본값만큼 생성할 공간이 없다면 줄이도록.
+  /// 10코마의 컷을 만들게 되도록.」 ↩️It always made the default, and the
+  /// room the gap lacked became a push ([CutInsertion], #19).
+  int? _lengthThatFits(TrackFrameAxis axis, int globalFrame) {
+    for (final entry in axis.entries) {
+      if (entry.startFrame > globalFrame) {
+        final room = entry.startFrame - globalFrame;
+        return room < defaultCutDurationFrames ? room : null;
+      }
+    }
+    return null;
   }
 
   /// The insertion a GLOBAL frame names, in the button's own record
