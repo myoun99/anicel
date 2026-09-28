@@ -5,7 +5,8 @@ import 'value_control_pointers.dart';
 
 /// A [PanGestureRecognizer] that accepts at the DIRECTIONAL hit slop
 /// (~18px, [computeHitSlop]) instead of the pan slop (~36px,
-/// [computePanSlop]) — UI-R22F #2.
+/// [computePanSlop]) — UI-R22F #2 — or at the drag's own first step when
+/// that comes sooner ([firstStepAt], F-238).
 ///
 /// Why: the timeline's edit pans (range select/move, block moves, run
 /// [+] adds, lane value scrubs) sit INSIDE scroll viewports whose
@@ -20,13 +21,40 @@ import 'value_control_pointers.dart';
 class EagerPanGestureRecognizer extends PanGestureRecognizer {
   EagerPanGestureRecognizer({super.debugOwner});
 
+  /// Whether a drag pressed at `down` and now at `now` (this recogniser's
+  /// local coordinates) has taken its FIRST STEP — changed the first frame
+  /// it would change. It accepts there when the step comes before the hit
+  /// slop above, and at the slop otherwise; a release before either is
+  /// still a tap.
+  ///
+  /// 🗣️F-238 (유저 2026-09-29): 「블록선택하고 이동, 1코마만 움직일려해도
+  /// 안되고 2콤마 움직이는만큼 커서 움직여야 2콤마 움직이고 … 1콤마만
+  /// 바로바로 움직이는게 불가능함.」 ↩️A pen's drag waited out 18px and then
+  /// spent all of it at once, so on cells narrower than 12px its first step
+  /// was already two. What a step is belongs to the drag: a range MOVE takes
+  /// one when the block would leave its seat, a SELECT when the pointer
+  /// leaves the cell it pressed (F-138-Q1 「누른 상자 벗어나면 시작」).
+  bool Function(Offset down, Offset now)? firstStepAt;
+
+  Offset _down = Offset.zero;
+  Offset _now = Offset.zero;
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerMoveEvent) {
+      _now = event.localPosition;
+    }
+    super.handleEvent(event);
+  }
+
   @override
   bool hasSufficientGlobalDistanceToAccept(
     PointerDeviceKind pointerDeviceKind,
     double? deviceTouchSlop,
   ) =>
+      (firstStepAt?.call(_down, _now) ?? false) ||
       globalDistanceMoved.abs() >
-      computeHitSlop(pointerDeviceKind, gestureSettings);
+          computeHitSlop(pointerDeviceKind, gestureSettings);
 
   /// T11: a press that landed on a VALUE CONTROL is that control's, and no
   /// eager pan starts from it.
@@ -79,6 +107,7 @@ class EagerPanGestureRecognizer extends PanGestureRecognizer {
   @override
   void addAllowedPointer(PointerDownEvent event) {
     _kind = event.kind;
+    _down = _now = event.localPosition;
     super.addAllowedPointer(event);
   }
 
