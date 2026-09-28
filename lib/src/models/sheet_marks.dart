@@ -14,7 +14,7 @@
 /// here knows a canvas, a PDF or a widget.
 library;
 
-import 'dart:ui' show Offset, Rect;
+import 'dart:ui' show Offset, Rect, Size;
 
 import 'brush_frame_key.dart';
 import 'sheet_paint_layer.dart';
@@ -254,17 +254,48 @@ class SheetInkPlacement {
     required this.window,
     required this.scale,
     this.origin = Offset.zero,
+    this.stretch = 1,
   });
 
   final Rect window;
   final double scale;
   final Offset origin;
 
+  /// How much wider than its surface's own shape the window shows it: 1,
+  /// but for a column of the 3-second timesheet, whose columns print wider
+  /// than the 6-second sheet's the writing is kept on — the writing stays
+  /// on its cells, as wide as they print (유저 2026-09-27,
+  /// timesheet-sheet-kind-ink-Q1: 「프레임을 따라 옮겨 붙인다」 · 「g셀만큼
+  /// 그린게 3초시트로 늘리면 g셀까지만 보이게」).
+  final double stretch;
+
   /// Where surface pixel [pixel] lands on the paper.
-  Offset paperOf(Offset pixel) => window.topLeft + (pixel - origin) / scale;
+  Offset paperOf(Offset pixel) =>
+      window.topLeft +
+      Offset(
+        (pixel.dx - origin.dx) / scale * stretch,
+        (pixel.dy - origin.dy) / scale,
+      );
 
   /// The surface pixel under paper point [paper] — [paperOf] run backwards.
-  Offset pixelOf(Offset paper) => (paper - window.topLeft) * scale + origin;
+  Offset pixelOf(Offset paper) => Offset(
+    (paper.dx - window.left) * scale / stretch + origin.dx,
+    (paper.dy - window.top) * scale + origin.dy,
+  );
+
+  /// This window at its surface's own shape — as narrow as its surface
+  /// slice at the ink's scale, from the same corner: what a brush writing
+  /// through it sees before the stretch ([stretch]) is laid on.
+  SheetInkPlacement get unstretched => SheetInkPlacement(
+    window: Rect.fromLTWH(
+      window.left,
+      window.top,
+      window.width / stretch,
+      window.height,
+    ),
+    scale: scale,
+    origin: origin,
+  );
 
   /// Where a raster [width]×[height] of the surface lands on the paper —
   /// at the ink's own scale, the window clipping it; never stretched to
@@ -276,21 +307,27 @@ class SheetInkPlacement {
   );
 
   /// The window's slice of its surface, in surface pixels.
-  Rect get surfaceRect => origin & window.size * scale;
+  Rect get surfaceRect =>
+      origin & Size(window.width * scale / stretch, window.height * scale);
 
   /// The same window on a page that lies [by] further on — a page in a
   /// stack of pages. The surface and its slice do not move: every mapping
   /// here is measured from the window's corner.
-  SheetInkPlacement shiftedBy(Offset by) =>
-      SheetInkPlacement(window: window.shift(by), scale: scale, origin: origin);
+  SheetInkPlacement shiftedBy(Offset by) => SheetInkPlacement(
+    window: window.shift(by),
+    scale: scale,
+    origin: origin,
+    stretch: stretch,
+  );
 
   @override
   bool operator ==(Object other) =>
       other is SheetInkPlacement &&
       other.window == window &&
       other.scale == scale &&
-      other.origin == origin;
+      other.origin == origin &&
+      other.stretch == stretch;
 
   @override
-  int get hashCode => Object.hash(window, scale, origin);
+  int get hashCode => Object.hash(window, scale, origin, stretch);
 }

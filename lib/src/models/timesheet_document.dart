@@ -12,6 +12,7 @@ import 'sheet_sources.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
 import 'timesheet_info.dart';
+import 'timesheet_sheet_kind.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
 
@@ -244,6 +245,7 @@ class TimesheetDocument {
     required this.fps,
     required this.playbackFrameCount,
     this.transitionHandles = CutTransitionHandles.none,
+    required this.sheetKind,
     required this.pageFrameCount,
     required this.columns,
     required this.books,
@@ -255,7 +257,9 @@ class TimesheetDocument {
     required String projectName,
     required int fps,
     TimesheetInfo info = TimesheetInfo.empty,
-    int pageSeconds = 6,
+    // Rows a page holds, in seconds: the cut's sheet's ([sheetKind]) —
+    // a test lays shorter pages with it.
+    int? pageSeconds,
     CameraInstructionDef? Function(String instructionId)? instructionDefById,
     // TRACK-owned SE rows (global-frame timelines) shown windowed to this
     // cut; [cutStartFrame] is the cut's global start on its track.
@@ -280,14 +284,12 @@ class TimesheetDocument {
     // down held rows).
     bool dataSheet = false,
   }) {
-    const actionColumnCount = 8;
-    const celColumnCount = 8;
     const seColumnCount = 2;
     const cameraColumnCount = 2;
     if (fps <= 0) {
       throw ArgumentError.value(fps, 'fps', 'fps must be positive.');
     }
-    if (pageSeconds <= 0) {
+    if (pageSeconds != null && pageSeconds <= 0) {
       throw ArgumentError.value(
         pageSeconds,
         'pageSeconds',
@@ -314,11 +316,17 @@ class TimesheetDocument {
       spans: transitionSpans,
     );
     final drawnFrameCount = handles.drawnFrames(playbackFrameCount);
-    final pageFrameCount = pageSeconds * fps;
+    final animationLayers = sources.celLayers;
+    final sheetKind = sheetKindFor(
+      cut.metadata.sheetKind,
+      celColumns: animationLayers.length,
+    );
+    final actionColumnCount = sheetKind.celColumns;
+    final celColumnCount = sheetKind.celColumns;
+    final pageFrameCount = (pageSeconds ?? sheetKind.pageSeconds) * fps;
     final pageCount = timesheetPageCount(drawnFrameCount, pageFrameCount);
     final rowCount = pageCount * pageFrameCount;
 
-    final animationLayers = sources.celLayers;
     final seSlots = sources.seLayers;
     final instructionLayers = sources.instructionLayers;
     // The one clip, again, for the LIVE preview clone a drag publishes —
@@ -395,6 +403,7 @@ class TimesheetDocument {
       fps: fps,
       playbackFrameCount: playbackFrameCount,
       transitionHandles: handles,
+      sheetKind: sheetKind,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
       books: List.unmodifiable(sources.books),
@@ -536,6 +545,10 @@ class TimesheetDocument {
   int get drawnFrameCount =>
       transitionHandles.drawnFrames(playbackFrameCount);
 
+  /// The paper the sheet prints on — the cut's, or the 3-second sheet
+  /// when the cut's cel layers outgrow the 6-second one ([sheetKindFor]).
+  final TimesheetSheetKind sheetKind;
+
   /// Rows per paper page (pageSeconds × fps).
   final int pageFrameCount;
 
@@ -547,9 +560,10 @@ class TimesheetDocument {
 
   final List<TimesheetPage> pages;
 
-  /// Rows per page HALF: the paper page splits into two side-by-side
-  /// columns of this many rows (the second half takes any odd remainder).
-  int get halfFrameCount => pageFrameCount ~/ 2;
+  /// Rows per strip: a page lays [TimesheetSheetKind.strips] side-by-side
+  /// strips of this many rows — two HALVES on the 6-second sheet, the last
+  /// taking any odd remainder, and one on the 3-second sheet.
+  int get halfFrameCount => pageFrameCount ~/ sheetKind.strips;
 
   /// Total document rows (pages × pageFrameCount).
   int get rowCount => pages.length * pageFrameCount;

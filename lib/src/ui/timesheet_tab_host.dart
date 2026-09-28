@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
+import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
-import '../models/timesheet_info.dart';
 import 'brush/brush_canvas_panel.dart'
     show BrushCanvasPanel, CanvasAutoFrameRequest;
 import 'brush/sheet_canvas_panel.dart';
@@ -260,12 +260,27 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           );
   }
 
+  /// The sheet's format, and the paper of the cut it shows — the cut
+  /// under the playhead the sheet prints ([_resolveLayouts]).
   Future<void> _editSheetFormat() {
     final session = widget.session;
-    return askThenCommit<TimesheetInfo>(
+    final cut = session.cutUnderPlayhead.resolve()?.cut;
+    return askThenCommit<TimesheetFormat>(
       context,
-      dialog: (_) => TimesheetFormatWindow(initialInfo: session.timesheetInfo),
-      commit: session.updateTimesheetInfo,
+      dialog: (_) => TimesheetFormatWindow(
+        initialInfo: session.timesheetInfo,
+        sheet: cut == null
+            ? null
+            : (
+                kind: cut.metadata.sheetKind,
+                celColumns: SheetSources.of(cut: cut).celLayers.length,
+              ),
+      ),
+      commit: (format) => session.updateTimesheetFormat(
+        info: format.info,
+        cutId: cut?.id,
+        kind: format.kind,
+      ),
     );
   }
 

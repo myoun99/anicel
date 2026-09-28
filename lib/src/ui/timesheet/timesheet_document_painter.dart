@@ -14,6 +14,7 @@ import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
+import '../../models/timesheet_sheet_kind.dart';
 import '../../models/timesheet_words.dart';
 import '../../models/transition_geometry.dart'
     show TransitionSides, transitionSidesOf;
@@ -133,13 +134,45 @@ class TimesheetDocumentLayout {
 
   int get _cameraColumnCount => _columnCountOf(TimesheetColumnKind.camera);
 
+  /// The strips a page lays side by side ([TimesheetSheetKind.strips]).
+  int get _strips => document.sheetKind.strips;
+
+  /// A strip's width at its sheet's own column counts, before any scale:
+  /// the ACTION and CELL blocks and the two fixed group allotments.
+  static double _baseStripWidth(TimesheetSheetKind kind) =>
+      kind.celColumns * (actionColumnWidth + celColumnWidth) +
+      seGroupWidth +
+      cameraGroupWidth;
+
+  /// What the strips of [kind] span inside the paper's padding, their
+  /// columns printed [scale] times as wide.
+  static double _stripsSpan(TimesheetSheetKind kind, double scale) =>
+      kind.strips * (frameNumberGutterWidth + _baseStripWidth(kind) * scale) +
+      (kind.strips - 1) * halfGap;
+
+  /// How much wider [kind]'s columns print than the 6-second sheet's: what
+  /// spreads its strips across the SAME paper — 1 on the 6-second sheet,
+  /// about 1.5 on the 3-second one, whose single strip spans what the two
+  /// halves and the gap between them do (the reference sheet's wider
+  /// columns, TOEI_3sec; 유저 2026-09-25: 「형식은 지금 우리가 만든 형식.
+  /// 규격이나 사이즈나 그런거」).
+  static double columnScaleOf(TimesheetSheetKind kind) {
+    final span = _stripsSpan(TimesheetSheetKind.sixSeconds, 1);
+    final fixed = _stripsSpan(kind, 0);
+    return (span - fixed) / (kind.strips * _baseStripWidth(kind));
+  }
+
   int get _seColumnCount => _columnCountOf(TimesheetColumnKind.se);
 
   /// Per-column width. Instance-level because the CAM and SE cells share
   /// a fixed group allotment ([cameraGroupWidth] / [seGroupWidth]): past
   /// the base two slots each column in that group narrows so the paper
   /// width stays put.
-  double columnWidthFor(TimesheetColumnKind kind) {
+  double columnWidthFor(TimesheetColumnKind kind) =>
+      _baseColumnWidthFor(kind) * columnScaleOf(document.sheetKind);
+
+  /// [columnWidthFor] on the 6-second sheet's scale.
+  double _baseColumnWidthFor(TimesheetColumnKind kind) {
     if (kind == TimesheetColumnKind.camera && _cameraColumnCount > 2) {
       return cameraGroupWidth / _cameraColumnCount;
     }
@@ -178,13 +211,15 @@ class TimesheetDocumentLayout {
   /// One fixed paper width in BOTH modes — the view toggle never resizes
   /// the paper (or the header band that spans it).
   double get paperWidth =>
-      pagePadding * 2 + (frameNumberGutterWidth + halfWidth) * 2 + halfGap;
+      pagePadding * 2 +
+      (frameNumberGutterWidth + halfWidth) * _strips +
+      halfGap * (_strips - 1);
 
   /// Rows in the given half of a page (the second half takes the odd
   /// remainder).
-  int halfRowCount(int half) => half == 0
+  int halfRowCount(int half) => half < _strips - 1
       ? document.halfFrameCount
-      : document.pageFrameCount - document.halfFrameCount;
+      : document.pageFrameCount - document.halfFrameCount * (_strips - 1);
 
   /// Which halves of a page actually carry rows, in print order.
   ///
@@ -193,7 +228,7 @@ class TimesheetDocumentLayout {
   /// painter prints. They used to walk `half 0..1, skip halfRowCount <= 0`
   /// each for themselves.
   List<({int half, int rowCount})> get halfStrips => [
-    for (var half = 0; half < 2; half += 1)
+    for (var half = 0; half < _strips; half += 1)
       if (halfRowCount(half) > 0) (half: half, rowCount: halfRowCount(half)),
   ];
 
@@ -363,11 +398,11 @@ class TimesheetDocumentLayout {
     }
     final page = frameIndex ~/ document.pageFrameCount;
     final local = frameIndex % document.pageFrameCount;
-    final half = local < document.halfFrameCount ? 0 : 1;
+    final half = math.min(local ~/ document.halfFrameCount, _strips - 1);
     return (
       page: page,
       half: half,
-      row: half == 0 ? local : local - document.halfFrameCount,
+      row: local - half * document.halfFrameCount,
     );
   }
 

@@ -43,6 +43,7 @@ import '../services/import/import_layer_spot.dart';
 import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/timesheet_info.dart';
+import '../models/timesheet_sheet_kind.dart';
 import '../models/project.dart';
 import '../models/pill_subject.dart';
 import '../models/timeline_selection_kind.dart';
@@ -2073,6 +2074,22 @@ class EditorSessionManager extends ChangeNotifier
   /// One undo step; no-op when unchanged.
   void updateTimesheetInfo(TimesheetInfo info) {
     cutCommandCoordinator.setTimesheetInfo(info);
+    notifyListeners();
+  }
+
+  /// The 타임시트 서식 window's save — the work's sheet format and the paper
+  /// of the cut [cutId] the sheet shows: one undo step, no-op when
+  /// unchanged.
+  void updateTimesheetFormat({
+    required TimesheetInfo info,
+    CutId? cutId,
+    TimesheetSheetKind? kind,
+  }) {
+    cutCommandCoordinator.setTimesheetFormat(
+      info: info,
+      cutId: cutId,
+      kind: kind,
+    );
     notifyListeners();
   }
 

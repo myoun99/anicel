@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../models/frame.dart' show inbetweenMark;
 import '../../models/timesheet_info.dart' show WorkPicture;
+import '../../models/timesheet_sheet_kind.dart';
 
 /// The LIVE program/notation languages, app-wide — the same shape
 /// [AppColors.accentSettings] uses, and for the same reason: widgets deep
@@ -642,6 +643,15 @@ enum AppStrings {
   String get sheetBarDrawn => _s('sheetBarDrawn');
   String get sheetBarNotDrawn => _s('sheetBarNotDrawn');
   String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
+  String get sheetLength => _s('sheetLength');
+  String get sheetThreeSeconds => _s('sheetThreeSeconds');
+  String get sheetSixSeconds => _s('sheetSixSeconds');
+
+  /// What the paper a timesheet prints on is called.
+  String sheetKindName(TimesheetSheetKind kind) => switch (kind) {
+    TimesheetSheetKind.threeSeconds => sheetThreeSeconds,
+    TimesheetSheetKind.sixSeconds => sheetSixSeconds,
+  };
   String get sheetFillOn => _s('sheetFillOn');
   String get sheetFillOff => _s('sheetFillOff');
   String get sheetBrushAllow => _s('sheetBrushAllow');
@@ -2080,6 +2090,9 @@ enum AppStrings {
     'sheetBarDrawn': 'Drawn',
     'sheetBarNotDrawn': 'Not drawn',
     'sheetSeEmptyFill': 'Empty SE stretches',
+    'sheetLength': 'Sheet length',
+    'sheetThreeSeconds': '3 sec',
+    'sheetSixSeconds': '6 sec',
     'sheetFillOn': 'Grayed',
     'sheetFillOff': 'Blank',
     'sheetBrushAllow': 'Allow Brush',
@@ -3202,6 +3215,9 @@ enum AppStrings {
     'sheetBarDrawn': '引く',
     'sheetBarNotDrawn': '引かない',
     'sheetSeEmptyFill': 'セリフのない区間',
+    'sheetLength': 'シートの長さ',
+    'sheetThreeSeconds': '3秒',
+    'sheetSixSeconds': '6秒',
     'sheetFillOn': '塗る',
     'sheetFillOff': '塗らない',
     'sheetBrushAllow': 'ブラシを許可',
@@ -4544,6 +4560,9 @@ enum AppStrings {
     'sheetBarDrawn': '그음',
     'sheetBarNotDrawn': '안 그음',
     'sheetSeEmptyFill': '대사 없는 구간',
+    'sheetLength': '시트 길이',
+    'sheetThreeSeconds': '3초',
+    'sheetSixSeconds': '6초',
     'sheetFillOn': '칠함',
     'sheetFillOff': '비움',
     'sheetBrushAllow': '브러시 허용',
@@ -5915,6 +5934,9 @@ enum AppStrings {
     'sheetBarDrawn': 'Tracé',
     'sheetBarNotDrawn': 'Non tracé',
     'sheetSeEmptyFill': 'Plages sans dialogue',
+    'sheetLength': 'Longueur de feuille',
+    'sheetThreeSeconds': '3 s',
+    'sheetSixSeconds': '6 s',
     'sheetFillOn': 'Grisées',
     'sheetFillOff': 'Vides',
     'sheetBrushAllow': 'Autoriser le pinceau',
@@ -7263,6 +7285,9 @@ enum AppStrings {
     'sheetBarDrawn': '画',
     'sheetBarNotDrawn': '不画',
     'sheetSeEmptyFill': '无台词区间',
+    'sheetLength': '摄影表长度',
+    'sheetThreeSeconds': '3秒',
+    'sheetSixSeconds': '6秒',
     'sheetFillOn': '置灰',
     'sheetFillOff': '留空',
     'sheetBrushAllow': '允许画笔',

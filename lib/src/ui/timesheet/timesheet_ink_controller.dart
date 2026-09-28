@@ -8,6 +8,7 @@ import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../sheet/sheet_ink_controller.dart';
 import 'timesheet_document_painter.dart';
+import 'timesheet_ink_bands.dart';
 
 /// Which sheet ink plane a stroke lands on.
 enum TimesheetInkPlane {
@@ -73,8 +74,8 @@ class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
   final InkPlaneSlot _strip;
   final InkPlaneSlot _page;
 
-  /// One page band of frame rows × the half column width, at
-  /// [timesheetInkScale].
+  /// One band of frame rows ([timesheetInkBandFrames]) × every column's
+  /// writing ([timesheetInkStripWidth]), at [timesheetInkScale].
   CanvasSize? get stripBandSurfaceSize => _strip.size;
 
   /// The whole PAGED paper, at [timesheetInkScale].
@@ -90,9 +91,10 @@ class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
     final document = pagedLayout.document;
     _strip.syncTo(
       CanvasSize(
-        width: (pagedLayout.halfWidth * timesheetInkScale).ceil(),
+        width: (timesheetInkStripWidth(document) * timesheetInkScale).ceil(),
         height:
-            (document.pageFrameCount * TimesheetDocumentLayout.rowHeight)
+            (timesheetInkBandFrames(document) *
+                    TimesheetDocumentLayout.rowHeight)
                 .ceil() *
             timesheetInkScale,
       ),

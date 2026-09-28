@@ -26,6 +26,7 @@ import '../../models/project.dart';
 import '../../models/property_track.dart' show PropertyKey;
 import '../../models/project_background.dart';
 import '../../models/timesheet_info.dart';
+import '../../models/timesheet_sheet_kind.dart';
 import '../../models/exposure_memo.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
@@ -69,6 +70,7 @@ import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'linked_cut_field_command.dart';
 import 'update_cut_mark_command.dart';
+import 'update_cut_sheet_kind_command.dart';
 import 'update_cut_staff_name_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
@@ -202,6 +204,11 @@ class CutCommandCoordinator {
   }) => _cuts.setCutStaffNames(cutIds: cutIds, names: names);
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) =>
       _cuts.setCutMark(cutIds: cutIds, mark: mark);
+  void setTimesheetFormat({
+    required TimesheetInfo info,
+    CutId? cutId,
+    TimesheetSheetKind? kind,
+  }) => _cuts.setTimesheetFormat(info: info, cutId: cutId, kind: kind);
   void updateCutThumbnailFrame({
     required CutId cutId,
     required int? frameIndex,

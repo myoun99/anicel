@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../models/timesheet_info.dart';
+import '../../models/timesheet_sheet_kind.dart';
 import '../export/export_settings_modules.dart';
 import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 
-/// 「타임시트 서식」: how the paper timesheet prints — which header boxes it
-/// carries, the hold bar, the SE wash. Pops the edited [TimesheetInfo], or
-/// null when cancelled.
+/// What the 「타임시트 서식」 window answers: the work's sheet format and the
+/// paper of the cut the sheet shows — null in the gap, where there is no
+/// cut to set it on.
+typedef TimesheetFormat = ({TimesheetInfo info, TimesheetSheetKind? kind});
+
+/// 「타임시트 서식」: how the paper timesheet prints — the paper the cut on
+/// the sheet prints on, which header boxes it carries, the hold bar, the SE
+/// wash. Pops the edited [TimesheetFormat], or null when cancelled.
 ///
 /// ⛔The work's words are not here: its title, episode and staff are set in
 /// the work's settings (`WorkSettingsWindow`, 유저 09-25 「작품명/화수는
@@ -22,9 +28,18 @@ import '../text/app_strings.dart';
 /// the header boxes are one strip with several on at once, and each yes/no
 /// is one [ExportTogglePill].
 class TimesheetFormatWindow extends StatefulWidget {
-  const TimesheetFormatWindow({super.key, required this.initialInfo});
+  const TimesheetFormatWindow({
+    super.key,
+    required this.initialInfo,
+    this.sheet,
+  });
 
   final TimesheetInfo initialInfo;
+
+  /// The cut the sheet shows: the paper it chose, and the cel columns its
+  /// sheet prints — what decides whether the 6-second sheet holds them
+  /// ([sheetKindFits]). Null in the gap.
+  final ({TimesheetSheetKind kind, int celColumns})? sheet;
 
   @override
   State<TimesheetFormatWindow> createState() => _TimesheetFormatWindowState();
@@ -42,6 +57,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
         '${widget.initialInfo.exposureBarThreshold ?? TimesheetInfo.defaultExposureBarThreshold}',
   );
   late bool _seEmptyFill = widget.initialInfo.seEmptyFill;
+  late TimesheetSheetKind? _kind = widget.sheet?.kind;
 
   static String _fieldLabel(TimesheetHeaderField field) {
     final strings = AppText.strings;
@@ -73,8 +89,8 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     // ⛔A re-construction cannot be made safe by remembering to add the
     // next field: remembering is the part that failed. `copyWith` carries
     // what it was not asked about ([[make-the-invariant-unrepresentable]]).
-    Navigator.of(context).pop(
-      widget.initialInfo.copyWith(
+    final format = (
+      info: widget.initialInfo.copyWith(
         hiddenFields: {..._hiddenFields},
         exposureBarThreshold: () => _exposureBarEnabled && threshold != null
             ? threshold.clamp(1, 999)
@@ -83,6 +99,39 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
             : null,
         seEmptyFill: _seEmptyFill,
       ),
+      kind: _kind,
+    );
+    Navigator.of(context).pop(format);
+  }
+
+  /// The paper the cut prints on: one strip, one of its two pills lit —
+  /// the paper the sheet prints on now. A paper the cut's cel columns do
+  /// not fit keeps its pill and takes no tap (유저 2026-09-25,
+  /// timesheet-sheet-capacity-Q1 「3초 시트로 고정(6초 끔)」); in the gap
+  /// neither does.
+  Widget _paper() {
+    final sheet = widget.sheet;
+    final chosen = _kind;
+    final printed = sheet == null || chosen == null
+        ? TimesheetSheetKind.sixSeconds
+        : sheetKindFor(chosen, celColumns: sheet.celColumns);
+    return ExportPillStrip(
+      items: [
+        for (final kind in const [
+          TimesheetSheetKind.threeSeconds,
+          TimesheetSheetKind.sixSeconds,
+        ])
+          ExportPillItem(
+            keyValue: 'timesheet-format-paper-${kind.jsonValue}',
+            label: AppText.strings.sheetKindName(kind),
+            selected: kind == printed,
+            onTap:
+                sheet != null &&
+                    sheetKindFits(kind, celColumns: sheet.celColumns)
+                ? () => setState(() => _kind = kind)
+                : null,
+          ),
+      ],
     );
   }
 
@@ -159,6 +208,10 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           spacing: 12,
           children: [
+            AppWindowField(
+              label: strings.sheetLength,
+              child: Align(alignment: Alignment.centerLeft, child: _paper()),
+            ),
             AppWindowField(
               label: strings.sheetVisibleBoxes,
               child: Align(

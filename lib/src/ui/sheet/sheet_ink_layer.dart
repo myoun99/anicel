@@ -73,6 +73,10 @@ sealed class SheetWindow {
   /// windows stacked above it take theirs ([sheetInkRegions]).
   CanvasSelectionRegion? get shows;
 
+  /// How much wider than its surface's own shape this window shows it
+  /// ([SheetInkPlacement.stretch]).
+  double get stretch => 1;
+
   /// The live stroke's overlay when SOMEONE ELSE paints this window's
   /// surface, in its place in a composite — a picture's cel inside the
   /// cut's composite. Null when the window's own view paints it.
@@ -158,11 +162,17 @@ class SheetInkWindow extends SheetWindow {
   /// Ink-surface pixel that maps to [documentRect]'s top-left.
   Offset get inkOffset => placement.origin;
 
+  @override
+  double get stretch => placement.stretch;
+
   /// The panel transform composed with where surface pixel (0, 0) lies on
-  /// the paper.
+  /// the paper — the window at its surface's own shape
+  /// ([SheetInkPlacement.unstretched]): a stretched window's view is laid
+  /// wider by the layer ([SheetInkLayer]), which hands the brush the press
+  /// where the view has it.
   @override
   CanvasViewport inkViewport(CanvasViewport panelViewport) {
-    final origin = placement.paperOf(Offset.zero);
+    final origin = placement.unstretched.paperOf(Offset.zero);
     return CanvasViewport(
       zoom: panelViewport.zoom / placement.scale,
       panX: panelViewport.panX + panelViewport.zoom * origin.dx,
@@ -495,8 +505,6 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
 
   @override
   Widget build(BuildContext context) {
-    BrushEditCanvasInputSettings inputSettings() =>
-        widget.brushToolState.value.toInputSettings();
     final regions = sheetInkRegions(widget.windows);
     final keeping = [
       for (var index = 0; index < widget.windows.length; index += 1)
@@ -516,33 +524,59 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
               child: _InkWindowFrame(
                 shows: window.screenRect(widget.viewport),
                 child: RepaintBoundary(
-                  child: InteractiveBrushEditCanvasView(
-                    key: ValueKey<String>(
-                      '${widget.keyPrefix}-ink-${window.id}',
-                    ),
-                    sessionState: widget.sessionStateFor(window),
-                    layerId: window.key.layerId,
-                    frameId: window.key.frameId,
-                    inputSettings: inputSettings,
-                    viewport: window.inkViewport(widget.viewport),
-                    selectionRegion: region,
-                    // The sheet paper is painted below this stack; an
-                    // opaque background here would cover it.
-                    showTransparentBackground: false,
-                    // The canvas's MERGED pairing: a surface painted in its
-                    // place in a composite leaves its view input only.
-                    overlayModel: window.overlay,
-                    paintsContent: window.overlay == null,
-                    onActiveStrokeChanged: (active) =>
-                        _windowStroking(window.id, active: active),
-                    onSourceStrokeCommitted: (strokeData) =>
-                        _land(window, region, strokeData),
-                  ),
+                  child: _stretched(window, _view(window, region)),
                 ),
               ),
             ),
         ],
       ),
+    );
+  }
+
+  /// The brush in hand, as the view asks for it when a stroke starts.
+  BrushEditCanvasInputSettings _inputSettings() =>
+      widget.brushToolState.value.toInputSettings();
+
+  /// [window]'s brush view, confined to [region] of its surface.
+  Widget _view(SheetWindow window, CanvasSelectionRegion region) =>
+      InteractiveBrushEditCanvasView(
+        key: ValueKey<String>('${widget.keyPrefix}-ink-${window.id}'),
+        sessionState: widget.sessionStateFor(window),
+        layerId: window.key.layerId,
+        frameId: window.key.frameId,
+        inputSettings: _inputSettings,
+        viewport: window.inkViewport(widget.viewport),
+        selectionRegion: region,
+        // The sheet paper is painted below this stack; an opaque
+        // background here would cover it.
+        showTransparentBackground: false,
+        // The canvas's MERGED pairing: a surface painted in its place in a
+        // composite leaves its view input only.
+        overlayModel: window.overlay,
+        paintsContent: window.overlay == null,
+        onActiveStrokeChanged: (active) =>
+            _windowStroking(window.id, active: active),
+        onSourceStrokeCommitted: (strokeData) =>
+            _land(window, region, strokeData),
+      );
+
+  /// [view] — a window's — laid [SheetWindow.stretch] times as wide from
+  /// the window's left edge on screen. The view draws its surface at the
+  /// surface's own shape ([SheetWindow.inkViewport]) and a press reaches it
+  /// back through the same stretch, so the brush writes the pixel under the
+  /// pen.
+  Widget _stretched(SheetWindow window, Widget view) {
+    final stretch = window.stretch;
+    if (stretch == 1) {
+      return view;
+    }
+    final left = window.screenRect(widget.viewport).left;
+    return Transform(
+      transform: Matrix4.identity()
+        ..translateByDouble(left, 0, 0, 1)
+        ..scaleByDouble(stretch, 1, 1, 1)
+        ..translateByDouble(-left, 0, 0, 1),
+      child: view,
     );
   }
 }
