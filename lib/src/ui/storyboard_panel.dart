@@ -4895,6 +4895,20 @@ class _StoryboardTrackRow extends StatelessWidget {
     );
   }
 
+  /// Whether the conte blocks' gesture takes a press at [frame]: only where
+  /// there is a strip, and not inside the live CUT selection — a press there
+  /// starts sliding the selected cuts, the shared range gesture's own law,
+  /// which the conte blocks lying over the cut used to shadow (유저
+  /// 2026-09-28, F-203: 「v행 선택범위로 선택…하고 컷 잡아끌때 띠만 잡아야
+  /// 반응하는상황? 그냥 컷 어디 잡아끌든 컷 움직이게」).
+  ///
+  /// The panels keep a press inside their OWN selection (「물론 컷 안
+  /// 콘티블록 선택된상황에선 다르긴한데」) without a term here: the two
+  /// selections never stand together — taking one drops the other — so a
+  /// live panel selection means there is no cut run to yield to.
+  bool _stripClaims(int frame) =>
+      _stripAt(frame) != null && !_isSelectedAt(frame);
+
   /// Whether [frame] sits in the live selection — a plain range test now
   /// that the selection IS a range on this row's own axis.
   bool _isSelectedAt(int frame) => _storyboardRangeCovers(
@@ -5105,7 +5119,9 @@ class _StoryboardTrackRow extends StatelessWidget {
             // the split between "the cut's bands are the cut, the conte
             // blocks are its panels" is hit-testing and not a branch: a
             // press on a cut band simply misses this and lands on the cut
-            // gesture below.
+            // gesture below — and so does a press inside the live cut
+            // selection, which is starting that selection's move
+            // ([_stripClaims]).
             if (_stripGesture() case final stripGesture?)
               Positioned(
                 key: ValueKey<String>(
@@ -5122,7 +5138,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                 // gesture below is starved and the drag dies silently (the
                 // real-device "no selection where there is no cut block").
                 child: _FrameHitGate(
-                  claimsDx: (dx) => _stripAt(_frameAtX(dx)) != null,
+                  claimsDx: (dx) => _stripClaims(_frameAtX(dx)),
                   // The gesture layer fills its Stack, so it needs one of
                   // its own here — a second Positioned around it would be
                   // two ParentDataWidgets on one render object.

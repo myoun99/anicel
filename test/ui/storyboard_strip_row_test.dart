@@ -12,6 +12,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -285,12 +286,57 @@ void main() {
       isNotNull,
     );
 
-    await _drag(tester, _stripPoint(tester, 1), _stripPoint(tester, 2));
+    // On ANOTHER cut's strip: inside the run, the press is the run's
+    // (F-203, below).
+    await _drag(tester, _stripPoint(tester, 11), _stripPoint(tester, 12));
 
     final panel = tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
     expect(panel.stripSelect!.selection.value, isNotNull);
     expect(panel.cutSelect!.selectedRange.value, isNull);
   });
+
+  // 🗣️F-203 (유저 2026-09-28): 「v행 선택범위로 선택(갭에서 선택시작하든
+  // 컷부터 선택하든)하고 컷 잡아끌때 띠만 잡아야 반응하는상황? 그냥 컷 어디
+  // 잡아끌든 컷 움직이게? 물론 컷 안 콘티블록 선택된상황에선 다르긴한데」.
+  // The shared range gesture's law is that a press inside the live selection
+  // slides it; the conte blocks lying over the cut took that press for a
+  // panel selection, so only the cut's own bands could slide the run.
+  for (final (where, point) in [
+    ('its picture strip', _stripPoint),
+    ('its conte block\'s band', _conteBandPoint),
+  ]) {
+    testWidgets('🚨F-203: with a cut run selected, a drag on $where slides '
+        'the run like a drag on the cut\'s own band', (tester) async {
+      await _openStoryboard(tester);
+      // Cut 2 [10,20) as a run, taken on its band.
+      await _drag(tester, _bandPoint(tester, 11), _bandPoint(tester, 18));
+      StoryboardPanel panel() =>
+          tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
+      int startOfCut2() => buildStoryboardTimelineLayout(
+        panel().project,
+      ).firstWhere((entry) => entry.cutId == const CutId('cut-2')).startFrame;
+      expect(panel().cutSelect!.selectedRange.value, isNotNull);
+      expect(startOfCut2(), 10, reason: '⛔전제');
+
+      // Past cut 3, grabbed in the middle of cut 2's second panel [14,20)
+      // — away from the panel edge at 14, whose grip keeps its priority.
+      // On this gapless row the same drag on the cut's own band lands cut 2
+      // at 27 (a shorter one does not move it at all).
+      await _drag(tester, point(tester, 16), point(tester, 33));
+
+      expect(
+        startOfCut2(),
+        27,
+        reason: '🚨the run did not move as the band drag moves it — the '
+            'press went to the panels',
+      );
+      expect(
+        panel().stripSelect!.selection.value,
+        isNull,
+        reason: 'no panel selection was taken',
+      );
+    });
+  }
 
   testWidgets('D30: the strip selection draws the timeline\'s ONE band at '
       'the selected panels', (tester) async {
