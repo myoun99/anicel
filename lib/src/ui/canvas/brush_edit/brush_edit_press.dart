@@ -339,6 +339,7 @@ class _BrushEditPress {
           null; // Never resumed; nothing is left to draw.
     }
     if (!_state.widget.editable) {
+      _discardPress(event.pointer);
       return;
     }
     _releasePointer(event.pointer);
@@ -436,17 +437,31 @@ class _BrushEditPress {
     if (_state._celPress._pendingCelPress?.pointer == event.pointer) {
       _state._celPress._pendingCelPress = null;
     }
-    if (!_state.widget.editable) {
-      return;
-    }
+    _discardPress(event.pointer);
+  }
+
+  /// The ending a press gets when nothing it did may land — a cancel, or a
+  /// lift over a cel that went away under the pen: a waiting fill tap is
+  /// forgotten, the pointer's bookkeeping goes, and a stroke in flight ENDS
+  /// without landing.
+  ///
+  /// 🚨F-232 (유저 2026-09-29: 「어느 순간 언두가 안먹히는상황이있음」): both
+  /// endings stood behind [InteractiveBrushEditCanvasView.editable], so a
+  /// stroke whose cel went away before the pen lifted never ended. The host
+  /// went on believing the pen was down and refused every seek — and an
+  /// undo whose edit lay on another frame walks there first (I-41), so each
+  /// press walked nowhere and took nothing back: F-196's 「locked timeline」
+  /// by another door. The pointer's own bookkeeping stayed behind the same
+  /// gate, holding a touch in the app-wide census and a mapped tool hold.
+  void _discardPress(int pointer) {
     // A cancelled fill tap is a fill that never runs — the lift's branch
     // runs it instead. Ordering against the release below is free: this
     // writes only the fill-tap slots, which none of the release steps read.
-    if (event.pointer == _state._fillTapPointer) {
+    if (pointer == _state._fillTapPointer) {
       _state._fill.forgetFillTap();
     }
-    _releasePointer(event.pointer);
-    if (event.pointer != _state._activeDrawingPointer) {
+    _releasePointer(pointer);
+    if (pointer != _state._activeDrawingPointer) {
       return;
     }
 

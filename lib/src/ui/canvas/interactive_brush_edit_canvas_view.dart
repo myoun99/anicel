@@ -406,25 +406,38 @@ class _InteractiveBrushEditCanvasViewState
     // state, lineage) flows through the ordinary rebuild.
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
-      // R13-4: this runs inside the build/update phase. The stroke-end
-      // callback reached ancestor setState (the panel's _strokeActive then;
-      // since 2026-09-26 the session's input flag, whose listeners still
-      // rebuild widgets) — firing it synchronously here threw "setState
-      // during build" (the mid-stroke flip red screen). Reset silently,
-      // notify post-frame.
-      final hadActiveStroke = _activeDrawingPointer != null;
-      _stroke.clearStrokeInputState();
+      _endStrokeAfterTheFrame();
       _overlay.resetOverlay();
       // clear() before dropping: the live tiles are native-backed (R21)
       // and return to the engine's free list through it.
       _liveRasterizer?.clear();
       _liveRasterizer = null;
-      if (hadActiveStroke) {
-        final notify = widget.onActiveStrokeChanged;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          notify?.call(false);
-        });
-      }
+    }
+  }
+
+  /// Ends a stroke in flight from OUTSIDE a pointer event — its cel changed
+  /// under the pen, or the view is going — and says so after the frame.
+  ///
+  /// R13-4: this runs inside the build/update phase. The stroke-end
+  /// callback reached ancestor setState (the panel's _strokeActive then;
+  /// since 2026-09-26 the session's input flag, whose listeners still
+  /// rebuild widgets) — firing it synchronously threw "setState during
+  /// build" (the mid-stroke flip red screen). Reset silently, notify
+  /// post-frame.
+  ///
+  /// 🚨F-232: the teardown reset silently and never said so, trusting the
+  /// panel's own dispose to — but a view can go while its panel stays, and
+  /// then the host kept 「the pen is down」 until some later stroke ended:
+  /// every seek refused, and every undo whose edit lay on another frame
+  /// walking nowhere.
+  void _endStrokeAfterTheFrame() {
+    final hadActiveStroke = _activeDrawingPointer != null;
+    _stroke.clearStrokeInputState();
+    if (hadActiveStroke) {
+      final notify = widget.onActiveStrokeChanged;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notify?.call(false);
+      });
     }
   }
 
@@ -438,7 +451,7 @@ class _InteractiveBrushEditCanvasViewState
     // A view taken away mid-stroke still hears the rest of the gesture —
     // Flutter routes it along the path the press found — and must not land
     // it: what it would land on is torn down right here.
-    _stroke.clearStrokeInputState();
+    _endStrokeAfterTheFrame();
     ShownCels.instance.hide(this);
     // Only OUR model — a host-owned one outlives this view (it survives
     // the layer switches that rebuild us).
