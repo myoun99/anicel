@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
@@ -9,6 +10,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
 /// 🗣️F-232 (유저 2026-09-29): 「어느 순간 언두가 안먹히는상황이있음 … 키보드로
@@ -99,6 +101,31 @@ void main() {
       reason: 'the view let go of the pointer, so the next press drew',
     );
     expect(commits, 1);
+  });
+
+  testWidgets('a FINGER lifted after its cel went away leaves the app-wide '
+      'touch census — it no longer counts as a second finger', (tester) async {
+    final input = AppInput.settings.value;
+    addTearDown(() => AppInput.settings.value = input);
+    AppInput.settings.value = input.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.draw,
+    );
+    await tester.pumpWidget(view());
+    final gesture = await tester.startGesture(
+      tester.getTopLeft(find.byType(InteractiveBrushEditCanvasView)) +
+          const Offset(8, 8),
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(20, 10));
+    await tester.pump();
+    expect(CanvasTouchContacts.count, 1, reason: 'premise: the finger counts');
+
+    await tester.pumpWidget(view(editable: false));
+    await gesture.up();
+    await tester.pump();
+
+    expect(CanvasTouchContacts.count, 0);
+    expect(strokeLive, [true, false]);
   });
 
   testWidgets('a cancel after the cel went away ends the stroke too', (
