@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -8,10 +9,12 @@ import 'package:anicel/src/models/timeline_repeat.dart'
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
-/// A PICTURE row (one cel pinned over the cut) keeps its timing: the verbs
-/// that move or reshape a block — the block move, the add-frames grip, the
-/// run's end behaviour, a range move landing on it, a multi-row shift
-/// travelling across it, the shove — all stand it down.
+/// A row whose timing is not its own — a PICTURE row (one cel pinned over
+/// the cut), a SYNCED mirror (its base's blocks) — or that holds no drawings
+/// at all keeps what it has: the verbs that move or reshape a block — the
+/// block move, the add-frames grip, the run's end behaviour, a range move
+/// landing on it, a multi-row shift travelling across it, the shove — all
+/// stand it down.
 ///
 /// 🧪Pinned when the audit's nineteenth family (2026-09-28) moved the two
 /// halves of this law — `blockMoveEligible` and `standsDownFromRetime` —
@@ -57,18 +60,26 @@ void main() {
     );
   });
 
-  test('its run keeps the end behaviour it was born with', () {
-    final (s, picture) = sessionOnAPictureRow();
-    final before = stored(s, picture.id).timeline;
+  test('a SYNCED mirror\'s run takes no end behaviour — its blocks are its '
+      'base\'s, and committing them would write the derived timeline onto '
+      'the stored-empty row', () {
+    // Not the picture row: a covering kind refuses repeat regions a step
+    // later anyway, so it cannot tell whether the law was asked.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame();
+    s.folders.addAttachedLayer(AttachedPlacement.above);
+    final mirror = s.activeLayer!.id;
+    expect(stored(s, mirror).timeline, isEmpty, reason: '⛔premise');
 
     s.rangeMove.setRunEdgeBehavior(
-      layerId: picture.id,
+      layerId: mirror,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
-      mode: TimelineRunEdgeMode.repeat,
+      mode: TimelineRunEdgeMode.hold,
     );
 
-    expect(stored(s, picture.id).timeline, before);
+    expect(stored(s, mirror).timeline, isEmpty);
   });
 
   test('the shove has no row to push when the picture row is where you '
@@ -110,7 +121,11 @@ void main() {
     expect(stored(s, picture.id).timeline, pictureBefore);
   });
 
-  test('a multi-row shift does not travel onto it', () {
+  test('a multi-row shift does not travel onto a row that holds no '
+      'drawings', () {
+    // Not the picture row: its one cel covers the landing, so the shift is
+    // refused there whether the lattice holds it or not. An adjustment row
+    // is empty, and the law is all that keeps a cel off it.
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.selectFrameIndex(3);
@@ -120,9 +135,9 @@ void main() {
     final b = s.activeLayer!.id;
     s.selectFrameIndex(3);
     s.createDrawingAtCurrentFrame(); // a block on B
-    s.layerStack.addLayerOfKind(LayerKind.image); // the row below B
-    final picture = s.activeLayer!.id;
-    final pictureBefore = stored(s, picture).timeline;
+    s.layerStack.addLayerOfKind(LayerKind.adjustment); // the row past B
+    final empty = s.activeLayer!.id;
+    final emptyBefore = stored(s, empty).timeline;
 
     s.selectLayer(a);
     s.updateFrameRangeSelectionDrag(
@@ -137,6 +152,6 @@ void main() {
       s.rangeMove.endFrameRangeMoveDrag();
     }
 
-    expect(stored(s, picture).timeline, pictureBefore);
+    expect(stored(s, empty).timeline, emptyBefore);
   });
 }
