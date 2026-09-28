@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../models/bitmap_surface.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
+import '../models/brush_stamp_image.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import 'bitmap_surface_brush_commit.dart';
@@ -112,12 +113,64 @@ ClippedStrokePixels? rasterizeStrokeForClipping({
   );
 }
 
+/// 🚨★★★A STAMP CLIPS IN ITS OWN PICTURE (board
+/// `a-stamp-rounds-twice-inside-a-selection`, 2026-09-28). A stamp — a fill,
+/// a shape fill, a pasted or stamped piece — lands 1:1: its picture's alpha
+/// times the dab's opacity, rounded once where it falls. A selection over it
+/// is folded into that PICTURE by the one selection rule
+/// ([applySelectionMaskToStrokeAlpha]), and the stamp then lands 1:1 as it
+/// would anyway — so wherever the selection covers it wholly it lands the
+/// bytes it lands with no selection at all (절대명령 2: 선택이 있든 없든 같은
+/// 코드가 답한다).
+///
+/// ↩️It was rasterized onto an empty surface like a brush stroke first —
+/// its alpha rounded there, at the dab's opacity — then clipped and
+/// composited: a second rounding, and a stamp under 100% landed a level
+/// apart inside a selection and out of one.
+///
+/// Null when nothing of it survives: out of the selection's reach, or
+/// masked away entirely.
+BrushDab? clipStampDabToSelection(
+  BrushDab dab, {
+  required CanvasSelectionRegion region,
+}) {
+  final stamp = dab.stamp!;
+  final landing = stamp.landingRect(dab.center);
+  if (!region.mayCover(landing)) {
+    return null;
+  }
+  final rgba = Uint8List.fromList(stamp.rgba);
+  applySelectionMaskToStrokeAlpha(
+    pixels: rgba,
+    mask: region.maskFor(
+      left: landing.left,
+      top: landing.top,
+      width: stamp.width,
+      height: stamp.height,
+    ),
+    pixelCount: stamp.width * stamp.height,
+  );
+  for (var alpha = 3; alpha < rgba.length; alpha += 4) {
+    if (rgba[alpha] != 0) {
+      return dab.copyWith(
+        stamp: BrushStampImage(
+          id: '${stamp.id}-in-selection',
+          width: stamp.width,
+          height: stamp.height,
+          rgba: rgba,
+        ),
+      );
+    }
+  }
+  return null;
+}
+
 /// [dabs] rasterized ([rasterizeStrokeForClipping]) and clipped to
 /// [region] ([clipStrokePixelsToSelection]) — the whole of what a stroke
-/// that arrives without live pixels goes through before the commit, in
-/// one place: the canvas panel's commit funnel runs it for programmatic
-/// strokes and history redos, and a fill's promotion runs it so the
-/// tiles it shows before the commit are the tiles the commit lands.
+/// of brush dabs that arrives without live pixels goes through before the
+/// commit: the canvas panel's commit funnel runs it for programmatic
+/// strokes and history redos. A stamp takes [clipStampDabToSelection]
+/// instead.
 ///
 /// Null when the stroke draws nothing, or nothing of it survives the
 /// selection.
@@ -163,7 +216,8 @@ ClippedStrokePixels? clipDabsToSelection({
 /// forgotten: the clip had passed promoted payloads through unconditionally.
 /// So a moved surface takes the same route as a stroke with no live pixels:
 /// the dabs, rasterized and clipped here, and the commit composites what
-/// is left.
+/// is left — or, for stamps, each stamp clipped in its own picture
+/// ([clipStampDabToSelection]) and landed 1:1.
 ///
 /// ⚠️It is the ordinary case on a sheet, not an edge: a timesheet page's
 /// two halves are two windows onto ONE band surface, and a stroke over
@@ -183,6 +237,20 @@ BrushStrokeCommitData? clipStrokeCommitToSelection(
   }
   final pixels = data.strokePixels;
   final bounds = data.strokeBounds;
+  if ((pixels == null || bounds == null) &&
+      data.sourceDabs.every((dab) => dab.stamp != null)) {
+    final stamps = [
+      for (final dab in data.sourceDabs)
+        ?clipStampDabToSelection(dab, region: region),
+    ];
+    return stamps.isEmpty
+        ? null
+        : BrushStrokeCommitData(
+            sourceDabs: stamps,
+            blendMode: data.blendMode,
+            strokeOpacity: data.strokeOpacity,
+          );
+  }
   final clipped = pixels == null || bounds == null
       ? clipDabsToSelection(
           dabs: data.sourceDabs,

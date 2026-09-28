@@ -22,6 +22,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_fill_promotion.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
@@ -140,20 +141,20 @@ void main() {
     expect(promoted, isNotEmpty);
 
     // The classic route, exactly as the panel's commit funnel runs it for
-    // a fill it has no promoted tiles for.
-    final clipped = clipDabsToSelection(
-      dabs: [dab],
-      canvasSize: canvasSize,
-      tileSize: tileSize,
+    // a fill it has no promoted tiles for — the funnel ITSELF, so the two
+    // cannot part again without this going red.
+    final funneled = clipStrokeCommitToSelection(
+      BrushStrokeCommitData(sourceDabs: [dab]),
       region: region,
+      surface: base,
     )!;
     final classic = brushCommitResultForBrushDabSequenceOnBitmapSurface(
       surface: base,
-      sequence: BrushDabSequence([dab]),
+      sequence: BrushDabSequence(funneled.sourceDabs),
       layerId: layerId,
       frameId: frameId,
-      prerasterizedStrokePixels: clipped.pixels,
-      prerasterizedStrokeBounds: clipped.bounds,
+      prerasterizedStrokePixels: funneled.strokePixels,
+      prerasterizedStrokeBounds: funneled.strokeBounds,
     );
     // And the promotion route, as the commit lands it: a tile PUT.
     final installed = brushCommitResultForBrushDabSequenceOnBitmapSurface(
