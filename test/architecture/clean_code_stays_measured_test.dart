@@ -196,7 +196,15 @@ void main() {
   /// case — two case labels and the line that names the mark once for the
   /// wedge's direction. 🔬`clean_code_diff` between master (`87a5d3c21`, at
   /// 431) and the integration lane: that one added, nothing else.
-  const longBodies = 432;
+  ///
+  /// ⚠️432 → 426 on 2026-09-30, lowered as the rule asks: master stood at
+  /// 427, and the camera-work round took one off. What a render looks
+  /// through — the camera there, or a camera standing square over the whole
+  /// canvas — is asked in one place now (`ExportFrameRenderer._viewFor`),
+  /// so `renderCelGroup` gave up its own copy of that choice and fell under
+  /// the line. 🔬`clean_code_diff` between master (`2757f5455`, at 427) and
+  /// the lane named that one and nothing added.
+  const longBodies = 426;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
