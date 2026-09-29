@@ -152,6 +152,33 @@ void main() {
       await press(tester);
     });
 
+    testWidgets('⛔a seek to the LAST frame while it plays stands there — '
+        '「from the top」 answers a press of play, not a hand', (tester) async {
+      debugVideoDecodeBackend = FakeVideoBackend(frameCount: 12);
+      await show(tester, movie);
+      await press(tester);
+
+      bar(tester).onSeek(11);
+      await tester.pump();
+
+      expect(bar(tester).currentFrame, 11);
+      expect(sound.from, [0, 11 / 24]);
+      await press(tester);
+    });
+
+    testWidgets('a path spelled with backslashes plays the sound the window '
+        'conformed — by the key the pool and the conform store use', (
+      tester,
+    ) async {
+      debugVideoDecodeBackend = FakeVideoBackend(frameCount: 12);
+      await show(tester, r'C:\work\clip.mp4');
+
+      await press(tester);
+
+      expect(sound.played, [movie]);
+      await press(tester);
+    });
+
     testWidgets('🎯in a 12fps project it counts the PROJECT\'s frames — the '
         'ones a placement counts — and its sound starts at their instant', (
       tester,
