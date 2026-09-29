@@ -141,11 +141,15 @@ class BlockMoveDragPreview extends TimelineDragPreview {
 /// the editing canvas's picture and pose, the handles, the camera frame.
 ///
 /// ⛔ITS OWN VARIANT, not a [BlockMoveDragPreview] (which carried the lane
-/// moves until F-195). The canvas follows THIS one and not a block move: a
-/// block move re-times cels, and the row being drawn on shows the cel the
-/// brush is bound to, so a canvas following one would show half of it —
-/// the other rows' cels moved and the active row's not. One variant for
-/// both would make the canvas answer 「follow it?」 once for two edits.
+/// moves until F-195): the lane verbs drop only their own preview
+/// (`LaneVerbs.endLaneEditPreview`), and the camera takes a lane edit's
+/// track straight off it (`Camera.activeCutCameraTrack`).
+/// ↩️It was split off so the canvas could follow a lane edit and NOT a block
+/// move — the row being drawn on shows the cel the brush holds, so a canvas
+/// following a block move showed half of it. 유저 2026-09-28 answered
+/// 「따라가게 — 끄는 동안 캔버스도 바뀐다」 (canvas-follows-block-moves): the
+/// canvas follows every drag now ([cutShowingDragPreview]) and stands that
+/// row down as an image while a drag moves its cel (`EditingStackMap`).
 ///
 /// Exactly one subject is set — a ROW ([row], with [globalRow] for a
 /// track-owned one), a V TRACK's chain ([trackId]) or the open cut's CAMERA
@@ -215,44 +219,66 @@ class LaneEditPreview extends TimelineDragPreview {
   );
 }
 
-/// The lane edit in flight on [preview]'s channel, or null — what the
-/// editing canvas follows ([LaneEditPreview]'s ⛔ says why only this one).
+/// The lane edit in flight on [preview]'s channel, or null.
 LaneEditPreview? laneEditInFlight(TimelineDragPreview? preview) =>
     preview is LaneEditPreview ? preview : null;
 
-/// [layers] as they show while [edit] is in flight: the edited row in its
-/// SHOWN form (a track-owned row's cut-local clone), every other row as it
-/// is. The same list back when [edit] touches none of them.
-List<Layer> layersShowingLaneEdit(List<Layer> layers, LaneEditPreview? edit) =>
-    _layersWithRow(layers, edit?.row);
-
-/// The same for a track's OWN rows (its SE rows on the global axis): the
-/// edited row in its GLOBAL form.
-List<Layer> globalLayersShowingLaneEdit(
+/// [layers] as they show while [preview] is in flight: every row the drag
+/// previews in the form a timeline row paints ([timelineDragPreviewLayerFor]
+/// — a track-owned row's cut-local clone), every other row as it is. The
+/// same list back when the drag touches none of them.
+///
+/// ★ONE substitution for every drag — a block, a comma, several rows, a file
+/// pushing its neighbours, a lane value. The canvas asking a function of its
+/// own is how it came to follow the lane edits alone.
+List<Layer> layersShowingDragPreview(
   List<Layer> layers,
-  LaneEditPreview? edit,
-) => _layersWithRow(layers, edit?.globalRow);
+  TimelineDragPreview? preview,
+) => preview == null
+    ? layers
+    : _layersShowing(
+        layers,
+        (layerId) => timelineDragPreviewLayerFor(preview, layerId),
+      );
 
-List<Layer> _layersWithRow(List<Layer> layers, Layer? row) {
-  if (row == null || !layers.any((layer) => layer.id == row.id)) {
-    return layers;
+/// The same for a track's OWN rows on the global axis (its SE rows, its
+/// transition row): each previewed row in its GLOBAL form
+/// ([timelineDragPreviewGlobalLayerFor]).
+List<Layer> globalLayersShowingDragPreview(
+  List<Layer> layers,
+  TimelineDragPreview? preview,
+) => preview == null
+    ? layers
+    : _layersShowing(
+        layers,
+        (layerId) => timelineDragPreviewGlobalLayerFor(preview, layerId),
+      );
+
+List<Layer> _layersShowing(
+  List<Layer> layers,
+  Layer? Function(LayerId layerId) shownFor,
+) {
+  List<Layer>? shown;
+  for (var i = 0; i < layers.length; i++) {
+    final row = shownFor(layers[i].id);
+    if (row != null && !identical(row, layers[i])) {
+      (shown ??= List.of(layers))[i] = row;
+    }
   }
-  return [
-    for (final layer in layers)
-      if (layer.id == row.id) row else layer,
-  ];
+  return shown ?? layers;
 }
 
-/// [cut] as the editing canvas shows it while [edit] is in flight — its
-/// edited row substituted in. Display only: the repository never sees it.
-/// [cut] itself when [edit] touches none of its rows.
+/// [cut] as the editing canvas shows it while [preview] is in flight — the
+/// rows the drag previews substituted in ([layersShowingDragPreview]).
+/// Display only: the repository never sees it. [cut] itself when the drag
+/// touches none of its rows.
 ///
 /// ⛔Not the camera. The picture and the pen's space read no camera; the
 /// camera's readers (its frame on the canvas, its lanes, its marks) take the
 /// one camera answer, `Camera.activeCutCameraTrack`, which reads this
 /// channel itself — a second camera here would be a copy nobody reads.
-Cut cutShowingLaneEdit(Cut cut, LaneEditPreview? edit) {
-  final layers = layersShowingLaneEdit(cut.layers, edit);
+Cut cutShowingDragPreview(Cut cut, TimelineDragPreview? preview) {
+  final layers = layersShowingDragPreview(cut.layers, preview);
   return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
 }
 

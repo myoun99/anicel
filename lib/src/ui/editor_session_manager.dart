@@ -1090,6 +1090,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     camera: camera,
+    dragPreview: dragPreview,
   );
 
   @override
@@ -3211,6 +3212,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     controllers: activeCutControllers,
+    dragPreview: dragPreview,
   );
 
   // ── the pool's content fingerprints: their own object ────────────────

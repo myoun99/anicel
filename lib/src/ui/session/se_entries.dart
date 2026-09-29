@@ -6,7 +6,7 @@ import '../../models/layer_kind.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show LaneEditPreview, globalLayersShowingLaneEdit;
+    show TimelineDragPreview, globalLayersShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'camera.dart';
@@ -58,13 +58,14 @@ class SeEntries {
   /// ANY cut, not just the active one: it walks the owning track's global
   /// SE rows and converts through that cut's start.
   ///
-  /// [edit] is a lane edit in flight on an SE row — its tag or its pose
-  /// scrubbed, its handle dragged — which the EDITING canvas shows as it
-  /// goes (F-195). The routes that render a committed film pass none.
+  /// [preview] is a drag in flight — an SE row's tag or pose scrubbed, its
+  /// handle dragged (F-195), its lines moved or stretched
+  /// (canvas-follows-block-moves) — which the EDITING canvas shows as it
+  /// goes. The routes that render a committed film pass none.
   List<ResolvedSeNameTag> seNameTagsForCutFrame(
     Cut cut,
     int localFrameIndex, {
-    LaneEditPreview? edit,
+    TimelineDragPreview? preview,
   }) {
     // The over-end runway is a CLIPPED VIEW of the cut (UI-R9 #4): a
     // playhead past the last frame must never address the NEIGHBOUR
@@ -86,7 +87,10 @@ class SeEntries {
         final start = cutGlobalStartFrameIn(track, cut.id);
         if (start != null) {
           return resolveSeNameTagsAt(
-            trackSeLayers: globalLayersShowingLaneEdit(track.seLayers, edit),
+            trackSeLayers: globalLayersShowingDragPreview(
+              track.seLayers,
+              preview,
+            ),
             cutStartFrame: start,
             localFrameIndex: localFrame,
             canvas: cut.canvasSize,

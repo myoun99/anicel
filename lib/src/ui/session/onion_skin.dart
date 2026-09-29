@@ -9,6 +9,8 @@ import '../../models/layer_id.dart';
 import '../../models/onion_skin_settings.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../../services/onion_skin_plan.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, cutShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
@@ -36,15 +38,18 @@ class OnionSkin {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
+    required ValueListenable<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _controllers = controllers;
+       _controllers = controllers,
+       _dragPreview = dragPreview;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
+  final ValueListenable<TimelineDragPreview?> _dragPreview;
 
   /// The peg settings — the app's one notifier (see the class doc), so the
   /// canvas underlay and the onion panel subscribe without whole-session
@@ -170,13 +175,18 @@ class OnionSkin {
   /// The ghost frames to composite at the playhead: every onion-enabled
   /// VISIBLE drawing layer contributes its plan (unique drawings, peg
   /// opacities, side tints) in layer-stack order.
+  ///
+  /// Planned from the cut as a drag in flight shows it, like the picture
+  /// they ghost around (canvas-follows-block-moves) — a block moved past the
+  /// playhead moves its ghost with it.
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
     final pegs = settings.value;
-    final cut = _project.activeCutOrNull;
+    final committed = _project.activeCutOrNull;
     final enabledIds = layerIds.value;
-    if (cut == null || enabledIds.isEmpty) {
+    if (committed == null || enabledIds.isEmpty) {
       return const [];
     }
+    final cut = cutShowingDragPreview(committed, _dragPreview.value);
     return [
       for (final layer in cut.layers)
         // A ghost is that layer's artwork, so it is shown exactly when the

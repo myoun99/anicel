@@ -21,6 +21,7 @@ import '../services/se_name_tag_plan.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/temporary_tool.dart';
+import '../core/collection_equality.dart' show listsMatch;
 import '../core/dev_profile.dart';
 import '../models/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
@@ -56,10 +57,9 @@ import 'timeline/layer_label_controls.dart';
 import 'timeline/memo_token.dart' show ByList;
 import 'timeline/timeline_drag_preview.dart'
     show
-        LaneEditPreview,
         TimelineDragPreview,
-        laneEditInFlight,
-        layersShowingLaneEdit;
+        timelineDragPreviewGlobalLayerFor,
+        timelineDragPreviewLayerFor;
 import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
 import '../services/layer_pose_matrix.dart'
     show LayerPoseSample, artworkToCanvas, canvasToArtwork;
@@ -406,18 +406,43 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
-    // F-195: a LANE EDIT in flight redraws the canvas per step — the picture,
-    // the pen's space, the handles and the camera frame all read it. Sliced,
-    // so the channel's other drags (a block move, a comma) wake nothing here:
-    // the canvas does not follow those ([LaneEditPreview]'s ⛔ says why).
-    return SlicedValueListenableBuilder<
-      TimelineDragPreview?,
-      LaneEditPreview?
-    >(
+    // A drag in flight redraws the canvas per step — the picture, the pen's
+    // space, the handles, the SE tags, the fade and the camera frame all read
+    // it (F-195; canvas-follows-block-moves, 유저 2026-09-28 「따라가게」).
+    // Sliced to what of it the canvas SHOWS ([_dragAsShown]).
+    return SlicedValueListenableBuilder<TimelineDragPreview?, _DragAsShown>(
       valueListenable: session.dragPreview,
-      slice: laneEditInFlight,
+      slice: (preview) => _dragAsShown(session, preview),
       builder: (context, _) => _buildFollowingSession(session),
     );
+  }
+
+  /// What of a drag the canvas SHOWS: every row of the open cut and of its
+  /// track as the drag shows it, in both forms, and the camera the canvas
+  /// draws — so a drag that changes none of it (a movie's end, a sound's
+  /// silhouette on an SE cell, a V track's chain, another cut's rows) wakes
+  /// nothing here, and one that does wakes it once per step.
+  ///
+  /// ⚠️A new reader of the channel on the canvas reads rows by the same two
+  /// functions ([timelineDragPreviewLayerFor], [timelineDragPreviewGlobalLayerFor])
+  /// or the camera's one answer; one that read something else would need it
+  /// here too, or it would go stale between steps.
+  static _DragAsShown _dragAsShown(
+    EditorSessionManager session,
+    TimelineDragPreview? preview,
+  ) {
+    final track = session.activeTrack;
+    return _DragAsShown([
+      for (final row in [
+        ...?session.activeCutOrNull?.layers,
+        ...track.seLayers,
+        track.transitionLayer,
+      ]) ...[
+        timelineDragPreviewLayerFor(preview, row.id),
+        timelineDragPreviewGlobalLayerFor(preview, row.id),
+      ],
+      session.camera.activeCutCameraTrack,
+    ]);
   }
 
   Widget _buildFollowingSession(EditorSessionManager session) {
@@ -737,13 +762,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
-  /// [layer] as the canvas shows it — the lane edit in flight on it, if one
-  /// is (F-195), so a handle stands where the picture is, not where the
-  /// release will have put it.
+  /// [layer] as the canvas shows it — the drag in flight on it, if one is
+  /// (F-195, canvas-follows-block-moves), so a handle stands where the
+  /// picture is, not where the release will have put it.
   static Layer _shownRow(EditorSessionManager session, Layer layer) =>
-      layersShowingLaneEdit([
-        layer,
-      ], laneEditInFlight(session.dragPreview.value)).single;
+      timelineDragPreviewLayerFor(session.dragPreview.value, layer.id) ??
+      layer;
 
   /// A canvas handle's ONE edit, landed two ways (F-195): shown while the
   /// handle moves, written when it lets go, dropped when it is cancelled.
@@ -1317,4 +1341,20 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
     _builtFrameIndex = widget.session.currentFrameIndex;
     return widget.builder(context);
   }
+}
+
+/// A drag as the canvas shows it ([_EditorCanvasAreaState._dragAsShown]):
+/// equal while every part is the SAME object — the rule a timeline row's
+/// gate keeps for its one row, over every row the canvas draws.
+final class _DragAsShown {
+  const _DragAsShown(this.parts);
+
+  final List<Object?> parts;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _DragAsShown && listsMatch(parts, other.parts, identical);
+
+  @override
+  int get hashCode => Object.hashAll(parts.map(identityHashCode));
 }

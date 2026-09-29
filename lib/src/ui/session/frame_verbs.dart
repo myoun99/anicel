@@ -16,7 +16,7 @@ import '../../services/layer_pose_paint.dart';
 import '../../models/working_panel.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, cutShowingLaneEdit, laneEditInFlight;
+    show TimelineDragPreview, cutShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart';
 import 'render_caches.dart';
@@ -98,9 +98,10 @@ class FrameVerbs {
   /// [placement] asked of [layerId]'s row in the open cut at the playhead —
   /// null with no cut open or no such row.
   ///
-  /// The cut as the canvas SHOWS it (F-195): a lane edit in flight on this
-  /// row or a folder above it moves the pen's space and the handles with
-  /// the picture, not at the release.
+  /// The cut as the canvas SHOWS it (F-195, canvas-follows-block-moves): a
+  /// drag in flight on this row or a folder above it — a lane value, a key
+  /// range, a block carrying keys — moves the pen's space and the handles
+  /// with the picture, not at the release.
   LayerPoseSample? _atThePlayhead(
     LayerId layerId,
     LayerPoseSample? Function({
@@ -113,10 +114,7 @@ class FrameVerbs {
     final committed = _project.activeCutOrNull;
     final cut = committed == null
         ? null
-        : cutShowingLaneEdit(
-            committed,
-            laneEditInFlight(_dragPreview.value),
-          );
+        : cutShowingDragPreview(committed, _dragPreview.value);
     final layer = cut?.layers.byId(layerId);
     return cut == null || layer == null
         ? null

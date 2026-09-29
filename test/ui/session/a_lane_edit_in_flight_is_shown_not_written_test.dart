@@ -205,11 +205,12 @@ void main() {
       expect(committed(session, row).transformTrack.position.keyAt(2), isNotNull);
     });
 
-    test('⛔a BLOCK move is not followed by the canvas — the live row would '
-        'show half of it', () {
+    // ↩️This pinned 「a BLOCK move is not followed by the canvas」 until
+    // 유저 2026-09-28 answered 「따라가게」 (canvas-follows-block-moves); the
+    // canvas's half now lives in `a_drag_in_flight_shows_on_the_canvas_test`.
+    test('another drag\'s preview is not the lane verbs\' to drop', () {
       final session = open();
       final row = session.activeLayer!;
-      final before = activeRowIn(session).pose;
 
       session.dragPreview.value = BlockMoveDragPreview(
         previewLayers: {
@@ -222,7 +223,6 @@ void main() {
         },
       );
 
-      expect(activeRowIn(session).pose, before);
       session.laneVerbs.endLaneEditPreview();
       expect(
         session.dragPreview.value,
@@ -363,8 +363,8 @@ void main() {
     session.selectLayer(se.id);
     session.selectFrameIndex(2);
     session.seEntries.createSeEntryAtCurrentFrame(name: '쿵', seName: 'A');
-    Offset? tagAt({LaneEditPreview? edit}) => session.seEntries
-        .seNameTagsForCutFrame(session.requireActiveCut, 2, edit: edit)
+    Offset? tagAt({TimelineDragPreview? preview}) => session.seEntries
+        .seNameTagsForCutFrame(session.requireActiveCut, 2, preview: preview)
         .single
         .content
         .position;
@@ -380,7 +380,7 @@ void main() {
 
     final preview = session.dragPreview.value;
     expect(
-      tagAt(edit: laneEditInFlight(preview)),
+      tagAt(preview: preview),
       isNot(tagBefore),
       reason: 'the tag the canvas draws follows the edit in flight',
     );

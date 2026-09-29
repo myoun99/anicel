@@ -1,4 +1,5 @@
 import 'dart:collection' show SplayTreeMap;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
@@ -11,6 +12,8 @@ import '../text/app_strings.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../services/commands/track_transition_commands.dart';
 import '../timeline/instruction_span_editing.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, timelineDragPreviewGlobalLayerFor;
 import 'session_roles.dart';
 import 'camera.dart';
 
@@ -28,16 +31,19 @@ class Transitions {
     required SelectionAccess selection,
     required ChangeSink changes,
     required Camera camera,
+    required ValueListenable<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _camera = camera;
+       _camera = camera,
+       _dragPreview = dragPreview;
 
   final Camera _camera;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
+  final ValueListenable<TimelineDragPreview?> _dragPreview;
 
   /// The two forms a drag of the transition row previews, in the track-SE
   /// rows' shape (`TrackSe.previewFormsOf`): [row] projected onto the active
@@ -67,11 +73,20 @@ class Transitions {
   /// ramp). They are plain records so nobody downstream has to know a layer is
   /// behind them — start, length and the TERM'S MARK, which is what says
   /// whether the span moves both cuts or only its own.
-  List<TransitionSpan> get activeTrackTransitionSpans => [
-    for (final entry
-        in _selection.activeTrack.transitionLayer.instructions.entries)
-      transitionSpanOf(entry),
-  ];
+  ///
+  /// The row as a drag in flight shows it — a span stretched or moved — so
+  /// the editing canvas's fade follows the hand with the marks
+  /// (canvas-follows-block-moves), the way the camera's one answer
+  /// (`Camera.activeCutCameraTrack`) follows its keys. Every reader here
+  /// displays; the drags read their row at their press.
+  List<TransitionSpan> get activeTrackTransitionSpans {
+    final row = _selection.activeTrack.transitionLayer;
+    final shown =
+        timelineDragPreviewGlobalLayerFor(_dragPreview.value, row.id) ?? row;
+    return [
+      for (final entry in shown.instructions.entries) transitionSpanOf(entry),
+    ];
+  }
 
   /// The track that owns [layerId] as its TRANSITION row, on any track.
   Track? trackTransitionOwner(LayerId layerId) {

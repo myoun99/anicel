@@ -10,12 +10,7 @@ import '../../services/cut_frame_composite_plan.dart';
 import '../brush/brush_editor_selection.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show
-        LaneEditPreview,
-        TimelineDragPreview,
-        cutShowingLaneEdit,
-        laneEditInFlight,
-        layersShowingLaneEdit;
+    show TimelineDragPreview, cutShowingDragPreview, layersShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'editing_stack_map.dart';
 import 'opacity_verbs.dart';
@@ -98,12 +93,13 @@ class EditingCanvas {
     }
 
     final frameIndex = _controllers.timelineController.currentFrameIndex;
-    // F-195: a lane edit in flight — a value scrubbed, a handle dragged, a
-    // key range slid — substitutes its row (and its cut's camera) in before
-    // the shared visit, so the picture follows the hand with no repo write
-    // per move, exactly as the opacity drag below always has.
-    final edit = laneEditInFlight(_dragPreview.value);
-    final shownCut = cutShowingLaneEdit(cut, edit);
+    // A drag in flight — a block, a comma, several rows, a file pushing its
+    // neighbours, a lane value (F-195) — substitutes its rows in before the
+    // shared visit, so the picture follows the hand with no repo write per
+    // move, exactly as the opacity drag below always has
+    // (canvas-follows-block-moves, 유저 2026-09-28 「따라가게」).
+    final dragPreview = _dragPreview.value;
+    final shownCut = cutShowingDragPreview(cut, dragPreview);
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
@@ -130,7 +126,7 @@ class EditingCanvas {
       ..._trackSeDisplayNodes(
         cut,
         frameIndex: frameIndex,
-        edit: edit,
+        dragPreview: dragPreview,
         preview: preview,
       ),
     ];
@@ -146,9 +142,10 @@ class EditingCanvas {
   /// and a conte picture's while its brush is on, one walk for both: the
   /// row a pen draws on is drawn where the composite puts it.
   ///
-  /// [stackCut] is [cut] as it composites right now (the canvas's opacity
-  /// drag preview). The live row stands in the tree only when it takes
-  /// brush input; otherwise it composites like any other.
+  /// [stackCut] is [cut] as it composites right now (the drag in flight, the
+  /// canvas's opacity drag preview); [cut] is what the brush holds. The live
+  /// row stands in the tree only when it takes brush input and shows the cel
+  /// the brush holds; otherwise it composites like any other.
   ({
     List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
@@ -202,15 +199,18 @@ class EditingCanvas {
         layer,
   ];
 
-  /// The track's SE rows as cut-local display clones, read-only — an edited
-  /// one as the edit in flight shows it.
+  /// The track's SE rows as cut-local display clones, read-only — a dragged
+  /// one as the drag in flight shows it.
   Iterable<CompositeNode<CanvasStackRow>> _trackSeDisplayNodes(
     Cut cut, {
     required int frameIndex,
-    required LaneEditPreview? edit,
+    required TimelineDragPreview? dragPreview,
     required ({Set<LayerId> layerIds, double opacity})? preview,
   }) sync* {
-    final shown = layersShowingLaneEdit(_trackSe.trackSeDisplayLayers, edit);
+    final shown = layersShowingDragPreview(
+      _trackSe.trackSeDisplayLayers,
+      dragPreview,
+    );
     final rows = preview == null
         ? shown
         : _withOpacityPreview(shown, preview);

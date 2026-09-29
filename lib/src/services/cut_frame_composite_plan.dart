@@ -5,6 +5,7 @@ import '../models/canvas_size.dart';
 import '../models/composite_tree.dart';
 import '../models/cut.dart';
 import '../models/frame.dart';
+import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
@@ -551,6 +552,42 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
       entry,
 ];
 
+/// The cel [layerId] exposes at [frameIndex] in [cut] — the one this plan
+/// composites for that row, asked before any gate (eye, opacity, folder), so
+/// it names what the row SHOWS there rather than whether it is drawn. Null
+/// when the row exposes nothing there or is not in [cut].
+///
+/// The editing canvas asks it of the row being drawn on, twice: of the cut
+/// as committed — the cel the brush holds — and of the cut as a drag shows
+/// it (`EditingStackMap`).
+FrameId? exposedCelIdAt({
+  required Cut cut,
+  required LayerId layerId,
+  required int frameIndex,
+}) {
+  final layer = cut.layers.byId(layerId);
+  if (layer == null) {
+    return null;
+  }
+  final base = isAttachedLayer(layer)
+      ? attachedBaseOf(layer, cut.layers)
+      : null;
+  return _celOf(layer, base, frameIndex)?.id;
+}
+
+/// [layer]'s cel at [frameIndex]: a SYNCED attach row's through its [base]'s
+/// exposure and the cell links; a FREE attach row (UI-R21 #3) exposes its OWN
+/// timeline like a normal layer — the base still carries eye cascade and FX
+/// above.
+Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
+    base == null || !isSyncedAttachedLayer(layer)
+    ? resolveExposedFrameAt(layer, frameIndex)
+    : resolveAttachedFrameAt(
+        attached: layer,
+        base: base,
+        frameIndex: frameIndex,
+      );
+
 /// What one layer contributes at a frame: its resolved
 /// [CutFrameCompositeEntry], a [CutFrameCompositeLiveRow] when it is the
 /// LIVE row and has no cel exposed here, or null when it contributes
@@ -616,16 +653,7 @@ CutFrameCompositeRow? _resolveLayerNode(
     return null;
   }
 
-  // SYNCED attach cels resolve through the base's exposure + the cell
-  // links; FREE attach rows (UI-R21 #3) expose their OWN timeline like
-  // a normal layer — the base still carries eye cascade and FX above.
-  final frame = base == null || !isSyncedAttachedLayer(layer)
-      ? resolveExposedFrameAt(layer, frameIndex)
-      : resolveAttachedFrameAt(
-          attached: layer,
-          base: base,
-          frameIndex: frameIndex,
-        );
+  final frame = _celOf(layer, base, frameIndex);
 
   // R6: effects ride the FX carrier exactly like the pose and the
   // animated opacity — an attach row wears its base's chain, and the
