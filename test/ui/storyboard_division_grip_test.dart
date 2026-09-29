@@ -328,12 +328,14 @@ void main() {
       'block-edge-grip-end-grip-track-2',
       'storyboard-plate',
     );
+    // A point well inside the round's reach at whatever the law gives this
+    // zoom (the round crosses the diagonal at ~0.29 of its radius).
     expect(
       inkOf('storyboard-plate', plateEnd).contains(
-        plateEnd.rect.topRight.translate(-1.5, 1.5),
+        plateEnd.rect.topRight.translate(-plate / 6, plate / 6),
       ),
       isFalse,
-      reason: 'the plate\'s own round (8) takes the tip',
+      reason: 'the plate\'s own round takes the tip',
     );
     expect(
       inkOf('storyboard-plate', plateEnd).contains(
