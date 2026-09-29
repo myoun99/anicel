@@ -100,6 +100,19 @@ class SelectionFloatPaint {
     }
     final image = this.image;
     if (image != null) {
+      // The transform preview (P3a): the RESAMPLED float, drawn at the
+      // canvas rect it will land in, through the ordinary viewport
+      // transform.
+      //
+      // `FilterQuality.none` is not a performance choice — it is the
+      // contract. The image already holds the destination pixels, one for
+      // one, so any filtering here would show the user something other than
+      // the bytes Enter is about to write. Zoomed in that means visible
+      // blocks, which is correct: those blocks ARE the result. This replaced
+      // three different screen approximations (a widget `Transform` for the
+      // affine, a homography matrix for the quad, and a `drawVertices` mesh
+      // at `FilterQuality.medium`), none of which agreed with the commit and
+      // none of which agreed with each other.
       canvas.drawImageRect(
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
