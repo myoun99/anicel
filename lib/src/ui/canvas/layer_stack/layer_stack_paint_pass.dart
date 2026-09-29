@@ -520,8 +520,19 @@ class _LayerStackPaintPass {
     return wrap.invert() == 0 ? null : wrap;
   }();
 
-  /// What the live slot's own raster covers, in the SLOT's space: what it
-  /// draws ([_activeSurfaceExtent]) where the view can see it.
+  /// What the live slot's own raster covers, in the SLOT's space: the rect
+  /// the same layer drawn as an image covers, where the view can see it.
+  ///
+  /// 🚨★★★THE IMAGE ROW'S RECT, BY THE IMAGE ROW'S QUESTION (F-243). A
+  /// cached row lays down its ink alone only where that is exact
+  /// ([inkCropDrawsTheSame]) and otherwise its whole image, the page
+  /// included; this asks the same. 🔬On Impeller Vulkan an advanced blend
+  /// rounds by the area it blends through: rastered to its ink, a multiply
+  /// row being drawn on came out up to 14/255 off the same row drawn as an
+  /// image in 109 pixels of one scene; over the page, not one byte in any
+  /// of 20 (blends × zooms × inks), as on the Windows app and the test
+  /// runner already. Where a crop is exact the ink is all there is to
+  /// raster, and a colour key keeps its smaller raster.
   ///
   /// 🚨Not [_bufferBoundsFor], which answers in CANVAS space — the extent
   /// taken through the row's pose — for the buffers the walk opens around
@@ -530,12 +541,21 @@ class _LayerStackPaintPass {
   /// coordinates, a posed row's canvas rect rastered the wrong part of the
   /// slot and cut its drawing away (found in F-243's review: every posed
   /// row in an advanced blend takes this route since).
-  Rect _activeSlotBufferBounds() {
+  Rect _activeSlotBufferBounds(_PaintActiveSurface row) {
     final intoSlot = _slotFromCanvas;
     final view = intoSlot == null
         ? _visibleCanvasRect
         : MatrixUtils.transformRect(intoSlot, _visibleCanvasRect);
-    return view.intersect(_activeSurfaceExtent());
+    final drawn = _activeSurfaceExtent();
+    final covered =
+        inkCropDrawsTheSame(
+          pose: row.pose,
+          blendMode: row.blendMode,
+          effects: row.effects,
+        )
+        ? drawn
+        : drawn.expandToInclude(_canvasRect);
+    return view.intersect(covered);
   }
 
   /// The one active slot in [nodes], wherever the folders put it.
@@ -917,7 +937,7 @@ class _LayerStackPaintPass {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
-          _activeSlotBufferBounds(),
+          _activeSlotBufferBounds(row),
           activePlan.outsetPixels,
         ),
         rasterScale: rasterScale,

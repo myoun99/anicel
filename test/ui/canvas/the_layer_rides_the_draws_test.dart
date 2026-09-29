@@ -25,6 +25,9 @@ import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
+import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
+    show debugLastSubtreeRaster;
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -62,6 +65,8 @@ import 'package:anicel/src/models/composite_tree.dart';
 void main() {
   const canvasSize = CanvasSize(width: 64, height: 64);
   const tileSize = 16;
+
+  setUpAll(ColourKeyShader.load);
 
   BitmapSurface inkedSurface() {
     final tiles = <TileCoord, BitmapTile>{};
@@ -842,6 +847,58 @@ void main() {
           reason: '${blend.name} blends pixel by pixel, so the tiles keep it',
         );
       }
+    });
+
+    testWidgets('🚨F-243: the row being drawn on rasters the rect its image '
+        'would cover — the page in an advanced blend, the ink where a crop '
+        'is exact', (tester) async {
+      // On Impeller Vulkan an advanced blend rounds by the area it blends
+      // through: rastered to its ink alone, a multiply row being drawn on
+      // came out up to 14/255 off the same row drawn as an image; over the
+      // page, as the image row is, not a byte. The pin is the raster's
+      // bounds — the page here is 64×64 and in full view, the ink one tile.
+      Future<Rect> rasteredFor(
+        LayerBlendMode blend, {
+        List<ResolvedLayerEffect> effects = const [],
+      }) async {
+        debugLastSubtreeRaster = null;
+        await paintActive(
+          tester,
+          effects: effects,
+          opacity: 1,
+          blendMode: blend,
+          disableBuffer: true,
+        );
+        expect(
+          debugLastSubtreeRaster,
+          isNotNull,
+          reason: '⛔premise: ${blend.name} took the image route',
+        );
+        return debugLastSubtreeRaster!.bounds;
+      }
+
+      const page = Rect.fromLTWH(0, 0, 64, 64);
+      const ink = Rect.fromLTWH(0, 0, 16, 16);
+      expect(await rasteredFor(LayerBlendMode.multiply), page);
+      expect(await rasteredFor(LayerBlendMode.screen), page);
+      // A colour key below a painted effect takes the image route in
+      // normal too — and a normal row's image is its ink.
+      expect(
+        await rasteredFor(
+          LayerBlendMode.normal,
+          effects: [
+            ResolvedLayerEffect(
+              kind: EffectKind.brightnessContrast,
+              values: const [10, 0],
+            ),
+            ResolvedLayerEffect(
+              kind: EffectKind.keepColor,
+              values: const [240, 192, 32, 60, 100],
+            ),
+          ],
+        ),
+        ink,
+      );
     });
 
     testWidgets('🚨a posed row on the image route rasters its own slot, not '
