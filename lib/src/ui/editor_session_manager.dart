@@ -520,10 +520,7 @@ class EditorSessionManager extends ChangeNotifier
     if (voiceRecording.isVoiceRecording.value) {
       await voiceRecording.finishTakeThroughTheNotice();
     }
-    editingSession.gapGlobalFrame = globalFrame;
-    _deselectActiveCutForGap();
-    frameSeekCommitted.value += 1;
-    notifyListeners();
+    parkGlobalFrame(globalFrame);
   }
 
   /// Premiere-style follow: while playback crosses cut boundaries the
@@ -1667,11 +1664,9 @@ class EditorSessionManager extends ChangeNotifier
       _hiddenPictureCutIds.add(cutId);
       // UI-R13 #2: hiding the ACTIVE cut's picture is the no-cut state —
       // nothing displays at this index anymore, exactly like a gap
-      // landing: park at the current global and deselect.
+      // landing: park at the current global — the one park there is.
       if (cutId == editingSession.activeCutId) {
-        editingSession.gapGlobalFrame = editingGlobalFrame;
-        _deselectActiveCutForGap();
-        frameSeekCommitted.value += 1;
+        parkGlobalFrame(editingGlobalFrame);
       }
       notifyListeners();
       return;
@@ -3031,12 +3026,11 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Deselects the active cut for a GAP landing (UI-R9 #3): standing in a
   /// gap means NO cut is selected — the timeline/timesheet show their
-  /// empty states and the canvas shows the void. QUIET: callers notify
-  /// (they batch it with the parking + commit signals). False when no cut
-  /// was selected to begin with.
-  bool _deselectActiveCutForGap() {
+  /// empty states and the canvas shows the void. QUIET: [parkGlobalFrame]
+  /// notifies, batched with the parking and the commit signal.
+  void _deselectActiveCutForGap() {
     if (editingSession.activeCutId == null) {
-      return false;
+      return;
     }
     // Parking in a gap LEAVES the cut, so the row it was on is recorded
     // here too — scrubbing out and back keeps the layer.
@@ -3049,7 +3043,6 @@ class EditorSessionManager extends ChangeNotifier
     editingSession.setActiveCutId(null);
     clearFrameRangeSelection();
     activeCutControllers.rebuild();
-    return true;
   }
 
   /// V-TRACK selection (UI-R18 #6): tapping a V row makes THAT track's
@@ -3104,7 +3097,12 @@ class EditorSessionManager extends ChangeNotifier
   /// cut on the row that HAS cuts. ⑭ retired that: one track means the
   /// index names one cut, so a row press seeks like any other and only a
   /// GAP still parks. Callers that park a frame a cut covers are declaring
-  /// a preview, not a landing — the live scrub is the one such caller.
+  /// a preview, not a landing — the live scrub — or a cut whose picture is
+  /// hidden, so nothing shows there (the V-row eye, UI-R13 #2).
+  ///
+  /// ⛔THE park. A stop in a gap and the V-row eye wrote these steps out
+  /// for themselves and missed the settle and the live-stroke hold this
+  /// one keeps (2026-09-29); they come through here now.
   void parkGlobalFrame(int globalFrame) {
     if (strokeInFlight) {
       return;
