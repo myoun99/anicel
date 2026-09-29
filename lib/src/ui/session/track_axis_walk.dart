@@ -2,7 +2,7 @@ import '../../models/flip_column_step.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/timeline_repeat.dart';
+import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/track_frame_axis.dart';
 import '../../models/track_id.dart';
 import '../storyboard_layer_policy.dart' show storyboardPanelsOnTrack;
@@ -180,13 +180,16 @@ class TrackAxisWalk {
 
 /// THE flip's column on a layer row at [frame] — the row's own blocks,
 /// whatever they are made of (R10 #13: 「whatever the row is, count THAT
-/// row's blocks」), on whichever axis the row is walked.
+/// row's blocks」), on whichever axis the row is walked. A run-edge ghost —
+/// a hold's or a repeat's — is a column of its own, as it is a block of its
+/// own on the row.
 ///
-/// A7① (2026-08-17): a HOLD is one flip unit — the column absorbs hold-mode
-/// ghost tails/lead-ins into their owning run, so the flip never lands
-/// inside a hold the HUD draws as empty. Repeat ghosts stay their own
-/// columns; the merge lives HERE, in the flip's column definition only
-/// (creation gates, painters and playback keep reading raw coverage).
+/// 🗣️F-245 (유저 2026-09-30): 「리피트는 리피트도 블록으로 인식해서 플립해도
+/// 되는데, 홀드는 그냥 블록으로 인식해서 안넘어가도록. 즉 1홀드----x이면,
+/// 지금 1에있는상태에서 오른쪽누르면 x로 이동하는데, 그게아니라 블록 다음칸
+/// 그냥 평범하게 가도록」. ↩️A7① (2026-08-18, 「홀드 블록을 한 단위로
+/// 건너뛰어」) absorbed a hold's ghost into the run it holds, so a flip
+/// leapt the whole hold — the user reversed it.
 ///
 /// The TRANSITION row's blocks are its SPANS, and they live in its
 /// instruction map rather than on its timeline
@@ -201,5 +204,8 @@ FlipColumn? flipColumnOfRow(Layer layer, int frame) {
         ? null
         : (start: span.key, endExclusive: span.key + span.value.length);
   }
-  return holdMergedFlipColumnAt(layer, frame);
+  final block = coveringDrawingBlockAt(layer.timeline, frame);
+  return block == null
+      ? null
+      : (start: block.startIndex, endExclusive: block.endIndexExclusive);
 }

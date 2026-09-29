@@ -334,14 +334,13 @@ void main() {
     });
   });
 
-  // A7① (2026-08-17): a HOLD is one flip unit — 「홀드 블록을 한 단위로
-  // 건너뛰어 다음 프레임 선택」. The run-edge HOLD materializes a ghost
-  // block right after the held block, and the flip used to treat that
-  // ghost as its own column, landing exactly where the user reported
-  // (「홀드 안쪽 2번 인덱스」) — while the flip HUD drew no block there.
-  // The flip's column absorbs hold ghosts into their owning run now;
-  // repeat ghosts stay their own columns (A7① names holds only).
-  group('A7①: a HOLD is one flip unit', () {
+  // 🗣️F-245 (유저 2026-09-30): 「홀드는 그냥 블록으로 인식해서
+  // 안넘어가도록. 즉 1홀드----x이면, 지금 1에있는상태에서 오른쪽누르면 x로
+  // 이동하는데, 그게아니라 블록 다음칸 그냥 평범하게 가도록」 — the run-edge
+  // HOLD's ghost block is a flip column of its own, as a repeat's is.
+  // ↩️A7① (2026-08-18, 「홀드 블록을 한 단위로 건너뛰어」) absorbed it into
+  // the held run, and a flip leapt the whole hold.
+  group('a HOLD is walked, not leapt', () {
     (EditorSessionManager, LayerId) heldSession(TimelineRunEdgeMode mode) {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       s.createDrawingAtCurrentFrame(); // 1-cell block at index 0
@@ -355,42 +354,34 @@ void main() {
       return (s, layerId);
     }
 
-    test('forward from the held block leaves past the ghost end — never '
-        'lands inside the hold', () {
+    test('forward from the held block stands on the hold\'s first cell, and '
+        'from there leaves the hold', () {
       final (s, _) = heldSession(TimelineRunEdgeMode.hold);
       addTearDown(s.dispose);
       final cutEnd = s.requireActiveCut.duration;
+      expect(cutEnd, greaterThan(2), reason: 'fixture: a hold to walk');
 
       s.selectFrameIndex(0);
       s.frameVerbs.flipRow(forward: true);
-      expect(
-        s.currentFrameIndex,
-        cutEnd,
-        reason: 'block + its hold ghost = ONE column ending at the cut end',
-      );
+      expect(s.currentFrameIndex, 1, reason: '「블록 다음칸」');
+      s.frameVerbs.flipRow(forward: true);
+      expect(s.currentFrameIndex, cutEnd, reason: 'the hold is one column');
     });
 
-    test('backward from beyond lands on the AUTHORED head, and mid-ghost '
-        'leaves the whole unit', () {
+    test('backward from beyond stands on the hold\'s first cell, then on the '
+        'held block', () {
       final (s, _) = heldSession(TimelineRunEdgeMode.hold);
       addTearDown(s.dispose);
       final cutEnd = s.requireActiveCut.duration;
 
       s.selectFrameIndex(cutEnd);
       s.frameVerbs.flipRow(forward: false);
-      expect(
-        s.currentFrameIndex,
-        0,
-        reason: 'the previous column is the whole hold unit — its start is '
-            'the authored head, not the ghost\'s',
-      );
-
-      s.selectFrameIndex(3); // inside the ghost
-      s.frameVerbs.flipRow(forward: true);
-      expect(s.currentFrameIndex, cutEnd, reason: 'mid-hold leaves whole');
+      expect(s.currentFrameIndex, 1);
+      s.frameVerbs.flipRow(forward: false);
+      expect(s.currentFrameIndex, 0);
     });
 
-    test('REPEAT ghosts stay their own columns — A7① names holds only', () {
+    test('REPEAT ghosts stay their own columns, as they were', () {
       final (s, _) = heldSession(TimelineRunEdgeMode.repeat);
       addTearDown(s.dispose);
 
