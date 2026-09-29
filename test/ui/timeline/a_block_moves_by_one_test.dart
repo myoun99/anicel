@@ -173,11 +173,18 @@ void main() {
           'selection one frame — the first step is 1, never 2', (
         tester,
       ) async {
-        final (heard, inside) = await mountSelected(tester);
+        final (heard, middle) = await mountSelected(tester);
 
-        final gesture = await tester.startGesture(inside, kind: kind);
-        await creep(tester, gesture, cell.toInt());
+        // Two pixels into cell 1: half a cell on, the block has stepped
+        // while the pointer is still on the cell it pressed.
+        final gesture = await tester.startGesture(
+          middle - const Offset(2, 0),
+          kind: kind,
+        );
+        await creep(tester, gesture, 4);
+        expect(heard.steps, [1], reason: 'the block steps at half a cell');
 
+        await creep(tester, gesture, 4);
         expect(
           heard.steps,
           [1],
@@ -315,16 +322,42 @@ void main() {
         ),
       );
 
+      // Two pixels into cell 1, as the cells' pin presses.
       final gesture = await tester.startGesture(
-        inside,
+        inside - const Offset(2, 0),
         kind: PointerDeviceKind.stylus,
       );
-      await creep(tester, gesture, cell.toInt());
+      await creep(tester, gesture, 4);
+      expect(heard.steps, [1], reason: 'the keys step at half a cell');
+
+      await creep(tester, gesture, 4);
       await gesture.up();
       await tester.pump();
-
       expect(heard.steps, [1]);
       expect(heard.ends, 1);
+    });
+
+    testWidgets('F-238: a pen select on the band that leaves its ROW starts '
+        'there', (tester) async {
+      final (heard, _) = await mountBand(tester);
+      final band = find.byKey(
+        const ValueKey<String>('timeline-lane-range-gesture-layer-a-position'),
+      );
+      final height = tester.getSize(band).height;
+      expect(height, lessThan(36), reason: '⛔전제: the row is left before 18px');
+
+      final gesture = await tester.startGesture(
+        tester.getTopLeft(band) + Offset(cell * 1.5, height / 2),
+        kind: PointerDeviceKind.stylus,
+      );
+      for (var moved = 0; moved < height / 2 + 1; moved += 1) {
+        await gesture.moveBy(const Offset(0, -1));
+        await tester.pump();
+      }
+
+      expect(heard.selects, isNotEmpty, reason: 'the select has begun');
+      await gesture.up();
+      await tester.pump();
     });
 
     testWidgets('🚨F-238: a pen select on the band starts where it leaves '

@@ -322,43 +322,15 @@ class _TimelineFrameRangeGestureLayerState
     return frame < 0 ? 0 : frame;
   }
 
-  /// A move's step for a travel of [main] along the frame axis and [cross]
-  /// across it: whole frames and whole rows.
-  (int, int) _moveStepOf(double main, double cross) => (
-    commaDragFrameDelta(
-      accumulatedDelta: main,
-      frameCellExtent: widget.geometry.value.frameCellExtent,
-    ),
-    // R27 #12: the row axis has a deadband — a horizontal sweep's wobble
-    // must not hand the step to the row-change path.
-    timelineRowStepDelta(
-      accumulatedDelta: cross,
-      rowExtent: widget.crossAxisExtent,
-    ),
+  bool _firstStepAt(Offset down, Offset now) => _rangeDragStepped(
+    down: down,
+    now: now,
+    axis: widget.axis,
+    cellExtent: widget.geometry.value.frameCellExtent,
+    rowExtent: widget.crossAxisExtent,
+    frameAt: _frameAt,
+    isInSelection: (frame) => widget.callbacks.isInSelection(widget.row, frame),
   );
-
-  /// Whether a press at [down], now at [now], has taken its first step
-  /// ([EagerPanGestureRecognizer.firstStepAt]): inside the selection the
-  /// block would leave its seat, anywhere else the pointer has left the cell
-  /// it pressed.
-  bool _firstStepAt(Offset down, Offset now) {
-    final pressed = _frameAt(down);
-    if (!widget.callbacks.isInSelection(widget.row, pressed)) {
-      return _leftThePressedCell(
-        pressed: pressed,
-        now: _frameAt(now),
-        crossNow: _crossOffsetAt(now),
-        rowExtent: widget.crossAxisExtent,
-      );
-    }
-    final travel = now - down;
-    final horizontal = widget.axis == Axis.horizontal;
-    final (frames, rows) = _moveStepOf(
-      horizontal ? travel.dx : travel.dy,
-      horizontal ? travel.dy : travel.dx,
-    );
-    return frames != 0 || rows != 0;
-  }
 
   void _startDrag(Offset localPosition) {
     _scrolledMain = 0;
@@ -438,9 +410,15 @@ class _TimelineFrameRangeGestureLayerState
         // this step's main-axis application.
         _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
         _crossDelta += horizontal ? details.delta.dy : details.delta.dx;
-        final (frames, rows) = _moveStepOf(
-          _mainDelta + _scrolledMain,
-          _crossDelta + _scrolledCross,
+        final frames = commaDragFrameDelta(
+          accumulatedDelta: _mainDelta + _scrolledMain,
+          frameCellExtent: widget.geometry.value.frameCellExtent,
+        );
+        // R27 #12: the row axis has a deadband — a horizontal sweep's
+        // wobble must not hand the step to the row-change path.
+        final rows = timelineRowStepDelta(
+          accumulatedDelta: _crossDelta + _scrolledCross,
+          rowExtent: widget.crossAxisExtent,
         );
         if (frames == _lastFrames && rows == _lastRows) {
           return;
@@ -788,26 +766,15 @@ class _TimelineLaneRangeGestureLayerState
         selection.contains(frame);
   }
 
-  /// The cells layer's first step, asked of this band.
-  bool _firstStepAt(Offset down, Offset now) {
-    final pressed = _frameAt(down);
-    if (!_isInSelection(pressed)) {
-      return _leftThePressedCell(
-        pressed: pressed,
-        now: _frameAt(now),
-        crossNow: _crossOffsetAt(now),
-        rowExtent: widget.crossAxisExtent,
-      );
-    }
-    final travel = now - down;
-    return commaDragFrameDelta(
-          accumulatedDelta: widget.axis == Axis.horizontal
-              ? travel.dx
-              : travel.dy,
-          frameCellExtent: widget.frameCellExtent,
-        ) !=
-        0;
-  }
+  bool _firstStepAt(Offset down, Offset now) => _rangeDragStepped(
+    down: down,
+    now: now,
+    axis: widget.axis,
+    cellExtent: widget.frameCellExtent,
+    rowExtent: widget.crossAxisExtent,
+    frameAt: _frameAt,
+    isInSelection: _isInSelection,
+  );
 
   void _startDrag(Offset localPosition) {
     _scrolledMain = 0;
@@ -1038,12 +1005,36 @@ Widget _eagerPanDetector({
   );
 }
 
-/// A SELECT's first step ([EagerPanGestureRecognizer.firstStepAt]): the
-/// pointer has left the cell it [pressed] — along the frame axis, or off its
-/// row across it. Both range layers ask it.
-bool _leftThePressedCell({
-  required int pressed,
-  required int now,
-  required double crossNow,
+/// Whether a range drag pressed at [down] and now at [now] has taken its
+/// FIRST STEP ([EagerPanGestureRecognizer.firstStepAt]) — the question both
+/// range layers ask, answered once (F-238). A press inside the selection
+/// steps when the block would leave its seat, by the nearest-cell step every
+/// frame drag reads ([commaDragFrameDelta]); any other press when the pointer
+/// has left the cell it pressed — along the frame axis, or off its row
+/// across it (F-138-Q1 「누른 상자 벗어나면 시작」).
+///
+/// ⛔A move's ROW step is not asked: its deadband is three quarters of a row
+/// ([timelineRowStepDelta]), which on any row 24px or taller lies past the
+/// 18px hit slop — the slop comes first there.
+bool _rangeDragStepped({
+  required Offset down,
+  required Offset now,
+  required Axis axis,
+  required double cellExtent,
   required double rowExtent,
-}) => now != pressed || crossNow < 0 || crossNow >= rowExtent;
+  required int Function(Offset localPosition) frameAt,
+  required bool Function(int frame) isInSelection,
+}) {
+  final horizontal = axis == Axis.horizontal;
+  final pressed = frameAt(down);
+  if (isInSelection(pressed)) {
+    final travel = now - down;
+    return commaDragFrameDelta(
+          accumulatedDelta: horizontal ? travel.dx : travel.dy,
+          frameCellExtent: cellExtent,
+        ) !=
+        0;
+  }
+  final crossNow = horizontal ? now.dy : now.dx;
+  return frameAt(now) != pressed || crossNow < 0 || crossNow >= rowExtent;
+}
