@@ -919,6 +919,14 @@ class _TimelineRowEditChromeLayerState
     // Drag from the DOWN position: the [+] count must not lose the first
     // cell to the slop.
     _addPan.dragStartBehavior = DragStartBehavior.down;
+    // …and start at the first cel it would add, when that comes before the
+    // slop (F-238 — on narrow cells a pen's first count was already two).
+    _addPan.firstStepAt = (down, now) {
+      final target = _pressed;
+      final travel = now - down;
+      return target is TimelineRowRunAddTarget &&
+          _addCountFor(target, _horizontal ? travel.dx : travel.dy) != 0;
+    };
     _addPan.onStart = (_) => _startAdd();
     _addPan.onUpdate = (details) {
       final panned = _autoPanEdge(details.globalPosition);
@@ -1065,13 +1073,19 @@ class _TimelineRowEditChromeLayerState
       return;
     }
     _addAccumulated += _horizontal ? delta.dx : delta.dy;
+    widget.runEdit?.onAddUpdate(_addCountFor(target, _addAccumulated));
+  }
+
+  /// How many cels a [+] drag of [travel] along the frame axis adds: whole
+  /// cells, counted only outward from the run's edge.
+  int _addCountFor(TimelineRowRunAddTarget target, double travel) {
     final frames = commaDragFrameDelta(
-      accumulatedDelta: _addAccumulated,
+      accumulatedDelta: travel,
       frameCellExtent: widget.geometry.value.frameCellExtent,
     );
-    widget.runEdit?.onAddUpdate(
-      target.atEnd ? (frames < 0 ? 0 : frames) : (frames > 0 ? 0 : -frames),
-    );
+    return target.atEnd
+        ? (frames < 0 ? 0 : frames)
+        : (frames > 0 ? 0 : -frames);
   }
 
   void _endAdd() {

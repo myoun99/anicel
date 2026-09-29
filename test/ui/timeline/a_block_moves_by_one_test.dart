@@ -14,6 +14,9 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
+
+import 'timeline_row_chrome_probe.dart';
 
 /// 🗣️F-238 (유저 2026-09-29): 「블록선택하고 이동, 1코마만 움직일려해도
 /// 안되고 2콤마 움직이는만큼 커서 움직여야 2콤마 움직이고, 다시 반대로
@@ -308,6 +311,67 @@ void main() {
 
       expect(heard.selects.toSet(), {(1, 1), (1, 2)});
     });
+  });
+
+  testWidgets('🚨F-238: a pen that drags the run\'s end [+] one cell adds '
+      'one cel — the count starts at 1, not 2', (tester) async {
+    final counts = <int>[];
+    final cursor = ValueNotifier<int>(0);
+    addTearDown(cursor.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LayerTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: const LayerId('layer-a'),
+              frameCursor: cursor,
+              playbackFrameCount: 48,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              runEdit: TimelineRunEditCallbacks(
+                onAddBegin: (_, _, {required atEnd}) => true,
+                onAddUpdate: counts.add,
+                onAddEnd: () {},
+                onAddCancel: () {},
+                onEdgeModeSelected:
+                    (_, _, _, _, {scopeToSelection = false}) {},
+              ),
+            ),
+            layers: [
+              blockLayer().copyWith(
+                timeline: {
+                  0: const TimelineExposure.drawing(FrameId('a-f1'), length: 8),
+                },
+              ),
+            ],
+            metrics: const TimelineGridMetrics(
+              frameCellWidth: cell,
+              layerRowHeight: 52,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final gesture = await tester.startGesture(
+      timelineRowChromeCenter(tester, 'layer-a', 'run-add-end-layer-a-0'),
+      kind: PointerDeviceKind.stylus,
+    );
+    await creep(tester, gesture, cell.toInt());
+
+    expect(
+      counts.where((count) => count != 0),
+      everyElement(1),
+      reason: '↩️nothing until 18px, and then two at once',
+    );
+    expect(counts, contains(1), reason: 'the drag has begun — not a tap yet');
+    await gesture.up();
+    await tester.pump();
   });
 }
 
