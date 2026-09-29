@@ -20,6 +20,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
+import 'package:anicel/src/ui/text/word_condensation.dart'
+    show maxGapTightening;
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver;
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -158,6 +160,9 @@ Future<void> _pump(
 class _ParagraphOffsetSpy implements Canvas {
   final List<Offset> offsets = [];
   final List<Rect> rects = [];
+
+  /// How far each paragraph was narrowed across, beside [rects].
+  final List<double> xScales = [];
   final List<({Offset center, double radius, Color color})> circles = [];
   final List<({Rect rect, Color color})> plates = [];
   final _saved = <Matrix4>[];
@@ -187,6 +192,7 @@ class _ParagraphOffsetSpy implements Canvas {
         offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
       ),
     );
+    xScales.add(_transform.storage[0]);
   }
 
   @override
@@ -812,6 +818,66 @@ void main() {
       reason: 'narrowed into its band — ↩️an ellipsis cut its end, and its '
           'paragraph still measured the whole name',
     );
+  });
+
+  // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」. Each word is
+  // first painted at a roomy zoom, where it runs its natural length.
+  group('a word a few pixels long gives up its letter gaps and is not '
+      'narrowed', () {
+    final onePanel = Layer(
+      id: const LayerId('cut-1-sb'),
+      name: 'SB',
+      kind: LayerKind.storyboard,
+      frames: [
+        Frame(id: const FrameId('cut-1-a'), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('cut-1-a'), length: 12),
+      },
+    );
+    Future<({double width, double xScale})> wordIn(
+      WidgetTester tester,
+      Rect Function(StoryboardCutBlockVisual block) band, {
+      required double pixelsPerFrame,
+    }) async {
+      await _pump(
+        tester,
+        pixelsPerFrame: pixelsPerFrame,
+        storyboardLayer: onePanel,
+      );
+      final block = requireCutBlock(tester, 'cut-1');
+      final spy = _painted(tester);
+      final at = spy.rects.indexWhere(
+        (rect) => band(block).contains(rect.center),
+      );
+      return (width: spy.rects[at].width, xScale: spy.xScales[at]);
+    }
+
+    testWidgets('the cut\'s title', (tester) async {
+      Rect title(StoryboardCutBlockVisual block) => block.topBand;
+      final natural = await wordIn(tester, title, pixelsPerFrame: 12);
+      final tight = await wordIn(tester, title, pixelsPerFrame: 5.25);
+      final room = requireCutBlock(tester, 'cut-1').topBand.width - 8;
+      expect(
+        natural.width - room,
+        inExclusiveRange(0, 4 * maxGapTightening),
+        reason: '⛔전제: longer than its room by less than its four gaps give',
+      );
+      expect(tight.xScale, 1, reason: 'its gaps gave the pixels');
+    });
+
+    testWidgets('a panel\'s comma count', (tester) async {
+      Rect commas(StoryboardCutBlockVisual block) => block.innerBottomBand;
+      final natural = await wordIn(tester, commas, pixelsPerFrame: 12);
+      // Twelve frames of 22/12px: 22px of panel.
+      final tight = await wordIn(tester, commas, pixelsPerFrame: 22 / 12);
+      expect(
+        natural.width - 22,
+        inExclusiveRange(0, maxGapTightening),
+        reason: '⛔전제: 「12」 is longer than its panel by less than its gap',
+      );
+      expect(tight.xScale, 1, reason: 'its gap gave the pixel');
+    });
   });
 
   testWidgets('🗣️the row asks its pictures at the strip\'s height in DEVICE '
