@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/history_manager.dart';
 import '../input/control_press_claim.dart' show PressFireWatch;
 import '../input/value_control_pointers.dart';
-import 'timeline_edit_pan_devices.dart';
+import '../input/finger_mode_devices.dart';
 import 'layer_rail_columns.dart';
 import 'layer_label_controls.dart'
     show
@@ -512,7 +512,7 @@ class _RailSwipeDetectorState extends State<_RailSwipeDetector> {
       _engaged = false;
     }
 
-    return TimelineEditPanDevices(
+    return FingerModeDevices.timelineEditPan(
       builder: (context, devices) => AxisGestureDetector(
         axis: widget.axis,
         behavior: HitTestBehavior.translucent,

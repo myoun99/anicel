@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/app_input_settings.dart';
+import '../input/finger_mode_devices.dart';
 import '../theme/app_theme.dart';
 import '../widgets/axis_bar_gesture.dart';
 
@@ -226,31 +226,31 @@ Widget _gizmoHandle({
         // H24: the canvas under this takes the arena on the first movement,
         // so the handle takes it on the first movement too — deeper, so it
         // is asked first ([OwningPanGestureRecognizer]).
-        child: RawGestureDetector(
-          key: key,
-          behavior: HitTestBehavior.opaque,
-          gestures: <Type, GestureRecognizerFactory>{
-            OwningPanGestureRecognizer:
-                GestureRecognizerFactoryWithHandlers<
-                  OwningPanGestureRecognizer
-                >(
-                  () => OwningPanGestureRecognizer(
-                    supportedDevices: AppInput.toolPointerDevices,
-                  ),
-                  (recognizer) {
+        child: FingerModeDevices.tool(
+          builder: (context, devices) => RawGestureDetector(
+            key: key,
+            behavior: HitTestBehavior.opaque,
+            gestures: <Type, GestureRecognizerFactory>{
+              OwningPanGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    OwningPanGestureRecognizer
+                  >(OwningPanGestureRecognizer.new, (recognizer) {
+                    // Every build, not at construction: a finger's meaning
+                    // is a setting ([FingerModeDevices]).
+                    recognizer.supportedDevices = devices;
                     recognizer.onStart = (_) => onDragStart();
-                    recognizer.onUpdate =
-                        (details) => onDragDelta(details.delta);
+                    recognizer.onUpdate = (details) =>
+                        onDragDelta(details.delta);
                     recognizer.onEnd = (_) => onDragEnd();
                     recognizer.onCancel = onDragCancel;
-                  },
-                ),
-          },
-          child: MouseRegion(
-            cursor: SystemMouseCursors.move,
-            child: CustomPaint(
-              painter: painter,
-              child: const SizedBox.expand(),
+                  }),
+            },
+            child: MouseRegion(
+              cursor: SystemMouseCursors.move,
+              child: CustomPaint(
+                painter: painter,
+                child: const SizedBox.expand(),
+              ),
             ),
           ),
         ),

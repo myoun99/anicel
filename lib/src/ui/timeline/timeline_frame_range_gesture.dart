@@ -14,7 +14,7 @@ import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
 import 'timeline_double_tap.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
-import 'timeline_edit_pan_devices.dart';
+import '../input/finger_mode_devices.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -989,7 +989,7 @@ Widget _eagerPanDetector({
   required VoidCallback onEnd,
   required VoidCallback onCancel,
 }) {
-  return TimelineEditPanDevices(
+  return FingerModeDevices.timelineEditPan(
     builder: (context, devices) => RawGestureDetector(
       behavior: HitTestBehavior.translucent,
       gestures: <Type, GestureRecognizerFactory>{

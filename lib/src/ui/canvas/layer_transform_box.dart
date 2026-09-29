@@ -6,7 +6,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_track.dart';
-import '../../models/app_input_settings.dart';
+import '../input/finger_mode_devices.dart';
 import '../theme/app_theme.dart';
 import '../../services/layer_pose_paint.dart';
 import '../repaint_props.dart';
@@ -241,38 +241,40 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
       // H24: the canvas under this takes the arena on the first movement, so
       // the handle takes it on the first movement too — deeper, so it is
       // asked first ([OwningPanGestureRecognizer]).
-      child: RawGestureDetector(
-        key: ValueKey<String>(keyValue),
-        behavior: HitTestBehavior.opaque,
-        gestures: <Type, GestureRecognizerFactory>{
-          OwningPanGestureRecognizer:
-              GestureRecognizerFactoryWithHandlers<OwningPanGestureRecognizer>(
-                // TS9: a finger drives this only while the one-finger slot
-                // draws — stated as devices so the recognizer stays out of
-                // the arena and the flip below can take the touch (see
-                // [AppInput.toolPointerDevices]).
-                () => OwningPanGestureRecognizer(
-                  supportedDevices: AppInput.toolPointerDevices,
-                ),
-                (recognizer) {
-                  recognizer.onStart =
-                      (details) => _beginGrab(grab, details.globalPosition);
-                  recognizer.onUpdate =
-                      (details) => _updateGrab(details.globalPosition);
+      child: FingerModeDevices.tool(
+        builder: (context, devices) => RawGestureDetector(
+          key: ValueKey<String>(keyValue),
+          behavior: HitTestBehavior.opaque,
+          gestures: <Type, GestureRecognizerFactory>{
+            OwningPanGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  OwningPanGestureRecognizer
+                >(OwningPanGestureRecognizer.new, (recognizer) {
+                  // TS9: a finger drives this only while the one-finger
+                  // slot draws — stated as devices so the recognizer stays
+                  // out of the arena and the flip below can take the touch
+                  // ([AppInput.toolPointerDevices]). Every build, not at
+                  // construction: a finger's meaning is a setting
+                  // ([FingerModeDevices]).
+                  recognizer.supportedDevices = devices;
+                  recognizer.onStart = (details) =>
+                      _beginGrab(grab, details.globalPosition);
+                  recognizer.onUpdate = (details) =>
+                      _updateGrab(details.globalPosition);
                   recognizer.onEnd = (_) => _endGrab();
                   recognizer.onCancel = _cancelGrab;
-                },
-              ),
-        },
-        child: MouseRegion(
-          cursor: cursor,
-          child: Center(
-            child: Container(
-              width: size - 3,
-              height: size - 3,
-              decoration: BoxDecoration(
-                color: AppColors.accent,
-                shape: round ? BoxShape.circle : BoxShape.rectangle,
+                }),
+          },
+          child: MouseRegion(
+            cursor: cursor,
+            child: Center(
+              child: Container(
+                width: size - 3,
+                height: size - 3,
+                decoration: BoxDecoration(
+                  color: AppColors.accent,
+                  shape: round ? BoxShape.circle : BoxShape.rectangle,
+                ),
               ),
             ),
           ),

@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -86,6 +87,50 @@ void main() {
     expect(zooms, hasLength(1));
     expect(zooms.single, closeTo(2.0, 0.01));
     expect(rotations, isEmpty, reason: 'a corner is a statement about scale');
+  });
+
+  // finger-mode-reaches-canvas-handles (2026-09-29): a handle took its
+  // devices when its recognizer was MADE, which no rebuild runs again — so
+  // the mode changes here with the box already up, and nothing else.
+  testWidgets('switching the one-finger slot to DRAWING with the box up '
+      'reaches its handles at once', (tester) async {
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.flip,
+    );
+    addTearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+    final zooms = <double>[];
+    await pumpBox(
+      tester,
+      pose: TransformPose(center: anchor),
+      zooms: zooms,
+      rotations: [],
+    );
+    final corner = find.byKey(
+      const ValueKey<String>('layer-transform-box-corner-2'),
+    );
+
+    await tester.drag(
+      corner,
+      const Offset(100, 100),
+      kind: PointerDeviceKind.touch,
+    );
+    await tester.pumpAndSettle();
+    expect(zooms, isEmpty, reason: 'TS9: a flipping finger drives no tool');
+
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.draw,
+    );
+    await tester.pump();
+    await tester.drag(
+      corner,
+      const Offset(100, 100),
+      kind: PointerDeviceKind.touch,
+    );
+    await tester.pumpAndSettle();
+
+    expect(zooms, hasLength(1), reason: 'the finger draws now');
   });
 
   testWidgets('dragging INTO the anchor scales down rather than flipping',

@@ -294,6 +294,47 @@ void main() {
       expect(committed, hasLength(1), reason: 'the pen is never in doubt');
     });
 
+    // finger-mode-reaches-canvas-handles (2026-09-29): the handle took its
+    // devices when its recognizer was MADE, which no rebuild runs again —
+    // so the mode changes here with the gizmo already up, and nothing else.
+    testWidgets('switching the one-finger slot to DRAWING with the gizmo up '
+        'reaches it at once', (tester) async {
+      AppInput.settings.value = AppInput.settings.value.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.flip,
+      );
+      addTearDown(() {
+        AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+      });
+      final committed = <CanvasPoint>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CanvasPointGizmo(
+              glyph: HandleGlyph.crosshair,
+              point: CanvasPoint(x: 100, y: 80),
+              viewport: CanvasViewport(),
+              onChanged: (_) {},
+              onCommitted: committed.add,
+              onCancelled: () {},
+            ),
+          ),
+        ),
+      );
+
+      AppInput.settings.value = AppInput.settings.value.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.draw,
+      );
+      await tester.pump();
+      await tester.drag(
+        find.byKey(_gizmoKey),
+        const Offset(48, -20),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pumpAndSettle();
+
+      expect(committed, hasLength(1), reason: 'the finger draws now');
+    });
+
     testWidgets('R5 #10: the ANCHOR gizmo keys anchor-point alone — the '
         'member you touch is the member that keys', (tester) async {
       final committed = <CanvasPoint>[];
