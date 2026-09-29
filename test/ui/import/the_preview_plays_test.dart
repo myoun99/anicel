@@ -33,25 +33,32 @@ void main() {
   late EditorSessionManager session;
   late RecordingViewerSound sound;
 
+  /// Each file a conform was built for, in order.
+  final conformed = <String>[];
+
   /// A sound conform that answers at once: four seconds of it.
   const seconds = 4.0;
   AudioConformStore fourSeconds() => AudioConformStore(
     resolveConformPath: (_) => null,
-    runner: (request) async => ConformResult(
-      outcome: ConformOutcome.built,
-      peaks: AudioPeaks(
-        bucketsPerSecond: 80,
-        peaks: Float32List((80 * seconds).round()),
-      ),
-      samples: Float32List((seconds * 48000).round()),
-      channels: 1,
-      sampleRate: 48000,
-      frames: (seconds * 48000).round(),
-    ),
+    runner: (request) async {
+      conformed.add(request.sourcePath);
+      return ConformResult(
+        outcome: ConformOutcome.built,
+        peaks: AudioPeaks(
+          bucketsPerSecond: 80,
+          peaks: Float32List((80 * seconds).round()),
+        ),
+        samples: Float32List((seconds * 48000).round()),
+        channels: 1,
+        sampleRate: 48000,
+        frames: (seconds * 48000).round(),
+      );
+    },
     log: (_) {},
   );
 
   setUp(() {
+    conformed.clear();
     session = EditorSessionManager(
       initialProject: createDefaultProject(),
       audioConformStore: fourSeconds(),
@@ -251,6 +258,18 @@ void main() {
 
       expect(sound.from, [0, 0.5]);
       expect(bar(tester).currentFrame, 12);
+      await press(tester);
+    });
+
+    testWidgets('spelled with backslashes it is ONE conform — the waveform\'s '
+        'and the one that plays, under the key the pool knows it by', (
+      tester,
+    ) async {
+      await show(tester, r'C:\snd\line.wav');
+      await press(tester);
+
+      expect(sound.played, [line]);
+      expect(conformed.toSet(), {line});
       await press(tester);
     });
 
