@@ -281,6 +281,7 @@ void main() {
     Future<(Heard, Offset)> mountBand(
       WidgetTester tester, {
       TimelineLaneSelection? selected,
+      double rowHeight = 52,
     }) async {
       final heard = Heard();
       final laneSelection = ValueNotifier<TimelineLaneSelection?>(selected);
@@ -303,6 +304,7 @@ void main() {
             onMoveCancel: () {},
           ),
         ),
+        rowHeight: rowHeight,
       );
       final band = find.byKey(
         const ValueKey<String>('timeline-lane-range-gesture-layer-a-position'),
@@ -339,7 +341,7 @@ void main() {
 
     testWidgets('F-238: a pen select on the band that leaves its ROW starts '
         'there', (tester) async {
-      final (heard, _) = await mountBand(tester);
+      final (heard, _) = await mountBand(tester, rowHeight: 28);
       final band = find.byKey(
         const ValueKey<String>('timeline-lane-range-gesture-layer-a-position'),
       );
