@@ -939,13 +939,37 @@ class TimelineRowCellsPainter extends CustomPainter
   /// (B, 유저 2026-09-24: 「이름은 블록안에서만」). PUBLIC: the tile emitter
   /// bakes its word exactly here.
   @override
-  ({Offset origin, WordFit fit}) cellWordLayoutFor(int frameIndex, Size word) {
+  ({Offset origin, WordFit fit}) cellWordLayoutFor(int frameIndex, Size word) =>
+      timelineBlockWordLayout(word, _wordSlotFor(frameIndex, word));
+
+  /// The word [text] of the cell at [frameIndex], set in [style] where it is
+  /// laid: its letter gaps give way first where its block runs short
+  /// ([timelineWordSetOnto], F-234-Q1), and it narrows only past that
+  /// ([cellWordLayoutFor]). The room is the one its NATURAL length asks for
+  /// — the block's rest, where tightening happens at all. PUBLIC: the tile
+  /// emitter bakes its word exactly here, in this style.
+  @override
+  ({TextStyle style, Offset origin, WordFit fit}) cellWordSetFor(
+    int frameIndex,
+    String text,
+    TextStyle style,
+  ) {
+    final slot = _wordSlotFor(
+      frameIndex,
+      _glyphPainter(text, style).size,
+    );
+    final set = timelineWordSetOnto(text, style, slot.room.width);
+    final layout = timelineBlockWordLayout(set.size, slot);
+    return (style: set.style, origin: layout.origin, fit: layout.fit);
+  }
+
+  TimelineBlockWordSlot _wordSlotFor(int frameIndex, Size word) {
     final cell = cellRectFor(frameIndex);
     final horizontal = axis == Axis.horizontal;
     final cellStart = horizontal ? cell.left : cell.top;
     final roomEnd = _wordRoomEnd(frameIndex, extentAlong(axis, word));
     final paper = timelineRowPaperExtent(crossAxisExtent);
-    return timelineBlockWordLayout(word, (
+    return (
       axis: axis,
       room: horizontal
           ? Rect.fromLTRB(cellStart, 0, roomEnd, paper)
@@ -955,7 +979,7 @@ class TimelineRowCellsPainter extends CustomPainter
       cellExtent: extentAlong(axis, cell.size),
       growth: TimelineBlockWordGrowth.towardBlockEnd,
       acrossAlignment: 0,
-    ));
+    );
   }
 
   /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
@@ -1057,20 +1081,23 @@ class TimelineRowCellsPainter extends CustomPainter
       _paintHoldDash(canvas, cellRectFor(frameIndex), foregroundInkFor(model));
       return;
     }
-    final glyph = _glyphPainter(model.glyph, glyphStyleFor(model));
     // Snap the draw to the PHYSICAL pixel grid (UI-R20 #6): the tile
     // path blits glyphs at integer physical positions, so the classic
     // pass must land on the same grid — otherwise the classic↔tile
     // swap on row activation reads as the text thinning/thickening.
     // F-96: centred while the word fits its cell, growing on into the
-    // block when it does not, narrowed only past the block
-    // ([cellWordLayoutFor]).
-    final layout = cellWordLayoutFor(frameIndex, glyph.size);
+    // block when it does not, its letter gaps giving way and only then
+    // narrowed past the block ([cellWordSetFor]).
+    final layout = cellWordSetFor(
+      frameIndex,
+      model.glyph,
+      glyphStyleFor(model),
+    );
     final raw = layout.origin;
     final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
     paintFittedText(
       canvas,
-      glyph,
+      _glyphPainter(model.glyph, layout.style),
       Offset(
         (raw.dx * dpr).roundToDouble() / dpr,
         (raw.dy * dpr).roundToDouble() / dpr,

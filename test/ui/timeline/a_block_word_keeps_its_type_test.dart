@@ -10,6 +10,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/text/word_condensation.dart'
+    show maxGapTightening, wordFitsAsItIs;
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_overlay.dart';
@@ -161,6 +163,29 @@ void main() {
           reason: 'the block at $start',
         );
       }
+    });
+
+    // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」 — a narrowed
+    // glyph smears; a word a little too long takes it out of its gaps.
+    test('its letter gaps give way first, and it narrows only past that', () {
+      const cell = 9.0;
+      final painter = cellsPainter(cell);
+      TextStyle styleAt(int start) =>
+          painter.glyphStyleFor(painter.cellModelAt(start));
+      final room = timelineFrameEdge(4, cell) - painter.cellRectFor(1).left;
+      expect(
+        naturalName(painter, 1).width - room,
+        1,
+        reason: '⛔전제: the three-cell block is a pixel short of 「12」',
+      );
+      final set = painter.cellWordSetFor(1, '12', styleAt(1));
+      expect(set.fit, wordFitsAsItIs, reason: 'the gap gave the pixel');
+      expect(set.style.letterSpacing, -1);
+
+      // A one-cell block is far past what 「A1234」's gaps can give.
+      final tight = painter.cellWordSetFor(0, 'A1234', styleAt(0));
+      expect(tight.style.letterSpacing, -maxGapTightening);
+      expect(tight.fit.x, lessThan(1), reason: 'and narrows what is left');
     });
 
     test('a squeezed row narrows it ACROSS instead of shrinking the type', () {

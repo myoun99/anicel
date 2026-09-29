@@ -831,9 +831,16 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     bool bold = false,
   }) {
     _upright(canvas, rect, (box) {
+      // Two pixels of air either side, as the ellipsis used to keep.
+      final room = Rect.fromCenter(
+        center: box.center,
+        width: math.max(0, box.width - 4),
+        height: box.height,
+      );
       // The block word's own print — the face, and the box that makes
-      // centring read as centred ([timelineBlockWordStyle]).
-      final painter = timelineGlyphPainter(
+      // centring read as centred ([timelineBlockWordStyle]) — its letter
+      // gaps giving way first, then narrowing (F-234-Q1).
+      final set = timelineWordSetOnto(
         text,
         timelineBlockWordStyle(
           baseTextStyle.copyWith(fontWeight: FontWeight.w400),
@@ -841,17 +848,9 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
           fontSize: bold ? _headWordSize : 12,
           bold: bold,
         ),
+        room.width,
       );
-      // Two pixels of air either side, as the ellipsis used to keep.
-      paintWordCentredIn(
-        canvas,
-        painter,
-        Rect.fromCenter(
-          center: box.center,
-          width: math.max(0, box.width - 4),
-          height: box.height,
-        ),
-      );
+      paintWordCentredIn(canvas, set.glyph, room, word: set.size);
     });
   }
 

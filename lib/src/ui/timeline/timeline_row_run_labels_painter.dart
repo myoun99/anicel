@@ -230,7 +230,6 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
   void paint(Canvas canvas, Size size) {
     final style = labelStyle;
     for (final label in runLabelsInWindow()) {
-      final glyph = timelineGlyphPainter(label.text, style);
       // Clipped to its OWN block: a number wider than one cell spills back
       // over its own block, never into the neighbour's.
       final blockStart = _edge(label.startIndex);
@@ -246,11 +245,12 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
       // right. The cross axis is what keeps the badge clear of the cel
       // name, which centres in the cell.
       // ↩️F-96: centred while it fits; a number wider than the cell ends at
-      // the cell and grows back into its block — and (B) narrows only once
-      // it would leave the block ([timelineBlockWordLayout]).
+      // the cell and grows back into its block — and (B) gives up its
+      // letter gaps, then narrows, only once it would leave the block
+      // ([timelineWordSetOnto], [timelineBlockWordLayout]).
       final paper = timelineRowPaperExtent(crossAxisExtent);
       final lastCellStart = _edge(label.endIndexExclusive - 1);
-      final layout = timelineBlockWordLayout(glyph.size, (
+      final slot = (
         axis: axis,
         room: axis == Axis.horizontal
             ? Rect.fromLTRB(blockStart, 0, blockEnd, paper)
@@ -258,12 +258,14 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
         cellStart: lastCellStart,
         cellExtent: blockEnd - lastCellStart,
         growth: TimelineBlockWordGrowth.towardBlockStart,
-        acrossAlignment: 1,
-      ));
+        acrossAlignment: 1.0,
+      );
+      final set = timelineWordSetOnto(label.text, style, slot.room.width);
+      final layout = timelineBlockWordLayout(set.size, slot);
       // 🚨F-24: the block's OWN ink, the one the cel name inside the block
       // already wears — not the ground law. The number and the name sit on
       // the same paper and now say so in the same colour.
-      paintFittedText(canvas, glyph, layout.origin, layout.fit);
+      paintFittedText(canvas, set.glyph, layout.origin, layout.fit);
       canvas.restore();
     }
   }

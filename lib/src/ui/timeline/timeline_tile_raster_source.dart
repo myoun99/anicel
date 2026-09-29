@@ -162,6 +162,16 @@ abstract interface class TimelineTileRasterSource {
   /// the block). The tile emitter bakes its word exactly here, this narrow.
   ({Offset origin, WordFit fit}) cellWordLayoutFor(int frameIndex, Size word);
 
+  /// The word [text] of the cell at [frameIndex] as it is set there: in the
+  /// style its letter gaps give way to (F-234-Q1), where it is laid and how
+  /// far it is still narrowed. The tile emitter bakes its word exactly here,
+  /// in this style.
+  ({TextStyle style, Offset origin, WordFit fit}) cellWordSetFor(
+    int frameIndex,
+    String text,
+    TextStyle style,
+  );
+
   /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
   /// and how large it is. The tile emitter bakes the mark exactly here, in
   /// the cell's [foregroundInkFor].

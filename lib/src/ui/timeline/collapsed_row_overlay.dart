@@ -863,7 +863,8 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     Color color = _headInk,
   }) {
     final room = place.room;
-    final glyph = timelineGlyphPainter(
+    // Its letter gaps give way first, then it narrows (F-234-Q1).
+    final set = timelineWordSetOnto(
       text,
       timelineBlockWordStyle(
         baseTextStyle,
@@ -876,8 +877,9 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
         // be gone survives a deletion.
         shadows: _CollapsedRowOverlayState._halo,
       ),
+      room.width,
     );
-    final layout = timelineBlockWordLayout(glyph.size, (
+    final layout = timelineBlockWordLayout(set.size, (
       axis: Axis.horizontal,
       room: room,
       cellStart: room.left,
@@ -885,7 +887,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
       growth: TimelineBlockWordGrowth.towardBlockEnd,
       acrossAlignment: 0,
     ));
-    paintFittedText(canvas, glyph, layout.origin, layout.fit);
+    paintFittedText(canvas, set.glyph, layout.origin, layout.fit);
   }
 
   /// The [mark] a block with no cel number wears where [_label] would lay

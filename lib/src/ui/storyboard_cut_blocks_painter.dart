@@ -949,10 +949,15 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       if (comma.isEmpty || span.right <= span.left || _cellExtent <= 0) {
         continue;
       }
-      final glyph = timelineGlyphPainter(comma, _totalStyle);
       // The panel's last cell as the law laid it (F-220).
       final lastCell = math.max(span.left, span.lastCellStart);
-      final layout = timelineBlockWordLayout(glyph.size, (
+      // Its letter gaps give way first, then it narrows (F-234-Q1).
+      final set = timelineWordSetOnto(
+        comma,
+        _totalStyle,
+        span.right - span.left,
+      );
+      final layout = timelineBlockWordLayout(set.size, (
         axis: Axis.horizontal,
         room: Rect.fromLTRB(span.left, band.top, span.right, band.bottom),
         cellStart: lastCell,
@@ -964,7 +969,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         canvas,
         layout.origin,
         comma,
-        _totalStyle,
+        set.style,
         ground: ground,
         fit: layout.fit,
       );
@@ -1021,20 +1026,19 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // The inset gives way to a stretch narrower than two of it, so a word
     // narrowed there stays in its own stretch — a panel's, not the next.
     final inset = math.min(_padding, band.width / 2);
-    final glyph = timelineGlyphPainter(text, style);
-    final fit = wordFit(
-      glyph.size,
-      Size(band.width - inset * 2, band.height),
-    );
-    final width = glyph.width * fit.x;
-    final height = glyph.height * fit.y;
+    final room = Size(band.width - inset * 2, band.height);
+    // Its letter gaps give way first, then it narrows (F-234-Q1).
+    final set = timelineWordSetOnto(text, style, room.width);
+    final fit = wordFit(set.size, room);
+    final width = set.size.width * fit.x;
+    final height = set.size.height * fit.y;
     final dx = alignRight ? band.right - inset - width : band.left + inset;
     final origin = Offset(dx, band.top + (band.height - height) / 2);
     paintTimelineGlyphOnGround(
       canvas,
       origin,
       text,
-      style,
+      set.style,
       ground: ground,
       fit: fit,
     );

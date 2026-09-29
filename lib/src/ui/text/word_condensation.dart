@@ -31,6 +31,45 @@ double wordCondensation({required double extent, required double room}) {
 
 const double _steps = 64;
 
+/// How far each LETTER GAP of a word gives way before the word narrows — THE
+/// tightening every word in a block keeps, along its line.
+///
+/// 🗣️F-234-Q1 (유저 2026-09-29, 「글자 사이부터 줄이기」): 「좁혀야 할 때 먼저
+/// 글자 사이 간격만 줄이고(글자 모양은 또렷하게 그대로), 그래도 모자랄 때만
+/// 좁힌다」. A narrowed glyph loses the font's pixel fitting and smears over
+/// two pixels (measured: 「1」 one column and dark as it is, two columns and
+/// grey at 6% narrowing), so a word a little too long for its block takes the
+/// difference out of its letter gaps and keeps its shapes.
+///
+/// [extent] is the word's natural length along its line and [gaps] the gaps
+/// between its letters — a one-letter word has none to give. A gap gives at
+/// most [maxGapTightening], the measure the answer came with (「두세 글자
+/// 이름엔 줄일 간격이 1~2px 뿐」), stepped up by a quarter pixel so a baked
+/// word keys on few variants; [wordCondensation] narrows what is left.
+double wordTightening({
+  required double extent,
+  required int gaps,
+  required double room,
+}) {
+  if (extent <= room || gaps <= 0) {
+    return 0;
+  }
+  final perGap = (extent - room) / gaps;
+  final stepped = (perGap / _tighteningStep).ceilToDouble() * _tighteningStep;
+  return stepped < maxGapTightening ? stepped : maxGapTightening;
+}
+
+/// The most one letter gap gives way ([wordTightening]).
+const double maxGapTightening = 1;
+
+const double _tighteningStep = 0.25;
+
+/// The letter gaps of [text] — one fewer than its letters (code points).
+int wordLetterGaps(String text) {
+  final letters = text.runes.length;
+  return letters > 1 ? letters - 1 : 0;
+}
+
 /// A word's narrowing on the two screen axes.
 typedef WordFit = ({double x, double y});
 
@@ -65,14 +104,24 @@ void paintFittedText(
 
 /// Paints [painter] narrowed into [room] and centred in it — a word that
 /// owns a box of its own: a flip slot, one glyph's share of a dialogue.
-void paintWordCentredIn(Canvas canvas, TextPainter painter, Rect room) {
-  final fit = wordFit(painter.size, room.size);
+///
+/// [word] is the length the word's ink runs, when that is not the painter's
+/// own: a word set tighter ([wordTightening]) keeps its last letter's
+/// negative spacing out of the ink.
+void paintWordCentredIn(
+  Canvas canvas,
+  TextPainter painter,
+  Rect room, {
+  Size? word,
+}) {
+  final size = word ?? painter.size;
+  final fit = wordFit(size, room.size);
   paintFittedText(
     canvas,
     painter,
     Offset(
-      room.center.dx - painter.width * fit.x / 2,
-      room.center.dy - painter.height * fit.y / 2,
+      room.center.dx - size.width * fit.x / 2,
+      room.center.dy - size.height * fit.y / 2,
     ),
     fit,
   );

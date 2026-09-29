@@ -55,6 +55,40 @@ TextPainter timelineGlyphPainter(
   return painter;
 }
 
+/// [text] in [style] set onto [room], the length it has along its line: the
+/// painter laid in the style its letter gaps give way to ([wordTightening],
+/// F-234-Q1: 「글자 사이부터 줄이기」), that style, and the size the word's
+/// ink then takes — its natural length less what the gaps gave, which is
+/// what a word is LAID by ([timelineBlockWordLayout], [wordFit]). What is
+/// still too long narrows from there, as every word does.
+///
+/// ⚠️The size is not the painter's: letter spacing follows every letter,
+/// the last one too, so a tightened painter measures short of its ink.
+({TextPainter glyph, TextStyle style, Size size}) timelineWordSetOnto(
+  String text,
+  TextStyle style,
+  double room,
+) {
+  final natural = timelineGlyphPainter(text, style);
+  final gaps = wordLetterGaps(text);
+  final tightening = wordTightening(
+    extent: natural.width,
+    gaps: gaps,
+    room: room,
+  );
+  if (tightening == 0) {
+    return (glyph: natural, style: style, size: natural.size);
+  }
+  final tight = style.copyWith(
+    letterSpacing: (style.letterSpacing ?? 0) - tightening,
+  );
+  return (
+    glyph: timelineGlyphPainter(text, tight),
+    style: tight,
+    size: Size(natural.width - gaps * tightening, natural.height),
+  );
+}
+
 /// Paints [text] in the GROUND LAW's ink (2026-08-17, the difference
 /// blend's successor): one solid fill, black or white by [ground]'s
 /// luminance ([timelineTextOnColor]) — crisp on any hue, where the

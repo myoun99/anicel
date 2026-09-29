@@ -46,6 +46,23 @@ void main() {
     expect(wordCondensation(extent: 400, room: 0), 1 / 64);
   });
 
+  // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」.
+  test('a word gives up its letter gaps before it narrows — a quarter pixel '
+      'at a time, a pixel a gap at most, and a one-letter word has none', () {
+    expect(wordTightening(extent: 12, gaps: 1, room: 12), 0, reason: 'fits');
+    expect(wordTightening(extent: 12, gaps: 1, room: 11.4), 0.75);
+    expect(wordTightening(extent: 12, gaps: 2, room: 11), 0.5);
+    expect(
+      wordTightening(extent: 12, gaps: 1, room: 9),
+      maxGapTightening,
+      reason: 'a gap gives a pixel; the rest is narrowing',
+    );
+    expect(wordTightening(extent: 12, gaps: 0, room: 9), 0);
+    expect(wordLetterGaps('1'), 0);
+    expect(wordLetterGaps("1'"), 1);
+    expect(wordLetterGaps('ドアー'), 2);
+  });
+
   test('each axis on its own', () {
     expect(wordFit(const Size(40, 14), const Size(20, 27)), (x: 0.5, y: 1.0));
     expect(wordFit(const Size(10, 14), const Size(24, 7)), (x: 1.0, y: 0.5));

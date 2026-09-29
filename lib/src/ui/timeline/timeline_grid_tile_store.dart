@@ -446,14 +446,16 @@ class TimelineGridTileStore {
 
   /// ⚠️The narrowing is part of the glyph (B, 유저 2026-09-24): a word that
   /// runs past its block is baked narrow, and [wordCondensation] quantises
-  /// the factor so the distinct bakes stay few.
+  /// the factor so the distinct bakes stay few. So is the spacing its letter
+  /// gaps gave way to first (F-234-Q1, [wordTightening] — quarter pixels).
   static String _glyphKey(
     String text,
     TextStyle style,
     ({double dpr, WordFit fit}) at,
   ) =>
       '$text|${style.fontSize}|${style.fontWeight}|${style.fontStyle}|'
-      '${style.fontFamily}|${at.dpr}|${at.fit.x}|${at.fit.y}';
+      '${style.fontFamily}|${style.letterSpacing}|'
+      '${at.dpr}|${at.fit.x}|${at.fit.y}';
 
   Future<_BakedGlyph?> _glyphA8(
     String text,
@@ -479,7 +481,11 @@ class TimelineGridTileStore {
     if (textPainter.width <= 0 || textPainter.height <= 0) {
       return null;
     }
-    final width = (textPainter.width * fit.x * dpr).ceil() + 2;
+    // A word set tighter measures short of its ink by its last letter's
+    // negative spacing ([timelineWordSetOnto]); the bake holds the ink.
+    final inkWidth =
+        textPainter.width + math.max(0.0, -(style.letterSpacing ?? 0));
+    final width = (inkWidth * fit.x * dpr).ceil() + 2;
     final height = (textPainter.height * fit.y * dpr).ceil() + 2;
     // 🚨★★★TINY TEXT IS RASTERISED BIG AND SHRUNK, not rasterised tiny.
     //
@@ -536,7 +542,7 @@ class TimelineGridTileStore {
     return _BakedGlyph(
       width: width,
       height: height,
-      logicalWidth: textPainter.width * fit.x,
+      logicalWidth: inkWidth * fit.x,
       logicalHeight: textPainter.height * fit.y,
       alpha: bakeScale == 1
           ? big
@@ -777,13 +783,14 @@ class TimelineGridTileStore {
         }
         continue;
       }
-      final style = painter.glyphStyleFor(model);
-      // Laid and narrowed where the classic pass lays it, from the word's
-      // NATURAL size ([TimelineTileRasterSource.cellWordLayoutFor]).
-      final layout = painter.cellWordLayoutFor(
+      // Set, laid and narrowed where the classic pass sets it — its letter
+      // gaps first ([TimelineTileRasterSource.cellWordSetFor]).
+      final layout = painter.cellWordSetFor(
         frameIndex,
-        timelineGlyphPainter(model.glyph, style).size,
+        model.glyph,
+        painter.glyphStyleFor(model),
       );
+      final style = layout.style;
       glyphCells.add((
         text: model.glyph,
         style: style,
