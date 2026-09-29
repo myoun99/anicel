@@ -49,13 +49,17 @@ void main() {
 
   test('a new platform is a new theme — a theme carries the platform it '
       'was built on, and the scroll behaviour reads it back', () {
-    final before = buildAppTheme();
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    // ⚠️Both named: the harness's own platform is android, so "the default,
+    // then android" is one platform asked twice.
     try {
-      final android = buildAppTheme();
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      final windows = buildAppTheme();
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final ios = buildAppTheme();
 
-      expect(identical(android, before), isFalse);
-      expect(android.platform, TargetPlatform.android);
+      expect(identical(ios, windows), isFalse);
+      expect(windows.platform, TargetPlatform.windows);
+      expect(ios.platform, TargetPlatform.iOS);
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
