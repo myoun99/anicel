@@ -1468,6 +1468,10 @@ class _StoryboardRailRows {
       height: heights.se,
       timelineScale: scale,
       projectFrameRate: _state.widget.projectFrameRate,
+      frameGeometry: _state._frameGeometry,
+      windowBucket: _state._horizontalWindowBucket,
+      viewportWidth: _state._stripViewportWidth,
+      showSeconds: _state.widget.showSeconds,
       audioPeaksFor: _state.widget.audioPeaksFor,
       seClipMarkerTooltip: _state.widget.seClipMarkerTooltip,
       onRowFramePress: _state.widget.onRowFramePress,
@@ -1476,7 +1480,6 @@ class _StoryboardRailRows {
       onEditSeEntry: _state.widget.onEditSeEntry,
       seCommaDrag: _state.widget.seCommaDrag,
       seSelect: _state.widget.seSelect,
-      frameGeometry: _state._frameGeometry,
     );
     return [
       for (final slot in _shownSeSlots(track)) ...[

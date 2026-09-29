@@ -153,6 +153,8 @@ import 'timeline/instruction_span_editing.dart' show instructionSpanCovering;
 import 'timeline/timeline_instruction_row_visual.dart'
     show timelineRowInstructionEdgeGrips, timelineRowInstructionOverlays;
 import 'timeline/timeline_frame_ruler.dart';
+import 'timeline/timeline_row_run_labels_painter.dart'
+    show TimelineRowRunLabelsPainter;
 import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_row_cross_offset.dart';
@@ -3266,13 +3268,57 @@ TimelineFrameRangeGestureLayer _storyboardRowRangeGestureLayer({
   );
 }
 
-class _StoryboardTransitionRow extends StatelessWidget {
+/// 🗣️F-228 (유저 2026-09-29): 「블록이라면 전부 코마텍스트가 존재해야함.
+/// 통일해서 적용」 — the S rows and the transition row drew their blocks and
+/// printed no length. They print it with the timeline row's own painter,
+/// which already knows what a block is on either kind of row, fed the
+/// panel's LIVE axis and window: the inputs the V row's blocks painter
+/// reads, so a zoom step or a span crossing repaints the numbers alone.
+///
+/// Mounted over the paper and under the writing and the marks — where the
+/// timeline row prints them (its cells' foreground, under its overlays).
+mixin _StoryboardRowRunLabels {
+  TimelineFrameGeometryHandle get frameGeometry;
+  ValueListenable<int> get windowBucket;
+  double get viewportWidth;
+  bool get showSeconds;
+  ProjectFrameRate get projectFrameRate;
+  double get height;
+
+  Widget _runLabels(BuildContext context, Layer layer) => Positioned.fill(
+    child: IgnorePointer(
+      child: RepaintBoundary(
+        child: CustomPaint(
+          key: ValueKey<String>('storyboard-run-labels-${layer.id}'),
+          foregroundPainter: TimelineRowRunLabelsPainter(
+            layer: layer,
+            geometry: frameGeometry,
+            crossAxisExtent: height,
+            showSeconds: showSeconds,
+            countingBase: projectFrameRate.countingBase,
+            baseTextStyle: DefaultTextStyle.of(context).style,
+            windowBucket: windowBucket,
+            viewportMainExtent: viewportWidth,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _StoryboardTransitionRow extends StatelessWidget
+    with _StoryboardRowRunLabels {
   const _StoryboardTransitionRow({
     required this.track,
     required this.layer,
     required this.width,
     required this.height,
     required this.timelineScale,
+    required this.frameGeometry,
+    required this.windowBucket,
+    required this.viewportWidth,
+    required this.showSeconds,
+    required this.projectFrameRate,
     this.defById,
     this.crossingTooltip,
     this.commaDrag,
@@ -3290,8 +3336,22 @@ class _StoryboardTransitionRow extends StatelessWidget {
   final double width;
 
   /// Its label's height ([_StoryboardRowHeights.transition]) — one row.
+  @override
   final double height;
   final TimelineScale timelineScale;
+
+  /// The panel's live axis and window, which the spans' lengths are printed
+  /// on ([_StoryboardRowRunLabels]).
+  @override
+  final TimelineFrameGeometryHandle frameGeometry;
+  @override
+  final ValueListenable<int> windowBucket;
+  @override
+  final double viewportWidth;
+  @override
+  final bool showSeconds;
+  @override
+  final ProjectFrameRate projectFrameRate;
   final CameraInstructionDef? Function(String instructionId)? defById;
 
   /// D26: the crossing-fade warning, by GLOBAL start key on this axis.
@@ -3351,6 +3411,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
         ),
       );
     }
+    spans.add(_runLabels(context, layer));
     // The marks, from the direction row's own overlay builder.
     final defById = this.defById;
     if (defById != null && _frameEndExclusive > 0) {
@@ -3487,7 +3548,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
 /// on the global frame axis — blocks keep their true lengths (a sound may
 /// cross cut boundaries; each crossed boundary draws a `~` continuation
 /// mark) and the timeline's data is exactly this layer, by identity.
-class _StoryboardSeRow extends StatelessWidget {
+class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
   const _StoryboardSeRow({
     required this.trackIndex,
     required this.slot,
@@ -3497,6 +3558,10 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.height,
     required this.timelineScale,
     required this.projectFrameRate,
+    required this.frameGeometry,
+    required this.windowBucket,
+    required this.viewportWidth,
+    required this.showSeconds,
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.onRowFramePress,
@@ -3505,7 +3570,6 @@ class _StoryboardSeRow extends StatelessWidget {
     this.onEditSeEntry,
     this.seCommaDrag,
     this.seSelect,
-    this.frameGeometry,
     this.railRowAt,
     this.seRowsInDisplayOrder = const [],
   });
@@ -3532,8 +3596,10 @@ class _StoryboardSeRow extends StatelessWidget {
   final double width;
 
   /// Its label's height ([_StoryboardRowHeights.se]) — one row.
+  @override
   final double height;
   final TimelineScale timelineScale;
+  @override
   final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
@@ -3566,10 +3632,18 @@ class _StoryboardSeRow extends StatelessWidget {
   final StoryboardSeSelectCallbacks? seSelect;
 
   /// The panel's live frame-axis geometry, which the shared gesture reads
-  /// to turn a pointer position into a track-global frame.
-  final TimelineFrameGeometryHandle? frameGeometry;
+  /// to turn a pointer position into a track-global frame, and the blocks'
+  /// lengths are printed on ([_StoryboardRowRunLabels]).
+  @override
+  final TimelineFrameGeometryHandle frameGeometry;
 
-  /// Whether the live selection covers this row at [globalFrame].
+  /// The panel's window, as the V row's blocks painter takes it.
+  @override
+  final ValueListenable<int> windowBucket;
+  @override
+  final double viewportWidth;
+  @override
+  final bool showSeconds;
 
   @override
   Widget build(BuildContext context) {
@@ -3577,7 +3651,7 @@ class _StoryboardSeRow extends StatelessWidget {
     final layer = this.layer;
     if (layer != null) {
       final blocks = drawingBlocks(layer.timeline);
-      spans.addAll(_contentSpans(layer, blocks));
+      spans.addAll(_contentSpans(context, layer, blocks));
       spans.addAll(_interactionLayers(context, layer, blocks));
       final clipTooltip = seClipMarkerTooltip;
       if (clipTooltip != null) {
@@ -3628,8 +3702,10 @@ class _StoryboardSeRow extends StatelessWidget {
   }
 
   /// What the row shows: each block's paper, the waveform where a clip's
-  /// peaks are known, and the dialogue / SE name over each block.
+  /// peaks are known, each block's length, and the dialogue / SE name over
+  /// each block.
   List<Widget> _contentSpans(
+    BuildContext context,
     Layer layer,
     List<TimelineDrawingBlock> blocks,
   ) {
@@ -3670,6 +3746,7 @@ class _StoryboardSeRow extends StatelessWidget {
         );
       }
     }
+    spans.add(_runLabels(context, layer));
     // The sheet's writing on the paper blocks.
     for (final block in blocks) {
       final frame = layer.frameById(block.frameId);
@@ -3721,10 +3798,9 @@ class _StoryboardSeRow extends StatelessWidget {
     // clone the timeline shows is windowed to the active cut, so a sound
     // two cuts away has no local index to be selected by. Mounted UNDER
     // the grips so the edges keep comma-drag priority.
-    final geometry = frameGeometry;
-    if (seSelect != null && geometry != null) {
+    if (seSelect != null) {
       spans.add(
-        _rangeGestureLayer(layer, geometry, seSelect),
+        _rangeGestureLayer(layer, frameGeometry, seSelect),
       );
     }
     // …and EVERY block carries the timeline's own comma edge grips
