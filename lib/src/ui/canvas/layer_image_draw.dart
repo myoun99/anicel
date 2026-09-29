@@ -32,6 +32,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/transform_track.dart';
 import '../../services/composite_effect_paint.dart';
+import 'blends_in_place.dart';
 import 'raster_picture.dart';
 import 'subtree_image_composite.dart';
 import '../../services/layer_pose_paint.dart';
@@ -206,26 +207,36 @@ void drawPosedLayerImage(
         return true;
       }());
       paint.filterQuality = copies ? ui.FilterQuality.none : filterQuality;
+      final source = ui.Rect.fromLTWH(
+        0,
+        0,
+        stepped.width.toDouble(),
+        stepped.height.toDouble(),
+      );
       try {
+        // 🚨F-243: in an advanced blend the image is held to where it lands
+        // — a layer whose ink reaches the edge of its image stretched that
+        // edge across the pasteboard ([drawHeldToItsRect]).
         if (drawAtOriginWhen?.call(laid.worldRect, stepped) ?? false) {
-          canvas.drawImage(stepped, ui.Offset.zero, paint);
+          drawHeldToItsRect(
+            canvas,
+            source,
+            paint,
+            () => canvas.drawImage(stepped, ui.Offset.zero, paint),
+          );
           return;
         }
-        canvas.drawImageRect(
-          stepped,
-          ui.Rect.fromLTWH(
-            0,
-            0,
-            stepped.width.toDouble(),
-            stepped.height.toDouble(),
-          ),
-          ui.Rect.fromLTWH(
-            laid.worldRect.left * rasterScale,
-            laid.worldRect.top * rasterScale,
-            laid.worldRect.width * rasterScale,
-            laid.worldRect.height * rasterScale,
-          ),
+        final destination = ui.Rect.fromLTWH(
+          laid.worldRect.left * rasterScale,
+          laid.worldRect.top * rasterScale,
+          laid.worldRect.width * rasterScale,
+          laid.worldRect.height * rasterScale,
+        );
+        drawHeldToItsRect(
+          canvas,
+          destination,
           paint,
+          () => canvas.drawImageRect(stepped, source, destination, paint),
         );
       } finally {
         // ⛔The steps made a NEW image, and a whole image laid back for this
@@ -274,22 +285,6 @@ bool inkCropDrawsTheSame({
     pose == null &&
     blendsInPlace(blendMode.paintBlendMode) &&
     resolveCompositeEffectPlan(effects).outsetPixels == 0;
-
-/// Whether [mode] is one the engines blend pixel by pixel wherever it is
-/// drawn — `srcOver` and `plus` — rather than through the area drawn.
-///
-/// 🚨★★★F-243 (유저 2026-09-30, 실기): **THROUGH THE AREA DRAWN REACHES PAST
-/// IT.** 🔬Measured on the Windows app (Impeller GLES), the row being drawn on
-/// in multiply: its tiles, each drawn with the blend, multiplied the WHOLE
-/// screen by the tile's colour once per tile — white paper came out
-/// (8,32,184) after ten tiles of a (180,208,247) stroke, which is that colour
-/// to the tenth power; in screen and overlay the grey under it went white.
-/// The same cel drawn as one image was right. ⇒ A draw in any other blend is
-/// ONE image of what is being blended — the whole layer, the whole group —
-/// never pieces of it laid down one by one, and a piece that has to blend by
-/// itself (a stamp's ghost) is held to its own rect.
-bool blendsInPlace(ui.BlendMode mode) =>
-    mode == ui.BlendMode.srcOver || mode == ui.BlendMode.plus;
 
 /// What a draw lays down: the [stored] image at its world rect where that is
 /// exact, and otherwise the image its extent stands for — laid back byte for

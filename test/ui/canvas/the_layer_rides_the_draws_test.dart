@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -45,6 +46,13 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// down — *"BB-1: the brush blend previews live (tiles never overlap, so
 /// per-tile draws blend each pixel exactly once)"*. This asks the same
 /// question about the LAYER's paint.
+///
+/// 🚨F-243: ONLY FOR A BLEND THAT ACTS WHERE IT IS DRAWN (`blendsInPlace`).
+/// This VM rasters with Skia, where a multiply draw stays inside its rect,
+/// and these comparisons once held multiply and screen too; on the Windows
+/// app each tile drawn in multiply blended the whole screen. So a row in an
+/// advanced blend never rides (pinned below), and the blend compared here is
+/// the one besides srcOver that still does — add.
 ///
 /// ⚠️THE TILE PAINT IS WHY IT HOLDS. `isAntiAlias = false` +
 /// `FilterQuality.none` is what makes adjacent tiles disjoint in DEVICE
@@ -210,27 +218,21 @@ void main() {
       );
     });
 
-    test('blend mode', () async {
+    test('a blend that acts in place', () async {
       await expectSamePixels(
-        'multiply',
+        'add',
         () => Paint()
           ..color = const Color(0xFF000000)
-          ..blendMode = BlendMode.multiply,
-      );
-      await expectSamePixels(
-        'screen',
-        () => Paint()
-          ..color = const Color(0xFF000000)
-          ..blendMode = BlendMode.screen,
+          ..blendMode = BlendMode.plus,
       );
     });
 
     test('blend and opacity together', () async {
       await expectSamePixels(
-        'multiply at 0.5',
+        'add at 0.5',
         () => Paint()
           ..color = const Color(0x80000000)
-          ..blendMode = BlendMode.multiply,
+          ..blendMode = BlendMode.plus,
       );
     });
 
@@ -251,13 +253,13 @@ void main() {
     test('at fractional scale and phase, where a seam would show', () async {
       // 🚨THE CASE THE TILE PAINT EARNS. Adjacent tiles have to be disjoint
       // in DEVICE pixels, not only in canvas units.
-      Paint multiplyHalf() => Paint()
+      Paint addHalf() => Paint()
         ..color = const Color(0x80000000)
-        ..blendMode = BlendMode.multiply;
-      await expectSamePixels('scale 1.37', multiplyHalf, scale: 1.37, phase: 0.42);
-      await expectSamePixels('scale 0.63', multiplyHalf, scale: 0.63, phase: 0.17);
-      await expectSamePixels('scale 2', multiplyHalf, scale: 2);
-      await expectSamePixels('phase 0.5', multiplyHalf, phase: 0.5);
+        ..blendMode = BlendMode.plus;
+      await expectSamePixels('scale 1.37', addHalf, scale: 1.37, phase: 0.42);
+      await expectSamePixels('scale 0.63', addHalf, scale: 0.63, phase: 0.17);
+      await expectSamePixels('scale 2', addHalf, scale: 2);
+      await expectSamePixels('phase 0.5', addHalf, phase: 0.5);
     });
   });
 
@@ -364,6 +366,7 @@ void main() {
       SelectionFloatOverlay? floatOverlay,
       ValueListenable<CutStampPreview?>? stampPreview,
       TestRecordingCanvas? recordInto,
+      TransformPose? pose,
     }) async {
       debugLiveLayerRodeTheDraws = null;
       await tester.pumpWidget(
@@ -380,6 +383,7 @@ void main() {
                         opacity: opacity,
                         blendMode: blendMode,
                         effects: effects,
+                        pose: pose,
                       ),
                     ),
                   ],
@@ -838,39 +842,77 @@ void main() {
       }
     });
 
-    testWidgets('🚨F-243: a stamp ghost in an advanced blend is held to its '
-        'own rect', (tester) async {
-      // Drawn by itself, a piece in an advanced blend blends past its edges
-      // on the Windows app, as a tile did — and a stamp lands inside its box.
-      final image = await tester.runAsync(_decodedSquare);
-      final piece = CutPiece(
-        image: BrushStampImage(
-          id: 'ghost',
-          width: 4,
-          height: 4,
-          rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
-        ),
-        originLeft: 0,
-        originTop: 0,
-      );
-      const box = Rect.fromLTWH(8, 8, 4, 4);
-      for (final (blend, held) in [
-        (BlendMode.multiply, true),
-        (BlendMode.screen, true),
-        (BlendMode.srcOver, false),
-      ]) {
-        final canvas = TestRecordingCanvas();
-        paintCutPiece(canvas, box, piece, image, blendMode: blend);
-        expect(
-          [
-            for (final call in canvas.invocations)
-              if (call.invocation.memberName == #clipRect)
-                call.invocation.positionalArguments[0],
-          ],
-          held ? [box] : isEmpty,
-          reason: '${blend.name}: held to its rect = $held',
+    testWidgets('🚨a posed row on the image route rasters its own slot, not '
+        'the canvas rect its pose lands on', (tester) async {
+      // The live slot is drawn under its row's pose wrap, so the image
+      // route's bounds are the SLOT's coordinates. Read as the canvas rect
+      // the pose moves the ink to, a row moved right and down rastered the
+      // wrong rect and its drawing was cut away — and since F-243 every
+      // posed multiply row takes that route. Over white paper an opaque
+      // stroke lays the same bytes in multiply as in normal, so the normal
+      // row, which rides its tiles, is the reference.
+      final pose = TransformPose(center: CanvasPoint(x: 52, y: 42));
+      Future<Uint8List> pixelsFor(LayerBlendMode blend) async {
+        await paintActive(
+          tester,
+          effects: const [],
+          opacity: 1,
+          blendMode: blend,
+          pose: pose,
         );
+        final painted = tester
+            .widgetList<CustomPaint>(
+              find.descendant(
+                of: find.byType(CanvasLayerStackView),
+                matching: find.byType(CustomPaint),
+              ),
+            )
+            .where((paint) => paint.painter != null)
+            .toList();
+        const size = Size(200, 150);
+        final recorder = ui.PictureRecorder();
+        painted.first.painter!.paint(
+          Canvas(recorder, Offset.zero & size),
+          size,
+        );
+        final picture = recorder.endRecording();
+        final image = picture.toImageSync(200, 150);
+        picture.dispose();
+        final bytes = await tester.runAsync(
+          () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+        );
+        image.dispose();
+        return bytes!.buffer.asUint8List();
       }
+
+      final normal = await pixelsFor(LayerBlendMode.normal);
+      final multiply = await pixelsFor(LayerBlendMode.multiply);
+      expect(
+        debugLiveLayerRodeTheDraws,
+        isFalse,
+        reason: '⛔premise: the multiply row takes the image route',
+      );
+      var inked = 0;
+      var differing = 0;
+      for (var i = 0; i < normal.length; i += 4) {
+        // The stroke is pure blue; the paper is white.
+        if (normal[i + 2] == 255 && normal[i] == 0) {
+          inked += 1;
+        }
+        if (normal[i] != multiply[i] ||
+            normal[i + 1] != multiply[i + 1] ||
+            normal[i + 2] != multiply[i + 2] ||
+            normal[i + 3] != multiply[i + 3]) {
+          differing += 1;
+        }
+      }
+      expect(inked, greaterThan(0), reason: '⛔premise: the stroke shows');
+      expect(
+        differing,
+        0,
+        reason: 'the posed multiply row must show its stroke where the '
+            'normal row does — $differing pixels differ',
+      );
     });
 
     testWidgets('a colour-only filter does NOT need it', (tester) async {
@@ -906,6 +948,113 @@ void main() {
       addTearDown(float.dispose);
       await paintActive(tester, effects: const [], floatOverlay: float);
       expect(debugLiveLayerRodeTheDraws, isTrue);
+    });
+  });
+
+  group('🚨F-243: a piece that blends by itself is held to its own rect', () {
+    // Drawn by itself, a piece in an advanced blend blends past its edges on
+    // the Windows app, as a tile of the row being drawn on did. This VM
+    // rasters with Skia and never shows it, so the pin is the CLIP.
+    testWidgets('a stamp ghost', (tester) async {
+      final image = await tester.runAsync(_decodedSquare);
+      final piece = CutPiece(
+        image: BrushStampImage(
+          id: 'ghost',
+          width: 4,
+          height: 4,
+          rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
+        ),
+        originLeft: 0,
+        originTop: 0,
+      );
+      const box = Rect.fromLTWH(8, 8, 4, 4);
+      for (final (blend, held) in [
+        (BlendMode.multiply, true),
+        (BlendMode.screen, true),
+        (BlendMode.srcOver, false),
+      ]) {
+        final canvas = TestRecordingCanvas();
+        paintCutPiece(canvas, box, piece, image, blendMode: blend);
+        expect(
+          [
+            for (final call in canvas.invocations)
+              if (call.invocation.memberName == #clipRect)
+                call.invocation.positionalArguments[0],
+          ],
+          held ? [box] : isEmpty,
+          reason: '${blend.name}: held to its rect = $held',
+        );
+      }
+    });
+
+    test('a stroke overlay tile', () async {
+      // A host driving the overlay model itself previews a brush blend tile
+      // by tile. (The app pre-blends every stroke on the surface's own grid,
+      // so its tiles replace their coordinates and never come this way.)
+      final surface = inkedSurface();
+      await decodeAll(surface);
+
+      Future<List<Invocation>> callsFor(BrushBlendMode blend) async {
+        final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+        addTearDown(overlay.dispose);
+        overlay.blendMode = blend;
+        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+        rasterizer.blendFrom([
+          BrushDab(
+            center: CanvasPoint(x: 4, y: 4),
+            color: 0xFF000000,
+            size: 3,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ], from: 0);
+        overlay.updateRegion(
+          source: rasterizer,
+          region: DirtyRegion.fromXYWH(x: 0, y: 0, width: 8, height: 8),
+        );
+        expect(overlay.hasStrokeContent, isTrue, reason: 'fixture');
+        final canvas = _ClippedRecordingCanvas(
+          const Rect.fromLTWH(0, 0, 64, 64),
+        );
+        BitmapSurfacePainter(
+          surface: surface,
+          showTransparentBackground: false,
+          overlayModel: overlay,
+          tileImageCache: cache,
+        ).paintContentInto(canvas);
+        return [for (final call in canvas.invocations) call.invocation];
+      }
+
+      // The clip laid down right before each draw in [mode], if any.
+      List<Object?> heldTo(List<Invocation> calls, BlendMode mode) {
+        Object? clipBefore(int at) =>
+            at > 0 && calls[at - 1].memberName == #clipRect
+            ? calls[at - 1].positionalArguments[0]
+            : null;
+        return [
+          for (var i = 0; i < calls.length; i += 1)
+            if (calls[i].memberName == #drawImage &&
+                (calls[i].positionalArguments[2] as Paint).blendMode == mode)
+              clipBefore(i),
+        ];
+      }
+
+      const tileRect = Rect.fromLTWH(0, 0, 16, 16);
+      for (final (blend, held) in [
+        (BrushBlendMode.multiply, tileRect),
+        (BrushBlendMode.screen, tileRect),
+        (BrushBlendMode.add, null),
+      ]) {
+        expect(
+          heldTo(await callsFor(blend), blend.previewBlendMode),
+          [held],
+          reason: '${blend.name}: the one overlay tile, held to $held',
+        );
+      }
     });
   });
 }

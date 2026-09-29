@@ -55,7 +55,18 @@ class _OverlayPass {
       )) {
         continue;
       }
-      _pass._canvas.drawImage(entry.value, origin, overlayPaint);
+      // 🚨F-243: each tile is one image in the stroke's blend, held to its
+      // own rect ([drawHeldToItsRect]) — tiles never overlapping does not
+      // keep an advanced blend inside them. ⚠️The app never gets here in
+      // such a blend: every stroke and fill pre-blends on the surface's own
+      // grid, and those tiles replace their coordinates (returned above).
+      final image = entry.value;
+      drawHeldToItsRect(
+        _pass._canvas,
+        origin & Size(image.width.toDouble(), image.height.toDouble()),
+        overlayPaint,
+        () => _pass._canvas.drawImage(image, origin, overlayPaint),
+      );
     }
   }
 }

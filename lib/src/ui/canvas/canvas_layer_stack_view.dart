@@ -32,6 +32,7 @@ import 'selection_float_overlay.dart';
 import 'subtree_image_composite.dart';
 import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
+import 'blends_in_place.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';

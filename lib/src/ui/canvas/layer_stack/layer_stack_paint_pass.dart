@@ -520,6 +520,24 @@ class _LayerStackPaintPass {
     return wrap.invert() == 0 ? null : wrap;
   }();
 
+  /// What the live slot's own raster covers, in the SLOT's space: what it
+  /// draws ([_activeSurfaceExtent]) where the view can see it.
+  ///
+  /// 🚨Not [_bufferBoundsFor], which answers in CANVAS space — the extent
+  /// taken through the row's pose — for the buffers the walk opens around
+  /// nodes. The slot's own route runs INSIDE the pose wrap, so the view is
+  /// brought into the slot instead ([_slotFromCanvas]). Read as slot
+  /// coordinates, a posed row's canvas rect rastered the wrong part of the
+  /// slot and cut its drawing away (found in F-243's review: every posed
+  /// row in an advanced blend takes this route since).
+  Rect _activeSlotBufferBounds() {
+    final intoSlot = _slotFromCanvas;
+    final view = intoSlot == null
+        ? _visibleCanvasRect
+        : MatrixUtils.transformRect(intoSlot, _visibleCanvasRect);
+    return view.intersect(_activeSurfaceExtent());
+  }
+
   /// The one active slot in [nodes], wherever the folders put it.
   static _PaintActiveSurface? _activeRowIn(
     List<CompositeNode<_PaintRow>> nodes,
@@ -792,13 +810,15 @@ class _LayerStackPaintPass {
     // [BitmapSurfacePainter.drawsDisjointCoverage] answers, and
     // the law the overlay's own blend already rides one level
     // down ("tiles never overlap, so per-tile draws blend each
-    // pixel exactly once").
+    // pixel exactly once") — and the blend acts where it is
+    // drawn, which F-243 (the last clause below) showed an
+    // advanced blend does not.
     //
-    // What is left for a buffer is the one thing a per-draw
-    // paint cannot do: a filter that SPREADS has to see across
-    // the tile boundaries, so it needs the layer assembled
-    // first. `outsetPixels` is exactly that question — a colour
-    // matrix is per-pixel and rides along fine.
+    // What is left for a buffer is what a per-draw paint cannot
+    // do: a filter that SPREADS has to see across the tile
+    // boundaries, so it needs the layer assembled first.
+    // `outsetPixels` is exactly that question — a colour matrix
+    // is per-pixel and rides along fine.
     final needsBuffer =
         activeEffects.outsetPixels > 0 ||
         !_painter.activeSurfacePainter!.drawsDisjointCoverage ||
@@ -897,7 +917,7 @@ class _LayerStackPaintPass {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
-          _bufferBoundsFor(node, _activeSurfaceExtent),
+          _activeSlotBufferBounds(),
           activePlan.outsetPixels,
         ),
         rasterScale: rasterScale,

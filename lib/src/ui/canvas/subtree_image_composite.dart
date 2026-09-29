@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../core/draw_space.dart';
+import 'blends_in_place.dart';
 import 'colour_key_shader.dart';
 import '../../services/composite_effect_paint.dart';
 import 'raster_picture.dart';
@@ -163,6 +164,13 @@ SubtreeRasterPlan? _planSubtreeRaster({
 /// What bounds the UNfiltered content is the image itself, which is the
 /// bounds snapped out to whole raster pixels — the same rounding-out Skia
 /// does to a layer's offscreen. Same extent, same spread, same pixels.
+///
+/// ↩️🚨F-243: the image bounds unfiltered content only where the blend acts
+/// in place. On the Windows app an image blitted in multiply or screen
+/// stretches its border across everything the pass reaches, so an
+/// UNfiltered blit in such a blend IS held to its destination
+/// ([drawHeldToItsRect]) — it paints nothing there that the clip could cut.
+/// A filtered one keeps the rule above.
 void _blitSubtreeRaster({
   required Canvas canvas,
   required ui.Image image,
@@ -179,16 +187,21 @@ void _blitSubtreeRaster({
     debugLastSubtreeRaster = plan;
     return true;
   }());
-  canvas.drawImageRect(
-    image,
-    Rect.fromLTWH(
-      0,
-      0,
-      plan.pixelWidth.toDouble(),
-      plan.pixelHeight.toDouble(),
-    ),
+  drawHeldToItsRect(
+    canvas,
     plan.destination,
     paint,
+    () => canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(
+        0,
+        0,
+        plan.pixelWidth.toDouble(),
+        plan.pixelHeight.toDouble(),
+      ),
+      plan.destination,
+      paint,
+    ),
   );
 }
 

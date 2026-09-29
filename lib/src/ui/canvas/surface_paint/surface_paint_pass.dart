@@ -258,7 +258,8 @@ class _SurfacePaintPass {
             ..blendMode = BlendMode.dstOut)
         : blendMode.previewBlendMode != BlendMode.srcOver
         // BB-1: the brush blend previews live (tiles never overlap,
-        // so per-tile draws blend each pixel exactly once).
+        // so per-tile draws blend each pixel exactly once — each held
+        // to its own rect where the blend does not act in place, F-243).
         ? (Paint()
             ..filterQuality = FilterQuality.none
             ..isAntiAlias = false

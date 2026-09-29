@@ -13,6 +13,7 @@ import '../../models/project_background.dart';
 import '../brush/cut_piece_preview.dart' show CutStampPreview, paintCutPiece;
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'blends_in_place.dart';
 import 'display_resample.dart';
 import 'tile_origin.dart';
 import 'tile_picture_budget.dart';
@@ -240,14 +241,18 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// A layer's opacity and blend have to apply to the LAYER once. Wrapping
   /// the whole painter in a `saveLayer` is one way to get that; handing the
   /// same paint to each draw is another, and the two are the same pixels
-  /// exactly when no two draws land on the same pixel.
+  /// exactly when no two draws land on the same pixel — and the paint's
+  /// blend acts where it is drawn. 🚨F-243: on the Windows app a tile drawn
+  /// in multiply blended the whole screen ([blendsInPlace]), so a row in
+  /// such a blend never rides the draws, whatever this answers (the
+  /// stack's `needsBuffer`).
   ///
   /// ⛔NOT A NEW LAW — the overlay's own blend already rides it one level
   /// down: *"BB-1: the brush blend previews live (tiles never overlap, so
   /// per-tile draws blend each pixel exactly once)."* This is that sentence
   /// asked about the LAYER's paint instead of the stroke's.
   ///
-  /// 🧪Measured: with the tile paint this class actually uses
+  /// 🧪Measured on the test VM: with the tile paint this class actually uses
   /// (`isAntiAlias = false`, `FilterQuality.none`) the two routes agree to
   /// the byte at scale 1, 1.37, 0.63 and 2, at phases 0, 0.42 and 0.5 —
   /// 0 of 19200 pixels differ. Antialiased draws do NOT agree, which is why
