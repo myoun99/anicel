@@ -80,27 +80,31 @@ void main() {
     );
   }
 
-  Future<void> mount(WidgetTester tester, TimelineGridHooks hooks) =>
-      tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: LayerTimelineGrid(
-              hooks: hooks,
-              layers: [blockLayer()],
-              metrics: const TimelineGridMetrics(
-                frameCellWidth: cell,
-                layerRowHeight: 52,
-              ),
-            ),
+  Future<void> mount(
+    WidgetTester tester,
+    TimelineGridHooks hooks, {
+    double rowHeight = 52,
+  }) => tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: LayerTimelineGrid(
+          hooks: hooks,
+          layers: [blockLayer()],
+          metrics: TimelineGridMetrics(
+            frameCellWidth: cell,
+            layerRowHeight: rowHeight,
           ),
         ),
-      );
+      ),
+    ),
+  );
 
   /// Cells 0..3 selected (the block); returns what the grid told the host
   /// and the middle of cell 1.
   Future<(Heard, Offset)> mountSelected(
     WidgetTester tester, {
     bool moveBegins = true,
+    double rowHeight = 52,
   }) async {
     final heard = Heard();
     final selection = ValueNotifier<TimelineFrameRangeSelection?>(
@@ -138,11 +142,16 @@ void main() {
           ),
         ),
       ),
+      rowHeight: rowHeight,
     );
     final layer = find.byKey(
       const ValueKey<String>('timeline-range-gesture-layer-a'),
     );
-    return (heard, tester.getTopLeft(layer) + const Offset(cell * 1.5, 26));
+    // The middle of cell 1, halfway down the row.
+    return (
+      heard,
+      tester.getTopLeft(layer) + Offset(cell * 1.5, rowHeight / 2),
+    );
   }
 
   /// A hand that travels [pixels] one pixel at a time — the slow, careful
@@ -219,24 +228,45 @@ void main() {
       expect(heard.selects.last, (1, 2), reason: 'anchored where it pressed');
     });
 
-    testWidgets('🚨F-238: a pen SELECT that leaves the pressed cell starts '
-        'there — two cells, not three', (tester) async {
+    testWidgets('🚨F-238: a pen SELECT starts where it leaves the pressed '
+        'cell — two cells, not three, and not before', (tester) async {
       final (heard, inside) = await mountSelected(tester);
 
-      // Cell 6: outside the selection.
+      // Two pixels into cell 6, outside the selection.
       final gesture = await tester.startGesture(
-        inside + const Offset(cell * 5, 0),
+        inside + const Offset(cell * 5 - 2, 0),
         kind: PointerDeviceKind.stylus,
       );
-      await creep(tester, gesture, cell.toInt());
+      await creep(tester, gesture, 5);
+      expect(heard.selects, isEmpty, reason: 'still on the pressed cell');
+
+      await creep(tester, gesture, 3);
       await gesture.up();
       await tester.pump();
-
       expect(
         heard.selects.toSet(),
         {(6, 6), (6, 7)},
         reason: '↩️nothing until 18px, and then the head was already 8',
       );
+    });
+
+    testWidgets('F-238: a pen select that leaves the pressed ROW starts '
+        'there too — the cell is a box, not a column', (tester) async {
+      final (heard, inside) = await mountSelected(tester, rowHeight: 28);
+
+      final gesture = await tester.startGesture(
+        inside + const Offset(cell * 5, 0),
+        kind: PointerDeviceKind.stylus,
+      );
+      // Fifteen pixels up: out of a 28px row, short of the 18px slop.
+      for (var moved = 0; moved < 15; moved += 1) {
+        await gesture.moveBy(const Offset(0, -1));
+        await tester.pump();
+      }
+
+      expect(heard.selects, isNotEmpty, reason: 'the select has begun');
+      await gesture.up();
+      await tester.pump();
     });
   });
 
@@ -299,16 +329,19 @@ void main() {
 
     testWidgets('🚨F-238: a pen select on the band starts where it leaves '
         'the pressed cell', (tester) async {
-      final (heard, pressed) = await mountBand(tester);
+      final (heard, middle) = await mountBand(tester);
 
+      // Two pixels into cell 1.
       final gesture = await tester.startGesture(
-        pressed,
+        middle - const Offset(2, 0),
         kind: PointerDeviceKind.stylus,
       );
-      await creep(tester, gesture, cell.toInt());
+      await creep(tester, gesture, 5);
+      expect(heard.selects, isEmpty, reason: 'still on the pressed cell');
+
+      await creep(tester, gesture, 3);
       await gesture.up();
       await tester.pump();
-
       expect(heard.selects.toSet(), {(1, 1), (1, 2)});
     });
   });
