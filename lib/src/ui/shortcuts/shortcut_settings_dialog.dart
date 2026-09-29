@@ -72,12 +72,17 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     }
     final pressed = HardwareKeyboard.instance;
     widget.bindings.setActivators(actionId, [
-      SingleActivator(
-        key,
-        control: pressed.isControlPressed,
-        shift: pressed.isShiftPressed,
-        alt: pressed.isAltPressed,
-        meta: pressed.isMetaPressed,
+      // An arrow for a move on the sheet is kept as the timeline reads it
+      // (F-241), so it turns again on the other sheet.
+      widget.bindings.keptActivatorFor(
+        actionId,
+        SingleActivator(
+          key,
+          control: pressed.isControlPressed,
+          shift: pressed.isShiftPressed,
+          alt: pressed.isAltPressed,
+          meta: pressed.isMetaPressed,
+        ),
       ),
     ]);
     setState(() => _recordingActionId = null);
@@ -244,7 +249,9 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                 padding: const EdgeInsets.only(right: 4),
                 child: Chip(
                   label: Text(
-                    singleActivatorLabel(activator),
+                    singleActivatorLabel(
+                      bindings.shownActivatorFor(definition.id, activator),
+                    ),
                     style: theme.textTheme.labelSmall,
                   ),
                   visualDensity: VisualDensity.compact,

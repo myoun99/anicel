@@ -35,6 +35,7 @@ class EditorActionDefinition {
     this.zoomsView = false,
     this.toolPress,
     this.pixelVerb,
+    this.readsTheSheet = false,
   });
 
   final String id;
@@ -77,6 +78,12 @@ class EditorActionDefinition {
   /// 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
   /// 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야」.
   final CelPixelVerb? pixelVerb;
+
+  /// A move on the sheet (F-241): its ARROW keys are written as the timeline
+  /// reads them, and on the X-sheet a pressed arrow is turned to the
+  /// timeline's before it is matched, and a bound one is shown turned
+  /// (`SheetArrowTurn`). A key that is not an arrow never turns.
+  final bool readsTheSheet;
 }
 
 /// The action a tool button or tile presses, found by its press — so the
@@ -124,10 +131,6 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
 abstract final class EditorActionIds {
   static const framePrevious = 'frame-previous';
   static const frameNext = 'frame-next';
-  static const frameWalkLeft = 'frame-walk-left';
-  static const frameWalkRight = 'frame-walk-right';
-  static const frameWalkUp = 'frame-walk-up';
-  static const frameWalkDown = 'frame-walk-down';
   static const drawingPrevious = 'drawing-previous';
   static const drawingNext = 'drawing-next';
 
@@ -212,88 +215,78 @@ abstract final class EditorActionIds {
   static const canvasZoomOut = 'canvas-zoom-out';
 }
 
-/// The default action set. Frame flipping on `,`/`.` (with arrow aliases)
-/// and drawing jumps on Ctrl+`,`/`.` are the animation-desk core; tools
-/// and transport follow PS/CSP convention.
+/// The default action set. Tools and transport follow PS/CSP convention.
 final List<EditorActionDefinition> editorActionDefinitions = [
-  // Arrows are the PRIMARY flip keys (R10-⑧ — the primary shows as the
-  // PEN-7c: plain arrows walk DRAWINGS (block-to-block — the animator's
-  // flip unit); Ctrl+arrows step ONE frame (the fine unit). Comma/period
-  // keep the frame-step desk-muscle aliases; everything rebinds in the
-  // shortcut settings as always.
+  // 🗣️F-241 (유저 2026-09-29): 「이전/다음 프레임, 이전/다음 블록, 위/아래
+  // 레이어 이렇게 개편」 — SIX moves, named by what they do, all on the
+  // arrows. Their arrows are written as the timeline reads them and turn
+  // with the X-sheet ([EditorActionDefinition.readsTheSheet]).
+  // ↩️The Ctrl+arrows were four DIRECTION actions of their own (F-28: 「Step
+  // Left」 …): 「이전프레임이랑 왼쪽으로 한걸음이랑 똑같은데 … 싹 삭제」.
+  // The one-frame arrow is Shift now: 「컨트롤+화살표가 아니라
+  // 쉬프트+화살표로 변경」 — and it is the frame's ONLY key: 「이전/다음
+  // 프레임은 ,.가 아니라 쉬프트<>만이야. ,.는 삭제」. A block's second key,
+  // Ctrl+`,`/`.`, was never asked for: 「이전원화 다음원화는 왜 단축키
+  // 두개인지? … 컨트롤+, 이런건 삭제. 절대 멋대로 넣지말고 넣을땐 보고할것」.
   const EditorActionDefinition(
     id: EditorActionIds.framePrevious,
     label: 'Previous Frame',
     category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.comma)],
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true),
+    ],
+    readsTheSheet: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameNext,
     label: 'Next Frame',
     category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.period)],
-  ),
-  // F-28 (유저 2026-08-28): the Ctrl+arrows are DIRECTIONS, so they read
-  // the sheet — along the frame axis one frame, across it one row. That
-  // is why they left the two definitions above: comma and period name a
-  // frame, not a direction, and on an X-sheet they must still step frames.
-  const EditorActionDefinition(
-    id: EditorActionIds.frameWalkLeft,
-    label: 'Step Left',
-    category: 'Navigation',
     defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowLeft, control: true),
+      SingleActivator(LogicalKeyboardKey.arrowRight, shift: true),
     ],
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.frameWalkRight,
-    label: 'Step Right',
-    category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowRight, control: true),
-    ],
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.frameWalkUp,
-    label: 'Step Up',
-    category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowUp, control: true),
-    ],
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.frameWalkDown,
-    label: 'Step Down',
-    category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowDown, control: true),
-    ],
+    readsTheSheet: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.drawingPrevious,
-    label: 'Previous Drawing',
+    label: 'Previous Block',
     category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowLeft),
-      SingleActivator(LogicalKeyboardKey.comma, control: true),
-    ],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowLeft)],
+    readsTheSheet: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.drawingNext,
-    label: 'Next Drawing',
+    label: 'Next Block',
     category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowRight),
-      SingleActivator(LogicalKeyboardKey.period, control: true),
-    ],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowRight)],
+    readsTheSheet: true,
+  ),
+  // The DISPLAYED layer rows (TVP layer nav, UI-R20 #14). ↩️With a live
+  // selection the arrows used to NUDGE it (Photoshop behavior) — 유저
+  // 2026-09-12: 「선택툴 선택한채로 화살표키누르면 그림 이동되는데 왜 멋대로
+  // 넣은거지? 기능부터 잔존코드 싹 삭제」 (F-86).
+  const EditorActionDefinition(
+    id: EditorActionIds.layerUp,
+    label: 'Layer Up',
+    category: 'Navigation',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowUp)],
+    readsTheSheet: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerDown,
+    label: 'Layer Down',
+    category: 'Navigation',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
+    readsTheSheet: true,
   ),
   // 🗣️I-15 (유저 2026-09-11): 「손바닥 툴을 만들지는 않음. 다만 단축키에
   // 이동? 추가하는건 추가하고, 기본값을 휠클릭이 아니라 스페이스바로
   // 이동」 — held, not pressed: while Space is down a primary drag pans.
+  // 🗣️F-241: 「이동 누르는동안은 프레임관련이아니고 캔버스관련이잖아」 — it
+  // moves the canvas, so it stands with the canvas view's keys.
   const EditorActionDefinition(
     id: EditorActionIds.canvasPanHold,
     label: 'Pan (hold)',
-    category: 'Navigation',
+    category: 'View',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.space)],
     hold: true,
   ),
@@ -565,24 +558,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyD, control: true),
     ],
-  ),
-  // The arrow keys walk the sheet: on the timeline left/right flip frames
-  // and up/down walk its DISPLAYED layer rows (TVP layer nav, UI-R20 #14),
-  // and the X-sheet swaps the two (F-28). ↩️With a live selection they used
-  // to NUDGE it (Photoshop behavior) — 유저 2026-09-12: 「선택툴 선택한채로
-  // 화살표키누르면 그림 이동되는데 왜 멋대로 넣은거지? 기능부터 잔존코드 싹
-  // 삭제」 (F-86), so the pair lost the nudge's name and category with it.
-  const EditorActionDefinition(
-    id: EditorActionIds.layerUp,
-    label: 'Layer Up',
-    category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowUp)],
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.layerDown,
-    label: 'Layer Down',
-    category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
   ),
   // Enter is 확정 — the last stroke laid down again, or 적용 while the
   // transform tool is up (`ConfirmVerb`); Escape cancels a transform. Text

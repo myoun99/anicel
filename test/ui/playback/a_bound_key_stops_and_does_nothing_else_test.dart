@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -8,6 +7,7 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import '../../helpers/fake_playback_transport.dart';
+import '../../helpers/frame_keys.dart';
 
 /// 🚨★★★**T28-c THROUGH THE REAL EDITOR: 「뭘 하든 정지만. 입력 일 안함」**
 /// (유저 2026-08-13), for a BOUND key, whatever is the thing playing.
@@ -51,7 +51,7 @@ void main() {
     expect(session.playbackRig.playback.isPlaying, isTrue);
     final standingAt = session.currentFrameIndex;
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.period);
+    await pressNextFrame(tester);
     await tester.pump();
 
     expect(session.playbackRig.playback.isPlaying, isFalse);
@@ -72,7 +72,7 @@ void main() {
     await tester.pump();
     final standingAt = session.currentFrameIndex;
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.period);
+    await pressNextFrame(tester);
     await tester.pump();
 
     expect(viewer.isPlaying, isFalse, reason: 'the gate half: 「정지」');
@@ -84,7 +84,7 @@ void main() {
     );
 
     // And the SECOND press does its job — 유저 09-08 「그대로 둠. 그게 직관적임」.
-    await tester.sendKeyEvent(LogicalKeyboardKey.period);
+    await pressNextFrame(tester);
     await tester.pump();
     expect(
       session.currentFrameIndex,

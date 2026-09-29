@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/project.dart';
@@ -9,6 +8,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
+import '../../helpers/frame_keys.dart';
 import '../../helpers/scrollable_of.dart';
 
 /// 🗣️F-225 (유저 2026-09-29): 「타임라인 간편오버레이상태에서 플립으로
@@ -59,7 +59,7 @@ void main() {
   ScrollPosition frameAxisOf(WidgetTester tester) =>
       scrollableOf(tester, frameScroller).controller!.position;
 
-  /// Walks with `.` — the Next Frame key — until the playhead stands
+  /// Walks with the Next Frame key (Shift+→) until the playhead stands
   /// [past] cells beyond the cells built when the walk began.
   Future<void> walkPastTheBuiltEnd(
     WidgetTester tester,
@@ -72,7 +72,7 @@ void main() {
         ((position.maxScrollExtent + position.viewportDimension) / cell)
             .ceil();
     while (session.currentFrameIndex < builtFrames + past) {
-      await tester.sendKeyEvent(LogicalKeyboardKey.period);
+      await pressNextFrame(tester);
       await tester.pump();
     }
     await tester.pumpAndSettle();
@@ -130,7 +130,7 @@ void main() {
     );
     const cell = TimelineZoomLimits.defaultPixelsPerFrame;
     while (session.currentFrameIndex * cell < openBuiltEnd + 6 * cell) {
-      await tester.sendKeyEvent(LogicalKeyboardKey.period);
+      await pressNextFrame(tester);
       await tester.pump();
     }
     await tester.pumpAndSettle();

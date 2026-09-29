@@ -203,33 +203,33 @@ void main() {
   });
 
   testWidgets('⛔a key that types the character with NO Shift is not the '
-      'binding — the numpad `.` steps no frame', (tester) async {
+      'binding — the numpad `=` is no Solo', (tester) async {
+    // ↩️This was the numpad `.` against Next Frame's `.` — the frame keys
+    // are Shift+arrows alone now (F-241: 「,.는 삭제」), so the character
+    // binding it is asked of is Solo's `=`.
     await tester.pumpWidget(const AnicelApp());
     await tester.pumpAndSettle();
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    final standingAt = session.currentFrameIndex;
+    bool solo() => session.visibilitySolo.layerVisibilitySoloEnabled;
+    expect(solo(), isFalse);
 
     await tester.sendKeyEvent(
-      LogicalKeyboardKey.numpadDecimal,
-      character: '.',
+      LogicalKeyboardKey.numpadEqual,
+      character: '=',
     );
     await tester.pumpAndSettle();
     expect(
-      session.currentFrameIndex,
-      standingAt,
+      solo(),
+      isFalse,
       reason: 'only a layout that puts the character on SHIFT reaches it '
           'under another key — the numpad is a key of its own',
     );
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.period, character: '.');
+    await tester.sendKeyEvent(LogicalKeyboardKey.equal, character: '=');
     await tester.pumpAndSettle();
-    expect(
-      session.currentFrameIndex,
-      isNot(standingAt),
-      reason: '⛔전제: `.` itself steps the frame here',
-    );
+    expect(solo(), isTrue, reason: '⛔전제: `=` itself is Solo here');
   });
 
   testWidgets('Shift+. and Shift+, take the canvas bar\'s zoom step, along '

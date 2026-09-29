@@ -84,9 +84,11 @@ void main() {
     await finger.moveBy(const Offset(96, 0));
     await tester.pump();
     expect(probes.actions, isNotEmpty);
-    // ↩️F-28 (유저 2026-08-31): the flip fires the Ctrl+ARROW's direction id
-    // now, not the axis-blind frame step — the shell decides what → means.
-    expect(probes.actions.toSet(), {'frame-walk-right'});
+    // 🗣️F-241 (유저 2026-09-29): the moves are meanings — the flip reads its
+    // arrow the way a key is read (turned with the sheet) and fires the
+    // one-frame move, as Shift+→ does. ↩️F-28 fired the Ctrl+arrow's
+    // direction id and the shell turned it.
+    expect(probes.actions.toSet(), {'frame-next'});
 
     await modifier.up();
     await finger.up();

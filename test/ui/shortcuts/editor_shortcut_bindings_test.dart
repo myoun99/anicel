@@ -13,7 +13,12 @@ import '../../helpers/project_scratch_folder.dart';
 void main() {
   test('defaults feed the shortcuts map; every registry action resolves', () {
     final bindings = EditorShortcutBindings();
-    final map = bindings.shortcuts;
+    // A move on the sheet is keyed by its TURNED form (F-241), which holds
+    // the default it turns.
+    final map = {
+      for (final MapEntry(:key, :value) in bindings.shortcuts.entries)
+        (key is SheetTurnedActivator ? key.timeline : key): value,
+    };
 
     // One entry per default activator, each dispatching its action id — a
     // HELD action excepted (I-15, pinned below).
@@ -59,9 +64,9 @@ void main() {
   // a-key-is-the-character-it-types: the typed form exists for a binding
   // that NAMES a character. ⛔A binding with Shift names a KEY — Shift+. is
   // the `>` key's place — and on a layout that types `.` under Shift, the
-  // `.` it types is Next Frame's (the binding that names `.`), not the
-  // zoom's: two typed forms of one character would leave the press to map
-  // order. Unobservable through the defaults, so it is pinned here.
+  // `.` it types belongs to a binding that names `.`, not to the zoom: two
+  // typed forms of one character would leave the press to map order.
+  // Unobservable through the defaults, so it is pinned here.
   test('a binding WITH Shift gets no typed form — only one that names a '
       'character does', () {
     expect(
