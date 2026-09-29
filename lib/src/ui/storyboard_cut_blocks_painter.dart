@@ -423,6 +423,17 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     return width < floor ? floor : width;
   }
 
+  /// The frame after the one [entry]'s block, [width] wide, reaches into.
+  /// A block reaches at least [minBlockWidth], so its visible end is
+  /// measured in pixels, not in the cut's own frames.
+  int _reachedEndFrame(StoryboardTimelineLayoutEntry entry, double width) {
+    if (_cellExtent <= 0) {
+      return entry.endFrame;
+    }
+    final farEdge = timelineFrameEdge(entry.startFrame, _cellExtent) + width;
+    return timelineFrameAt(farEdge - 1e-6, _cellExtent) + 1;
+  }
+
   /// Where the cut after each one starts — [entries] are in track order,
   /// and the last cut has no one to stop for.
   late final Map<CutId, int> _nextStartByCut = {
@@ -500,18 +511,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   }) {
     final left = _left(entry.startFrame);
     final width = _widthFor(entry);
-    // A block reaches at least [minBlockWidth], so its visible end is
-    // measured in pixels, not in the cut's own frames: the frame its far
-    // edge reaches into, and the one after.
-    final endFrame = _cellExtent <= 0
-        ? entry.endFrame
-        : timelineFrameAt(
-                timelineFrameEdge(entry.startFrame, _cellExtent) +
-                    width -
-                    1e-6,
-                _cellExtent,
-              ) +
-              1;
+    final endFrame = _reachedEndFrame(entry, width);
     if (endFrame <= window.startIndex ||
         entry.startFrame >= window.endIndexExclusive) {
       return null;
@@ -957,11 +957,13 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         continue;
       }
       final glyph = timelineGlyphPainter(comma, _totalStyle);
+      // The panel's last cell as the law laid it (F-220).
+      final lastCell = math.max(span.left, span.lastCellStart);
       final layout = timelineBlockWordLayout(glyph.size, (
         axis: Axis.horizontal,
         room: Rect.fromLTRB(span.left, band.top, span.right, band.bottom),
-        cellStart: span.right - _cellExtent,
-        cellExtent: _cellExtent,
+        cellStart: lastCell,
+        cellExtent: span.right - lastCell,
         growth: TimelineBlockWordGrowth.towardBlockStart,
         acrossAlignment: 0,
       ));
@@ -979,13 +981,13 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// Panel [cell]'s stretch along [block], in row-local x: measured in
   /// FRAMES like every other x on this row, and held inside the block (a
   /// block drawn at [minBlockWidth] is wider than its frames).
-  ({double left, double right}) _panelSpan(
+  ({double left, double right, double lastCellStart}) _panelSpan(
     StoryboardCutBlockVisual block,
     StoryboardCoverageCell cell,
   ) {
     final rect = block.rect;
     if (_cellExtent <= 0) {
-      return (left: rect.left, right: rect.right);
+      return (left: rect.left, right: rect.right, lastCellStart: rect.left);
     }
     // The cut's first frame: a block starts on its cut's first boundary.
     final g = geometry.value;
@@ -998,6 +1000,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     return (
       left: math.max(rect.left, _left(start + cell.startIndex)),
       right: math.min(rect.right, _left(start + cell.endIndexExclusive)),
+      lastCellStart: _left(start + cell.endIndexExclusive - 1),
     );
   }
 

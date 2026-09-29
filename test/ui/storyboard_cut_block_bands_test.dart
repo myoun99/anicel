@@ -33,6 +33,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
         storyboardPanelPictureGroundColor;
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import '../helpers/fixed_thumbnails.dart';
 import 'storyboard_cut_block_probe.dart';
 
@@ -685,6 +687,35 @@ void main() {
             'band',
       );
       expect(a.center.dy, closeTo(block.innerBottomBand.center.dy, 0.01));
+    });
+
+    // 🧪F-220: the zoom follows every percent, and the law lays cells a
+    // pixel apart in width — 14 and 15 at 14.6. A count centred on a cell
+    // of the zoom's nominal width sat a fraction off the panel's last cell.
+    testWidgets('at a zoom that is not whole pixels the comma count centres '
+        'on the panel\'s last cell as the law laid it', (tester) async {
+      const zoom = 14.6;
+      double edge(int frame) => timelineFrameEdge(frame, zoom);
+      final (block, spy) = await painted(
+        tester,
+        named: true,
+        pixelsPerFrame: zoom,
+      );
+
+      final commas = _wordsIn(block.innerBottomBand, spy);
+      expect(commas, hasLength(3), reason: '4, 5 and 3');
+      // The panels end at frames 4, 9 and 12.
+      for (final (comma, end) in [
+        (commas[0], 4),
+        (commas[1], 9),
+        (commas[2], 12),
+      ]) {
+        expect(
+          comma.center.dx,
+          closeTo(block.rect.left + (edge(end - 1) + edge(end)) / 2, 0.01),
+          reason: 'the panel ending at $end',
+        );
+      }
     });
 
     // 🗣️유저 2026-09-26: 「콘티레이어는 이름 없으면 진짜 이름 없도록 … 그리고

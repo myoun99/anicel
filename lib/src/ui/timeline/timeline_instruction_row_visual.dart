@@ -438,6 +438,11 @@ class _InstructionMarkPainter extends CustomPainter with RepaintOnProps {
   /// The cell width, DERIVED from the box: the span is [eventLength] cells
   /// wide, so the painter needs no zoom-dependent field — that field was what
   /// made every instruction span rebuild on a zoom step.
+  ///
+  /// ⚠️F-220: an EVEN split of the box, so once cells are not whole pixels
+  /// an endpoint cell here is within a pixel of the law's cell rather than
+  /// on it (the box's own ends are the law's). Kept for the same reason as
+  /// above; [TimelineBlockWord] splits its box the same way.
   double _cellExtent(double mainExtent) =>
       eventLength < 1 ? mainExtent : mainExtent / eventLength;
 

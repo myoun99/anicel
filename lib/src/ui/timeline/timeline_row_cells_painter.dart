@@ -935,7 +935,8 @@ class TimelineRowCellsPainter extends CustomPainter
           ? Rect.fromLTRB(cellStart, 0, roomEnd, paper)
           : Rect.fromLTRB(0, cellStart, paper, roomEnd),
       cellStart: cellStart,
-      cellExtent: frameCellExtent,
+      // The cell the law laid (F-220), not the zoom's nominal width.
+      cellExtent: extentAlong(axis, cell.size),
       growth: TimelineBlockWordGrowth.towardBlockEnd,
       acrossAlignment: 0,
     ));
@@ -955,7 +956,9 @@ class TimelineRowCellsPainter extends CustomPainter
       center: paper.center,
       radius: timelineInbetweenMarkRadius(
         baseTextStyle.fontSize ?? 12,
-        cellExtent: frameCellExtent,
+        // The cell the law laid (F-220): a 1.3px zoom lays cells of 1 and
+        // 2, and a mark sized from 1.3 left the 1px ones.
+        cellExtent: extentAlong(axis, cellRectFor(frameIndex).size),
         crossExtent: axis == Axis.horizontal ? paper.height : paper.width,
       ),
     );
@@ -970,17 +973,23 @@ class TimelineRowCellsPainter extends CustomPainter
   /// ghost wears no paper (UI-R10 #11) but it is still a run of one drawing,
   /// and its name stays inside that run as a drawn block's does.
   double _wordRoomEnd(int frameIndex, double extent) {
+    final horizontal = axis == Axis.horizontal;
+    double endOf(int index) {
+      final cell = cellRectFor(index);
+      return horizontal ? cell.right : cell.bottom;
+    }
+
     final cell = cellRectFor(frameIndex);
-    final start = axis == Axis.horizontal ? cell.left : cell.top;
-    var end = start + frameCellExtent;
+    final start = horizontal ? cell.left : cell.top;
     var index = frameIndex;
+    var end = endOf(index);
     while (end - start < extent &&
         timelineExposureBlockSegmentAt(
           frameIndex: index,
           stateAt: _stateAt,
         ).continuesToNext) {
       index += 1;
-      end += frameCellExtent;
+      end = endOf(index);
     }
     return end;
   }

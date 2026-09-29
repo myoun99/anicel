@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
@@ -120,7 +122,7 @@ void main() {
           final left = layout.origin.dx;
           final right = left + word.width * layout.fit.x;
           final blockLeft = painter.cellRectFor(start).left;
-          final blockRight = blockLeft + length * cell;
+          final blockRight = timelineFrameEdge(start + length, cell);
           final what = '$cell px cell, block at $start';
           expect(left, greaterThanOrEqualTo(blockLeft - 1e-6), reason: what);
           expect(
@@ -130,7 +132,7 @@ void main() {
           );
           expect(
             layout.fit.x < 1,
-            word.width > length * cell,
+            word.width > blockRight - blockLeft,
             reason: '$what: narrowed exactly when the block runs short',
           );
           expect(
@@ -155,7 +157,7 @@ void main() {
         );
         expect(
           box.right,
-          lessThanOrEqualTo(blockLeft + length * cell + 0.5),
+          lessThanOrEqualTo(timelineFrameEdge(start + length, cell) + 0.5),
           reason: 'the block at $start',
         );
       }
@@ -210,8 +212,8 @@ void main() {
         expect(spy.boxes, hasLength(labels.length), reason: 'fixture');
         for (var i = 0; i < labels.length; i += 1) {
           final label = labels[i];
-          final blockLeft = label.startIndex * cell;
-          final blockRight = label.endIndexExclusive * cell;
+          final blockLeft = timelineFrameEdge(label.startIndex, cell);
+          final blockRight = timelineFrameEdge(label.endIndexExclusive, cell);
           expect(
             spy.boxes[i].left,
             greaterThanOrEqualTo(blockLeft - 1e-6),
@@ -502,6 +504,101 @@ void main() {
         reason: 'and it stays inside its block',
       );
     }
+  });
+
+  // 🧪F-220: the zoom follows every percent, so a cell is seldom a whole
+  // number of pixels — the law lays cells a pixel apart in width (14 and 15
+  // at 14.6). A word centred on a cell is centred on THAT cell; one centred
+  // on a cell of the zoom's nominal width sits a fraction off it.
+  group('🚨on the cell the frame axis\' law laid', () {
+    const cell = 14.6;
+    double edge(int frame) => timelineFrameEdge(frame, cell);
+
+    test('a cell\'s word centres on its cell while it fits', () {
+      final painter = cellsPainter(cell);
+      const word = Size(4, 10);
+      for (final (start, _) in blocks) {
+        final laid = painter.cellRectFor(start);
+        expect(
+          painter.cellWordLayoutFor(start, word).origin.dx + word.width / 2,
+          closeTo(laid.center.dx, 1e-9),
+          reason: 'block at $start, on its ${laid.width}px cell',
+        );
+      }
+    });
+
+    test('a koma number anchors on its block\'s last cell and is centred on '
+        'it', () {
+      final painter = TimelineRowRunLabelsPainter(
+        layer: layer,
+        geometry: testFrameGeometry(
+          frameCellExtent: cell,
+          frameEndIndexExclusive: 16,
+        ),
+        crossAxisExtent: rowExtent,
+        showSeconds: false,
+        countingBase: 24,
+        baseTextStyle: base,
+      );
+      final spy = _PaintedBoxes();
+      painter.paint(spy, Size(edge(16), rowExtent));
+      final labels = painter.runLabels();
+      expect(labels, isNotEmpty, reason: 'fixture');
+      expect(spy.boxes, hasLength(labels.length), reason: 'fixture');
+      for (var i = 0; i < labels.length; i += 1) {
+        final end = labels[i].endIndexExclusive;
+        final centre = (edge(end - 1) + edge(end)) / 2;
+        expect(labels[i].anchor.dx, closeTo(centre, 1e-9), reason: '$end');
+        expect(spy.boxes[i].center.dx, closeTo(centre, 1e-6), reason: '$end');
+      }
+    });
+
+    testWidgets('the folded row writes a block\'s name, and an empty '
+        'stretch\'s x, in the first cell the law laid', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 600,
+              child: CollapsedRowOverlay(
+                snapshot: FlipHudSnapshot(
+                  rows: [
+                    FlipHudRow(
+                      name: 'A',
+                      kind: LayerKind.animation,
+                      runs: [FlipHudRun(startIndex: 1, length: 3, label: '1')],
+                    ),
+                  ],
+                  rowIndex: 0,
+                  frameIndex: 0,
+                  frameCount: 40,
+                ),
+                rail: null,
+                naturalRailWidth: 100,
+                pixelsPerFrame: cell,
+                framesPerSecond: 24,
+              ),
+            ),
+          ),
+        ),
+      );
+      final strip = find.byKey(const ValueKey<String>('collapsed-strip'));
+      final spy = _PaintedBoxes();
+      tester.widget<CustomPaint>(strip).painter!.paint(
+        spy,
+        tester.getSize(strip),
+      );
+      double centreNear(double x) => spy.boxes
+          .map((box) => box.center.dx)
+          .reduce((a, b) => (a - x).abs() < (b - x).abs() ? a : b);
+      // The block's plate stands a pixel in from its first boundary.
+      final name = edge(1) + 1 + (edge(2) - edge(1)) / 2;
+      expect(centreNear(name), closeTo(name, 1e-6), reason: 'the name');
+      for (final empty in [0, 4]) {
+        final x = (edge(empty) + edge(empty + 1)) / 2;
+        expect(centreNear(x), closeTo(x, 1e-6), reason: 'the x at $empty');
+      }
+    });
   });
 }
 

@@ -204,8 +204,9 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
       }
       final start = _edge(startIndex);
       final end = _edge(endIndexExclusive);
-      // The centre of the block's LAST cell, row-local.
-      final lastCellCentre = end - frameCellExtent / 2;
+      // The centre of the block's LAST cell, row-local — the cell the law
+      // laid (F-220), not the zoom's nominal width.
+      final lastCellCentre = (_edge(endIndexExclusive - 1) + end) / 2;
       labels.add(
         TimelineRunLabel(
           startIndex: startIndex,
@@ -248,13 +249,14 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
       // the cell and grows back into its block — and (B) narrows only once
       // it would leave the block ([timelineBlockWordLayout]).
       final paper = timelineRowPaperExtent(crossAxisExtent);
+      final lastCellStart = _edge(label.endIndexExclusive - 1);
       final layout = timelineBlockWordLayout(glyph.size, (
         axis: axis,
         room: axis == Axis.horizontal
             ? Rect.fromLTRB(blockStart, 0, blockEnd, paper)
             : Rect.fromLTRB(0, blockStart, paper, blockEnd),
-        cellStart: blockEnd - frameCellExtent,
-        cellExtent: frameCellExtent,
+        cellStart: lastCellStart,
+        cellExtent: blockEnd - lastCellStart,
         growth: TimelineBlockWordGrowth.towardBlockStart,
         acrossAlignment: 1,
       ));

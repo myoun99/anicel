@@ -717,40 +717,7 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
     canvas.drawRRect(rrect, Paint()..color = paper);
     final seen = timelineGridGroundOver(under: ground, painted: paper);
     if (blockFrameLines && seen != null && frameCellExtent > 0) {
-      // The frame at the span's far edge, by the law read backwards — a
-      // quotient of pixels drifts a frame once cells are not whole pixels.
-      final frames =
-          timelineFrameAt(
-            timelineFrameEdge(startFrame, frameCellExtent) +
-                extentAlong(axis, size),
-            frameCellExtent,
-          ) -
-          startFrame;
-      // Only the boundaries a line can stand on ([timelineFrameLineStep]) —
-      // the sheet's and the rows' walk. It asked every frame of the block,
-      // and at I-22's floor a ten-minute sound is 14,400 of them.
-      final step = timelineFrameLineStep(frameCellExtent, framesPerSecond);
-      for (
-        var frame = timelineFirstOnStride(startFrame + 1, step);
-        frame < startFrame + frames;
-        frame += step
-      ) {
-        final line = timelineBlockFrameLine(
-          axis: axis,
-          frameIndex: frame,
-          boundary:
-              timelineFrameEdge(frame, frameCellExtent) -
-              timelineFrameEdge(startFrame, frameCellExtent),
-          across: (from: 0, to: cross),
-          frameCellExtent: frameCellExtent,
-          framesPerSecond: framesPerSecond,
-          colorScheme: colorScheme,
-          paper: seen,
-        );
-        if (line != null) {
-          canvas.drawRect(line.rect, Paint()..color = line.color);
-        }
-      }
+      _paintFrameLines(canvas, extentAlong(axis, size), cross, seen);
     }
     canvas.drawRRect(
       rrect,
@@ -759,6 +726,42 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
         ..strokeWidth = 1
         ..color = timelineDrawingStartBorderColor,
     );
+  }
+
+  /// The block's own frame lines over [seen] paper, [along] long.
+  void _paintFrameLines(
+    Canvas canvas,
+    double along,
+    double cross,
+    Color seen,
+  ) {
+    final origin = timelineFrameEdge(startFrame, frameCellExtent);
+    // The frame at the span's far edge, by the law read backwards — a
+    // quotient of pixels drifts a frame once cells are not whole pixels.
+    final end = timelineFrameAt(origin + along, frameCellExtent);
+    // Only the boundaries a line can stand on ([timelineFrameLineStep]) —
+    // the sheet's and the rows' walk. It asked every frame of the block,
+    // and at I-22's floor a ten-minute sound is 14,400 of them.
+    final step = timelineFrameLineStep(frameCellExtent, framesPerSecond);
+    for (
+      var frame = timelineFirstOnStride(startFrame + 1, step);
+      frame < end;
+      frame += step
+    ) {
+      final line = timelineBlockFrameLine(
+        axis: axis,
+        frameIndex: frame,
+        boundary: timelineFrameEdge(frame, frameCellExtent) - origin,
+        across: (from: 0, to: cross),
+        frameCellExtent: frameCellExtent,
+        framesPerSecond: framesPerSecond,
+        colorScheme: colorScheme,
+        paper: seen,
+      );
+      if (line != null) {
+        canvas.drawRect(line.rect, Paint()..color = line.color);
+      }
+    }
   }
 
   @override

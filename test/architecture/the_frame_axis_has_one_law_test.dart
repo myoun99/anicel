@@ -58,11 +58,6 @@ void main() {
       1,
       'the window bucket\'s span',
     ),
-    'lib/src/ui/timeline/timeline_frame_span_layout.dart': (
-      1,
-      'chrome sized in cells (a grip is half a cell), not a span between '
-          'two boundaries',
-    ),
     'lib/src/ui/timeline/timeline_run_end_handles.dart': (
       1,
       'a handle\'s size — half a cell, clamped',
@@ -73,7 +68,10 @@ void main() {
     ),
     'lib/src/ui/timeline/timeline_block_word.dart': (
       1,
-      'a word\'s cell inside the box its span was laid out in',
+      'a word\'s cell inside the box its span was laid out in: the box split '
+          'evenly, since the widget holds no zoom (so a zoom step rebuilds '
+          'nothing) — within a pixel of the law\'s cell, and the word stays '
+          'inside the box, whose ends ARE the law\'s',
     ),
     'lib/src/ui/timeline/timeline_zoom_limits.dart': (
       1,

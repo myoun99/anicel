@@ -13,7 +13,6 @@ class TimelineFrameSpanPlacement {
   const TimelineFrameSpanPlacement({
     required this.startIndex,
     this.endIndexExclusive,
-    this.mainExtentCells,
     this.mainExtent,
     this.mainInset = 0,
     this.anchorAtTrailingEdge = false,
@@ -21,22 +20,18 @@ class TimelineFrameSpanPlacement {
     this.crossExtent,
     this.fitsIn,
   }) : assert(
-         endIndexExclusive != null ||
-             mainExtentCells != null ||
-             mainExtent != null,
-         'a placement needs a span end, an extent in cells, or a fixed extent',
+         endIndexExclusive != null || mainExtent != null,
+         'a placement needs a span end or a fixed extent',
        );
 
   /// The frame whose edge anchors this child.
   final int startIndex;
 
   /// The frame whose leading edge ends the span — the usual case, and the
-  /// only one that stretches with the zoom by construction.
+  /// only one that stretches with the zoom by construction. One cell is the
+  /// span to the next frame: ↩️a size in cells (cells × the zoom's width)
+  /// missed the law's cells once they were not whole pixels (F-220).
   final int? endIndexExclusive;
-
-  /// Size in CELLS, for chrome that scales with the cell but is not a span
-  /// (an edge grip is half a cell).
-  final double? mainExtentCells;
 
   /// Fixed main-axis size in pixels, for chrome that must not scale (a
   /// marker glyph).
@@ -65,7 +60,6 @@ class TimelineFrameSpanPlacement {
       other is TimelineFrameSpanPlacement &&
       other.startIndex == startIndex &&
       other.endIndexExclusive == endIndexExclusive &&
-      other.mainExtentCells == mainExtentCells &&
       other.mainExtent == mainExtent &&
       other.mainInset == mainInset &&
       other.anchorAtTrailingEdge == anchorAtTrailingEdge &&
@@ -77,7 +71,6 @@ class TimelineFrameSpanPlacement {
   int get hashCode => Object.hash(
     startIndex,
     endIndexExclusive,
-    mainExtentCells,
     mainExtent,
     mainInset,
     anchorAtTrailingEdge,
@@ -106,17 +99,18 @@ Rect timelineFrameSpanRect(
 }) {
   final anchor = frames.edgeAt(placement.startIndex) + placement.mainInset;
   final end = placement.endIndexExclusive;
-  final cells = placement.mainExtentCells;
   var mainExtent = end != null
       ? frames.edgeAt(end) - frames.edgeAt(placement.startIndex)
-      : cells != null
-      ? cells * frames.frameCellExtent
       : placement.mainExtent!;
   if (placement.fitsIn case final room?
       when frames.edgeAt(room.endIndexExclusive) -
               frames.edgeAt(room.startIndex) <
           mainExtent) {
-    mainExtent = frames.frameCellExtent;
+    // The one cell the anchor edge bounds, as the law laid it (F-220).
+    final cell = placement.anchorAtTrailingEdge
+        ? placement.startIndex - 1
+        : placement.startIndex;
+    mainExtent = frames.edgeAt(cell + 1) - frames.edgeAt(cell);
   }
   if (mainExtent < 0) {
     mainExtent = 0;

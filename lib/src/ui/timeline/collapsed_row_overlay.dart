@@ -89,6 +89,10 @@ typedef CollapsedRowFollows = ({
   ValueListenable<int> revealSelectionTick,
 });
 
+/// Where the strip writes a block's head: the [room] it may use, and how
+/// long its first cell is as the frame axis' law laid it (F-220).
+typedef _StripWordPlace = ({Rect room, double firstCell});
+
 class CollapsedRowOverlay extends StatefulWidget {
   const CollapsedRowOverlay({
     super.key,
@@ -864,10 +868,12 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
       );
       final head = drawingHeadOf(run.label, kind: row.kind);
       final mark = head.mark;
+      // The block's first cell as the law laid it (F-220).
+      final place = (room: rect, firstCell: x(run.startIndex + 1) - left);
       if (mark != null) {
-        _headMark(canvas, rect, mark);
+        _headMark(canvas, place, mark);
       } else if (head.word.isNotEmpty) {
-        _label(canvas, rect, head.word);
+        _label(canvas, place, head.word);
       }
     }
 
@@ -890,7 +896,10 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
           row.emptyRunStartsAt(frame)) {
         _label(
           canvas,
-          Rect.fromLTRB(x(frame), 0, x(frame + 1), size.height),
+          (
+            room: Rect.fromLTRB(x(frame), 0, x(frame + 1), size.height),
+            firstCell: x(frame + 1) - x(frame),
+          ),
           'x',
           color: const Color(0xB8E9E7E2),
         );
@@ -899,18 +908,19 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
   }
 
   /// A word of the strip, by the law every block word keeps: its type at
-  /// every zoom, laid by F-96 from the first cell of its [room] and
-  /// narrowed only past the room (B, 유저 2026-09-24: 「뭐든」).
+  /// every zoom, laid by F-96 from the first cell of its room and narrowed
+  /// only past the room (B, 유저 2026-09-24: 「뭐든」).
   ///
   /// ↩️It was set in a monospace face of its own and VANISHED once its room
   /// was under 10px — against 「절대 안 사라지도록」 (R26 #38), which holds
   /// for every word a block writes.
   void _label(
     Canvas canvas,
-    Rect room,
+    _StripWordPlace place,
     String text, {
     Color color = _headInk,
   }) {
+    final room = place.room;
     final glyph = timelineGlyphPainter(
       text,
       timelineBlockWordStyle(
@@ -929,7 +939,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
       axis: Axis.horizontal,
       room: room,
       cellStart: room.left,
-      cellExtent: math.min(pixelsPerFrame, room.width),
+      cellExtent: math.min(place.firstCell, room.width),
       growth: TimelineBlockWordGrowth.towardBlockEnd,
       acrossAlignment: 0,
     ));
@@ -938,13 +948,14 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
 
   /// The [mark] a block with no cel number wears where [_label] would lay
   /// its name: its first cell, at the size of the strip's type.
-  void _headMark(Canvas canvas, Rect room, InbetweenMark mark) {
-    final cellExtent = math.min(pixelsPerFrame, room.width);
+  void _headMark(Canvas canvas, _StripWordPlace place, InbetweenMark mark) {
+    final room = place.room;
+    final cell = math.min(place.firstCell, room.width);
     paintInbetweenMark(canvas, mark, (
-      center: Offset(room.left + cellExtent / 2, room.center.dy),
+      center: Offset(room.left + cell / 2, room.center.dy),
       radius: timelineInbetweenMarkRadius(
         _labelFontSize,
-        cellExtent: cellExtent,
+        cellExtent: cell,
         crossExtent: room.height,
       ),
     ), _headInk);

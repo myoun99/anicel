@@ -1576,7 +1576,7 @@ List<Widget> timelineUnionKeyMarkerSpans({
         // used to.
         placement: TimelineFrameSpanPlacement(
           startIndex: frame,
-          mainExtentCells: 1,
+          endIndexExclusive: frame + 1,
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
