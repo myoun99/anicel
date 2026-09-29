@@ -1,6 +1,5 @@
 import '../widgets/empty_state_text.dart';
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -23,7 +22,6 @@ import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart' show videoDecodeBackend;
 import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
-import '../../services/straight_rgba_image.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/cut_piece_lift.dart';
@@ -46,6 +44,8 @@ import '../theme/app_theme.dart' show AppColors;
 import 'audio_viewer_document.dart';
 import 'media_asset_drag_data.dart';
 import 'media_asset_drop_target.dart';
+import 'media_run.dart';
+import 'page_rasters.dart';
 import 'viewer_raster_budget.dart';
 import 'viewer_render_tier.dart';
 import 'viewer_sound.dart';
@@ -287,34 +287,6 @@ class MediaViewerTabHost extends StatefulWidget {
   State<MediaViewerTabHost> createState() => _MediaViewerTabHostState();
 }
 
-/// One lazily rendered page: the raster and the scale it was rendered at
-/// (stale-while-revalidate — a wrong-scale image still draws while the
-/// right one renders).
-class _RenderedPage {
-  const _RenderedPage({required this.scale, required this.image});
-
-  final double scale;
-  final ui.Image image;
-}
-
-/// What was last asked of the document for one (page, scale).
-///
-/// 🚨★★★**LANDED IS NOT A VALUE HERE — IT IS THE ABSENCE OF ONE**, because
-/// a landed render lives in the page cache and this map is about what is
-/// still owed. What this type exists to separate is the other two, which
-/// were both spelled 「not in the set」 before 2026-09-08. See [_renders].
-enum _RenderAsk {
-  /// Out with the document, no answer yet.
-  asking,
-
-  /// The document refused this one. ⛔It is remembered until the play tick
-  /// forgets it: asking again the instant it fails is a loop, and never
-  /// asking again is a viewer that cannot recover when the frame becomes
-  /// readable — and recovery is the law here (유저 2026-08-31, 「로드할때까지
-  /// 멈춰있어야지」, which is a WAIT and not a surrender).
-  failed,
-}
-
 /// In the place of a document let go of while a save replaces its file
 /// (`_MediaViewerTabHostState._letGoThenFollow`): the page on screen keeps
 /// its size and the document its page count — so nothing on screen moves —
@@ -357,7 +329,7 @@ final class _LetGoOf implements ViewerDocument {
 }
 
 class _MediaViewerTabHostState extends State<MediaViewerTabHost>
-    implements PlaybackTransport {
+    implements PlaybackTransport, MediaRunSurface {
   /// Commit sink required by the panel API; the viewer never invalidates
   /// playback caches.
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
@@ -369,12 +341,36 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// a `_frames` list AND a `_pdf` handle here, and five places downstream
   /// had to ask which was live. See [ViewerDocument].
   ViewerDocument? _document;
-  final Map<int, _RenderedPage> _pageCache = {};
 
-  /// The pages the view shows now — every one on screen in a book, the
-  /// page in a document that turns its own. Set where they are drawn;
-  /// the cache never lets one of them go ([_evictToBudget]).
-  Set<int> _shownPages = const {};
+  /// The document's pages as rasters, under this device's budget — see
+  /// [PageRasters].
+  ///
+  /// ⚠️Built with the State, so a test that wants a tight budget sets
+  /// [ViewerRasterBudget.debugPageBytesOverride] BEFORE the panel mounts;
+  /// pumping the same widget again reuses this State and this budget.
+  late final PageRasters _rasters = PageRasters(
+    budget: ViewerRasterBudget(
+      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    ),
+    document: () => _document,
+    distance: _evictionDistance,
+    rebuild: setState,
+    mounted: () => mounted,
+    // The census cannot reach into this State, so the total goes to it —
+    // see [RenderCaches.viewerRasterBytesByViewer].
+    report: (bytes) =>
+        widget.session.renderCaches.viewerRasterBytesByViewer[widget
+                .viewerId] =
+            bytes,
+  );
+
+  /// The run: the timer turning pages, the sound beside them, and the law
+  /// that the whole transport waits — see [MediaRun].
+  late final MediaRun _run = MediaRun(
+    surface: this,
+    rasters: _rasters,
+    sound: _sound,
+  );
 
   // A book's pages one under another, memoized with the document.
   final _stack = IdentityMemo<PageStack>();
@@ -394,46 +390,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// old one was kept. ⛔The scale-axis rule is untouched — a blurrier
   /// render of the SAME page is not a lie about which frame this is.
 
-  /// The render scale the last build chose. The buffer measures readiness
-  /// in the unit [_pageCache] is keyed by, and only build knows the zoom —
-  /// the timer that asks cannot work it out.
-  double? _renderScale;
-
-  /// True while the playhead is parked waiting for its cushion to refill.
-  /// ⛔Reset with the cache: it is a fact about a document that is gone.
-  bool _buffering = false;
   String? _message;
-
-  /// What this device affords the page cache, and where a memory warning
-  /// puts it — see [ViewerRasterBudget].
-  ///
-  /// ⚠️Built with the State, so a test that wants a tight one sets
-  /// [ViewerRasterBudget.debugPageBytesOverride] BEFORE the panel mounts;
-  /// pumping the same widget again reuses this State and this budget.
-  final ViewerRasterBudget _budget = ViewerRasterBudget(
-    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-  );
-
-  /// What a cut's read holds while it is out (I-14): billed to [_budget]
-  /// beside the page cache, and reported to the census with it.
-  int _cutReadBytes = 0;
 
   /// The cut in flight — the next waits its turn rather than racing it for
   /// the budget.
   Future<void> _cuts = Future<void>.value();
 
-  /// Drops cached pages, farthest from the one on screen first, until the
-  /// cache fits [ViewerRasterBudget.byteBudget].
-  ///
-  /// 🚨[keeping] is never evicted. A raster that has just LANDED for a
-  /// page already paged away from is itself the farthest entry, and an
-  /// eviction that could drop it would throw away the render it was
-  /// called to install — the old count-based drain excluded it for the
-  /// same reason.
-  ///
-  /// ⚠️Bytes, not entries. Four pages meant a quarter of a gigabyte for a
-  /// big PDF and under a megabyte for thumbnails; the bound has to be in
-  /// the unit that runs out.
   /// How far a cached page is from being wanted again.
   ///
   /// 🚨**PLAYBACK ONLY MOVES FORWARD**, so a page already shown is never
@@ -446,52 +408,19 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// ⚠️Paging by hand is a different question and keeps `abs()`: someone
   /// stepping through a PDF is as likely to go back as forward.
   int _evictionDistance(int page) {
-    if (!_playing) {
+    if (!_run.playing) {
       return (page - _page).abs();
     }
     return page >= _page ? page - _page : _pageCount + (_page - page);
   }
 
-  int _evictToBudget({required int keeping}) {
-    var total = 0;
-    for (final page in _pageCache.values) {
-      total += ViewerRasterBudget.costOf(page.image);
-    }
-    // ⛔Never a page on screen: in a book several are (F-201), and one let
-    // go would only be rendered again for the next frame. So the loop
-    // ends when only those are left — over the budget by what the
-    // screen shows, which no eviction could give back.
-    final kept = {keeping, ..._shownPages};
-    // A cut's read is billed beside the pages (I-14), so they make room.
-    while (total + _cutReadBytes > _budget.byteBudget) {
-      final candidates = _pageCache.keys.where(
-        (page) => !kept.contains(page),
-      );
-      if (candidates.isEmpty) {
-        break;
-      }
-      final farthest = candidates.reduce(
-        (a, b) => _evictionDistance(a) >= _evictionDistance(b) ? a : b,
-      );
-      final dropped = _pageCache.remove(farthest)!;
-      total -= ViewerRasterBudget.costOf(dropped.image);
-      dropped.image.dispose();
-    }
-    // The census cannot reach into this State, so the total goes to it —
-    // see [RenderCaches.viewerRasterBytesByViewer]. Every path
-    // that changes the cache ends here or in [_disposeContent].
-    widget.session.renderCaches.viewerRasterBytesByViewer[widget.viewerId] =
-        total + _cutReadBytes;
-    return total;
-  }
-
   /// The OS said memory is tight. The session already stood its own caches
   /// down; this is the viewer's share.
   void _onMemoryPressure() {
-    if (!_budget.respondToMemoryPressure()) {
+    if (!_rasters.budget.respondToMemoryPressure()) {
       return;
     }
-    setState(() => _evictToBudget(keeping: _page));
+    setState(() => _rasters.evictToBudget(keeping: _page));
   }
 
   /// Read-only here — the workspace holds it (see
@@ -507,28 +436,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// Guards every async landing against a newer load.
   int _generation = 0;
 
-  /// The timer turning pages while playing, and null while stopped —
-  /// 🚨the ONLY thing that says whether this viewer is playing, so a
-  /// second flag cannot disagree with it ([[make-the-invariant-unrepresentable]]).
-  ///
-  /// ⚠️Write it through the setter below and nowhere else. [_playingFlips]
-  /// has to fire for the actuation gate, and a notifier poked at the call
-  /// sites would be exactly the second flag this comment forbids — here it
-  /// cannot be written except by the assignment that changes the timer.
-  Timer? _playTimerField;
-
-  Timer? get _playTimer => _playTimerField;
-
-  set _playTimer(Timer? timer) {
-    _playTimerField?.cancel();
-    _playTimerField = timer;
-    _playingFlips.value = timer != null;
-  }
-
-  /// [isActiveListenable]: fires when this viewer starts or stops, and on
-  /// nothing else — never per turned page (the gate wraps the whole editor).
-  final ValueNotifier<bool> _playingFlips = ValueNotifier<bool>(false);
-
   /// This viewer's sound, or silence if the app has no audio device.
   ///
   /// ⚠️Built lazily against the session's conform store — the SAME store
@@ -543,40 +450,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         .value
         .outputDeviceName,
   );
-
-  /// Where the sound has got to, in seconds — the playhead's position on
-  /// the waveform.
-  ///
-  /// 🚨It is read from the DEVICE every tick, never counted up here: the
-  /// device counts samples handed to the hardware, so a playhead that
-  /// follows it cannot drift from what is being heard. A local counter
-  /// would be a second clock, and the timeline's transport spends its
-  /// whole header explaining why there is only ever one.
-  double _soundSeconds = 0;
-
-  /// What has been asked of the document, one entry per (page, scale) —
-  /// landings remove their own entry, so a stale landing can never wipe a
-  /// newer one.
-  ///
-  /// 🚨★★★**A RENDER HAS THREE OUTCOMES AND THIS USED TO HAVE ROOM FOR
-  /// TWO.** It was a `Set`, so ABSENT answered both 「nobody has asked」 and
-  /// 「the last ask failed, so asking again right now is fine」 — and the
-  /// failure arm below cleared the marker inside a `setState`. That rebuild
-  /// re-entered `build`, which asks for the same page again, which fails
-  /// again, which rebuilds: measured at eleven asks for one unreadable frame
-  /// across three ticks, throttled by nothing but how fast the decoder can
-  /// say no. On the tablets this app is written for
-  /// ([[old-device-support-policy]]) that is a spinning CPU under a picture
-  /// that is not moving.
-  final Map<(int, double), _RenderAsk> _renders = {};
-
-  /// Whether a render is out with the document right now.
-  ///
-  /// ⛔Not `_renders.isNotEmpty`: a FAILED entry is remembered until the
-  /// next tick, and counting it as in-flight would stop the read-ahead from
-  /// ever issuing anything again.
-  bool get _rendering =>
-      _renders.values.any((ask) => ask == _RenderAsk.asking);
 
   /// Token that changes once per successfully LOADED document — drives
   /// the panel's auto-reframe so a preserved deep zoom/pan from the
@@ -662,8 +535,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   void _forgetRefusals() {
     // 🚨★★★**TURNING A PAGE IS ASKING AGAIN**, and until now only a RUN
-    // was. `_onPlayTick` was the sole place a refusal was forgotten, and
-    // it exists only while `_playTimer` does — which needs a document
+    // was. The run's tick was the sole place a refusal was forgotten, and
+    // it exists only while a run does ([MediaRun]) — which needs a document
     // that turns its own pages or carries sound. A PDF has neither, so a
     // page whose render the engine once refused stayed blank for the life
     // of the panel: the round that stopped the hot loop had traded a
@@ -675,7 +548,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // a USER ACTION, so it cannot feed itself. A refusal is still
     // remembered for as long as the reader is looking at the same page —
     // nothing about that page changed, so there is nothing to re-ask for.
-    _renders.removeWhere((_, ask) => ask == _RenderAsk.failed);
+    _rasters.forgetRefusals();
   }
 
   @override
@@ -695,7 +568,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     widget.session.renderCaches.viewerRasterBytesByViewer.remove(
       widget.viewerId,
     );
-    _playingFlips.dispose();
+    _run.dispose();
     super.dispose();
   }
 
@@ -703,16 +576,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   void _disposeContent() {
     // A timer outliving its document would page a viewer that has none.
-    _stopPlaying();
-    for (final page in _pageCache.values) {
-      page.image.dispose();
-    }
-    _pageCache.clear();
-    _buffering = false;
-    _renderScale = null;
-    _shownPages = const {};
-    widget.session.renderCaches.viewerRasterBytesByViewer[widget.viewerId] = 0;
-    _renders.clear();
+    _run.stop();
+    _rasters.clear();
     final document = _document;
     _document = null;
     unawaited(document?.dispose());
@@ -911,7 +776,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // A render still out on the document it replaces lands nowhere, and
       // is asked of [fresh].
       _generation += 1;
-      _renders.clear();
+      _rasters.turnAway();
       _document = fresh;
     });
     if (fresh is HeldViewerDocument) {
@@ -987,60 +852,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
   }
 
-  // --- Lazy rendering (§6-m: the visible page at the current zoom) ------
-
-  void _ensurePageRendered(int pageIndex, double scale) {
-    final document = _document;
-    if (document == null) {
-      return;
-    }
-    final cached = _pageCache[pageIndex];
-    if (cached != null && cached.scale == scale) {
-      return;
-    }
-    // One entry PER (page, scale): a shared single slot got wiped by
-    // whichever render landed first, and the wipe re-issued duplicates
-    // of work already queued on PDFium's serial worker.
-    //
-    // 🚨An entry of EITHER kind stops the ask — in flight means 「already
-    // out」 and failed means 「not until the clock says so」. See [_renders].
-    if (_renders.containsKey((pageIndex, scale))) {
-      return;
-    }
-    _renders[(pageIndex, scale)] = _RenderAsk.asking;
-    final generation = _generation;
-    final pageSize = document.pageSize(pageIndex);
-    unawaited(() async {
-      final image = await decodedImageStillWanted(
-        document.renderPage(
-          pageIndex,
-          width: (pageSize.width * scale).round().clamp(1, 1 << 13).toInt(),
-          height: (pageSize.height * scale).round().clamp(1, 1 << 13).toInt(),
-        ),
-        wanted: () => mounted && generation == _generation,
-        // ⛔NO `setState` on this road. Nothing the eye can see changed — the
-        // page that was not there is still not there — and the rebuild is
-        // exactly what made a refused frame ask again immediately, and
-        // again, for as long as it kept being refused. The retry belongs to
-        // the play tick, which is the clock that actually needs the frame.
-        onFailed: () {
-          if (mounted && generation == _generation) {
-            _renders[(pageIndex, scale)] = _RenderAsk.failed;
-          }
-        },
-      );
-      if (image == null) {
-        return;
-      }
-      setState(() {
-        _renders.remove((pageIndex, scale));
-        _pageCache[pageIndex]?.image.dispose();
-        _pageCache[pageIndex] = _RenderedPage(scale: scale, image: image);
-        _evictToBudget(keeping: pageIndex);
-      });
-    }());
-  }
-
   // --- Paging ------------------------------------------------------------
 
   int get _pageCount => _document?.pageCount ?? 0;
@@ -1051,12 +862,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     widget.position.value = next;
   }
 
-  /// Whether this document turns its own pages — 유저 2026-08-29:
-  /// 「비디오 … 불러와서 재생가능하게」. It asks the DOCUMENT, so an
-  /// animated GIF gets the same button a movie does; nothing here knows
-  /// what a movie is.
-  bool get _turnsItsOwnPages =>
-      (_document?.framesPerSecond ?? 0) > 0 && _pageCount > 1;
+  bool get _turnsItsOwnPages => _run.turnsItsOwnPages;
 
   /// The document's pages one under another, read as a book (F-201, 유저
   /// 2026-09-27: 「뷰어든 콘티 프리뷰든 pdf같은거 여러페이지 동시에
@@ -1096,148 +902,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         : null;
   }
 
-  /// Whether there is anything to PLAY: pages that advance by themselves,
-  /// or sound. 유저 2026-09-08: 「뷰어 소리 내는 범위는 싹 다야」 — so a
-  /// waveform, which turns no pages at all, still gets the button.
-  bool get _canPlay => _turnsItsOwnPages || _soundPath != null;
-
-  bool get _playing => _playTimer != null;
-
-  // --- The playback buffer (a player, not a slideshow) --------------------
-
-  /// How much movie the read-ahead tries to keep ready, in SECONDS.
-  ///
-  /// 유저 2026-08-31: 「10초? 5초? **메모리 제한에 맞춰서 알아서** 로드하고」
-  /// — so this is a ceiling, not the number that usually decides. On any
-  /// document big enough to matter [_bufferAheadPages] hits the byte budget
-  /// first, and the budget is the one that knows the device.
-  static const double _bufferAheadSeconds = 5;
-
-  /// Frames of read-ahead this document affords: whichever of the time
-  /// window and the memory budget runs out first, and zero when nothing is
-  /// playing (paging by hand needs no cushion).
-  ///
-  /// 🚨The budget has to hold the frame being LOOKED AT as well, so the
-  /// read-ahead gets what is left after it. Without that subtraction the
-  /// buffer fetches exactly enough to evict its own oldest entry, and the
-  /// eviction re-issues the render it just dropped.
-  int _bufferAheadPages() {
-    final document = _document;
-    final scale = _renderScale;
-    if (document == null || scale == null || !_playing) {
-      return 0;
-    }
-    final fps = document.framesPerSecond ?? 0;
-    final size = document.pageSize(_page);
-    final bytes = estimatedImageBytes(
-      (size.width * scale).round().clamp(1, 1 << 13).toInt(),
-      (size.height * scale).round().clamp(1, 1 << 13).toInt(),
-    );
-    final affordable = bytes <= 0 ? 0 : (_budget.byteBudget ~/ bytes) - 1;
-    final window = (fps * _bufferAheadSeconds).round();
-    return math.max(0, math.min(affordable, window));
-  }
-
-  /// How many consecutive frames from [from] are ready to draw at the scale
-  /// the last build chose.
-  int _readyFramesFrom(int from) {
-    final scale = _renderScale;
-    if (scale == null) {
-      return 0;
-    }
-    var ready = 0;
-    while (from + ready < _pageCount) {
-      final cached = _pageCache[from + ready];
-      if (cached == null || cached.scale != scale) {
-        break;
-      }
-      ready += 1;
-    }
-    return ready;
-  }
-
-  /// What the buffer must hold before a parked playhead moves again.
-  ///
-  /// 유저 2026-08-31: 「로드가 안되고있으면 5초분만큼? 로드될떄까지 멈추는?」
-  /// — resuming on ONE ready frame is the stutter this replaces: play a
-  /// frame, run dry, park, play a frame. It is the SAME cushion
-  /// [_bufferAheadPages] fills, capped by what is left of the movie so the
-  /// last seconds do not become unplayable.
-  int _resumeAfterFrames() =>
-      math.min(_bufferAheadPages(), _pageCount - _page - 1);
-
-  /// Issues the NEXT missing raster the playhead will need, one at a time.
-  ///
-  /// ⛔Not all of them at once: both decoders behind [ViewerDocument] are
-  /// serial (PDFium runs one worker, and the video decoder's fast path is
-  /// sequential reads), so a hundred outstanding requests would finish in
-  /// the same order and the same time while holding a hundred futures. Each
-  /// landing rebuilds, which issues the next — the queue walks forward on
-  /// its own.
-  void _fillPlaybackBuffer() {
-    final scale = _renderScale;
-    if (scale == null || _rendering) {
-      return;
-    }
-    final ahead = _bufferAheadPages();
-    for (var offset = 1; offset <= ahead; offset += 1) {
-      final page = _page + offset;
-      if (page >= _pageCount) {
-        return;
-      }
-      final cached = _pageCache[page];
-      if (cached == null || cached.scale != scale) {
-        _ensurePageRendered(page, scale);
-        return;
-      }
-    }
-  }
-
-  void _stopPlaying() {
-    _playTimer = null;
-    _buffering = false;
-    // ⚠️Unconditional: [ViewerSound.stop] is idempotent, and every path out
-    // of a run — the button, the actuation gate, a new file, a closed tab —
-    // comes through here. A sound left playing under a stopped viewer is
-    // the one failure this panel cannot show on screen.
-    //
-    // 🪦This line carried a 「MUTANT SURVIVES HERE」 note for one round: the
-    // bench has no audio device, so nothing could be left playing and
-    // deleting it changed nothing. The note was right about the bench and
-    // wrong about the conclusion — the answer was a SEAM, not a shrug.
-    // `MediaViewerTabHost.sound` is that seam, and the mutant dies now.
-    _sound.stop();
-  }
-
-  /// One tick of a run that has SOUND and no pages: move the playhead to
-  /// wherever the device has got to.
-  ///
-  /// 🚨★★★**THE PICTURE FOLLOWS THE SOUND, NEVER A COUNTER.** The device
-  /// counts samples handed to the hardware, so a playhead read from it
-  /// cannot drift from what is being heard however late this tick runs.
-  /// Counting up here instead would be a second clock, which is the exact
-  /// thing the timeline's device transport exists to avoid.
-  void _followTheSound() {
-    if (!mounted) {
-      return;
-    }
-    final at = _sound.positionSeconds;
-    if (at == null || _sound.ended) {
-      // Ran out: a viewer that kept ticking on a silent device would say
-      // 「재생 중」 to the actuation gate forever. A sound that reached its
-      // end leaves the playhead ON the end — the last tick read it a tick
-      // short, and a press from there would play one tick and stop.
-      setState(() {
-        if (_sound.ended) {
-          _soundSeconds = _soundLengthSeconds ?? _soundSeconds;
-        }
-        _stopPlaying();
-      });
-      return;
-    }
-    setState(() => _soundSeconds = at);
-  }
-
   /// How long the sound on screen is, once its conform has answered.
   double? get _soundLengthSeconds {
     final path = _soundPath;
@@ -1246,161 +910,42 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         : widget.session.audioConformStore.durationSecondsFor(path);
   }
 
-  /// Where a press picks the sound up: where the playhead STANDS — the
-  /// instant of the page in a document that turns its own, the waveform's
-  /// playhead otherwise — and from the top once it has reached the end.
-  ///
-  /// 🗣️The playhead line says it itself (「where the playhead STANDS is
-  /// what tells you where a second press would resume from」), and every
-  /// press started the sound at 0 all the same: a movie resumed mid-way
-  /// played its picture from the page and its sound from the top
-  /// (import-preview-plays-silent, 2026-09-29).
-  double _resumeSeconds() {
-    if (_turnsItsOwnPages) {
-      return _page / _document!.framesPerSecond!;
-    }
-    final length = _soundLengthSeconds;
-    return length == null || _soundSeconds >= length ? 0 : _soundSeconds;
-  }
+  // --- The run's surface ([MediaRunSurface]) -------------------------------
+
+  @override
+  ViewerDocument? get document => _document;
+
+  @override
+  int get page => _page;
+
+  @override
+  void turnToPage(int page) => _turnToPage(page);
+
+  @override
+  String? get soundPath => _soundPath;
+
+  @override
+  double? get soundLengthSeconds => _soundLengthSeconds;
 
   /// 🚨★★★[PlaybackTransport] — this viewer is one of the things the app
   /// can be playing, so the actuation gate stops it with the same law it
   /// stops the canvas with (유저 09-07 `exclusive`, both directions).
-  /// ⛔It answers from [_playTimer] and stops through [_stopPlaying]; a
+  /// ⛔It answers from the run's timer and stops through [MediaRun.stop]; a
   /// separate "am I playing" for the gate would be the per-surface check
   /// the gate exists to avoid.
   @override
-  bool get isPlaying => _playing;
+  bool get isPlaying => _run.playing;
 
   @override
   void stop() {
-    if (!_playing) {
+    if (!_run.playing) {
       return;
     }
-    setState(_stopPlaying);
+    setState(_run.stop);
   }
 
   @override
-  ValueListenable<bool> get isActiveListenable => _playingFlips;
-
-  /// How often a run of THIS document has something to do: once per
-  /// frame while pages advance, and otherwise once per screen frame,
-  /// which is all a playhead sliding along a waveform needs. Null = there
-  /// is nothing to run.
-  Duration? get _playTickPeriod {
-    final fps = _document?.framesPerSecond ?? 0;
-    if (_turnsItsOwnPages) {
-      return Duration(microseconds: (1000000 / fps).round().clamp(1, 1000000));
-    }
-    return _soundPath == null ? null : const Duration(milliseconds: 16);
-  }
-
-  void _togglePlaying() {
-    if (_playing) {
-      setState(_stopPlaying);
-      return;
-    }
-    final period = _playTickPeriod;
-    if (period == null) {
-      return;
-    }
-    final soundPath = _soundPath;
-    setState(() {
-      // From the top when the playhead is already at the end: pressing play
-      // on the last frame has to DO something, and the only sensible
-      // something is to play it again.
-      if (_page >= _pageCount - 1) {
-        _turnToPage(0);
-      }
-      if (soundPath != null) {
-        _soundSeconds = _resumeSeconds();
-        _sound.play(soundPath, fromSeconds: _soundSeconds);
-      }
-      // ⛔A run with neither pages to turn nor sound coming out is a timer
-      // saying 「재생 중」 to the actuation gate while nothing happens — and
-      // the gate would then eat the next press for it. Standing down is
-      // silent BY DESIGN (no audio device, a conform still landing), so
-      // this is the shape that keeps a stand-down from becoming a lie.
-      if (!_turnsItsOwnPages && !_sound.isCarrying) {
-        return;
-      }
-      _playTimer = Timer.periodic(period, (_) => _onPlayTick());
-    });
-  }
-
-  /// One tick of a run.
-  ///
-  /// 🚨★★★**AND THE RETRY CLOCK.** A frame the decoder refused is forgotten
-  /// here and nowhere else, so it is asked for again at the rate the movie
-  /// actually needs it — once per frame time — instead of as fast as the
-  /// decoder can keep saying no. See [_renders] for what that cost.
-  ///
-  /// ⛔The fill has to be driven from here rather than left to the next
-  /// build: while the buffer is dry [_turnThePage] returns WITHOUT a
-  /// `setState`, so a parked viewer rebuilds for nothing and the walk
-  /// forward would have no one to start it. That is why forgetting the
-  /// failure is not enough on its own.
-  void _onPlayTick() {
-    if (!mounted) {
-      return;
-    }
-    _renders.removeWhere((_, ask) => ask == _RenderAsk.failed);
-    _sound.keepStreaming();
-    if (_turnsItsOwnPages) {
-      _turnThePage();
-    } else {
-      _followTheSound();
-    }
-    _fillPlaybackBuffer();
-  }
-
-  /// 🚨★★★**THE PLAYHEAD WAITS. IT DOES NOT WALK PAST A FRAME THAT IS NOT
-  /// THERE — AND NEITHER DOES THE SOUND.**
-  ///
-  /// This used to be 「best effort, deliberately」: the page advanced on the
-  /// clock and whichever raster had landed was drawn. What that produced
-  /// was a picture standing still while the playhead moved — and a held
-  /// picture cannot be told apart from a hold the animator DREW, which is
-  /// the one judgement this panel exists to support. 유저 2026-08-31:
-  /// 「유지하지말고 로드할때까지 멈춰있어야지」, and 「그림을 유지한다는게
-  /// 아니라 그 곳에 멈춘다는거야」.
-  ///
-  /// ⚠️The CANVAS does the opposite and that is also right: it judges
-  /// TIMING against sound, so it holds real time and drops frames —
-  /// `AudioPlaybackSync` says so in one line, 「frames drop, time never
-  /// stretches」.
-  ///
-  /// 🪦That last paragraph used to end 「This is a player looking at
-  /// reference, where nothing is riding on the clock, so it buffers」, and
-  /// as of 2026-09-08 something IS riding on it: the movie's own
-  /// soundtrack. The law did not change — it reached further. A buffer
-  /// that runs dry now holds the SOUND at the same instant, so the two
-  /// stutter together and come back in step; letting the sound run on
-  /// would leave the picture to catch up by dropping frames, which is the
-  /// behaviour this surface was given its law to refuse.
-  void _turnThePage() {
-    if (_page >= _pageCount - 1) {
-      setState(_stopPlaying);
-      return;
-    }
-    final ready = _readyFramesFrom(_page + 1);
-    if (_buffering) {
-      // ⛔Not「one frame is ready, go」: that plays a frame, runs dry
-      // and parks again, which is a stutter rather than playback.
-      if (ready < _resumeAfterFrames()) {
-        return;
-      }
-      _sound.resume(_soundSeconds);
-      setState(() => _buffering = false);
-    } else if (ready < 1) {
-      // Remember where the sound was, because that is where BOTH pick up.
-      _soundSeconds = _sound.positionSeconds ?? _soundSeconds;
-      _sound.hold();
-      setState(() => _buffering = true);
-      return;
-    }
-    _turnToPage(_page + 1);
-  }
+  ValueListenable<bool> get isActiveListenable => _run.playingFlips;
 
   Future<void> _pickLooseFile() async {
     // 🚨EVERY PICKER SHOWS EVERY FILE (유저 2026-08-29) — the refusal is a
@@ -1464,13 +1009,13 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         // ⛔It is present only when the document turns its own pages — the
         // same rule this whole strip already follows (유저 확정 ⑥: a still
         // image gets no strip rather than a permanently disabled one).
-        if (_canPlay)
+        if (_run.canPlay)
           AppIconButton(
             keyValue: _key('play-button'),
-            tooltip: _playing ? strings.menuPause : strings.menuPlay,
-            icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+            tooltip: _run.playing ? strings.menuPause : strings.menuPlay,
+            icon: Icon(_run.playing ? Icons.pause : Icons.play_arrow),
             size: AppIconButtonSize.strip,
-            onPressed: _togglePlaying,
+            onPressed: _run.toggle,
           ),
       ],
     );
@@ -1578,10 +1123,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final bytes = estimatedImageBytes(pixels.width, pixels.height);
     var held = 0;
     setState(() {
-      _cutReadBytes = bytes;
-      held = _evictToBudget(keeping: pageIndex);
+      _rasters.extraBytes = bytes;
+      held = _rasters.evictToBudget(keeping: pageIndex);
     });
-    if (held + bytes > _budget.byteBudget) {
+    if (held + bytes > _rasters.budget.byteBudget) {
       _endCutRead();
       cursorNotices.show(
         AppText.strings.mediaViewerCutTooLarge,
@@ -1618,8 +1163,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// The read is back, or never went out: stop billing it.
   void _endCutRead() {
     setState(() {
-      _cutReadBytes = 0;
-      _evictToBudget(keeping: _page);
+      _rasters.extraBytes = 0;
+      _rasters.evictToBudget(keeping: _page);
     });
   }
 
@@ -1646,9 +1191,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// 🚨★★★**IMAGES COME THROUGH HERE.** They used to skip the tier and draw
   /// a decode of the ORIGINAL file, which is the 17× the card measured.
   ///
-  /// 🚨THE SCALE AXIS ONLY. [_RenderedPage] says a wrong-SCALE image draws
-  /// while the right one renders — a blurrier render of the SAME page is
-  /// not a lie about which frame this is. 🪦A page-axis twin once drew
+  /// 🚨THE SCALE AXIS ONLY. [PageRasters.imageOf] says a wrong-SCALE image
+  /// draws while the right one renders — a blurrier render of the SAME page
+  /// is not a lie about which frame this is. 🪦A page-axis twin once drew
   /// the LAST page when this one's raster had not landed, answering the
   /// white flashes 유저 2026-08-31 reported (「첫 재생때 … 흰 화면이
   /// 엄청나게 깜빡이면서 재생됨」) by making the picture lie; the playhead
@@ -1661,7 +1206,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   }) {
     final document = _document;
     if (document == null || _pageCount == 0) {
-      _shownPages = const {};
+      _rasters.shown = const {};
       return const [];
     }
     final book = _book;
@@ -1675,7 +1220,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         ))
           (page: index, rect: book.pageRect(index)),
     ];
-    _shownPages = {for (final entry in shown) entry.page};
+    _rasters.shown = {for (final entry in shown) entry.page};
     if (asking) {
       final coverage = CanvasZoomScale.of(context).display(viewport.zoom);
       for (final entry in shown) {
@@ -1684,15 +1229,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
           document.pageSize(entry.page),
         );
         if (entry.page == page) {
-          _renderScale = scale;
+          _rasters.scale = scale;
         }
-        _ensurePageRendered(entry.page, scale);
+        _rasters.ensureRendered(entry.page, scale);
       }
-      _fillPlaybackBuffer();
+      _run.fillBuffer();
     }
     return [
       for (final entry in shown)
-        (rect: entry.rect, image: _pageCache[entry.page]?.image),
+        (rect: entry.rect, image: _rasters.imageOf(entry.page)),
     ];
   }
 
@@ -1902,7 +1447,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                 child: CustomPaint(
                   key: ValueKey<String>(_key('playhead')),
                   painter: _PlayheadPainter(
-                    atSeconds: _soundSeconds,
+                    atSeconds: _run.soundSeconds,
                     ofSeconds: waveformSeconds,
                     docSize: docSize,
                     viewport: viewport,
