@@ -512,9 +512,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 _session.activeCutSpan.activeCutPlaybackFrameCount,
             // The のりしろ: how far past the cut's end line it is DRAWN, and
             // the word the ruler spells across that. Same derivation the
-            // sheet pages by, so the two cannot disagree.
-            drawnFrameCount: _session.activeCutSpan.activeCutDrawnFrameCount,
-            noriShiroLabel: _session.activeCutSpan.activeCutNoriShiroLabel,
+            // sheet pages by, so the two cannot disagree — ASKED by each
+            // surface wherever it hears a drag, which this host never
+            // rebuilds for.
+            noriShiro: _session.activeCutSpan.activeCutNoriShiro,
             exposureStateForLayer: _session.exposureStateForLayer,
             frameNameForLayer: _session.frameVerbs.frameNameForLayer,
             // R26 #44: ACTION-section blocks whose cel is still blank gray

@@ -58,8 +58,7 @@ class TimelinePanel extends StatefulWidget {
     this.revealSelectionTick,
     this.playbackFrame,
     required this.playbackFrameCount,
-    this.drawnFrameCount,
-    this.noriShiroLabel = '',
+    this.noriShiro,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
     this.celContent,
@@ -201,9 +200,9 @@ class TimelinePanel extends StatefulWidget {
   final int playbackFrameCount;
 
   /// How many frames the cut is DRAWN for (尺 + のりしろ) and the word the
-  /// ruler spells across the difference. Null/empty keeps the handle off.
-  final int? drawnFrameCount;
-  final String noriShiroLabel;
+  /// ruler spells across the difference — see [TimelineGridHooks.noriShiro].
+  /// Null keeps the handle off.
+  final TimelineNoriShiro Function()? noriShiro;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
@@ -594,8 +593,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       revealSelectionTick: widget.revealSelectionTick,
       playbackFrame: widget.playbackFrame,
       playbackFrameCount: widget.playbackFrameCount,
-      drawnFrameCount: widget.drawnFrameCount,
-      noriShiroLabel: widget.noriShiroLabel,
+      noriShiro: widget.noriShiro,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
       celContent: widget.celContent,

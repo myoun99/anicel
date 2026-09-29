@@ -54,8 +54,7 @@ class TimelineGridHooks {
     this.revealSelectionTick,
     this.playbackFrame,
     required this.playbackFrameCount,
-    this.drawnFrameCount,
-    this.noriShiroLabel = '',
+    this.noriShiro,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
     this.celContent,
@@ -161,13 +160,18 @@ class TimelineGridHooks {
 
   final int playbackFrameCount;
 
-  /// How many frames the cut is DRAWN for (尺 + のりしろ). Null keeps the
-  /// ruler's blue handle boundary off, which is every cut no transition
-  /// crosses.
-  final int? drawnFrameCount;
-
-  /// The word the ruler spells across the handle.
-  final String noriShiroLabel;
+  /// How many frames the cut is DRAWN for (尺 + のりしろ) and the word the
+  /// ruler spells across the handle, as the timeline shows them NOW. Null
+  /// keeps the ruler's blue handle boundary off.
+  ///
+  /// 🚨Asked, not handed over: every surface that draws the margin asks it
+  /// again wherever it hears a drag, so the blue line, the wash's edge and
+  /// the name across the margin ride a transition span dragged over the
+  /// cut's boundary. ↩️They were two values the host handed over when it
+  /// built, and the host never rebuilds for a drag step — the ruler stood
+  /// on the committed margin until the release
+  /// (`ruler-norishiro-follows-drags`).
+  final TimelineNoriShiro Function()? noriShiro;
 
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;

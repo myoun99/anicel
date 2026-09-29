@@ -33,6 +33,11 @@ class TimelineCutEndDragCallbacks {
   final VoidCallback onCancel;
 }
 
+/// How many frames a cut is DRAWN for — its 尺 plus the のりしろ a transition
+/// span crossing one of its boundaries asks for — and the word the ruler
+/// spells across that margin.
+typedef TimelineNoriShiro = ({int drawnFrameCount, String label});
+
 /// The playbackFrameCount a boundary consumer should DISPLAY: the live
 /// trim preview's duration while a drag targets [cutId]; on a surface whose
 /// end is the MOVIE's (the storyboard), whatever [movieEndUnder] says the

@@ -573,7 +573,10 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
     playhead: const SizedBox.shrink(),
     frameCellExtent: cell,
     playbackFrameCount: stops.cut,
-    drawnFrameCount: stops.drawn,
+    noriShiro: switch (stops.drawn) {
+      final drawn? => () => (drawnFrameCount: drawn, label: ''),
+      null => null,
+    },
   );
 
   /// ⑩ 🚫NO HALO (유저 확정 2026-08-12): 「버튼 쪽 그림자(할로) 삭제.

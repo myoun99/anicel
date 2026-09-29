@@ -309,7 +309,7 @@ void main() {
       reason: 'counted from the first frame laid out, the stack\'s origin',
     );
     expect(
-      stack.drawnFrameCount,
+      stack.noriShiro!().drawnFrameCount,
       session.activeCutSpan.activeCutDrawnFrameCount - first,
     );
     expect(
@@ -382,7 +382,7 @@ void main() {
         final stackFinder = find.byType(TimelineFrameGridStack);
         final stack = tester.widget<TimelineFrameGridStack>(stackFinder);
         expect(stack.playbackFrameCount, 10 - 5);
-        expect(stack.drawnFrameCount, 13 - 5);
+        expect(stack.noriShiro!().drawnFrameCount, 13 - 5);
         expect(stack.frameCellExtent, 10);
         expect(washOf(tester, stackFinder).outsideStart, 130 - 50);
         final noriShiro = tester.widget<TimelineBodyNoriShiroBoundary>(

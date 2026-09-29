@@ -147,6 +147,16 @@ class ActiveCutSpan {
     return '${terms.join('/')} ${_appSettings.uiStrings.tlNoriShiro}';
   }
 
+  /// [activeCutDrawnFrameCount] and [activeCutNoriShiroLabel] as a timeline
+  /// surface asks for them: together, and afresh wherever it hears a drag —
+  /// both read the one row a drag shows, so the blue line and the name
+  /// across the margin ride a transition span dragged over the cut's
+  /// boundary before the release.
+  ({int drawnFrameCount, String label}) activeCutNoriShiro() => (
+    drawnFrameCount: activeCutDrawnFrameCount,
+    label: activeCutNoriShiroLabel,
+  );
+
   /// R27 #31: the cut an EXPORT anchors on. Parking the playhead in a gap
   /// leaves no active cut, but that is a playhead position — not "no
   /// film" — so the export window must still open (it used to throw

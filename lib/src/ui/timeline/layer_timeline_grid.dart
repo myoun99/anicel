@@ -871,7 +871,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   // the body too, and
                   // the wash starts
                   // behind it.
-                  drawnFrameCount: widget.hooks.drawnFrameCount,
+                  noriShiro: widget.hooks.noriShiro,
                   // The cursor layer decides
                   // per frame what to show —
                   // the slot itself is static
@@ -1186,14 +1186,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 widget
                                                                     .hooks
                                                                     .playbackFrameCount,
-                                                            drawnFrameCount:
-                                                                widget
-                                                                    .hooks
-                                                                    .drawnFrameCount,
-                                                            noriShiroLabel:
-                                                                widget
-                                                                    .hooks
-                                                                    .noriShiroLabel,
+                                                            noriShiro: widget
+                                                                .hooks
+                                                                .noriShiro,
                                                             leadingFrameSpacerWidth:
                                                                 0,
                                                             trailingFrameSpacerWidth:

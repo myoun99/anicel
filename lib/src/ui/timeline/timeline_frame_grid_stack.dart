@@ -36,7 +36,7 @@ class TimelineFrameGridStack extends StatelessWidget {
     this.dragPreview,
     required this.frameCellExtent,
     required this.playbackFrameCount,
-    this.drawnFrameCount,
+    this.noriShiro,
   });
 
   /// The FRAME axis: horizontal in the timeline, vertical in the x-sheet.
@@ -70,7 +70,11 @@ class TimelineFrameGridStack extends StatelessWidget {
   /// transition span crossing one of its boundaries asks for. Null (or equal to
   /// [playbackFrameCount]) is every cut nothing crosses: no blue line, and the
   /// wash starts at the cut end exactly as it always did.
-  final int? drawnFrameCount;
+  ///
+  /// Asked wherever the stack hears a drag, so the blue line and the wash's
+  /// edge ride a transition span dragged over the cut's boundary
+  /// (`TimelineGridHooks.noriShiro`).
+  final TimelineNoriShiro Function()? noriShiro;
 
   _LiveTrim? get _liveTrim {
     final drag = cutEndDrag;
@@ -96,7 +100,7 @@ class TimelineFrameGridStack extends StatelessWidget {
         preview: preview,
         cutId: cutEndDrag?.cutId,
         playbackFrameCount: playbackFrameCount,
-        drawnFrameCount: drawnFrameCount,
+        drawnFrameCount: noriShiro?.call().drawnFrameCount,
         frameCellExtent: frameCellExtent,
       );
 

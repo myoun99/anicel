@@ -27,8 +27,7 @@ class TimelineFrameRuler extends StatelessWidget {
     this.dragPreview,
     this.previewCutId,
     this.movieEndUnder,
-    this.drawnFrameCount,
-    this.noriShiroLabel = '',
+    this.noriShiro,
     this.axis = Axis.horizontal,
     this.playhead,
   });
@@ -59,13 +58,13 @@ class TimelineFrameRuler extends StatelessWidget {
   final int Function(TimelineDragPreview preview)? movieEndUnder;
 
   /// How many frames the cut is DRAWN for — its 尺 plus the のりしろ a
-  /// transition span crossing one of its boundaries asks for. Null (or equal
-  /// to [playbackFrameCount]) draws no handle at all, which is every cut
-  /// nothing crosses.
-  final int? drawnFrameCount;
-
-  /// The word spelled across the handle. Empty keeps the line alone.
-  final String noriShiroLabel;
+  /// transition span crossing one of its boundaries asks for — and the word
+  /// spelled across the handle. Null (or no further than
+  /// [playbackFrameCount]) draws no handle at all, which is every cut nothing
+  /// crosses; an empty word keeps the line alone. Asked wherever the ruler
+  /// hears a drag, so both ride a transition span dragged over the cut's
+  /// boundary (`TimelineGridHooks.noriShiro`).
+  final TimelineNoriShiro Function()? noriShiro;
 
   /// The playhead the ruler writes its own pair at (I-16), handed to the
   /// header row; null mounts no writing.
@@ -106,43 +105,10 @@ class TimelineFrameRuler extends StatelessWidget {
             (previewCutId != null || movieEndUnder != null))
           ValueListenableBuilder<TimelineDragPreview?>(
             valueListenable: dragPreview,
-            builder: (context, preview, _) => TimelineRulerNoriShiroBoundary(
-              cutEnd: timelineCutEndBoundaryX(
-                playbackFrameCount: timelineCutEndPreviewFrameCount(
-                  preview: preview,
-                  cutId: previewCutId,
-                  movieEndUnder: movieEndUnder,
-                  playbackFrameCount: playbackFrameCount,
-                ),
-                metrics: metrics,
-              ),
-              drawnEnd: timelineCutEndBoundaryX(
-                playbackFrameCount: timelineDrawnEndPreviewFrameCount(
-                  preview: preview,
-                  cutId: previewCutId,
-                  movieEndUnder: movieEndUnder,
-                  playbackFrameCount: playbackFrameCount,
-                  drawnFrameCount: drawnFrameCount,
-                ),
-                metrics: metrics,
-              ),
-              label: noriShiroLabel,
-              axis: axis,
-            ),
+            builder: (context, preview, _) => _noriShiroUnder(preview),
           )
         else
-          TimelineRulerNoriShiroBoundary(
-            cutEnd: timelineCutEndBoundaryX(
-              playbackFrameCount: playbackFrameCount,
-              metrics: metrics,
-            ),
-            drawnEnd: timelineCutEndBoundaryX(
-              playbackFrameCount: drawnFrameCount ?? playbackFrameCount,
-              metrics: metrics,
-            ),
-            label: noriShiroLabel,
-            axis: axis,
-          ),
+          _noriShiroUnder(null),
         if (dragPreview != null &&
             (previewCutId != null || movieEndUnder != null))
           ValueListenableBuilder<TimelineDragPreview?>(
@@ -169,4 +135,15 @@ class TimelineFrameRuler extends StatelessWidget {
       ],
     );
   }
+
+  Widget _noriShiroUnder(TimelineDragPreview? preview) =>
+      timelineRulerNoriShiroUnder(
+        preview,
+        cutId: previewCutId,
+        movieEndUnder: movieEndUnder,
+        playbackFrameCount: playbackFrameCount,
+        noriShiro: noriShiro,
+        metrics: metrics,
+        axis: axis,
+      );
 }

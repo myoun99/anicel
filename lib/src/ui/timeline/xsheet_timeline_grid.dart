@@ -468,15 +468,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     layerCount: entries.length,
   );
 
-  /// Where the drawn end sits, for the rail's drawn-end mark — the same
-  /// product the body stack's wash and blue line read.
-  double _drawnEndOffset(TimelineDragPreview? preview) =>
-      timelineDrawnEndOffset(
-        preview: preview,
+  /// The rail's drawn-end mark as [preview] leaves it — the timeline ruler's
+  /// own reading, transposed.
+  Widget _railNoriShiroUnder(TimelineDragPreview? preview) =>
+      timelineRulerNoriShiroUnder(
+        preview,
         cutId: widget.hooks.cutEndDrag?.cutId,
         playbackFrameCount: widget.hooks.playbackFrameCount,
-        drawnFrameCount: widget.hooks.drawnFrameCount,
-        frameCellExtent: _metrics.frameCellWidth,
+        noriShiro: widget.hooks.noriShiro,
+        metrics: _metrics,
+        axis: Axis.vertical,
       );
 
   Widget _buildRailSplitter(_SheetGeometry geometry) {
@@ -539,7 +540,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 dragPreview: widget.hooks.dragPreview,
                 frameCellExtent: _metrics.frameCellWidth,
                 playbackFrameCount: widget.hooks.playbackFrameCount,
-                drawnFrameCount: widget.hooks.drawnFrameCount,
+                noriShiro: widget.hooks.noriShiro,
               );
             },
           ),
@@ -932,13 +933,18 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                           ),
                         // The のりしろ boundary,
                         // transposed: a length
-                        // below the cut's end.
-                        TimelineRulerNoriShiroBoundary(
-                          axis: Axis.vertical,
-                          cutEnd: cutEndBoundaryOffset,
-                          drawnEnd: _drawnEndOffset(null),
-                          label: widget.hooks.noriShiroLabel,
-                        ),
+                        // below the cut's end,
+                        // riding a drag as the
+                        // timeline ruler's does.
+                        if (widget.hooks.cutEndDrag != null &&
+                            widget.hooks.dragPreview != null)
+                          ValueListenableBuilder<TimelineDragPreview?>(
+                            valueListenable: widget.hooks.dragPreview!,
+                            builder: (context, preview, _) =>
+                                _railNoriShiroUnder(preview),
+                          )
+                        else
+                          _railNoriShiroUnder(null),
                       ],
                     ),
                   );

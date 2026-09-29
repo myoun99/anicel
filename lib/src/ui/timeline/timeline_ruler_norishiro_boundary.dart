@@ -1,6 +1,56 @@
 import 'package:flutter/material.dart';
 
+import '../../models/cut_id.dart';
 import '../theme/app_theme.dart';
+import 'timeline_cut_end_handle.dart';
+import 'timeline_drag_preview.dart';
+import 'timeline_frame_range_policy.dart' show timelineCutEndBoundaryX;
+import 'timeline_grid_metrics.dart';
+
+/// The のりしろ boundary a frame ruler draws as [preview] leaves it (null:
+/// nothing in flight) — the timeline's ruler and the X-sheet's rail alike.
+///
+/// Its margin is ASKED here ([noriShiro]), inside whatever hears the drag,
+/// so the line and the name across it ride a transition span dragged over
+/// the cut's boundary as they ride a trim. ↩️Both surfaces were handed the
+/// margin when the host built, and the host never rebuilds for a drag step
+/// — the ruler stood on the committed margin until the release
+/// (`ruler-norishiro-follows-drags`), and the rail did not follow even a
+/// trim.
+TimelineRulerNoriShiroBoundary timelineRulerNoriShiroUnder(
+  TimelineDragPreview? preview, {
+  required CutId? cutId,
+  int Function(TimelineDragPreview preview)? movieEndUnder,
+  required int playbackFrameCount,
+  required TimelineNoriShiro Function()? noriShiro,
+  required TimelineGridMetrics metrics,
+  required Axis axis,
+}) {
+  final margin = noriShiro?.call();
+  return TimelineRulerNoriShiroBoundary(
+    cutEnd: timelineCutEndBoundaryX(
+      playbackFrameCount: timelineCutEndPreviewFrameCount(
+        preview: preview,
+        cutId: cutId,
+        movieEndUnder: movieEndUnder,
+        playbackFrameCount: playbackFrameCount,
+      ),
+      metrics: metrics,
+    ),
+    drawnEnd: timelineCutEndBoundaryX(
+      playbackFrameCount: timelineDrawnEndPreviewFrameCount(
+        preview: preview,
+        cutId: cutId,
+        movieEndUnder: movieEndUnder,
+        playbackFrameCount: playbackFrameCount,
+        drawnFrameCount: margin?.drawnFrameCount,
+      ),
+      metrics: metrics,
+    ),
+    label: margin?.label ?? '',
+    axis: axis,
+  );
+}
 
 /// The のりしろ boundary in the frame ruler: where the cut is DRAWN to, past
 /// the red line that says where it plays to.
