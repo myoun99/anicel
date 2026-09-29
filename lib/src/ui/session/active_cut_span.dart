@@ -23,20 +23,17 @@ import 'transitions.dart';
 class ActiveCutSpan {
   ActiveCutSpan({
     required ProjectAccess project,
-    required SelectionAccess selection,
     required EditorAppSettings appSettings,
     required Camera camera,
     required TrackSeDisplay trackSe,
     required Transitions transitions,
   }) : _project = project,
-       _selection = selection,
        _appSettings = appSettings,
        _camera = camera,
        _trackSe = trackSe,
        _transitions = transitions;
 
   final ProjectAccess _project;
-  final SelectionAccess _selection;
   final EditorAppSettings _appSettings;
   final Camera _camera;
   final TrackSeDisplay _trackSe;
@@ -128,8 +125,8 @@ class ActiveCutSpan {
     final start = _project.activeCutGlobalStartFrame;
     final end = start + cut.duration;
     final terms = <String>[];
-    for (final entry in _selection.activeTrack.transitionLayer.instructions
-        .entries) {
+    for (final entry
+        in _transitions.activeTrackTransitionRowShown.instructions.entries) {
       if (!transitionSpanFires(
         span: _transitions.transitionSpanOf(entry),
         cutStart: start,

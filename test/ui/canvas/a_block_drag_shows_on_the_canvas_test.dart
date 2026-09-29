@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -17,6 +19,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -285,5 +288,38 @@ void main() {
 
     session.dragPreview.value = null;
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('camera keys carried with a block move the camera frame on '
+      'the canvas before the release', (tester) async {
+    final session = await open(tester);
+    final camera = session.requireActiveCut.layers.cameraLayer!;
+    session.selectLayer(camera.id);
+    await tester.pumpAndSettle();
+    CameraPose shown() =>
+        tester.widget<CameraFrameOverlay>(find.byType(CameraFrameOverlay)).pose;
+    final before = shown();
+    final keys = {
+      0: CameraPose(
+        center: CanvasPoint(x: before.center.x + 40, y: before.center.y),
+        zoom: before.zoom,
+      ),
+    };
+
+    // The block ride's two halves, as the drag hands them over.
+    session.camera.showCameraKeysDragPreview(keys);
+    session.dragPreview.value = BlockMoveDragPreview(
+      previewLayers: const {},
+      cameraCutId: cutId,
+      cameraKeyframes: keys,
+      cameraMarkerLayer: camera.copyWith(),
+    );
+    await tester.pump();
+
+    expect(shown().center.x, before.center.x + 40);
+    session.camera.showCameraKeysDragPreview(null);
+    session.dragPreview.value = null;
+    await tester.pumpAndSettle();
+    expect(shown().center.x, before.center.x);
   });
 }

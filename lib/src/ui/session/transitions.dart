@@ -73,19 +73,18 @@ class Transitions {
   /// ramp). They are plain records so nobody downstream has to know a layer is
   /// behind them — start, length and the TERM'S MARK, which is what says
   /// whether the span moves both cuts or only its own.
-  ///
-  /// The row as a drag in flight shows it — a span stretched or moved — so
-  /// the editing canvas's fade follows the hand with the marks
-  /// (canvas-follows-block-moves), the way the camera's one answer
-  /// (`Camera.activeCutCameraTrack`) follows its keys. Every reader here
-  /// displays; the drags read their row at their press.
-  List<TransitionSpan> get activeTrackTransitionSpans {
+  List<TransitionSpan> get activeTrackTransitionSpans => [
+    for (final entry in activeTrackTransitionRowShown.instructions.entries)
+      transitionSpanOf(entry),
+  ];
+
+  /// The active track's transition row as a drag in flight shows it, so the
+  /// canvas's fade and the ruler's margin and name follow the hand
+  /// (canvas-follows-block-moves) as `Camera.activeCutCameraTrack` follows its
+  /// keys. Its readers display; a drag reads its row at its press.
+  Layer get activeTrackTransitionRowShown {
     final row = _selection.activeTrack.transitionLayer;
-    final shown =
-        timelineDragPreviewGlobalLayerFor(_dragPreview.value, row.id) ?? row;
-    return [
-      for (final entry in shown.instructions.entries) transitionSpanOf(entry),
-    ];
+    return timelineDragPreviewGlobalLayerFor(_dragPreview.value, row.id) ?? row;
   }
 
   /// The track that owns [layerId] as its TRANSITION row, on any track.
@@ -592,19 +591,14 @@ class Transitions {
   /// `hidden_folder_is_hidden_test`); the fixture lives in no folder, so
   /// the singleton stack it stands in is its own.
   List<TransitionSpan> transitionSpansOfTrack(TrackId trackId) {
-    for (final track in _project.repository.requireProject().tracks) {
-      if (track.id == trackId) {
-        final transition = track.transitionLayer;
-        if (!<Layer>[transition].rowVisible(transition)) {
-          return const [];
-        }
-        return [
-          for (final entry in transition.instructions.entries)
-            transitionSpanOf(entry),
-        ];
-      }
+    final transition = _project.trackById(trackId)?.transitionLayer;
+    if (transition == null || !<Layer>[transition].rowVisible(transition)) {
+      return const [];
     }
-    return const [];
+    return [
+      for (final entry in transition.instructions.entries)
+        transitionSpanOf(entry),
+    ];
   }
 
   /// One instruction event as a geometry span, WITH its term's mark.

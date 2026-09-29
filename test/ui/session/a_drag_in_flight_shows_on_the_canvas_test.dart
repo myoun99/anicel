@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -11,6 +12,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge, coveringDrawingBlockAt;
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -22,7 +24,8 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 ///
 /// Every drag on the preview channel reaches the editing canvas through the
 /// ONE substitution the timeline rows paint with — a block, a comma, an SE
-/// line, a transition span, a block carrying keys — and the row being drawn
+/// line, a transition span, a block carrying keys, a file pushing its
+/// neighbours, a cut's length — and the row being drawn
 /// on composites the cel the drag shows there as an IMAGE while the brush
 /// still holds another. Read at the session, before the release; the widget
 /// half with real pointers is `a_block_drag_shows_on_the_canvas_test`.
@@ -323,6 +326,109 @@ void main() {
     );
     session.edgeDrag.cancelTransitionEdgeDrag();
     expect(session.opacityVerbs.activeCutEditingVeils(), isEmpty);
+  });
+
+  test('the ruler\'s margin and the name across it read the one row a drag '
+      'shows — an O.L stretched over the cut\'s end signs the label before '
+      'the release', () {
+    final session = open();
+    session.cutVerbs.createCut();
+    final cuts = session.repository.requireProject().tracks.first.cuts;
+    session.selectCut(cuts.first.id);
+    final end = cuts.first.duration;
+    transitionsOf(session).updateTransitionInstructions({
+      end - 4: const InstructionEvent(instructionId: 'ol', length: 3),
+    });
+    final span = session.activeCutSpan;
+    final film = span.activeCutPlaybackFrameCount;
+    expect(
+      span.activeCutNoriShiroLabel,
+      isEmpty,
+      reason: 'the premise: the O.L ends inside the cut',
+    );
+
+    expect(
+      session.edgeDrag.beginTransitionEdgeDrag(
+        spanStartIndex: end - 4,
+        edge: TimelineBlockEdge.end,
+      ),
+      isTrue,
+    );
+    session.edgeDrag.updateTransitionEdgeDrag(3);
+
+    expect(
+      span.activeCutDrawnFrameCount,
+      greaterThan(film),
+      reason: 'the margin follows the hand',
+    );
+    expect(
+      span.activeCutNoriShiroLabel,
+      contains('O.L'),
+      reason: 'and the name across it reads the same row',
+    );
+    session.edgeDrag.cancelTransitionEdgeDrag();
+    expect(span.activeCutNoriShiroLabel, isEmpty);
+  });
+
+  test('a file held over the timeline, pushing a neighbour under the '
+      'playhead, shows that neighbour there — the same substitution', () {
+    final (session, _, b) = twoRows();
+    session.selectFrameIndex(0);
+    final row = session.requireActiveCut.layers.byId(b)!;
+    final pushed = celAt(session, b, 3);
+
+    session.dragPreview.value = MediaPlacementPreview(
+      previewLayers: {
+        b: row.copyWith(
+          timeline: {0: TimelineExposure.drawing(pushed, length: 1)},
+        ),
+      },
+    );
+
+    expect(imagesOn(session, b), [pushed]);
+    session.dragPreview.value = null;
+    expect(imagesOn(session, b), isEmpty);
+  });
+
+  test('a cut\'s length dragged in the storyboard, re-keying a row, shows '
+      'the row as re-keyed — the same substitution', () {
+    final (session, _, b) = twoRows();
+    session.selectFrameIndex(0);
+    final row = session.requireActiveCut.layers.byId(b)!;
+    final rekeyed = celAt(session, b, 3);
+
+    session.dragPreview.value = CutTrimDragPreview(
+      previewDurations: const {},
+      previewLayers: {
+        b: row.copyWith(
+          timeline: {0: TimelineExposure.drawing(rekeyed, length: 1)},
+        ),
+      },
+    );
+
+    expect(imagesOn(session, b), [rekeyed]);
+    session.dragPreview.value = null;
+    expect(imagesOn(session, b), isEmpty);
+  });
+
+  test('a SYNCED attach row follows its base\'s block under the playhead — '
+      'as an image, the brush holding nothing there', () {
+    final session = open();
+    session.selectFrameIndex(3);
+    session.createDrawingAtCurrentFrame();
+    final base = session.activeLayer!.id;
+    session.folders.addAttachedLayer(AttachedPlacement.above);
+    final attach = session.activeLayer!.id;
+    expect(attach, isNot(base), reason: 'the premise: on the attach row');
+    final mirror = session.selectedFrame!.id;
+    session.selectFrameIndex(0);
+    expect(imagesOn(session, attach), isEmpty, reason: 'the premise');
+
+    moveRange(session, base, 3, -3);
+
+    expect(imagesOn(session, attach), [mirror]);
+    expect(liveRowOf(session), isNull);
+    session.rangeMove.cancelFrameRangeMoveDrag();
   });
 
   test('a camera row stays out of the picture — its marker clone changes '

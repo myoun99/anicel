@@ -1376,7 +1376,6 @@ class EditorSessionManager extends ChangeNotifier
   // and drawn frame counts, the のりしろ label and the export anchor.
   late final ActiveCutSpan activeCutSpan = ActiveCutSpan(
     project: this,
-    selection: this,
     appSettings: appSettings,
     camera: camera,
     trackSe: trackSe,
