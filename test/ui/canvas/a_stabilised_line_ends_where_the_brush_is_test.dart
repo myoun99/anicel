@@ -3,12 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
@@ -78,22 +75,17 @@ Future<List<BrushDab>> _stroke(
   required double stabilizer,
 }) async {
   final committed = <List<BrushDab>>[];
+  final cel = BitmapSurface(
+    canvasSize: const CanvasSize(width: 200, height: 40),
+    tileSize: 16,
+  );
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: Align(
           alignment: Alignment.topLeft,
           child: InteractiveBrushEditCanvasView(
-            sessionState: BrushEditSessionState(
-              canvasState: CanvasSurfaceState(
-                currentSurface: BitmapSurface(
-                  canvasSize: const CanvasSize(width: 200, height: 40),
-                  tileSize: 16,
-                ),
-              ),
-              materializationHistoryState:
-                  BrushBitmapMaterializationHistoryState(),
-            ),
+            celNow: () => cel,
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),
             inputSettings: () => BrushEditCanvasInputSettings(

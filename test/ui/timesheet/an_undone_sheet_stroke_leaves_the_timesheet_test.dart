@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
@@ -61,12 +61,18 @@ void main() {
       session.requireActiveCut.id,
       0,
     );
-    // Page 0's first half: the paged view's window over band 0.
-    BrushEditSessionState onScreen() => tester
-        .widget<InteractiveBrushEditCanvasView>(
-          find.byKey(const ValueKey<String>('timesheet-ink-strip-0-h0')),
+    // Page 0's first half: the paged view's window over band 0 — what it
+    // DRAWS, which is what its last build handed it. (Its view asks for the
+    // cel as it stands whenever a pen lands, so reading that would say
+    // nothing about whether the window was built again.)
+    BitmapSurface onScreen() => tester
+        .widget<BrushEditCanvasView>(
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('timesheet-ink-strip-0-h0')),
+            matching: find.byType(BrushEditCanvasView),
+          ),
         )
-        .sessionState;
+        .surface;
 
     ink.commitStroke(
       plane: TimesheetInkPlane.strip,
@@ -91,7 +97,12 @@ void main() {
     await tester.pump();
     expect(
       onScreen(),
-      same(ink.sessionStateFor(TimesheetInkPlane.strip, band)),
+      same(
+        ink
+            .sessionStateFor(TimesheetInkPlane.strip, band)
+            .canvasState
+            .currentSurface,
+      ),
       reason: 'the CONTROL — the stroke is on screen',
     );
 
@@ -105,7 +116,12 @@ void main() {
     );
     expect(
       onScreen(),
-      same(ink.sessionStateFor(TimesheetInkPlane.strip, band)),
+      same(
+        ink
+            .sessionStateFor(TimesheetInkPlane.strip, band)
+            .canvasState
+            .currentSurface,
+      ),
       reason:
           'the window kept the surface from before the undo: nothing it '
           'rebuilds on was told, so the stroke stayed on the sheet and the '

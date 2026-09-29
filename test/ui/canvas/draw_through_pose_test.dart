@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:anicel/src/models/brush_dab.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -14,6 +10,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/services/layer_pose_paint.dart';
+import '../../helpers/blank_cel.dart';
 
 /// The draw-through wrap (R3 ⑩): wrapping the interactive view in
 /// `Transform(layerPoseViewportWrapMatrix(...))` shows the active layer
@@ -21,15 +18,6 @@ import 'package:anicel/src/services/layer_pose_paint.dart';
 /// strokes land in ORIGINAL artwork coordinates.
 const _anchorKey = ValueKey<String>('draw-through-anchor');
 const _canvasSize = CanvasSize(width: 8, height: 8);
-
-BrushEditSessionState _sessionState() {
-  return BrushEditSessionState(
-    canvasState: CanvasSurfaceState(
-      currentSurface: BitmapSurface(canvasSize: _canvasSize, tileSize: 2),
-    ),
-    materializationHistoryState: BrushBitmapMaterializationHistoryState(),
-  );
-}
 
 Future<void> _pumpPosedView(
   WidgetTester tester, {
@@ -55,7 +43,7 @@ Future<void> _pumpPosedView(
                 CanvasViewport(),
               ),
               child: InteractiveBrushEditCanvasView(
-                sessionState: _sessionState(),
+                celNow: blankCel(_canvasSize, tileSize: 2),
                 layerId: const LayerId('layer-a'),
                 frameId: const FrameId('frame-a'),
                 inputSettings: BrushEditCanvasInputSettings.new,

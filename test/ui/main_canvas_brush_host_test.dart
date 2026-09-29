@@ -217,7 +217,7 @@ void main() {
       find.byType(InteractiveBrushEditCanvasView),
     );
     expect(
-      view.sessionState.canvasState.currentSurface.canvasSize,
+      view.celNow().canvasSize,
       const CanvasSize(width: 64, height: 48),
     );
 
@@ -236,7 +236,7 @@ void main() {
       find.byType(InteractiveBrushEditCanvasView),
     );
     expect(
-      view.sessionState.canvasState.currentSurface.canvasSize,
+      view.celNow().canvasSize,
       const CanvasSize(width: 96, height: 72),
     );
   });

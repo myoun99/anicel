@@ -14,7 +14,6 @@ import '../brush/brush_tool_state.dart' show CanvasTool;
 import '../../models/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
-import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
@@ -84,7 +83,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 
   InteractiveBrushEditCanvasView({
     super.key,
-    required this.sessionState,
+    required this.celNow,
     required this.layerId,
     required this.frameId,
     required this.inputSettings,
@@ -167,7 +166,21 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// nothing.
   final CutGuides guides;
 
-  final BrushEditSessionState sessionState;
+  /// The cel's pixels AS THEY STAND — asked at the moment they are used,
+  /// never kept from the last build.
+  ///
+  /// 🚨★★★F-233 (유저 2026-09-29: 「언두 빠르게하면서 다시 빠르게
+  /// 스트로크하면서 하다보면 … 언두된 스트로크가 다시 1프레임 보였다가
+  /// 사라지는상황」). An undo, a redo or a stroke just landed changes the cel
+  /// inside its own event, and this view learns of it at the next build. It
+  /// used to hold the cel as a SNAPSHOT of that build, so a pen that landed
+  /// in between began its stroke on the cel the last frame showed: the
+  /// undone stroke came back inside every tile the new one touched until
+  /// the pen lifted, and a stroke just lifted vanished under the next. The
+  /// commit and the undo already read the cel as it stands
+  /// (`BrushFrameEditingCoordinator.currentSurfaceOf`); a host hands this
+  /// view the same question, and there is no snapshot left to read.
+  final BitmapSurface Function() celNow;
   final LayerId layerId;
   final FrameId frameId;
 
@@ -486,10 +499,9 @@ class _InteractiveBrushEditCanvasViewState
     // as it did when nothing was built at all.
     //
     // ⛔Still nothing PAINTED while standing down: the cel the playhead has
-    // LEFT must not be drawn (the session state still points at it), which
-    // is what the flag was written for.
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
+    // LEFT must not be drawn ([celNow] answers with it until the host
+    // builds again), which is what the flag was written for.
+    final canvasSize = widget.celNow().canvasSize;
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportWidth = constraints.hasBoundedWidth
@@ -528,7 +540,7 @@ class _InteractiveBrushEditCanvasViewState
                     // at final device resolution in one picture —
                     // pixel-stable at fractional zoom.
                     child: BrushEditCanvasView(
-                      sessionState: widget.sessionState,
+                      surface: widget.celNow(),
                       viewport: widget.viewport,
                       showTransparentBackground:
                           widget.showTransparentBackground,
@@ -562,8 +574,7 @@ class _InteractiveBrushEditCanvasViewState
   /// stage rectangle is a crop at composite time, not an input
   /// boundary): strokes, eyedropper picks and fill taps alike.
   bool _isInsidePasteboard(CanvasPoint localPosition) {
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
+    final canvasSize = widget.celNow().canvasSize;
     return canvasSize.containsPasteboardPoint(
       x: localPosition.x,
       y: localPosition.y,
@@ -651,7 +662,7 @@ class _InteractiveBrushEditCanvasViewState
 
   /// Creates or recycles the live stroke rasterizer for the current canvas.
   void _prepareLiveRasterizer() {
-    final surface = widget.sessionState.canvasState.currentSurface;
+    final surface = widget.celNow();
     final canvasSize = surface.canvasSize;
     final existing = _liveRasterizer;
     // The stroke grid IS the cel grid (the promotion round's premise: a

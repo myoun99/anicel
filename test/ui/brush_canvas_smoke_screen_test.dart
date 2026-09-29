@@ -354,19 +354,19 @@ void main() {
         await tester.pumpWidget(_app(_smallScreen()));
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
-        final blackState = _view(tester).sessionState;
+        final blackCel = _view(tester).celNow();
         await _tapKey(
           tester,
           const ValueKey<String>('brush-canvas-smoke-screen-color-blue'),
         );
         await tapCanvas(tester, const Offset(3.5, 2.5));
-        final blueState = _view(tester).sessionState;
+        final blueCel = _view(tester).celNow();
 
         expect(_host(tester).inputSettings.color, 0xFF0000FF);
         expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
-        // Each commit materializes into a new session state instance and
+        // Each commit materializes into a new cel surface and
         // the earlier stroke's pixels remain untouched.
-        expect(identical(blueState, blackState), isFalse);
+        expect(identical(blueCel, blackCel), isFalse);
         expect(_surfaceRgbaAt(tester, 1, 1), [0, 0, 0, 255]);
         expect(_surfaceRgbaAt(tester, 3, 2), [0, 0, 255, 255]);
       },
@@ -478,7 +478,7 @@ InteractiveBrushCanvasSmokeHost _host(WidgetTester tester) {
 }
 
 List<int> _surfaceRgbaAt(WidgetTester tester, int x, int y) {
-  final surface = _view(tester).sessionState.canvasState.currentSurface;
+  final surface = _view(tester).celNow();
   final tileSize = surface.tileSize;
   final tile = surface.tileAt(TileCoord(x: x ~/ tileSize, y: y ~/ tileSize));
   if (tile == null) {
@@ -498,7 +498,7 @@ int _alphaAt(WidgetTester tester, int x, int y) =>
     _surfaceRgbaAt(tester, x, y)[3];
 
 bool _surfaceIsBlank(WidgetTester tester) {
-  final surface = _view(tester).sessionState.canvasState.currentSurface;
+  final surface = _view(tester).celNow();
   return surface.tiles.values.every((tile) => !tile.hasInk);
 }
 

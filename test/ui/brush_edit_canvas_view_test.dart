@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
@@ -18,13 +15,11 @@ void main() {
     testWidgets('renders one composite painter in a keyed RepaintBoundary', (
       tester,
     ) async {
-      final sessionState = _sessionState(
-        BitmapSurface(canvasSize: const CanvasSize(width: 12, height: 8)),
+      final surface = BitmapSurface(
+        canvasSize: const CanvasSize(width: 12, height: 8),
       );
 
-      await tester.pumpWidget(
-        _app(BrushEditCanvasView(sessionState: sessionState)),
-      );
+      await tester.pumpWidget(_app(BrushEditCanvasView(surface: surface)));
 
       expect(
         find.byKey(const ValueKey<String>('brush-edit-canvas-view-boundary')),
@@ -68,7 +63,6 @@ void main() {
         final surface = BitmapSurface(
           canvasSize: const CanvasSize(width: 7, height: 5),
         );
-        final sessionState = _sessionState(surface);
         final viewport = CanvasViewport(zoom: 1.25, panX: 3, panY: 4);
         final overlayModel = ActiveStrokeOverlayModel()..dabs.add(_dab());
         addTearDown(overlayModel.dispose);
@@ -76,7 +70,7 @@ void main() {
         await tester.pumpWidget(
           _app(
             BrushEditCanvasView(
-              sessionState: sessionState,
+              surface: surface,
               viewport: viewport,
               overlayModel: overlayModel,
               showTransparentBackground: false,
@@ -117,13 +111,6 @@ BrushDab _dab() => BrushDab(
   pressure: 1,
   sequence: 0,
 );
-
-BrushEditSessionState _sessionState(BitmapSurface surface) {
-  return BrushEditSessionState(
-    canvasState: CanvasSurfaceState(currentSurface: surface),
-    materializationHistoryState: BrushBitmapMaterializationHistoryState(),
-  );
-}
 
 Widget _app(Widget child) {
   return MaterialApp(

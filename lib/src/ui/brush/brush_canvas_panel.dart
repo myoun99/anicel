@@ -1893,7 +1893,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // interactive subtree on every frame flip — the constant flip
       // hitch. Cel changes reset in place via didUpdateWidget.
       key: const ValueKey<String>('brush-canvas-view'),
-      sessionState: coordinator.activeSessionState,
+      celNow: () => coordinator.currentSurfaceOf(activeKey),
       layerId: activeKey.layerId,
       frameId: activeKey.frameId,
       inputSettings: _inputSettingsNow,

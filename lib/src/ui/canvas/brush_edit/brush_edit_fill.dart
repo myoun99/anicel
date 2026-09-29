@@ -69,7 +69,7 @@ class _BrushEditFill {
     final dab = blend == BrushBlendMode.erase
         ? rawDab.copyWith(erase: true)
         : rawDab;
-    final surface = _state.widget.sessionState.canvasState.currentSurface;
+    final surface = _state.widget.celNow();
     final overlay = _state._overlay._overlayModel;
     _state._overlay.resetOverlay();
     // The fill composites like anything else now (유저 확정: 버킷에도

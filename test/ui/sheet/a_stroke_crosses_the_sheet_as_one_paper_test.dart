@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -14,6 +16,7 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_overlay.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
@@ -365,6 +368,57 @@ void main() {
       history.undo();
       expect(controller.hasInkFor(TimesheetInkPlane.strip, left.key), isFalse);
       expect(controller.hasInkFor(TimesheetInkPlane.page, page.key), isFalse);
+    });
+
+    testWidgets('🚨F-233: a window reads its band when the pen lands, not when '
+        'it was last built', (tester) async {
+      // An undo or a stroke just landed changes the band inside its own
+      // event, and the window builds again at the next frame. A pen that
+      // lands in between draws on the band as it stands — the view asks
+      // its host, and the host asks the controller then.
+      await pumpSheet(tester);
+      final window = windows.singleWhere((w) => w.id == 'strip-0-h0');
+      final plane = window.plane! as TimesheetInkPlane;
+      final view = tester.widget<InteractiveBrushEditCanvasView>(
+        find.byKey(const ValueKey<String>('timesheet-ink-strip-0-h0')),
+      );
+      final before = view.celNow();
+
+      controller.commitStroke(
+        plane: plane,
+        key: window.key,
+        strokeData: BrushStrokeCommitData(
+          sourceDabs: [
+            BrushDab(
+              center: CanvasPoint(x: 20, y: 20),
+              color: 0xFF000000,
+              size: 4,
+              opacity: 1,
+              flow: 1,
+              hardness: 1,
+              tipShape: BrushTipShape.round,
+              pressure: 1,
+              sequence: 0,
+            ),
+          ],
+        ),
+        historyManager: history,
+      );
+      final landed = controller
+          .sessionStateFor(plane, window.key)
+          .canvasState
+          .currentSurface;
+      expect(
+        identical(landed, before),
+        isFalse,
+        reason: '⛔premise: the stroke landed on the band',
+      );
+      expect(
+        identical(view.celNow(), landed),
+        isTrue,
+        reason: 'no frame has built since, and the window still answers '
+            'with the band as it stands',
+      );
     });
 
     testWidgets('every window rolls the dice of the one press: a scattered, '

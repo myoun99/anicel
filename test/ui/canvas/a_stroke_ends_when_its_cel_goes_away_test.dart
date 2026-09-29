@@ -2,16 +2,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import '../../helpers/blank_cel.dart';
 
 /// 🗣️F-232 (유저 2026-09-29): 「어느 순간 언두가 안먹히는상황이있음 … 키보드로
 /// 언두가 안되길래 … 왼쪽띠 버튼눌러봤는데도 안되서」.
@@ -37,15 +34,9 @@ void main() {
       body: Align(
         alignment: Alignment.topLeft,
         child: InteractiveBrushEditCanvasView(
-          sessionState: BrushEditSessionState(
-            canvasState: CanvasSurfaceState(
-              currentSurface: BitmapSurface(
-                canvasSize: const CanvasSize(width: 64, height: 64),
-                tileSize: 16,
-              ),
-            ),
-            materializationHistoryState:
-                BrushBitmapMaterializationHistoryState(),
+          celNow: blankCel(
+            const CanvasSize(width: 64, height: 64),
+            tileSize: 16,
           ),
           layerId: const LayerId('layer-a'),
           frameId: const FrameId('frame-a'),

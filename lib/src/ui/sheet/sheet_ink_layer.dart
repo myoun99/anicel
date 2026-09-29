@@ -609,7 +609,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   Widget _view(SheetWindow window, CanvasSelectionRegion region) =>
       InteractiveBrushEditCanvasView(
         key: ValueKey<String>('${widget.keyPrefix}-ink-${window.id}'),
-        sessionState: widget.sessionStateFor(window),
+        celNow: () => widget.sessionStateFor(window).canvasState.currentSurface,
         layerId: window.key.layerId,
         frameId: window.key.frameId,
         inputSettings: () => _inputSettingsFor(window),

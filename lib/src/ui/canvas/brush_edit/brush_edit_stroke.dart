@@ -95,7 +95,7 @@ class _BrushEditStroke {
     // bug: every parity test staged the model manually and never caught
     // it). The overlay must display in the stroke's blend mode from the
     // first dab.
-    final strokeSurface = _state.widget.sessionState.canvasState.currentSurface;
+    final strokeSurface = _state.widget.celNow();
     _state._groundSampler = _state._groundMixer == null
         ? null
         : bitmapSurfaceGroundSampler(strokeSurface);
@@ -224,8 +224,7 @@ class _BrushEditStroke {
       return;
     }
 
-    final canvasSize =
-        _state.widget.sessionState.canvasState.currentSurface.canvasSize;
+    final canvasSize = _state.widget.celNow().canvasSize;
     final clippedSegment = const CanvasSegmentClipper().clip(
       previous: previousRaw,
       current: canvasPosition,

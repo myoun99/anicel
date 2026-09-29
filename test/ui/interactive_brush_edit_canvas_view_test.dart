@@ -44,7 +44,7 @@ void main() {
         await tester.pumpWidget(
           _app(
             InteractiveBrushEditCanvasView(
-              sessionState: sessionState,
+              celNow: () => sessionState.canvasState.currentSurface,
               layerId: layerId,
               frameId: frameId,
               inputSettings: BrushEditCanvasInputSettings.new,
@@ -88,7 +88,13 @@ void main() {
             matching: find.byType(BrushEditCanvasView),
           ),
         );
-        expect(identical(canvasView.sessionState, sessionState), isTrue);
+        expect(
+          identical(
+            canvasView.surface,
+            sessionState.canvasState.currentSurface,
+          ),
+          isTrue,
+        );
         expect(canvasView.showTransparentBackground, isFalse);
       },
     );
@@ -947,7 +953,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           InteractiveBrushEditCanvasView(
-            sessionState: sessionState,
+            celNow: () => sessionState.canvasState.currentSurface,
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),
             inputSettings: () => inHand,
@@ -2062,7 +2068,7 @@ InteractiveBrushEditCanvasView _view(
   void Function(String actionId)? onInvokeAction,
 }) {
   return InteractiveBrushEditCanvasView(
-    sessionState: sessionState,
+    celNow: () => sessionState.canvasState.currentSurface,
     layerId: const LayerId('layer-a'),
     frameId: const FrameId('frame-a'),
     inputSettings: () => inputSettings,

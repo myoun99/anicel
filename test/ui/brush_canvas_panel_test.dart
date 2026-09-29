@@ -1087,7 +1087,7 @@ void main() {
       find.byType(BrushEditCanvasView),
     );
     expect(
-      canvasView.sessionState.canvasState.currentSurface.canvasSize,
+      canvasView.surface.canvasSize,
       BrushCanvasDefaults.canvasSize,
     );
   });
@@ -1508,7 +1508,7 @@ void main() {
       find.byType(BrushEditCanvasView),
     );
     expect(
-      canvasView.sessionState.canvasState.currentSurface.tiles,
+      canvasView.surface.tiles,
       isNotEmpty,
     );
     expect(

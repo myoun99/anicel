@@ -102,7 +102,7 @@ class _InteractiveBrushCanvasSmokeHostState
   Widget build(BuildContext context) {
     return InteractiveBrushEditCanvasView(
       key: const ValueKey<String>('interactive-brush-canvas-smoke-host-view'),
-      sessionState: _sessionState,
+      celNow: () => _sessionState.canvasState.currentSurface,
       layerId: widget.layerId,
       frameId: widget.frameId,
       inputSettings: () => widget.inputSettings,

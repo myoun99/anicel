@@ -7,11 +7,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -26,6 +22,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
+import '../../helpers/blank_cel.dart';
 
 /// The interactive canvas STAYS MOUNTED as the playhead crosses "no cel ↔
 /// cel". It used to be swapped for a blank box whenever the frame under
@@ -550,15 +547,9 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: InteractiveBrushEditCanvasView(
-            sessionState: BrushEditSessionState(
-              canvasState: CanvasSurfaceState(
-                currentSurface: BitmapSurface(
-                  canvasSize: const CanvasSize(width: 64, height: 64),
-                  tileSize: 2,
-                ),
-              ),
-              materializationHistoryState:
-                  BrushBitmapMaterializationHistoryState(),
+            celNow: blankCel(
+              const CanvasSize(width: 64, height: 64),
+              tileSize: 2,
             ),
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),
@@ -622,15 +613,9 @@ void main() {
         home: Scaffold(
           body: InteractiveBrushEditCanvasView(
             key: const ValueKey<String>('brush-canvas-view'),
-            sessionState: BrushEditSessionState(
-              canvasState: CanvasSurfaceState(
-                currentSurface: BitmapSurface(
-                  canvasSize: const CanvasSize(width: 64, height: 64),
-                  tileSize: 2,
-                ),
-              ),
-              materializationHistoryState:
-                  BrushBitmapMaterializationHistoryState(),
+            celNow: blankCel(
+              const CanvasSize(width: 64, height: 64),
+              tileSize: 2,
             ),
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),

@@ -145,7 +145,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: InteractiveBrushEditCanvasView(
-          sessionState: store.getOrCreate(_key),
+          celNow: () => store.getOrCreate(_key).canvasState.currentSurface,
           layerId: _key.layerId,
           frameId: _key.frameId,
           inputSettings: () => BrushToolState.defaults.toInputSettings(),

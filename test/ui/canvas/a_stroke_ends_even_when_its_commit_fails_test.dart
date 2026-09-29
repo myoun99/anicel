@@ -2,11 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -24,22 +21,17 @@ void main() {
       'press draws', (tester) async {
     final strokeLive = <bool>[];
     var commits = 0;
+    final cel = BitmapSurface(
+      canvasSize: const CanvasSize(width: 64, height: 64),
+      tileSize: 16,
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
             child: InteractiveBrushEditCanvasView(
-              sessionState: BrushEditSessionState(
-                canvasState: CanvasSurfaceState(
-                  currentSurface: BitmapSurface(
-                    canvasSize: const CanvasSize(width: 64, height: 64),
-                    tileSize: 16,
-                  ),
-                ),
-                materializationHistoryState:
-                    BrushBitmapMaterializationHistoryState(),
-              ),
+              celNow: () => cel,
               layerId: const LayerId('layer-a'),
               frameId: const FrameId('frame-a'),
               inputSettings: () => BrushEditCanvasInputSettings.defaults,

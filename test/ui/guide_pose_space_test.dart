@@ -1,9 +1,6 @@
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -154,6 +151,7 @@ void main() {
     // the right of the SCREEN axis has to come back mirrored to its left.
     final commits = <BrushStrokeCommitData>[];
     final viewport = CanvasViewport();
+    final cel = BitmapSurface(canvasSize: canvasSize, tileSize: 32);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -171,16 +169,7 @@ void main() {
                   anchorPoint: quarterTurn.anchorPoint,
                 ),
                 child: InteractiveBrushEditCanvasView(
-                  sessionState: BrushEditSessionState(
-                    canvasState: CanvasSurfaceState(
-                      currentSurface: BitmapSurface(
-                        canvasSize: canvasSize,
-                        tileSize: 32,
-                      ),
-                    ),
-                    materializationHistoryState:
-                        BrushBitmapMaterializationHistoryState(),
-                  ),
+                  celNow: () => cel,
                   layerId: const LayerId('l'),
                   frameId: const FrameId('f'),
                   inputSettings: () => BrushEditCanvasInputSettings(
