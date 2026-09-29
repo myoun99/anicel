@@ -609,7 +609,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
         cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
         trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
-        cutPictureVisibleOf: session.isCutPictureVisible,
+        cutPictureVisibleOf: session.cutPictureEyes.isVisible,
         onFrameCached:
             session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
         viewport: viewport,
@@ -724,7 +724,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
           cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
           trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
-          cutPictureVisibleOf: session.isCutPictureVisible,
+          cutPictureVisibleOf: session.cutPictureEyes.isVisible,
           viewport: viewport,
           background: session.projectSettings.projectBackground,
           pasteboardArgb: session.repository.requireProject().pasteboardArgb,

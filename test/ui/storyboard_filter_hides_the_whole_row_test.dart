@@ -134,7 +134,9 @@ void main() {
         cut.id,
     ];
     expect(cuts, isNotEmpty, reason: 'LIVENESS — the track has cuts');
-    final eyes = [for (final cut in cuts) session.isCutPictureVisible(cut)];
+    final eyes = [
+      for (final cut in cuts) session.cutPictureEyes.isVisible(cut),
+    ];
 
     // From S1's eye — the last row the rail shows — down into the empty
     // rail where the hidden V row would have stood.
@@ -163,7 +165,7 @@ void main() {
       reason: 'LIVENESS — the press hid the row it started on',
     );
     expect(
-      [for (final cut in cuts) session.isCutPictureVisible(cut)],
+      [for (final cut in cuts) session.cutPictureEyes.isVisible(cut)],
       eyes,
       reason: 'the V row is hidden, so no stroke reaches its cut eye',
     );

@@ -49,14 +49,14 @@ void main() {
     s.selectFrameIndex(2);
 
     // Hiding ANOTHER cut's picture: selection untouched.
-    s.toggleCutPictureVisibility(second);
+    s.cutPictureEyes.toggle(second);
     expect(s.activeCutId, first);
-    s.toggleCutPictureVisibility(second); // restore
+    s.cutPictureEyes.toggle(second); // restore
 
     // Hiding the ACTIVE cut's picture: the index shows nothing anymore —
     // the no-cut state, parked at the exact global.
-    s.toggleCutPictureVisibility(first);
-    expect(s.isCutPictureVisible(first), isFalse);
+    s.cutPictureEyes.toggle(first);
+    expect(s.cutPictureEyes.isVisible(first), isFalse);
     expect(s.activeCutId, isNull, reason: 'the active cut ceases');
     expect(s.editingSession.gapGlobalFrame, 2, reason: 'parked where it stood');
     expect(s.editingSession.playheadInGap, isTrue);
@@ -64,8 +64,8 @@ void main() {
     // Re-showing while parked ON the cut lands there again — as if the
     // position were clicked (without this the eye-on read as a no-op:
     // the editing view stayed in the void).
-    s.toggleCutPictureVisibility(first);
-    expect(s.isCutPictureVisible(first), isTrue);
+    s.cutPictureEyes.toggle(first);
+    expect(s.cutPictureEyes.isVisible(first), isTrue);
     expect(s.activeCutId, first, reason: 'the parked position restores');
     expect(s.currentFrameIndex, 2);
     expect(s.editingSession.playheadInGap, isFalse);
@@ -74,8 +74,8 @@ void main() {
     // parking (nothing to land on at that index).
     s.selectGlobalFrame(aEnd + 1);
     expect(s.activeCutId, isNull);
-    s.toggleCutPictureVisibility(first);
-    s.toggleCutPictureVisibility(first);
+    s.cutPictureEyes.toggle(first);
+    s.cutPictureEyes.toggle(first);
     expect(s.activeCutId, isNull, reason: 'the gap parking survives');
     expect(s.editingSession.gapGlobalFrame, aEnd + 1);
   });

@@ -129,7 +129,7 @@ void main() {
 
   List<bool> pictureVisibility(EditorSessionManager session) => [
     for (final id in const ['t1-cut', 't2-cut', 't3-cut'])
-      session.isCutPictureVisible(CutId(id)),
+      session.cutPictureEyes.isVisible(CutId(id)),
   ];
 
   /// The transition rows, the THIRD kind the rail stacks — one more eye on

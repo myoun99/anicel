@@ -107,6 +107,7 @@ import 'session/folder_bands.dart';
 import 'session/visibility_solo.dart';
 import 'session/transitions.dart';
 import 'session/camera.dart';
+import 'session/cut_picture_eyes.dart';
 import 'session/cut_under_playhead.dart';
 import 'session/playhead_cursors.dart';
 import 'session/frame_scrub.dart';
@@ -1649,40 +1650,16 @@ class EditorSessionManager extends ChangeNotifier
   // the GLOBAL axis, exactly like the pose and the fade beside it, so these
   // verbs take a TrackId and no cut is ever in the loop.
 
-  /// Cuts whose PICTURE is hidden in the playback display — the storyboard
-  /// V-row eye (R9). The paper stays, the composite doesn't draw. A working
-  /// aid: the editing canvas, exports and thumbnails ignore it.
-  final Set<CutId> _hiddenPictureCutIds = {};
-
-  bool isCutPictureVisible(CutId cutId) =>
-      !_hiddenPictureCutIds.contains(cutId);
-
-  void toggleCutPictureVisibility(CutId cutId) {
-    if (!_hiddenPictureCutIds.remove(cutId)) {
-      _hiddenPictureCutIds.add(cutId);
-      // UI-R13 #2: hiding the ACTIVE cut's picture is the no-cut state —
-      // nothing displays at this index anymore, exactly like a gap
-      // landing: park at the current global — the one park there is.
-      if (cutId == editingSession.activeCutId) {
-        parkGlobalFrame(editingGlobalFrame);
-      }
-      notifyListeners();
-      return;
-    }
-    // Re-showing (UI-R14 #2): the symmetric restore — when the playhead
-    // is parked ON the re-shown cut (the eye-off gap state), turning the
-    // eye back on lands there again, exactly as if the position were
-    // clicked. Without this the picture only returned in playback while
-    // the editing view stayed in the void.
-    final parked = editingSession.gapGlobalFrame;
-    if (parked != null &&
-        editingSession.activeCutId == null &&
-        trackFrameAxis().ownerOf(parked)?.cutId == cutId) {
-      selectGlobalFrame(parked);
-      return; // selectGlobalFrame notifies.
-    }
-    notifyListeners();
-  }
+  // ── the V row's eyes: their own object, in their own file ────────────
+  //
+  // A collaborator (session/cut_picture_eyes.dart, the audit's
+  // twenty-third family). Callers name it — `session.cutPictureEyes`.
+  late final CutPictureEyes cutPictureEyes = CutPictureEyes(
+    selection: this,
+    timeline: this,
+    changes: this,
+    park: parkGlobalFrame,
+  );
 
   /// Steps history and puts the session back where the new layer list says
   /// it should be.

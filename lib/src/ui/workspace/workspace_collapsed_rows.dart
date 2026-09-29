@@ -190,7 +190,7 @@ class _WorkspaceCollapsedRows {
               chromeless: true,
               activeCut: session.activeCutOrNull,
               subjectCut: session.activeCutOrNull,
-              cutPictureVisibleOf: session.isCutPictureVisible,
+              cutPictureVisibleOf: session.cutPictureEyes.isVisible,
             ),
       frameRowBuilder: track == null
           ? null
