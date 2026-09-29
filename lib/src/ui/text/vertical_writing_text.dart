@@ -161,68 +161,41 @@ void paintVerticalTextCell(
   double spanExtent = 0,
   double Function(double extentAlongColumn)? alongColumnScale,
 }) {
-  // Every form scales UNIFORMLY when it is wider than the column allows —
-  // never anamorphically. A 縦中横 pair squeezed on one axis alone reads
-  // as a font bug, and the SE columns really do get this narrow: a
-  // four-column SE group is 10px per column, so the limit is reachable,
-  // not theoretical.
-  //
   // ↩️F-93 (유저 2026-09-12): DOWN the column a glyph may still be narrowed
   // on that one axis, through [alongColumnScale] — SE dialogue asks for it
   // when its glyphs outnumber the room: 「이렇게 겹쳐질땐 글자 한글자의 좌우
   // 길이? 를 줄여서 한 칸에 한 글자라는 느낌이 나도록」. The width rule
-  // above stands.
-  double fitScale(double extentAcrossColumn) {
-    return extentAcrossColumn > maxCrossExtent && extentAcrossColumn > 0
-        ? maxCrossExtent / extentAcrossColumn
-        : 1.0;
-  }
-
+  // ([verticalGlyphFit]) stands.
+  final (:turned, :scale) = verticalGlyphFit(
+    cell,
+    painter: painter,
+    fontSize: fontSize,
+    maxCrossExtent: maxCrossExtent,
+    spanExtent: spanExtent,
+  );
   canvas.save();
-  final bool turned;
-  final double scale;
   switch (cell.form) {
     case VerticalGlyphForm.rotated:
-      // Turned 90° clockwise about the cell's centre: the long-vowel bar
-      // and the brackets become strokes along the column. Lying down, it
-      // is the glyph's HEIGHT that has to clear the column.
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(math.pi / 2);
-      turned = true;
-      scale = fitScale(painter.height);
     case VerticalGlyphForm.sideways:
-      // The word lies down and reads along the column. It is scaled into
-      // the slots it reserved (the reservation is an estimate, so this is
-      // usually a small trim) and into the column's own width, which the
-      // turned glyphs' HEIGHT has to clear.
+      // Turned 90° clockwise about the cell's centre ([verticalGlyphFit]).
       canvas.translate(center.dx, center.dy);
       canvas.rotate(math.pi / 2);
-      final alongScale =
-          spanExtent > 0 && painter.width > spanExtent && painter.width > 0
-          ? spanExtent / painter.width
-          : 1.0;
-      turned = true;
-      scale = math.min(alongScale, fitScale(painter.height));
     case VerticalGlyphForm.tateChuYoko:
-      // 縦中横: the digits stay horizontal and condense into the width one
-      // upright glyph would have taken.
       canvas.translate(center.dx, center.dy);
-      final target = math.min(fontSize, maxCrossExtent);
-      turned = false;
-      scale = painter.width > target && painter.width > 0
-          ? target / painter.width
-          : 1.0;
     case VerticalGlyphForm.shifted:
     case VerticalGlyphForm.upright:
       final shift = cell.shiftEm * fontSize;
       canvas.translate(center.dx + shift, center.dy - shift);
-      turned = false;
-      scale = fitScale(painter.width);
   }
-  // A standing glyph advances an em down the column; a turned one, its
-  // width.
   final along =
-      alongColumnScale?.call((turned ? painter.width : fontSize) * scale) ??
+      alongColumnScale?.call(
+        verticalGlyphAdvance(
+          turned: turned,
+          painter: painter,
+          fontSize: fontSize,
+          scale: scale,
+        ),
+      ) ??
       1.0;
   if (scale != 1.0 || along != 1.0) {
     if (turned) {
@@ -234,6 +207,71 @@ void paintVerticalTextCell(
   painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
   canvas.restore();
 }
+
+/// How a glyph of [cell] stands in a column [maxCrossExtent] wide: whether
+/// it lies DOWN the column, and the uniform scale that fits it across —
+/// what [paintVerticalTextCell] draws, and what a host that measures a
+/// column before drawing it asks ([verticalGlyphAdvance]).
+({bool turned, double scale}) verticalGlyphFit(
+  VerticalTextCell cell, {
+  required TextPainter painter,
+  required double fontSize,
+  double maxCrossExtent = double.infinity,
+  double spanExtent = 0,
+}) {
+  // Every form scales UNIFORMLY when it is wider than the column allows —
+  // never anamorphically. A 縦中横 pair squeezed on one axis alone reads
+  // as a font bug, and the SE columns really do get this narrow: a
+  // four-column SE group is 10px per column, so the limit is reachable,
+  // not theoretical.
+  double fitScale(double extentAcrossColumn) {
+    return extentAcrossColumn > maxCrossExtent && extentAcrossColumn > 0
+        ? maxCrossExtent / extentAcrossColumn
+        : 1.0;
+  }
+
+  return switch (cell.form) {
+    // Turned 90° clockwise about the cell's centre: the long-vowel bar and
+    // the brackets become strokes along the column. Lying down, it is the
+    // glyph's HEIGHT that has to clear the column.
+    VerticalGlyphForm.rotated => (turned: true, scale: fitScale(painter.height)),
+    // The word lies down and reads along the column. It is scaled into the
+    // slots it reserved (the reservation is an estimate, so this is usually
+    // a small trim) and into the column's own width, which the turned
+    // glyphs' HEIGHT has to clear.
+    VerticalGlyphForm.sideways => (
+      turned: true,
+      scale: math.min(
+        spanExtent > 0 && painter.width > spanExtent && painter.width > 0
+            ? spanExtent / painter.width
+            : 1.0,
+        fitScale(painter.height),
+      ),
+    ),
+    // 縦中横: the digits stay horizontal and condense into the width one
+    // upright glyph would have taken.
+    VerticalGlyphForm.tateChuYoko => (
+      turned: false,
+      scale: painter.width > math.min(fontSize, maxCrossExtent) &&
+              painter.width > 0
+          ? math.min(fontSize, maxCrossExtent) / painter.width
+          : 1.0,
+    ),
+    VerticalGlyphForm.shifted || VerticalGlyphForm.upright => (
+      turned: false,
+      scale: fitScale(painter.width),
+    ),
+  };
+}
+
+/// How far a glyph advances DOWN a column: a standing glyph an em, a turned
+/// one its width — after the [scale] that fits it across the column.
+double verticalGlyphAdvance({
+  required bool turned,
+  required TextPainter painter,
+  required double fontSize,
+  required double scale,
+}) => (turned ? painter.width : fontSize) * scale;
 
 /// The single-glyph cell [glyph] becomes in a vertical column — the form
 /// table applied without any run grouping, for the dialogue placers.

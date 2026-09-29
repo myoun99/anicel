@@ -13,6 +13,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../media/media_asset_drop_target.dart';
+import '../text/dialogue_fit_paint.dart' show dialogueNaturalExtent;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
@@ -477,6 +478,25 @@ class _AudioClipStrip extends StatelessWidget {
 /// block's start boundary).
 const double seNameBoxExtent = 16;
 
+/// How far the name chip runs along a block [mainExtent] long whose dialogue
+/// runs [dialogueExtent] at its natural size ([dialogueNaturalExtent]):
+/// [seNameBoxExtent] while the two fit side by side, and past that the chip
+/// narrows by the very ratio the dialogue does.
+///
+/// 🗣️F-224 (유저 2026-09-29): 「줌에 맞춰서 se블록의 대사 좌우 줄일때,
+/// 대사는 줄어들어가는데 이름칸은 줄어들기 시작하는게 늦어서 15%정도에서
+/// 이름칸만 100%랑 거의 비슷한 크기인데 대사만 줄어들고있음. 대사랑 이름칸이랑
+/// 동일하게 줄어들기시작하도록」. ↩️The chip kept its 16 until the block was
+/// under 32 and then took half of it — a ceiling read off an old threshold,
+/// not anyone's rule — while the dialogue beside it had been narrowing since
+/// the block got shorter than the two of them.
+double seNameBoxExtentIn(double mainExtent, {required double dialogueExtent}) {
+  final natural = seNameBoxExtent + dialogueExtent;
+  return mainExtent >= natural
+      ? seNameBoxExtent
+      : seNameBoxExtent * mainExtent / natural;
+}
+
 /// The sheet's SE-entry writing, the real Toei way (R4, user-approved
 /// mockup v3): a compact INVERTED name chip flush against the block's
 /// start boundary (ink fill, paper-light writing) and the dialogue fitted
@@ -516,17 +536,22 @@ class SeSpanVisual extends StatelessWidget {
         // 🚨★★★F-93 (유저 2026-09-16): 「이름 상자를 버리는게아니야.
         // 유지한채로 가로 길이만 작게하란거야」 — the chip STAYS and narrows,
         // the way the dialogue glyphs beside it narrow rather than vanish
-        // (`wordCondensation`). ⛔The half-span ceiling is not a new
-        // number: the old threshold `>= seNameBoxExtent * 2` already said the
-        // box may never take more than half the span, and that stands. The
-        // two meet at 32 — `32 / 2 == seNameBoxExtent` — so the chip narrows
-        // continuously instead of stepping.
-        final mainExtent = axis == Axis.horizontal
+        // (`wordCondensation`).
+        final horizontal = axis == Axis.horizontal;
+        final mainExtent = horizontal
             ? constraints.maxWidth
             : constraints.maxHeight;
-        final nameExtent = mainExtent >= seNameBoxExtent * 2
-            ? seNameBoxExtent
-            : mainExtent / 2;
+        final nameExtent = seNameBoxExtentIn(
+          mainExtent,
+          dialogueExtent: dialogueNaturalExtent(
+            dialogue,
+            axis: axis,
+            style: dialogueFitStyle(context, color: timelineDrawingInkColor),
+            maxCrossExtent: horizontal
+                ? constraints.maxHeight
+                : constraints.maxWidth,
+          ),
+        );
         return Flex(
           direction: axis,
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -557,9 +582,8 @@ class _SeNameBox extends StatelessWidget {
   final Axis axis;
   final String name;
 
-  /// How far the chip runs ALONG the block: [seNameBoxExtent] where the span
-  /// can afford it, half the span where it cannot (F-93). ⛔Never the whole
-  /// span — the dialogue keeps the rest.
+  /// How far the chip runs ALONG the block ([seNameBoxExtentIn]): its
+  /// [seNameBoxExtent], narrowed with the dialogue beside it (F-224).
   final double extent;
 
   @override

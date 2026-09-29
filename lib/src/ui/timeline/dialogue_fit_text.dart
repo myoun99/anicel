@@ -46,17 +46,25 @@ class DialogueFitText extends StatelessWidget {
         painter: _DialogueFitPainter(
           text: text,
           axis: axis,
-          style: appFaceOf(DefaultTextStyle.of(context).style).copyWith(
-            color: color,
-            fontSize: fontSize,
-            fontWeight: FontWeight.w600,
-          ),
+          style: dialogueFitStyle(context, color: color, fontSize: fontSize),
         ),
         child: const SizedBox.expand(),
       ),
     );
   }
 }
+
+/// The dialogue's print — what [DialogueFitText] paints it in, and what a
+/// host measuring it before laying it out has to measure it in.
+TextStyle dialogueFitStyle(
+  BuildContext context, {
+  required Color color,
+  double fontSize = 12,
+}) => appFaceOf(DefaultTextStyle.of(context).style).copyWith(
+  color: color,
+  fontSize: fontSize,
+  fontWeight: FontWeight.w600,
+);
 
 class _DialogueFitPainter extends CustomPainter with RepaintOnProps {
   _DialogueFitPainter({

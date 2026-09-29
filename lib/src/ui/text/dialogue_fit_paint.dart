@@ -58,3 +58,40 @@ void paintDialogueFitColumn(
     );
   }
 }
+
+/// How long [text] runs along [axis] at its natural size — its glyphs one
+/// after another, none spread over a block and none narrowed into one: the
+/// length below which the placers above start narrowing it. [maxCrossExtent]
+/// is a column's width, which a glyph standing in it is fitted to first
+/// ([verticalGlyphFit]).
+double dialogueNaturalExtent(
+  String text, {
+  required Axis axis,
+  required TextStyle style,
+  double maxCrossExtent = double.infinity,
+}) {
+  var extent = 0.0;
+  for (final glyph in text.characters) {
+    final painter = TextPainter(
+      text: TextSpan(text: glyph, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    if (axis == Axis.horizontal) {
+      extent += painter.width;
+      continue;
+    }
+    final (:turned, :scale) = verticalGlyphFit(
+      verticalGlyphCell(glyph),
+      painter: painter,
+      fontSize: style.fontSize!,
+      maxCrossExtent: maxCrossExtent,
+    );
+    extent += verticalGlyphAdvance(
+      turned: turned,
+      painter: painter,
+      fontSize: style.fontSize!,
+      scale: scale,
+    );
+  }
+  return extent;
+}
