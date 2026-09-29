@@ -38,7 +38,6 @@ abstract final class FlipHudMetrics {
 
   /// The paper body's inset inside its column.
   static const double bodyInset = 3;
-  static const double bodyRadius = 4;
 
   /// How far the end fade eats in, as a fraction of the extent.
   static const double edgeFade = 0.14;
@@ -738,15 +737,21 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
       // The head painted the whole body already.
       return;
     }
+    final bodyHeight = rect.height - FlipHudMetrics.bodyInset * 2;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(
           rect.left,
           rect.top + FlipHudMetrics.bodyInset,
           spanWidth,
-          rect.height - FlipHudMetrics.bodyInset * 2,
+          bodyHeight,
         ),
-        const Radius.circular(FlipHudMetrics.bodyRadius),
+        // The block law over this slot's cell (F-219: 「법 통일」). ↩️A
+        // fixed 4px, a corner no timeline block wore.
+        timelineBlockCornerRadiusAt(
+          cellExtent: rect.width,
+          crossExtent: bodyHeight,
+        ),
       ),
       Paint()..color = timelineDrawingHeldColor,
     );

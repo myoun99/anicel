@@ -365,12 +365,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   final double viewportMainExtent;
 
   static const double _padding = 4;
-  /// The CUT PLATE's corner — the V row's block. Not the frame-block law: the
-  /// plate is a container with bands, and it is the ONE rounded thing in it —
-  /// what sits inside is square and clipped by this corner (유저 2026-09-26:
-  /// 「블록이 모서리 둥근건 블록 자체」). ↩️The panels inside it wore the
-  /// frame-block law until then.
-  static const double plateCornerRadius = 8;
 
   /// The narrowest block that still prints its total (the widget rule).
   static const double totalLabelMinWidth = 48;
@@ -793,11 +787,22 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     }
   }
 
+  /// The CUT PLATE's corner — the V row's block, rounded by the frame-block
+  /// law like every other block: 6px, no larger than half a frame's cell or
+  /// half the plate. The plate is a container with bands, and it is the ONE
+  /// rounded thing in it — what sits inside is square and clipped by this
+  /// corner (유저 2026-09-26: 「블록이 모서리 둥근건 블록 자체」).
+  ///
+  /// 🗣️F-219 (유저 2026-09-28): 「컷블록의 꼭짓점은 10%대에서도 작은 줌에서도
+  /// 둥근데, se블록이나 타임라인의 프레임블록은 네모남 … 컷블록을 작은 줌에서
+  /// 네모나게 되는 법으로 통일」. ↩️A constant 8px, round at every zoom.
+  Radius get plateCorner => timelineBlockCornerRadiusAt(
+    cellExtent: _cellExtent,
+    crossExtent: crossAxisExtent,
+  );
+
   void _paintBlock(Canvas canvas, StoryboardCutBlockVisual block) {
-    final rrect = RRect.fromRectAndRadius(
-      block.rect,
-      const Radius.circular(plateCornerRadius),
-    );
+    final rrect = RRect.fromRectAndRadius(block.rect, plateCorner);
     // 🗣️유저 2026-09-26: 「패딩/실루엣선 이런거 싹 없도록 심플하게만」 — the
     // block is its plate, its bands and its pictures, painted, and nothing
     // else: no outline, no silhouette, no gap. The plate's one rounded

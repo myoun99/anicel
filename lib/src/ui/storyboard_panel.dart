@@ -4762,8 +4762,12 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// plate and its last panel ends it — the plate's round corners — and
   /// every boundary between panels is the plate's straight edge. Only a cut
   /// with no storyboard layer hangs its edges on the plate now, and its one
-  /// placeholder is both.
-  TimelineGripPaper _gripPaper(List<_StoryboardStripGrip> grips) => (
+  /// placeholder is both. The corner is the one the painter rounds the plate
+  /// by ([StoryboardCutBlocksPainter.plateCorner]).
+  TimelineGripPaper _gripPaper(
+    List<_StoryboardStripGrip> grips,
+    StoryboardCutBlocksPainter blocksPainter,
+  ) => (
     cornerStarts: {
       for (final grip in grips)
         if (grip.panelIndex == 0) grip.startFrame,
@@ -4774,7 +4778,7 @@ class _StoryboardTrackRow extends StatelessWidget {
             grips[index + 1].cutId != grips[index].cutId)
           grips[index].endFrameExclusive,
     },
-    cornerRadius: StoryboardCutBlocksPainter.plateCornerRadius,
+    cornerRadius: blocksPainter.plateCorner.x,
   );
 
   /// One chrome layer of the row's EDGES, on one [paper]: over its slot
@@ -5265,7 +5269,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                   name: 'plate-edit-chrome',
                   slot: (top: 0.0, height: laneHeight),
                   conteBlocks: false,
-                  corners: _gripPaper(grips),
+                  corners: _gripPaper(grips, blocksPainter),
                 ),
               ])
                 _edgeChrome(context, paper, grips, blocksPainter),

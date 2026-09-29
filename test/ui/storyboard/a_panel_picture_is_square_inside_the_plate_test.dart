@@ -15,8 +15,9 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineBlockCornerRadiusAt;
 
 import '../../helpers/fixed_thumbnails.dart';
 import '../storyboard_cut_block_probe.dart';
@@ -125,7 +126,12 @@ void main() {
       expect(rounded, hasLength(1), reason: 'picture $i: only the plate');
       expect(
         rounded.single.tlRadiusX,
-        StoryboardCutBlocksPainter.plateCornerRadius,
+        // The block law at this zoom (F-219) — 4 at 8px a frame. ↩️The
+        // plate kept a constant 8 at every zoom.
+        timelineBlockCornerRadiusAt(
+          cellExtent: ppf,
+          crossExtent: painter.crossAxisExtent,
+        ).x,
         reason: 'picture $i: the rounding is the plate\'s corner',
       );
       expect(

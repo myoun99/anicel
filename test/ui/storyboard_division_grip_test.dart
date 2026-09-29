@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
     show TimelineRowChromeResolver, TimelineRowGripTarget;
 
+import 'storyboard_cut_block_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
 /// The cut block has no edge grips of its own besides its panels': the first
@@ -288,7 +289,9 @@ void main() {
         );
       }
     }
-    const plate = StoryboardCutBlocksPainter.plateCornerRadius;
+    // The plate's own corner, as its painter rounds it (F-219).
+    final plate = cutBlocksPainter(tester).plateCorner.x;
+    expect(plate, greaterThan(0), reason: '⛔전제: a round plate');
     expect(
       grip('block-edge-grip-start-grip-track-2', 'storyboard-plate')
           .paperCorner,

@@ -6,8 +6,12 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/canvas/flip_hud_controller.dart' show FlipHudAxis;
+import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
+import 'package:anicel/src/ui/canvas/flip_hud_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -72,6 +76,8 @@ void main() {
     for (final path in const [
       'lib/src/ui/storyboard_cut_blocks_painter.dart',
       'lib/src/ui/storyboard_panel.dart',
+      // The flip window draws the timeline's blocks too (F-219).
+      'lib/src/ui/canvas/flip_hud_overlay.dart',
     ]) {
       _count(File(path), numbered, found);
     }
@@ -167,6 +173,39 @@ void main() {
     );
     expect(timelineRowSelectionBandDecoration.borderRadius, BorderRadius.zero);
   });
+
+  // 🗣️F-219 (유저 2026-09-28): 「법 통일」 — the cut plate reads the law at its
+  // zoom (pinned where its pictures are clipped by it), and the flip window's
+  // block bodies over their own slot. ↩️A constant 8 and a constant 4.
+  test('the flip window rounds a block body by the law over its slot', () {
+    final spy = _RRectSpy();
+    const FlipHudPainter(
+      snapshot: FlipHudSnapshot(
+        rows: [
+          FlipHudRow(
+            name: 'A',
+            kind: LayerKind.animation,
+            runs: [FlipHudRun(startIndex: 0, length: 6, label: '1')],
+          ),
+        ],
+        rowIndex: 0,
+        frameIndex: 2,
+        frameCount: 8,
+      ),
+      axis: FlipHudAxis.frame,
+      frameStep: true,
+      colorScheme: ColorScheme.dark(),
+      baseTextStyle: TextStyle(fontSize: 11),
+    ).paint(spy, FlipHudMetrics.sizeFor(FlipHudAxis.frame));
+    final body = spy.bodies.first;
+    expect(
+      body.tlRadius,
+      timelineBlockCornerRadiusAt(
+        cellExtent: FlipHudMetrics.frameCellWidth,
+        crossExtent: body.height,
+      ),
+    );
+  });
 }
 
 void _count(File file, RegExp pattern, Map<String, int> found) {
@@ -185,8 +224,17 @@ void _count(File file, RegExp pattern, Map<String, int> found) {
 class _RRectSpy implements Canvas {
   final rrects = <RRect>[];
 
+  /// The rounded rects laid in a held block's paper — the flip window's
+  /// bodies.
+  final bodies = <RRect>[];
+
   @override
-  void drawRRect(RRect rrect, Paint paint) => rrects.add(rrect);
+  void drawRRect(RRect rrect, Paint paint) {
+    rrects.add(rrect);
+    if (paint.color.toARGB32() == timelineDrawingHeldColor.toARGB32()) {
+      bodies.add(rrect);
+    }
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
