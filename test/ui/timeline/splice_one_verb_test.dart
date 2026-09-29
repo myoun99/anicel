@@ -232,7 +232,10 @@ void main() {
     _stand(session, 3);
     session.pasteLinkedFrameAtCurrentFrame();
 
-    expect(_row(session), 'AAAAAAAA');
+    // Standing inside the hold, the four-comma run replaces its last cell
+    // and pushes on past the end (F-236). ↩️The hold was split and its last
+    // cell pushed on behind the run (`AAAAAAAA`).
+    expect(_row(session), 'AAAAAAA');
     expect(
       _cut(session).duration,
       4,

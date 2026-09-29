@@ -332,8 +332,11 @@ void main() {
       );
     });
 
-    test('INSIDE a hold it splits — but the tail keeps its own cel instead '
-        'of being handed to the clip', () {
+    // 🗣️F-236 (유저 2026-09-29): 「블록 중간에 붙여넣는거랑 프레임 추가랑
+    // 똑같은 법 통일」 — one untimed comma takes the rest of the hold, as an
+    // added frame does. ↩️T3 split the hold, kept the clip to its one cell
+    // and handed the rest back to `a` behind it.
+    test('INSIDE a hold it takes the rest of it, as an added frame does', () {
       final fixture = _fixture();
       fixture.controller.selectFrameIndex(1);
 
@@ -346,13 +349,9 @@ void main() {
       expect(layer.timeline[0]!.length, 1);
       expect(
         layer.timeline[1],
-        const TimelineExposure.drawing(FrameId('b'), length: 1),
+        const TimelineExposure.drawing(FrameId('b'), length: 2),
       );
-      expect(
-        layer.timeline[2],
-        const TimelineExposure.drawing(FrameId('a'), length: 2),
-        reason: 'the rest of a is still a',
-      );
+      expect(layer.timeline[2], isNull, reason: 'no `a` comes back after it');
     });
 
     test('on an EMPTY cell it takes the clip\'s length, not the distance to '

@@ -265,28 +265,11 @@ SplayTreeMap<int, TimelineExposure> spliceTimeline({
 }) {
   final inserting = clip;
   final replacing = inserting != null && !inserting.isEmpty;
-  // 🗣️F-236 (유저 2026-09-29): 「블록 중간에 붙여넣는거랑 프레임 추가랑 똑같은
-  // 법 통일」 — an insert that lands INSIDE a block replaces the rest of that
-  // block, as an added frame does. What the clip brings decides the length
-  // (F-236-Q1): a comma copied standing has no timing and takes the rest of
-  // the hold — the very division an added frame makes ([blockRestTakenBy]);
-  // a run copied off a selection keeps its commas and the tail absorbs the
-  // difference, as every replace does (T2·T3): 「선택범위로 코마정보가
-  // 있을때만 코마대로 유지해서 붙여넣어서 뒤가 짧으면 당기고 부족하면 밀고」.
-  // ↩️The block was split and its rest pushed on behind the clip, so the
-  // same drawing came back after it (`1--AB1--`).
-  final rest = liftCount == 0 && replacing
-      ? restOfBlockAt(timeline, index)
-      : 0;
-  if (inserting != null && rest > 0) {
-    return inserting.timed
-        ? spliceTimeline(
-            timeline: timeline,
-            index: index,
-            liftCount: rest,
-            clip: inserting,
-          )
-        : blockRestTakenBy(timeline, index, inserting.exposures[0]!);
+  if (liftCount == 0 && replacing) {
+    final inside = _insertedInsideABlock(timeline, index, inserting);
+    if (inside != null) {
+      return inside;
+    }
   }
   var next = SplayTreeMap<int, TimelineExposure>.from(timeline);
   if (liftCount > 0) {
@@ -329,6 +312,38 @@ SplayTreeMap<int, TimelineExposure> spliceTimeline({
     next[index + entry.key] = entry.value;
   }
   return next;
+}
+
+/// [clip] inserted at [index] when that is INSIDE a block — null anywhere
+/// else, where the insert is the plain one.
+///
+/// 🗣️F-236 (유저 2026-09-29): 「블록 중간에 붙여넣는거랑 프레임 추가랑 똑같은
+/// 법 통일」 — an insert that lands inside a block replaces the rest of that
+/// block, as an added frame does. What the clip brings decides the length
+/// (F-236-Q1): a comma copied standing has no timing and takes the rest of
+/// the hold — the very division an added frame makes ([blockRestTakenBy]);
+/// a run copied off a selection keeps its commas and the tail absorbs the
+/// difference, as every replace does (T2·T3): 「선택범위로 코마정보가
+/// 있을때만 코마대로 유지해서 붙여넣어서 뒤가 짧으면 당기고 부족하면 밀고」.
+/// ↩️The block was split and its rest pushed on behind the clip, so the
+/// same drawing came back after it (`1--AB1--`).
+SplayTreeMap<int, TimelineExposure>? _insertedInsideABlock(
+  Map<int, TimelineExposure> timeline,
+  int index,
+  TimelineClipRow clip,
+) {
+  final rest = restOfBlockAt(timeline, index);
+  if (rest == 0) {
+    return null;
+  }
+  return clip.timed
+      ? spliceTimeline(
+          timeline: timeline,
+          index: index,
+          liftCount: rest,
+          clip: clip,
+        )
+      : blockRestTakenBy(timeline, index, clip.exposures[0]!);
 }
 
 MapEntry<int, TimelineExposure>? _coveringEntry(
