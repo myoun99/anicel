@@ -50,12 +50,12 @@ void main() {
     // never does — it reads [timelineBlockCornerRadiusAt].
     const ledger = <String, int>{
       // The law's own base value, private so nothing else can read it.
-      // Plus the STANDING-CELL ring — one cell, its own 3px/4px look
-      // (유저 2026-08-08: 「standing is ONE thing」), not a block.
-      'lib/src/ui/timeline/timeline_cell_style.dart': 2,
+      // ↩️And the standing-cell ring's 4px, until the ring went (F-212).
+      'lib/src/ui/timeline/timeline_cell_style.dart': 1,
       // The folded row's summary pills — the negative-space design 유저
       // confirmed on 2026-08-10, inset and outlined, not the paper.
-      'lib/src/ui/timeline/collapsed_row_overlay.dart': 2,
+      // ↩️And the cursor's empty cell, filled and outlined, until F-212.
+      'lib/src/ui/timeline/collapsed_row_overlay.dart': 1,
       // A name TAG in the SE lane preview, not a block.
       'lib/src/ui/timeline/se_name_tag_lane_preview.dart': 1,
     };
