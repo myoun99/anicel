@@ -365,8 +365,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   final double viewportMainExtent;
 
   static const double _padding = 4;
-  /// The CUT PLATE's corner — the V row's block, the one the standing
-  /// outline wraps when you stand on a cut. Not the frame-block law: the
+  /// The CUT PLATE's corner — the V row's block. Not the frame-block law: the
   /// plate is a container with bands, and it is the ONE rounded thing in it —
   /// what sits inside is square and clipped by this corner (유저 2026-09-26:
   /// 「블록이 모서리 둥근건 블록 자체」). ↩️The panels inside it wore the
@@ -805,9 +804,8 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // outline clips everything inside it. ↩️A light outline wrapped the
     // plate (R26 #8) and each panel (#15, the seam between two touching
     // pictures) until then; the edges' white triangles drowned in it
-    // (「애초 블럭이 실루엣이 흰색이라」). Which cut is ACTIVE still reads from
-    // the plate: a different statement, a different channel, and the one
-    // that survives standing somewhere else.
+    // (「애초 블럭이 실루엣이 흰색이라」). The cut you stand in is the
+    // playhead's to say (F-212); ↩️its plate said it too, in the accent.
     canvas.drawRRect(rrect, Paint()..color = _stripGround(block));
     canvas.save();
     canvas.clipRRect(rrect);

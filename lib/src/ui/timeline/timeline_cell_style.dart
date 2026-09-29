@@ -541,7 +541,8 @@ const Radius _timelineBlockCornerRadius = Radius.circular(6);
 /// 타임라인 줌이 100%일땐 외곽 강조실루엣이랑 블록의 실루엣이랑 동일한데 줌이
 /// 33%등 작아질수록 점점 어긋남. 강조 실루엣이 더 모서리가 동그람」. The ring
 /// around the current block wraps the whole run, so its rounded rect never met
-/// that clamp: at 33% the blocks' corners were 4px and the ring kept 6.
+/// that clamp: at 33% the blocks' corners were 4px and the ring kept 6. (The
+/// ring itself went with F-212; every other block corner still reads this.)
 Radius timelineBlockCornerRadiusAt({
   required double cellExtent,
   required double crossExtent,

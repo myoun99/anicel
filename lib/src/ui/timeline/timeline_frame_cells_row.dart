@@ -35,10 +35,9 @@ import 'timeline_se_row_visual.dart';
 import 'timeline_silhouette_painter.dart';
 
 /// One layer's row of frame cells. CURSOR-INDEPENDENT by design: nothing
-/// here reads the playhead — the selected-cell ring, the selected-exposure
-/// outline and the playhead tint live on the grid's TimelineCursorLayer,
-/// so a frame tick never rebuilds this row (playback-performance
-/// architecture).
+/// here reads the playhead — the standing cell and the playhead live on the
+/// grid's TimelineCursorLayer, so a frame tick never rebuilds this row
+/// (playback-performance architecture).
 class TimelineFrameCellsRow extends StatelessWidget {
   const TimelineFrameCellsRow({
     super.key,

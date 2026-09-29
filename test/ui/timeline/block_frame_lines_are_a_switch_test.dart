@@ -526,7 +526,7 @@ class _OrderSpy implements Canvas {
 
   @override
   void drawRect(Rect rect, Paint paint) {
-    if (paint.color == timelinePlayheadWashColor) {
+    if (paint.color.toARGB32() == timelinePlayheadWashColor.toARGB32()) {
       order.add('current');
     }
   }

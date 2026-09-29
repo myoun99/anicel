@@ -189,7 +189,7 @@ typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 /// property lane — of the V track's carrier or of an SE layer — which is a
 /// wider set than [bandRow], the lanes that carry a range band. The
 /// fade-envelope row is the case that separates the two: it is the opacity
-/// lane's row and takes the standing ring, but it draws fade handles
+/// lane's row and takes the standing cell, but it draws fade handles
 /// instead of key markers and no selection reaches it.
 ///
 /// [lane] is whether the row is a LANE band at all — the Audio lane as much

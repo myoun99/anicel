@@ -131,7 +131,11 @@ void main() {
         readyRunsIn: null,
       ).paint(ruler, const Size(400, 28));
       expect(ruler.washes, [
-        (left: left, right: right, color: timelinePlayheadWashColor),
+        (
+          left: left,
+          right: right,
+          argb: timelinePlayheadWashColor.toARGB32(),
+        ),
       ], reason: 'the ruler\'s cell, frame $frame at $zoom');
     }
   });
@@ -228,13 +232,18 @@ class _Lines implements Canvas {
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
-/// Every rect laid across the strip, by the span it covers and its colour.
+/// Every rect laid across the strip, by the span it covers and its colour —
+/// as 8-bit ARGB: a paint keeps its colour in float32, so it reads back a
+/// hair off the double it was given.
 class _Washes implements Canvas {
-  final washes = <({double left, double right, Color color})>[];
+  final washes = <({double left, double right, int argb})>[];
 
   @override
-  void drawRect(Rect rect, Paint paint) =>
-      washes.add((left: rect.left, right: rect.right, color: paint.color));
+  void drawRect(Rect rect, Paint paint) => washes.add((
+    left: rect.left,
+    right: rect.right,
+    argb: paint.color.toARGB32(),
+  ));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

@@ -465,8 +465,8 @@ void main() {
 
     expect(standsAt(), 40, reason: 'the track\'s frame, where it is parked');
     expect(
-      painted().color,
-      timelinePlayheadWashColor,
+      painted().argb,
+      timelinePlayheadWashColor.toARGB32(),
       reason: 'the grids\' own playhead (F-212)',
     );
     scrubStoryboardGlobalFrame(session, 45);
@@ -548,12 +548,12 @@ void main() {
 /// Where the strip's playhead is drawn: the left of its one filled line.
 class _PlayheadAt implements Canvas {
   double? left;
-  Color? color;
+  int? argb;
 
   @override
   void drawRect(Rect rect, Paint paint) {
     left = rect.left;
-    color = paint.color;
+    argb = paint.color.toARGB32();
   }
 
   @override
