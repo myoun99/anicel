@@ -35,7 +35,7 @@ void main() {
     expect(s.layers, isEmpty, reason: 'no rows at all — not even track SE');
     expect(s.activeLayer, isNull);
     expect(s.editingCanvas.activeBrushEditorSelection, isNull);
-    expect(s.editingPlayheadInGap, isTrue);
+    expect(s.editingSession.playheadInGap, isTrue);
     expect(s.canvasSelectionLabels.cutLabel, '—');
     expect(() => s.requireActiveCut, throwsStateError);
   });
@@ -58,8 +58,8 @@ void main() {
     s.toggleCutPictureVisibility(first);
     expect(s.isCutPictureVisible(first), isFalse);
     expect(s.activeCutId, isNull, reason: 'the active cut ceases');
-    expect(s.gapParkedGlobalFrame, 2, reason: 'parked where it stood');
-    expect(s.editingPlayheadInGap, isTrue);
+    expect(s.editingSession.gapGlobalFrame, 2, reason: 'parked where it stood');
+    expect(s.editingSession.playheadInGap, isTrue);
 
     // Re-showing while parked ON the cut lands there again — as if the
     // position were clicked (without this the eye-on read as a no-op:
@@ -68,7 +68,7 @@ void main() {
     expect(s.isCutPictureVisible(first), isTrue);
     expect(s.activeCutId, first, reason: 'the parked position restores');
     expect(s.currentFrameIndex, 2);
-    expect(s.editingPlayheadInGap, isFalse);
+    expect(s.editingSession.playheadInGap, isFalse);
 
     // Parked in a REAL axis gap: re-showing a nearby cut keeps the
     // parking (nothing to land on at that index).
@@ -77,7 +77,7 @@ void main() {
     s.toggleCutPictureVisibility(first);
     s.toggleCutPictureVisibility(first);
     expect(s.activeCutId, isNull, reason: 'the gap parking survives');
-    expect(s.gapParkedGlobalFrame, aEnd + 1);
+    expect(s.editingSession.gapGlobalFrame, aEnd + 1);
   });
 
   test('a gap scrub parks QUIETLY mid-drag — the deselect lands on the '
@@ -89,11 +89,15 @@ void main() {
 
     scrubStoryboardGlobalFrame(s, aEnd + 2);
     expect(s.activeCutId, first, reason: 'moves never deselect mid-drag');
-    expect(s.gapParkedGlobalFrame, aEnd + 2);
+    expect(s.editingSession.gapGlobalFrame, aEnd + 2);
 
     commitStoryboardScrub(s);
     expect(s.activeCutId, isNull, reason: 'the release commits no-cut');
-    expect(s.gapParkedGlobalFrame, aEnd + 2, reason: 'parking survives');
+    expect(
+      s.editingSession.gapGlobalFrame,
+      aEnd + 2,
+      reason: 'parking survives',
+    );
     expect(s.playheadCursors.trackFrameNow(), aEnd + 2);
   });
 
@@ -110,7 +114,7 @@ void main() {
 
     expect(s.activeCutId, second);
     expect(s.editingFrameCursor.value, 0, reason: 'index 1 (local 0)');
-    expect(s.gapParkedGlobalFrame, isNull, reason: 'parking cleared');
+    expect(s.editingSession.gapGlobalFrame, isNull, reason: 'parking cleared');
     expect(
       s.playheadCursors.trackFrameNow(),
       aEnd + 4,
@@ -183,7 +187,7 @@ void main() {
     expect(s.activeCutId, second);
     expect(s.currentFrameIndex, 0);
     expect(s.layers, isNotEmpty);
-    expect(s.editingPlayheadInGap, isFalse);
+    expect(s.editingSession.playheadInGap, isFalse);
   });
 
   testWidgets('playback FOLLOW keeps the cut through gaps; STOP in a gap '
@@ -199,7 +203,7 @@ void main() {
 
     s.playbackRig.playback.stop();
     expect(s.activeCutId, isNull, reason: 'stop in the gap deselects');
-    expect(s.gapParkedGlobalFrame, aEnd + 2);
+    expect(s.editingSession.gapGlobalFrame, aEnd + 2);
     await tester.pumpAndSettle();
   });
 

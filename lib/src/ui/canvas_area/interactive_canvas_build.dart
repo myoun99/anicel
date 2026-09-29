@@ -82,7 +82,7 @@ class _InteractiveCanvasBuild {
     // follows (`_FrameRetargetScope`).
     // R16-⑥ (user semantics): a gap has NO cut — the canvas shows a
     // paperless VOID: no editable cel, no layer content, no paper.
-    _inGap = !_isPlaybackActive && session.editingPlayheadInGap;
+    _inGap = !_isPlaybackActive && session.editingSession.playheadInGap;
     // The camera overlay authors the ACTIVE cut's pose — with no cut (a
     // gap parking) there is nothing to author and reading the pose would
     // throw (requireActiveCut).

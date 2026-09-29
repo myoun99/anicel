@@ -622,7 +622,8 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
             ? const StoryboardEditLaneKey()
             : null;
       case TrackRowAddress():
-        return session.editingPlayheadInGap || session.activeCutOrNull == null
+        return session.editingSession.playheadInGap ||
+                session.activeCutOrNull == null
             ? null
             : const StoryboardEditCut();
     }

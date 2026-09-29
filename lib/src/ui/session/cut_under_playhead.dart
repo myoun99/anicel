@@ -34,20 +34,17 @@ typedef CutUnderPlayheadPosition = ({Cut cut, int startFrame, int localFrame});
 class CutUnderPlayhead {
   CutUnderPlayhead({
     required ProjectAccess project,
-    required SelectionAccess selection,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
     required ValueListenable<bool> scrubbing,
     required PlaybackRig playbackRig,
   }) : _project = project,
-       _selection = selection,
        _timeline = timeline,
        _controllers = controllers,
        _scrubbing = scrubbing,
        _playbackRig = playbackRig;
 
   final ProjectAccess _project;
-  final SelectionAccess _selection;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
 
@@ -114,7 +111,7 @@ class CutUnderPlayhead {
   /// parking means there is no cut here (a gap, or the V-row eye's hidden
   /// picture).
   int? get liveParkedFrame =>
-      _scrubbing.value ? _selection.gapGlobalFrame : null;
+      _scrubbing.value ? _timeline.editingSession.gapGlobalFrame : null;
 
   /// The cut the active track shows at [globalFrame]; null over a gap.
   CutUnderPlayheadPosition? atTrackFrame(int globalFrame) {

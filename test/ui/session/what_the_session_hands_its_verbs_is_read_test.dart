@@ -68,7 +68,7 @@ void main() {
 
       s.frameScrub.scrubGlobalFrame(s.activeCutFrameCount + 20);
 
-      expect(s.gapGlobalFrame, isNull);
+      expect(s.editingSession.gapGlobalFrame, isNull);
     });
 
     test('a row press does not move the row while the pen draws', () {

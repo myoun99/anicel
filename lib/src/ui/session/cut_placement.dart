@@ -53,7 +53,7 @@ class CutPlacement {
         duration: range.endFrameExclusive - range.startFrame,
       );
     }
-    final parked = _selection.gapGlobalFrame;
+    final parked = _timeline.editingSession.gapGlobalFrame;
     if (parked != null) {
       final axis = _timeline.trackFrameAxis();
       return _cutCreationAt(

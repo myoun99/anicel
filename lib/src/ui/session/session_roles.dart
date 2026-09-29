@@ -62,9 +62,6 @@ abstract interface class SelectionAccess {
     )
     inBand,
   );
-  bool get editingPlayheadInGap;
-  int? get gapGlobalFrame;
-  set gapGlobalFrame(int? value);
   Layer? get activeLayer;
   LayerId? get activeLayerId;
   Track get activeTrack;

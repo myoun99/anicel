@@ -50,7 +50,7 @@ void main() {
     session.selectFrameIndex(31);
 
     expect(session.activeCutId, isNotNull);
-    expect(session.editingPlayheadInGap, isFalse);
+    expect(session.editingSession.playheadInGap, isFalse);
   });
 
   test('the second cut is still reached by ITS own start, not by the '

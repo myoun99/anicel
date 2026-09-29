@@ -159,7 +159,7 @@ class TrackAxisWalk {
   /// last frame there, and that is the frame this axis counts from.
   int _from(TrackFrameAxis axis) =>
       axis.storyboardFrameOf(
-        parkedGlobalFrame: _selection.gapGlobalFrame,
+        parkedGlobalFrame: _timeline.editingSession.gapGlobalFrame,
         activeCutId: _project.activeCutId,
         localFrame: _controllers.timelineController.currentFrameIndex,
       ) ??

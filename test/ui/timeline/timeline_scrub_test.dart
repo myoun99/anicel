@@ -492,7 +492,7 @@ layers: layers,
         reason: 'the active cut stays pinned for the whole drag',
       );
       expect(
-        manager.gapParkedGlobalFrame,
+        manager.editingSession.gapGlobalFrame,
         isNotNull,
         reason: 'the playhead follows through the parking notifier',
       );
@@ -505,7 +505,7 @@ layers: layers,
         const CutId('cut-b'),
         reason: 'the release lands the one full seek on the crossed cut',
       );
-      expect(manager.gapParkedGlobalFrame, isNull);
+      expect(manager.editingSession.gapGlobalFrame, isNull);
     });
 
     testWidgets('storyboard: a ruler drag scrubs the active cut on the '
@@ -626,13 +626,13 @@ layers: layers,
       expect(notifies, 0, reason: 'boundary crossings ride the parking');
       expect(manager.frameSeekCommitted.value, commitsBefore);
       expect(manager.activeCutId, const CutId('cut-a'));
-      expect(manager.gapParkedGlobalFrame, 35);
+      expect(manager.editingSession.gapGlobalFrame, 35);
       expect(manager.frameScrub.active.value, isTrue);
 
       manager.frameScrub.commitFrameScrub();
       expect(manager.activeCutId, const CutId('cut-b'));
       expect(manager.currentFrameIndex, 5, reason: '35 - cut-b start 30');
-      expect(manager.gapParkedGlobalFrame, isNull);
+      expect(manager.editingSession.gapGlobalFrame, isNull);
       expect(notifies, 1, reason: 'ONE full seek on release');
       expect(
         manager.frameSeekCommitted.value,
@@ -650,7 +650,11 @@ layers: layers,
 
       manager.frameScrub.scrubGlobalFrame(40); // pointer-down over cut-b: quiet
       expect(manager.frameScrub.active.value, isFalse);
-      expect(manager.gapParkedGlobalFrame, 40, reason: 'playhead follows');
+      expect(
+        manager.editingSession.gapGlobalFrame,
+        40,
+        reason: 'playhead follows',
+      );
       manager.frameScrub.scrubGlobalFrame(41); // an actual drag move engages
       expect(manager.frameScrub.active.value, isTrue);
       expect(manager.activeCutId, const CutId('cut-a'));
@@ -670,7 +674,7 @@ layers: layers,
       manager.frameScrub.scrubGlobalFrame(26); // the same parked frame again
       expect(manager.frameScrub.active.value, isFalse);
       manager.frameScrub.commitFrameScrub();
-      expect(manager.gapParkedGlobalFrame, 26);
+      expect(manager.editingSession.gapGlobalFrame, 26);
     });
   });
 }

@@ -78,7 +78,7 @@ void main() {
     s.selectTrackCutAtPlayhead(const TrackId('track-b'));
 
     expect(s.activeCutId, isNull, reason: 'the gap releases the cut');
-    expect(s.gapParkedGlobalFrame, 0, reason: 'parked where it stood');
+    expect(s.editingSession.gapGlobalFrame, 0, reason: 'parked where it stood');
     expect(s.selectedTrackId, const TrackId('track-b'));
 
     // Past the gap the selection works and re-maps the local frame.

@@ -565,7 +565,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                     repaint: Listenable.merge([
                                       session.editingFrameCursor,
                                       session.frameSeekCommitted,
-                                      session.gapParkingListenable,
+                                      session
+                                          .editingSession
+                                          .gapParkingListenable,
                                       session
                                           .playbackRig
                                           .playback

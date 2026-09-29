@@ -445,7 +445,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final isCameraLayerActive = session.camera.isCameraLayerActive;
     final inGap =
         !session.playbackRig.playback.isActive &&
-        session.editingPlayheadInGap;
+        session.editingSession.playheadInGap;
     final stack = inGap ? null : session.editingCanvas.stack;
     return _panelShown = (
       stack?.activeLayerOpacity,
@@ -599,7 +599,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // StackFit.expand).
     return TickLayer(
       child: CanvasTrackStackView(
-        globalFrame: globalFrame ?? session.gapParkingListenable,
+        globalFrame: globalFrame ?? session.editingSession.gapParkingListenable,
         positionsOf: session.rowSpans.trackStackContributionsAt,
         compositeCache: session.renderCaches.cutFrameCompositeCache,
         qualityOf: () => session.playbackRig.playbackQuality,
@@ -1061,7 +1061,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       child: ListenableBuilder(
         listenable: session.editingFrameCursor,
         builder: (context, _) => ValueListenableBuilder<int?>(
-          valueListenable: session.gapParkingListenable,
+          valueListenable: session.editingSession.gapParkingListenable,
           builder: (context, _, _) {
             final pose = session.camera.displayedCameraPose;
             // Nothing under the cursor to frame:

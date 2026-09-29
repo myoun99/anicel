@@ -26,7 +26,7 @@ import 'transitions.dart';
 /// 2026-09-02). Measured before cutting: nothing of its own and seventeen
 /// session members touched. It names the roles it needs in its constructor.
 class StoryboardCursor {
-  StoryboardCursor({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required ActiveCutControllers controllers, required RangeSelections rangeSelections, required CellVerbs cells, required CutVerbs cutVerbs, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _controllers = controllers, _rangeSelections = rangeSelections, _cells = cells, _cutVerbs = cutVerbs, _transitions = transitions;
+  StoryboardCursor({required ProjectAccess project, required SelectionAccess selection, required TimelineAccess timeline, required ChangeSink changes, required FrameIds frameIds, required ActiveCutControllers controllers, required RangeSelections rangeSelections, required CellVerbs cells, required CutVerbs cutVerbs, required Transitions transitions}) : _project = project, _selection = selection, _timeline = timeline, _changes = changes, _frameIds = frameIds, _controllers = controllers, _rangeSelections = rangeSelections, _cells = cells, _cutVerbs = cutVerbs, _transitions = transitions;
 
   final CellVerbs _cells;
   final CutVerbs _cutVerbs;
@@ -34,6 +34,7 @@ class StoryboardCursor {
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
+  final TimelineAccess _timeline;
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
@@ -187,7 +188,7 @@ class StoryboardCursor {
         // Not parked in a gap ⇒ the cut-local playhead sits inside the
         // ACTIVE cut, so the cut under the cursor is that cut by
         // construction (the storyboard's cell press promotes it).
-        if (_selection.editingPlayheadInGap) {
+        if (_timeline.editingSession.playheadInGap) {
           return null;
         }
         final cut = _project.activeCutOrNull;

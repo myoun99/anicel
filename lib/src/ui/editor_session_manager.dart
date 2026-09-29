@@ -207,7 +207,7 @@ class EditorSessionManager extends ChangeNotifier
     playbackRig.playback.globalFrameIndexListenable.addListener(
       cutUnderPlayhead.sync,
     );
-    _gapGlobalFrameNotifier.addListener(cutUnderPlayhead.sync);
+    editingSession.gapParkingListenable.addListener(cutUnderPlayhead.sync);
     frameScrub.active.addListener(cutUnderPlayhead.sync);
     addListener(cutUnderPlayhead.resync);
     // Where the playhead is drawn re-answers on every channel it moves on —
@@ -520,7 +520,7 @@ class EditorSessionManager extends ChangeNotifier
     if (voiceRecording.isVoiceRecording.value) {
       await voiceRecording.finishTakeThroughTheNotice();
     }
-    gapGlobalFrame = globalFrame;
+    editingSession.gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
     frameSeekCommitted.value += 1;
     notifyListeners();
@@ -1275,7 +1275,9 @@ class EditorSessionManager extends ChangeNotifier
     () => playbackRig.playback.globalFrameIndexListenable.removeListener(
       cutUnderPlayhead.sync,
     ),
-    () => _gapGlobalFrameNotifier.removeListener(cutUnderPlayhead.sync),
+    () => editingSession.gapParkingListenable.removeListener(
+      cutUnderPlayhead.sync,
+    ),
     () => frameScrub.active.removeListener(cutUnderPlayhead.sync),
     () => removeListener(cutUnderPlayhead.resync),
     cutUnderPlayhead.dispose,
@@ -1304,7 +1306,7 @@ class EditorSessionManager extends ChangeNotifier
     editingFrameCursor.dispose,
     frameScrub.dispose,
     frameSeekCommitted.dispose,
-    _gapGlobalFrameNotifier.dispose,
+    editingSession.dispose,
     frameRangeSelection.dispose,
     brushInputActive.dispose,
     dragPreview.dispose,
@@ -1471,7 +1473,6 @@ class EditorSessionManager extends ChangeNotifier
   // `session.cutUnderPlayhead.resolve()`.
   late final CutUnderPlayhead cutUnderPlayhead = CutUnderPlayhead(
     project: this,
-    selection: this,
     timeline: this,
     controllers: activeCutControllers,
     scrubbing: frameScrub.active,
@@ -1668,7 +1669,7 @@ class EditorSessionManager extends ChangeNotifier
       // nothing displays at this index anymore, exactly like a gap
       // landing: park at the current global and deselect.
       if (cutId == editingSession.activeCutId) {
-        gapGlobalFrame = editingGlobalFrame;
+        editingSession.gapGlobalFrame = editingGlobalFrame;
         _deselectActiveCutForGap();
         frameSeekCommitted.value += 1;
       }
@@ -1680,7 +1681,7 @@ class EditorSessionManager extends ChangeNotifier
     // eye back on lands there again, exactly as if the position were
     // clicked. Without this the picture only returned in playback while
     // the editing view stayed in the void.
-    final parked = gapGlobalFrame;
+    final parked = editingSession.gapGlobalFrame;
     if (parked != null &&
         editingSession.activeCutId == null &&
         trackFrameAxis().ownerOf(parked)?.cutId == cutId) {
@@ -2156,7 +2157,7 @@ class EditorSessionManager extends ChangeNotifier
     projectFrameRate: () => projectSettings.projectFrameRate,
     activeCutGlobalStartFrame: () => activeCutGlobalStartFrame,
     editingGlobalFrame: () => editingGlobalFrame,
-    gapParkedGlobalFrame: () => gapParkedGlobalFrame,
+    gapParkedGlobalFrame: () => editingSession.gapGlobalFrame,
     standingRow: () => currentRow,
     openSeLane: () => layerStack.addSeLane(),
     trackSeGlobalLayerById: trackSeGlobalLayerById,
@@ -2175,7 +2176,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/storyboard_cursor.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final StoryboardCursor storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: cells, cutVerbs: cutVerbs, transitions: transitions);
+  late final StoryboardCursor storyboardCursor = StoryboardCursor(project: this, selection: this, timeline: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: cells, cutVerbs: cutVerbs, transitions: transitions);
 
   // --- Frame / cell state / commands -------------------------------------
 
@@ -2892,7 +2893,7 @@ class EditorSessionManager extends ChangeNotifier
     historyManager.places.settle();
     // A direct cut-local seek leaves any gap parking (R16-⑥); the global
     // seek re-parks AFTER this call when it lands in a gap.
-    gapGlobalFrame = null;
+    editingSession.gapGlobalFrame = null;
     labProbe('selectFrameIndex(sync)', () {
       activeCutControllers.timelineController.selectFrameIndex(frameIndex);
       editingFrameCursor.value = frameIndex;
@@ -2975,55 +2976,11 @@ class EditorSessionManager extends ChangeNotifier
   /// memo per project.
   final _trackFrameAxis = IdentityMemo<TrackFrameAxis>();
 
-  /// Set while the editing playhead is PARKED IN A GAP (R16-⑥, user
-  /// semantics: a gap has NO cut — the canvas shows a paperless void).
-  /// Stores the exact global frame, which the leading gap before the
-  /// first cut cannot express as any cut-local index. Notifier-backed
-  /// (UI-R7 #9): gap scrubs park PER MOVE now, and the storyboard
-  /// playhead must follow even where the cut-local cursor cannot change
-  /// (the leading gap pins local 0).
-  final ValueNotifier<int?> _gapGlobalFrameNotifier = ValueNotifier<int?>(null);
-
-  @override
-  int? get gapGlobalFrame => _gapGlobalFrameNotifier.value;
-  @override
-  set gapGlobalFrame(int? value) => _gapGlobalFrameNotifier.value = value;
-
-  /// Fires when the gap parking is set, moved or cleared — the storyboard
-  /// playhead subscribes (per-move gap scrubs, UI-R7 #9).
-  ValueListenable<int?> get gapParkingListenable => _gapGlobalFrameNotifier;
-
-  /// Whether the editing playhead sits in a gap (no cut there). During a
-  /// LIVE global scrub the parking transiently addresses ANY
-  /// out-of-active-cut position — another cut's frames included (the
-  /// quiet-crossing drag) — so consumers outside the scrub-gated display
-  /// path must not read a true here as "certainly between cuts" until the
-  /// release resolves it into a selection or a real gap parking.
-  /// 🚨★★★ T12 — A GAP PARKING IS THE ONLY WAY TO BE IN A GAP.
-  ///
-  /// This used to also ask `trackFrameAxis().isGap(editingGlobalFrame)`, and
-  /// that term was DEAD CODE only because the global frame was clamped into
-  /// the cut: a clamped frame is inside its own cut by construction, so the
-  /// question could never come back true. Unclamping woke it up, and it
-  /// immediately said the wrong thing — standing on frame 31 of a 24-frame
-  /// cut lands on a global the axis calls a gap, so the canvas dropped its
-  /// paper and its layers.
-  ///
-  /// ⛔That is precisely the law's negation: 「컷길이 넘어서도 **공간은 항상
-  /// 존재하고 항상 보인다**」. If a cut is active you are standing IN it —
-  /// anywhere in it, past its end line included. Only a global seek that
-  /// parked with no cut is a gap, and [gapGlobalFrame] is exactly that
-  /// state, held explicitly rather than inferred.
-  ///
-  /// ⚠️This is the sweep the getter's own doc promised whoever unclamped:
-  /// the term did not need updating, it needed removing.
-  @override
-  bool get editingPlayheadInGap => gapGlobalFrame != null;
-
-  /// The gap parking's exact global frame, or null when the playhead sits
-  /// on a cut. Cheap field read — per-tick consumers (the storyboard
-  /// playhead) use it without rebuilding the axis.
-  int? get gapParkedGlobalFrame => gapGlobalFrame;
+  // The gap parking — the editing playhead standing where no cut is — lives
+  // beside the active cut it is the other answer to
+  // ([EditingSessionState.gapGlobalFrame]; the audit's twenty-first family,
+  // 2026-09-29). `gapParkedGlobalFrame` went with it: a second name for the
+  // same field.
 
   /// 🚨★★★ The editing playhead as a track-global frame — UNFOLDED (T12).
   ///
@@ -3044,7 +3001,8 @@ class EditorSessionManager extends ChangeNotifier
   /// answers a question about where you are standing with an answer about
   /// where it can be drawn.
   ///
-  /// ★[editingPlayheadInGap] gets sharper for free: `isGap` can now answer
+  /// ★[EditingSessionState.playheadInGap] gets sharper for free: `isGap`
+  /// can now answer
   /// past the end line, where the clamped value made the term dead code —
   /// it was structurally impossible for a clamped frame to be outside its
   /// own cut.
@@ -3058,7 +3016,7 @@ class EditorSessionManager extends ChangeNotifier
   /// the law was wrong, not because the screen was proven to follow.
   @override
   int get editingGlobalFrame {
-    final parked = gapGlobalFrame;
+    final parked = editingSession.gapGlobalFrame;
     if (parked != null) {
       return parked;
     }
@@ -3155,7 +3113,7 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     historyManager.places.settle();
-    gapGlobalFrame = globalFrame;
+    editingSession.gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
     frameSeekCommitted.value += 1;
     notifyListeners();
@@ -3332,7 +3290,8 @@ class EditorSessionManager extends ChangeNotifier
   ///    the release, so a bar listening only to [frameSeekCommitted] was
   ///    stale for the whole gesture (measured: 9 of 25 buttons);
   ///  * a scrub that leaves the cut's territory parks instead, moving
-  ///    [gapParkingListenable] and NOT the cursor — which is why the
+  ///    [EditingSessionState.gapParkingListenable] and NOT the cursor —
+  ///    which is why the
   ///    storyboard's shift pair stayed lit past the film's end while the
   ///    rest of its bar had already caught up.
   ///
@@ -3342,7 +3301,7 @@ class EditorSessionManager extends ChangeNotifier
   late final Listenable playheadMoved = Listenable.merge([
     frameSeekCommitted,
     editingFrameCursor,
-    gapParkingListenable,
+    editingSession.gapParkingListenable,
   ]);
 
   // 🚨★★★ 유저 #6 (2026-08-14): 「룰러로 이동할때, **블록이 있으면 사용가능**

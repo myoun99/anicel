@@ -94,7 +94,7 @@ class PlayheadCursors {
       // the cut, never the trailing gap). No cut + no parking = no playhead.
       // ★The storyboard's flip starts from this very answer.
       return axis.storyboardFrameOf(
-        parkedGlobalFrame: _selection.gapGlobalFrame,
+        parkedGlobalFrame: _timeline.editingSession.gapGlobalFrame,
         activeCutId: _project.activeCutId,
         localFrame: _selection.currentFrameIndex,
       );

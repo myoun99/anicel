@@ -80,7 +80,10 @@ void main() {
 
   test('the gap notifier is released even though only its verb is public', () {
     final session = disposedSession();
-    expectReleased('gapGlobalFrame', () => session.gapGlobalFrame = 3);
+    expectReleased(
+      'gapGlobalFrame',
+      () => session.editingSession.gapGlobalFrame = 3,
+    );
   });
 
   test('every collaborator that holds something is told to let go', () {

@@ -893,7 +893,7 @@ class Standing {
     rememberActiveLayerForCut();
 
     final fromGap =
-        _selection.gapGlobalFrame != null ||
+        _timeline.editingSession.gapGlobalFrame != null ||
         _timeline.editingSession.activeCutId == null;
     // The visibility solo is cut-scoped: restore the eyes before leaving.
     if (_solo.layerVisibilitySoloEnabled) {

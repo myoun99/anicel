@@ -86,7 +86,11 @@ void main() {
         .startFrame;
 
     s.selectGlobalFrame(5); // the gap between a and b
-    expect(s.gapParkedGlobalFrame, 5, reason: 'fixture: really parked');
+    expect(
+      s.editingSession.gapGlobalFrame,
+      5,
+      reason: 'fixture: really parked',
+    );
     expect(placementOf(s).canCreateCut, isTrue);
 
     s.cutVerbs.createCut();
@@ -139,7 +143,11 @@ void main() {
     final s = session(gap: 3);
     addTearDown(s.dispose);
     s.selectGlobalFrame(5);
-    expect(s.gapParkedGlobalFrame, 5, reason: '⛔전제: parked in the gap');
+    expect(
+      s.editingSession.gapGlobalFrame,
+      5,
+      reason: '⛔전제: parked in the gap',
+    );
 
     s.cutVerbs.createCut();
 
