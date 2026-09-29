@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/row_block_shift.dart';
+import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_row_address.dart';
 import 'active_cut_controllers.dart';
 import 'cut_shift.dart';
@@ -145,6 +146,14 @@ class BlockShift {
 
   /// How far a frame PULL can travel: the LEAST slack across the scope's
   /// rows, so the whole scope stops where the first one touches.
+  ///
+  /// 🗣️F-237 (유저 2026-09-29): 「뒤 성질 홀드인 블록의 뒤 갭부분에서 앞으로
+  /// 당기기가 안됨. 몇번이나 말하지만 홀드든 리피트든 성질로 만들어진
+  /// 공간이라도 빈공간으로 작동은 해야함」 — F-137's law (a ghost neither
+  /// moves nor obstructs a plan) that the retime and the edges already kept.
+  /// ↩️The slack and the shift read the row WITH its ghosts, so the hold's
+  /// cells were a block the pull could not close; both read the ghost-free
+  /// row now, and the layer edit derives the ghosts again.
   int framePullSlack({TimelineRowAddress? currentRow}) {
     final scope = frameShiftScope(currentRow: currentRow);
     if (scope == null) {
@@ -159,7 +168,7 @@ class BlockShift {
       slack = math.min(
         slack,
         rowPullSlack(
-          blocks: timelineShiftableBlocks(layer.timeline),
+          blocks: timelineShiftableBlocks(ghostFreeTimeline(layer)),
           anchorIndex: shiftAnchorFor(
             layerId,
             scope.anchorIndex,
@@ -222,7 +231,7 @@ class BlockShift {
       );
       final after = before.copyWith(
         timeline: timelineShiftedFrom(
-          before.timeline,
+          ghostFreeTimeline(before),
           anchorIndex: anchor,
           delta: delta,
         ),
