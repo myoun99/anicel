@@ -11,8 +11,10 @@ import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart'
     show instructionLabelInset;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
-import 'timeline_cell_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+
+import '../../helpers/block_text_finder.dart';
+import 'timeline_cell_probe.dart';
 
 /// R5-⑤ geometry pin, revised 2026-08-08: the instruction endpoints (A/B)
 /// still sit DEAD CENTER in their cells — both axes, and nothing is drawn
@@ -49,8 +51,7 @@ void main() {
 
   /// The cells are PAINTED now (R28 #4), so the target comes from the row
   /// painter's geometry rather than from a cell widget's box.
-  void expectCentered(WidgetTester tester, Finder text, Offset cellCenter) {
-    final textCenter = tester.getCenter(text);
+  void expectCentered(Offset textCenter, Offset cellCenter) {
     expect(textCenter.dx, closeTo(cellCenter.dx, 1.0));
     expect(textCenter.dy, closeTo(cellCenter.dy, 1.0));
   }
@@ -83,13 +84,11 @@ void main() {
     );
 
     expectCentered(
-      tester,
-      find.text('ㄱ'),
+      blockTextRect(tester, findBlockText('ㄱ')).center,
       timelineCellCenter(tester, 'cam-1', 2),
     );
     expectCentered(
-      tester,
-      find.text('ㄴ'),
+      blockTextRect(tester, findBlockText('ㄴ')).center,
       timelineCellCenter(tester, 'cam-1', 6),
     );
 
@@ -98,7 +97,7 @@ void main() {
     final span = tester.getRect(
       find.byKey(const ValueKey<String>('timeline-instruction-cam-1-2')),
     );
-    final name = tester.getRect(find.text('PAN'));
+    final name = blockTextRect(tester, findBlockText('PAN'));
     expect(name.center.dx, closeTo(span.center.dx, 1.0));
     expect(
       name.top,
@@ -147,13 +146,11 @@ void main() {
     );
 
     expectCentered(
-      tester,
-      written('ㄱ'),
+      tester.getCenter(written('ㄱ')),
       timelineCellCenter(tester, 'cam-1', 2, prefix: 'xsheet'),
     );
     expectCentered(
-      tester,
-      written('ㄴ'),
+      tester.getCenter(written('ㄴ')),
       timelineCellCenter(tester, 'cam-1', 6, prefix: 'xsheet'),
     );
 

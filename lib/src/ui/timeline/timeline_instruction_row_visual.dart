@@ -272,8 +272,9 @@ class _InstructionSpan extends StatelessWidget {
   final InstructionEvent event;
   final CameraInstructionDef? def;
 
-  /// A word of this span as a BLOCK word ([TimelineBlockWord]): its block is
-  /// the span, split into `event.length` cells, and the word stays inside it.
+  /// A word of this span as a BLOCK word ([TimelineBlockText],
+  /// [TimelineBlockWord]): its block is the span, split into `event.length`
+  /// cells, and the word stays inside it.
   ///
   /// ↩️The writing used to run past the span onto the neighbours' cells
   /// (「paper writing spills over neighbours freely」 — mine, 2026-07-09, the
@@ -282,14 +283,7 @@ class _InstructionSpan extends StatelessWidget {
   /// the block word reads its own box. What changed is the law — 「이름은
   /// 블록안에서만」 and 「컷블록의 텍스트든 se텍스트든 뭐든」 (유저
   /// 2026-09-24): the writing keeps its type and narrows into the span.
-  Widget _word(Widget writing, TimelineBlockWordCells place) =>
-      Positioned.fill(
-        child: TimelineBlockWord(
-          place: place,
-          child: ExcludeSemantics(child: writing),
-        ),
-      );
-
+  ///
   /// Instruction writing follows the surface: across the row on the
   /// timeline, DOWN the column on the sheet.
   ///
@@ -302,15 +296,21 @@ class _InstructionSpan extends StatelessWidget {
   /// Down the column its LETTERS stand up (user, 2026-08-08): writing
   /// beside a duration bar is read at a glance, and the printed sheet is
   /// set the same way for the same reason.
-  Widget _writing(String text, TextStyle style) {
-    return axis == Axis.horizontal
-        ? Text(text, maxLines: 1, softWrap: false, style: style)
-        : VerticalWritingText(
-            text: text,
-            latinForm: VerticalLatinForm.upright,
-            style: style,
-          );
-  }
+  Widget _word(String text, TextStyle style, TimelineBlockWordCells place) =>
+      axis == Axis.horizontal
+      ? ExcludeSemantics(
+          child: TimelineBlockText(text: text, style: style, place: place),
+        )
+      : TimelineBlockWord(
+          place: place,
+          child: ExcludeSemantics(
+            child: VerticalWritingText(
+              text: text,
+              latinForm: VerticalLatinForm.upright,
+              style: style,
+            ),
+          ),
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -365,21 +365,25 @@ class _InstructionSpan extends StatelessWidget {
           // The A/B values sit in the span's first and last cells, as a
           // block's name and its length do (F-96).
           if (valueA != null && valueA.isNotEmpty)
-            _word(_writing(valueA, valueStyle), (
-              axis: axis,
-              cells: cells,
-              cellIndex: 0,
-              growth: TimelineBlockWordGrowth.towardBlockEnd,
-              acrossAlignment: 0,
-            )),
+            Positioned.fill(
+              child: _word(valueA, valueStyle, (
+                axis: axis,
+                cells: cells,
+                cellIndex: 0,
+                growth: TimelineBlockWordGrowth.towardBlockEnd,
+                acrossAlignment: 0,
+              )),
+            ),
           if (valueB != null && valueB.isNotEmpty)
-            _word(_writing(valueB, valueStyle), (
-              axis: axis,
-              cells: cells,
-              cellIndex: cells - 1,
-              growth: TimelineBlockWordGrowth.towardBlockStart,
-              acrossAlignment: 0,
-            )),
+            Positioned.fill(
+              child: _word(valueB, valueStyle, (
+                axis: axis,
+                cells: cells,
+                cellIndex: cells - 1,
+                growth: TimelineBlockWordGrowth.towardBlockStart,
+                acrossAlignment: 0,
+              )),
+            ),
           // The name sits on the SPAN's centre along the FRAME axis and
           // steps OFF the mark across it (user, 2026-08-08): up on the
           // timeline, right on the sheet.
@@ -398,16 +402,13 @@ class _InstructionSpan extends StatelessWidget {
                 padding: axis == Axis.horizontal
                     ? const EdgeInsets.only(top: instructionLabelInset)
                     : const EdgeInsets.only(right: instructionLabelInset),
-                child: TimelineBlockWord(
-                  place: (
-                    axis: axis,
-                    cells: 1,
-                    cellIndex: 0,
-                    growth: TimelineBlockWordGrowth.towardBlockEnd,
-                    acrossAlignment: axis == Axis.horizontal ? -1 : 1,
-                  ),
-                  child: ExcludeSemantics(child: _writing(name, nameStyle)),
-                ),
+                child: _word(name, nameStyle, (
+                  axis: axis,
+                  cells: 1,
+                  cellIndex: 0,
+                  growth: TimelineBlockWordGrowth.towardBlockEnd,
+                  acrossAlignment: axis == Axis.horizontal ? -1 : 1,
+                )),
               ),
             ),
         ],

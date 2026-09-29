@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show TimelineBlockWordGrowth;
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
@@ -35,6 +37,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
+import '../../helpers/block_text_finder.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨B (유저 2026-09-24, `block-word-size-at-zoom-Q1`): 「글자크기 그냥
@@ -380,6 +383,31 @@ void main() {
     );
   });
 
+  // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」 — for a word a row
+  // builds as a widget too, set by the painted word's own code.
+  test('a word built as a widget gives up its letter gaps first', () {
+    const style = TextStyle(fontSize: 10, fontFamily: 'Face');
+    final natural = timelineGlyphPainter('12', style).size;
+    final word = RenderTimelineBlockText(
+      text: '12',
+      style: style,
+      place: (
+        axis: Axis.horizontal,
+        cells: 1,
+        cellIndex: 0,
+        growth: TimelineBlockWordGrowth.towardBlockEnd,
+        acrossAlignment: 0,
+      ),
+    )..layout(
+      BoxConstraints.tight(Size(natural.width - 1, 2 * natural.height)),
+    );
+    expect(
+      word.wordRect.width,
+      natural.width - 1,
+      reason: 'its gap gave the pixel, and nothing narrowed it',
+    );
+  });
+
   group('a lane key\'s NAME', () {
     Future<void> pumpLane(
       WidgetTester tester, {
@@ -420,7 +448,7 @@ void main() {
       ) async {
         const cell = 6.0;
         await pumpLane(tester, cell: cell, axis: axis);
-        final word = find.text('Walk');
+        final word = findBlockText('Walk');
         expect(
           word,
           findsOneWidget,
@@ -428,12 +456,8 @@ void main() {
               'both mine (2026-08-11), from when the name stood beside the '
               'diamond',
         );
-        expect(
-          find.ancestor(of: word, matching: find.byType(TimelineBlockWord)),
-          findsOneWidget,
-        );
         final origin = tester.getTopLeft(find.byType(TimelineLaneFrameRow));
-        final painted = tester.getRect(word).shift(-origin);
+        final painted = blockTextRect(tester, word).shift(-origin);
         final along = axis == Axis.horizontal
             ? (painted.left, painted.right)
             : (painted.top, painted.bottom);
@@ -540,7 +564,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-instruction-cam-0')),
     );
     for (final text in ['FROMHERE', 'TOTHERE']) {
-      final painted = tester.getRect(find.text(text));
+      final painted = blockTextRect(tester, findBlockText(text));
       expect(
         painted.left,
         greaterThanOrEqualTo(span.left - 1e-6),

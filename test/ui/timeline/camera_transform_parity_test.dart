@@ -38,6 +38,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_span_resolver.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
+import '../../helpers/block_text_finder.dart';
 import 'timeline_cell_probe.dart';
 
 /// 🚨B4 (2026-08-17, device report): the CAMERA row's timeline interactions
@@ -311,7 +312,7 @@ void main() {
         reason: '「유니언 키 색은 프레임블록이랑 마찬가지로 색라벨 그대로」',
       );
       expect(
-        find.text('A'),
+        findBlockText('A'),
         findsOneWidget,
         reason: '「카메라레이어만 레이어에 인스턴스 이름이 표시안되」 — it '
             'drew the mark and left the word to a band it does not have',

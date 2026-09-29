@@ -608,16 +608,36 @@ class _SeNameBox extends StatelessWidget {
     // 가로쓰기 세로표기가 되도록. x시트는 그대로 냅둠」 — the two readings
     // the user named on 2026-08-08 ([VerticalLatinForm]): the SCREEN block
     // stands its Latin up, and the PRINT timesheet keeps the Japanese
-    // typesetting default. The X-sheet arm below is the `Text` branch, so
-    // it is untouched by construction rather than by an exception.
-    final writing = axis == Axis.horizontal
-        ? VerticalWritingText(
-            text: name,
-            style: style,
-            lineHeight: 1.05,
-            latinForm: VerticalLatinForm.upright,
+    // typesetting default. The X-sheet arm below is the line branch, so it
+    // is untouched by construction rather than by an exception.
+    //
+    // A LONG name stays inside the chip instead of overflowing the row (the
+    // striped-error report — R4 improvement 2) — by the block-word law now
+    // (B, 유저 2026-09-24: 「se텍스트든 뭐든」): it keeps its type and
+    // narrows, each axis on its own, into the chip. ↩️It shrank WHOLE into
+    // the chip (`FittedBox.scaleDown`), height with width.
+    final place = (
+      axis: axis,
+      cells: 1,
+      cellIndex: 0,
+      growth: TimelineBlockWordGrowth.towardBlockEnd,
+      acrossAlignment: 0.0,
+    );
+    final word = axis == Axis.horizontal
+        ? TimelineBlockWord(
+            place: place,
+            child: ExcludeSemantics(
+              child: VerticalWritingText(
+                text: name,
+                style: style,
+                lineHeight: 1.05,
+                latinForm: VerticalLatinForm.upright,
+              ),
+            ),
           )
-        : Text(name, maxLines: 1, softWrap: false, style: style);
+        : ExcludeSemantics(
+            child: TimelineBlockText(text: name, style: style, place: place),
+          );
     final box = Semantics(
       label: 'SE name $name',
       // Own node even where an ancestor would merge labels (the dialog
@@ -627,21 +647,7 @@ class _SeNameBox extends StatelessWidget {
         // R6-②: soft accent tint (the full-strength accent read too loud);
         // dark ink writing carries the contrast — matches the sheet.
         color: AppColors.accent.withValues(alpha: 0.3),
-        // A LONG name stays inside the chip instead of overflowing the row
-        // (the striped-error report — R4 improvement 2) — by the block-word
-        // law now (B, 유저 2026-09-24: 「se텍스트든 뭐든」): it keeps its
-        // type and narrows, each axis on its own, into the chip. ↩️It shrank
-        // WHOLE into the chip (`FittedBox.scaleDown`), height with width.
-        child: TimelineBlockWord(
-          place: (
-            axis: axis,
-            cells: 1,
-            cellIndex: 0,
-            growth: TimelineBlockWordGrowth.towardBlockEnd,
-            acrossAlignment: 0,
-          ),
-          child: ExcludeSemantics(child: writing),
-        ),
+        child: word,
       ),
     );
     return alongBox(axis, extent, child: box);

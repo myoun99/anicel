@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart'
     show TimelineFrameCellsRow;
 
+import '../../helpers/block_text_finder.dart';
 import 'timeline_cell_probe.dart';
 
 const _cutId = CutId('inst-cut');
@@ -126,9 +127,9 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-instruction-inst-cam-2')),
       findsOneWidget,
     );
-    expect(find.text('PAN'), findsOneWidget);
-    expect(find.text('A'), findsWidgets);
-    expect(find.text('B'), findsOneWidget);
+    expect(findBlockText('PAN'), findsOneWidget);
+    expect(findBlockText('A'), findsOneWidget);
+    expect(findBlockText('B'), findsOneWidget);
     // No X cells on instruction rows.
     final rowArea = find.byKey(
       const ValueKey<String>('timeline-frame-row-area-inst-cam'),
@@ -205,7 +206,7 @@ void main() {
     expect(event.instructionId, 'pan');
     expect(event.valueA, '0%');
     expect(event.valueB, '100%');
-    expect(find.text('PAN'), findsWidgets);
+    expect(findBlockText('PAN'), findsWidgets);
 
     // Undo pops the edit, then the creation.
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
@@ -233,8 +234,8 @@ void main() {
     );
 
     // The chip prints the free text, not 'PAN'.
-    expect(find.text('メモリPAN'), findsOneWidget);
-    expect(find.text('PAN'), findsNothing);
+    expect(findBlockText('メモリPAN'), findsOneWidget);
+    expect(findBlockText('PAN'), findsNothing);
 
     await _doubleTapCell(tester, 'inst-cam', 2);
     await tester.enterText(
@@ -247,7 +248,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_camLayer(repository).instructions[2]!.text, '早いPAN');
-    expect(find.text('早いPAN'), findsOneWidget);
+    expect(findBlockText('早いPAN'), findsOneWidget);
   });
 
   testWidgets('double-tap on an existing event edits it; Delete removes', (

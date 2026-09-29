@@ -1407,7 +1407,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
 const double _laneKeyNameFontSize = 8;
 
 /// A named key's label, centred in its cell — a block word whose block is
-/// that one cell ([TimelineBlockWord]).
+/// that one cell ([TimelineBlockText]).
 ///
 /// ↩️It was CLIPPED to the cell (「the first letters are what tell two names
 /// apart」 — mine, 2026-08-11) and its type shrank with the zoom; the law
@@ -1423,7 +1423,8 @@ class _LaneKeyName extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TimelineBlockWord(
+    return TimelineBlockText(
+      text: text,
       // One cell: the word is centred on both axes whichever way the frame
       // axis runs.
       place: (
@@ -1433,19 +1434,14 @@ class _LaneKeyName extends StatelessWidget {
         growth: TimelineBlockWordGrowth.towardBlockEnd,
         acrossAlignment: 0,
       ),
-      child: Text(
-        text,
-        maxLines: 1,
-        softWrap: false,
-        // The frame block's own print — ink, size, weight and the box that
-        // makes centring read as centred (유저 2026-09-12: 「내부에 있는
-        // 텍스트 디자인? 색도 똑같이 그대로 재사용」).
-        style: timelineBlockWordStyle(
-          DefaultTextStyle.of(context).style,
-          ink: timelineInBlockInk(),
-          fontSize: _laneKeyNameFontSize,
-          bold: true,
-        ),
+      // The frame block's own print — ink, size, weight and the box that
+      // makes centring read as centred (유저 2026-09-12: 「내부에 있는 텍스트
+      // 디자인? 색도 똑같이 그대로 재사용」).
+      style: timelineBlockWordStyle(
+        DefaultTextStyle.of(context).style,
+        ink: timelineInBlockInk(),
+        fontSize: _laneKeyNameFontSize,
+        bold: true,
       ),
     );
   }

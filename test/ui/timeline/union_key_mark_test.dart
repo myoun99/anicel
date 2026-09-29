@@ -3,10 +3,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
+    show TimelineBlockText;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineDrawingInkColor;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
+
+import '../../helpers/block_text_finder.dart';
 
 /// ㉗ (user, 2026-08-12): 「fx(트랜스폼) 헤더의 유니언 마크를 카메라처럼
 /// 크게 — 멤버 유니언들의 합이라는 느낌이 나야 한다」 and 「유니언 이름은
@@ -37,7 +41,7 @@ void main() {
 
   /// ⚠️A WIDE CELL, and the reason is a test that measured nothing.
   ///
-  /// `find.text` returns the Text WIDGET's box, not its ink — and at the
+  /// `find.text` returned the Text WIDGET's box, not its ink — and at the
   /// default 24px cell the word 「Wall」 is exactly 24 wide, so the `Align`
   /// inside had no room to move it and every alignment produced the same
   /// rect. 🧪Mutation proved it: flipping `Alignment.center` to `centerLeft`
@@ -135,7 +139,7 @@ void main() {
 
     for (final lane in [member, union]) {
       await pumpWideLane(tester, lane);
-      final name = tester.getRect(find.text('Wall'));
+      final name = blockTextRect(tester, findBlockText('Wall'));
       expect(
         name.width,
         lessThan(wideCell - 8),
@@ -156,7 +160,8 @@ void main() {
   // 두지말라했는데 왜 자꾸 멋대로 하는거지? 아예 통일하라고」.
   testWidgets('🚨and EVERY key name is PRINTED the same — the member wears '
       "the header's ink and the header's type", (tester) async {
-    TextStyle nameStyle() => tester.widget<Text>(find.text('Wall')).style!;
+    TextStyle nameStyle() =>
+        tester.widget<TimelineBlockText>(findBlockText('Wall')).style;
 
     await pumpLane(tester, union);
     final header = nameStyle();
