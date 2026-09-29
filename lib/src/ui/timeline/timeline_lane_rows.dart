@@ -962,6 +962,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         // thing a fixed-string preview does track.
         line: _previewTag.showLine ? preview.line : '',
         tag: _previewTag,
+        axis: widget.axis,
       ),
     );
   }
