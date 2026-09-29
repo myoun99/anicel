@@ -141,6 +141,7 @@ void main() {
     required bool walk,
     BitmapSurfacePainter? active,
     bool keepsComposites = false,
+    bool alreadyShown = false,
   }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -162,6 +163,7 @@ void main() {
                   // what is kept is the question.
                   debugDisableBake: !keepsComposites,
                   debugDisableSingleBuffer: walk,
+                  alreadyShown: alreadyShown,
                 ),
               ),
             ),
@@ -487,6 +489,46 @@ void main() {
           'been widened and the stall came with it',
     );
   });
+
+  // F-215: a view that MOUNTS over a stack another route was showing — the
+  // conte's print, taken over by its live pictures while the brush is on —
+  // was on screen a frame ago in all but name, and composes every row in
+  // its first build; a view mounting on a stack nothing showed (a project
+  // opened, a cut switched to) composes none of it there.
+  for (final shown in [false, true]) {
+    testWidgets(
+      shown
+          ? 'a view that takes over what another route showed is whole on '
+                'its first frame'
+          : '⛔a view mounting on a stack nothing showed composes none of '
+                'it inside the build',
+      (tester) async {
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final store = blueStore(['mounted']);
+        final images = LayerFrameImageCache(frameStore: store);
+        addTearDown(images.dispose);
+
+        await pumpStack(
+          tester,
+          images,
+          [
+            CompositeLeaf<CanvasStackRow>(
+              CanvasLayerImageRequest(frameKey: keyOf('mounted'), opacity: 1),
+            ),
+          ],
+          zoom: 1,
+          walk: false,
+          alreadyShown: shown,
+        );
+
+        expect(
+          blueColumns(await paintStack(tester), 1),
+          shown ? viewSize.width.toInt() : 0,
+        );
+      },
+    );
+  }
 }
 
 /// The cache as the stack sees it, remembering every image it hands over
