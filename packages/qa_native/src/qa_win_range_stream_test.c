@@ -138,19 +138,26 @@ static void wait_invoked(qa_test_callback* callback) {
 
 typedef struct {
   IMFByteStream* stream;
+  /// The span's block size: every read takes a whole block.
+  ULONG block;
   volatile LONG stop;
   LONG reads;
 } qa_test_reader;
 
 static DWORD WINAPI read_until_stopped(void* argument) {
   qa_test_reader* reader = (qa_test_reader*)argument;
-  uint8_t sink[4096];
-  while (reader->stop == 0) {
+  uint8_t* sink = (uint8_t*)malloc(reader->block);
+  QWORD at = 0;
+  while (sink != NULL && reader->stop == 0) {
+    // Two blocks in turn, so every read DECODES one: a read that only
+    // copies the block the span kept is over before a Close can meet it.
+    at = at == 0 ? (QWORD)reader->block * 5 : 0;
     ULONG got = 0;
-    IMFByteStream_SetCurrentPosition(reader->stream, 0);
-    IMFByteStream_Read(reader->stream, sink, sizeof(sink), &got);
+    IMFByteStream_SetCurrentPosition(reader->stream, at);
+    IMFByteStream_Read(reader->stream, sink, reader->block, &got);
     InterlockedIncrement(&reader->reads);
   }
+  free(sink);
   return 0;
 }
 
@@ -391,22 +398,43 @@ int main(void) {
       IMFByteStream_Release(framed);
     }
 
-    // 🚨CLOSE RACING A READ (framed-movie-parity-hangs-under-load): Media
-    // Foundation reads on its own work-queue threads while the thread that
-    // owns the reader tears it down, and Close freed the file and the block
-    // buffers under a read still using them. A read after Close is refused;
-    // a read Close meets finishes first.
-    if (blob > 0) {
+  }
+
+  // 🚨CLOSE RACING A READ (framed-movie-parity-hangs-under-load): Media
+  // Foundation reads on its own work-queue threads while the thread that
+  // owns the reader tears it down, and Close freed the file and the block
+  // buffers under a read still using them. A read after Close is refused;
+  // a read Close meets finishes first.
+  {
+    // Big blocks, so a read spends its time decoding one — the window a
+    // Close has to land in.
+    enum { kRaceMedium = 1 << 20, kRaceBlock = 1 << 16 };
+    static uint8_t race_medium[kRaceMedium];
+    for (int64_t at = 0; at < kRaceMedium; at += 1) {
+      race_medium[at] = pattern_byte(at);
+    }
+    uint32_t race_lengths[QA_FIXTURE_MAX_BLOCKS];
+    FILE* out = _wfopen(fixture, L"wb");
+    int64_t race_blob = -1;
+    if (out != NULL) {
+      race_blob = qa_fixture_write_framed(out, race_medium, kRaceMedium,
+                                          kRaceBlock, race_lengths);
+      fclose(out);
+    }
+    expect_int("the race's framed span is written", race_blob > 0 ? 1 : 0,
+               1);
+    if (race_blob > 0) {
       LONG reads = 0;
       for (int cycle = 0; cycle < 300; cycle += 1) {
         IMFByteStream* racing =
-            qa_win_range_stream_create(fixture_utf8, RANGE_BASE, blob, 1);
+            qa_win_range_stream_create(fixture_utf8, 0, race_blob, 1);
         if (racing == NULL) {
           expect_int("a framed span opens for the race", 0, 1);
           break;
         }
         qa_test_reader reader;
         reader.stream = racing;
+        reader.block = kRaceBlock;
         reader.stop = 0;
         reader.reads = 0;
         const HANDLE thread =
