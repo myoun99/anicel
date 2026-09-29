@@ -22,6 +22,28 @@ import 'conte_fonts.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
+/// [cut]'s length as the conte prints it while [preview] is in flight.
+///
+/// 🚨The SAME law the timeline's end line and the timesheet read
+/// ([timelineCutEndPreviewFrameCount]) — a second answer here is how two
+/// panels print one number differently for the length of a drag (F-88,
+/// 유저: 「콘티패널의 초수도 똑같이」).
+int conteLiveFramesOf(ConteCutSource cut, TimelineDragPreview? preview) =>
+    timelineCutEndPreviewFrameCount(
+      preview: preview,
+      cutId: cut.cutId,
+      playbackFrameCount: cut.durationFrames,
+    );
+
+/// What a conte page PRINTS of a drag: every cut's live length — the one
+/// thing [ContePagePainter] reads off its `dragPreview` — compared by value.
+///
+/// 🚨sheet-prints-only-its-drags: a drag that moves nothing the conte prints
+/// — a lane value, a block — prints the same, and the page neither repaints
+/// nor stands its bake down for it.
+Object conteDragPrint(ConteSheetSource source, TimelineDragPreview? preview) =>
+    ByList([for (final cut in source.cuts) conteLiveFramesOf(cut, preview)]);
+
 /// The conte page on a Canvas — the panel's and the PNG export's printer.
 ///
 /// It decides nothing: the page is [contePageMarks], the one walk the PDF
@@ -126,24 +148,13 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     );
   }
 
-  /// The live length of the cut [cutId] names, or null with no drag
-  /// channel.
-  ///
-  /// 🚨The SAME law the timeline's end line and the timesheet read
-  /// ([timelineCutEndPreviewFrameCount]) — a second answer here is how two
-  /// panels print one number differently for the length of a drag (F-88,
-  /// 유저: 「콘티패널의 초수도 똑같이」).
+  /// The live length of the cut [cutId] names ([conteLiveFramesOf]), or
+  /// null with no drag channel.
   int? _liveFramesOf(String cutId) {
     final channel = dragPreview;
-    if (channel == null) {
-      return null;
-    }
-    final cut = source.cutById(cutId);
-    return timelineCutEndPreviewFrameCount(
-      preview: channel.value,
-      cutId: cut.cutId,
-      playbackFrameCount: cut.durationFrames,
-    );
+    return channel == null
+        ? null
+        : conteLiveFramesOf(source.cutById(cutId), channel.value);
   }
 
   @override

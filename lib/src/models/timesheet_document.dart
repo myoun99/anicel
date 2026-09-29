@@ -157,6 +157,35 @@ class TimesheetCell {
   /// A prints it across the whole start row (accent box + underline, Toei
   /// style) with the dialogue distributing below.
   final String? seName;
+
+  /// Equal cells print the same — what lets the sheet tell a drag that
+  /// re-prints a column from one that only moves a value it does not print
+  /// (sheet-prints-only-its-drags).
+  @override
+  bool operator ==(Object other) =>
+      other is TimesheetCell &&
+      other.kind == kind &&
+      other.label == label &&
+      other.mark == mark &&
+      other.spanLength == spanLength &&
+      other.spanOffset == spanOffset &&
+      other.markType == markType &&
+      other.valueA == valueA &&
+      other.valueB == valueB &&
+      other.seName == seName;
+
+  @override
+  int get hashCode => Object.hash(
+    kind,
+    label,
+    mark,
+    spanLength,
+    spanOffset,
+    markType,
+    valueA,
+    valueB,
+    seName,
+  );
 }
 
 /// One sheet column: the printed column header plus one cell per document

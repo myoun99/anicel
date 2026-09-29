@@ -11,6 +11,8 @@ import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_ink_layer.dart' show SheetInkWindow;
 import '../sheet/sheet_strata.dart';
 import '../text/app_face.dart';
+import '../sliced_value_listenable_builder.dart'
+    show SlicedValueListenableScope;
 import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timesheet_document_painter.dart';
 import 'timesheet_ink_controller.dart';
@@ -63,19 +65,45 @@ class TimesheetStrata extends StatelessWidget {
   /// windows; null prints none.
   final ({TimesheetInkController controller, bool live})? ink;
 
-  @override
-  Widget build(BuildContext context) => SheetStrata(
-    sheet: 'timesheet',
-    painters: _painters(context),
-    liveNow: (stratum) => switch (stratum) {
-      SheetStratum.content => dragPreview.value != null,
-      SheetStratum.ink => stroking.value,
-      SheetStratum.form || SheetStratum.picture => false,
-    },
-    liveChanges: Listenable.merge([dragPreview, stroking]),
+  /// What the content stratum PRINTS of a drag ([timesheetDragPrint]).
+  Object _printOf(TimelineDragPreview? preview) => timesheetDragPrint(
+    document: layout.document,
+    cutId: cutId,
+    preview: preview,
   );
 
-  Map<SheetStratum, CustomPainter> _painters(BuildContext context) {
+  /// The channel is handed on SLICED to what the values print: the content
+  /// painter repaints, and its bake stands down, only while a drag
+  /// re-prints something.
+  ///
+  /// 🚨sheet-prints-only-its-drags: both listened to the channel whole, so
+  /// a lane value scrubbed on the timeline repainted the sheet every step —
+  /// and being "live" for any drag in flight, the sheet paid a full paint a
+  /// step for values it prints the same.
+  @override
+  Widget build(BuildContext context) =>
+      SlicedValueListenableScope<TimelineDragPreview?, Object>(
+        valueListenable: dragPreview,
+        slice: _printOf,
+        builder: (context, printed) {
+          final committed = _printOf(null);
+          return SheetStrata(
+            sheet: 'timesheet',
+            painters: _painters(context, printed),
+            liveNow: (stratum) => switch (stratum) {
+              SheetStratum.content => printed.slice != committed,
+              SheetStratum.ink => stroking.value,
+              SheetStratum.form || SheetStratum.picture => false,
+            },
+            liveChanges: Listenable.merge([printed, stroking]),
+          );
+        },
+      );
+
+  Map<SheetStratum, CustomPainter> _painters(
+    BuildContext context,
+    ValueListenable<TimelineDragPreview?> printed,
+  ) {
     final face = appFaceOf(DefaultTextStyle.of(context).style);
     // The per-cell text cutoff is a legibility question, so it counts
     // DEVICE pixels. Raising the interface scale used to erase every text
@@ -116,7 +144,7 @@ class TimesheetStrata extends StatelessWidget {
       SheetStratum.form: painterOf(SheetStratum.form),
       SheetStratum.content: painterOf(
         SheetStratum.content,
-        dragPreview: dragPreview,
+        dragPreview: printed,
       ),
       if (ink != null)
         SheetStratum.ink: painterOf(

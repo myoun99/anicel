@@ -17,6 +17,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
@@ -331,6 +333,82 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    // sheet-prints-only-its-drags: the sheets heard the drag channel WHOLE.
+    // A lane value (F-195) moves nothing a sheet prints, yet the timesheet
+    // stood its values down for it and the conte re-printed them — with
+    // the bake standing, a capture per step.
+    testWidgets('${sheet.sheet}: a lane value in flight re-records nothing '
+        'and stands nothing down — it prints none of it', (tester) async {
+      final (rebakes, _) = await mount(tester);
+      // A drawing row with a cel: the timesheet prints it as a column.
+      session.layerStack.addLayerOfKind(LayerKind.animation);
+      session.createDrawingAtCurrentFrame();
+      await tester.pumpAndSettle();
+      final row = session.activeLayer!.id;
+
+      for (final value in ['40, 30', '41, 30']) {
+        expect(
+          await rebakes(
+            () => session.laneVerbs.previewLaneValueAt(
+              row,
+              'position',
+              0,
+              value,
+              frameIsGlobal: false,
+            ),
+          ),
+          only(const {}),
+          reason: 'a step of a lane value prints nothing new',
+        );
+        expect(session.dragPreview.value, isNotNull, reason: '⛔premise');
+        expect(
+          _contentOf(tester, sheet.sheet).standDown,
+          StandDownReason.none,
+          reason: 'nor is anything it prints on the move',
+        );
+      }
+      session.laneVerbs.endLaneEditPreview();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('${sheet.sheet}: a comma stretched on a row stands down the '
+        'values it re-prints — and only those', (tester) async {
+      final (rebakes, _) = await mount(tester);
+      session.layerStack.addLayerOfKind(LayerKind.animation);
+      session.createDrawingAtCurrentFrame();
+      await tester.pumpAndSettle();
+      expect(
+        session.edgeDrag.beginExposureEdgeDrag(
+          layerId: session.activeLayer!.id,
+          blockStartIndex: 0,
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+      );
+
+      expect(
+        await rebakes(() => session.edgeDrag.updateExposureEdgeDrag(2)),
+        only(const {}),
+      );
+      expect(
+        _contentOf(tester, sheet.sheet).standDown,
+        // The timesheet prints the row's cells; the conte and the envelope
+        // print no cell of it.
+        sheet.sheet == 'timesheet'
+            ? StandDownReason.disabled
+            : StandDownReason.none,
+      );
+
+      session.edgeDrag.endExposureEdgeDrag();
+      await tester.pumpAndSettle();
+      expect(
+        _contentOf(tester, sheet.sheet).standDown,
+        StandDownReason.none,
+        reason: 'the release prints what the drag showed, and bakes it — the '
+            'print of no drag is read against the NEW document',
+      );
+    });
+
     testWidgets('${sheet.sheet}: a landed media image re-records the strata '
         'that print media images', (tester) async {
       final (rebakes, _) = await mount(tester);
@@ -443,3 +521,8 @@ Finder _rastersOf(String sheet) => sheet == 'conte'
         matching: find.byType(StaticRaster),
       )
     : find.byType(StaticRaster);
+
+/// The sheet's values stratum, as [_rastersOf] finds it.
+RenderStaticRaster _contentOf(WidgetTester tester, String sheet) => tester
+    .renderObjectList<RenderStaticRaster>(_rastersOf(sheet))
+    .singleWhere((raster) => raster.debugLabel == '$sheet-content');

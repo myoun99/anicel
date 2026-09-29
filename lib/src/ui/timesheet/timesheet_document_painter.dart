@@ -477,6 +477,56 @@ void _enterDocumentSpace(
   }
 }
 
+/// [column]'s cells as [preview] shows them. Every layer-backed column kind
+/// previews (UI-R18 #7 — action, SE, camera instruction): the column's own
+/// baked [TimesheetColumn.previewCellsBuilder] re-derives the cells on the
+/// row the drag previews, so the painter never learns each kind's recipe.
+/// SE previews arrive as DISPLAY clones under the same id (the timeline's
+/// seam), so the SE windowing stays the document's job. The document's own
+/// cells where the drag previews no row of this column.
+List<TimesheetCell> timesheetColumnCellsShowing(
+  TimesheetColumn column,
+  TimelineDragPreview? preview,
+) {
+  final layerId = column.layerId;
+  final rebuild = column.previewCellsBuilder;
+  if (preview == null || layerId == null || rebuild == null) {
+    return column.cells;
+  }
+  final previewLayer = timelineDragPreviewLayerFor(preview, layerId);
+  return previewLayer == null ? column.cells : rebuild(previewLayer);
+}
+
+/// What the content stratum PRINTS from the drag channel — every column's
+/// cells as the drag shows them, the cut's live end and its live drawn end,
+/// the three things [TimesheetDocumentPainter] reads off its `dragPreview` —
+/// compared by value.
+///
+/// 🚨sheet-prints-only-its-drags: a drag that moves nothing the sheet prints
+/// — a lane value scrubbed, a canvas handle, a key range (F-195) — prints
+/// the same, and the sheet neither repaints nor stands its bake down for it.
+Object timesheetDragPrint({
+  required TimesheetDocument document,
+  required CutId? cutId,
+  required TimelineDragPreview? preview,
+}) => (
+  ByList([
+    for (final column in document.columns)
+      ByList(timesheetColumnCellsShowing(column, preview)),
+  ]),
+  timelineCutEndPreviewFrameCount(
+    preview: preview,
+    cutId: cutId,
+    playbackFrameCount: document.playbackFrameCount,
+  ),
+  timelineDrawnEndPreviewFrameCount(
+    preview: preview,
+    cutId: cutId,
+    playbackFrameCount: document.playbackFrameCount,
+    drawnFrameCount: document.drawnFrameCount,
+  ),
+);
+
 /// Paints the sheet document — the paper form (header band, Direction memo
 /// band, group/letter rows, second-heavy grid), cel numbers, holds,
 /// in-between marks, X cells, camera keys, the data-driven cut-end

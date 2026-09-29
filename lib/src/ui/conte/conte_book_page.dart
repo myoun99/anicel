@@ -19,8 +19,9 @@ import '../input/control_press_claim.dart';
 import '../sheet/sheet_strata.dart';
 import '../sheet/sheet_text_edit_layer.dart';
 import '../sheet_painting.dart' show SheetPictureLookup;
-import '../timeline/timeline_drag_preview.dart'
-    show CutTrimDragPreview, TimelineDragPreview;
+import '../sliced_value_listenable_builder.dart'
+    show SlicedValueListenableScope;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'conte_fonts.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -277,44 +278,55 @@ class ConteBookPage extends StatelessWidget {
       //
       // The surrounding `Stack` already clips `Clip.hardEdge`, so each bake's
       // own clip is a no-op and the pixels do not move.
-      child: SheetStrata(
-        sheet: 'conte',
-        painters: {
-          SheetStratum.form: painterOf(SheetStratum.form),
-          // F-88: the numbers this page prints follow a cut-length drag, so
-          // the channel is both a VALUE the paint reads and a reason to
-          // repaint. A landed logo — nothing the painter compares changes
-          // for it.
-          SheetStratum.content: painterOf(
-            SheetStratum.content,
-            dragPreview: session.dragPreview,
-            repaint: [session.dragPreview, imageRepaint],
-          ),
-          // A landed thumbnail or cover picture, likewise.
-          SheetStratum.picture: painterOf(
-            SheetStratum.picture,
-            repaint: [picturesLanded, imageRepaint],
-          ),
-          if (ink != null)
-            SheetStratum.ink: painterOf(
-              SheetStratum.ink,
-              liveInkKeys: drawing
-                  ? {for (final window in conteInkWindows(page)) window.key}
-                  : const {},
-              repaint: [ink],
-            ),
+      //
+      // 🚨sheet-prints-only-its-drags: the channel is handed on SLICED to
+      // what the page prints of it ([conteDragPrint]). Heard whole, a lane
+      // value scrubbed on the timeline repainted the numbers every step —
+      // with the bake standing, a capture a step.
+      child: SlicedValueListenableScope<TimelineDragPreview?, Object>(
+        valueListenable: session.dragPreview,
+        slice: (preview) => conteDragPrint(source, preview),
+        builder: (context, printed) {
+          final committed = conteDragPrint(source, null);
+          return SheetStrata(
+            sheet: 'conte',
+            painters: {
+              SheetStratum.form: painterOf(SheetStratum.form),
+              // F-88: the numbers this page prints follow a cut-length
+              // drag, so the channel is both a VALUE the paint reads and a
+              // reason to repaint. A landed logo — nothing the painter
+              // compares changes for it.
+              SheetStratum.content: painterOf(
+                SheetStratum.content,
+                dragPreview: printed,
+                repaint: [printed, imageRepaint],
+              ),
+              // A landed thumbnail or cover picture, likewise.
+              SheetStratum.picture: painterOf(
+                SheetStratum.picture,
+                repaint: [picturesLanded, imageRepaint],
+              ),
+              if (ink != null)
+                SheetStratum.ink: painterOf(
+                  SheetStratum.ink,
+                  liveInkKeys: drawing
+                      ? {for (final window in conteInkWindows(page)) window.key}
+                      : const {},
+                  repaint: [ink],
+                ),
+            },
+            // ⚠️A stratum stands down while it changes on every step — the
+            // ink while the pen is down, the numbers while a drag re-prints
+            // them (F-88): capturing costs a full paint PLUS a full copy a
+            // step.
+            liveNow: (stratum) => switch (stratum) {
+              SheetStratum.ink => strokeHold.value,
+              SheetStratum.content => printed.slice != committed,
+              SheetStratum.form || SheetStratum.picture => false,
+            },
+            liveChanges: Listenable.merge([strokeHold, printed]),
+          );
         },
-        // ⚠️A stratum stands down while it changes on every step — the ink
-        // while the pen is down, the numbers while a cut-length drag
-        // re-prints them (F-88): capturing costs a full paint PLUS a full
-        // copy a step.
-        liveNow: (stratum) => switch (stratum) {
-          SheetStratum.ink => strokeHold.value,
-          SheetStratum.content =>
-            session.dragPreview.value is CutTrimDragPreview,
-          SheetStratum.form || SheetStratum.picture => false,
-        },
-        liveChanges: Listenable.merge([strokeHold, session.dragPreview]),
       ),
     );
   }
