@@ -206,7 +206,7 @@ void main() {
   // stopped there left that pixel part-covered: a line of ground at every
   // tile's end, wherever the zoom put the tile edges.
   test('a block running on past its tile covers the tile to its last '
-      'pixel', () {
+      'pixel — and stops at the row\'s last frame', () {
     const cell = 17.0;
     const span = 6;
     final layer = Layer(
@@ -269,6 +269,25 @@ void main() {
         );
       }
     }
+
+    // A block that goes on past the frames the row renders stops at them:
+    // no tile follows there, and the window's paint would lay a cell of
+    // paper past the row.
+    final lastSpan = TimelineRowCellsPainter(
+      layer: layer,
+      geometry: testFrameGeometry(
+        frameCellExtent: cell,
+        frameEndIndexExclusive: span,
+      ),
+      crossAxisExtent: 28,
+      exposureStateForLayer: stateFor,
+      colorScheme: const ColorScheme.dark(),
+      baseTextStyle: const TextStyle(fontSize: 11),
+    );
+    expect(
+      lastSpan.substrateIn(0, span).paper.single.rect.right,
+      lastSpan.cellRectFor(span - 1).right,
+    );
   });
 
   test('T3: tiles carry the FOREGROUND ink too — the drawing cell\'s mark '
