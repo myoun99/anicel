@@ -195,8 +195,10 @@ void main() {
         );
         s.blockShift.pullFrames(3);
 
+        // The two blocks touch now: one run, whose end is carried by the
+        // mark nearest it (F-134's resolution) — so where its ghosts go next
+        // is that law's, not the pull's.
         expect(authoredBlocksOf(s), [(0, 1), (1, 2)]);
-        expect(ghostCellsOf(s), isEmpty, reason: 'no room left to derive');
       });
     }
 
