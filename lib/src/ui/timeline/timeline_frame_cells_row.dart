@@ -595,10 +595,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// 반드시 코마블록이 있어야함**」. 여기 `&& !layerKindUsesSeSheetCells` 가
   /// 붙어 있었다 — 그 술어는 **셀 글리프와 X 마크**를 억제하는 것이고 (SE 의
   /// 글자는 행 단위 오버레이가 그린다), **블록 길이와는 상관이 없다.** 한 술어가
-  /// 두 질문에 답하고 있었다. ⇒ 이제 조건은 「블록을 가졌나」 하나다. 그게
-  /// `LayerKind.holdsDrawings` 이고 se 는 거기서 true 다.
+  /// 두 질문에 답하고 있었다. ⇒ 이제 조건은 「블록을 가졌나」 하나다.
+  /// ↩️그걸 `LayerKind.holdsDrawings` 로 물었더니 디렉션 · 트랜지션 행이
+  /// 빠졌다(F-228) — 그 술어는 그림 행의 다른 가구에도 답한다. 이제
+  /// `LayerKind.hasBlocks` 가 그 한 질문이다.
   CustomPainter? _runLabelsPainter(BuildContext context) {
-    if (!layer.kind.holdsDrawings) return null;
+    if (!layer.kind.hasBlocks) return null;
     return TimelineRowRunLabelsPainter(
       layer: layer,
       geometry: geometry,

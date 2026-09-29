@@ -682,6 +682,19 @@ enum LayerKind {
   /// ⛔DERIVED, and pinned beside that one, so the halves cannot drift.
   bool get spansRideBlocks => carriesInstructions && isDrawingCel;
 
+  /// Whether this row's content is BLOCKS — the drawing rows' exposures, the
+  /// direction row's blocks, the transition row's spans — so each one prints
+  /// its length. The camera row keeps keys, not blocks.
+  ///
+  /// 🗣️F-228 (유저 2026-09-29): 「디렉션레이어나 트랜지션레이어만
+  /// 코마텍스트가 없는데, 블록이라면 전부 코마텍스트가 존재해야함.
+  /// 통일해서 적용」 — F-40's sentence for the SE row, again: 「블록이면 뭐든
+  /// 반드시 코마블록이 있어야함」. ⛔NOT [holdsDrawings]: that one still
+  /// answers whether a row wears the drawing row's other furniture (R27 #16 —
+  /// the empty cell's X, the comma grips, the media drop), and the user
+  /// widened only the length.
+  bool get hasBlocks => holdsDrawings || carriesInstructions;
+
   /// Whether a row can be GIVEN a cel — a frame authored at a timeline index,
   /// which is the thing a brush then writes into.
   ///

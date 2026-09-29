@@ -162,16 +162,33 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
     return _labelsIn(window.startIndex, window.endIndexExclusive);
   }
 
+  /// The row's blocks as `(start, length)`, in order — whatever the row.
+  ///
+  /// 🗣️F-228 (유저 2026-09-29): 「디렉션레이어나 트랜지션레이어만
+  /// 코마텍스트가 없는데, 블록이라면 전부 코마텍스트가 존재해야함.
+  /// 통일해서 적용」. A transition row has no timeline of its own — its
+  /// blocks are the spans it stores ([LayerKind.bandIsInstructionsOnly]);
+  /// every other row keeps its blocks on the timeline, the direction row's
+  /// included (R27: its spans ride its blocks). Ghosts stay unlabeled.
+  Iterable<(int, int)> get _blocks sync* {
+    if (layer.kind.bandIsInstructionsOnly) {
+      for (final MapEntry(:key, :value) in layer.instructions.entries) {
+        yield (key, value.length);
+      }
+      return;
+    }
+    for (final MapEntry(:key, :value) in layer.timeline.entries) {
+      if (value.isDrawing && !value.ghost) {
+        yield (key, value.length ?? 1);
+      }
+    }
+  }
+
   /// The labels of the blocks that reach frames [from, to), in block order.
   List<TimelineRunLabel> _labelsIn(int from, int to) {
     final labels = <TimelineRunLabel>[];
-    for (final key in layer.timeline.keys) {
-      final entry = layer.timeline[key]!;
-      if (!entry.isDrawing || entry.ghost) {
-        continue;
-      }
-      final startIndex = key;
-      final endIndexExclusive = key + (entry.length ?? 1);
+    for (final (startIndex, length) in _blocks) {
+      final endIndexExclusive = startIndex + length;
       if (!frameRangesOverlap(startIndex, endIndexExclusive, from, to)) {
         continue;
       }
