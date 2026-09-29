@@ -676,37 +676,8 @@ class _InteractiveCanvasBuild {
     _HostFrame frame,
   ) {
     final session = frame.session;
-    // The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark
-    // faded frames are worked with fx off). It is the track's static opacity
-    // times the TRANSITION row's ramp now.
-    final cutFadeOpacity = session.opacityVerbs.activeCutEditingFadeOpacity();
-    // F-192: and the screens one-sided transitions lay over it — the same
-    // veils the playback and the export paint.
-    final cutVeils = session.opacityVerbs.activeCutEditingVeils();
-    final showFadeWash = cutFadeOpacity < 1 || cutVeils.isNotEmpty;
-    // The SE rows' on-canvas name tags (R5b, §6-z15) — the editing
-    // canvas's copy of what playback and export draw. Playback renders its
-    // own (through the frame painter), so this stands down there exactly
-    // like the other editing chrome (no overlay while it plays).
-    //
-    // 🚨F-90 (유저 2026-09-12): 「스토리보드패널, 룰러 드래그 하는동안 se의
-    // 네임태그가 캔버스에 존재했던게 다음 컷이나 갭부분까지 남아있음. 안남아있도록
-    // 비디오트랙이나 se트랙이나 법 하나로 통일」. The parked content — the track
-    // stack a scrub shows past the cut's territory, or a gap — draws the tags
-    // of the frame IT shows, the way it draws that frame's picture. These are
-    // the ACTIVE cut's at its own cursor, so over the parked picture they were
-    // the frame the drag had left. They stand down wherever the picture is not
-    // this canvas's: [_inGap] asks exactly that, for the content swap below.
-    final cut = session.activeCutOrNull;
-    final seNameTags = _inGap || cut == null
-        ? const <ResolvedSeNameTag>[]
-        : session.seEntries.seNameTagsForCutFrame(
-            cut,
-            session.currentFrameIndex,
-            // The tag follows a drag on its row while it moves — a lane edit
-            // (F-195), its lines moved or stretched.
-            preview: session.dragPreview.value,
-          );
+    final fade = _fadeShown(session);
+    final seNameTags = _seNameTagsShown(session);
     return Stack(
       children: [
         // Guides are EDITING scaffolding: they are drawn
@@ -729,13 +700,13 @@ class _InteractiveCanvasBuild {
           _state._guideEditLayer(frame.session, viewport),
         if (seNameTags.isNotEmpty)
           _state._seNameTagOverlay(viewport, _canvasSize, seNameTags, context),
-        if (showFadeWash)
+        if (fade != null)
           _state._cutFadeWash(
             viewport,
             _canvasSize,
             frame.session,
-            cutFadeOpacity,
-            cutVeils,
+            fade.opacity,
+            fade.veils,
             context,
           ),
         if (_cameraOverlayVisible)
@@ -757,6 +728,49 @@ class _InteractiveCanvasBuild {
         if (frame.showAnchorGizmo)
           _state._anchorGizmo(frame.session, frame.activeLayer!, viewport),
       ],
+    );
+  }
+
+  /// The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark
+  /// faded frames are worked with fx off). It is the track's static opacity
+  /// times the TRANSITION row's ramp now. F-192: and the screens one-sided
+  /// transitions lay over it — the same veils the playback and the export
+  /// paint. Null when neither dims this frame.
+  ({double opacity, List<TransitionVeil> veils})? _fadeShown(
+    EditorSessionManager session,
+  ) {
+    final opacity = session.opacityVerbs.activeCutEditingFadeOpacity();
+    final veils = session.opacityVerbs.activeCutEditingVeils();
+    return opacity < 1 || veils.isNotEmpty
+        ? (opacity: opacity, veils: veils)
+        : null;
+  }
+
+  /// The SE rows' on-canvas name tags (R5b, §6-z15) — the editing
+  /// canvas's copy of what playback and export draw. Playback renders its
+  /// own (through the frame painter), so this stands down there exactly
+  /// like the other editing chrome (no overlay while it plays).
+  ///
+  /// 🚨F-90 (유저 2026-09-12): 「스토리보드패널, 룰러 드래그 하는동안 se의
+  /// 네임태그가 캔버스에 존재했던게 다음 컷이나 갭부분까지 남아있음. 안남아있도록
+  /// 비디오트랙이나 se트랙이나 법 하나로 통일」. The parked content — the track
+  /// stack a scrub shows past the cut's territory, or a gap — draws the tags
+  /// of the frame IT shows, the way it draws that frame's picture. These are
+  /// the ACTIVE cut's at its own cursor, so over the parked picture they were
+  /// the frame the drag had left. They stand down wherever the picture is not
+  /// this canvas's: [_inGap] asks exactly that, for the underlay's content
+  /// swap.
+  List<ResolvedSeNameTag> _seNameTagsShown(EditorSessionManager session) {
+    final cut = session.activeCutOrNull;
+    if (_inGap || cut == null) {
+      return const [];
+    }
+    return session.seEntries.seNameTagsForCutFrame(
+      cut,
+      session.currentFrameIndex,
+      // The tag follows a drag on its row while it moves — a lane edit
+      // (F-195), its lines moved or stretched.
+      preview: session.dragPreview.value,
     );
   }
 }
