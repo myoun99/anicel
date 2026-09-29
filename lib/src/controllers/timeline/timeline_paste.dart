@@ -92,8 +92,10 @@ class _TimelinePaste {
   /// start, split inside a hold, fill an empty cell up to the next block),
   /// and ⛔those are RETIRED: 「내가 하고싶은건 프레임만 복붙이 아니라 코마까지
   /// 포함해서 블록 자체를 복붙한다는 느낌」. The clip brings its length and
-  /// the tail moves aside. Kept as a named entry point because the one-cel
-  /// paste is still a real verb, not because the old rules survive anywhere.
+  /// the tail moves aside — inside a block, the one untimed comma takes the
+  /// rest of it instead, as an added frame does (F-236). Kept as a named
+  /// entry point because the one-cel paste is still a real verb, not
+  /// because the old rules survive anywhere.
   void _pasteFrameForLayer({
     required LayerId layerId,
     required FrameId frameId,
@@ -105,9 +107,8 @@ class _TimelinePaste {
           layerId: layerId,
           index: _controller._editFrameIndexFor(layerId),
           liftCount: 0,
-          clip: TimelineClipRow(
-            exposures: {0: TimelineExposure.drawing(frameId, length: 1)},
-            length: 1,
+          clip: TimelineClipRow.untimed(
+            TimelineExposure.drawing(frameId, length: 1),
           ),
           bornFrames: bornFrame == null ? const <Frame>[] : [bornFrame],
           bornSounds: const <AudioClip>[],

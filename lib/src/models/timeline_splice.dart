@@ -14,7 +14,7 @@ import 'timeline_exposure.dart';
 ///
 /// | verb | N |
 /// |---|---|
-/// | 붙여넣기, 선택 없음 | 0 — nothing comes out, and what follows moves only as far as the clip reaches it |
+/// | 붙여넣기, 선택 없음 | 0 — nothing comes out, and what follows moves only as far as the clip reaches it; INSIDE a block, the rest of that block (F-236) |
 /// | 붙여넣기, 선택 있음 | the selection's length — 갈아끼우기 |
 /// | 잘라내기 | the selection's length, with no clip going in |
 ///
@@ -48,11 +48,25 @@ import 'timeline_exposure.dart';
 /// the absence of an entry, exactly as they are in a live row, so a copied
 /// gap reproduces as a gap.
 class TimelineClipRow {
-  TimelineClipRow({required Map<int, TimelineExposure> exposures, required this.length})
-    : assert(length >= 0, 'A clip run cannot be shorter than nothing.'),
-      exposures = SplayTreeMap<int, TimelineExposure>.from(exposures);
+  TimelineClipRow({
+    required Map<int, TimelineExposure> exposures,
+    required this.length,
+    required this.timed,
+  }) : assert(length >= 0, 'A clip run cannot be shorter than nothing.'),
+       exposures = SplayTreeMap<int, TimelineExposure>.from(exposures);
 
-  const TimelineClipRow.empty() : exposures = const {}, length = 0;
+  const TimelineClipRow.empty()
+    : exposures = const {},
+      length = 0,
+      timed = true;
+
+  /// ONE comma of [exposure]'s drawing, without its timing — what a copy
+  /// with nothing selected banks (F-152, 유저 2026-09-16: 「그냥 그곳에
+  /// 서있을떄 복사한거면 … 붙혀넣을때 1콤마로서 붙혀넣게」).
+  TimelineClipRow.untimed(TimelineExposure exposure)
+    : exposures = {0: exposure.copyWith(length: 1)},
+      length = 1,
+      timed = false;
 
   /// Offset from the run start → the authored entry beginning there.
   final Map<int, TimelineExposure> exposures;
@@ -62,7 +76,18 @@ class TimelineClipRow {
   /// cells are part of what was selected.
   final int length;
 
+  /// Whether the commas are part of what was copied — a run taken off a
+  /// selection keeps them where it lands (「해당 블록을 선택해서 복사하면
+  /// 콤마 유지되도록」); an [untimed] comma takes the length of the place it
+  /// lands in, when that place is the rest of a block ([spliceTimeline]).
+  final bool timed;
+
   bool get isEmpty => length == 0;
+
+  /// This clip carrying [exposures] instead — the same run, the same
+  /// timing, other entries (a paste re-spelling or re-minting what it lands).
+  TimelineClipRow withExposures(Map<int, TimelineExposure> exposures) =>
+      TimelineClipRow(exposures: exposures, length: length, timed: timed);
 }
 
 /// Makes [index] a block BOUNDARY.
@@ -103,6 +128,45 @@ SplayTreeMap<int, TimelineExposure> splitTimelineAt(
     ],
   );
   return next;
+}
+
+/// The block [index] stands inside, from [index] on, made [exposure]'s
+/// drawing — THE division an added frame makes (user's rule 2026-07-27:
+/// `1-----` with the cursor on the third frame becomes `1--o--`, the new
+/// drawing taking over the rest of the hold), and an untimed paste landing
+/// there makes the same one (F-236).
+///
+/// The dots past [index] stay with the frames they time; the head keeps
+/// the memo ([splitTimelineAt]). [index] must be strictly inside a block
+/// ([restOfBlockAt] is positive).
+SplayTreeMap<int, TimelineExposure> blockRestTakenBy(
+  Map<int, TimelineExposure> timeline,
+  int index,
+  TimelineExposure exposure,
+) {
+  assert(restOfBlockAt(timeline, index) > 0, 'not inside a block');
+  final next = splitTimelineAt(timeline, index);
+  final rest = next[index]!;
+  next[index] = exposure.copyWith(
+    length: rest.length,
+    breakdownOffsets: rest.breakdownOffsets,
+  );
+  return next;
+}
+
+/// How many cells of the block [index] stands STRICTLY inside are left from
+/// [index] on — 0 at a block's head, in an empty cell, or past every block.
+int restOfBlockAt(Map<int, TimelineExposure> timeline, int index) {
+  final covering = _coveringEntry(
+    timeline is SplayTreeMap<int, TimelineExposure>
+        ? timeline
+        : SplayTreeMap<int, TimelineExposure>.from(timeline),
+    index,
+  );
+  if (covering == null || covering.key == index) {
+    return 0;
+  }
+  return covering.key + (covering.value.length ?? 1) - index;
 }
 
 /// Everything starting at or after [index] moves by [delta] cells.
@@ -184,6 +248,7 @@ TimelineClipRow captureTimelineRun({
           entry.key - index: entry.value,
     },
     length: count,
+    timed: true,
   );
 }
 
@@ -198,9 +263,32 @@ SplayTreeMap<int, TimelineExposure> spliceTimeline({
   int liftCount = 0,
   TimelineClipRow? clip,
 }) {
-  var next = SplayTreeMap<int, TimelineExposure>.from(timeline);
   final inserting = clip;
   final replacing = inserting != null && !inserting.isEmpty;
+  // 🗣️F-236 (유저 2026-09-29): 「블록 중간에 붙여넣는거랑 프레임 추가랑 똑같은
+  // 법 통일」 — an insert that lands INSIDE a block replaces the rest of that
+  // block, as an added frame does. What the clip brings decides the length
+  // (F-236-Q1): a comma copied standing has no timing and takes the rest of
+  // the hold — the very division an added frame makes ([blockRestTakenBy]);
+  // a run copied off a selection keeps its commas and the tail absorbs the
+  // difference, as every replace does (T2·T3): 「선택범위로 코마정보가
+  // 있을때만 코마대로 유지해서 붙여넣어서 뒤가 짧으면 당기고 부족하면 밀고」.
+  // ↩️The block was split and its rest pushed on behind the clip, so the
+  // same drawing came back after it (`1--AB1--`).
+  final rest = liftCount == 0 && replacing
+      ? restOfBlockAt(timeline, index)
+      : 0;
+  if (inserting != null && rest > 0) {
+    return inserting.timed
+        ? spliceTimeline(
+            timeline: timeline,
+            index: index,
+            liftCount: rest,
+            clip: inserting,
+          )
+        : blockRestTakenBy(timeline, index, inserting.exposures[0]!);
+  }
+  var next = SplayTreeMap<int, TimelineExposure>.from(timeline);
   if (liftCount > 0) {
     next = splitTimelineAt(next, index);
     next = splitTimelineAt(next, index + liftCount);

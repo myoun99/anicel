@@ -146,23 +146,14 @@ class _TimelineDrawingFrames {
     } else if (covering != null && !covering.entry.ghost) {
       // INSIDE a block: the press divides it, and the new drawing takes
       // over the rest of the hold — the frames do not move, the division
-      // does. (The user's rule 2026-07-27 — REAL blocks only.)
-      final splitOffset = frameIndex - covering.startIndex;
-      clampedLength = covering.endIndexExclusive - frameIndex;
-      nextTimeline[covering.startIndex] = covering.entry.copyWith(
-        length: splitOffset,
+      // does. (The user's rule 2026-07-27 — REAL blocks only.) THE division
+      // a paste landing there makes too (F-236: 「똑같은 법 통일」).
+      nextTimeline = blockRestTakenBy(
+        nextTimeline,
+        frameIndex,
+        TimelineExposure.drawing(frameId, length: 1),
       );
-      nextTimeline[frameIndex] = TimelineExposure.drawing(
-        frameId,
-        length: clampedLength,
-        // The dots are the BLOCK's (they time these very frames), so the
-        // ones past the division travel with the half they mark. The memo
-        // stays with the left half: it describes that drawing.
-        breakdownOffsets: [
-          for (final offset in covering.entry.breakdownOffsets)
-            if (offset > splitOffset) offset - splitOffset,
-        ],
-      );
+      clampedLength = nextTimeline[frameIndex]!.length!;
     } else {
       // Clamp against the WORKING copy: after a ghost shed, the next
       // authored block is the honest wall (a ghost start is not one).

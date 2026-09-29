@@ -108,16 +108,98 @@ void main() {
       expect(_render(row, 6), 'AAPPBB');
     });
 
-    test('inserting inside a hold splits it rather than landing headless', () {
-      final clip = captureTimelineRun(
-        timeline: _row('P'),
-        index: 0,
-        count: 1,
-      );
+    // 🗣️F-236 (유저 2026-09-29): 「블록 중간에 붙여넣는거랑 프레임 추가랑 똑같은
+    // 법 통일」, and F-236-Q1: 「선택범위로 코마정보가 있을때만 코마대로
+    // 유지해서 붙여넣어서 뒤가 짧으면 당기고 부족하면 밀고」. An insert inside a
+    // hold REPLACES the rest of it. ↩️It split the hold and pushed its rest on
+    // behind the clip — `AAAA` + P@2 was `AAPAA`, the same drawing again.
+    group('inside a hold, the insert replaces the rest of it', () {
+      test('an untimed comma takes the rest — the division an added frame '
+          'makes', () {
+        final clip = TimelineClipRow.untimed(
+          const TimelineExposure.drawing(FrameId('P'), length: 1),
+        );
 
-      final row = spliceTimeline(timeline: _row('AAAA'), index: 2, clip: clip);
+        final row = spliceTimeline(
+          timeline: _row('AAAA.BB'),
+          index: 2,
+          clip: clip,
+        );
 
-      expect(_render(row, 5), 'AAPAA');
+        expect(_render(row, 7), 'AAPP.BB', reason: 'nothing behind moves');
+        expect(row.keys, [0, 2, 5]);
+      });
+
+      test('an untimed comma keeps the dots that time those frames, as an '
+          'added frame does', () {
+        final row = spliceTimeline(
+          timeline: {
+            0: const TimelineExposure.drawing(
+              FrameId('A'),
+              length: 6,
+              breakdownOffsets: [1, 3, 5],
+            ),
+          },
+          index: 3,
+          clip: TimelineClipRow.untimed(
+            const TimelineExposure.drawing(FrameId('P'), length: 1),
+          ),
+        );
+
+        expect(row[3]!.frameId, const FrameId('P'));
+        expect(row[3]!.length, 3);
+        expect(row[3]!.breakdownOffsets, [2], reason: '5 - 3');
+        expect(row[0]!.breakdownOffsets, [1]);
+      });
+
+      test('a timed run keeps its commas: a SHORTER one pulls the tail in', () {
+        final clip = captureTimelineRun(
+          timeline: _row('P'),
+          index: 0,
+          count: 1,
+        );
+
+        final row = spliceTimeline(
+          timeline: _row('AAAAAB'),
+          index: 2,
+          clip: clip,
+        );
+
+        expect(_render(row, 6), 'AAPB..');
+      });
+
+      test('a timed run keeps its commas: a LONGER one pushes the tail', () {
+        final clip = captureTimelineRun(
+          timeline: _row('PPPP'),
+          index: 0,
+          count: 4,
+        );
+
+        final row = spliceTimeline(
+          timeline: _row('AAAB'),
+          index: 2,
+          clip: clip,
+        );
+
+        expect(_render(row, 7), 'AAPPPPB');
+      });
+
+      test('at a block\'s HEAD nothing is inside — the insert goes in front '
+          'and the block steps back, untimed or not', () {
+        for (final clip in [
+          TimelineClipRow.untimed(
+            const TimelineExposure.drawing(FrameId('P'), length: 1),
+          ),
+          captureTimelineRun(timeline: _row('P'), index: 0, count: 1),
+        ]) {
+          final row = spliceTimeline(
+            timeline: _row('AABB'),
+            index: 2,
+            clip: clip,
+          );
+          expect(_render(row, 5), 'AAPBB', reason: 'timed: ${clip.timed}');
+        }
+      });
     });
 
     test('a LONGER clip pushes the tail', () {

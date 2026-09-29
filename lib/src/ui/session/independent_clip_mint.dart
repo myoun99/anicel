@@ -101,7 +101,7 @@ mintIndependentClip({
     exposures[entry.key] = entry.value.copyWith(frameId: newId);
   }
   return (
-    clip: TimelineClipRow(exposures: exposures, length: clip.length),
+    clip: clip.withExposures(exposures),
     born: born,
     bornSounds: bornSounds,
     // 🚨★★★WHICH CEL CAME FROM WHICH — the picture needs it.
@@ -171,10 +171,7 @@ placedClipFor({
     () => ids.mintFrameId(conteInkRowLayerId).value,
   );
   return (
-    clip: TimelineClipRow(
-      exposures: written.exposures,
-      length: placed.clip.length,
-    ),
+    clip: placed.clip.withExposures(written.exposures),
     born: placed.born,
     bornSounds: placed.bornSounds,
     minted: placed.minted,

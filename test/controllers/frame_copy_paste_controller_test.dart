@@ -467,13 +467,14 @@ void main() {
           .single
           .layers
           .single;
-      expect(layer.timeline[0]?.length, 1, reason: 'the hold splits here');
+      expect(layer.timeline[0]?.length, 1, reason: 'the hold divides here');
       expect(layer.timeline[1]?.frameId, const FrameId('b-copy'));
-      // 🚨T3: the clip's length, not the rest of the hold it split. The old
-      // rule handed the tail's cells to the pasted cel; now the tail keeps
-      // them, still pointing at the cel that owned them.
-      expect(layer.timeline[1]?.length, 1);
-      expect(layer.timeline[2]?.frameId, const FrameId('a'));
+      // 🗣️F-236 (유저 2026-09-29): 「블록 중간에 붙여넣는거랑 프레임 추가랑
+      // 똑같은 법 통일」 — one untimed comma takes the rest of the hold, as
+      // an added frame does. ↩️T3 kept the clip's one cell and handed the
+      // rest back to the cel that owned it (`a` again at 2).
+      expect(layer.timeline[1]?.length, 2);
+      expect(layer.timeline[5]?.frameId, const FrameId('b'), reason: 'still');
     });
 
     test('a copied id the layer does not have is refused, like the linked '
