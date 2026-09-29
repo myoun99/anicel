@@ -93,7 +93,7 @@ class Camera {
   /// route (playback, export, storyboard thumbnails all resolve through
   /// here) — the authoring overlays keep reading the real pose.
   CameraPose cameraPoseForCut(Cut cut, int frameIndex) {
-    if (_cameraFxBypassedFor(cut)) {
+    if (cut.layers.cameraWorkBypassed) {
       return CameraPose(
         center: CanvasPoint(
           x: cut.canvasSize.width / 2,
@@ -106,13 +106,6 @@ class Camera {
       canvasSize: cut.canvasSize,
       frameIndex: frameIndex,
     );
-  }
-
-  /// Whether [cut]'s camera row has its camera work bypassed — the camera
-  /// row's own transform switch (R8: persisted like every other row's).
-  bool _cameraFxBypassedFor(Cut cut) {
-    final camera = cut.layers.cameraLayer;
-    return camera != null && !camera.transformEnabled;
   }
 
   /// The resolved camera pose at the current playhead frame (keyframe,

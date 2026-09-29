@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart'
     show DragStartBehavior, PointerDeviceKind;
 import 'package:flutter/material.dart';
-import 'package:vector_math/vector_math_64.dart' show Vector3;
 
 import '../../core/point_bounds.dart';
 import '../../models/app_input_settings.dart' show AppInput;
@@ -12,7 +11,8 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../services/layer_pose_paint.dart' show cameraProjectionMatrix;
+import '../../services/camera_frame_corners.dart'
+    show cameraFrameCornersInCanvas;
 import '../repaint_props.dart';
 import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
 import '../canvas/canvas_viewport_offset.dart';
@@ -23,33 +23,6 @@ Offset cameraCenterInViewport({
   required CanvasViewport viewport,
 }) {
   return viewport.canvasToViewportOffset(pose.center);
-}
-
-/// The camera frame's corners in canvas coordinates:
-/// top-left, top-right, bottom-right, bottom-left.
-///
-/// The output frame's four corners pulled BACK through the one camera
-/// projection ([cameraProjectionMatrix] inverted — the closure
-/// guidesInArtworkSpace uses for the layer pose), so the overlay's frame is
-/// exactly the region the export renderer and the playback painter show.
-List<Offset> cameraFrameCornersInCanvas({
-  required CameraPose pose,
-  required CanvasSize cameraFrameSize,
-}) {
-  final inverse = cameraProjectionMatrix(pose, cameraFrameSize)..invert();
-  final width = cameraFrameSize.width.toDouble();
-  final height = cameraFrameSize.height.toDouble();
-  Offset corner(double x, double y) {
-    final mapped = inverse.transform3(Vector3(x, y, 0));
-    return Offset(mapped.x, mapped.y);
-  }
-
-  return [
-    corner(0, 0),
-    corner(width, 0),
-    corner(width, height),
-    corner(0, height),
-  ];
 }
 
 /// The axis-aligned canvas-space bounds of the (possibly rotated) camera

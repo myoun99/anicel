@@ -663,6 +663,11 @@ extension LayerStackQueries on List<Layer> {
     return null;
   }
 
+  /// Whether the cut's camera work is bypassed — the camera row's own
+  /// transform switch (R8: persisted like every other row's). A bypassed
+  /// camera shows the canvas centred, whatever its keys say.
+  bool get cameraWorkBypassed => cameraLayer?.transformEnabled == false;
+
   /// The camera row's stack index, or -1.
   int get cameraIndex {
     for (var index = 0; index < length; index += 1) {
