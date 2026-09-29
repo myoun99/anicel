@@ -188,4 +188,40 @@ void main() {
       reason: 'a parked playhead is parked, not stopped',
     );
   });
+
+  testWidgets('🚨ONE frame landing does not unpark it — it waits for the '
+      'cushion', (tester) async {
+    final fake = await open(tester, pages: 12, framesPerSecond: 24);
+    for (var page = 1; page < 12; page += 1) {
+      fake.holdRender(page);
+    }
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+    );
+    await tester.pump();
+    // Parked first: a frame that is ready before the first tick is simply
+    // played, with no cushion to wait for.
+    for (var frame = 0; frame < 3; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 42));
+    }
+    final parkedAt = slot.position.value;
+
+    fake.releaseRender(1);
+    for (var frame = 0; frame < 10; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 42));
+    }
+    expect(
+      fake.renderRequests.map((request) => request.$1),
+      contains(2),
+      reason: 'fixture: frame 1 landed and the read-ahead moved on',
+    );
+    expect(
+      slot.position.value,
+      parkedAt,
+      reason:
+          '🚨「로드가 안되고있으면 5초분만큼? 로드될떄까지 멈추는?」 — moving '
+          'on ONE ready frame plays it, runs dry and parks again: a '
+          'stutter, not playback',
+    );
+  });
 }

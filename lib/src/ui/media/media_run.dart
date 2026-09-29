@@ -309,12 +309,19 @@ class MediaRun {
     }
     _rasters.forgetRefusals();
     sound.keepStreaming();
+    // 🚨BEFORE the turn, from the page on screen — the page the cache will
+    // not let go ([PageRasters.shown]). Asked after it, the new frame could
+    // land while the screen still showed the old one, and a budget holding
+    // that page because it is ON SCREEN dropped the far end of the cushion
+    // instead, which the next build asked for again: at a four-frame
+    // budget every frame from the fifth on was decoded twice (measured
+    // 2026-09-30). The turn's own rebuild asks from the new page.
+    fillBuffer();
     if (turnsItsOwnPages) {
       _turnThePage();
     } else {
       _followTheSound();
     }
-    fillBuffer();
   }
 
   /// 🚨★★★**THE PLAYHEAD WAITS. IT DOES NOT WALK PAST A FRAME THAT IS NOT
