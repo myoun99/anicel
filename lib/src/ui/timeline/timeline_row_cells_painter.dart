@@ -30,6 +30,8 @@ import 'timeline_beat_lines.dart'
         timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
+import 'timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
@@ -310,20 +312,24 @@ class TimelineRowCellsPainter extends CustomPainter
   /// tests and the row's hit-testing share (single source of truth).
   @override
   Rect cellRectFor(int frameIndex) {
-    final main =
-        leadingFrameSpacerWidth +
-        (frameIndex - frameStartIndex) * frameCellExtent;
+    final frames = geometry.value;
+    final main = frames.edgeAt(frameIndex);
+    final extent = frames.edgeAt(frameIndex + 1) - main;
     return axis == Axis.horizontal
-        ? Rect.fromLTWH(main, 0, frameCellExtent, crossAxisExtent)
-        : Rect.fromLTWH(0, main, crossAxisExtent, frameCellExtent);
+        ? Rect.fromLTWH(main, 0, extent, crossAxisExtent)
+        : Rect.fromLTWH(0, main, crossAxisExtent, extent);
   }
 
   /// The frame index under a row-local position (the row Listener's
   /// pointer-down select); clamped non-negative.
   int frameIndexAt(Offset localPosition) {
     final main = axis == Axis.horizontal ? localPosition.dx : localPosition.dy;
-    final cell = ((main - leadingFrameSpacerWidth) / frameCellExtent).floor();
-    final frame = frameStartIndex + cell;
+    final frame = timelineFrameAt(
+      main -
+          leadingFrameSpacerWidth +
+          timelineFrameEdge(frameStartIndex, frameCellExtent),
+      frameCellExtent,
+    );
     return frame < 0 ? 0 : frame;
   }
 
@@ -702,7 +708,10 @@ class TimelineRowCellsPainter extends CustomPainter
       );
       if (image != null) {
         final origin = cellRectFor(spanStart);
-        final mainExtent = (spanEnd - spanStart) * frameCellExtent;
+        final end = cellRectFor(spanEnd - 1);
+        final mainExtent = axis == Axis.horizontal
+            ? end.right - origin.left
+            : end.bottom - origin.top;
         final dst = axis == Axis.horizontal
             ? Rect.fromLTWH(origin.left, 0, mainExtent, crossAxisExtent)
             : Rect.fromLTWH(0, origin.top, crossAxisExtent, mainExtent);

@@ -195,19 +195,17 @@ class TimelineViewCluster extends StatelessWidget {
             // Equal travel is equal RATIO here, as it is on every editor
             // zoom in the app.
             scale: FieldSliderScale.exponential,
-            // Quantized by the range's own law (R4 #5 kept: a sub-pixel
-            // drag above 1px rebuilt the entire grid for a visually
-            // identical step). The bar echoes the gesture smoothly either
-            // way.
+            // F-220: every value the bar reaches is the zoom — held inside
+            // the range, and nothing else ([TimelineZoomLimits.clamped]).
             onChanged: onPixelsPerFrameChanged == null
                 ? null
                 : (value) {
-                    final stepped = TimelineZoomLimits.quantize(
+                    final zoom = TimelineZoomLimits.clamped(
                       value,
                       framesPerSecond: projectFrameRate.countingBase,
                     );
-                    if (stepped != pixelsPerFrame) {
-                      onPixelsPerFrameChanged!(stepped);
+                    if (zoom != pixelsPerFrame) {
+                      onPixelsPerFrameChanged!(zoom);
                     }
                   },
           ),

@@ -15,6 +15,7 @@ import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'layer_drop_policy.dart' show rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
@@ -837,8 +838,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               // content-absolutely. A
               // scroll rebuilds NOTHING
               // here.
-              final totalFrameContentWidth =
-                  _renderedFrameCount * _metrics.frameCellWidth;
+              final totalFrameContentWidth = timelineFrameEdge(
+                _renderedFrameCount,
+                _metrics.frameCellWidth,
+              );
               return TimelineFrameScrollViewport(
                 controller: _horizontalScrollController,
                 contentWidth: totalFrameContentWidth,

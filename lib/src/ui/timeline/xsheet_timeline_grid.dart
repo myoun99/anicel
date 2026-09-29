@@ -20,7 +20,8 @@ import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
 import 'timeline_cell_style.dart';
-import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
+import 'timeline_frame_coordinate_policy.dart'
+    show frameRangeVisibleWidth, timelineFrameEdge;
 import 'timeline_frame_ruler_painter.dart' show TimelineRulerScale;
 import 'timeline_ruler_playhead_writing.dart';
 import 'timeline_cut_end_handle.dart';

@@ -21,6 +21,8 @@ import 'timeline/layer_label_controls.dart' show layerMarkColor;
 import 'timeline/timeline_cell_marker.dart'
     show TimelineCellWriting, timelineCellWritesNothing;
 import 'timeline/timeline_cell_style.dart';
+import 'timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 import 'timeline/timeline_frame_geometry.dart';
 import 'timeline/timeline_frame_range_policy.dart'
     show timelineRunLengthLabel;
@@ -394,9 +396,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// does, so nothing ever showed it. The folded track row's geometry starts
   /// at the first VISIBLE frame (F-143), and there `frame * cell` put every
   /// block that many cells too far right.
-  double _left(int frame) =>
-      geometry.value.leadingFrameSpacerWidth +
-      (frame - geometry.value.frameStartIndex) * _cellExtent;
+  ///
+  /// It is the geometry's own [TimelineFrameGeometry.edgeAt] — the frame
+  /// axis' one law (F-220) — rather than a copy of it.
+  double _left(int frame) => geometry.value.edgeAt(frame);
 
   /// A cut's block width: its frames, and at least [minBlockWidth] so a
   /// short cut can be seen — but never past where the next cut starts.
@@ -411,11 +414,12 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// pixel ([StoryboardPanel.cutBlockMinWidth]) — it keeps a sub-pixel cut
   /// from vanishing and grows nothing that covers a pixel of its own.
   double _widthFor(StoryboardTimelineLayoutEntry entry) {
-    final width = entry.duration * _cellExtent;
+    final start = _left(entry.startFrame);
+    final width = _left(entry.endFrame) - start;
     final next = _nextStartByCut[entry.cutId];
     final floor = next == null
         ? minBlockWidth
-        : math.min(minBlockWidth, (next - entry.startFrame) * _cellExtent);
+        : math.min(minBlockWidth, _left(next) - start);
     return width < floor ? floor : width;
   }
 
@@ -497,10 +501,17 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     final left = _left(entry.startFrame);
     final width = _widthFor(entry);
     // A block reaches at least [minBlockWidth], so its visible end is
-    // measured in pixels, not in the cut's own frames.
+    // measured in pixels, not in the cut's own frames: the frame its far
+    // edge reaches into, and the one after.
     final endFrame = _cellExtent <= 0
         ? entry.endFrame
-        : entry.startFrame + (width / _cellExtent).ceil();
+        : timelineFrameAt(
+                timelineFrameEdge(entry.startFrame, _cellExtent) +
+                    width -
+                    1e-6,
+                _cellExtent,
+              ) +
+              1;
     if (endFrame <= window.startIndex ||
         entry.startFrame >= window.endIndexExclusive) {
       return null;
@@ -976,12 +987,17 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     if (_cellExtent <= 0) {
       return (left: rect.left, right: rect.right);
     }
+    // The cut's first frame: a block starts on its cut's first boundary.
+    final g = geometry.value;
+    final start = timelineFrameAt(
+      rect.left -
+          g.leadingFrameSpacerWidth +
+          timelineFrameEdge(g.frameStartIndex, _cellExtent),
+      _cellExtent,
+    );
     return (
-      left: math.max(rect.left, rect.left + cell.startIndex * _cellExtent),
-      right: math.min(
-        rect.right,
-        rect.left + cell.endIndexExclusive * _cellExtent,
-      ),
+      left: math.max(rect.left, _left(start + cell.startIndex)),
+      right: math.min(rect.right, _left(start + cell.endIndexExclusive)),
     );
   }
 

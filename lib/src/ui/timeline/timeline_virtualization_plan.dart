@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_visible_range.dart';
 
 /// Calculation-only render plan for a future virtualized timeline viewport.
@@ -131,19 +132,19 @@ TimelineVirtualizationPlan calculateTimelineVirtualizationPlan({
 
   final safeFrameCount = math.max(0, frameCount);
   final safeLayerCount = math.max(0, layerCount);
-  final totalFrameContentWidth = safeFrameCount * frameCellWidth;
+  // The frame axis' boundaries, by its one law — a spacer is the stretch up
+  // to a boundary, so the rendered frames land where the law puts them.
+  double edge(int frame) => timelineFrameEdge(frame, frameCellWidth);
+  final totalFrameContentWidth = edge(safeFrameCount);
   final totalLayerContentHeight = safeLayerCount * layerRowHeight;
 
   return TimelineVirtualizationPlan(
     frameRange: ranges.frames,
     layerRange: ranges.layers,
-    leadingFrameSpacerWidth: math.max(
-      0.0,
-      ranges.frames.startIndex * frameCellWidth,
-    ),
+    leadingFrameSpacerWidth: math.max(0.0, edge(ranges.frames.startIndex)),
     trailingFrameSpacerWidth: math.max(
       0.0,
-      (safeFrameCount - ranges.frames.endIndexExclusive) * frameCellWidth,
+      totalFrameContentWidth - edge(ranges.frames.endIndexExclusive),
     ),
     leadingLayerSpacerHeight: math.max(
       0.0,
@@ -157,7 +158,7 @@ TimelineVirtualizationPlan calculateTimelineVirtualizationPlan({
     totalLayerContentHeight: totalLayerContentHeight,
     visibleFrameContentWidth: math.max(
       0.0,
-      ranges.frames.count * frameCellWidth,
+      edge(ranges.frames.endIndexExclusive) - edge(ranges.frames.startIndex),
     ),
     visibleLayerContentHeight: math.max(
       0.0,

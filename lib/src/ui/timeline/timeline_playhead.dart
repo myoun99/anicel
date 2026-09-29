@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'timeline_frame_coordinate_policy.dart' show frameVisibleX;
 import 'timeline_grid_metrics.dart';
 
 /// The playhead tint color, exported so tests can assert against it —
@@ -41,10 +42,18 @@ class TimelinePlayhead extends StatelessWidget {
         currentFrameIndex < frameEndIndexExclusive;
   }
 
-  double get _mainAxisOffset {
-    return leadingFrameSpacerWidth +
-        ((currentFrameIndex - frameStartIndex) * metrics.frameCellWidth);
-  }
+  double get _mainAxisOffset => _edge(currentFrameIndex);
+
+  /// The current cell's extent along the axis, by the same law.
+  double get _mainAxisExtent =>
+      _edge(currentFrameIndex + 1) - _edge(currentFrameIndex);
+
+  double _edge(int frame) => frameVisibleX(
+    frameIndex: frame,
+    frameStartIndex: frameStartIndex,
+    frameCellWidth: metrics.frameCellWidth,
+    leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+  );
 
   double get _height {
     return crossAxisExtent ??
@@ -69,7 +78,7 @@ class TimelinePlayhead extends StatelessWidget {
               right: 0,
               child: Container(
                 key: const ValueKey<String>('timeline-playhead-column'),
-                height: metrics.frameCellWidth,
+                height: _mainAxisExtent,
                 color: playheadColor.withValues(alpha: 0.18),
               ),
             ),
@@ -89,7 +98,7 @@ class TimelinePlayhead extends StatelessWidget {
               bottom: 0,
               child: Container(
                 key: const ValueKey<String>('timeline-playhead-column'),
-                width: metrics.frameCellWidth,
+                width: _mainAxisExtent,
                 color: playheadColor.withValues(alpha: 0.18),
               ),
             ),

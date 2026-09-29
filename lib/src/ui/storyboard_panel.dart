@@ -144,7 +144,7 @@ import 'timeline/timeline_frame_span_layout.dart'
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_coordinate_policy.dart'
-    show FrameScrubDedupe, frameIndexFromLocalX;
+    show FrameScrubDedupe, frameIndexFromLocalX, timelineFrameEdge;
 import 'timeline/timeline_frame_range_policy.dart'
     show TimelineFrameRange, endlessViewportFillFrames;
 import '../models/layer_kind.dart';
@@ -1428,9 +1428,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   ) {
     var width = 0.0;
     for (final entry in entries) {
-      final right =
-          scale.leftForFrame(entry.startFrame) +
-          scale.widthForDuration(entry.duration);
+      final right = scale.blockEndFor(entry.startFrame, entry.duration);
       if (right > width) {
         width = right;
       }
@@ -2720,10 +2718,14 @@ class StoryboardPlayheadTint extends StatelessWidget {
             if (frame != null)
               Positioned(
                 key: const ValueKey<String>('storyboard-playhead'),
-                left: (frame - firstFrame) * pixelsPerFrame,
+                left:
+                    timelineFrameEdge(frame, pixelsPerFrame) -
+                    timelineFrameEdge(firstFrame, pixelsPerFrame),
                 top: 0,
                 bottom: 0,
-                width: pixelsPerFrame,
+                width:
+                    timelineFrameEdge(frame + 1, pixelsPerFrame) -
+                    timelineFrameEdge(frame, pixelsPerFrame),
                 child: ColoredBox(
                   color: timelinePlayheadColor.withValues(alpha: 0.18),
                 ),
@@ -3371,9 +3373,7 @@ class _StoryboardTransitionRow extends StatelessWidget
 
   /// The visible frame window this strip covers — the whole content width,
   /// like the SE grips' own geometry.
-  int get _frameEndExclusive => timelineScale.pixelsPerFrame <= 0
-      ? 0
-      : (width / timelineScale.pixelsPerFrame).ceil();
+  int get _frameEndExclusive => timelineScale.framesCovering(width);
 
   TimelineFrameGeometry get _geometry => TimelineFrameGeometry(
     frameCellExtent: timelineScale.pixelsPerFrame,
@@ -3395,7 +3395,10 @@ class _StoryboardTransitionRow extends StatelessWidget
           left: timelineScale.leftForFrame(entry.key),
           top: 0,
           bottom: 0,
-          width: entry.value.length * timelineScale.pixelsPerFrame,
+          width: timelineScale.spanWidth(
+            entry.key,
+            entry.key + entry.value.length,
+          ),
           child: IgnorePointer(
             key: ValueKey<String>(
               'storyboard-transition-paper-${layer.id}-${entry.key}',
@@ -3459,7 +3462,7 @@ class _StoryboardTransitionRow extends StatelessWidget
     if (onRowFramePress != null || onEditSpan != null) {
       int? frameAt(Offset local) => timelineScale.pixelsPerFrame <= 0
           ? null
-          : (local.dx / timelineScale.pixelsPerFrame).floor();
+          : timelineScale.frameAt(local.dx);
       spans.add(
         _storyboardRowPressLayer(
           key: ValueKey<String>('storyboard-transition-press-${layer.id}'),
@@ -3675,9 +3678,7 @@ class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
     Layer layer,
     String tooltip,
   ) {
-    final frames = timelineScale.pixelsPerFrame <= 0
-        ? 0
-        : (width / timelineScale.pixelsPerFrame).ceil();
+    final frames = timelineScale.framesCovering(width);
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
         geometry: TimelineFrameGeometry(
@@ -3852,15 +3853,13 @@ class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
   /// The press's conversion: this row's frame 0 sits at its left edge.
   int? _frameAtX(double x) => timelineScale.pixelsPerFrame <= 0
       ? null
-      : (x / timelineScale.pixelsPerFrame).floor();
+      : timelineScale.frameAt(x);
 
   /// The row's cells, as its grips and its drop places are laid out on.
   TimelineFrameGeometry get _rowFrames => TimelineFrameGeometry(
     frameCellExtent: timelineScale.pixelsPerFrame,
     frameStartIndex: 0,
-    frameEndIndexExclusive: timelineScale.pixelsPerFrame <= 0
-        ? 0
-        : (width / timelineScale.pixelsPerFrame).ceil(),
+    frameEndIndexExclusive: timelineScale.framesCovering(width),
   );
 
   Positioned _gripLayer(List<Widget> grips) {
@@ -4041,7 +4040,7 @@ class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
     left: timelineScale.leftForFrame(startFrame),
     top: 0,
     bottom: 0,
-    width: (endExclusive - startFrame) * timelineScale.pixelsPerFrame,
+    width: timelineScale.spanWidth(startFrame, endExclusive),
     child: IgnorePointer(key: key, child: child),
   );
 
@@ -4166,7 +4165,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     );
     final frames = timelineScale.pixelsPerFrame <= 0
         ? 0
-        : (width / timelineScale.pixelsPerFrame).floor();
+        : timelineScale.frameAt(width);
     final onSetClipOffset = audioLane?.onSetClipOffset;
     final onSetClipFades = audioLane?.onSetClipFades;
     return SizedBox(
@@ -5086,9 +5085,8 @@ class _StoryboardTrackRow extends StatelessWidget {
     onCreate(block.cutId);
   }
 
-  int _frameAtX(double x) => timelineScale.pixelsPerFrame <= 0
-      ? 0
-      : (x / timelineScale.pixelsPerFrame).floor();
+  int _frameAtX(double x) =>
+      timelineScale.pixelsPerFrame <= 0 ? 0 : timelineScale.frameAt(x);
 
   void _handleHover(PointerHoverEvent event) {
     hoveredCutId.value = _cutAtFrame(_frameAtX(event.localPosition.dx))?.cutId;
@@ -5394,9 +5392,7 @@ class _StoryboardTrackRow extends StatelessWidget {
 
     return entries
             .map(
-              (entry) =>
-                  scale.leftForFrame(entry.startFrame) +
-                  scale.widthForDuration(entry.duration),
+              (entry) => scale.blockEndFor(entry.startFrame, entry.duration),
             )
             .reduce(
               (width, nextWidth) => width > nextWidth ? width : nextWidth,

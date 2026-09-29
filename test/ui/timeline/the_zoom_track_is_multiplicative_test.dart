@@ -79,15 +79,26 @@ void main() {
       'under it', (tester) async {
     final zooms = await pump(tester);
     final track = tester.getRect(trackOf());
-    await tester.tapAt(Offset(track.left + 1, track.center.dy));
+    // Dragged off the track's bottom end: every zoom stays in the range,
+    // and the last is the floor.
+    final gesture = await tester.startGesture(
+      Offset(track.left + 4, track.center.dy),
+    );
+    await tester.pump();
+    for (var x = track.left + 4; x >= track.left - 40; x -= 4) {
+      await gesture.moveTo(Offset(x, track.center.dy));
+      await tester.pump();
+    }
+    await gesture.up();
     await tester.pump();
 
     expect(zooms, isNotEmpty);
     expect(
-      zooms.last,
-      floor,
+      zooms.every((zoom) => zoom >= floor),
+      isTrue,
       reason: 'rounding once wrote 2px under a 2.4px floor, and nothing '
           'brought it back',
     );
+    expect(zooms.last, floor);
   });
 }

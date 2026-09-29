@@ -213,8 +213,11 @@ class SeAudioLaneFrameRow extends StatelessWidget {
 
   double get _cellExtent => metrics.frameCellWidth;
   double get _crossExtent => metrics.layerRowHeight;
-  double get _visibleExtent =>
-      (frameEndIndexExclusive - frameStartIndex) * _cellExtent;
+  double get _visibleExtent => frameRangeVisibleWidth(
+    startFrameIndex: frameStartIndex,
+    endFrameIndexExclusive: frameEndIndexExclusive,
+    frameCellWidth: _cellExtent,
+  );
 
   /// One clip span per audio span inside the visible window.
   List<Widget> _spans() => [
@@ -243,7 +246,11 @@ class SeAudioLaneFrameRow extends StatelessWidget {
       axis,
       along: startOffset,
       across: 0,
-      alongExtent: span.lengthFrames * _cellExtent,
+      alongExtent: frameRangeVisibleWidth(
+        startFrameIndex: span.startFrame,
+        endFrameIndexExclusive: span.startFrame + span.lengthFrames,
+        frameCellWidth: _cellExtent,
+      ),
       acrossExtent: _crossExtent,
       child: _SeAudioLaneSpan(
         key: ValueKey<String>(
@@ -601,7 +608,18 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
   /// An accent tick [frames] in from the clip's start (leading) or its end.
   Widget _fadeMark(int frames, {required bool leading}) => stripAlong(
     widget.axis,
-    along: frames * widget.frameCellExtent - 1,
+    // [frames] in from the clip's own start or end boundary, by the law.
+    along:
+        frameRangeVisibleWidth(
+          startFrameIndex: leading
+              ? widget.span.startFrame
+              : widget.span.startFrame + widget.span.lengthFrames - frames,
+          endFrameIndexExclusive: leading
+              ? widget.span.startFrame + frames
+              : widget.span.startFrame + widget.span.lengthFrames,
+          frameCellWidth: widget.frameCellExtent,
+        ) -
+        1,
     alongExtent: 2,
     fromEnd: !leading,
     child: IgnorePointer(

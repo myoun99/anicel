@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 import 'timeline_cell_style.dart' show timelineSelectedFrameBorderColor;
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_frame_window.dart';
 import '../repaint_props.dart';
 import '../widgets/tick_layer.dart';
@@ -140,8 +141,8 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     final runs = runsToDraw?.call() ?? readyRuns();
     onPaintedRuns?.call(runs);
     for (final run in runs) {
-      final start = run.startIndex * cellWidth;
-      final extent = (run.endIndexExclusive - run.startIndex) * cellWidth;
+      final start = timelineFrameEdge(run.startIndex, cellWidth);
+      final extent = timelineFrameEdge(run.endIndexExclusive, cellWidth) - start;
       canvas.drawRect(
         horizontal
             ? Rect.fromLTWH(
@@ -164,10 +165,12 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     if (frame != null) {
       // Matches the header cell's selected fill: the same tint over the
       // same surface the cell would have blended it onto.
+      final from = timelineFrameEdge(frame, cellWidth);
+      final to = timelineFrameEdge(frame + 1, cellWidth);
       canvas.drawRect(
         horizontal
-            ? Rect.fromLTWH(frame * cellWidth, 0, cellWidth, size.height)
-            : Rect.fromLTWH(0, frame * cellWidth, size.width, cellWidth),
+            ? Rect.fromLTRB(from, 0, to, size.height)
+            : Rect.fromLTRB(0, from, size.width, to),
         Paint()
           ..color = timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
       );

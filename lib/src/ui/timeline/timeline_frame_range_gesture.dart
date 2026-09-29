@@ -15,6 +15,8 @@ import 'property_lane_model.dart';
 import 'timeline_double_tap.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import '../input/finger_mode_devices.dart';
+import 'timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -744,10 +746,12 @@ class _TimelineLaneRangeGestureLayerState
     final main = widget.axis == Axis.horizontal
         ? localPosition.dx
         : localPosition.dy;
-    final cell =
-        ((main - widget.leadingFrameSpacerWidth) / widget.frameCellExtent)
-            .floor();
-    final frame = widget.frameStartIndex + cell;
+    final frame = timelineFrameAt(
+      main -
+          widget.leadingFrameSpacerWidth +
+          timelineFrameEdge(widget.frameStartIndex, widget.frameCellExtent),
+      widget.frameCellExtent,
+    );
     return frame < 0 ? 0 : frame;
   }
 

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import 'timeline_edge_auto_pan.dart' show scrollableIsShown;
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 
 /// Where the frame axis should sit after a zoom step (Premiere-style
 /// zoom-around-playhead), shared by every frame-axis surface — the
@@ -21,13 +22,15 @@ double zoomAnchoredScrollOffset({
   int? anchorFrame,
 }) {
   if (anchorFrame != null && viewportExtent > 0) {
-    // Anchor on the frame CELL's center, matching the playhead tint.
-    final anchorOnScreen = (anchorFrame + 0.5) * oldPixelsPerFrame - oldOffset;
+    // Anchor on the frame CELL's center, matching the playhead tint — the
+    // cell the frame axis' one law lays out at each zoom.
+    double centre(double pixelsPerFrame) =>
+        (timelineFrameEdge(anchorFrame, pixelsPerFrame) +
+            timelineFrameEdge(anchorFrame + 1, pixelsPerFrame)) /
+        2;
+    final anchorOnScreen = centre(oldPixelsPerFrame) - oldOffset;
     if (anchorOnScreen >= 0 && anchorOnScreen <= viewportExtent) {
-      return math.max(
-        0,
-        (anchorFrame + 0.5) * newPixelsPerFrame - anchorOnScreen,
-      );
+      return math.max(0, centre(newPixelsPerFrame) - anchorOnScreen);
     }
   }
   return math.max(0, oldOffset * (newPixelsPerFrame / oldPixelsPerFrame));

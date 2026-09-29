@@ -68,7 +68,11 @@ class TimelineFrameGeometry {
   double get contentMainExtent =>
       windowOriginPx +
       leadingFrameSpacerWidth +
-      (frameEndIndexExclusive - frameStartIndex) * frameCellExtent +
+      frameRangeVisibleWidth(
+        startFrameIndex: frameStartIndex,
+        endFrameIndexExclusive: frameEndIndexExclusive,
+        frameCellWidth: frameCellExtent,
+      ) +
       trailingFrameSpacerWidth;
 
   /// Row-local main-axis offset of [frameIndex]'s leading edge.
@@ -91,12 +95,13 @@ class TimelineFrameGeometry {
     if (frameCellExtent <= 0 || frameEndIndexExclusive <= frameStartIndex) {
       return frameStartIndex;
     }
-    final cell = ((mainOffset - leadingFrameSpacerWidth) / frameCellExtent)
-        .floor();
-    return (frameStartIndex + cell).clamp(
-      frameStartIndex,
-      frameEndIndexExclusive - 1,
+    final frame = timelineFrameAt(
+      mainOffset -
+          leadingFrameSpacerWidth +
+          timelineFrameEdge(frameStartIndex, frameCellExtent),
+      frameCellExtent,
     );
+    return frame.clamp(frameStartIndex, frameEndIndexExclusive - 1);
   }
 
   /// The same geometry seen through a window starting at [originPx] and

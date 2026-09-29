@@ -604,12 +604,22 @@ class TimelineGridTileStore {
     final painter = request.painter;
     final dpr = request.devicePixelRatio;
     final spanCells = request.spanEndIndexExclusive - request.spanStartIndex;
-    final width = (spanCells * painter.frameCellExtent * dpr).ceil();
-    final height = (painter.crossAxisExtent * dpr).ceil();
-    if (width <= 0 || height <= 0 || spanCells <= 0) {
+    if (spanCells <= 0) {
       return null;
     }
     final horizontal = painter.axis == Axis.horizontal;
+    // The span's cells as the painter lays them — the frame axis' one law,
+    // so a tile is exactly as long as the cells it holds at any zoom.
+    final first = painter.cellRectFor(request.spanStartIndex);
+    final last = painter.cellRectFor(request.spanEndIndexExclusive - 1);
+    final spanExtent = horizontal
+        ? last.right - first.left
+        : last.bottom - first.top;
+    final width = (spanExtent * dpr).ceil();
+    final height = (painter.crossAxisExtent * dpr).ceil();
+    if (width <= 0 || height <= 0) {
+      return null;
+    }
     final tileWidth = horizontal ? width : height;
     final tileHeight = horizontal ? height : width;
 

@@ -18,6 +18,8 @@ import 'timeline_cell_style.dart'
         TimelineBlockWordGrowth,
         timelineBlockWordLayout,
         timelineBlockWordStyle;
+import 'timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_glyph_cache.dart';
@@ -733,7 +735,9 @@ class _CollapsedStripPlayheadPainter extends CustomPainter
     if (current == null || pixelsPerFrame <= 0) {
       return;
     }
-    double x(int frame) => (frame - frameStartIndex) * pixelsPerFrame;
+    double x(int frame) =>
+        timelineFrameEdge(frame, pixelsPerFrame) -
+        timelineFrameEdge(frameStartIndex, pixelsPerFrame);
     if (row.runAt(current) == null && x(current + 1) > 0) {
       final rrect = RRect.fromRectAndRadius(
         Rect.fromLTRB(x(current) + 1, 4, x(current + 1) - 1, size.height - 4),
@@ -806,15 +810,16 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     // view moves its content rather than its children's arithmetic.
     canvas
       ..save()
-      ..translate(-frameStartIndex * pixelsPerFrame, 0);
+      ..translate(-timelineFrameEdge(frameStartIndex, pixelsPerFrame), 0);
     _paintFrom(canvas, size);
     canvas.restore();
   }
 
   void _paintFrom(Canvas canvas, Size size) {
     final first = frameStartIndex;
-    final visibleFrames = first + (size.width / pixelsPerFrame).ceil() + 1;
-    double x(int frame) => frame * pixelsPerFrame;
+    double x(int frame) => timelineFrameEdge(frame, pixelsPerFrame);
+    final visibleFrames =
+        timelineFrameAt(x(first) + size.width, pixelsPerFrame) + 2;
     final right = x(first) + size.width;
 
     // The grid is not this painter's: the timeline's own sheet lies under

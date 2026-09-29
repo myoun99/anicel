@@ -19,6 +19,8 @@ import 'dialogue_fit_text.dart';
 import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_beat_lines.dart';
+import 'timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 import 'timeline_frame_span_layout.dart';
 import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'axis_turn.dart';
@@ -715,7 +717,15 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
     canvas.drawRRect(rrect, Paint()..color = paper);
     final seen = timelineGridGroundOver(under: ground, painted: paper);
     if (blockFrameLines && seen != null && frameCellExtent > 0) {
-      final frames = (extentAlong(axis, size) / frameCellExtent).round();
+      // The frame at the span's far edge, by the law read backwards — a
+      // quotient of pixels drifts a frame once cells are not whole pixels.
+      final frames =
+          timelineFrameAt(
+            timelineFrameEdge(startFrame, frameCellExtent) +
+                extentAlong(axis, size),
+            frameCellExtent,
+          ) -
+          startFrame;
       // Only the boundaries a line can stand on ([timelineFrameLineStep]) —
       // the sheet's and the rows' walk. It asked every frame of the block,
       // and at I-22's floor a ten-minute sound is 14,400 of them.
@@ -725,11 +735,12 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
         frame < startFrame + frames;
         frame += step
       ) {
-        final offset = frame - startFrame;
         final line = timelineBlockFrameLine(
           axis: axis,
           frameIndex: frame,
-          boundary: offset * frameCellExtent,
+          boundary:
+              timelineFrameEdge(frame, frameCellExtent) -
+              timelineFrameEdge(startFrame, frameCellExtent),
           across: (from: 0, to: cross),
           frameCellExtent: frameCellExtent,
           framesPerSecond: framesPerSecond,

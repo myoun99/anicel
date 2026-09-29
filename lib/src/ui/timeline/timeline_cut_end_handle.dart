@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/cut_id.dart';
 import 'timeline_drag_preview.dart';
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'axis_turn.dart';
 import '../widgets/owning_axis_grip.dart';
 
@@ -209,7 +210,7 @@ class _TimelineCutEndDragHandleState extends State<TimelineCutEndDragHandle> {
 
     final dragPreview = widget.dragPreview;
     Widget positioned(int frameCount) {
-      final main = frameCount * widget.cellExtent - 5;
+      final main = timelineFrameEdge(frameCount, widget.cellExtent) - 5;
       return stripAlong(widget.axis, along: main, alongExtent: 12, child: grip);
     }
 

@@ -39,6 +39,7 @@ import 'timeline_cell_style.dart'
         timelineBlockWordStyle,
         timelineFittedGlyphFontSize,
         timelineInBlockInk;
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
 import 'timeline_frame_span_layout.dart'
@@ -1229,8 +1230,13 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// Cross-axis extent: rail-row height in the timeline, column width in
   /// the X-sheet (the transposed metrics carry both as layerRowHeight).
   double get _crossExtent => metrics.layerRowHeight;
-  double get _visibleExtent =>
-      (frameEndIndexExclusive - frameStartIndex) * _cellExtent;
+  double get _visibleExtent => _edge(frameEndIndexExclusive);
+
+  /// [frame]'s leading boundary along this band — the frame axis' one law
+  /// ([timelineFrameEdge]), from the band's first frame.
+  double _edge(int frame) =>
+      timelineFrameEdge(frame, _cellExtent) -
+      timelineFrameEdge(frameStartIndex, _cellExtent);
 
   /// ONE metric law for every marker on this axis — see
   /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
@@ -1312,8 +1318,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final hit = _hitSize;
     return placedAlong(
       axis,
-      along:
-          (frame - frameStartIndex) * _cellExtent + _cellExtent / 2 - hit / 2,
+      along: (_edge(frame) + _edge(frame + 1)) / 2 - hit / 2,
       across: _crossExtent / 2 - hit / 2,
       alongExtent: hit,
       acrossExtent: hit,
@@ -1373,9 +1378,9 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// member alike.
   Widget _keyName(int frame, String text) => placedAlong(
     axis,
-    along: (frame - frameStartIndex) * _cellExtent,
+    along: _edge(frame),
     across: 0,
-    alongExtent: _cellExtent,
+    alongExtent: _edge(frame + 1) - _edge(frame),
     acrossExtent: _crossExtent,
     child: IgnorePointer(child: _LaneKeyName(text: text)),
   );

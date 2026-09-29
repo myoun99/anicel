@@ -8,6 +8,7 @@ import 'frame_window_semantics.dart';
 
 import 'timeline_beat_lines.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_frame_coordinate_policy.dart' show frameVisibleX;
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
@@ -382,16 +383,15 @@ final class TimelineRulerScale {
   /// plus its own frames along the axis and spans the whole [crossExtent]
   /// across it.
   Rect cellRectFor(int frameIndex) {
-    final along =
-        leadingFrameSpacer +
-        (frameIndex - frameStartIndex) * metrics.frameCellWidth;
+    double edge(int frame) => frameVisibleX(
+      frameIndex: frame,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: metrics.frameCellWidth,
+      leadingFrameSpacerWidth: leadingFrameSpacer,
+    );
     return Rect.fromPoints(
-      offsetAlong(axis, along: along, across: 0),
-      offsetAlong(
-        axis,
-        along: along + metrics.frameCellWidth,
-        across: crossExtent,
-      ),
+      offsetAlong(axis, along: edge(frameIndex), across: 0),
+      offsetAlong(axis, along: edge(frameIndex + 1), across: crossExtent),
     );
   }
 

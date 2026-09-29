@@ -72,7 +72,9 @@ void main() {
     expect(textOf(tester, 'timeline-local-frame-counter'), isNot('31'));
   });
 
-  testWidgets('zoom steps by ×1.25 on the whole-pixel grid', (tester) async {
+  // F-220: ×1.25 exactly — ↩️it landed on a whole-pixel grid, so 12 ÷ 1.25
+  // read 10.
+  testWidgets('zoom steps by ×1.25', (tester) async {
     final zooms = await pump(tester, frame: 0, pixelsPerFrame: 12);
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
@@ -80,7 +82,7 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-zoom-out-button')),
     );
-    expect(zooms, [15, 10]);
+    expect(zooms, [15, 9.6]);
   });
 
   testWidgets('at the top bound zoom-in is dead', (tester) async {

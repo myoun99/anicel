@@ -5,6 +5,8 @@ import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 
 /// F-92 → I-44 — the storyboard's rows stand on the timeline's one sheet.
 ///
@@ -125,7 +127,14 @@ void main() {
                   colorScheme: sheet.colorScheme,
                 ) !=
                 null)
-              timelineFrameBoundaryLinePosition(offset, pixelsPerFrame),
+              // Where the SHEET rules that boundary, seen from the block's
+              // own start — F-220: at 2.4px a boundary is the law's whole
+              // pixel, not the block's own `offset × 2.4`.
+              timelineFrameBoundaryLinePosition(
+                    soundStart + offset,
+                    pixelsPerFrame,
+                  ) -
+                  timelineFrameEdge(soundStart, pixelsPerFrame),
         ];
         final centres = [for (final bar in spy.bars) bar.center.dx];
         expect(

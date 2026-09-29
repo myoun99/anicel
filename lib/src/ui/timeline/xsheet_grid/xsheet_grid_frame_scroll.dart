@@ -63,7 +63,7 @@ class _XSheetGridFrameScroll {
   );
 
   double get _totalFrameContentHeight =>
-      renderedFrameCount * _state._metrics.frameCellWidth;
+      timelineFrameEdge(renderedFrameCount, _state._metrics.frameCellWidth);
 
   double effectiveFrameScrollOffset({
     required double requestedOffset,

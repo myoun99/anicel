@@ -1136,7 +1136,10 @@ class _StoryboardRailRows {
             },
             span: (
               left: scale.leftForFrame(selection.startFrame),
-              width: selection.lengthFrames * scale.pixelsPerFrame,
+              width: scale.spanWidth(
+                selection.startFrame,
+                selection.startFrame + selection.lengthFrames,
+              ),
             ),
             label: (
               key: 'storyboard-frame-range-selection',
