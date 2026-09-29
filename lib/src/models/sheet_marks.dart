@@ -49,24 +49,14 @@ sealed class SheetMark {
 /// every fill is axis-aligned, and an edge cut on the grid is wholly one
 /// colour or the other — the paper's own rule, for everything a sheet
 /// fills.
-///
-/// [cornerRadius] rounds its four corners the app's way — a superellipse
-/// corner on flat sides (`AppShapes`), the radius one of the app's own
-/// (`AppCornerRadii`). Zero is square.
 final class SheetFill extends SheetMark {
-  const SheetFill(
-    super.layer, {
-    required this.rect,
-    required this.argb,
-    this.cornerRadius = 0,
-  });
+  const SheetFill(super.layer, {required this.rect, required this.argb});
 
   final Rect rect;
   final int argb;
-  final double cornerRadius;
 
   @override
-  Object get _prints => (rect, argb, cornerRadius);
+  Object get _prints => (rect, argb);
 }
 
 /// Which long edge of a rule holds its place when the rule is widened to
@@ -180,9 +170,6 @@ final class SheetWords extends SheetMark {
 /// A cell's picture: the camera's [frame], in its [slot]. The printer finds
 /// the image by ([cutId], [pictureFrame]) — the panel in its thumbnail
 /// store, the PDF among the pictures its export rendered.
-///
-/// Clipped to the slot's corners ([cornerRadius], the window it sits in):
-/// a square picture in a rounded window would cover the window's corners.
 final class SheetPicture extends SheetMark {
   const SheetPicture(
     super.layer, {
@@ -190,7 +177,6 @@ final class SheetPicture extends SheetMark {
     required this.pictureFrame,
     required this.slot,
     required this.frame,
-    this.cornerRadius = 0,
   });
 
   final String cutId;
@@ -206,10 +192,9 @@ final class SheetPicture extends SheetMark {
   /// contain on those pixels left a sliver of the window uncovered — the
   /// page, the PDF and the pen each answered where the picture was (F-197).
   final Rect frame;
-  final double cornerRadius;
 
   @override
-  Object get _prints => (cutId, pictureFrame, slot, frame, cornerRadius);
+  Object get _prints => (cutId, pictureFrame, slot, frame);
 }
 
 /// A media image — the company logo — contained in [slot].

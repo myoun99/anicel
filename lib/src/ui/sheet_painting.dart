@@ -72,33 +72,6 @@ void paintSheetImageIn(
   );
 }
 
-/// The app's corner round [rect] — a superellipse on flat sides — as the
-/// points of its outline, TRACED from the engine's own shape, the one a
-/// sheet clips its pictures to: what a PDF draws in its place (a PDF has
-/// no superellipse, and a circle's arc would be a second corner), and what
-/// of the paper a picture takes from the pen. Traced every half point; the
-/// points a flat side adds say nothing, so they go.
-List<Offset> tracedRoundedRect(Rect rect, double radius) {
-  final shape = Path()
-    ..addRSuperellipse(
-      ui.RSuperellipse.fromRectAndRadius(rect, Radius.circular(radius)),
-    );
-  final points = <Offset>[];
-  for (final metric in shape.computeMetrics()) {
-    double? heading;
-    for (var along = 0.0; along < metric.length; along += 0.5) {
-      final tangent = metric.getTangentForOffset(along)!;
-      // A flat side keeps one heading: where it starts traces it.
-      if (heading != null && (tangent.angle - heading).abs() < 1e-6) {
-        continue;
-      }
-      heading = tangent.angle;
-      points.add(tangent.position);
-    }
-  }
-  return points;
-}
-
 /// Lays down a sheet's PAPER — the one way the timesheet, the conte and the
 /// cut envelope fill it.
 ///
@@ -248,44 +221,30 @@ class SheetDeviceGrid {
     );
   }
 
-  /// The app's corner of [radius] paper units round [cut], a rect already
-  /// cut on this grid — THE shape a window's well fills and its picture is
-  /// clipped to, so the two are one call and agree to the device pixel.
-  ui.RSuperellipse rounded(Rect cut, double radius) =>
-      ui.RSuperellipse.fromRectAndRadius(cut, Radius.circular(radius * scale));
-
   /// [paper] where this grid lays it, off the grid — a point of a shape the
   /// grid does not cut: the cut's canvas, turned with its camera.
   Offset onDevice(Offset paper) =>
       Offset(dx + scale * paper.dx, dy + scale * paper.dy);
 
-  /// Where [picture]'s PRINT shows on this grid: in its slot's rounded
-  /// corners and the frame it fills, both cut on the NEAREST lines, as the
-  /// well under it is.
-  SheetPictureShot printedPicture(SheetPicture picture) => (
-    corners: rounded(snap(picture.slot), picture.cornerRadius),
-    frame: snap(picture.frame),
-  );
+  /// Where [picture]'s PRINT shows on this grid: the frame it fills, cut
+  /// on the NEAREST lines, as the well under it is.
+  Rect printedPicture(SheetPicture picture) => snap(picture.frame);
 
-  /// Where a LIVE composite of [picture] shows on this grid: the same two,
-  /// cut INSIDE (F-197) — the composite ends where its frame ends, and a
-  /// clip reaching past that end showed the ground under the frame's edge,
-  /// a light line round a dark picture.
-  SheetPictureShot livePicture(SheetPicture picture) => (
-    corners: rounded(inside(picture.slot), picture.cornerRadius),
-    frame: inside(picture.frame),
-  );
+  /// Where a LIVE composite of [picture] shows on this grid: its frame cut
+  /// INSIDE (F-197) — the composite ends where its frame ends, and a clip
+  /// reaching past that end showed the ground under the frame's edge, a
+  /// light line round a dark picture.
+  Rect livePicture(SheetPicture picture) => inside(picture.frame);
 
   /// Where [shot] shows the cut's canvas: the shot, and in it the canvas
   /// [canvas] outlines on the paper. The paper's own ink shows everywhere
   /// else — up to this edge, on this grid, and the piece of a stroke either
   /// side keeps a ring past it (`sheetInkApron`, F-216).
-  Path pictureCanvas(SheetPictureShot shot, List<Offset> canvas) =>
-      Path.combine(
-        PathOperation.intersect,
-        sheetPictureShotPath(shot),
-        Path()..addPolygon([for (final point in canvas) onDevice(point)], true),
-      );
+  Path pictureCanvas(Rect shot, List<Offset> canvas) => Path.combine(
+    PathOperation.intersect,
+    Path()..addRect(shot),
+    Path()..addPolygon([for (final point in canvas) onDevice(point)], true),
+  );
 
   /// [rule]'s rectangle cut on the grid — never thinner than one device
   /// pixel, so a rule survives any zoom out, and widened AWAY from the edge
@@ -340,41 +299,23 @@ class SheetDeviceGrid {
   }
 }
 
-/// Where a picture shows on the device: inside [corners], within [frame]
-/// ([SheetDeviceGrid.printedPicture] · [SheetDeviceGrid.livePicture]).
-typedef SheetPictureShot = ({ui.RSuperellipse corners, Rect frame});
-
 /// A picture the paper's ink yields to: the picture, and [canvas] — the
 /// corners of the cut's canvas on the paper, as its camera lays them.
 typedef SheetPictureOverInk = ({SheetPicture picture, List<Offset> canvas});
 
-/// Where [over] shows its cut's canvas, exactly, on the paper: the slot's
-/// rounded corners ([tracedRoundedRect]), the camera's frame in it and the
-/// canvas — what the pen takes for the picture, and what no ink on the
-/// paper shows in a print that needs no grid (the PDF).
+/// Where [over] shows its cut's canvas, exactly, on the paper: the
+/// camera's frame in its slot, and the canvas in it — what the pen takes
+/// for the picture, and what no ink on the paper shows in a print that
+/// needs no grid (the PDF).
 List<Offset> pictureOutline(SheetPictureOverInk over) {
-  final picture = over.picture;
-  List<Offset> cornersOf(Rect rect) => [
-    rect.topLeft,
-    rect.topRight,
-    rect.bottomRight,
-    rect.bottomLeft,
-  ];
-  final slot = picture.cornerRadius > 0
-      ? tracedRoundedRect(picture.slot, picture.cornerRadius)
-      : cornersOf(picture.slot);
-  return convexIntersection(
-    convexIntersection(slot, cornersOf(picture.frame)),
-    over.canvas,
-  );
+  final frame = over.picture.frame;
+  return convexIntersection([
+    frame.topLeft,
+    frame.topRight,
+    frame.bottomRight,
+    frame.bottomLeft,
+  ], over.canvas);
 }
-
-/// [shot] as the one outline it is.
-Path sheetPictureShotPath(SheetPictureShot shot) => Path.combine(
-  PathOperation.intersect,
-  Path()..addRSuperellipse(shot.corners),
-  Path()..addRect(shot.frame),
-);
 
 /// A cut's picture at a frame, for a window that draws it [shownHeight]
 /// device pixels tall — what the panel's picture law is asked with. An
@@ -554,19 +495,8 @@ class _SheetCanvas {
     canvas.clipPath(shows);
   }
 
-  /// A fill cut on the grid. The app's corner is a curve, so a rounded fill
-  /// is anti-aliased; its flat sides are still cut on the grid, so they stay
-  /// one colour to the pixel.
-  void _fill(SheetFill fill) {
-    if (fill.cornerRadius <= 0) {
-      _flat(grid.snap(fill.rect), fill.argb);
-      return;
-    }
-    canvas.drawRSuperellipse(
-      grid.rounded(grid.snap(fill.rect), fill.cornerRadius),
-      Paint()..color = Color(fill.argb),
-    );
-  }
+  /// A fill cut on the grid, one colour to the pixel.
+  void _fill(SheetFill fill) => _flat(grid.snap(fill.rect), fill.argb);
 
   void _flat(Rect rect, int argb) {
     canvas.drawRect(
@@ -577,9 +507,8 @@ class _SheetCanvas {
     );
   }
 
-  /// A picture cut on the grid its window is cut on: clipped to the shape
-  /// the well under it fills ([_fill]), its frame filled to the same device
-  /// pixels.
+  /// A picture cut on the grid its window is cut on: its frame filled to
+  /// the device pixels the well under it fills ([_fill]).
   ///
   /// 🗣️F-197 (유저 2026-09-27): 「해당컷 채우기로 전면 검정색됫는데 …
   /// 줌하거나 팬할때 그림이랑 실루엣 경계에 흰 여백? 선이 생김」 · 「팬은
@@ -593,17 +522,12 @@ class _SheetCanvas {
     final image = printer.images.pictureFor?.call(
       picture.cutId,
       picture.pictureFrame,
-      shot.frame.height * grid.devicePixelRatio,
+      shot.height * grid.devicePixelRatio,
     );
     if (image == null) {
       return;
     }
-    canvas.save();
-    if (picture.cornerRadius > 0) {
-      canvas.clipRSuperellipse(shot.corners);
-    }
-    paintSheetImageIn(canvas, image, shot.frame, FilterQuality.medium);
-    canvas.restore();
+    paintSheetImageIn(canvas, image, shot, FilterQuality.medium);
   }
 
   void _inPaperSpace(VoidCallback draw) {

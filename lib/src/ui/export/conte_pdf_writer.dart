@@ -14,7 +14,7 @@ import '../../models/sheet_marks.dart';
 import '../conte/conte_fonts.dart';
 import '../conte/conte_page_painter.dart' show conteWrappedLines;
 import '../sheet_painting.dart'
-    show SheetPictureOverInk, pictureOutline, sheetWordsSize, tracedRoundedRect;
+    show SheetPictureOverInk, pictureOutline, sheetWordsSize;
 import '../theme/app_theme.dart' show AppTypography;
 
 /// The conte sheet as ONE vector PDF.
@@ -200,11 +200,6 @@ class _ContePdfPageWriter {
 
   void _print(SheetMark mark) {
     switch (mark) {
-      case SheetFill(:final rect, :final argb, :final cornerRadius)
-          when cornerRadius > 0:
-        _g.setFillColor(PdfColor.fromInt(argb));
-        _traceRounded(rect, cornerRadius);
-        _g.fillPath();
       case SheetFill(:final rect, :final argb):
         _fillRect(rect, PdfColor.fromInt(argb));
       case SheetRule(:final rect, :final argb):
@@ -213,22 +208,10 @@ class _ContePdfPageWriter {
         _fillRect(rect, PdfColor.fromInt(argb));
       case SheetWords():
         _words(mark);
-      case SheetPicture(
-        :final cutId,
-        :final pictureFrame,
-        :final slot,
-        :final frame,
-        :final cornerRadius,
-      ):
+      case SheetPicture(:final cutId, :final pictureFrame, :final frame):
         final image = pictures[(cutId, pictureFrame)];
         if (image != null && !frame.isEmpty) {
-          _g.saveContext();
-          if (cornerRadius > 0) {
-            _traceRounded(slot, cornerRadius);
-            _g.clipPath();
-          }
           _drawnIn(image, frame);
-          _g.restoreContext();
         }
       case SheetImage(:final assetPath, :final slot):
         final image = images[assetPath];
@@ -247,16 +230,6 @@ class _ContePdfPageWriter {
     _g.setFillColor(color);
     _g.drawRect(rect.left, _y(rect.bottom), rect.width, rect.height);
     _g.fillPath();
-  }
-
-  /// The app's corner as a path on the page ([tracedRoundedRect]).
-  void _traceRounded(ui.Rect rect, double radius) {
-    final points = tracedRoundedRect(rect, radius);
-    _g.moveTo(points.first.dx, _y(points.first.dy));
-    for (final point in points.skip(1)) {
-      _g.lineTo(point.dx, _y(point.dy));
-    }
-    _g.closePath();
   }
 
   void _contained(PdfImage image, ui.Rect slot) {

@@ -319,7 +319,6 @@ class SheetPictureWindow extends SheetWindow {
           pictureFrame: mark.pictureFrame,
           slot: mark.slot.shift(by),
           frame: mark.frame.shift(by),
-          cornerRadius: mark.cornerRadius,
         ),
         canvas: [for (final point in picture.canvas) point + by],
       ),

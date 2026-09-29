@@ -12,7 +12,6 @@ library;
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
-import '../../core/app_corner_radii.dart';
 import 'conte_sheet_source.dart';
 
 /// The sheet's fixed measurements — the first preset's page (유저
@@ -108,18 +107,18 @@ class ConteSheetMetrics {
   double rowTop(int rowOnPage) => bodyTop + rowOnPage * rowHeight;
 
   /// Row [row]'s picture window — the silhouette's hole.
+  ///
+  /// ↩️SQUARE, like every window of the sheet (유저 2026-09-30: 「칸 자체를
+  /// 둥근걸 버리고 네모낳게 한다는게 맞아. 보통칸이든 뭐든 진짜 상관없이
+  /// 그냥 기본을」). It wore the app's window corner from 09-25 (「지브리콘티
+  /// 처럼 모서리 둥글게하자」) until a window grown by camera work had to be
+  /// drawn: 「근데 그냥 둥근모서리 포기하자. 사각형으로하자」.
   Rect windowRect(int row) => Rect.fromLTRB(
     pictureLeft + silhouetteBorder,
     rowTop(row) + silhouetteBorder,
     actionLeft - silhouetteBorder,
     rowTop(row + 1) - silhouetteBorder,
   );
-
-  /// A picture window's corner — the app's window corner (유저 2026-09-25:
-  /// 「지브리콘티처럼 모서리 둥글게하자. 우리 앱 통일 모서리 따라서」).
-  /// The camera's picture inside is cut to it; 「그거는 전혀 문제없고
-  /// 의도한 대가야」.
-  double get windowRadius => AppCornerRadii.window;
 
   Rect get pageNumberSlot =>
       Rect.fromLTWH(marginX, topBandTop, 120, topBandHeight);

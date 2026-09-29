@@ -63,7 +63,6 @@ void main() {
         pictureFrame: 0,
         slot: slot,
         frame: slot,
-        cornerRadius: 6,
       ),
       canvas: [
         centre + Offset(0, -down),

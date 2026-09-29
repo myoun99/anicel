@@ -271,7 +271,6 @@ Iterable<SheetMark> _silhouette(ConteSheetMetrics m) sync* {
       SheetPaintLayer.form,
       rect: m.windowRect(row),
       argb: _well,
-      cornerRadius: m.windowRadius,
     );
   }
 }
@@ -374,7 +373,6 @@ SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) {
     pictureFrame: cell.source.pictureFrame,
     slot: slot,
     frame: containRect(Size(m.cameraAspect, 1), slot),
-    cornerRadius: m.windowRadius,
   );
 }
 
@@ -442,7 +440,6 @@ Iterable<SheetMark> _cameraWork(
     SheetPaintLayer.picture,
     rect: window,
     argb: _well,
-    cornerRadius: m.windowRadius,
   );
 }
 

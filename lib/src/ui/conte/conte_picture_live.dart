@@ -86,7 +86,7 @@ class ContePictureLive extends StatelessWidget {
     );
     final canvas = picture.cut.canvasSize;
     final corners = canvas.canvasRect;
-    return ClipPath(
+    return ClipRect(
       clipper: _shotOf(picture),
       child: Stack(
         children: [
@@ -130,9 +130,8 @@ class ContePictureLive extends StatelessWidget {
   }
 
   /// Where [picture] shows on the screen: the camera's frame in its slot,
-  /// inside the slot's rounded corners — cut INSIDE on the page's grid
-  /// ([SheetDeviceGrid.livePicture], F-197), the one call the paper's ink
-  /// around it stops at too (F-216).
+  /// cut INSIDE on the page's grid ([SheetDeviceGrid.livePicture], F-197),
+  /// the one call the paper's ink around it stops at too (F-216).
   _Shot _shotOf(ContePicture picture) => _Shot(
     SheetDeviceGrid.through(viewport, effectiveRatio).livePicture(picture.mark),
   );
@@ -150,14 +149,14 @@ class ContePictureLive extends StatelessWidget {
 }
 
 /// A picture's shot on screen: the camera's frame where the slot shows
-/// it, inside the slot's rounded corners.
-class _Shot extends CustomClipper<Path> {
+/// it.
+class _Shot extends CustomClipper<Rect> {
   const _Shot(this.shot);
 
-  final SheetPictureShot shot;
+  final Rect shot;
 
   @override
-  Path getClip(Size size) => sheetPictureShotPath(shot);
+  Rect getClip(Size size) => shot;
 
   @override
   bool shouldReclip(_Shot oldClipper) => oldClipper.shot != shot;

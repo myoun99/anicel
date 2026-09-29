@@ -1,7 +1,6 @@
 import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/core/app_corner_radii.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
@@ -106,27 +105,6 @@ void main() {
       );
       expect(underside, hasLength(1));
       expect(underside.single.hold, SheetRuleHold.far);
-    });
-
-    test('the picture windows — and the pictures cut to them — wear the '
-        'app\'s window corner; the black around them keeps its own', () {
-      // 유저 2026-09-25: 「지브리콘티처럼 모서리 둥글게하자. 우리 앱 통일
-      // 모서리 따라서」 · 「기존 상태에서 둥글게만」.
-      final fills = marks.whereType<SheetFill>();
-      final windows = fills.where((fill) => fill.argb == 0xFFEDEDED);
-      expect(windows, hasLength(m.rowsPerPage));
-      for (final window in windows) {
-        expect(window.cornerRadius, AppCornerRadii.window);
-      }
-      expect(silhouette, fills.firstWhere((f) => f.argb == 0xFF101010).rect);
-      expect(
-        fills.firstWhere((fill) => fill.argb == 0xFF101010).cornerRadius,
-        0,
-        reason: 'the column meets the head\'s rules square, as before',
-      );
-      for (final picture in marks.whereType<SheetPicture>()) {
-        expect(picture.cornerRadius, AppCornerRadii.window);
-      }
     });
 
     test('a picture fills the camera\'s frame in its slot: the whole slot in '

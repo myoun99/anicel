@@ -319,53 +319,6 @@ void main() {
       expect(keeps(sheetInkApron + 1.5), isFalse);
     });
 
-    testWidgets('🚨the slot\'s rounded corner is not the picture\'s: a stroke '
-        'through it stays in the cell\'s ink, where the page shows it', (
-      tester,
-    ) async {
-      final origin = await pump(
-        tester,
-        CameraPose(center: CanvasPoint(x: 320, y: 180)),
-      );
-      final slot = picture.window.slot;
-      // Inside the slot's rect, outside the round its corner is cut by.
-      final corner = slot.topLeft + const Offset(1, 0.5);
-      final row = conteInkWindows(
-        page,
-        unwrittenInkIdOf: bandOf,
-      ).singleWhere((window) => window.key == conteInkRowKey(cutId, 'band-0'));
-      expect(row.documentRect.contains(corner), isTrue, reason: 'fixture');
-
-      await stroke(tester, origin, [
-        Offset(slot.left - 12, corner.dy),
-        Offset(slot.left - 4, corner.dy),
-        Offset(slot.left + 4, corner.dy),
-      ]);
-
-      final surface = ink
-          .sessionStateFor(null, row.key)
-          .canvasState
-          .currentSurface;
-      expect(
-        inkAt(surface, row.placement.pixelOf(corner)),
-        isTrue,
-        reason: 'the page shows no picture there, so the cell keeps it',
-      );
-      final window = picture.window;
-      expect(
-        inkAt(
-          store.bakedSurfaceOrNull(window.key),
-          MatrixUtils.transformPoint(
-            Matrix4.inverted(
-              window.canvasToPaper.multiplied(window.artworkToCanvas),
-            ),
-            corner,
-          ),
-        ),
-        isFalse,
-        reason: 'and the cel keeps nothing the picture does not show',
-      );
-    });
   });
 
   testWidgets('the panel composites the picture live: the stroke shows in it '
@@ -686,8 +639,8 @@ void main() {
         slot.topLeft + Offset(slot.width * x, slot.height * y);
 
     testWidgets('the live picture stands on the print\'s ground inside the '
-        'slot\'s rounded corners with the camera\'s labels over it, and the '
-        'page around it does not change', (tester) async {
+        'slot with the camera\'s labels over it, and the page around it does '
+        'not change', (tester) async {
       final printed = (await tester.runAsync(() async {
         final recorder = ui.PictureRecorder();
         Canvas(recorder).drawColor(const Color(0xFFFF0000), BlendMode.src);
@@ -714,15 +667,6 @@ void main() {
             'the print stands on',
       );
       expect(on.colorAt(within(slot, 0.1, 0.12)), blue);
-
-      // The slot's corner lies outside its rounded shape: what the page
-      // shows there, not the cel.
-      final corner = slot.topLeft + const Offset(0.5, 0.5);
-      expect(
-        on.colorAt(corner),
-        off.colorAt(corner),
-        reason: 'the picture is cut at the slot\'s rounded corner',
-      );
 
       // OUT sits on the cel's inked right side, printed over the picture.
       final out = Rect.fromLTRB(
