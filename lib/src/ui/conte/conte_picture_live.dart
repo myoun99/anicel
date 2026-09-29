@@ -25,9 +25,8 @@ import 'conte_picture_ink.dart';
 ///
 /// Laid over the printed picture as the picture is printed: the camera's
 /// frame on the ground the picture renders on ([exportFrameGround]), the
-/// layers cropped at the canvas, inside the slot's rounded corners — and
-/// the camera's labels printed over it again, since it covers the ones the
-/// page printed.
+/// layers cropped at the canvas — and the camera's labels printed over it
+/// again, since it covers the ones the page printed.
 class ContePictureLive extends StatelessWidget {
   const ContePictureLive({
     super.key,
@@ -86,7 +85,7 @@ class ContePictureLive extends StatelessWidget {
     );
     final canvas = picture.cut.canvasSize;
     final corners = canvas.canvasRect;
-    return ClipRect(
+    return ClipPath(
       clipper: _shotOf(picture),
       child: Stack(
         children: [
@@ -132,9 +131,18 @@ class ContePictureLive extends StatelessWidget {
   /// Where [picture] shows on the screen: the camera's frame in its slot,
   /// cut INSIDE on the page's grid ([SheetDeviceGrid.livePicture], F-197),
   /// the one call the paper's ink around it stops at too (F-216).
-  _Shot _shotOf(ContePicture picture) => _Shot(
-    SheetDeviceGrid.through(viewport, effectiveRatio).livePicture(picture.mark),
-  );
+  _Outline _shotOf(ContePicture picture) {
+    final shot = SheetDeviceGrid.through(
+      viewport,
+      effectiveRatio,
+    ).livePicture(picture.mark);
+    return _Outline([
+      shot.topLeft,
+      shot.topRight,
+      shot.bottomRight,
+      shot.bottomLeft,
+    ]);
+  }
 
   /// Picture [id]'s display buffer, on the census — pushed: the census
   /// cannot reach a widget State; the session can.
@@ -148,21 +156,12 @@ class ContePictureLive extends StatelessWidget {
   }
 }
 
-/// A picture's shot on screen: the camera's frame where the slot shows
-/// it.
-class _Shot extends CustomClipper<Rect> {
-  const _Shot(this.shot);
-
-  final Rect shot;
-
-  @override
-  Rect getClip(Size size) => shot;
-
-  @override
-  bool shouldReclip(_Shot oldClipper) => oldClipper.shot != shot;
-}
-
-/// The canvas on screen — turned when the camera is.
+/// An outline on screen: a picture's shot, or the canvas in it — turned
+/// when the camera is.
+///
+/// ⛔Never a rect clipper, even for the square shot: a
+/// `CustomClipper<Rect>` is the ink window's clip, and there is one
+/// (`one_sheet_ink_layer_test`).
 class _Outline extends CustomClipper<Path> {
   const _Outline(this.corners);
 
