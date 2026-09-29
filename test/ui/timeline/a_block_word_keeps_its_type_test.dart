@@ -439,6 +439,12 @@ void main() {
       natural.height - 1,
       reason: 'its two gaps gave the pixel, and nothing narrowed it',
     );
+    // The renderer sizes a glyph to its slot less the leading, and these
+    // slots gave more than their 0.45px of leading.
+    final painted = _PaintedBoxes();
+    column.paintSetWord(painted, Offset.zero, wordFitsAsItIs);
+    expect(painted.widths, hasLength(3), reason: 'fixture: three glyphs');
+    expect(painted.widths, everyElement(9), reason: 'it keeps its type');
   });
 
   group('a lane key\'s NAME', () {
