@@ -73,10 +73,15 @@ String timelineRulerSecondOf({
 /// answer to crowding.
 const double timelineNumberNarrowestEm = 0.5;
 
-/// The playhead's own ink on a ruler strip (I-16 「볼드체로」): bold, on the
-/// full-strength text colour — one answer for the ruler and the rail.
+/// The playhead's own ink on a ruler strip (I-16 「볼드체로」): bold, in the
+/// accent — one answer for the ruler and the rail, the timeline's, the
+/// storyboard's and the sheet's alike.
+///
+/// 🗣️F-239 (유저 2026-09-29): 「재생헤드의 초수/코마 텍스트, 좀 더
+/// 눈에띄게하고싶으니 색을 흰색이아니라 강조색으로」. ↩️It was the
+/// full-strength text colour.
 TextStyle timelineRulerPlayheadInk(ColorScheme colorScheme) =>
-    TextStyle(fontWeight: FontWeight.w700, color: colorScheme.onSurface);
+    TextStyle(fontWeight: FontWeight.w700, color: colorScheme.primary);
 
 /// The resolved per-header model — THE probe surface for ruler tests
 /// (labels, states and colors live here, not in widget trees), the ruler
