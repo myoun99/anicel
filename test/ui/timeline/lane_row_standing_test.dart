@@ -26,8 +26,6 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart'
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show railSelectedRowColor;
-import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show timelineStandingCellDecoration;
 
 /// R10 #19's RAIL half: the row you are standing on is drawn, and a
 /// property lane's LABEL is a place you can stand.
@@ -44,15 +42,6 @@ const _cameraId = 'lane-cam-layer';
 const _cameraLayerId = LayerId(_cameraId);
 const _drawId = 'lane-draw-layer';
 const _drawLayerId = LayerId(_drawId);
-
-/// The standing RING itself, told apart from the plates and washes that
-/// also decorate boxes inside these keys: it is the one with a border.
-final _decoratedRing = find.byWidgetPredicate(
-  (widget) =>
-      widget is DecoratedBox &&
-      widget.decoration is BoxDecoration &&
-      (widget.decoration as BoxDecoration).border != null,
-);
 
 Project _project() {
   return Project(
@@ -496,33 +485,6 @@ void main() {
   });
 
   group('standing on a lane is standing, not a selection that looks like it', () {
-    testWidgets('the lane mark and the layer row wear the SAME ring', (
-      tester,
-    ) async {
-      await _pump(tester);
-      await _openLanes(tester);
-
-      BoxDecoration ringUnder(ValueKey<String> key) => tester
-          .widget<DecoratedBox>(
-            find.descendant(of: find.byKey(key), matching: _decoratedRing),
-          )
-          .decoration as BoxDecoration;
-
-      final layerRing = ringUnder(
-        const ValueKey<String>('timeline-selected-cell'),
-      );
-      await _pressLaneName(tester, 'position', 'Position');
-      final laneRing = ringUnder(
-        const ValueKey<String>('timeline-lane-standing-cell'),
-      );
-
-      // The lane used to draw the range-selection BAND here — filled, 2px,
-      // 6px corners — which is how you could SEE that standing on a
-      // property was a one-cell selection wearing standing's name.
-      expect(laneRing, layerRing);
-      expect(laneRing, timelineStandingCellDecoration);
-    });
-
     testWidgets('a lane takes no strokes; its layer keeps its picture', (
       tester,
     ) async {

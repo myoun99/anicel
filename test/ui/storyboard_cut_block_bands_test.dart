@@ -338,7 +338,6 @@ void main() {
       geometry: painter.geometry,
       crossAxisExtent: floor,
       minBlockWidth: painter.minBlockWidth,
-      activeCutId: painter.activeCutId,
       selectedRange: painter.selectedRange,
       rowAddress: painter.rowAddress,
       hoveredCutId: painter.hoveredCutId,
@@ -410,13 +409,10 @@ void main() {
   testWidgets('🗣️the plate is the conte sheet\'s ink, and nothing outlines '
       'it — 「바탕색을 콘티프리뷰패널의 픽쳐의 실루엣이랑 똑같이 검정색」 · 「패딩/'
       '실루엣선 이런거 싹 없도록 심플하게만」 (유저 2026-09-26)', (tester) async {
-    await _pump(
-      tester,
-      storyboardLayer: _dividedStoryboardLayer('cut-1'),
-      activeCutId: null,
-    );
+    // The ACTIVE cut, on purpose: standing in it colours no plate (F-212 —
+    // ↩️the active cut's plate was the accent's container).
+    await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
     final block = requireCutBlock(tester, 'cut-1');
-    expect(block.isActive, isFalse, reason: '⛔전제: the plate at rest');
     final spy = _painted(tester);
 
     expect(
@@ -462,7 +458,6 @@ void main() {
       geometry: painter.geometry,
       crossAxisExtent: painter.crossAxisExtent,
       minBlockWidth: painter.minBlockWidth,
-      activeCutId: painter.activeCutId,
       selectedRange: range,
       rowAddress: painter.rowAddress,
       hoveredCutId: painter.hoveredCutId,
@@ -495,7 +490,6 @@ void main() {
       spy.plates.single.color.toARGB32(),
       storyboardCutBlockBackgroundColor(
         painter.colorScheme,
-        active: block.isActive,
         hovered: false,
       ).toARGB32(),
       reason: 'the block keeps its resting plate around the picture',

@@ -8,6 +8,7 @@ import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_glyph_cache.dart';
+import '../timeline/timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'flip_hud_controller.dart';
 import 'flip_hud_model.dart';
 import '../repaint_props.dart';
@@ -459,7 +460,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
       if (blockFrameLines) {
         grid();
       }
-      _paintSelection(
+      _paintCurrent(
         canvas,
         Rect.fromLTWH(
           originX + currentIndex * slotWidth,
@@ -519,7 +520,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
         origin: originY,
         step: extent,
       ));
-      _paintSelection(
+      _paintCurrent(
         canvas,
         Rect.fromLTWH(
           stripRect.left,
@@ -877,19 +878,15 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     }
   }
 
-  /// The timeline's selected-cell reading, verbatim: the accent tint under
+  /// The timeline's reading of where you are, verbatim: the playhead's
+  /// wash over the current slot ([timelinePlayheadWashColor]).
+  ///
+  /// 🗣️F-212 (유저 2026-09-28): 「현재 블록이나 갭 등 위치를 알리는 실루엣
+  /// 라인 … 삭제하고싶음. 현재 재생헤드의 세로 바탕색 오버레이만으로
+  /// 충분」. ↩️The timeline's selected-cell reading: a 12% accent tint under
   /// a two-pixel accent edge.
-  void _paintSelection(Canvas canvas, Rect rect) {
-    final accent = timelineSelectedFrameBorderColor;
-    final inner = rect.deflate(1);
-    canvas.drawRect(inner, Paint()..color = accent.withValues(alpha: 0.12));
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(inner, const Radius.circular(5)),
-      Paint()
-        ..color = accent
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
+  void _paintCurrent(Canvas canvas, Rect rect) {
+    canvas.drawRect(rect, Paint()..color = timelinePlayheadWashColor);
   }
 
   void _fadeEnds(Canvas canvas, Rect rect, {required bool horizontal}) {

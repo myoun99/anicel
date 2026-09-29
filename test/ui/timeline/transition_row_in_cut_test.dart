@@ -18,15 +18,12 @@ import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart'
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart'
     show editActiveInstance;
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip;
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart'
     show TimelineFrameCellsRow;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
     show TimelineLayerControlsRow;
-import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
-    show TimelineSelectedExposureOutline;
 import 'package:anicel/src/ui/session/transitions.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart' show TimelineTabHost;
 
@@ -403,94 +400,6 @@ void main() {
       expect(session.activeTrack.transitionLayer.instructions, before);
     });
   }
-
-  testWidgets('⑧ standing on the row and pressing a span frame selects it — '
-      'the range verb reads the same exposure the marks do', (tester) async {
-    final session = await pumpTwoCutsWithOverlap(tester);
-    final layerId = session.activeTrack.transitionLayer.id;
-
-    // Stand on the transition row through the rail, the user's own path.
-    await tester.tap(transitionRow());
-    await tester.pumpAndSettle();
-    expect(
-      session.activeLayerId,
-      layerId,
-      reason: 'the rail put the standing row on the transition layer',
-    );
-
-    // The cut's projected mark starts at local 0 for the incoming side and
-    // overhangs the end for the outgoing one; cut 1 is the OUTGOING side, so
-    // its mark sits at its tail. Seek onto a frame the span covers.
-    final marks = session.transitions.trackTransitionDisplayLayer.instructions;
-    expect(marks, isNotEmpty, reason: 'the projection produced a mark');
-    final markStart = marks.keys.first;
-    final span = marks[markStart]!;
-    session.selectFrameIndex(markStart);
-    await tester.pumpAndSettle();
-
-    expect(
-      session.cells.canDeleteCellAtCurrentFrame,
-      isFalse,
-      reason:
-          'selectable and measurable, but an O.L\'s mark is the storyboard\'s '
-          'to delete (유저 2026-09-26)',
-    );
-
-    // 🚨The oracle has to be the CURSOR LAYER's own outline, not the reader
-    // function: asserting `instructionCellExposureState(...) != uncovered` is
-    // true whether or not the cursor layer calls it, and a mutation run proved
-    // exactly that — reverting the predicate left that assertion green. What ⑧
-    // is about is the ROUTING, so the test reads the widget the routing feeds.
-    final outline = tester.widget<TimelineSelectedExposureOutline>(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is TimelineSelectedExposureOutline &&
-            widget.layerId == layerId,
-      ),
-    );
-    final range = outline.displayRange;
-    expect(
-      range.resolvedRange.isBlock,
-      isTrue,
-      reason: 'the span reads as a BLOCK, which is what a range can cover',
-    );
-    // ⚠️HOW FAR it reaches is the WINDOW's, not the span's or the cut's: this
-    // is the display's outline («a visual display effect only», the policy
-    // file says), resolved inside the built frame window. Measured 2026-09-25
-    // on this fixture: 3 · 4 · 5 · 8 frames for surfaces 1400 · 1409 · 1600 ·
-    // 2400 — 8 is the whole span, のりしろ included. The earlier claim that
-    // it stops at the cut's end was one window's number, and it broke the day
-    // the rail widened by 9 (text-scale-rail-opac). ⑧ asks that the span
-    // READS as a block from its first frame, which every window answers.
-    final covered =
-        range.resolvedRange.endFrameIndexExclusive -
-        range.resolvedRange.startFrameIndex;
-    expect(
-      range.resolvedRange.startFrameIndex,
-      markStart,
-      reason: 'the block begins where the span does',
-    );
-    expect(
-      covered,
-      greaterThan(1),
-      reason: 'a range, not the single cell under the cursor',
-    );
-    expect(
-      covered,
-      lessThanOrEqualTo(span.length),
-      reason: 'and never past the span',
-    );
-
-    // And the reason the routing was needed at all: the CEL reader knows
-    // nothing about spans, so the row measured empty before.
-    expect(
-      session.exposureStateForLayer(
-        session.transitions.trackTransitionDisplayLayer,
-        markStart,
-      ),
-      TimelineCellExposureState.uncovered,
-    );
-  });
 
   /// ⑩ The span reader carries the TERM'S MARK.
   ///

@@ -925,20 +925,18 @@ class _StoryboardRailRows {
         Positioned.fill(
           child: IgnorePointer(child: _trackLaneRangeBand(track, scale)),
         ),
-        // Above both bands: standing and selected are two statements, and
-        // the ring must stay readable inside a span that covers its row.
-        //
-        // 🚨On its OWN layer (I-22 ③): the ring follows the playhead, and the
-        // strips around it are one RepaintBoundary precisely so a playhead
-        // move re-rasterizes none of them (R12-⑥). Mounted bare inside it,
-        // every move repainted every strip — at ten minutes every edge grip
-        // of the film and the plate grounds under them, on every playback
-        // frame. The timeline's cursor layer rides its own the same way —
-        // and a layout of its own besides ([TickLayer]).
+        // 🚨On its OWN layer (I-22 ③): the standing cell follows the
+        // playhead, and the strips around it are one RepaintBoundary
+        // precisely so a playhead move re-rasterizes none of them (R12-⑥).
+        // Mounted bare inside it, every move repainted every strip — at ten
+        // minutes every edge grip of the film and the plate grounds under
+        // them, on every playback frame. The timeline's cursor layer rides
+        // its own the same way — and a layout of its own besides
+        // ([TickLayer]).
         Positioned.fill(
           child: IgnorePointer(
             child: TickLayer(
-              child: _state._standing.trackStandingCellRing(track, scale),
+              child: _state._standing.trackStandingCell(track, scale),
             ),
           ),
         ),
@@ -1409,7 +1407,6 @@ class _StoryboardRailRows {
       _StoryboardTrackRow(
         track: track,
         layoutEntries: entries,
-        activeCutId: _state.widget.activeCutId,
         onRowFramePress: _state.widget.onRowFramePress,
         onDropMediaAsset: _state.widget.onDropMediaAsset,
         acceptsMediaAsset: _state.widget.acceptsMediaAsset,

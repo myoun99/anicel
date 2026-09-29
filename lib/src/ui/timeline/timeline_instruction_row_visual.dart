@@ -78,9 +78,11 @@ TimelineCellExposureState instructionCellExposureState(
 /// so its own cels are the whole answer, and the union's second half had
 /// nothing left to fill.
 ///
-/// ⛔ONE FUNCTION, because there are TWO readers — the cells row and the
-/// cursor layer's range measure — and a row that DRAWS a block it will not
-/// SELECT is worse than one that draws none ([[no-copy-to-share]]).
+/// ⛔ONE FUNCTION, because there were TWO readers — the cells row and the
+/// cursor layer's outline of the block you stand in — and a row that DRAWS
+/// a block it will not outline is worse than one that draws none
+/// ([[no-copy-to-share]]). The outline went with F-212 (유저 2026-09-28:
+/// 「실루엣 라인 … 삭제」); the cells row reads it alone now.
 TimelineCellExposureState bandExposureState(
   Layer layer,
   int frameIndex, {

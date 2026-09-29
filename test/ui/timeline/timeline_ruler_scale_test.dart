@@ -28,7 +28,6 @@ void main() {
     Axis axis = Axis.horizontal,
     int frameStartIndex = 0,
     int frameEndIndexExclusive = 30,
-    int currentFrameIndex = -1,
     int playbackFrameCount = 30,
     double leadingFrameSpacer = 0,
     double crossExtent = 28,
@@ -45,7 +44,6 @@ void main() {
     axis: axis,
     frameStartIndex: frameStartIndex,
     frameEndIndexExclusive: frameEndIndexExclusive,
-    currentFrameIndex: currentFrameIndex,
     playbackFrameCount: playbackFrameCount,
     leadingFrameSpacer: leadingFrameSpacer,
     crossExtent: crossExtent,
@@ -72,7 +70,6 @@ void main() {
       for (final other in [
         scale(frameStartIndex: 1),
         scale(frameEndIndexExclusive: 31),
-        scale(currentFrameIndex: 3),
         scale(playbackFrameCount: 12),
         scale(leadingFrameSpacer: 96),
         scale(
@@ -145,24 +142,6 @@ void main() {
       expect(wide.modelAt(7).label, '');
       expect(wide.modelAt(24).secondsLabel, '1');
       expect(wide.modelAt(25).secondsLabel, '');
-    });
-
-    test('the current frame is selected and takes the tint, wash or no '
-        'wash', () {
-      final ruler = scale(currentFrameIndex: 6);
-      expect(ruler.modelAt(6).selected, isTrue);
-      expect(ruler.modelAt(5).selected, isFalse);
-      expect(ruler.modelAt(6).background, isNot(light.surface));
-      // Selection outranks the wash: a selected frame past the playback
-      // range still reads as the one you are standing on.
-      expect(
-        scale(
-          currentFrameIndex: 40,
-          playbackFrameCount: 30,
-          pastPlaybackWash: const Color(0xFF00FF00),
-        ).modelAt(40).background,
-        isNot(const Color(0xFF00FF00)),
-      );
     });
 
     test('⛔the RULER takes no past-playback wash (UI-R18 #9) while the '
@@ -313,14 +292,10 @@ void main() {
       // and down; the cadence is measured ALONG the axis (I-22), the one
       // thing the axis may change about a label.
       for (final frame in [0, 1, 24, 25]) {
-        final across = scale(currentFrameIndex: 24).modelAt(frame);
-        final down = scale(
-          axis: Axis.vertical,
-          currentFrameIndex: 24,
-        ).modelAt(frame);
+        final across = scale().modelAt(frame);
+        final down = scale(axis: Axis.vertical).modelAt(frame);
         expect(down.label, across.label, reason: 'frame $frame');
         expect(down.secondsLabel, across.secondsLabel, reason: 'frame $frame');
-        expect(down.selected, across.selected, reason: 'frame $frame');
         expect(
           down.outsidePlaybackRange,
           across.outsidePlaybackRange,
@@ -355,18 +330,6 @@ void main() {
       ).modelAt(3);
       expect(model.outsidePlaybackRange, isFalse, reason: 'fixture premise');
       expect(model.background, light.surface);
-    });
-
-    test('the CURRENT frame outranks the wash: it is tinted, not washed', () {
-      const wash = Color(0xFF123456);
-      final model = scale(
-        playbackFrameCount: 10,
-        currentFrameIndex: 20,
-        pastPlaybackWash: wash,
-      ).modelAt(20);
-      expect(model.selected, isTrue);
-      expect(model.background, isNot(wash));
-      expect(model.background, isNot(light.surface));
     });
   });
 
@@ -651,11 +614,10 @@ void main() {
       }
     });
 
-    test('the paper is one rect per ground: the selected cell and the '
-        'playback end are its only edges', () {
+    test('the paper is one rect per ground: the playback end is its only '
+        'edge', () {
       final strip = scale(
         axis: Axis.vertical,
-        currentFrameIndex: 10,
         playbackFrameCount: 50,
         frameEndIndexExclusive: 100,
         pastPlaybackWash: const Color(0xFF123456),
@@ -665,12 +627,10 @@ void main() {
 
       expect(canvas.rects.map((rect) => rect.color.toARGB32()), [
         strip.modelAt(0).background.toARGB32(),
-        strip.modelAt(10).background.toARGB32(),
-        strip.modelAt(11).background.toARGB32(),
         strip.modelAt(50).background.toARGB32(),
       ]);
       expect(canvas.rects.first.rect, strip.cellRectFor(0).expandToInclude(
-        strip.cellRectFor(9),
+        strip.cellRectFor(49),
       ));
       expect(canvas.rects.last.rect, strip.cellRectFor(50).expandToInclude(
         strip.cellRectFor(99),
@@ -680,12 +640,11 @@ void main() {
     test('the paper rules every line the law rules, whatever frame a '
         'stretch starts on', () {
       for (final axis in Axis.values) {
-        // The selected cell and the playback end cut the paper at 10, 11
-        // and 50 — none of them on the lines' step at this zoom.
+        // The playback end cuts the paper at 50 — not on the lines' step
+        // at this zoom.
         final strip = scale(
           axis: axis,
           metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
-          currentFrameIndex: 10,
           playbackFrameCount: 50,
           frameEndIndexExclusive: 1000,
         );

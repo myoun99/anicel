@@ -16,7 +16,6 @@ void main() {
           body: TimelineFrameRuler(
             frameStartIndex: 2,
             frameEndIndexExclusive: 5,
-            currentFrameIndex: 3,
             playbackFrameCount: 5,
             leadingFrameSpacerWidth: 96,
             trailingFrameSpacerWidth: 144,

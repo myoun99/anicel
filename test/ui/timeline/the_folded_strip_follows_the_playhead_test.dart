@@ -73,13 +73,11 @@ void main() {
   CustomPainter painterOf(WidgetTester tester, Finder paint) =>
       tester.widget<CustomPaint>(paint).painter!;
 
-  testWidgets('a move repaints the playhead\'s layer, and the blocks only '
-      'when it crosses into another block', (tester) async {
+  testWidgets('a move repaints the playhead\'s layer, and never the blocks — '
+      'not even into another block', (tester) async {
     final playhead = await pumpStrip(tester);
-    final standingOnTwo = painterOf(tester, blocks);
+    final before = painterOf(tester, blocks);
 
-    // Inside the block it stands on: the playhead's layer, and nothing of
-    // the blocks.
     playhead.value = 3;
     expect(
       tester.renderObject(head).debugNeedsPaint,
@@ -92,63 +90,17 @@ void main() {
       reason: 'a move inside the block repaints no block',
     );
     await tester.pump();
+
+    // Where you stand is the playhead's column alone (F-212). ↩️The block
+    // the playhead stood on was filled and outlined in its ink, so crossing
+    // into another one rebuilt the blocks.
+    playhead.value = 9;
+    expect(tester.renderObject(blocks).debugNeedsPaint, isFalse);
+    await tester.pump();
     expect(
-      identical(painterOf(tester, blocks), standingOnTwo),
+      identical(painterOf(tester, blocks), before),
       isTrue,
       reason: 'nor rebuilds them',
     );
-
-    // The block it stands on is the one in the playhead's ink — the one
-    // under the channel, not under the snapshot's frame (0, between blocks).
-    final ink = Theme.of(tester.element(blocks)).colorScheme.primary;
-    List<double> solid() {
-      final strokes = _Strokes(ink);
-      painterOf(tester, blocks).paint(strokes, tester.getSize(blocks));
-      return strokes.solid;
-    }
-
-    expect(solid(), [2 * 12 + 1], reason: 'standing on the block at 2');
-    playhead.value = 9;
-    await tester.pump();
-    expect(
-      solid(),
-      [9 * 12 + 1],
-      reason: '🚨the block the playhead crossed into is the one it stands on '
-          '— the strip drew its snapshot\'s frame',
-    );
-    playhead.value = 7;
-    await tester.pump();
-    expect(solid(), isEmpty, reason: 'between blocks, none is');
   });
-}
-
-/// The blocks' outlines as the strip strokes them: the left edge of each
-/// stroked in [standing] ink — the block the playhead stands on.
-class _Strokes implements Canvas {
-  _Strokes(this.standing);
-
-  final Color standing;
-  final solid = <double>[];
-  final _saved = <double>[];
-  var _dx = 0.0;
-
-  @override
-  void save() => _saved.add(_dx);
-
-  @override
-  void restore() => _dx = _saved.removeLast();
-
-  @override
-  void translate(double dx, double dy) => _dx += dx;
-
-  @override
-  void drawRRect(RRect rrect, Paint paint) {
-    if (paint.style == PaintingStyle.stroke &&
-        paint.color.toARGB32() == standing.toARGB32()) {
-      solid.add(rrect.left + _dx);
-    }
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => null;
 }

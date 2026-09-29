@@ -29,7 +29,7 @@ import 'lane_row_slice.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
-import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
+import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'layer_drop_policy.dart'
     show effectHeaderRowsOf, rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
@@ -563,14 +563,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       // R27 #14: one band for cells and lanes alike.
       laneRangeSelection: widget.hooks.laneRange?.selection,
       frameCursor: widget.hooks.frameCursor,
-      dragPreview: widget.hooks.dragPreview,
       rows: entries,
       activeLayerId: widget.hooks.activeLayerId,
       frameStartIndex: frameRange.startIndex,
       frameEndIndexExclusive: frameRange.endIndexExclusive,
       leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
       metrics: _metrics,
-      exposureStateForLayer: widget.hooks.exposureStateForLayer,
       crossAxisExtent: entries.length * _metrics.layerRowHeight,
     );
   }
@@ -890,9 +888,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                           child: _XSheetFrameNumberRail(
                             frameStartIndex: 0,
                             frameEndIndexExclusive: _frameScroll.renderedFrameCount,
-                            // The tint lives in the
-                            // overlay now.
-                            currentFrameIndex: -1,
                             playhead: widget.hooks.frameCursor,
                             playbackFrameCount: widget.hooks.playbackFrameCount,
                             leadingFrameSpacerHeight: 0,
@@ -1274,7 +1269,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   const _XSheetFrameNumberRail({
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
-    required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.leadingFrameSpacerHeight,
     required this.trailingFrameSpacerHeight,
@@ -1289,7 +1283,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
-  final int currentFrameIndex;
   final int playbackFrameCount;
   final double leadingFrameSpacerHeight;
   final double trailingFrameSpacerHeight;
@@ -1327,7 +1320,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       axis: Axis.vertical,
       frameStartIndex: frameStartIndex,
       frameEndIndexExclusive: frameEndIndexExclusive,
-      currentFrameIndex: currentFrameIndex,
       playbackFrameCount: playbackFrameCount,
       leadingFrameSpacer: leadingFrameSpacerHeight,
       crossExtent: metrics.layerControlsWidth,

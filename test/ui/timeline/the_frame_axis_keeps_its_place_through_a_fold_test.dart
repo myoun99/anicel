@@ -326,10 +326,9 @@ void main() {
         )
         .painter!;
     final size = tester.getSize(strip);
-    final primary = Theme.of(tester.element(strip)).colorScheme.primary;
 
-    // Painted on its own, straight to an image: no 70% glass over it, so
-    // the playhead is the theme's primary exactly.
+    // Painted on its own, straight to an image: the playhead's column is
+    // the only thing on it.
     late ByteData pixels;
     late int width;
     await tester.runAsync(() async {
@@ -345,14 +344,7 @@ void main() {
     final y = size.height ~/ 2;
     final playhead = [
       for (var x = 0; x < width; x++)
-        if (Color.fromARGB(
-              pixels.getUint8((y * width + x) * 4 + 3),
-              pixels.getUint8((y * width + x) * 4),
-              pixels.getUint8((y * width + x) * 4 + 1),
-              pixels.getUint8((y * width + x) * 4 + 2),
-            ) ==
-            primary.withValues(alpha: 1))
-          x,
+        if (pixels.getUint8((y * width + x) * 4 + 3) > 0) x,
     ];
 
     expect(

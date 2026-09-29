@@ -35,7 +35,6 @@ void main() {
     axis: axis,
     frameStartIndex: 0,
     frameEndIndexExclusive: frames,
-    currentFrameIndex: -1,
     playbackFrameCount: frames,
     leadingFrameSpacer: 0,
     crossExtent: 28,
@@ -442,7 +441,6 @@ void main() {
         body: TimelineFrameHeaderRow(
           frameStartIndex: 0,
           frameEndIndexExclusive: 30,
-          currentFrameIndex: -1,
           playbackFrameCount: 30,
           leadingFrameSpacerWidth: 0,
           trailingFrameSpacerWidth: 0,
@@ -478,16 +476,6 @@ void main() {
       ),
       reason: 'its repaints never re-record the strip',
     );
-    final strip =
-        tester
-                .widget<CustomPaint>(
-                  find.byKey(
-                    const ValueKey<String>('timeline-frame-ruler-paint'),
-                  ),
-                )
-                .painter!
-            as TimelineFrameRulerPainter;
-    expect(strip.scale.currentFrameIndex, -1);
 
     await tester.pumpWidget(row());
     expect(writing, findsNothing, reason: 'no playhead, no writing');

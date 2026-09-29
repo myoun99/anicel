@@ -18,26 +18,18 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart'
-    show StoryboardCutBlocksPainter;
-import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show timelineBlockCornerRadiusAt;
-import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
-    show TimelineSelectionRing;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 
-/// UI-R5 ③b: the storyboard wears the timeline's STANDING visual.
+/// UI-R5 ③b: the storyboard says where you STAND, as the timeline does —
+/// its standing cell, which paints nothing since F-212 (the playhead's wash
+/// says it) but still tells semantics and the probes which row you are on.
 ///
-/// The band says what is SELECTED and the ring says where you STAND. The
-/// storyboard drew the first and not the second, so the row every lane verb
-/// takes as its subject was the one row that said nothing about it.
-///
-/// The oracle is the same sentence on every row kind: the ring IS the
-/// intersection of the playhead column and the row you stand on. It is
+/// The oracle is the same sentence on every row kind: the standing cell IS
+/// the intersection of the playhead column and the row you stand on. It is
 /// measured against the row's own widget rather than against the panel's
 /// row table, so a table that drifts out of step with the rows it mirrors
-/// fails here instead of drawing the ring on a neighbour.
+/// fails here instead of standing on a neighbour.
 Cut _cut(String id, int duration) {
   return Cut(
     id: CutId(id),
@@ -114,84 +106,36 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Rect ringRect(WidgetTester tester) => tester.getRect(
+  Rect standingRect(WidgetTester tester) => tester.getRect(
     find.byKey(const ValueKey<String>('storyboard-standing-cell')),
   );
 
   Rect playheadRect(WidgetTester tester) =>
       tester.getRect(find.byKey(const ValueKey<String>('storyboard-playhead')));
 
-  void expectRingOnRow(WidgetTester tester, String rowKey, {String? reason}) {
-    final ring = ringRect(tester);
+  void expectStandingOnRow(
+    WidgetTester tester,
+    String rowKey, {
+    String? reason,
+  }) {
+    final standing = standingRect(tester);
     final row = tester.getRect(find.byKey(ValueKey<String>(rowKey)));
     final playhead = playheadRect(tester);
-    expect(ring.left, moreOrLessEquals(playhead.left), reason: reason);
-    expect(ring.width, moreOrLessEquals(playhead.width), reason: reason);
-    expect(ring.top, moreOrLessEquals(row.top), reason: reason);
-    expect(ring.height, moreOrLessEquals(row.height), reason: reason);
+    expect(standing.left, moreOrLessEquals(playhead.left), reason: reason);
+    expect(standing.width, moreOrLessEquals(playhead.width), reason: reason);
+    expect(standing.top, moreOrLessEquals(row.top), reason: reason);
+    expect(standing.height, moreOrLessEquals(row.height), reason: reason);
   }
 
-  testWidgets('standing on the V row outlines the CUT the playhead is in — '
-      'the same sentence the S row and the timeline speak', (tester) async {
-    await pumpStoryboard(tester);
-    // Nothing picked yet: the rail rests on the V row.
-    final area = tester.getRect(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-timeline-area-sb-track'),
-      ),
-    );
-    final cellWidth = playheadRect(tester).width;
-    final vRow = tester.getRect(
-      find.byKey(const ValueKey<String>('storyboard-track-row-sb-track')),
-    );
-
-    // Frame 0 is inside cut-1 (frames 0..8), so the block is the cut.
-    final outline = tester.getRect(
-      find.byKey(const ValueKey<String>('storyboard-standing-block')),
-    );
-    expect(outline.left, moreOrLessEquals(area.left));
-    expect(
-      outline.width,
-      moreOrLessEquals(8 * cellWidth),
-      reason: 'cut-1 runs 8 frames, and the outline is the CUT block',
-    );
-    expect(outline.top, moreOrLessEquals(vRow.top));
-    expect(outline.height, moreOrLessEquals(vRow.height));
-    // The CUT is the block here, so the outline wears the cut plate's own
-    // corner — read from the painter that draws the plate.
-    expect(
-      tester
-          .widget<TimelineSelectionRing>(
-            find.byKey(const ValueKey<String>('storyboard-standing-block')),
-          )
-          .borderRadius,
-      const BorderRadius.all(
-        Radius.circular(StoryboardCutBlocksPainter.plateCornerRadius),
-      ),
-    );
-
-    // Step into the SECOND cut: the outline moves with the block, exactly
-    // as the S row's does.
-    await tester.tapAt(
-      Offset(area.left + 9.5 * cellWidth, vRow.top + vRow.height / 2),
-    );
-    await tester.pumpAndSettle();
-    final second = tester.getRect(
-      find.byKey(const ValueKey<String>('storyboard-standing-block')),
-    );
-    expect(second.left, moreOrLessEquals(area.left + 8 * cellWidth));
-    expect(second.width, moreOrLessEquals(6 * cellWidth));
-  });
-
-  testWidgets('the V row you land on rings the cell the playhead crosses', (
+  testWidgets('the V row you land on stands on the cell the playhead crosses', (
     tester,
   ) async {
     await pumpStoryboard(tester);
     // Nothing picked yet: the rail rests on the V row.
-    expectRingOnRow(
+    expectStandingOnRow(
       tester,
       'storyboard-track-row-sb-track',
-      reason: 'the ring belongs to the row the rail is resting on',
+      reason: 'the standing cell belongs to the row the rail is resting on',
     );
 
     // Park the playhead off frame 0 so 'follows the cursor' is a claim with
@@ -211,12 +155,14 @@ void main() {
       greaterThan(areaRect.left + cell),
       reason: 'the press really moved the playhead down the axis',
     );
-    expectRingOnRow(tester, 'storyboard-track-row-sb-track');
+    expectStandingOnRow(tester, 'storyboard-track-row-sb-track');
   });
 
-  testWidgets('standing on an S row takes the ring with it', (tester) async {
+  testWidgets('standing on an S row takes the standing cell with it', (
+    tester,
+  ) async {
     await pumpStoryboard(tester);
-    final vRing = ringRect(tester);
+    final vStanding = standingRect(tester);
 
     await tester.tap(
       find.descendant(
@@ -228,89 +174,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expectRingOnRow(tester, 'storyboard-se-row-0-1');
+    expectStandingOnRow(tester, 'storyboard-se-row-0-1');
     expect(
-      ringRect(tester).top,
-      isNot(moreOrLessEquals(vRing.top)),
-      reason: 'the ring really moved off the V row',
+      standingRect(tester).top,
+      isNot(moreOrLessEquals(vStanding.top)),
+      reason: 'the standing cell really moved off the V row',
     );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-standing-cell')),
-      findsOneWidget,
-      reason: 'exactly one row is stood on, so exactly one ring is drawn',
-    );
-  });
-
-  testWidgets('on an S row the BLOCK under the cursor is outlined, and the '
-      'ring stands down inside it', (tester) async {
-    await pumpStoryboard(tester);
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(
-          const ValueKey<String>('storyboard-se-label-sb-track-1'),
-        ),
-        matching: find.text('S1'),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final seRow = find.byKey(const ValueKey<String>('storyboard-se-row-0-1'));
-    final rowRect = tester.getRect(seRow);
-    final cell = playheadRect(tester).width;
-    // Parked at frame 0 the row's only sound (frames 1..3) is elsewhere.
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-standing-block')),
-      findsNothing,
-      reason: 'an empty cell is a ring, never an outline',
-    );
-
-    // Step onto frame 2, inside the block.
-    await tester.tapAt(
-      Offset(rowRect.left + 2.5 * cell, rowRect.top + rowRect.height / 2),
-    );
-    await tester.pumpAndSettle();
-
-    final outline = tester.getRect(
-      find.byKey(const ValueKey<String>('storyboard-standing-block')),
-    );
-    expect(outline.left, moreOrLessEquals(rowRect.left + 1 * cell));
-    expect(
-      outline.width,
-      moreOrLessEquals(3 * cell),
-      reason: 'the sound runs frames 1..3, and the outline is the BLOCK',
-    );
-    expect(outline.top, moreOrLessEquals(rowRect.top));
-    expect(outline.height, moreOrLessEquals(rowRect.height));
-    // …and it wears the SOUND's corner — the block law at this zoom, not a
-    // hand-typed 6 (유저 09-23: 「모서리랑 블록이랑 모서리가 통일」).
-    expect(cell, lessThan(12), reason: 'a zoom where the law bites');
-    expect(
-      tester
-          .widget<TimelineSelectionRing>(
-            find.byKey(const ValueKey<String>('storyboard-standing-block')),
-          )
-          .borderRadius,
-      BorderRadius.all(
-        timelineBlockCornerRadiusAt(
-          cellExtent: cell,
-          crossExtent: rowRect.height,
-        ),
-      ),
-    );
-    // The ring keeps its node — the row still says where you stand — but
-    // paints nothing inside a block it would only double.
     expect(
       find.byKey(const ValueKey<String>('storyboard-standing-cell')),
       findsOneWidget,
-    );
-    expect(
-      tester
-          .widget<Semantics>(
-            find.byKey(const ValueKey<String>('storyboard-standing-cell')),
-          )
-          .child,
-      isA<SizedBox>(),
-      reason: 'the block outline is the standing visual there',
+      reason: 'exactly one row is stood on, so exactly one standing cell',
     );
   });
 
@@ -342,7 +215,7 @@ void main() {
   // layout position but a tap cannot land, which reads as "standing never
   // moved" rather than as an off-screen target. `ensureVisible` first; the rail
   // and the strips share ONE vertical viewport, so the scroll moves both and
-  // the ring/row comparison stays valid.
+  // the standing-cell/row comparison stays valid.
   //
   // The FADE row's test itself is gone with the cut-fade envelope: the V row's
   // Opacity lane no longer exists, and the fade it drew is F.I/F.O spans on the
@@ -370,8 +243,8 @@ void main() {
   for (final kind in PointerDeviceKind.values.where(
     (kind) => kind != PointerDeviceKind.trackpad,
   )) {
-    testWidgets('standing on a V LANE row rings the lane, not its track row '
-        '(${kind.name})', (tester) async {
+    testWidgets('standing on a V LANE row stands on the lane, not its track '
+        'row (${kind.name})', (tester) async {
       await pumpStoryboard(tester);
       await twirlOpenVLanes(tester);
 
@@ -394,7 +267,7 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expectRingOnRow(tester, 'storyboard-track-lane-row-0-$laneId');
+      expectStandingOnRow(tester, 'storyboard-track-lane-row-0-$laneId');
       expect(
         find.byKey(const ValueKey<String>('storyboard-standing-cell')),
         findsOneWidget,

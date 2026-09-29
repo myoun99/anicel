@@ -5,7 +5,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -67,8 +66,6 @@ void main() {
                   frameEndIndexExclusive: 20,
                   leadingFrameSpacerWidth: 0,
                   metrics: metrics,
-                  exposureStateForLayer: (_, _) =>
-                      TimelineCellExposureState.uncovered,
                   crossAxisExtent: 4 * metrics.layerRowHeight,
                   frameRangeSelection:
                       ValueNotifier<TimelineFrameRangeSelection?>(cells),
@@ -266,8 +263,6 @@ void main() {
                   frameEndIndexExclusive: 20,
                   leadingFrameSpacerWidth: 0,
                   metrics: metrics,
-                  exposureStateForLayer: (_, _) =>
-                      TimelineCellExposureState.uncovered,
                   crossAxisExtent: 2 * metrics.layerRowHeight,
                   frameRangeSelection:
                       ValueNotifier<TimelineFrameRangeSelection?>(null),

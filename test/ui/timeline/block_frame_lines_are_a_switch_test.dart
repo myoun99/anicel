@@ -21,6 +21,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineDrawingHeldColor;
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
+import 'package:anicel/src/ui/timeline/timeline_playhead.dart'
+    show timelinePlayheadWashColor;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
@@ -501,6 +503,12 @@ void main() {
     final on = order(lines: true);
     expect(on, contains('body'), reason: 'fixture premise: a body');
     expect(on.lastIndexOf('line'), greaterThan(on.indexOf('body')));
+    expect(
+      on.indexOf('current'),
+      greaterThan(on.lastIndexOf('line')),
+      reason: 'the current slot wears the playhead\'s wash, over it all '
+          '(F-212)',
+    );
     final off = order(lines: false);
     expect(off, contains('line'), reason: 'the grid is still there');
     expect(
@@ -512,9 +520,16 @@ void main() {
 }
 
 /// What the flip window lays down, in order: `body` for a block's body,
-/// `line` for a grid line.
+/// `line` for a grid line, `current` for the playhead's wash.
 class _OrderSpy implements Canvas {
   final order = <String>[];
+
+  @override
+  void drawRect(Rect rect, Paint paint) {
+    if (paint.color == timelinePlayheadWashColor) {
+      order.add('current');
+    }
+  }
 
   @override
   void drawRRect(RRect rrect, Paint paint) {

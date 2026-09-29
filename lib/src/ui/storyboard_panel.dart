@@ -21,7 +21,6 @@ import '../models/timeline_coverage.dart'
     show
         TimelineBlockEdge,
         TimelineDrawingBlock,
-        coveringDrawingBlockAt,
         drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
@@ -103,12 +102,10 @@ import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
-        timelineBlockCornerRadiusAt,
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecorationAt,
         timelineRowSelectionBandDecoration,
-        timelineSelectedFrameBorderColor,
-        timelineStandingCellDecoration;
+        timelineSelectedFrameBorderColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -149,7 +146,6 @@ import 'timeline/timeline_frame_range_policy.dart'
     show TimelineFrameRange, endlessViewportFillFrames;
 import '../models/layer_kind.dart';
 import '../models/camera_instruction.dart' show CameraInstructionDef;
-import 'timeline/instruction_span_editing.dart' show instructionSpanCovering;
 import 'timeline/timeline_instruction_row_visual.dart'
     show timelineRowInstructionEdgeGrips, timelineRowInstructionOverlays;
 import 'timeline/timeline_frame_ruler.dart';
@@ -161,15 +157,13 @@ import 'timeline/timeline_row_cross_offset.dart';
 import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
-import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
+import 'timeline/timeline_playhead.dart' show timelinePlayheadColumn;
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_scale.dart';
 import 'timeline/timeline_section_policy.dart'
     show TimelineSection, timelineSectionForLayerKind, timelineSectionLabel;
 import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
-import 'timeline/timeline_selected_exposure_outline.dart'
-    show TimelineSelectionRing;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
@@ -2474,7 +2468,6 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 key: const ValueKey<String>('storyboard-frame-ruler'),
                 frameStartIndex: 0,
                 frameEndIndexExclusive: widget.renderedFrames,
-                currentFrameIndex: -1,
                 playhead: widget.playhead,
                 playbackFrameCount: widget.contentFrames,
                 // F-18: the ruler's end line follows the drag with the
@@ -2681,9 +2674,9 @@ class _StoryboardLabelShell extends StatelessWidget {
   }
 }
 
-/// The frame-wide accent tint on the playhead's frame — no solid edge line
-/// over the blocks (user direction); the ruler carries its own current-frame
-/// highlight. It subscribes to the cursor itself, on a layer of its own
+/// The playhead's column on the playhead's frame — no solid edge line over
+/// the blocks (user direction) — the timeline's own ([timelinePlayheadColumn],
+/// F-212). It subscribes to the cursor itself, on a layer of its own
 /// ([TickLayer]): a tick moves THIS overlay, the blocks never rebuild.
 ///
 /// ONE tint for the panel's strips and for the row the storyboard folds
@@ -2716,19 +2709,12 @@ class StoryboardPlayheadTint extends StatelessWidget {
         builder: (context, frame, _) => Stack(
           children: [
             if (frame != null)
-              Positioned(
-                key: const ValueKey<String>('storyboard-playhead'),
-                left:
-                    timelineFrameEdge(frame, pixelsPerFrame) -
-                    timelineFrameEdge(firstFrame, pixelsPerFrame),
-                top: 0,
-                bottom: 0,
-                width:
-                    timelineFrameEdge(frame + 1, pixelsPerFrame) -
-                    timelineFrameEdge(frame, pixelsPerFrame),
-                child: ColoredBox(
-                  color: timelinePlayheadColor.withValues(alpha: 0.18),
-                ),
+              timelinePlayheadColumn(
+                axis: Axis.horizontal,
+                frame: frame,
+                cellExtent: pixelsPerFrame,
+                origin: -timelineFrameEdge(firstFrame, pixelsPerFrame),
+                columnKey: const ValueKey<String>('storyboard-playhead'),
               ),
           ],
         ),
@@ -4626,7 +4612,6 @@ class _StoryboardTrackRow extends StatelessWidget {
   const _StoryboardTrackRow({
     required this.track,
     required this.layoutEntries,
-    required this.activeCutId,
     required this.onRowFramePress,
     required this.onDropMediaAsset,
     required this.acceptsMediaAsset,
@@ -4671,9 +4656,6 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// cell there is still a cell ("빈 칸도 칸").
   final double width;
 
-  /// Null = no cut selected (gap state, UI-R9 #3): no highlight,
-  /// cut-scoped rail controls stand down.
-  final CutId? activeCutId;
   final StoryboardRowFramePress? onRowFramePress;
   final StoryboardMediaDrop? onDropMediaAsset;
   final StoryboardMediaDropAccepts? acceptsMediaAsset;
@@ -4821,7 +4803,6 @@ class _StoryboardTrackRow extends StatelessWidget {
       // colour then (유저 2026-09-25: 「배경이 어두워서 엣지가 잘 안보여」).
       gripGround: storyboardCutBlockBackgroundColor(
         Theme.of(context).colorScheme,
-        active: false,
         hovered: false,
       ),
       gripGrounds: () =>
@@ -5119,7 +5100,6 @@ class _StoryboardTrackRow extends StatelessWidget {
       geometry: frameGeometry,
       crossAxisExtent: laneHeight,
       minBlockWidth: timelineScale.minBlockWidth,
-      activeCutId: activeCutId,
       selectedRange: cutSelect?.selectedRange,
       rowAddress: TrackRowAddress(track.id),
       hoveredCutId: hoveredCutId,

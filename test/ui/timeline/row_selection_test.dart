@@ -20,7 +20,7 @@ import 'package:anicel/src/ui/timeline/layer_name_commands.dart'
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
+import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart'
     show TimelineRowSelectionBands;
 import 'package:anicel/src/ui/session/row_selection.dart';
 

@@ -83,9 +83,11 @@ Positioned stripAlong(
   required double alongExtent,
   required Widget child,
   bool fromEnd = false,
+  Key? key,
 }) {
   final horizontal = axis == Axis.horizontal;
   return Positioned(
+    key: key,
     top: horizontal ? 0 : (fromEnd ? null : along),
     bottom: horizontal ? 0 : (fromEnd ? along : null),
     left: horizontal ? (fromEnd ? null : along) : 0,

@@ -72,7 +72,6 @@ Color storyboardCarriedWritingGround(
       block.conteLabel ??
           storyboardCutBlockBackgroundColor(
             colorScheme,
-            active: block.isActive,
             hovered: block.isHovered,
           ),
   },
@@ -94,7 +93,6 @@ class StoryboardCutBlockVisual {
   const StoryboardCutBlockVisual({
     required this.cutId,
     required this.rect,
-    required this.isActive,
     required this.isRangeSelected,
     required this.isHovered,
     required this.title,
@@ -181,7 +179,6 @@ class StoryboardCutBlockVisual {
   /// bottom band, under the panel's end.
   final List<String> cellCommaLabels;
 
-  final bool isActive;
   final bool isRangeSelected;
   final bool isHovered;
 
@@ -222,7 +219,6 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   required TimelineFrameGeometryHandle geometry,
   required double crossAxisExtent,
   required double minBlockWidth,
-  required CutId? activeCutId,
   required TimelineRowAddress rowAddress,
   required ColorScheme colorScheme,
   required TextStyle baseTextStyle,
@@ -250,7 +246,6 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   geometry: geometry,
   crossAxisExtent: crossAxisExtent,
   minBlockWidth: minBlockWidth,
-  activeCutId: activeCutId,
   selectedRange: selectedRange,
   rowAddress: rowAddress,
   hoveredCutId: hoveredCutId ?? _noHover,
@@ -290,7 +285,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     required this.geometry,
     required this.crossAxisExtent,
     required this.minBlockWidth,
-    required this.activeCutId,
     required this.selectedRange,
     required this.rowAddress,
     required this.hoveredCutId,
@@ -337,8 +331,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// Blocks never draw narrower than this, however short the cut — the
   /// `TimelineScale` rule the widget blocks were sized by.
   final double minBlockWidth;
-
-  final CutId? activeCutId;
 
   /// The live frame RANGE on this track's global axis. A block is selected
   /// when the range COVERS it — the cut row is a frame-axis row and a cut
@@ -537,7 +529,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       cells: cells,
       cellHeads: writing.heads,
       cellCommaLabels: writing.commaLabels,
-      isActive: entry.cutId == activeCutId,
       isRangeSelected:
           selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
       isHovered: entry.cutId == hovered,
@@ -793,7 +784,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   Color _stripGround(StoryboardCutBlockVisual block) =>
       storyboardCutBlockBackgroundColor(
         colorScheme,
-        active: block.isActive,
         hovered: block.isHovered,
       );
 
@@ -1175,7 +1165,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     ByMap(storyboardLayerNames),
     crossAxisExtent,
     minBlockWidth,
-    activeCutId,
     rowAddress,
     colorScheme,
     baseTextStyle,

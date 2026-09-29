@@ -19,15 +19,15 @@ import 'timeline_cell_style.dart'
         timelineBlockWordLayout,
         timelineBlockWordStyle;
 import 'timeline_frame_coordinate_policy.dart'
-    show timelineFrameAt, timelineFrameEdge;
+    show timelineFrameAt, timelineFrameEdge, timelinePlayheadSpan;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'timeline_zoom_anchor_policy.dart'
     show applyZoomAnchoredScroll, zoomAnchoredScrollOffset;
 import '../repaint_props.dart';
-import '../sliced_value_listenable_builder.dart';
 import '../widgets/tick_layer.dart';
 import 'memo_token.dart';
 
@@ -343,10 +343,11 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
       // is supposed to be the open row seen through glass, and that is what
       // a single value on the root makes it, by construction.
       //
-      // ⚠️The 08-10 confirmation 「the frame you are standing on is the one
-      // thing painted SOLIDLY」 still holds, but RELATIVELY: the current cell
-      // is still the only full one inside this row, and the row as a whole
-      // sits at 70%.
+      // ↩️The 08-10 confirmation 「the frame you are standing on is the one
+      // thing painted SOLIDLY」 went with F-212 (유저 2026-09-28: 「현재 블록이나
+      // 갭 등 위치를 알리는 실루엣 라인 … 삭제 … 재생 헤드 오버레이로
+      // 충분」): the playhead's wash says where you stand, here as on the
+      // open row.
       //
       // 🚨A LAYER OF ITS OWN (유저 2026-09-27: 「층 최대한 나눠서 굽는다던가」):
       // the row lies over the artwork with nothing between, so a page turn
@@ -450,7 +451,6 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
     required double origin,
   }) {
     final snapshot = widget.snapshot;
-    final colorScheme = Theme.of(context).colorScheme;
     final cell = widget.pixelsPerFrame;
     final at = math.max(0.0, origin);
     final first = cell <= 0 ? 0 : (at / cell).floor();
@@ -468,7 +468,6 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
             widget.follows?.playhead ??
             AlwaysStoppedAnimation<int?>(snapshot.frameIndex),
         pixelsPerFrame: cell,
-        colorScheme: colorScheme,
         baseTextStyle: DefaultTextStyle.of(context).style,
         frameStartIndex: first,
       );
@@ -642,16 +641,14 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
 /// scrub, which moves no snapshot either — left behind.
 ///
 /// Split by what moves how often (「층 최대한 나눠서 굽는다던가」): the blocks
-/// and their marks repaint when the playhead crosses into another block —
-/// the block it stands on is the one painted solidly — and the playhead,
-/// with the one cell it selects between blocks, is a tick layer of its own.
+/// and their marks never move with the playhead, and the playhead is a tick
+/// layer of its own.
 class _CollapsedStrip extends StatelessWidget {
   const _CollapsedStrip({
     required this.snapshot,
     required this.row,
     required this.playhead,
     required this.pixelsPerFrame,
-    required this.colorScheme,
     required this.baseTextStyle,
     required this.frameStartIndex,
   });
@@ -663,35 +660,21 @@ class _CollapsedStrip extends StatelessWidget {
   final ValueListenable<int?> playhead;
 
   final double pixelsPerFrame;
-  final ColorScheme colorScheme;
   final TextStyle baseTextStyle;
   final int frameStartIndex;
-
-  /// The first frame of the block the playhead stands on; null between
-  /// blocks — the slice the blocks rebuild on.
-  int? _blockUnderPlayhead() {
-    final frame = playhead.value;
-    return frame == null ? null : row.runAt(frame)?.startIndex;
-  }
 
   @override
   Widget build(BuildContext context) => Stack(
     fit: StackFit.expand,
     children: [
-      SlicedListenableBuilder<int?>(
-        listenable: playhead,
-        slice: _blockUnderPlayhead,
-        builder: (context, standingOn) => CustomPaint(
-          key: const ValueKey<String>('collapsed-strip'),
-          painter: _CollapsedStripPainter(
-            snapshot: snapshot,
-            row: row,
-            pixelsPerFrame: pixelsPerFrame,
-            colorScheme: colorScheme,
-            baseTextStyle: baseTextStyle,
-            frameStartIndex: frameStartIndex,
-            standingOn: standingOn,
-          ),
+      CustomPaint(
+        key: const ValueKey<String>('collapsed-strip'),
+        painter: _CollapsedStripPainter(
+          snapshot: snapshot,
+          row: row,
+          pixelsPerFrame: pixelsPerFrame,
+          baseTextStyle: baseTextStyle,
+          frameStartIndex: frameStartIndex,
         ),
       ),
       TickLayer(
@@ -699,9 +682,7 @@ class _CollapsedStrip extends StatelessWidget {
           key: const ValueKey<String>('collapsed-strip-playhead'),
           painter: _CollapsedStripPlayheadPainter(
             playhead: playhead,
-            row: row,
             pixelsPerFrame: pixelsPerFrame,
-            colorScheme: colorScheme,
             frameStartIndex: frameStartIndex,
           ),
         ),
@@ -710,27 +691,24 @@ class _CollapsedStrip extends StatelessWidget {
   );
 }
 
-/// The strip's playhead — and, between blocks, the one cell it selects:
-/// 「빈 프레임이면 그 한 칸」, the same selected ink one cell wide. Repaints
-/// on the playhead itself, a tick at a time.
+/// The strip's playhead — the grids' own column ([timelinePlayheadSpan],
+/// [timelinePlayheadWashColor]). Repaints on the playhead itself, a tick at
+/// a time.
 ///
-/// ⚠️Over the `x` markers now, not under them: the cell moved up a layer
-/// with the playhead, and it is translucent, so a marker under it reads
-/// through.
+/// 🗣️F-212 (유저 2026-09-28): 「현재 블록이나 갭 등 위치를 알리는 실루엣
+/// 라인 … 삭제하고싶음. 현재 재생헤드의 세로 바탕색 오버레이만으로 충분」.
+/// ↩️A 2px accent line at the frame's leading edge, and between blocks the
+/// one cell it stood on, filled and outlined.
 class _CollapsedStripPlayheadPainter extends CustomPainter
     with RepaintOnProps {
   _CollapsedStripPlayheadPainter({
     required this.playhead,
-    required this.row,
     required this.pixelsPerFrame,
-    required this.colorScheme,
     required this.frameStartIndex,
   }) : super(repaint: playhead);
 
   final ValueListenable<int?> playhead;
-  final FlipHudRow row;
   final double pixelsPerFrame;
-  final ColorScheme colorScheme;
   final int frameStartIndex;
 
   @override
@@ -739,41 +717,16 @@ class _CollapsedStripPlayheadPainter extends CustomPainter
     if (current == null || pixelsPerFrame <= 0) {
       return;
     }
-    double x(int frame) =>
-        timelineFrameEdge(frame, pixelsPerFrame) -
-        timelineFrameEdge(frameStartIndex, pixelsPerFrame);
-    if (row.runAt(current) == null && x(current + 1) > 0) {
-      final rrect = RRect.fromRectAndRadius(
-        Rect.fromLTRB(x(current) + 1, 4, x(current + 1) - 1, size.height - 4),
-        const Radius.circular(2),
-      );
-      canvas
-        ..drawRRect(
-          rrect,
-          Paint()..color = colorScheme.primary.withValues(alpha: 0.30),
-        )
-        ..drawRRect(
-          rrect,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2
-            ..color = colorScheme.primary,
-        );
-    }
+    final origin = timelineFrameEdge(frameStartIndex, pixelsPerFrame);
+    final (:start, :end) = timelinePlayheadSpan(current, pixelsPerFrame);
     canvas.drawRect(
-      Rect.fromLTWH(x(current), 0, 2, size.height),
-      Paint()..color = colorScheme.primary,
+      Rect.fromLTRB(start - origin, 0, end - origin, size.height),
+      Paint()..color = timelinePlayheadWashColor,
     );
   }
 
   @override
-  Object get props => (
-    playhead,
-    ByIdentity(row),
-    pixelsPerFrame,
-    colorScheme,
-    frameStartIndex,
-  );
+  Object get props => (playhead, pixelsPerFrame, frameStartIndex);
 }
 
 class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
@@ -781,20 +734,13 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     required this.snapshot,
     required this.row,
     required this.pixelsPerFrame,
-    required this.colorScheme,
     required this.baseTextStyle,
-    required this.standingOn,
     this.frameStartIndex = 0,
   });
 
   final FlipHudSnapshot snapshot;
   final FlipHudRow row;
   final double pixelsPerFrame;
-  final ColorScheme colorScheme;
-
-  /// The first frame of the block the playhead stands on — the one painted
-  /// solidly; null between blocks.
-  final int? standingOn;
 
   /// The ambient text style — the app's face for the strip's words.
   final TextStyle baseTextStyle;
@@ -851,20 +797,16 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
         continue;
       }
       final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(2));
-      final covered = run.startIndex == standingOn;
-      canvas.drawRRect(
-        rrect,
-        Paint()
-          ..color = covered
-              ? colorScheme.primary.withValues(alpha: 0.30)
-              : const Color(0x66E9E7E2),
-      );
+      // Every block the same: where you stand is the playhead's alone
+      // (F-212). ↩️The block under the playhead was filled and outlined
+      // in the accent.
+      canvas.drawRRect(rrect, Paint()..color = const Color(0x66E9E7E2));
       canvas.drawRRect(
         rrect,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = covered ? 2 : 1
-          ..color = covered ? colorScheme.primary : const Color(0x9EE9E7E2),
+          ..strokeWidth = 1
+          ..color = const Color(0x9EE9E7E2),
       );
       final head = drawingHeadOf(run.label, kind: row.kind);
       final mark = head.mark;
@@ -973,9 +915,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
         snapshot,
         ByIdentity(row),
         pixelsPerFrame,
-        colorScheme,
         baseTextStyle,
         frameStartIndex,
-        standingOn,
       );
 }

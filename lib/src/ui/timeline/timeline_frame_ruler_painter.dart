@@ -92,7 +92,6 @@ class TimelineRulerHeaderModel {
     required this.frameIndex,
     required this.label,
     required this.secondsLabel,
-    required this.selected,
     required this.outsidePlaybackRange,
     required this.background,
   });
@@ -105,7 +104,6 @@ class TimelineRulerHeaderModel {
   /// The top-line second index ('' off second boundaries).
   final String secondsLabel;
 
-  final bool selected;
   final bool outsidePlaybackRange;
   final Color background;
 }
@@ -293,7 +291,6 @@ final class TimelineRulerScale {
     required this.axis,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
-    required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.leadingFrameSpacer,
     required this.crossExtent,
@@ -315,7 +312,6 @@ final class TimelineRulerScale {
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
-  final int currentFrameIndex;
   final int playbackFrameCount;
 
   /// The spacer before frame [frameStartIndex] along the strip's MAIN axis
@@ -527,9 +523,9 @@ final class TimelineRulerScale {
   ///
   /// 🚨I-22 (the ten-minute floor): at an eighth of a pixel a window is
   /// ~19,000 cells, and a rect and a line check for every one of them was
-  /// this strip's whole cost. A cell's ground moves only at the selected
-  /// cell and at the end of playback ([modelAt]), so those are the only
-  /// edges a stretch has; the lines walk [timelineFrameLineStep]. ↩️The
+  /// this strip's whole cost. A cell's ground moves only at the end of
+  /// playback ([modelAt]), so that is the only edge a stretch has inside
+  /// the window; the lines walk [timelineFrameLineStep]. ↩️The
   /// writing kept laying its paper a cell at a time until 09-27 — hundreds
   /// of rects under one glyph on every playback tick at that floor.
   ///
@@ -556,8 +552,6 @@ final class TimelineRulerScale {
     final edges = <int>{
       from,
       to,
-      currentFrameIndex,
-      currentFrameIndex + 1,
       playbackFrameCount,
     }.where((edge) => edge >= from && edge <= to).toList()..sort();
     final step = timelineFrameLineStep(metrics.frameCellWidth, framesPerSecond);
@@ -676,13 +670,14 @@ final class TimelineRulerScale {
   /// so zooming out crowded every row's number into the next, while the
   /// horizontal ruler thinned out correctly. A ruler is a SCALE, not cell
   /// content: the "never disappears" rule is about what a cell holds.
+  ///
+  /// ⛔No current frame: the playhead's cell is the cursor overlay's, on a
+  /// layer of its own ([TimelineRulerCursorOverlayPainter], F-212). ↩️The
+  /// strip was handed one and tinted its cell 12% — every mount handed it
+  /// -1 once the overlay took the tint, so only the tests ever saw it.
   TimelineRulerHeaderModel modelAt(int frameIndex) {
-    final selected = frameIndex == currentFrameIndex;
     final outside = frameIndex >= playbackFrameCount;
     final labeled = frameIndex % labelEveryFrames == 0;
-    final ground = outside
-        ? (pastPlaybackWash ?? colorScheme.surface)
-        : colorScheme.surface;
     return TimelineRulerHeaderModel(
       frameIndex: frameIndex,
       label: labeled ? frameNumberLabel(frameIndex) : '',
@@ -691,14 +686,10 @@ final class TimelineRulerScale {
         frameIndex: frameIndex,
         framesPerSecond: framesPerSecond,
       ),
-      selected: selected,
       outsidePlaybackRange: outside,
-      background: selected
-          ? Color.alphaBlend(
-              timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-              colorScheme.surface,
-            )
-          : ground,
+      background: outside
+          ? (pastPlaybackWash ?? colorScheme.surface)
+          : colorScheme.surface,
     );
   }
 
@@ -755,7 +746,6 @@ final class TimelineRulerScale {
           other.pastPlaybackWash == pastPlaybackWash &&
           other.frameStartIndex == frameStartIndex &&
           other.frameEndIndexExclusive == frameEndIndexExclusive &&
-          other.currentFrameIndex == currentFrameIndex &&
           other.playbackFrameCount == playbackFrameCount &&
           other.leadingFrameSpacer == leadingFrameSpacer &&
           other.metrics == metrics &&
@@ -775,7 +765,6 @@ final class TimelineRulerScale {
     pastPlaybackWash,
     frameStartIndex,
     frameEndIndexExclusive,
-    currentFrameIndex,
     playbackFrameCount,
     leadingFrameSpacer,
     metrics,

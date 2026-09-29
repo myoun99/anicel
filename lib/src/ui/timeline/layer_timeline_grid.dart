@@ -56,7 +56,7 @@ import 'rail_eyes.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
-import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
+import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_visible_range.dart';
 
@@ -768,7 +768,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return TimelineCursorLayer(
       currentRow: widget.hooks.currentRowHooks?.currentRow,
       frameCursor: widget.hooks.frameCursor,
-      dragPreview: widget.hooks.dragPreview,
       frameRangeSelection: rangeHooks?.selection,
       // R27 #14: the lane
       // span draws the SAME
@@ -780,7 +779,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       frameEndIndexExclusive: _renderedFrameCount,
       leadingFrameSpacerWidth: 0,
       metrics: _metrics,
-      exposureStateForLayer: widget.hooks.exposureStateForLayer,
       crossAxisExtent: verticalContentHeight,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportWidth,
@@ -1181,10 +1179,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 0,
                                                             frameEndIndexExclusive:
                                                                 _renderedFrameCount,
-                                                            // The tint lives in the
-                                                            // overlay now.
-                                                            currentFrameIndex:
-                                                                -1,
                                                             playhead: widget
                                                                 .hooks
                                                                 .frameCursor,

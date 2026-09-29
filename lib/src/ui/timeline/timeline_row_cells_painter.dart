@@ -286,9 +286,9 @@ class TimelineRowCellsPainter extends CustomPainter
   ///
   /// ⛔THE ONE READ SITE, and that is the point. The choice used to be made
   /// by an identical ternary in `timeline_frame_cells_row` AND in
-  /// `timeline_frame_cursor_layer`, which is what a range selection
-  /// measures — so a row could DRAW a block it would not SELECT the day the
-  /// two drifted ([[no-copy-to-share]]).
+  /// `timeline_frame_cursor_layer`, whose outline showed the block you stood
+  /// in — so a row could DRAW a block it would not outline the day the two
+  /// drifted ([[no-copy-to-share]]). The outline went with F-212.
   ///
   /// Read once a pass ([readInOnePass]): a cell's model asks its own state
   /// and both its neighbours', the models beside it ask them again, and a

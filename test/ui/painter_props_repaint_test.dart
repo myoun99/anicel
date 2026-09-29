@@ -82,13 +82,12 @@ void main() {
   });
 
   group('a painter with ONE input still declares it', () {
-    TimelineFrameRulerPainter ruler({int currentFrameIndex = -1}) =>
+    TimelineFrameRulerPainter ruler({int playbackFrameCount = 30}) =>
         TimelineFrameRulerPainter(
           scale: TimelineRulerScale(
             frameStartIndex: 0,
             frameEndIndexExclusive: 30,
-            currentFrameIndex: currentFrameIndex,
-            playbackFrameCount: 30,
+            playbackFrameCount: playbackFrameCount,
             leadingFrameSpacer: 0,
             axis: Axis.horizontal,
             crossExtent: TimelineGridMetrics.defaults.layerRowHeight,
@@ -105,7 +104,7 @@ void main() {
       () {
         final old = ruler();
         expect(ruler().shouldRepaint(old), isFalse);
-        expect(ruler(currentFrameIndex: 3).shouldRepaint(old), isTrue);
+        expect(ruler(playbackFrameCount: 20).shouldRepaint(old), isTrue);
       },
     );
   });

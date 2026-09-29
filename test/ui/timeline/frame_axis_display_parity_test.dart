@@ -140,7 +140,6 @@ void main() {
           axis: Axis.vertical,
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
-          currentFrameIndex: -1,
           playbackFrameCount: frames,
           leadingFrameSpacer: 0,
           crossExtent: 28,

@@ -37,12 +37,10 @@ void main() {
   StoryboardCutBlockVisual visual({
     required Color cutLabel,
     required Color? conteLabel,
-    bool isActive = false,
     bool isRangeSelected = false,
   }) => StoryboardCutBlockVisual(
     cutId: const CutId('cut-x'),
     rect: const Rect.fromLTWH(0, 0, 120, 96),
-    isActive: isActive,
     isRangeSelected: isRangeSelected,
     isHovered: false,
     title: '1',
@@ -94,19 +92,12 @@ void main() {
     expect(ground(block, StoryboardBand.conte), conte);
   });
 
-  test('with no storyboard layer the inner bands are the PLATE, in the '
-      'block\'s state — and the `+` there reads the plate, never a '
-      'picture', () {
+  test('with no storyboard layer the inner bands are the PLATE — and the '
+      '`+` there reads the plate, never a picture', () {
     final resting = visual(cutLabel: paper, conteLabel: null);
-    final active = visual(cutLabel: paper, conteLabel: null, isActive: true);
     expect(
       ground(resting, StoryboardBand.conte),
-      storyboardCutBlockBackgroundColor(scheme, active: false, hovered: false),
-    );
-    expect(
-      ground(active, StoryboardBand.conte),
-      isNot(ground(resting, StoryboardBand.conte)),
-      reason: 'active is the plate\'s statement, and the plate is the band',
+      storyboardCutBlockBackgroundColor(scheme, hovered: false),
     );
     expect(
       timelineTextOnColor(ground(resting, StoryboardBand.conte)),

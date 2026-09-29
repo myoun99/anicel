@@ -79,19 +79,6 @@ BoxDecoration _timelineSelectionBand(BorderRadius borderRadius) =>
 BoxDecoration get timelineRowSelectionBandDecoration =>
     _timelineSelectionBand(BorderRadius.zero);
 
-/// The ring on the cell you are STANDING on, wherever that is: a layer's
-/// row, an fx header, a property lane.
-///
-/// ONE decoration, because standing is ONE thing (user, 2026-08-08). A
-/// lane used to borrow [timelineRangeSelectionBandDecorationAt] for this —
-/// filled, 2px, 6px corners against this unfilled 3px 4px one — so
-/// standing on a property read as a one-cell SELECTION rather than as
-/// standing, and you could see the difference in the stroke weight.
-BoxDecoration get timelineStandingCellDecoration => BoxDecoration(
-  border: Border.all(color: timelineSelectedFrameBorderColor, width: 3),
-  borderRadius: const BorderRadius.all(Radius.circular(4)),
-);
-
 /// Ink for glyphs (frame names, marks) sitting on the near-white drawing
 /// blocks; the usual light on-surface text would vanish there.
 const Color timelineDrawingInkColor = Color(0xFF26282B);
@@ -437,8 +424,8 @@ Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
 /// These live beside the cell colours rather than in a block widget of
 /// their own: the row paints its blocks now, and a painter reaching into a
 /// widget's private styling would have been a copy of it. Same vocabulary,
-/// one place — the active accent and the hover lift (R27 #11: a faint
-/// surface lift rather than a thicker border, so nothing reflows).
+/// one place — the hover lift (R27 #11: a faint surface lift rather than a
+/// thicker border, so nothing reflows).
 ///
 /// 🗣️유저 2026-09-26: 「바탕색을 콘티프리뷰패널의 픽쳐의 실루엣이랑 똑같이
 /// 검정색으로 한다던가?」 — the resting plate is the conte sheet's ink
@@ -446,16 +433,19 @@ Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
 /// ([storyboardCutBandColor]). ↩️It was the rows body's lifted shade
 /// ([AppColors.washUp]), close enough to the body that it needed a white
 /// outline to read — and the outline went (「심플이즈베스트」).
+///
+/// 🗣️F-212 (유저 2026-09-28): 「현재 블록을 알리는 바탕색 오버레이도 일단
+/// 삭제. 재생 헤드 오버레이로 충분」 — the cut you stand in wears the plate
+/// every cut wears. ↩️Its plate was the accent's container colour.
 Color storyboardCutBlockBackgroundColor(
   ColorScheme colorScheme, {
-  required bool active,
   required bool hovered,
-}) {
-  final resting = active ? colorScheme.primaryContainer : conteSheetInk;
-  return hovered && !active
-      ? Color.alphaBlend(colorScheme.onSurface.withValues(alpha: 0.10), resting)
-      : resting;
-}
+}) => hovered
+    ? Color.alphaBlend(
+        colorScheme.onSurface.withValues(alpha: 0.10),
+        conteSheetInk,
+      )
+    : conteSheetInk;
 
 /// A cut block's BAND in its label's colour [label] — under the colour-only
 /// range tint when the block is range-selected: a cut selection colours

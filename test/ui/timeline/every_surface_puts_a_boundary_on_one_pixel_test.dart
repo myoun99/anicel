@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_scale.dart';
 
 import '../storyboard_cut_block_probe.dart';
@@ -87,8 +88,19 @@ void main() {
     }
   });
 
-  testWidgets('the playhead\'s column is the playhead cell', (tester) async {
-    for (final frame in [0, 1, 7, 13, 29]) {
+  // 🗣️F-210 (유저 2026-09-28): 「1픽셀이라도 보이게」 — at the floor a cell
+  // is an eighth of a pixel, and the playhead takes the pixel its frame
+  // starts in. The grid's column and the ruler's cell are one span in one
+  // wash (F-212: 「룰러랑 프레임영역이랑 … 색 통일」).
+  testWidgets('the playhead\'s column is the playhead cell, never under a '
+      'pixel, and the ruler washes the same span', (tester) async {
+    for (final (zoom, frame, left, right) in [
+      for (final frame in [0, 1, 7, 13, 29])
+        (cell, frame, edge(frame), edge(frame + 1)),
+      (1 / 8, 0, 0.0, 1.0),
+      (1 / 8, 13, 1.0, 2.0),
+      (1 / 8, 29, 3.0, 4.0),
+    ]) {
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
@@ -97,8 +109,7 @@ void main() {
             frameStartIndex: 0,
             frameEndIndexExclusive: 40,
             leadingFrameSpacerWidth: 0,
-            metrics: const TimelineGridMetrics(frameCellWidth: cell),
-            layerCount: 1,
+            metrics: TimelineGridMetrics(frameCellWidth: zoom),
             crossAxisExtent: 40,
           ),
         ),
@@ -106,8 +117,22 @@ void main() {
       final column = tester.getRect(
         find.byKey(const ValueKey<String>('timeline-playhead-column')),
       );
-      expect(column.left, edge(frame), reason: 'frame $frame');
-      expect(column.right, edge(frame + 1), reason: 'frame $frame');
+      expect(column.left, left, reason: 'frame $frame at $zoom');
+      expect(column.right, right, reason: 'frame $frame at $zoom');
+
+      final ruler = _Washes();
+      TimelineRulerCursorOverlayPainter(
+        playhead: ValueNotifier<int?>(frame),
+        repaintSignal: null,
+        windowBucket: ValueNotifier<int>(0),
+        viewportMainExtent: 0,
+        renderedFrames: 40,
+        cellWidth: zoom,
+        readyRunsIn: null,
+      ).paint(ruler, const Size(400, 28));
+      expect(ruler.washes, [
+        (left: left, right: right, color: timelinePlayheadWashColor),
+      ], reason: 'the ruler\'s cell, frame $frame at $zoom');
     }
   });
 
@@ -198,6 +223,18 @@ class _Lines implements Canvas {
 
   @override
   void drawLine(Offset p1, Offset p2, Paint paint) => alongs.add(p1.dx);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+/// Every rect laid across the strip, by the span it covers and its colour.
+class _Washes implements Canvas {
+  final washes = <({double left, double right, Color color})>[];
+
+  @override
+  void drawRect(Rect rect, Paint paint) =>
+      washes.add((left: rect.left, right: rect.right, color: paint.color));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

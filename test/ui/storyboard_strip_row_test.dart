@@ -114,6 +114,11 @@ Future<void> _openStoryboard(WidgetTester tester) async {
 double _pixelsPerFrame(WidgetTester tester) =>
     tester.widget<StoryboardPanel>(find.byType(StoryboardPanel)).pixelsPerFrame;
 
+/// The cut the panel is handed as active — a cut block no longer wears it
+/// (F-212).
+CutId? _activeCut(WidgetTester tester) =>
+    tester.widget<StoryboardPanel>(find.byType(StoryboardPanel)).activeCutId;
+
 Rect _cutRowRect(WidgetTester tester) {
   final row = find.byKey(
     ValueKey<String>('storyboard-track-timeline-area-${_trackId.value}'),
@@ -384,8 +389,8 @@ void main() {
     await _openStoryboard(tester);
     expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
     expect(
-      requireCutBlock(tester, 'cut-3').isActive,
-      isFalse,
+      _activeCut(tester),
+      isNot(const CutId('cut-3')),
       reason: 'the premise: cut-3 is layerless AND not the active cut',
     );
 
@@ -399,8 +404,8 @@ void main() {
           'what it says — no second press to earn the affordance first',
     );
     expect(
-      requireCutBlock(tester, 'cut-3').isActive,
-      isTrue,
+      _activeCut(tester),
+      const CutId('cut-3'),
       reason: 'and the press still takes the cut, as a press on any block does',
     );
   });
@@ -416,7 +421,7 @@ void main() {
     // earns it" rung (H13 retired that).
     await tester.tapAt(_stripPoint(tester, 25));
     await tester.pumpAndSettle();
-    expect(requireCutBlock(tester, 'cut-3').isActive, isTrue);
+    expect(_activeCut(tester), const CutId('cut-3'));
 
     await tester.tapAt(_stripPoint(tester, 25));
     await tester.pumpAndSettle();
@@ -476,7 +481,6 @@ void main() {
     }) => StoryboardCutBlockVisual(
       cutId: const CutId('cut-x'),
       rect: Rect.fromLTWH(0, 0, width, 52 + stripHeight),
-      isActive: true,
       isRangeSelected: false,
       isHovered: false,
       title: '1',

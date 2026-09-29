@@ -20,6 +20,8 @@ import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
+import 'package:anicel/src/ui/timeline/timeline_playhead.dart'
+    show timelinePlayheadWashColor;
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import '../../helpers/home_page_probes.dart';
@@ -447,17 +449,26 @@ void main() {
     final head = find.byKey(const ValueKey<String>('collapsed-strip-playhead'));
     expect(head, findsOneWidget, reason: '⛔전제: the folded row is the strip');
 
-    int standsAt() {
+    _PlayheadAt painted() {
       final strokes = _PlayheadAt();
       tester
           .widget<CustomPaint>(head)
           .painter!
           .paint(strokes, tester.getSize(head));
+      return strokes;
+    }
+
+    int standsAt() {
       final cell = cellOf(tester);
-      return (strokes.left! / cell).round() + (origin(tester) / cell).floor();
+      return (painted().left! / cell).round() + (origin(tester) / cell).floor();
     }
 
     expect(standsAt(), 40, reason: 'the track\'s frame, where it is parked');
+    expect(
+      painted().color,
+      timelinePlayheadWashColor,
+      reason: 'the grids\' own playhead (F-212)',
+    );
     scrubStoryboardGlobalFrame(session, 45);
     await tester.pump();
     expect(
@@ -537,9 +548,13 @@ void main() {
 /// Where the strip's playhead is drawn: the left of its one filled line.
 class _PlayheadAt implements Canvas {
   double? left;
+  Color? color;
 
   @override
-  void drawRect(Rect rect, Paint paint) => left = rect.left;
+  void drawRect(Rect rect, Paint paint) {
+    left = rect.left;
+    color = paint.color;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

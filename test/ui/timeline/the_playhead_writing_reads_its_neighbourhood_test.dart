@@ -30,7 +30,6 @@ void main() {
             child: TimelineFrameHeaderRow(
               frameStartIndex: 0,
               frameEndIndexExclusive: frames,
-              currentFrameIndex: -1,
               playbackFrameCount: frames,
               leadingFrameSpacerWidth: 0,
               trailingFrameSpacerWidth: 0,

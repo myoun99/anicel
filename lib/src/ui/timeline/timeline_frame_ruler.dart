@@ -15,7 +15,6 @@ class TimelineFrameRuler extends StatelessWidget {
     super.key = const ValueKey<String>('timeline-frame-ruler'),
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
-    required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.leadingFrameSpacerWidth,
     required this.trailingFrameSpacerWidth,
@@ -36,7 +35,6 @@ class TimelineFrameRuler extends StatelessWidget {
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
-  final int currentFrameIndex;
   final int playbackFrameCount;
   final double leadingFrameSpacerWidth;
   final double trailingFrameSpacerWidth;
@@ -85,7 +83,6 @@ class TimelineFrameRuler extends StatelessWidget {
         TimelineFrameHeaderRow(
           frameStartIndex: frameStartIndex,
           frameEndIndexExclusive: frameEndIndexExclusive,
-          currentFrameIndex: currentFrameIndex,
           playbackFrameCount: playbackFrameCount,
           leadingFrameSpacerWidth: leadingFrameSpacerWidth,
           trailingFrameSpacerWidth: trailingFrameSpacerWidth,

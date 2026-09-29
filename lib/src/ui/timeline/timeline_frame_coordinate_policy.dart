@@ -28,6 +28,26 @@ double timelineFrameEdge(int frameIndex, double cellExtent) {
   return cellExtent >= 1 ? exact.roundToDouble() : exact;
 }
 
+/// The playhead's cell along the frame axis, counted from frame 0's
+/// boundary: the cell the law lays ([timelineFrameEdge]), and never under
+/// a pixel.
+///
+/// 🗣️F-210 (유저 2026-09-28): 「타임라인 줌 최대로 줄이면 현재 인덱스 헤드
+/// 세로줄?이 사라지는데, 사라지지않게 1픽셀이라도 보이게」 — under a pixel a
+/// cell is left where it falls, an eighth of one at the floor, so there the
+/// playhead takes the whole pixel its frame starts in.
+({double start, double end}) timelinePlayheadSpan(
+  int frameIndex,
+  double cellExtent,
+) {
+  final start = timelineFrameEdge(frameIndex, cellExtent);
+  if (cellExtent >= 1) {
+    return (start: start, end: timelineFrameEdge(frameIndex + 1, cellExtent));
+  }
+  final pixel = start.floorToDouble();
+  return (start: pixel, end: pixel + 1);
+}
+
 /// The frame whose cell holds [offset] — [timelineFrameEdge] read
 /// backwards: the last frame whose leading boundary is at or before it.
 /// Unclamped; the caller holds it to its own frames.

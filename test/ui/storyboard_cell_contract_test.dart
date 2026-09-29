@@ -12,7 +12,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'storyboard_cut_block_probe.dart';
 
 /// THE cells contract, brought from the timeline to the storyboard: a press
 /// on a row selects that row and seeks to the frame under the pointer.
@@ -73,6 +72,11 @@ Future<void> _openStoryboard(WidgetTester tester) async {
 double _pixelsPerFrame(WidgetTester tester) =>
     tester.widget<StoryboardPanel>(find.byType(StoryboardPanel)).pixelsPerFrame;
 
+/// The cut the panel is handed as active — the session's answer; a cut
+/// block no longer wears it (F-212).
+CutId? _activeCut(WidgetTester tester) =>
+    tester.widget<StoryboardPanel>(find.byType(StoryboardPanel)).activeCutId;
+
 /// A point on the V row over [globalFrame] — the cut row spans the whole
 /// track axis, so any frame has a position whether or not a cut is there.
 Offset _cutRowPoint(WidgetTester tester, int globalFrame) {
@@ -119,7 +123,7 @@ void main() {
     await tester.tapAt(_cutRowPoint(tester, 14));
     await tester.pumpAndSettle();
 
-    expect(requireCutBlock(tester, 'cut-2').isActive, isTrue);
+    expect(_activeCut(tester), const CutId('cut-2'));
     expect(_frameCounter(tester), '15 · 3');
   });
 
@@ -130,7 +134,7 @@ void main() {
     await tester.tapAt(_cutRowPoint(tester, 5));
     await tester.pumpAndSettle();
 
-    expect(requireCutBlock(tester, 'cut-1').isActive, isTrue);
+    expect(_activeCut(tester), const CutId('cut-1'));
     expect(_frameCounter(tester), '6 · 6');
   });
 
@@ -142,8 +146,7 @@ void main() {
     await tester.tapAt(_cutRowPoint(tester, 9));
     await tester.pumpAndSettle();
 
-    expect(requireCutBlock(tester, 'cut-1').isActive, isFalse);
-    expect(requireCutBlock(tester, 'cut-2').isActive, isFalse);
+    expect(_activeCut(tester), isNull);
     expect(_frameCounter(tester), startsWith('10 · '));
   });
 
@@ -175,7 +178,7 @@ void main() {
     // WHERE you are, not WHICH cut you edit) — a sentence that only had to
     // exist while several tracks could cover one frame. The row you pressed
     // never was the thing that chose the cut; the index is.
-    expect(requireCutBlock(tester, 'cut-2').isActive, isTrue);
+    expect(_activeCut(tester), const CutId('cut-2'));
   });
 
   testWidgets('pressing the cut row hands the row back to the V row after an '

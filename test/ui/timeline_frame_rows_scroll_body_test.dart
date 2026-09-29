@@ -127,16 +127,8 @@ void main() {
       );
 
       expect(timelineCellInWindow(tester, 'layer-active', 1), isTrue);
-      // The playback-performance architecture: the selection ring and the
-      // exposure outline are the grid cursor layer's job, never the rows'.
-      expect(
-        find.byKey(
-          const ValueKey<String>(
-            'timeline-selected-exposure-range-outline-layer-active',
-          ),
-        ),
-        findsNothing,
-      );
+      // The playback-performance architecture: the standing cell is the grid
+      // cursor layer's job, never the rows'.
       expect(
         find.byKey(const ValueKey<String>('timeline-selected-cell')),
         findsNothing,

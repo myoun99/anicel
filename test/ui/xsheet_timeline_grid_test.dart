@@ -485,27 +485,6 @@ void main() {
     );
   });
 
-  testWidgets('outlines the selected exposure run', (tester) async {
-    await tester.pumpWidget(
-      _grid(
-        frameCount: 4,
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.uncovered,
-      ),
-    );
-
-    expect(
-      find.byKey(
-        const ValueKey<String>(
-          'timeline-selected-exposure-range-outline-layer-1',
-        ),
-      ),
-      findsOneWidget,
-    );
-  });
-
   testWidgets('virtualizes long cuts to the visible frame window', (
     tester,
   ) async {
