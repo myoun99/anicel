@@ -37,8 +37,13 @@ class _SpyCanvas implements Canvas {
   @override
   void restore() => calls.add(#restore);
 
+  final List<(double, double)> scales = <(double, double)>[];
+
   @override
-  void scale(double sx, [double? sy]) => calls.add(#scale);
+  void scale(double sx, [double? sy]) {
+    calls.add(#scale);
+    scales.add((sx, sy ?? sx));
+  }
 
   @override
   int getSaveCount() => 1;
@@ -435,6 +440,56 @@ void main() {
 
     test('no cells, no extent', () {
       expect(fitFor(0, 5).totalExtent, 0);
+    });
+  });
+
+  // F-224: the SE row measures its dialogue down a column before drawing it
+  // (`dialogueNaturalExtent`), so what a glyph is drawn at and what it is
+  // measured at are one answer — the one this renderer draws.
+  group('a turned glyph in a narrow column', () {
+    // A line height that is not the glyph's width, so the two can be told
+    // apart once the glyph lies down.
+    const style = TextStyle(fontSize: 14, height: 1.5);
+    const column = 10.0;
+
+    test('is fitted ACROSS by its height and advances DOWN by its width', () {
+      final painter = TextPainter(
+        text: const TextSpan(text: 'ー', style: style),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      expect(verticalGlyphCell('ー').form, VerticalGlyphForm.rotated);
+      expect(painter.height, greaterThan(column), reason: 'fixture');
+      expect(
+        painter.width,
+        isNot(closeTo(painter.height, 1)),
+        reason: 'fixture',
+      );
+      final fit = column / painter.height;
+
+      final spy = _SpyCanvas();
+      double? advance;
+      paintVerticalTextCell(
+        spy,
+        verticalGlyphCell('ー'),
+        painter: painter,
+        center: Offset.zero,
+        fontSize: 14,
+        maxCrossExtent: column,
+        alongColumnScale: (extent) {
+          advance = extent;
+          return 1;
+        },
+      );
+      expect(
+        spy.scales.single.$2,
+        closeTo(fit, 1e-9),
+        reason: 'lying down, its HEIGHT has to clear the column',
+      );
+      expect(
+        advance,
+        closeTo(painter.width * fit, 1e-9),
+        reason: 'lying down, it runs its WIDTH down the column',
+      );
     });
   });
 

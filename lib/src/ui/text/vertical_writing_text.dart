@@ -170,8 +170,7 @@ void paintVerticalTextCell(
     cell,
     painter: painter,
     fontSize: fontSize,
-    maxCrossExtent: maxCrossExtent,
-    spanExtent: spanExtent,
+    room: (across: maxCrossExtent, span: spanExtent),
   );
   canvas.save();
   switch (cell.form) {
@@ -208,17 +207,22 @@ void paintVerticalTextCell(
   canvas.restore();
 }
 
-/// How a glyph of [cell] stands in a column [maxCrossExtent] wide: whether
-/// it lies DOWN the column, and the uniform scale that fits it across —
-/// what [paintVerticalTextCell] draws, and what a host that measures a
-/// column before drawing it asks ([verticalGlyphAdvance]).
+/// How a glyph of [cell] stands in a column `room.across` wide: whether it
+/// lies DOWN the column, and the uniform scale that fits it across — what
+/// [paintVerticalTextCell] draws, and what a host that measures a column
+/// before drawing it asks ([verticalGlyphAdvance]). `room.span` is the
+/// length a sideways word reserved down the column (0: none).
 ({bool turned, double scale}) verticalGlyphFit(
   VerticalTextCell cell, {
   required TextPainter painter,
   required double fontSize,
-  double maxCrossExtent = double.infinity,
-  double spanExtent = 0,
+  ({double across, double span}) room = (
+    across: double.infinity,
+    span: 0,
+  ),
 }) {
+  final maxCrossExtent = room.across;
+  final spanExtent = room.span;
   // Every form scales UNIFORMLY when it is wider than the column allows —
   // never anamorphically. A 縦中横 pair squeezed on one axis alone reads
   // as a font bug, and the SE columns really do get this narrow: a

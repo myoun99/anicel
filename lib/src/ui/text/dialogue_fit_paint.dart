@@ -84,7 +84,7 @@ double dialogueNaturalExtent(
       verticalGlyphCell(glyph),
       painter: painter,
       fontSize: style.fontSize!,
-      maxCrossExtent: maxCrossExtent,
+      room: (across: maxCrossExtent, span: 0),
     );
     extent += verticalGlyphAdvance(
       turned: turned,
