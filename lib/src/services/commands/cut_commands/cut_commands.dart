@@ -289,39 +289,35 @@ class _CutCommands {
 
   /// The 타임시트 서식 window's save: the work's sheet format and the paper
   /// of the cut the sheet shows ([cutId]; none in the gap) — each only if
-  /// it changed, ONE undo step together, as the staff names are.
+  /// it changed, ONE undo step together ([HistoryManager.runAsOneStep]).
   void setTimesheetFormat({
     required TimesheetInfo info,
     CutId? cutId,
     TimesheetSheetKind? kind,
   }) {
     final repository = _coordinator.repository;
+    final history = _coordinator.historyManager;
     final project = repository.requireProject();
-    final commands = <Command>[
-      if (project.timesheetInfo != info)
-        UpdateTimesheetInfoCommand(repository: repository, info: info),
+    history.runAsOneStep('Set timesheet format', () {
+      if (project.timesheetInfo != info) {
+        history.execute(
+          UpdateTimesheetInfoCommand(repository: repository, info: info),
+        );
+      }
       if (cutId != null &&
           kind != null &&
           LinkedCutFieldCommand.linkedCutsOf(project, [cutId]).any(
             (id) => requireCut(project, id).metadata.sheetKind != kind,
-          ))
-        UpdateCutSheetKindCommand(
-          repository: repository,
-          cutIds: [cutId],
-          kind: kind,
-        ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    _coordinator.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Set timesheet format',
-              commands: commands,
-            ),
-    );
+          )) {
+        history.execute(
+          UpdateCutSheetKindCommand(
+            repository: repository,
+            cutIds: [cutId],
+            kind: kind,
+          ),
+        );
+      }
+    });
   }
 
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) {

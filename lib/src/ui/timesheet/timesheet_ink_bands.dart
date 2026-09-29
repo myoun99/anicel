@@ -80,8 +80,8 @@ List<TimesheetInkRun> timesheetInkRuns(TimesheetDocumentLayout layout) {
   final stretch = TimesheetDocumentLayout.columnScaleOf(document.sheetKind);
   final runs = <TimesheetInkRun>[];
   final seen = <TimesheetColumnKind, int>{};
-  for (var index = 0; index < document.columns.length; index += 1) {
-    final kind = document.columns[index].kind;
+  for (final (index, column) in document.columns.indexed) {
+    final kind = column.kind;
     final slot = seen[kind] ?? 0;
     seen[kind] = slot + 1;
     final width = layout.columnWidthFor(kind) / stretch;
