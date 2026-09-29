@@ -527,6 +527,34 @@ void main() {
       }
     });
 
+    test('a word grows into its block to the law\'s end of it — one as wide '
+        'as the block fills it unnarrowed, one a hair wider narrows inside '
+        'it', () {
+      final painter = cellsPainter(cell);
+      // The block over 1-3: the word outgrows its first cell and the room
+      // grows cell by cell — to the law's boundaries. Stepped by the zoom's
+      // nominal width it ended 0.2px past this block, over its neighbour.
+      final blockLeft = edge(1);
+      final blockRight = edge(4);
+      final exact = painter.cellWordLayoutFor(
+        1,
+        Size(blockRight - blockLeft, 10),
+      );
+      expect(exact.origin.dx, blockLeft);
+      expect(exact.fit.x, 1.0, reason: 'the block holds it exactly');
+      // ⚠️A narrowing is quantised down to 1/64 (the tile bake is keyed on
+      // it), which would hide a fraction of a pixel on a much wider word —
+      // so the word is a hair wider than the block: it must narrow.
+      final wider = Size(blockRight - blockLeft + 0.1, 10);
+      final narrowed = painter.cellWordLayoutFor(1, wider);
+      expect(narrowed.fit.x, lessThan(1), reason: 'the block cannot hold it');
+      expect(
+        narrowed.origin.dx + wider.width * narrowed.fit.x,
+        lessThanOrEqualTo(blockRight),
+        reason: 'inside its own block, not past it',
+      );
+    });
+
     test('a koma number anchors on its block\'s last cell and is centred on '
         'it', () {
       final painter = TimelineRowRunLabelsPainter(
