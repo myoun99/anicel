@@ -25,8 +25,8 @@ import 'conte_picture_ink.dart';
 ///
 /// Laid over the printed picture as the picture is printed: the camera's
 /// frame on the ground the picture renders on ([exportFrameGround]), the
-/// layers cropped at the canvas — and the camera's labels printed over it
-/// again, since it covers the ones the page printed.
+/// layers cropped at the canvas — and the camera's work written over it
+/// again, since it covers what the page wrote.
 class ContePictureLive extends StatelessWidget {
   const ContePictureLive({
     super.key,
@@ -61,8 +61,10 @@ class ContePictureLive extends StatelessWidget {
             Positioned.fill(child: _live(picture)),
           Positioned.fill(
             child: CustomPaint(
-              painter: _CameraLabels(
-                labels: [for (final picture in pictures) ...picture.labels],
+              painter: _CameraWork(
+                marks: [
+                  for (final picture in pictures) ...picture.cameraWork,
+                ],
                 viewport: viewport,
                 effectiveRatio: effectiveRatio,
                 paper: paper,
@@ -175,17 +177,17 @@ class _Outline extends CustomClipper<Path> {
       !listEquals(oldClipper.corners, corners);
 }
 
-/// The camera's labels over the live pictures, printed as the page prints
-/// them.
-class _CameraLabels extends CustomPainter {
-  const _CameraLabels({
-    required this.labels,
+/// The camera's work over the live pictures — its frames, the trails of
+/// their corners and its keys' names — printed as the page prints it.
+class _CameraWork extends CustomPainter {
+  const _CameraWork({
+    required this.marks,
     required this.viewport,
     required this.effectiveRatio,
     required this.paper,
   });
 
-  final List<SheetMark> labels;
+  final List<SheetMark> marks;
   final CanvasViewport viewport;
   final double effectiveRatio;
   final Size paper;
@@ -197,12 +199,12 @@ class _CameraLabels extends CustomPainter {
           viewport: viewport,
           devicePixelRatio: effectiveRatio,
           paper: paper,
-        ), labels);
+        ), marks);
   }
 
   @override
-  bool shouldRepaint(_CameraLabels oldDelegate) =>
-      !listEquals(oldDelegate.labels, labels) ||
+  bool shouldRepaint(_CameraWork oldDelegate) =>
+      !listEquals(oldDelegate.marks, marks) ||
       oldDelegate.viewport != viewport ||
       oldDelegate.effectiveRatio != effectiveRatio ||
       oldDelegate.paper != paper;

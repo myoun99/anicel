@@ -64,7 +64,7 @@ typedef ContePicture = ({
   int frame,
   SheetPicture mark,
   Rect shown,
-  List<SheetMark> labels,
+  List<SheetMark> cameraWork,
 });
 
 /// The pictures of [page] the brush draws into: one per cell, into its
@@ -163,7 +163,7 @@ ContePicture? _pictureOf(
     frame: frame,
     mark: mark,
     shown: shown,
-    labels: [...conteCameraMarksOf(cell, page.metrics)],
+    cameraWork: [...conteCameraMarksOf(cell, page.metrics)],
   );
 }
 
