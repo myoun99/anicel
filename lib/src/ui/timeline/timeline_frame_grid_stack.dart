@@ -6,6 +6,7 @@ import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_body_norishiro_boundary.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 
 /// A trim in flight: both hooks present. The four cut-end overlays split on
 /// THIS, once — static when there is none, following the preview otherwise.
@@ -79,13 +80,14 @@ class TimelineFrameGridStack extends StatelessWidget {
   }
 
   /// Where the cut ends in content pixels, following a live trim.
-  double _cutEndOffset(TimelineDragPreview? preview) =>
-      timelineCutEndPreviewFrameCount(
-        preview: preview,
-        cutId: cutEndDrag?.cutId,
-        playbackFrameCount: playbackFrameCount,
-      ) *
-      frameCellExtent;
+  double _cutEndOffset(TimelineDragPreview? preview) => timelineFrameEdge(
+    timelineCutEndPreviewFrameCount(
+      preview: preview,
+      cutId: cutEndDrag?.cutId,
+      playbackFrameCount: playbackFrameCount,
+    ),
+    frameCellExtent,
+  );
 
   /// Where the DRAWN end sits in content pixels, following a live trim so the
   /// blue line and the wash edge never split from the red line mid-drag.

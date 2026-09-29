@@ -502,7 +502,7 @@ class TimelineCursorLayer extends StatelessWidget {
       axis,
       along: _frameX(frame),
       across: 0,
-      alongExtent: metrics.frameCellWidth,
+      alongExtent: _frameX(frame + 1) - _frameX(frame),
       acrossExtent: metrics.layerRowHeight,
       child: Semantics(
         key: selectedSemanticsKey,

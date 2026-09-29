@@ -1100,9 +1100,10 @@ class _StoryboardRailRows {
             },
             span: (
               left: scale.leftForFrame(selection.startIndex),
-              width:
-                  (selection.endIndexExclusive - selection.startIndex) *
-                  scale.pixelsPerFrame,
+              width: scale.spanWidth(
+                selection.startIndex,
+                selection.endIndexExclusive,
+              ),
             ),
             label: (
               key: 'storyboard-lane-range-selection',

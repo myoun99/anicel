@@ -1502,9 +1502,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                       : 0.0;
                                   final effectiveFrameCount =
                                       _renderedFrameCount;
-                                  final contentWidth =
-                                      effectiveFrameCount *
-                                      _metrics.frameCellWidth;
+                                  final contentWidth = timelineFrameEdge(
+                                    effectiveFrameCount,
+                                    _metrics.frameCellWidth,
+                                  );
 
                                   return TimelineHorizontalScrollbarRail(
                                     key: const ValueKey<String>(

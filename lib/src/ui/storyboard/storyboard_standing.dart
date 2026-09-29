@@ -149,9 +149,10 @@ class _StoryboardStanding {
                   Positioned(
                     left: scale.leftForFrame(block.startIndex),
                     top: rowBand.top,
-                    width:
-                        (block.endIndexExclusive - block.startIndex) *
-                        scale.pixelsPerFrame,
+                    width: scale.spanWidth(
+                      block.startIndex,
+                      block.endIndexExclusive,
+                    ),
                     height: rowBand.height,
                     // ★The timeline's own ring, not a hand copy of it — and
                     // the corner of the block it wraps, read from whoever
@@ -176,7 +177,7 @@ class _StoryboardStanding {
                 Positioned(
                   left: scale.leftForFrame(frame),
                   top: rowBand.top,
-                  width: scale.pixelsPerFrame,
+                  width: scale.spanWidth(frame, frame + 1),
                   height: rowBand.height,
                   child: ring,
                 ),

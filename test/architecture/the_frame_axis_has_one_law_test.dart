@@ -88,13 +88,17 @@ void main() {
       'says why', () {
     final found = <String, List<String>>{};
     for (final file in frameAxisSources()) {
-      final lines = file.readAsLinesSync();
-      for (var index = 0; index < lines.length; index += 1) {
-        final line = lines[index];
-        if (line.trimLeft().startsWith('//')) continue;
-        if (product.hasMatch(line)) {
-          (found[libPath(file)] ??= []).add('${index + 1}: ${line.trim()}');
-        }
+      // Comments blanked, lines kept: a product formatted across two lines
+      // (`frames *` / `cellExtent`) is read whole — five of them hid from a
+      // line-by-line scan.
+      final lines = [
+        for (final line in file.readAsLinesSync())
+          if (line.trimLeft().startsWith('//')) '' else line,
+      ];
+      final text = lines.join('\n');
+      for (final match in product.allMatches(text)) {
+        final line = '\n'.allMatches(text.substring(0, match.start)).length;
+        (found[libPath(file)] ??= []).add('${line + 1}: ${lines[line].trim()}');
       }
     }
     expect(

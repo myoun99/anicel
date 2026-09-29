@@ -919,14 +919,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             builder: (context, preview, _) =>
                                 TimelineRulerCutEndBoundary(
                                   axis: Axis.vertical,
-                                  left:
-                                      timelineCutEndPreviewFrameCount(
-                                        preview: preview,
-                                        cutId: widget.hooks.cutEndDrag!.cutId,
-                                        playbackFrameCount:
-                                            widget.hooks.playbackFrameCount,
-                                      ) *
-                                      _metrics.frameCellWidth,
+                                  left: timelineFrameEdge(
+                                    timelineCutEndPreviewFrameCount(
+                                      preview: preview,
+                                      cutId: widget.hooks.cutEndDrag!.cutId,
+                                      playbackFrameCount:
+                                          widget.hooks.playbackFrameCount,
+                                    ),
+                                    _metrics.frameCellWidth,
+                                  ),
                                 ),
                           )
                         else

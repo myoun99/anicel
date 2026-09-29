@@ -4007,9 +4007,10 @@ class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
                   left: timelineScale.leftForFrame(selection.startFrame),
                   top: 0,
                   bottom: 0,
-                  width:
-                      selection.lengthFrames *
-                      timelineScale.pixelsPerFrame,
+                  width: timelineScale.spanWidth(
+                    selection.startFrame,
+                    selection.startFrame + selection.lengthFrames,
+                  ),
                   child: ColoredBox(
                     color: timelineSelectedFrameBorderColor.withValues(
                       alpha: 0.12,

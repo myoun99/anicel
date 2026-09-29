@@ -107,14 +107,15 @@ double timelineDrawnEndOffset({
   required int playbackFrameCount,
   required int? drawnFrameCount,
   required double frameCellExtent,
-}) =>
-    timelineDrawnEndPreviewFrameCount(
-      preview: preview,
-      cutId: cutId,
-      playbackFrameCount: playbackFrameCount,
-      drawnFrameCount: drawnFrameCount,
-    ) *
-    frameCellExtent;
+}) => timelineFrameEdge(
+  timelineDrawnEndPreviewFrameCount(
+    preview: preview,
+    cutId: cutId,
+    playbackFrameCount: playbackFrameCount,
+    drawnFrameCount: drawnFrameCount,
+  ),
+  frameCellExtent,
+);
 
 /// The draggable layer over a cut-end boundary line (UI-R18 #14): a
 /// 12px grip strip centered on the line, axis-aware (vertical line in
