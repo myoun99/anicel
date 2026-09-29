@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../debug/key_trace.dart';
 import 'editor_action_registry.dart';
 import 'focused_text_field.dart';
 import 'shortcut_activator_codec.dart';
@@ -370,14 +371,29 @@ class EditorShortcutManager extends ShortcutManager {
 
   @override
   KeyEventResult handleKeypress(BuildContext context, KeyEvent event) {
+    // F-241: every answer goes to the input inspector's `bind` line.
     if (_fieldKeeps(event)) {
+      KeyTrace.answered(event, 'kept by the focused text field');
       return KeyEventResult.ignored;
     }
     final held = onHoldKey?.call(event) ?? KeyEventResult.ignored;
     if (held == KeyEventResult.handled) {
+      KeyTrace.answered(event, 'held');
       return held;
     }
-    return super.handleKeypress(context, event);
+    final result = super.handleKeypress(context, event);
+    if (event is! KeyUpEvent) {
+      final intent = shortcuts.entries
+          .where((entry) => entry.key.accepts(event, HardwareKeyboard.instance))
+          .firstOrNull
+          ?.value;
+      KeyTrace.answered(
+        event,
+        '${intent is EditorActionIntent ? intent.actionId : 'no binding'}'
+        ' (${result.name})',
+      );
+    }
+    return result;
   }
 
   /// Whether the text field that has focus keeps [event] for itself.
