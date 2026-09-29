@@ -410,6 +410,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,
+      onInactive: _letGoOfEverythingPressed,
       // Every way the app can stop being in front of the user, because the
       // platforms disagree about which of these they send and in what
       // order — and on mobile the process may simply never wake up again.
@@ -638,6 +639,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _pointersDown.remove(event.pointer);
     }
     _autosaveClock.noteActivity(strokeInFlight: _pointersDown.isNotEmpty);
+  }
+
+  /// The window lost the OS's focus — a notification took it, another app
+  /// came forward. Whatever is PRESSED in it will be let go somewhere else,
+  /// where this window never hears it: a pen lifted over the other window,
+  /// a key released in it. So what is pressed here lets go NOW — a pointer
+  /// still down is cancelled (a stroke in flight ends the way a cancelled
+  /// one does), and every held key's hold ends.
+  ///
+  /// 🗣️F-232 (유저 2026-09-30): 「클로드 통해서 오는 윈도우 알림이 발생하면
+  /// 언두가 안먹기시작하는거같음 … 그상태에서 환경설정창 열어도 언두
+  /// 되기시작」. Measured: a pen down when the window loses focus, whose
+  /// lift never comes back, leaves a stroke in flight for good — and a
+  /// stroke in flight refuses every undo (I-41's walk) and holds the
+  /// autosave clock ([_noteUserActivity]).
+  ///
+  /// ⛔Not the lifecycle SNAPSHOT that F-1 took out (above): nothing is
+  /// saved here. It only lets go of input.
+  void _letGoOfEverythingPressed() {
+    for (final pointer in [..._pointersDown]) {
+      GestureBinding.instance.cancelPointer(pointer);
+    }
+    _keyHolds.letGoOfEverything();
   }
 
   /// The OS says memory is tight: EVERY open project stands its caches

@@ -287,6 +287,47 @@ void main() {
     expect(memory.sprangFrom, isNull);
   });
 
+  testWidgets('🚨F-232: a window that loses the OS\'s focus lets go of every '
+      'hold — the pan AND the eyedropper — because the key will be let go '
+      'where this window never hears it', (tester) async {
+    await pumpRoad(tester);
+    tool.value = tool.value.copyWith(tool: CanvasTool.brush);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    expect(CanvasPanHold.held.value, isTrue);
+    expect(tool.value.tool, CanvasTool.eyedropper, reason: 'fixture');
+
+    holds.letGoOfEverything();
+
+    expect(CanvasPanHold.held.value, isFalse);
+    expect(tool.value.tool, CanvasTool.brush, reason: 'the tool it replaced');
+    // The releases the other app got are never heard; one that does come
+    // back later finds nothing to end.
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    expect(tool.value.tool, CanvasTool.brush);
+  });
+
+  testWidgets('and an Alt that came down mid-stroke, still waiting for the '
+      'stroke to end, is let go of too', (tester) async {
+    await pumpRoad(tester);
+    tool.value = tool.value.copyWith(tool: CanvasTool.brush);
+    strokeLive.value = true;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    expect(tool.value.tool, CanvasTool.brush, reason: 'fixture: it waits');
+
+    holds.letGoOfEverything();
+    strokeLive.value = false;
+    await tester.pump();
+
+    expect(
+      tool.value.tool,
+      CanvasTool.brush,
+      reason: 'a key the window lost is not taken when the stroke ends',
+    );
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+  });
+
   testWidgets('a shell that goes away lets go of the pan', (tester) async {
     await pumpRoad(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
