@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
-import '../../core/app_corner_radii.dart';
 import '../../core/identity_memo.dart';
 import '../../models/app_language.dart';
 import '../text/app_strings.dart';
@@ -217,7 +216,7 @@ abstract final class AppColors {
 ///    ratio would give a 350px-tall timeline a 98px corner.
 abstract final class AppShapes {
   /// A control's corner as a fraction of its short axis.
-  static const double controlCornerRatio = AppCornerRadii.controlRatio;
+  static const double controlCornerRatio = 0.28;
 
   /// The three control sizes: the rail/strip button, the dialog action and
   /// chip, the dense inline control.
@@ -229,17 +228,17 @@ abstract final class AppShapes {
   static double controlRadius(double size) => size * controlCornerRatio;
 
   /// A window that the pointer summoned: dialogs, menus, popovers.
-  static const double windowRadius = AppCornerRadii.window;
+  static const double windowRadius = 6;
 
   /// A well cut into a surface: text fields, swatches, inline plates. The
   /// smallest corner the app draws.
-  static const double wellRadius = AppCornerRadii.well;
+  static const double wellRadius = 4;
 
   /// A panel FLOATING over the artwork — the timeline, and whatever else
   /// comes to rest on the canvas rather than beside it. Deliberately larger
   /// than [windowRadius]: a floating panel has to read as a separate object
   /// lying on the drawing, not as a region of chrome that happens to end.
-  static const double floatingPanelRadius = AppCornerRadii.floatingPanel;
+  static const double floatingPanelRadius = 14;
 
   /// The shape of a control whose short axis is [size].
   static RoundedSuperellipseBorder control(
