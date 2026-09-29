@@ -15,7 +15,10 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
+import 'package:anicel/src/models/cel_bank_lanes.dart';
+import 'package:anicel/src/models/drawing_block_move.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 
 /// 🗣️F-227 (유저 2026-09-29/30): 「ol주는컷은 콘티블록의 마지막블록을 늘리고
 /// 받는컷은 처음블록을 늘리라」 · 「콘티블록의 첫블록을 여백길이 이하로
@@ -83,6 +86,15 @@ void main() {
   FrameId? shownAt(EditorSessionManager s, CutId cutId, int frame) =>
       exposedFrameIdAt(conteRow(s, cutId).timeline, frame);
 
+  int durationOf(EditorSessionManager s, CutId cutId) => s
+      .repository
+      .requireProject()
+      .tracks
+      .single
+      .cuts
+      .firstWhere((cut) => cut.id == cutId)
+      .duration;
+
   /// How many of the cut's first frames its first panel is shown for.
   int firstBlockFrames(EditorSessionManager s, CutId cutId) {
     final first = shownAt(s, cutId, 0);
@@ -132,6 +144,11 @@ void main() {
     s.edgeDrag.endExposureEdgeDrag();
     expect(firstBlockFrames(s, receiving), 12 + 1);
     expect(shownAt(s, receiving, 13), const FrameId('b-p2'));
+    expect(
+      durationOf(s, receiving),
+      1 + 28,
+      reason: 'the cut follows its conte, not the のりしろ in front of it',
+    );
   });
 
   test('pulling the giving cut\'s red end line in stops at the last panel\'s '
@@ -151,5 +168,89 @@ void main() {
     final cutNow = s.repository.requireProject().tracks.single.cuts.first;
     expect(cutNow.duration, 20 + 1, reason: 'the last panel keeps one frame');
     expect(shownAt(s, giving, 20), const FrameId('a-p2'));
+  });
+
+  test('pulling the receiving cut\'s red end line in stops at ITS last '
+      'panel\'s one frame — its floor counts the conte, not the のりしろ', () {
+    final s = session();
+    addTearDown(s.dispose);
+    s.selectCut(receiving);
+    expect(
+      s.edgeDrag.beginCutEdgeDrag(
+        cutId: receiving,
+        edge: TimelineBlockEdge.end,
+      ),
+      isTrue,
+    );
+    s.edgeDrag.updateCutEdgeDrag(-100);
+    s.edgeDrag.endCutEdgeDrag();
+    expect(durationOf(s, receiving), 20 + 1);
+    expect(firstBlockFrames(s, receiving), 12 + 20);
+  });
+
+  test('a panel of the receiving cut traded on the storyboard keeps the '
+      'conte\'s time — the strip counts from the conte start', () {
+    final s = session();
+    addTearDown(s.dispose);
+    s.selectCut(receiving);
+    expect(
+      s.edgeDrag.beginCutEdgeDrag(
+        cutId: receiving,
+        edge: TimelineBlockEdge.start,
+        panelIndex: 1,
+      ),
+      isTrue,
+    );
+    s.edgeDrag.updateCutEdgeDrag(5);
+    s.edgeDrag.endCutEdgeDrag();
+    expect(firstBlockFrames(s, receiving), 12 + 25);
+    expect(shownAt(s, receiving, 37), const FrameId('b-p2'));
+    expect(durationOf(s, receiving), 48);
+  });
+
+  test('the O.L going away brings the receiving cut\'s panels back to its '
+      'conte\'s own start', () {
+    final s = session();
+    addTearDown(s.dispose);
+    s.transitions.updateTransitionInstructions(const {});
+    expect(
+      {
+        for (final entry in conteRow(s, receiving).timeline.entries)
+          entry.key: entry.value.length,
+      },
+      {0: 20, 20: 28},
+    );
+  });
+
+  test('a receiving cut\'s conte slides no panel into its のりしろ — the '
+      'row still has no room in front of its first panel', () {
+    final s = session();
+    addTearDown(s.dispose);
+    final row = conteRow(s, receiving);
+    expect(
+      planDrawingRangeMove(
+        source: row,
+        target: row,
+        rangeStartIndex: 12,
+        rangeEndIndexExclusive: 32,
+        frameDelta: -5,
+        sourceBank: CelBankLanes.unshared,
+        cutFrameCount: 48,
+      ),
+      isNull,
+    );
+  });
+
+  test('the receiving cut\'s first REAL panel carries no front grip — its '
+      'front is the conte\'s start, the frames before it are derived', () {
+    final s = session();
+    addTearDown(s.dispose);
+    final grips = timelineLayerGripBlocks(
+      conteRow(s, receiving),
+      suppressFirstStartGrip: true,
+    );
+    expect(grips.first.startIndex, 12);
+    expect(grips.first.startGrip, isFalse);
+    expect(grips.last.startGrip, isTrue);
   });
 }

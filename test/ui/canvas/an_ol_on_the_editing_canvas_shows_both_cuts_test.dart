@@ -33,7 +33,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 void main() {
   const paperArgb = 0xFF00FF00;
 
-  bool isPaper(int r, int g, int b) => g > 200 && r < 80 && b < 80;
+  // Strict: two green papers mixed are exactly green, while a red wash of
+  // even a quarter leaves red in the pixel.
+  bool isPaper(int r, int g, int b) => g > 240 && r < 20 && b < 20;
 
   Cut cut(String id) => Cut(
     id: CutId(id),
@@ -174,6 +176,29 @@ void main() {
       lessThan(500),
       reason: 'the paper is red-tinted — only its antialiased edge escapes',
     );
+    await drainWarming(tester);
+  });
+
+  testWidgets('a ruler scrub PARKED past the cut, in the O.L\'s second half, '
+      'shows the parked mix with no wash of the cut it left over it', (
+    tester,
+  ) async {
+    final s = standingInAnOl(partnered: true);
+    addTearDown(s.dispose);
+    await pumpArea(tester, s);
+    // Down on the cut's own frame, then across the boundary: the second
+    // move parks on the other cut's frame 26 and the stack takes the canvas.
+    s.frameScrub.scrubGlobalFrame(21);
+    s.frameScrub.scrubGlobalFrame(26);
+    await tester.pump();
+    await tester.pump();
+    expect(
+      await paperPixels(tester),
+      greaterThan(5000),
+      reason: 'the parked stack mixes two papers — the leaving cut\'s own '
+          'fade is not laid over it',
+    );
+    s.frameScrub.commitFrameScrub();
     await drainWarming(tester);
   });
 }
