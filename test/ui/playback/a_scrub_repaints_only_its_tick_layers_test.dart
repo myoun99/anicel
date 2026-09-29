@@ -10,6 +10,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
@@ -132,4 +133,76 @@ void main() {
       expect(moves, isEmpty, reason: moves.join('\n\n'));
     });
   }
+
+  // canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): past
+  // the open cut the canvas shows the track stack, which rebuilds as each
+  // move crosses into another cut — bare under the panel content's
+  // LayoutBuilder, that relaid out and repainted the whole canvas panel.
+  testWidgets('a scrub past the open cut repaints the canvas\'s tick layers '
+      'and nothing else of it', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: HomePage(initialProject: project()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    final canvas = find.ancestor(
+      of: find.byKey(const ValueKey<String>('canvas-editor-panel-content')),
+      matching: find.byType(RepaintBoundary),
+    );
+    List<String> strays() => [
+      for (final stray in repaintStrays(
+        tester.renderObject(canvas.first),
+        allowed: {
+          for (final layer in find
+              .descendant(of: canvas.first, matching: find.byType(TickLayer))
+              .evaluate())
+            layer.renderObject!,
+        },
+      ))
+        nameOfBoundary(stray),
+    ];
+    final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
+    final area = tester.getRect(ruler.first);
+    final step = area.width * 0.55 / 19;
+
+    final gesture = await tester.startGesture(
+      Offset(area.left + 4, area.center.dy),
+    );
+    await tester.pump();
+    final moves = <String>[];
+    var parkedMoves = 0;
+    for (var move = 1; move < 20; move += 1) {
+      // The move that takes the canvas OUT of the open cut swaps its content
+      // for the track stack — once, and a new content is laid out whole.
+      // What is measured is every crossing the stack was already showing.
+      final parked = find.byType(CanvasTrackStackView).evaluate().isNotEmpty;
+      await gesture.moveBy(Offset(step, 0));
+      await tester.pump(const Duration(milliseconds: 16), EnginePhase.layout);
+      final now = strays();
+      if (parked) {
+        parkedMoves += 1;
+        if (now.isNotEmpty) {
+          moves.add('move $move:\n${now.join('\n')}');
+        }
+      }
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      parkedMoves,
+      greaterThan(5),
+      reason: '⛔premise: the scrub crossed cut after cut with the stack shown',
+    );
+    expect(moves, isEmpty, reason: moves.join('\n\n'));
+  });
 }

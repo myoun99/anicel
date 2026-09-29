@@ -22,6 +22,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/se_name_tag_plan.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_point_gizmo.dart';
@@ -724,5 +725,71 @@ void main() {
     );
     await gesture.up();
     await tester.pump();
+  });
+
+  // canvas-wakes-for-what-it-shows: the canvas AREA is rebuilt for a drag
+  // only for what it hands the panel — so those are what these read, on the
+  // panel as mounted.
+  BrushCanvasPanel mountedPanel(WidgetTester tester) =>
+      tester.widget<BrushCanvasPanel>(
+        find.byKey(const ValueKey<String>('main-canvas-brush-host')),
+      );
+
+  testWidgets('the panel is handed the pose a Position scrub shows — the '
+      'wrap the pen draws through, before the release', (tester) async {
+    await open(tester, layer: row, standOn: 'position');
+    final value = find.byKey(
+      ValueKey<String>('timeline-lane-value-${row.value}-position'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(value),
+      kind: PointerDeviceKind.mouse,
+    );
+    try {
+      for (var step = 0; step < 3; step += 1) {
+        await gesture.moveBy(const Offset(10, 0));
+        await tester.pump();
+      }
+      expectPoint(
+        mountedPanel(tester).interactiveContentPose!.pose.center,
+        CanvasPoint(x: centre.x + 30, y: centre.y),
+        'the draw-through wrap the panel is handed',
+      );
+    } finally {
+      await gesture.up();
+      await tester.pump();
+    }
+  });
+
+  testWidgets('the panel is handed the opacity an Opacity scrub shows',
+      (tester) async {
+    await open(tester, layer: row, standOn: 'opacity');
+    expect(
+      mountedPanel(tester).interactiveContentOpacity,
+      1,
+      reason: '⛔premise',
+    );
+    final value = find.byKey(
+      ValueKey<String>('timeline-lane-value-${row.value}-opacity'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(value),
+      kind: PointerDeviceKind.mouse,
+    );
+    try {
+      for (var step = 0; step < 3; step += 1) {
+        await gesture.moveBy(const Offset(-10, 0));
+        await tester.pump();
+      }
+      expect(mountedPanel(tester).interactiveContentOpacity, lessThan(1));
+      expect(
+        mountedPanel(tester).interactiveContentOpacity,
+        closeTo(sessionOf(tester).editingCanvas.stack.activeLayerOpacity, 1e-9),
+        reason: 'the one the stack walk carries out',
+      );
+    } finally {
+      await gesture.up();
+      await tester.pump();
+    }
   });
 }

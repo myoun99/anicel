@@ -26,9 +26,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/widgets/tick_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
     show timelineFrameCellWidth;
 
+import '../../helpers/repaint_strays.dart';
 import '../timeline/timeline_cell_probe.dart';
 
 /// canvas-follows-block-moves — 유저 2026-09-28: 「따라가게 — 끄는 동안
@@ -259,6 +261,58 @@ void main() {
     expect(session.dragPreview.value, isNull);
     expect(imagesOn(tester, b), [b3], reason: 'the release keeps it there');
     expect(liveRow(tester)?.frameKey?.frameId, a3);
+  });
+
+  // canvas-wakes-for-what-it-shows: the whole canvas area was rebuilt for a
+  // drag step, under the panel content's LayoutBuilder, so each step relaid
+  // out and repainted all of it (09-29: layout the largest share of a step).
+  testWidgets('a carried block repaints the canvas\'s tick layers and nothing '
+      'else of it — a step does not rebuild the canvas area', (tester) async {
+    await open(tester);
+    final content = find.ancestor(
+      of: find.byKey(const ValueKey<String>('canvas-editor-panel-content')),
+      matching: find.byType(RepaintBoundary),
+    );
+    List<String> strays() => [
+      for (final stray in repaintStrays(
+        tester.renderObject(content.first),
+        allowed: {
+          for (final layer in find
+              .descendant(of: content.first, matching: find.byType(TickLayer))
+              .evaluate())
+            layer.renderObject!,
+        },
+      ))
+        nameOfBoundary(stray),
+    ];
+    final gesture = await selectAndGrab(
+      tester,
+      from: (a, 3),
+      to: (b, 5),
+      grab: (a, 5),
+    );
+    try {
+      final steps = <String>[];
+      for (var step = 1; step <= 2; step += 1) {
+        await gesture.moveBy(const Offset(timelineFrameCellWidth, 0));
+        // The step's frame, run to its layout and stopped before the paint.
+        await tester.pump(const Duration(milliseconds: 16), EnginePhase.layout);
+        final now = strays();
+        if (now.isNotEmpty) {
+          steps.add('step $step:\n${now.join('\n')}');
+        }
+        await tester.pump();
+      }
+      expect(
+        imagesOn(tester, b),
+        [b3],
+        reason: '⛔premise: the steps moved the picture',
+      );
+      expect(steps, isEmpty, reason: steps.join('\n\n'));
+    } finally {
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
   });
 
   testWidgets('the canvas wakes for a drag it shows and sleeps through one it '

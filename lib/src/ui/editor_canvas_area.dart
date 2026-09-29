@@ -69,6 +69,7 @@ import '../models/transition_geometry.dart' show TransitionVeil;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
+import 'widgets/tick_layer.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'effective_device_pixel_ratio.dart';
 import 'timeline/transform_lane_policy.dart'
@@ -406,28 +407,68 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
-    // A drag in flight redraws the canvas per step — the picture, the pen's
-    // space, the handles, the SE tags, the fade and the camera frame all read
-    // it (F-195; canvas-follows-block-moves, 유저 2026-09-28 「따라가게」).
-    // Sliced to what of it the canvas SHOWS ([_dragAsShown]).
-    return SlicedValueListenableBuilder<TimelineDragPreview?, _DragAsShown>(
+    // A drag in flight moves what the canvas shows (F-195;
+    // canvas-follows-block-moves, 유저 2026-09-28 「따라가게」). The picture
+    // and the chrome over it hear it for themselves, each in its own
+    // TickLayer (`_InteractiveCanvasBuild._followingTheDrag`); the AREA is
+    // rebuilt only for what it hands the panel ([_panelShows]).
+    return SlicedValueListenableBuilder<TimelineDragPreview?, Object?>(
       valueListenable: session.dragPreview,
-      slice: (preview) => _dragAsShown(session, preview),
+      slice: (preview) => _panelShows(session, preview),
       builder: (context, _) => _buildFollowingSession(session),
     );
   }
 
-  /// What of a drag the canvas SHOWS: every row of the open cut and of its
-  /// track as the drag shows it, in both forms, and the camera the canvas
-  /// draws — so a drag that changes none of it (a movie's end, a sound's
-  /// silhouette on an SE cell, a V track's chain, another cut's rows) wakes
-  /// nothing here, and one that does wakes it once per step.
+  /// The rows [_panelShows] last answered for, and its answer — a drag step
+  /// that moves none of them cannot change it (the lookup is cheap, the
+  /// answer walks the composite).
+  _DragAsShown? _panelRows;
+  Object? _panelShown;
+
+  /// What the canvas AREA takes from a drag: the row being drawn on as the
+  /// panel is handed it — its display opacity, its colour keys and the pose
+  /// the pen draws in ([_InteractiveCanvasBuild.standingOf]) — and, in
+  /// camera mode, the camera's pose the Fit button frames.
+  ///
+  /// 🚨canvas-wakes-for-what-it-shows: a block carried under the playhead
+  /// changes the PICTURE, which the underlay follows by itself — not these.
+  /// Rebuilding the area for it relaid out the whole panel content a step.
+  Object? _panelShows(
+    EditorSessionManager session,
+    TimelineDragPreview? preview,
+  ) {
+    final rows = _rowsShownBy(session, preview);
+    if (rows == _panelRows) {
+      return _panelShown;
+    }
+    _panelRows = rows;
+    final isCameraLayerActive = session.camera.isCameraLayerActive;
+    final inGap =
+        !session.playbackRig.playback.isActive &&
+        session.editingPlayheadInGap;
+    final stack = inGap ? null : session.editingCanvas.stack;
+    return _panelShown = (
+      stack?.activeLayerOpacity,
+      stack == null ? null : ByList(stack.activeSourceEffects),
+      _InteractiveCanvasBuild.standingOf(
+        session,
+        inGap: inGap,
+        isCameraLayerActive: isCameraLayerActive,
+      ).pose,
+      isCameraLayerActive ? session.camera.cameraPoseAtCurrentFrame : null,
+    );
+  }
+
+  /// Every row of the open cut and of its track as a drag shows it, in both
+  /// forms, and the camera the canvas draws — equal while the drag changes
+  /// none of them (a movie's end, a sound's silhouette on an SE cell, a V
+  /// track's chain, another cut's rows).
   ///
   /// ⚠️A new reader of the channel on the canvas reads rows by the same two
   /// functions ([timelineDragPreviewLayerFor], [timelineDragPreviewGlobalLayerFor])
   /// or the camera's one answer; one that read something else would need it
   /// here too, or it would go stale between steps.
-  static _DragAsShown _dragAsShown(
+  static _DragAsShown _rowsShownBy(
     EditorSessionManager session,
     TimelineDragPreview? preview,
   ) {
@@ -550,27 +591,35 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     bool cameraView = false,
   }) {
     final project = session.repository.requireProject();
-    return CanvasTrackStackView(
-      globalFrame: globalFrame ?? session.gapParkingListenable,
-      positionsOf: session.rowSpans.trackStackContributionsAt,
-      compositeCache: session.renderCaches.cutFrameCompositeCache,
-      qualityOf: () => session.playbackRig.playbackQuality,
-      cameraFrameSize: session.camera.cameraFrameSize,
-      cameraViewEnabled: cameraView,
-      cameraPoseOf: session.camera.cameraPoseForCut,
-      seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
-      cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
-      trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
-      cutPictureVisibleOf: session.isCutPictureVisible,
-      onFrameCached:
-          session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
-      viewport: viewport,
-      background: session.projectSettings.projectBackground,
-      backdropArgb: project.backdropArgb,
-      backdropNone: project.backdropNone,
-      pasteboardArgb: project.pasteboardArgb,
-      pasteboardNone: project.pasteboardNone,
-      trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
+    // 🚨canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): the
+    // view rebuilds itself as a scrub crosses into another cut, and bare under
+    // the panel content's LayoutBuilder every such rebuild relaid out and
+    // repainted the whole panel content. Its own TickLayer takes that scope —
+    // all three mounts hand it the panel's size (a Positioned.fill, a
+    // StackFit.expand).
+    return TickLayer(
+      child: CanvasTrackStackView(
+        globalFrame: globalFrame ?? session.gapParkingListenable,
+        positionsOf: session.rowSpans.trackStackContributionsAt,
+        compositeCache: session.renderCaches.cutFrameCompositeCache,
+        qualityOf: () => session.playbackRig.playbackQuality,
+        cameraFrameSize: session.camera.cameraFrameSize,
+        cameraViewEnabled: cameraView,
+        cameraPoseOf: session.camera.cameraPoseForCut,
+        seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
+        cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
+        trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
+        cutPictureVisibleOf: session.isCutPictureVisible,
+        onFrameCached:
+            session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
+        viewport: viewport,
+        background: session.projectSettings.projectBackground,
+        backdropArgb: project.backdropArgb,
+        backdropNone: project.backdropNone,
+        pasteboardArgb: project.pasteboardArgb,
+        pasteboardNone: project.pasteboardNone,
+        trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
+      ),
     );
   }
 
@@ -1343,7 +1392,7 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
   }
 }
 
-/// A drag as the canvas shows it ([_EditorCanvasAreaState._dragAsShown]):
+/// A drag as the canvas shows it ([_EditorCanvasAreaState._rowsShownBy]):
 /// equal while every part is the SAME object — the rule a timeline row's
 /// gate keeps for its one row, over every row the canvas draws.
 final class _DragAsShown {

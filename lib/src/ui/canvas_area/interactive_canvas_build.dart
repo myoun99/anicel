@@ -35,14 +35,34 @@ class _InteractiveCanvasBuild {
   late final BrushEditorSelection? _selection;
   late final LayerPoseSample? _interactivePose;
   late final CanvasSize _canvasSize;
-  late final double _cutFadeOpacity;
-  late final List<TransitionVeil> _cutVeils;
-  late final bool _showFadeWash;
-  late final Cut? _activeCutForTags;
-  late final List<ResolvedSeNameTag> _seNameTags;
   late final Layer? _activeLayer;
   late final bool _canPoseActiveLayer;
   late final Rect? _fitFocusRect;
+
+  /// The cel the interactive view stands on and the pose it draws it in —
+  /// asked by the build and by the area's drag slice
+  /// (`_EditorCanvasAreaState._panelShows`), so the two cannot disagree
+  /// about what the panel is handed.
+  static ({BrushEditorSelection? selection, LayerPoseSample? pose})
+  standingOf(
+    EditorSessionManager session, {
+    required bool inGap,
+    required bool isCameraLayerActive,
+  }) {
+    final selection = inGap
+        ? null
+        : isCameraLayerActive
+        ? session.camera.cameraBackdropSelection
+        : session.editingCanvas.activeBrushEditorSelection;
+    // The layer shown in the interactive view draws POSED (always-applied
+    // transforms, active layer included) with draw-through input.
+    return (
+      selection: selection,
+      pose: selection == null
+          ? null
+          : session.frameVerbs.layerCanvasPoseSample(selection.layerId),
+    );
+  }
 
   Widget buildInteractiveCanvas(
     EditorSessionManager session, {
@@ -100,16 +120,13 @@ class _InteractiveCanvasBuild {
     // a hidden inspector costs one bool read and never builds the string —
     // the same shape the pan recogniser's probes use.
     _state._noteCanvasProbe(session, _inGap, _layerStack);
-    _selection = _inGap
-        ? null
-        : isCameraLayerActive
-        ? session.camera.cameraBackdropSelection
-        : session.editingCanvas.activeBrushEditorSelection;
-    // The layer shown in the interactive view draws POSED (always-applied
-    // transforms, active layer included) with draw-through input.
-    _interactivePose = _selection == null
-        ? null
-        : session.frameVerbs.layerCanvasPoseSample(_selection.layerId);
+    final standing = standingOf(
+      session,
+      inGap: _inGap,
+      isCameraLayerActive: isCameraLayerActive,
+    );
+    _selection = standing.selection;
+    _interactivePose = standing.pose;
     // There is no CUT-level pose to compose in: the V row's transform is gone,
     // so the only pose the editing canvas wraps is the active LAYER's.
     //
@@ -117,38 +134,6 @@ class _InteractiveCanvasBuild {
     // geometry — the camera frame size stands in for the missing cut.
     _canvasSize =
         session.activeCutOrNull?.canvasSize ?? session.camera.cameraFrameSize;
-    // The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark
-    // faded frames are worked with fx off). It is the track's static opacity
-    // times the TRANSITION row's ramp now.
-    _cutFadeOpacity = session.opacityVerbs.activeCutEditingFadeOpacity();
-    // F-192: and the screens one-sided transitions lay over it — the same
-    // veils the playback and the export paint.
-    _cutVeils = session.opacityVerbs.activeCutEditingVeils();
-    _showFadeWash =
-        !_isPlaybackActive && (_cutFadeOpacity < 1 || _cutVeils.isNotEmpty);
-    // The SE rows' on-canvas name tags (R5b, §6-z15) — the editing
-    // canvas's copy of what playback and export draw. Playback renders its
-    // own (through the frame painter), so this stands down there exactly
-    // like the other editing chrome.
-    //
-    // 🚨F-90 (유저 2026-09-12): 「스토리보드패널, 룰러 드래그 하는동안 se의
-    // 네임태그가 캔버스에 존재했던게 다음 컷이나 갭부분까지 남아있음. 안남아있도록
-    // 비디오트랙이나 se트랙이나 법 하나로 통일」. The parked content — the track
-    // stack a scrub shows past the cut's territory, or a gap — draws the tags
-    // of the frame IT shows, the way it draws that frame's picture. These are
-    // the ACTIVE cut's at its own cursor, so over the parked picture they were
-    // the frame the drag had left. They stand down wherever the picture is not
-    // this canvas's: [_inGap] asks exactly that, for the content swap below.
-    _activeCutForTags = session.activeCutOrNull;
-    _seNameTags = _isPlaybackActive || _inGap || _activeCutForTags == null
-        ? const <ResolvedSeNameTag>[]
-        : session.seEntries.seNameTagsForCutFrame(
-            _activeCutForTags,
-            session.currentFrameIndex,
-            // The tag follows a drag on its row while it moves — a lane edit
-            // (F-195), its lines moved or stretched.
-            preview: session.dragPreview.value,
-          );
     // R5 #10: WHAT IS SELECTED IS WHAT YOU CAN GRAB.
     //
     // The crosshair used to answer to "the row's lanes are twirled open",
@@ -564,16 +549,13 @@ class _InteractiveCanvasBuild {
       // underlay paints the whole tree in one picture now, which is
       // the only way a group buffer can span the active layer. What
       // is left in the overlay is chrome.
-      viewportOverlayBuilder:
-          (_cameraOverlayVisible ||
-                  showPositionGizmo ||
-                  showAnchorGizmo ||
-                  _showFadeWash ||
-                  session.cutVerbs.activeCutGuides.isNotEmpty ||
-                  _seNameTags.isNotEmpty) &&
-              !_isPlaybackActive
-          ? (context, viewport) => _overlayStack(context, viewport, frame)
-          : null,
+      // Always there while editing, whatever it holds: what it shows moves
+      // with a drag it hears for itself ([_overlay]), and a slot that came
+      // and went with the SE tags or the fade would be the area's to rebuild
+      // for every drag that moved them.
+      viewportOverlayBuilder: _isPlaybackActive
+          ? null
+          : (context, viewport) => _overlay(context, viewport, frame),
       // 🚨T28-c: while playback owns the content a press only stops it, so no
       // tool takes the press — the same flag swaps the content in below.
       toolInputEnabled: !_isPlaybackActive,
@@ -595,11 +577,43 @@ class _InteractiveCanvasBuild {
     );
   }
 
+  /// A part of the canvas that follows a drag on its own: [build] again,
+  /// alone, for each step that changes a row it could show
+  /// ([_EditorCanvasAreaState._rowsShownBy]), inside its own [TickLayer].
+  ///
+  /// 🚨canvas-wakes-for-what-it-shows: the whole canvas AREA used to be
+  /// rebuilt for a drag step, under the panel content's LayoutBuilder — so a
+  /// step relaid out and repainted all of it (measured 09-29: layout was
+  /// the largest share of a step, ahead of build and paint) for a picture
+  /// and some chrome.
+  Widget _followingTheDrag(
+    EditorSessionManager session,
+    WidgetBuilder build,
+  ) => TickLayer(
+    child: SlicedValueListenableBuilder<TimelineDragPreview?, _DragAsShown>(
+      valueListenable: session.dragPreview,
+      slice: (preview) => _EditorCanvasAreaState._rowsShownBy(session, preview),
+      builder: (context, _) => build(context),
+    ),
+  );
+
   /// What is painted UNDER the interactive canvas: the paper and the
   /// composite tree with the active layer inside it (the parked stack in a
-  /// gap), with onion skins when the row shows them.
+  /// gap), with onion skins when the row shows them. It follows a drag
+  /// itself ([_followingTheDrag]), so the tree is asked afresh at each of
+  /// its builds.
   Widget _underlay(
     BuildContext context,
+    CanvasViewport viewport,
+    BitmapSurfacePainter? activeSurfacePainter,
+    SelectionFloatOverlay floatOverlay,
+    _HostFrame frame,
+  ) => _followingTheDrag(
+    frame.session,
+    (context) => _stackView(viewport, activeSurfacePainter, floatOverlay, frame),
+  );
+
+  Widget _stackView(
     CanvasViewport viewport,
     BitmapSurfacePainter? activeSurfacePainter,
     SelectionFloatOverlay floatOverlay,
@@ -613,10 +627,12 @@ class _InteractiveCanvasBuild {
       // playback and scrubs never reach here, so they
       // auto-hide. A gap parking shows the VOID (R16-⑥):
       // no ghosts either.
-      nodes: _EditorCanvasAreaState._stackNodesWithGhosts(
-        _layerStack.nodes,
-        _inGap ? const [] : frame.session.onionSkin.onionSkinCanvasRequests(),
-      ),
+      nodes: _inGap
+          ? const []
+          : _EditorCanvasAreaState._stackNodesWithGhosts(
+              frame.session.editingCanvas.stack.nodes,
+              frame.session.onionSkin.onionSkinCanvasRequests(),
+            ),
       activeSurfacePainter: activeSurfacePainter,
       // TS1: the _selection's float draws in the active
       // layer's slot, so the rows above it occlude the live
@@ -642,12 +658,55 @@ class _InteractiveCanvasBuild {
   /// What is stacked OVER the canvas inside the viewport: the guides and
   /// their edit layer, the SE name tags, the fade wash past the cut's end,
   /// the camera overlay, and the transform box / position / anchor gizmos
-  /// the standing row admits.
+  /// the standing row admits. It follows a drag itself
+  /// ([_followingTheDrag]): the tags, the fade and the handles are asked
+  /// afresh at each of its builds.
+  Widget _overlay(
+    BuildContext context,
+    CanvasViewport viewport,
+    _HostFrame frame,
+  ) => _followingTheDrag(
+    frame.session,
+    (context) => _overlayStack(context, viewport, frame),
+  );
+
   Widget _overlayStack(
     BuildContext context,
     CanvasViewport viewport,
     _HostFrame frame,
   ) {
+    final session = frame.session;
+    // The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark
+    // faded frames are worked with fx off). It is the track's static opacity
+    // times the TRANSITION row's ramp now.
+    final cutFadeOpacity = session.opacityVerbs.activeCutEditingFadeOpacity();
+    // F-192: and the screens one-sided transitions lay over it — the same
+    // veils the playback and the export paint.
+    final cutVeils = session.opacityVerbs.activeCutEditingVeils();
+    final showFadeWash = cutFadeOpacity < 1 || cutVeils.isNotEmpty;
+    // The SE rows' on-canvas name tags (R5b, §6-z15) — the editing
+    // canvas's copy of what playback and export draw. Playback renders its
+    // own (through the frame painter), so this stands down there exactly
+    // like the other editing chrome (no overlay while it plays).
+    //
+    // 🚨F-90 (유저 2026-09-12): 「스토리보드패널, 룰러 드래그 하는동안 se의
+    // 네임태그가 캔버스에 존재했던게 다음 컷이나 갭부분까지 남아있음. 안남아있도록
+    // 비디오트랙이나 se트랙이나 법 하나로 통일」. The parked content — the track
+    // stack a scrub shows past the cut's territory, or a gap — draws the tags
+    // of the frame IT shows, the way it draws that frame's picture. These are
+    // the ACTIVE cut's at its own cursor, so over the parked picture they were
+    // the frame the drag had left. They stand down wherever the picture is not
+    // this canvas's: [_inGap] asks exactly that, for the content swap below.
+    final cut = session.activeCutOrNull;
+    final seNameTags = _inGap || cut == null
+        ? const <ResolvedSeNameTag>[]
+        : session.seEntries.seNameTagsForCutFrame(
+            cut,
+            session.currentFrameIndex,
+            // The tag follows a drag on its row while it moves — a lane edit
+            // (F-195), its lines moved or stretched.
+            preview: session.dragPreview.value,
+          );
     return Stack(
       children: [
         // Guides are EDITING scaffolding: they are drawn
@@ -668,15 +727,15 @@ class _InteractiveCanvasBuild {
         // so it never stands between the brush and the cel.
         if (frame.tool == CanvasTool.guide)
           _state._guideEditLayer(frame.session, viewport),
-        if (_seNameTags.isNotEmpty)
-          _state._seNameTagOverlay(viewport, _canvasSize, _seNameTags, context),
-        if (_showFadeWash)
+        if (seNameTags.isNotEmpty)
+          _state._seNameTagOverlay(viewport, _canvasSize, seNameTags, context),
+        if (showFadeWash)
           _state._cutFadeWash(
             viewport,
             _canvasSize,
             frame.session,
-            _cutFadeOpacity,
-            _cutVeils,
+            cutFadeOpacity,
+            cutVeils,
             context,
           ),
         if (_cameraOverlayVisible)
