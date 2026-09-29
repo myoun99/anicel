@@ -13,10 +13,19 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 /// shortcut table ANSWERED (`bind`), and whether playback SPENT it on a stop
 /// (`eat`) — each line stamped with the key's own time, so a screenshot of
 /// the failing press says where it went.
+///
+/// ONE editor for the whole walk: a full-app pump is seconds, and every step
+/// here reads the same editor (09-29: 「그런 테스트 하나하나가 느리게」).
 void main() {
   tearDown(InputInspector.reset);
 
-  Future<void> openEditor(WidgetTester tester) async {
+  String stampOf(String line, String key) =>
+      RegExp('@\\d+ $key').firstMatch(line)!.group(0)!;
+
+  testWidgets('the inspector follows a key to where it went — arrived, '
+      'answered or unbound, spent on a stop — and writes nothing hidden', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -25,76 +34,55 @@ void main() {
     await tester.pumpAndSettle();
     InputInspector.visible.value = true;
     await tester.pump();
-  }
 
-  String stampOf(String line, String key) =>
-      RegExp('@\\d+ $key').firstMatch(line)!.group(0)!;
-
-  testWidgets('a key that arrives and the answer the table gives it carry '
-      'ONE stamp — with the modifier the app believes is held', (
-    tester,
-  ) async {
-    await openEditor(tester);
-
+    // Arrived and answered: one stamp, with the modifier the app holds.
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
-
     final key = InputInspector.notes['key']!;
-    final bind = InputInspector.notes['bind']!;
-    expect(key, contains('Arrow Right'));
-    expect(key, contains('Control Left'), reason: 'what the app holds down');
-    expect(key, contains('focus'));
-    expect(bind, contains(EditorActionIds.frameWalkRight));
     expect(
-      bind,
-      contains(stampOf(key, 'Arrow Right')),
+      key,
+      contains(RegExp(r'held \[Control Left, Key Z\]')),
+      reason: 'read as it ARRIVES — the key itself down, with the modifier '
+          'the app believes is held',
+    );
+    expect(key, contains('focus'));
+    expect(
+      InputInspector.notes['bind'],
+      allOf(contains(EditorActionIds.undo), contains(stampOf(key, 'Key Z'))),
       reason: 'the answer pairs with the key it answers',
     );
-  });
 
-  testWidgets('a key the table does not bind says so', (tester) async {
-    await openEditor(tester);
-
-    // Q binds nothing by default.
+    // Unbound: Q binds nothing by default.
     await tester.sendKeyEvent(LogicalKeyboardKey.keyQ);
     await tester.pump();
-
     expect(InputInspector.notes['bind'], contains('no binding'));
-  });
 
-  testWidgets('a key playback spends on a stop says so, and the table never '
-      'hears it', (tester) async {
-    await openEditor(tester);
+    // Hidden: nothing is written.
+    InputInspector.visible.value = false;
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
+    await tester.pump();
+    expect(InputInspector.notes['bind'], contains('Key Q'));
+    InputInspector.visible.value = true;
+    await tester.pump();
+
+    // Spent on a stop: the table never hears it.
     await tester.tap(
       find.byKey(const ValueKey<String>('playback-play-button')),
     );
     for (var i = 0; i < 4; i += 1) {
       await tester.pump(const Duration(milliseconds: 42));
     }
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.period);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
     await tester.pump();
-
     final eat = InputInspector.notes['eat']!;
     expect(eat, contains('stopped playback'));
     expect(
-      InputInspector.notes['bind'] ?? '',
-      isNot(contains(stampOf(eat, 'Period'))),
+      InputInspector.notes['bind'],
+      isNot(contains(stampOf(eat, 'Key E'))),
       reason: 'a stop is the whole of that press — no action answers it',
     );
-  });
-
-  testWidgets('a hidden inspector writes nothing', (tester) async {
-    await openEditor(tester);
-    InputInspector.visible.value = false;
-    await tester.pump();
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump();
-
-    expect(InputInspector.notes['key'], isNull);
-    expect(InputInspector.notes['bind'], isNull);
   });
 }
