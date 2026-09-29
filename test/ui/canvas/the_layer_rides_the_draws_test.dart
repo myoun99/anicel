@@ -367,6 +367,8 @@ void main() {
       ValueListenable<CutStampPreview?>? stampPreview,
       TestRecordingCanvas? recordInto,
       TransformPose? pose,
+      double panX = 0,
+      double panY = 0,
     }) async {
       debugLiveLayerRodeTheDraws = null;
       await tester.pumpWidget(
@@ -391,7 +393,7 @@ void main() {
                     frameStore: BrushFrameStore(),
                   ),
                   canvasSize: canvasSize,
-                  viewport: CanvasViewport(zoom: zoom, panX: 0, panY: 0),
+                  viewport: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
                   activeSurfacePainter: inkedPainter(
                     stampPreview: stampPreview,
                   ),
@@ -851,14 +853,22 @@ void main() {
       // posed multiply row takes that route. Over white paper an opaque
       // stroke lays the same bytes in multiply as in normal, so the normal
       // row, which rides its tiles, is the reference.
-      final pose = TransformPose(center: CanvasPoint(x: 52, y: 42));
-      Future<Uint8List> pixelsFor(LayerBlendMode blend) async {
+      Future<Uint8List> pixelsFor(
+        LayerBlendMode blend, {
+        required TransformPose pose,
+        double zoom = 1,
+        double panX = 0,
+        double panY = 0,
+      }) async {
         await paintActive(
           tester,
           effects: const [],
           opacity: 1,
           blendMode: blend,
           pose: pose,
+          zoom: zoom,
+          panX: panX,
+          panY: panY,
         );
         final painted = tester
             .widgetList<CustomPaint>(
@@ -885,33 +895,70 @@ void main() {
         return bytes!.buffer.asUint8List();
       }
 
-      final normal = await pixelsFor(LayerBlendMode.normal);
-      final multiply = await pixelsFor(LayerBlendMode.multiply);
-      expect(
-        debugLiveLayerRodeTheDraws,
-        isFalse,
-        reason: '⛔premise: the multiply row takes the image route',
-      );
-      var inked = 0;
-      var differing = 0;
-      for (var i = 0; i < normal.length; i += 4) {
-        // The stroke is pure blue; the paper is white.
-        if (normal[i + 2] == 255 && normal[i] == 0) {
-          inked += 1;
+      Future<void> expectTheSameStroke(
+        String what, {
+        required TransformPose pose,
+        double zoom = 1,
+        double panX = 0,
+        double panY = 0,
+      }) async {
+        final normal = await pixelsFor(
+          LayerBlendMode.normal,
+          pose: pose,
+          zoom: zoom,
+          panX: panX,
+          panY: panY,
+        );
+        final multiply = await pixelsFor(
+          LayerBlendMode.multiply,
+          pose: pose,
+          zoom: zoom,
+          panX: panX,
+          panY: panY,
+        );
+        expect(
+          debugLiveLayerRodeTheDraws,
+          isFalse,
+          reason: '$what: ⛔premise: the multiply row takes the image route',
+        );
+        var inked = 0;
+        var differing = 0;
+        for (var i = 0; i < normal.length; i += 4) {
+          // The stroke is pure blue; the paper is white.
+          if (normal[i + 2] == 255 && normal[i] == 0) {
+            inked += 1;
+          }
+          if (normal[i] != multiply[i] ||
+              normal[i + 1] != multiply[i + 1] ||
+              normal[i + 2] != multiply[i + 2] ||
+              normal[i + 3] != multiply[i + 3]) {
+            differing += 1;
+          }
         }
-        if (normal[i] != multiply[i] ||
-            normal[i + 1] != multiply[i + 1] ||
-            normal[i + 2] != multiply[i + 2] ||
-            normal[i + 3] != multiply[i + 3]) {
-          differing += 1;
-        }
+        expect(inked, greaterThan(0), reason: '$what: ⛔premise: it shows');
+        expect(
+          differing,
+          0,
+          reason: '$what: the posed multiply row must show its stroke where '
+              'the normal row does — $differing pixels differ',
+        );
       }
-      expect(inked, greaterThan(0), reason: '⛔premise: the stroke shows');
-      expect(
-        differing,
-        0,
-        reason: 'the posed multiply row must show its stroke where the '
-            'normal row does — $differing pixels differ',
+
+      // Moved right and down by (20, 10): its canvas rect is not its slot.
+      await expectTheSameStroke(
+        'moved',
+        pose: TransformPose(center: CanvasPoint(x: 52, y: 42)),
+      );
+      // 🚨And the VIEW has to come into the slot, not only the extent. At
+      // 1000% the screen shows canvas (40..60, 30..45); the pose brings the
+      // ink from slot (4, 4) to canvas (48, 36). The canvas view, read as
+      // slot coordinates, holds none of the slot's tile.
+      await expectTheSameStroke(
+        'moved into a close view',
+        pose: TransformPose(center: CanvasPoint(x: 76, y: 64)),
+        zoom: 10,
+        panX: -400,
+        panY: -300,
       );
     });
 
