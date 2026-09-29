@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/page_stack.dart';
@@ -83,9 +84,14 @@ void main() {
   /// The panel with its brush off, through a view whose middle is the gap
   /// between the two body pages — the end of the first above it, the start
   /// of the second below.
-  Future<(EditorSessionManager, List<ContePageLayout>)> pump(
-    WidgetTester tester,
-  ) async {
+  Future<
+    (
+      EditorSessionManager,
+      List<ContePageLayout>,
+      ValueNotifier<CanvasViewport?>,
+    )
+  >
+  pump(WidgetTester tester) async {
     final session = EditorSessionManager(initialProject: project());
     addTearDown(session.dispose);
     final pages = layoutConteBook(
@@ -143,7 +149,7 @@ void main() {
       findsOneWidget,
       reason: 'fixture: and the second',
     );
-    return (session, pages);
+    return (session, pages, view);
   }
 
   /// [paper] on page [pageIndex], where the screen shows it.
@@ -164,7 +170,7 @@ void main() {
 
     testWidgets('$where: a press let go on a cell\'s ACTION opens its '
         'words', (tester) async {
-      final (_, pages) = await pump(tester);
+      final (_, pages, _) = await pump(tester);
       final cell = cellOf(pages);
       final zone = find.byKey(
         ValueKey<String>('conte-action-edit-${cell.cutId}-${cell.cellIndex}'),
@@ -188,7 +194,7 @@ void main() {
 
     testWidgets('$where: a press let go on a cell\'s picture selects its '
         'cut', (tester) async {
-      final (session, pages) = await pump(tester);
+      final (session, pages, _) = await pump(tester);
       final cell = cellOf(pages);
       expect(
         session.activeCutOrNull?.id,
@@ -202,5 +208,70 @@ void main() {
 
       expect(session.activeCutOrNull?.id, CutId(cell.cutId));
     });
+
+    testWidgets('$where: a pen that leaves a cell\'s ACTION moves the view, '
+        'and the words stay shut', (tester) async {
+      final (_, pages, view) = await pump(tester);
+      final cell = cellOf(pages);
+      final before = view.value;
+      final zone = find.byKey(
+        ValueKey<String>('conte-action-edit-${cell.cutId}-${cell.cellIndex}'),
+      );
+      final box = tester.getRect(zone);
+
+      // Down, 20 a step, until well past the zone's bottom edge — along the
+      // book, where the view is free to go (it stops at the paper's end).
+      await _drag(tester, box.center, const Offset(0, 20), box.height / 40 + 4);
+
+      expect(
+        find.byKey(const ValueKey<String>('conte-action-field')),
+        findsNothing,
+      );
+      expect(view.value!.panY, greaterThan(before!.panY));
+      expect(view.value!.panX, before.panX);
+    });
+
+    testWidgets('$where: a pen that leaves a cell\'s picture moves the view, '
+        'and its cut is not selected', (tester) async {
+      final (session, pages, view) = await pump(tester);
+      final cell = cellOf(pages);
+      final active = session.activeCutOrNull?.id;
+      expect(active, isNot(CutId(cell.cutId)), reason: 'fixture');
+      final before = view.value;
+      final picture = Rect.fromPoints(
+        onScreen(tester, pageIndex, cell.pictureRect.topLeft),
+        onScreen(tester, pageIndex, cell.pictureRect.bottomRight),
+      );
+
+      // Up, 20 a step, until well past the picture's top edge.
+      await _drag(
+        tester,
+        picture.center,
+        const Offset(0, -20),
+        picture.height / 40 + 4,
+      );
+
+      expect(session.activeCutOrNull?.id, active);
+      expect(view.value!.panY, lessThan(before!.panY));
+      expect(view.value!.panX, before.panX);
+    });
   }
+}
+
+/// A pen pressed at [from] and moved [step] at a time, [steps] times (at
+/// least), then lifted.
+Future<void> _drag(
+  WidgetTester tester,
+  Offset from,
+  Offset step,
+  double steps,
+) async {
+  final pen = await tester.startGesture(from, kind: PointerDeviceKind.stylus);
+  await tester.pump();
+  for (var i = 0; i < steps; i += 1) {
+    await pen.moveBy(step);
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  await pen.up();
+  await tester.pumpAndSettle();
 }

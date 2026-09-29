@@ -267,17 +267,28 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
-    if (!(canvasPressPans(event.buttons) || _primaryPressPans(event)) ||
-        _panPointer != null ||
-        widget.strokeActive()) {
+    if (_panPointer != null || widget.strokeActive()) {
       return;
     }
-    _panPointer = event.pointer;
-    _panStartLocalPosition = event.localPosition;
+    if (canvasPressPans(event.buttons) || _primaryPressPans(event)) {
+      // A pan press is this canvas's gesture from its down: the held key or
+      // the mapped button said so before anything moved.
+      _beginPan(event.pointer, event.localPosition);
+    } else if (widget.primaryPressPans && canvasPrimaryDown(event.buttons)) {
+      _heldByAControl = event.pointer;
+    }
+  }
+
+  /// A primary press this canvas would have panned but a control took at
+  /// its down — a cell's, until it leaves the cell
+  /// ([PressFire.upInsideOrPan]).
+  int? _heldByAControl;
+
+  void _beginPan(int pointer, Offset at) {
+    _panPointer = pointer;
+    _panStartLocalPosition = at;
     _panStartViewport = _liveViewport;
-    // A pan press is this canvas's gesture from its down: the held key or
-    // the mapped button said so before anything moved.
-    _holdForTheGesture(event.pointer);
+    _holdForTheGesture(pointer);
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -287,6 +298,17 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
+    // The cell let go of the press as it left: it is this canvas's pan from
+    // here — the view does not jump for the way it came inside the cell.
+    // A move reaches the control below before this layer, so the claim is
+    // already gone on the move that left.
+    if (event.pointer == _heldByAControl &&
+        !controlOwnsTap(event.pointer)) {
+      _heldByAControl = null;
+      if (_panPointer == null && !widget.strokeActive()) {
+        _beginPan(event.pointer, event.localPosition);
+      }
+    }
     if (event.pointer != _panPointer) {
       return;
     }
@@ -309,6 +331,9 @@ class _CanvasViewportGestureLayerState
     if (_touchPositions.remove(event.pointer) != null) {
       _controlTouchLift(event.pointer);
       return;
+    }
+    if (event.pointer == _heldByAControl) {
+      _heldByAControl = null;
     }
     if (event.pointer == _panPointer) {
       _clearPan();

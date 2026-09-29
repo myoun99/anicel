@@ -171,11 +171,15 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
       top: rect.top,
       width: rect.width,
       height: rect.height,
-      child: ControlPressClaim(
-        onPressed: onTap,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: silentPress(onTap),
+      // A cell of the paper, not a button: a press that leaves it pans.
+      child: PressFireScope(
+        fireOn: PressFire.upInsideOrPan,
+        child: ControlPressClaim(
+          onPressed: onTap,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: silentPress(onTap),
+          ),
         ),
       ),
     );

@@ -26,7 +26,7 @@ bool pointerIsStillOn(BuildContext context, Offset globalPosition) {
   return box.size.contains(box.globalToLocal(globalPosition));
 }
 
-/// When a claimed control acts. There are exactly two families, and 유저
+/// When a claimed control acts. The buttons are two families, and 유저
 /// stated the split in one line on 2026-08-30:
 ///
 /// > 「**레이어 쪽 버튼은 탭다운, 헤더쪽은 손떼면**으로 충분할거같은데
@@ -45,6 +45,9 @@ bool pointerIsStillOn(BuildContext context, Offset globalPosition) {
 /// must never scroll, the only way to stop a scroller is to take the arena
 /// first, and **whatever wins the arena also kills the button's own tap** —
 /// so the action is fired from the raw pointer stream either way.
+///
+/// The third family is not a button: a sheet's CELL — the words and the
+/// pictures a canvas-based sheet opens on a press ([upInsideOrPan]).
 enum PressFire {
   /// 「레이어 쪽 버튼」 — the press IS the action.
   ///
@@ -57,6 +60,19 @@ enum PressFire {
   /// A drag off the control does nothing at all: not the action, and not a
   /// scroll either.
   upInside,
+
+  /// A sheet's cell — pressed inside, released inside, as [upInside]; and
+  /// a press that LEAVES the cell is the canvas's: it pans from there, and
+  /// the cell does not act (F-214, 유저 2026-09-28: 「해당 칸 내에서
+  /// 펜업하면 창 열리게하고, 아니면 그냥 드래그 작동하도록. 픽쳐칸도
+  /// 똑같음」).
+  ///
+  /// A cell is the paper itself, where a drag moves the view (F-80); it is
+  /// claimed only so a hand that wobbles while it clicks still clicks (H24).
+  /// Where it LEAVES is the one question a click and a drag start both ask
+  /// ([pointerIsStillOn]) — no distance is compared. The sheet's layers
+  /// put their cells here through [PressFireScope].
+  upInsideOrPan,
 }
 
 /// Puts every claimed control below it on [fireOn].
@@ -64,8 +80,9 @@ enum PressFire {
 /// ⛔ONE WAY TO SAY IT. [ControlPressClaim] takes no per-site flag, because a
 /// flag is how the two families stop being two families — the rails would
 /// grow buttons that disagree with the column they sit in. The scope is
-/// mounted by [RailSwipeColumnPointer] and nowhere else; everything outside
-/// one is 「그 외 버튼」 by default.
+/// mounted by [RailSwipeColumnPointer] for [PressFire.down] and by the
+/// sheets' cell layers for [PressFire.upInsideOrPan], and nowhere else;
+/// everything outside one is 「그 외 버튼」 by default.
 class PressFireScope extends InheritedWidget {
   const PressFireScope({super.key, required this.fireOn, required super.child});
 
@@ -261,6 +278,18 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
             widget.onPressed?.call();
           }
         },
+        // A cell's press that leaves the cell is the canvas's from here: let
+        // go of it — the canvas pans a primary press no control holds — and
+        // never act on it.
+        onPointerMove: fireOn != PressFire.upInsideOrPan
+            ? null
+            : (event) {
+                if (_mine.contains(event.pointer) &&
+                    !_releasedInside(event.position)) {
+                  _mine.remove(event.pointer);
+                  releaseTapForControl(event.pointer);
+                }
+              },
         onPointerUp: (event) {
           releaseTapForControl(event.pointer);
           if (!_mine.remove(event.pointer)) {
@@ -276,7 +305,7 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
           // nothing — still means stop」. ⚠️Read BEFORE the canvas lets go:
           // pointer-up runs deepest first, so the claim is still standing.
           // The swipe columns are untouched — they fire on the DOWN.
-          if (fireOn == PressFire.upInside &&
+          if (fireOn != PressFire.down &&
               _releasedInside(event.position) &&
               !valueControlOwnsPointer(event.pointer)) {
             widget.onPressed?.call();

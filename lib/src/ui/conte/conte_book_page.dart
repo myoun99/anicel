@@ -196,23 +196,30 @@ class ConteBookPage extends StatelessWidget {
   /// ⚠️REVERSED, so where two pictures overlap (a cell that encroaches with a
   /// horizontal camera move) the EARLIER cell is on top and takes the press,
   /// as the page-wide layer's first-match loop gave it.
+  ///
+  /// A cell of the paper, not a button: a press that leaves the picture
+  /// pans, as one that leaves the cell's words does ([PressFire.upInsideOrPan],
+  /// F-214 「픽쳐칸도 똑같음」).
   Positioned _cellTaps() {
     return Positioned.fill(
-      child: Stack(
-        key: const ValueKey<String>('conte-cell-tap-layer'),
-        children: [
-          for (final cell in page.cells.reversed)
-            Positioned.fromRect(
-              rect: _onScreen(cell.pictureRect),
-              child: ControlPressClaim(
-                onPressed: () => onSelectCell(cell),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: silentPress(() => onSelectCell(cell)),
+      child: PressFireScope(
+        fireOn: PressFire.upInsideOrPan,
+        child: Stack(
+          key: const ValueKey<String>('conte-cell-tap-layer'),
+          children: [
+            for (final cell in page.cells.reversed)
+              Positioned.fromRect(
+                rect: _onScreen(cell.pictureRect),
+                child: ControlPressClaim(
+                  onPressed: () => onSelectCell(cell),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: silentPress(() => onSelectCell(cell)),
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

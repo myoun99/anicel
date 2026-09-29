@@ -25,9 +25,12 @@ void main() {
   });
 
   const controlKey = ValueKey<String>('f80-sheet-control');
+  const cellKey = ValueKey<String>('f214-sheet-cell');
 
   /// A 400×300 sheet, drawing on or off, with a claimed control in its top
-  /// left corner — the part a timesheet head cell plays.
+  /// left corner — a button on the sheet — and a cell of its paper at
+  /// (200, 100)–(280, 140): the part a timesheet head cell and a conte
+  /// cell's words and picture play (F-214).
   Future<({List<CanvasViewport> emitted, List<int> pressed})> pump(
     WidgetTester tester, {
     required bool drawing,
@@ -62,6 +65,20 @@ void main() {
                       key: controlKey,
                       onPressed: () => pressed.add(1),
                       child: const ColoredBox(color: Color(0xFF406080)),
+                    ),
+                  ),
+                  Positioned(
+                    left: 200,
+                    top: 100,
+                    width: 80,
+                    height: 40,
+                    child: PressFireScope(
+                      fireOn: PressFire.upInsideOrPan,
+                      child: ControlPressClaim(
+                        key: cellKey,
+                        onPressed: () => pressed.add(2),
+                        child: const ColoredBox(color: Color(0xFF608040)),
+                      ),
                     ),
                   ),
                 ],
@@ -137,6 +154,147 @@ void main() {
       expect(h.pressed, [1]);
       expect(h.emitted, isEmpty);
     });
+
+    // 🗣️F-214 (유저 2026-09-28): 「해당 칸 내에서 펜업하면 창
+    // 열리게하고, 아니면 그냥 드래그 작동하도록. 픽쳐칸도 똑같음」.
+    group('a cell of the paper', () {
+      for (final kind in const [
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+      ]) {
+        testWidgets('${kind.name}: a click presses it', (tester) async {
+          final h = await pump(tester, drawing: false);
+          final gesture = await tester.startGesture(
+            tester.getCenter(find.byKey(cellKey)),
+            kind: kind,
+          );
+          await gesture.up();
+          await tester.pumpAndSettle();
+          expect(h.pressed, [2]);
+          expect(h.emitted, isEmpty);
+        });
+
+        testWidgets('${kind.name}: a hand that wobbles inside it still '
+            'presses it, and the view stays', (tester) async {
+          final h = await pump(tester, drawing: false);
+          final gesture = await tester.startGesture(
+            tester.getCenter(find.byKey(cellKey)),
+            kind: kind,
+          );
+          for (final step in const [
+            Offset(3, 2),
+            Offset(-5, 1),
+            Offset(1, -4),
+          ]) {
+            await gesture.moveBy(step);
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          await gesture.up();
+          await tester.pumpAndSettle();
+          expect(h.pressed, [2]);
+          expect(h.emitted, isEmpty);
+        });
+
+        testWidgets('${kind.name}: a drag that leaves it pans from where it '
+            'left — and does not press it', (tester) async {
+          final h = await pump(tester, drawing: false);
+          // From the middle (240, 120), 12 a step to the right: 252, 264,
+          // 276 — still inside — then 288, past the right edge at 280, where
+          // the pan starts, and on to 300 and 312.
+          final gesture = await tester.startGesture(
+            tester.getCenter(find.byKey(cellKey)),
+            kind: kind,
+          );
+          for (var i = 0; i < 6; i += 1) {
+            await gesture.moveBy(const Offset(12, 0));
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          await gesture.up();
+          await tester.pumpAndSettle();
+          expect(h.pressed, isEmpty);
+          // The first view the pan gives is where the press left the cell
+          // — not a step past the press — and the last is 24 points
+          // further, in the view's device pixels.
+          expect(h.emitted, hasLength(3), reason: 'at 288, 300 and 312');
+          expect(
+            h.emitted.last.panX - h.emitted.first.panX,
+            24 * tester.view.devicePixelRatio,
+            reason: '312 − 288',
+          );
+          expect(h.emitted.last.panY, h.emitted.first.panY);
+        });
+
+        testWidgets('${kind.name}: a drag that leaves it and comes back does '
+            'not press it', (tester) async {
+          final h = await pump(tester, drawing: false);
+          final gesture = await tester.startGesture(
+            tester.getCenter(find.byKey(cellKey)),
+            kind: kind,
+          );
+          for (final step in const [
+            Offset(30, 0),
+            Offset(30, 0),
+            Offset(-30, 0),
+            Offset(-30, 0),
+          ]) {
+            await gesture.moveBy(step);
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          await gesture.up();
+          await tester.pumpAndSettle();
+          expect(h.pressed, isEmpty);
+          expect(h.emitted, isNotEmpty, reason: 'it panned while out');
+        });
+      }
+    });
+  });
+
+  // The cell's own half of the law, with no canvas around it to take the
+  // press as a pan: a press that left the cell is not the cell's, even
+  // when it comes back inside to let go.
+  testWidgets('a cell alone: a press that leaves it and comes back does not '
+      'press it — one that stays does', (tester) async {
+    final pressed = <int>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 80,
+            height: 40,
+            child: PressFireScope(
+              fireOn: PressFire.upInsideOrPan,
+              child: ControlPressClaim(
+                key: cellKey,
+                onPressed: () => pressed.add(2),
+                child: const ColoredBox(color: Color(0xFF608040)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final left = await tester.startGesture(
+      const Offset(40, 20),
+      kind: PointerDeviceKind.mouse,
+    );
+    await left.moveTo(const Offset(120, 20));
+    await tester.pump();
+    await left.moveTo(const Offset(40, 20));
+    await tester.pump();
+    await left.up();
+    await tester.pumpAndSettle();
+    expect(pressed, isEmpty);
+
+    final stayed = await tester.startGesture(
+      const Offset(40, 20),
+      kind: PointerDeviceKind.mouse,
+    );
+    await stayed.moveTo(const Offset(70, 30));
+    await tester.pump();
+    await stayed.up();
+    await tester.pumpAndSettle();
+    expect(pressed, [2]);
   });
 
   testWidgets("⛔drawing ON: a plain mouse drag is not the view's", (
