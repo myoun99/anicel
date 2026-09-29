@@ -96,7 +96,10 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   static const Color readyBarColor = Color(0xFF54B435);
 
   /// The strip's thickness along the ruler's bottom edge.
-  static const double readyBarThickness = 3;
+  ///
+  /// 🗣️F-246 (유저 2026-09-30): 「재생준비완료인 초록띠가 너무 세로가 두꺼움.
+  /// 지금의 절반정도로 얇게」. ↩️3px.
+  static const double readyBarThickness = 1.5;
 
   ({int startIndex, int endIndexExclusive}) _visibleWindow() =>
       visibleFrameWindowFor(
