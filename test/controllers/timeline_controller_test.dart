@@ -370,11 +370,14 @@ void main() {
         const TimelineExposure.drawing(FrameId('a'), length: 1),
         reason: 'the old rule stretched it to 3, reaching b at 6',
       );
+      // 🗣️F-235 (유저 2026-09-29): 「블록, 빈 공간에 붙여넣는건데 대체 왜 뒤가
+      // 밀려나냐니까?」 ↩️b used to move to 7 even though there was room.
       expect(
-        fixture.layer.timeline[7],
+        fixture.layer.timeline[6],
         const TimelineExposure.drawing(FrameId('b'), length: 2),
-        reason: 'b moved aside even though there was room',
+        reason: 'there was room, so b stays',
       );
+      expect(fixture.layer.timeline.containsKey(7), isFalse);
     });
 
     test('requires the source frame to exist in the layer', () {

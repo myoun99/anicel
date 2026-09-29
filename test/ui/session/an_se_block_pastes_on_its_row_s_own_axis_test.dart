@@ -100,8 +100,8 @@ void main() {
   }
 
   group('🚨the verbs act on the track\'s row, where the playhead is on it', () {
-    test('in cut 2, a copied block pastes AT the playhead and what was after '
-        'it moves aside by the pasted length', () {
+    test('in cut 2, a copied block pastes AT the playhead, and what was after '
+        'it stays where the gap had room (F-235)', () {
       final cut2 = openCut2();
       final a = entry(s1, 1, speaker: 'A');
       final b = entry(s1, 6, speaker: 'B', length: 1);
@@ -128,10 +128,12 @@ void main() {
         reason: 'copied standing — ONE comma, on an SE row as on any row '
             '(F-152: 「1콤마로서 붙혀넣게」)',
       );
+      // 🗣️F-235 (유저 2026-09-29): 「블록, 빈 공간에 붙여넣는건데 대체 왜 뒤가
+      // 밀려나냐니까?」 ↩️B moved aside by the pasted length, to 7.
       expect(
-        blockAt(s1, cut2 + 7)?.frame.id,
+        blockAt(s1, cut2 + 6)?.frame.id,
         b.id,
-        reason: 'what was after the playhead moves aside by that length',
+        reason: 'the one comma fits the gap at 3..5, so B stays at 6',
       );
     });
 
@@ -146,7 +148,7 @@ void main() {
 
       expect(blockAt(s1, 1)?.frame.id, a.id);
       expect(blockAt(s1, 3)?.frame.seName, 'A');
-      expect(blockAt(s1, 7)?.frame.id, b.id);
+      expect(blockAt(s1, 6)?.frame.id, b.id, reason: 'F-235: room, so no push');
     });
 
     test('in cut 2, 잘라내기 lifts the block under the playhead and leaves its '

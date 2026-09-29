@@ -330,10 +330,12 @@ void main() {
           ),
           2,
         );
-        // 🚨T3: the keys after 3 each moved by the clip's one cell. The old
-        // paste dropped into the gap without disturbing anything, which is
-        // the same rule that decided its length for it.
-        expect(layer.timeline.keys, orderedEquals([0, 3, 6, 10]));
+        // 🗣️F-235 (유저 2026-09-29): 「겹치는 공간이 전혀 없는 붙여넣기인데도
+        // 뒤가 밀려나니까」 — the one cell fits the gap at 3, so nothing after
+        // it moves. ↩️T3 moved every key after 3 by the clip's cell
+        // ([0, 3, 6, 10]); the length it gave the paste — the clip's, not the
+        // gap's — stands.
+        expect(layer.timeline.keys, orderedEquals([0, 3, 5, 9]));
         expect(layer.frames, hasLength(2));
       },
     );
