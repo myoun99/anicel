@@ -120,6 +120,9 @@ class ContePictureLive extends StatelessWidget {
                   lineage: (window.key.layerId, window.key.frameId),
                 ),
                 onBufferBytes: (bytes) => _count(window.id, bytes),
+                // The page prints this picture under it: taking over from
+                // the print, the live one shows no less on its first frame.
+                alreadyShown: true,
               ),
             ),
           ),
