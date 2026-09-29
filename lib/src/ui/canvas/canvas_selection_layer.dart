@@ -1517,29 +1517,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (size.isEmpty) {
       return null;
     }
-    final corners = [
-      for (final corner in <ViewportPoint>[
-        ViewportPoint(x: 0, y: 0),
-        ViewportPoint(x: size.width, y: 0),
-        ViewportPoint(x: size.width, y: size.height),
-        ViewportPoint(x: 0, y: size.height),
-      ])
-        widget.viewport.viewportToCanvas(corner),
-    ];
-    final bounds = pointsBounds([
-      for (final point in corners) Offset(point.x, point.y),
-    ]);
-    if (!bounds.left.isFinite ||
-        !bounds.top.isFinite ||
-        !bounds.right.isFinite ||
-        !bounds.bottom.isFinite) {
-      return null;
-    }
-    return (
-      left: bounds.left - _previewClipPadding,
-      top: bounds.top - _previewClipPadding,
-      right: bounds.right + _previewClipPadding,
-      bottom: bounds.bottom + _previewClipPadding,
+    return canvasShownPadded(
+      size,
+      widget.viewport.viewportToCanvas,
+      _previewClipPadding,
     );
   }
 
@@ -3633,3 +3614,37 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 // (The hold's clip used to be a `ClipPath` around the float's widget, in
 // screen space. TS1 turned the float into a canvas-space description, so the
 // clip travels inside it and the clipper class is gone.)
+
+/// The canvas a view [size] big shows through [toCanvas], [padding] wider
+/// every way.
+///
+/// All four corners are mapped, not two: the canvas turns and flips, and
+/// the bounds of a turned view are the bounds of its mapped corners.
+/// ↩️It asked whether a corner mapped to a finite point, and answered null
+/// if not — a check nothing could reach: a [CanvasPoint] refuses any other
+/// (since 06-21, before the check came in on 08-13).
+@visibleForTesting
+SelectionVisibleRect canvasShownPadded(
+  Size size,
+  CanvasPoint Function(ViewportPoint corner) toCanvas,
+  double padding,
+) {
+  final corners = [
+    for (final corner in <ViewportPoint>[
+      ViewportPoint(x: 0, y: 0),
+      ViewportPoint(x: size.width, y: 0),
+      ViewportPoint(x: size.width, y: size.height),
+      ViewportPoint(x: 0, y: size.height),
+    ])
+      toCanvas(corner),
+  ];
+  final bounds = pointsBounds([
+    for (final point in corners) Offset(point.x, point.y),
+  ]);
+  return (
+    left: bounds.left - padding,
+    top: bounds.top - padding,
+    right: bounds.right + padding,
+    bottom: bounds.bottom + padding,
+  );
+}
