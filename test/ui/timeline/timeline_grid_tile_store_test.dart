@@ -199,6 +199,78 @@ void main() {
     expect(empty, isEmpty);
   });
 
+  // 🗣️F-208 (유저 2026-09-29, Android): 「블록 선 표시 제거 활성화했는데
+  // 6콤마에 한번 세로선 존재. 줌 할때마다 위치바뀜」. A tile is as many
+  // pixels as its span's length rounds UP to, so at a fractional device
+  // pixel ratio the span ends inside the tile's last pixel — and paper that
+  // stopped there left that pixel part-covered: a line of ground at every
+  // tile's end, wherever the zoom put the tile edges.
+  test('a block running on past its tile covers the tile to its last '
+      'pixel', () {
+    const cell = 17.0;
+    const span = 6;
+    final layer = Layer(
+      id: const LayerId('layer-long'),
+      name: 'L',
+      frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
+      timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 12)},
+    );
+    for (final axis in Axis.values) {
+      for (final dpr in [1.25, 2.625, 2.75]) {
+        final what = '$axis at ×$dpr';
+        expect(
+          span * cell * dpr % 1,
+          isNot(0),
+          reason: 'fixture ($what): the span ends inside its last pixel',
+        );
+        final painter = TimelineRowCellsPainter(
+          layer: layer,
+          axis: axis,
+          geometry: testFrameGeometry(
+            frameCellExtent: cell,
+            frameEndIndexExclusive: 40,
+          ),
+          crossAxisExtent: 28,
+          exposureStateForLayer: stateFor,
+          colorScheme: const ColorScheme.dark(),
+          baseTextStyle: const TextStyle(fontSize: 11),
+        );
+        final along = (span * cell * dpr).ceil();
+        final across = (28 * dpr).ceil();
+        final horizontal = axis == Axis.horizontal;
+        final width = horizontal ? along : across;
+        final pixels = Uint8List(along * across * 4);
+        expect(
+          timelineGridRasterTileReference(
+            pixels: pixels,
+            tileWidth: width,
+            tileHeight: horizontal ? across : along,
+            backgroundRgba: 0,
+            ops: timelineGridSubstrateOps(
+              painter: painter,
+              spanStartIndex: 0,
+              spanEndIndexExclusive: span,
+              devicePixelRatio: dpr,
+            ),
+          ),
+          0,
+        );
+        int alphaAt(int main) {
+          final middle = across ~/ 2;
+          final (x, y) = horizontal ? (main, middle) : (middle, main);
+          return pixels[(y * width + x) * 4 + 3];
+        }
+
+        expect(alphaAt(along - 2), greaterThan(0), reason: 'fixture: paper');
+        expect(
+          alphaAt(along - 1),
+          alphaAt(along - 2),
+          reason: '$what: the last pixel is paper like the one before it',
+        );
+      }
+    }
+  });
+
   test('T3: tiles carry the FOREGROUND ink too — the drawing cell\'s mark '
       'glyph shows up as a strong delta over the substrate alone', () async {
     if (!available) {

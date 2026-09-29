@@ -584,18 +584,22 @@ class TimelineRowCellsPainter extends CustomPainter
       runColor = null;
     }
 
+    // A cell joins the run before it when no corner stands between them and
+    // it is the same paper.
+    bool joins(int frame, Color color) =>
+        color == runColor && cellModelAt(frame).segment.continuesFromPrevious;
+
     // By stretch (I-22): the rest of a stretch is its first cell again, so
     // it joins the run that cell joined or started, or lays nothing.
     for (final (start: frame, :end) in _stretchesIn(from, to)) {
       final color = resolvedCellStyleFor(frame).background;
-      final continues = cellModelAt(frame).segment.continuesFromPrevious;
       assert(
-        end - frame == 1 || continues || color.a == 0,
+        end - frame == 1 ||
+            cellModelAt(frame).segment.continuesFromPrevious ||
+            color.a == 0,
         'a stretch that starts a block is that one cell',
       );
-      // A cell joins the run before it when no corner stands between them
-      // and it is the same paper.
-      if (color == runColor && continues) {
+      if (joins(frame, color)) {
         continue;
       }
       close(frame);
@@ -606,7 +610,19 @@ class TimelineRowCellsPainter extends CustomPainter
         runColor = color;
       }
     }
-    close(to);
+    // 🗣️F-208 (유저 2026-09-29, Android): 「6콤마에 한번 세로선 존재. 줌 할때마다
+    // 위치바뀜」. Through [to] itself when the paper runs on into it: a tile
+    // ending here is as many pixels as its length rounds UP to, so at a
+    // fractional device pixel ratio its last pixel holds a sliver of the
+    // cell at [to]. Paper that stopped at [to] left that pixel part-covered —
+    // a line of ground wherever two tiles of one block met. The lines below
+    // reach through [to] for the same sliver.
+    close(
+      to < frameEndIndexExclusive &&
+              joins(to, resolvedCellStyleFor(to).background)
+          ? to + 1
+          : to,
+    );
 
     final lines = <({Rect rect, Color color})>[];
     if (blockFrameLines) {
