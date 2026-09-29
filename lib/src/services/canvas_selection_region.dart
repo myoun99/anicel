@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../core/point_bounds.dart';
 import '../models/canvas_point.dart';
 import '../models/dirty_region.dart';
 import 'canvas_selection_shape.dart';
@@ -234,27 +235,21 @@ class CanvasSelectionRegion {
 
   ({double left, double top, double right, double bottom})
   _computeCoverageBounds() {
-    var minX = double.infinity;
-    var minY = double.infinity;
-    var maxX = double.negativeInfinity;
-    var maxY = double.negativeInfinity;
-    for (final step in steps) {
-      if (step.mode == SelectionCombineMode.subtract ||
-          step.mode == SelectionCombineMode.intersect) {
-        continue;
-      }
-      for (final shape in step.shapes) {
-        for (final point in shape.points) {
-          minX = math.min(minX, point.x);
-          minY = math.min(minY, point.y);
-          maxX = math.max(maxX, point.x);
-          maxY = math.max(maxY, point.y);
-        }
-      }
-    }
+    final bounds = pointsBounds([
+      for (final step in steps)
+        if (step.mode != SelectionCombineMode.subtract &&
+            step.mode != SelectionCombineMode.intersect)
+          for (final shape in step.shapes)
+            for (final point in shape.points) ui.Offset(point.x, point.y),
+    ]);
     // An intersect-only tail cannot happen (the first step replaces), so
-    // the loop always saw at least one polygon.
-    return (left: minX, top: minY, right: maxX, bottom: maxY);
+    // the walk always saw at least one polygon.
+    return (
+      left: bounds.left,
+      top: bounds.top,
+      right: bounds.right,
+      bottom: bounds.bottom,
+    );
   }
 
   /// Whether any of [pixels] can be selected — false only when they lie

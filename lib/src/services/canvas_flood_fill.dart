@@ -1,8 +1,10 @@
 import 'dart:ffi' show Pointer, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show Offset;
 
 import '../core/argb_channels.dart';
+import '../core/point_bounds.dart';
 import '../models/dirty_region.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -586,29 +588,23 @@ class LazyCanvasRasterRgb {
   /// What a compose tile at [world]'s origin can read of a layer carried by
   /// [toArtwork]: its corners' preimage, one tent wider.
   static DirtyRegion _preimageOf(GuideTransform toArtwork, DirtyRegion world) {
-    var minX = double.infinity;
-    var minY = double.infinity;
-    var maxX = double.negativeInfinity;
-    var maxY = double.negativeInfinity;
-    for (final (x, y) in [
-      (world.left, world.top),
-      (world.left + _tileSize, world.top),
-      (world.left, world.top + _tileSize),
-      (world.left + _tileSize, world.top + _tileSize),
-    ]) {
-      final corner = toArtwork.apply(
-        CanvasPoint(x: x.toDouble(), y: y.toDouble()),
-      );
-      minX = math.min(minX, corner.x);
-      minY = math.min(minY, corner.y);
-      maxX = math.max(maxX, corner.x);
-      maxY = math.max(maxY, corner.y);
-    }
+    final corners = [
+      for (final (x, y) in [
+        (world.left, world.top),
+        (world.left + _tileSize, world.top),
+        (world.left, world.top + _tileSize),
+        (world.left + _tileSize, world.top + _tileSize),
+      ])
+        toArtwork.apply(CanvasPoint(x: x.toDouble(), y: y.toDouble())),
+    ];
+    final bounds = pointsBounds([
+      for (final corner in corners) Offset(corner.x, corner.y),
+    ]);
     return DirtyRegion(
-      left: minX.floor() - 2,
-      top: minY.floor() - 2,
-      rightExclusive: maxX.ceil() + 2,
-      bottomExclusive: maxY.ceil() + 2,
+      left: bounds.left.floor() - 2,
+      top: bounds.top.floor() - 2,
+      rightExclusive: bounds.right.ceil() + 2,
+      bottomExclusive: bounds.bottom.ceil() + 2,
     );
   }
 

@@ -2,6 +2,9 @@ import '../models/dirty_region.dart';
 import '../models/tiles_covering.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show Offset;
+
+import '../core/point_bounds.dart';
 
 import '../models/bitmap_surface.dart';
 import '../models/pasteboard_bounds.dart';
@@ -21,8 +24,8 @@ import 'selection_affine.dart';
 export 'canvas_selection_shape.dart';
 export 'selection_affine.dart';
 
-/// The integer canvas rect a warp lands in: the bounding box of [points],
-/// snapped outward.
+/// The integer canvas rect a warp lands in: the bounding box of [points]
+/// ([pointsBounds]), snapped outward.
 ///
 /// Shared by all three warps so their geometry cannot drift apart — they
 /// each had their own copy of this loop, and three copies of a bounding
@@ -30,23 +33,16 @@ export 'selection_affine.dart';
 ({int left, int top, int width, int height}) selectionWarpOutputRect(
   List<CanvasPoint> points,
 ) {
-  var minX = double.infinity;
-  var minY = double.infinity;
-  var maxX = double.negativeInfinity;
-  var maxY = double.negativeInfinity;
-  for (final point in points) {
-    minX = math.min(minX, point.x);
-    maxX = math.max(maxX, point.x);
-    minY = math.min(minY, point.y);
-    maxY = math.max(maxY, point.y);
-  }
-  final left = minX.floor();
-  final top = minY.floor();
+  final bounds = pointsBounds([
+    for (final point in points) Offset(point.x, point.y),
+  ]);
+  final left = bounds.left.floor();
+  final top = bounds.top.floor();
   return (
     left: left,
     top: top,
-    width: math.max(1, maxX.ceil() - left),
-    height: math.max(1, maxY.ceil() - top),
+    width: math.max(1, bounds.right.ceil() - left),
+    height: math.max(1, bounds.bottom.ceil() - top),
   );
 }
 

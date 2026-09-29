@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
+import '../../core/point_bounds.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../theme/app_theme.dart' show AppColors;
 import '../../models/camera_pose.dart';
@@ -57,21 +58,9 @@ Rect cameraFrameBoundsInCanvas({
   required CameraPose pose,
   required CanvasSize cameraFrameSize,
 }) {
-  final corners = cameraFrameCornersInCanvas(
-    pose: pose,
-    cameraFrameSize: cameraFrameSize,
+  return pointsBounds(
+    cameraFrameCornersInCanvas(pose: pose, cameraFrameSize: cameraFrameSize),
   );
-  var left = corners.first.dx;
-  var top = corners.first.dy;
-  var right = corners.first.dx;
-  var bottom = corners.first.dy;
-  for (final corner in corners.skip(1)) {
-    left = math.min(left, corner.dx);
-    top = math.min(top, corner.dy);
-    right = math.max(right, corner.dx);
-    bottom = math.max(bottom, corner.dy);
-  }
-  return Rect.fromLTRB(left, top, right, bottom);
 }
 
 /// The camera frame's corners in viewport (screen) coordinates:

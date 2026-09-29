@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart'
     show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart';
 
+import '../../core/point_bounds.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
@@ -1516,30 +1517,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (size.isEmpty) {
       return null;
     }
-    var minX = double.infinity;
-    var minY = double.infinity;
-    var maxX = double.negativeInfinity;
-    var maxY = double.negativeInfinity;
-    for (final corner in <ViewportPoint>[
-      ViewportPoint(x: 0, y: 0),
-      ViewportPoint(x: size.width, y: 0),
-      ViewportPoint(x: size.width, y: size.height),
-      ViewportPoint(x: 0, y: size.height),
-    ]) {
-      final point = widget.viewport.viewportToCanvas(corner);
-      minX = math.min(minX, point.x);
-      maxX = math.max(maxX, point.x);
-      minY = math.min(minY, point.y);
-      maxY = math.max(maxY, point.y);
-    }
-    if (!minX.isFinite || !minY.isFinite || !maxX.isFinite || !maxY.isFinite) {
+    final corners = [
+      for (final corner in <ViewportPoint>[
+        ViewportPoint(x: 0, y: 0),
+        ViewportPoint(x: size.width, y: 0),
+        ViewportPoint(x: size.width, y: size.height),
+        ViewportPoint(x: 0, y: size.height),
+      ])
+        widget.viewport.viewportToCanvas(corner),
+    ];
+    final bounds = pointsBounds([
+      for (final point in corners) Offset(point.x, point.y),
+    ]);
+    if (!bounds.left.isFinite ||
+        !bounds.top.isFinite ||
+        !bounds.right.isFinite ||
+        !bounds.bottom.isFinite) {
       return null;
     }
     return (
-      left: minX - _previewClipPadding,
-      top: minY - _previewClipPadding,
-      right: maxX + _previewClipPadding,
-      bottom: maxY + _previewClipPadding,
+      left: bounds.left - _previewClipPadding,
+      top: bounds.top - _previewClipPadding,
+      right: bounds.right + _previewClipPadding,
+      bottom: bounds.bottom + _previewClipPadding,
     );
   }
 
