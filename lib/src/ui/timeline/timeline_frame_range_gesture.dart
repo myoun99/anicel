@@ -289,7 +289,8 @@ class TimelineFrameRangeGestureLayer extends StatefulWidget {
 }
 
 class _TimelineFrameRangeGestureLayerState
-    extends State<TimelineFrameRangeGestureLayer> {
+    extends State<TimelineFrameRangeGestureLayer>
+    with _RangeDragFirstStep {
   _RangeDragMode _mode = _RangeDragMode.none;
   int _anchorIndex = 0;
   double _mainDelta = 0;
@@ -310,6 +311,7 @@ class _TimelineFrameRangeGestureLayerState
   /// the release below does not say the same thing a second time.
   bool _clearedOnDown = false;
 
+  @override
   int _frameAt(Offset localPosition) {
     final main = widget.axis == Axis.horizontal
         ? localPosition.dx
@@ -322,15 +324,18 @@ class _TimelineFrameRangeGestureLayerState
     return frame < 0 ? 0 : frame;
   }
 
-  bool _firstStepAt(Offset down, Offset now) => _rangeDragStepped(
-    down: down,
-    now: now,
-    axis: widget.axis,
-    cellExtent: widget.geometry.value.frameCellExtent,
-    rowExtent: widget.crossAxisExtent,
-    frameAt: _frameAt,
-    isInSelection: (frame) => widget.callbacks.isInSelection(widget.row, frame),
-  );
+  @override
+  bool _pressedInSelection(int frame) =>
+      widget.callbacks.isInSelection(widget.row, frame);
+
+  @override
+  Axis get _dragAxis => widget.axis;
+
+  @override
+  double get _dragCellExtent => widget.geometry.value.frameCellExtent;
+
+  @override
+  double get _dragRowExtent => widget.crossAxisExtent;
 
   void _startDrag(Offset localPosition) {
     _scrolledMain = 0;
@@ -718,7 +723,8 @@ class TimelineLaneRangeGestureLayer extends StatefulWidget {
 }
 
 class _TimelineLaneRangeGestureLayerState
-    extends State<TimelineLaneRangeGestureLayer> {
+    extends State<TimelineLaneRangeGestureLayer>
+    with _RangeDragFirstStep {
   _RangeDragMode _mode = _RangeDragMode.none;
   int _anchorIndex = 0;
   double _mainDelta = 0;
@@ -732,6 +738,7 @@ class _TimelineLaneRangeGestureLayerState
   // Lane rows are not memoized (their bands rebuild on every host pass), so
   // this layer keeps the plain scalars — the live-geometry treatment buys
   // nothing where the widget rebuilds anyway.
+  @override
   int _frameAt(Offset localPosition) {
     final main = widget.axis == Axis.horizontal
         ? localPosition.dx
@@ -755,8 +762,8 @@ class _TimelineLaneRangeGestureLayerState
   TimelineRowAddress get _rowAddress =>
       LaneRowAddress(widget.layer.id, widget.laneId);
 
-  /// Whether [frame] of this band is inside the lane selection.
-  bool _isInSelection(int frame) {
+  @override
+  bool _pressedInSelection(int frame) {
     final selection = widget.callbacks.selection.value;
     // R26 #3 follow-up: the HEADER band counts as inside a whole-group
     // selection, so one drag on it grabs every member lane's keys (user
@@ -766,21 +773,20 @@ class _TimelineLaneRangeGestureLayerState
         selection.contains(frame);
   }
 
-  bool _firstStepAt(Offset down, Offset now) => _rangeDragStepped(
-    down: down,
-    now: now,
-    axis: widget.axis,
-    cellExtent: widget.frameCellExtent,
-    rowExtent: widget.crossAxisExtent,
-    frameAt: _frameAt,
-    isInSelection: _isInSelection,
-  );
+  @override
+  Axis get _dragAxis => widget.axis;
+
+  @override
+  double get _dragCellExtent => widget.frameCellExtent;
+
+  @override
+  double get _dragRowExtent => widget.crossAxisExtent;
 
   void _startDrag(Offset localPosition) {
     _scrolledMain = 0;
     _scrolledCross = 0;
     final frame = _frameAt(localPosition);
-    if (_isInSelection(frame) && widget.callbacks.onMoveBegin()) {
+    if (_pressedInSelection(frame) && widget.callbacks.onMoveBegin()) {
       _mode = _RangeDragMode.move;
       _mainDelta = 0;
       _lastFrames = 0;
@@ -1005,36 +1011,46 @@ Widget _eagerPanDetector({
   );
 }
 
-/// Whether a range drag pressed at [down] and now at [now] has taken its
-/// FIRST STEP ([EagerPanGestureRecognizer.firstStepAt]) — the question both
-/// range layers ask, answered once (F-238). A press inside the selection
-/// steps when the block would leave its seat, by the nearest-cell step every
-/// frame drag reads ([commaDragFrameDelta]); any other press when the pointer
-/// has left the cell it pressed — along the frame axis, or off its row
-/// across it (F-138-Q1 「누른 상자 벗어나면 시작」).
-///
-/// ⛔A move's ROW step is not asked: its deadband is three quarters of a row
-/// ([timelineRowStepDelta]), which on any row 24px or taller lies past the
-/// 18px hit slop — the slop comes first there.
-bool _rangeDragStepped({
-  required Offset down,
-  required Offset now,
-  required Axis axis,
-  required double cellExtent,
-  required double rowExtent,
-  required int Function(Offset localPosition) frameAt,
-  required bool Function(int frame) isInSelection,
-}) {
-  final horizontal = axis == Axis.horizontal;
-  final pressed = frameAt(down);
-  if (isInSelection(pressed)) {
-    final travel = now - down;
-    return commaDragFrameDelta(
-          accumulatedDelta: horizontal ? travel.dx : travel.dy,
-          frameCellExtent: cellExtent,
-        ) !=
-        0;
+/// A range drag's FIRST STEP ([EagerPanGestureRecognizer.firstStepAt]) — the
+/// question both range layers ask, answered once (F-238). Each layer says
+/// where a press lands and how big its cells are; this says when the drag
+/// has begun.
+mixin _RangeDragFirstStep {
+  Axis get _dragAxis;
+
+  /// A cell's extent along the frame axis.
+  double get _dragCellExtent;
+
+  /// The row's extent across it.
+  double get _dragRowExtent;
+
+  int _frameAt(Offset localPosition);
+
+  bool _pressedInSelection(int frame);
+
+  /// Whether a press at [down], now at [now], has stepped. A press inside the
+  /// selection steps when the block would leave its seat, by the nearest-cell
+  /// step every frame drag reads ([commaDragFrameDelta]); any other press
+  /// when the pointer has left the cell it pressed — along the frame axis, or
+  /// off its row across it (F-138-Q1 「누른 상자 벗어나면 시작」).
+  ///
+  /// ⛔A move's ROW step is not asked: its deadband is three quarters of a
+  /// row ([timelineRowStepDelta]), which on any row 24px or taller lies past
+  /// the 18px hit slop — the slop comes first there.
+  bool _firstStepAt(Offset down, Offset now) {
+    final horizontal = _dragAxis == Axis.horizontal;
+    final pressed = _frameAt(down);
+    if (_pressedInSelection(pressed)) {
+      final travel = now - down;
+      return commaDragFrameDelta(
+            accumulatedDelta: horizontal ? travel.dx : travel.dy,
+            frameCellExtent: _dragCellExtent,
+          ) !=
+          0;
+    }
+    final crossNow = horizontal ? now.dy : now.dx;
+    return _frameAt(now) != pressed ||
+        crossNow < 0 ||
+        crossNow >= _dragRowExtent;
   }
-  final crossNow = horizontal ? now.dy : now.dx;
-  return frameAt(now) != pressed || crossNow < 0 || crossNow >= rowExtent;
 }

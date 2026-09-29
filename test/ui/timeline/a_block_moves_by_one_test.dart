@@ -257,24 +257,26 @@ void main() {
       );
     });
 
-    testWidgets('F-238: a pen select that leaves the pressed ROW starts '
-        'there too — the cell is a box, not a column', (tester) async {
-      final (heard, inside) = await mountSelected(tester, rowHeight: 28);
+    for (final (way, dy) in [('up', -1.0), ('down', 1.0)]) {
+      testWidgets('F-238: a pen select that leaves the pressed ROW ($way) '
+          'starts there too — the cell is a box, not a column', (tester) async {
+        final (heard, inside) = await mountSelected(tester, rowHeight: 28);
 
-      final gesture = await tester.startGesture(
-        inside + const Offset(cell * 5, 0),
-        kind: PointerDeviceKind.stylus,
-      );
-      // Fifteen pixels up: out of a 28px row, short of the 18px slop.
-      for (var moved = 0; moved < 15; moved += 1) {
-        await gesture.moveBy(const Offset(0, -1));
+        final gesture = await tester.startGesture(
+          inside + const Offset(cell * 5, 0),
+          kind: PointerDeviceKind.stylus,
+        );
+        // Fifteen pixels: out of a 28px row, short of the 18px slop.
+        for (var moved = 0; moved < 15; moved += 1) {
+          await gesture.moveBy(Offset(0, dy));
+          await tester.pump();
+        }
+
+        expect(heard.selects, isNotEmpty, reason: 'the select has begun');
+        await gesture.up();
         await tester.pump();
-      }
-
-      expect(heard.selects, isNotEmpty, reason: 'the select has begun');
-      await gesture.up();
-      await tester.pump();
-    });
+      });
+    }
   });
 
   group('lane band', () {
@@ -339,28 +341,32 @@ void main() {
       expect(heard.ends, 1);
     });
 
-    testWidgets('F-238: a pen select on the band that leaves its ROW starts '
-        'there', (tester) async {
-      final (heard, _) = await mountBand(tester, rowHeight: 28);
-      final band = find.byKey(
-        const ValueKey<String>('timeline-lane-range-gesture-layer-a-position'),
-      );
-      final height = tester.getSize(band).height;
-      expect(height, lessThan(36), reason: '⛔전제: the row is left before 18px');
+    for (final (way, dy) in [('up', -1.0), ('down', 1.0)]) {
+      testWidgets('F-238: a pen select on the band that leaves its ROW ($way) '
+          'starts there', (tester) async {
+        final (heard, _) = await mountBand(tester, rowHeight: 28);
+        final band = find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-range-gesture-layer-a-position',
+          ),
+        );
+        final height = tester.getSize(band).height;
+        expect(height, lessThan(36), reason: '⛔전제: left before 18px');
 
-      final gesture = await tester.startGesture(
-        tester.getTopLeft(band) + Offset(cell * 1.5, height / 2),
-        kind: PointerDeviceKind.stylus,
-      );
-      for (var moved = 0; moved < height / 2 + 1; moved += 1) {
-        await gesture.moveBy(const Offset(0, -1));
+        final gesture = await tester.startGesture(
+          tester.getTopLeft(band) + Offset(cell * 1.5, height / 2),
+          kind: PointerDeviceKind.stylus,
+        );
+        for (var moved = 0; moved < height / 2 + 1; moved += 1) {
+          await gesture.moveBy(Offset(0, dy));
+          await tester.pump();
+        }
+
+        expect(heard.selects, isNotEmpty, reason: 'the select has begun');
+        await gesture.up();
         await tester.pump();
-      }
-
-      expect(heard.selects, isNotEmpty, reason: 'the select has begun');
-      await gesture.up();
-      await tester.pump();
-    });
+      });
+    }
 
     testWidgets('🚨F-238: a pen select on the band starts where it leaves '
         'the pressed cell', (tester) async {
