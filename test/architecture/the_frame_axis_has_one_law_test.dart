@@ -67,6 +67,10 @@ void main() {
       1,
       'a handle\'s size — half a cell, clamped',
     ),
+    'lib/src/ui/timeline/timeline_lane_rows.dart': (
+      1,
+      'a header key marker is its members\' marker times 1.5 — a size',
+    ),
     'lib/src/ui/timeline/timeline_block_word.dart': (
       1,
       'a word\'s cell inside the box its span was laid out in',

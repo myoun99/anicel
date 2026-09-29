@@ -5342,10 +5342,10 @@ class _StoryboardTrackRow extends StatelessWidget {
           ),
           top: 0,
           bottom: 0,
-          width:
-              timelineScale.pixelsPerFrame *
-              (selection.endIndexExclusive -
-                  selection.startIndex),
+          width: timelineScale.spanWidth(
+            anchor.startFrame + selection.startIndex,
+            anchor.startFrame + selection.endIndexExclusive,
+          ),
           child: Semantics(
             key: const ValueKey<String>(
               'storyboard-strip-range-selection',
