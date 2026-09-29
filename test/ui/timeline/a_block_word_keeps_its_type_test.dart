@@ -25,6 +25,10 @@ import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart'
+    show TimelineGridTileOp;
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart'
+    show TimelineGridTileStore;
 import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -195,6 +199,57 @@ void main() {
       );
       expect(spy.widths[at], lessThan(naturalName(painter, 1).width));
       expect(spy.xScales[at], 1);
+    });
+
+    test('a tile bakes the word its gaps set — told apart from the same word '
+        'unset', () async {
+      const cell = 9.0;
+      // 「12」 twice: in three cells, a pixel short of it, and in four.
+      final twice = TimelineRowCellsPainter(
+        layer: Layer(
+          id: const LayerId('twice'),
+          name: 'T',
+          frames: [
+            Frame(id: const FrameId('t0'), duration: 1, strokes: const []),
+            Frame(id: const FrameId('t3'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('t0'), length: 3),
+            3: const TimelineExposure.drawing(FrameId('t3'), length: 4),
+          },
+        ),
+        geometry: testFrameGeometry(
+          frameCellExtent: cell,
+          frameEndIndexExclusive: 16,
+        ),
+        crossAxisExtent: rowExtent,
+        exposureStateForLayer: stateFor,
+        frameNameForLayer: (_, frame) => frame == 0 || frame == 3 ? '12' : null,
+        colorScheme: const ColorScheme.dark(),
+        baseTextStyle: base,
+      );
+      final ops = await TimelineGridTileStore.instance.debugForegroundOps(
+        painter: twice,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 8,
+        devicePixelRatio: 1,
+      );
+      final widths = <int>[];
+      for (var at = 0; at < ops.length;) {
+        switch (ops[at]) {
+          case TimelineGridTileOp.glyph:
+            widths.add(ops[at + 5]);
+            at += 8;
+          case TimelineGridTileOp.rrectFill:
+            at += 8;
+          default:
+            at += 6;
+        }
+      }
+      // Baked at its ink plus the bake's two-pixel margin: the tight one
+      // runs 27px — its gap gave one — and the roomy one its whole 28 (the
+      // empty stretch's `x` after them is the third glyph).
+      expect(widths.take(2), [27 + 2, 28 + 2]);
     });
 
     test('a squeezed row narrows it ACROSS instead of shrinking the type', () {
