@@ -166,6 +166,31 @@ void main() {
       await press(tester);
     });
 
+    testWidgets('a frame the engine refused is asked for again when the hand '
+        'turns to it — the viewer\'s law, 「turning a page is asking again」', (
+      tester,
+    ) async {
+      final fake = FakeVideoBackend(frameCount: 12)..held.add(5);
+      debugVideoDecodeBackend = fake;
+      await show(tester, movie);
+      int asksForFive() => fake.asked.where((index) => index == 5).length;
+
+      bar(tester).onSeek(5);
+      await settleAsync(tester, () => asksForFive() > 0);
+      fake.held.remove(5);
+      // Nothing asks again by itself: nothing is playing, so no tick forgets.
+      await settleAsync(tester, () => asksForFive() > 1, attempts: 10);
+      expect(asksForFive(), 1, reason: 'fixture: the refusal is remembered');
+
+      bar(tester).onSeek(5);
+
+      expect(
+        await settleAsync(tester, () => asksForFive() > 1),
+        isTrue,
+        reason: 'a refusal remembered forever is a surrender, not a wait',
+      );
+    });
+
     testWidgets('a path spelled with backslashes plays the sound the window '
         'conformed — by the key the pool and the conform store use', (
       tester,
