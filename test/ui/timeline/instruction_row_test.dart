@@ -20,7 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart'
     show TimelineFrameCellsRow;
 
-import '../../helpers/block_text_finder.dart';
+import '../../helpers/block_word_finder.dart';
 import 'timeline_cell_probe.dart';
 
 const _cutId = CutId('inst-cut');

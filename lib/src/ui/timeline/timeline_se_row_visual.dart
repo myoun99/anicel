@@ -623,21 +623,17 @@ class _SeNameBox extends StatelessWidget {
       growth: TimelineBlockWordGrowth.towardBlockEnd,
       acrossAlignment: 0.0,
     );
-    final word = axis == Axis.horizontal
-        ? TimelineBlockWord(
-            place: place,
-            child: ExcludeSemantics(
-              child: VerticalWritingText(
-                text: name,
-                style: style,
-                lineHeight: 1.05,
-                latinForm: VerticalLatinForm.upright,
-              ),
-            ),
-          )
-        : ExcludeSemantics(
-            child: TimelineBlockText(text: name, style: style, place: place),
-          );
+    final word = ExcludeSemantics(
+      child: axis == Axis.horizontal
+          ? TimelineBlockColumn(
+              text: name,
+              style: style,
+              lineHeight: 1.05,
+              latinForm: VerticalLatinForm.upright,
+              place: place,
+            )
+          : TimelineBlockText(text: name, style: style, place: place),
+    );
     final box = Semantics(
       label: 'SE name $name',
       // Own node even where an ancestor would merge labels (the dialog

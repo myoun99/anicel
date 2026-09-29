@@ -10,6 +10,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart'
+    show VerticalLatinForm, verticalWritingNaturalBox;
 import 'package:anicel/src/ui/text/word_condensation.dart'
     show maxGapTightening, wordFitsAsItIs;
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart' show FlipHudAxis;
@@ -37,7 +39,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
-import '../../helpers/block_text_finder.dart';
+import '../../helpers/block_word_finder.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨B (유저 2026-09-24, `block-word-size-at-zoom-Q1`): 「글자크기 그냥
@@ -408,6 +410,37 @@ void main() {
     );
   });
 
+  test('a column built as a widget gives up the space between its glyphs '
+      'first', () {
+    const style = TextStyle(fontSize: 9, fontFamily: 'Face');
+    final natural = verticalWritingNaturalBox(
+      'ドアー',
+      fontSize: 9,
+      lineHeight: 1.05,
+      latinForm: VerticalLatinForm.upright,
+    ).size;
+    final column = RenderTimelineBlockColumn(
+      text: 'ドアー',
+      style: style,
+      lineHeight: 1.05,
+      latinForm: VerticalLatinForm.upright,
+      place: (
+        axis: Axis.horizontal,
+        cells: 1,
+        cellIndex: 0,
+        growth: TimelineBlockWordGrowth.towardBlockEnd,
+        acrossAlignment: 0,
+      ),
+    )..layout(
+      BoxConstraints.tight(Size(2 * natural.width, natural.height - 1)),
+    );
+    expect(
+      column.wordRect.height,
+      natural.height - 1,
+      reason: 'its two gaps gave the pixel, and nothing narrowed it',
+    );
+  });
+
   group('a lane key\'s NAME', () {
     Future<void> pumpLane(
       WidgetTester tester, {
@@ -457,7 +490,7 @@ void main() {
               'diamond',
         );
         final origin = tester.getTopLeft(find.byType(TimelineLaneFrameRow));
-        final painted = blockTextRect(tester, word).shift(-origin);
+        final painted = blockWordRect(tester, word).shift(-origin);
         final along = axis == Axis.horizontal
             ? (painted.left, painted.right)
             : (painted.top, painted.bottom);
@@ -497,17 +530,11 @@ void main() {
     );
     final word = find.descendant(
       of: chip,
-      matching: find.byType(TimelineBlockWord),
+      matching: find.byType(TimelineBlockColumn),
     );
     expect(word, findsOneWidget);
     final room = tester.getRect(word);
-    final child = tester.renderObject<RenderBox>(
-      find.descendant(of: word, matching: find.byType(ExcludeSemantics)).first,
-    );
-    final painted = MatrixUtils.transformRect(
-      child.getTransformTo(null),
-      Offset.zero & child.size,
-    );
+    final painted = blockWordRect(tester, word);
     expect(painted.left, greaterThanOrEqualTo(room.left - 1e-6));
     expect(painted.right, lessThanOrEqualTo(room.right + 1e-6));
     expect(painted.top, greaterThanOrEqualTo(room.top - 1e-6));
@@ -564,7 +591,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-instruction-cam-0')),
     );
     for (final text in ['FROMHERE', 'TOTHERE']) {
-      final painted = blockTextRect(tester, findBlockText(text));
+      final painted = blockWordRect(tester, findBlockText(text));
       expect(
         painted.left,
         greaterThanOrEqualTo(span.left - 1e-6),

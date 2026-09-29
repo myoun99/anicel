@@ -50,7 +50,7 @@ void main() {
       callers().where((path) => !allowed.contains(path)),
       isEmpty,
       reason: 'a word keeps its type and narrows into its block instead '
-          '(timelineBlockWordLayout / TimelineBlockWord / wordFit)',
+          '(timelineBlockWordLayout / TimelineBlockText / wordFit)',
     );
   });
 }

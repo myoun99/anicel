@@ -38,7 +38,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_span_resolver.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
-import '../../helpers/block_text_finder.dart';
+import '../../helpers/block_word_finder.dart';
 import 'timeline_cell_probe.dart';
 
 /// 🚨B4 (2026-08-17, device report): the CAMERA row's timeline interactions

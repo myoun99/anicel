@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
+import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
+    show TimelineBlockColumn;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show seNameBoxExtent;
 
@@ -246,10 +248,10 @@ void main() {
     );
     await _ensureRowVisible(tester, _seLayerId);
 
-    final writing = tester.widget<VerticalWritingText>(
+    final writing = tester.widget<TimelineBlockColumn>(
       find.descendant(
         of: find.bySemanticsLabel('SE name Door SE'),
-        matching: find.byType(VerticalWritingText),
+        matching: find.byType(TimelineBlockColumn),
       ),
     );
     expect(writing.latinForm, VerticalLatinForm.upright);

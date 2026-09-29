@@ -10,7 +10,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
-import '../../helpers/block_text_finder.dart';
+import '../../helpers/block_word_finder.dart';
 
 /// ㉗ (user, 2026-08-12): 「fx(트랜스폼) 헤더의 유니언 마크를 카메라처럼
 /// 크게 — 멤버 유니언들의 합이라는 느낌이 나야 한다」 and 「유니언 이름은
@@ -139,7 +139,7 @@ void main() {
 
     for (final lane in [member, union]) {
       await pumpWideLane(tester, lane);
-      final name = blockTextRect(tester, findBlockText('Wall'));
+      final name = blockWordRect(tester, findBlockText('Wall'));
       expect(
         name.width,
         lessThan(wideCell - 8),

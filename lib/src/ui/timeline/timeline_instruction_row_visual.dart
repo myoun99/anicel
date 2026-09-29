@@ -273,8 +273,8 @@ class _InstructionSpan extends StatelessWidget {
   final CameraInstructionDef? def;
 
   /// A word of this span as a BLOCK word ([TimelineBlockText],
-  /// [TimelineBlockWord]): its block is the span, split into `event.length`
-  /// cells, and the word stays inside it.
+  /// [TimelineBlockColumn]): its block is the span, split into
+  /// `event.length` cells, and the word stays inside it.
   ///
   /// ↩️The writing used to run past the span onto the neighbours' cells
   /// (「paper writing spills over neighbours freely」 — mine, 2026-07-09, the
@@ -297,20 +297,16 @@ class _InstructionSpan extends StatelessWidget {
   /// beside a duration bar is read at a glance, and the printed sheet is
   /// set the same way for the same reason.
   Widget _word(String text, TextStyle style, TimelineBlockWordCells place) =>
-      axis == Axis.horizontal
-      ? ExcludeSemantics(
-          child: TimelineBlockText(text: text, style: style, place: place),
-        )
-      : TimelineBlockWord(
-          place: place,
-          child: ExcludeSemantics(
-            child: VerticalWritingText(
-              text: text,
-              latinForm: VerticalLatinForm.upright,
-              style: style,
-            ),
-          ),
-        );
+      ExcludeSemantics(
+        child: axis == Axis.horizontal
+            ? TimelineBlockText(text: text, style: style, place: place)
+            : TimelineBlockColumn(
+                text: text,
+                style: style,
+                latinForm: VerticalLatinForm.upright,
+                place: place,
+              ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -445,7 +441,8 @@ class _InstructionMarkPainter extends CustomPainter with RepaintOnProps {
   /// ⚠️F-220: an EVEN split of the box, so once cells are not whole pixels
   /// an endpoint cell here is within a pixel of the law's cell rather than
   /// on it (the box's own ends are the law's). Kept for the same reason as
-  /// above; [TimelineBlockWord] splits its box the same way.
+  /// above; a built block word ([TimelineBlockText]) splits its box the same
+  /// way.
   double _cellExtent(double mainExtent) =>
       eventLength < 1 ? mainExtent : mainExtent / eventLength;
 

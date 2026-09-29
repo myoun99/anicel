@@ -1,14 +1,25 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../text/vertical_writing_text.dart';
 import '../text/word_condensation.dart';
 import 'axis_turn.dart' show extentAlong;
 import 'timeline_cell_style.dart';
 import 'timeline_glyph_cache.dart' show timelineWordSetOnto;
 
-/// Where a word sits in a block that is laid out as WIDGETS: the block is
-/// the box the word is given, split evenly into [cells] along [axis], and
-/// the word belongs to cell [cellIndex].
+/// Where a WORD sits in a block a row builds as WIDGETS — a lane key's
+/// name, an SE name, an instruction's writing: the block is the box the word
+/// is given, split evenly into [cells] along [axis], and the word belongs to
+/// cell [cellIndex]. It is set and laid by the painters' law
+/// ([timelineBlockWordLayout]).
+///
+/// 🚨One law for painted and built words alike (유저 2026-09-24: 「법같은거
+/// 최대한 통일하면서. 컷블록의 텍스트든 se텍스트든 뭐든」). ↩️These words had
+/// three rules of their own: a key's name shrank with the zoom, was CLIPPED
+/// to its cell and hid below 14px cells; an SE name shrank WHOLE into its
+/// chip (`FittedBox`); an instruction's writing ran past its span onto the
+/// neighbours' cells. None of the three was the user's — all of them were
+/// mine (`git log -S`: 2026-08-11 · 2026-07-09).
 typedef TimelineBlockWordCells = ({
   Axis axis,
   int cells,
@@ -17,7 +28,7 @@ typedef TimelineBlockWordCells = ({
   double acrossAlignment,
 });
 
-/// The box a block word is given: all its parent allows — its ROOM.
+/// The box a built word is given: all its parent allows — its ROOM.
 Size _roomFor(BoxConstraints constraints) => constraints.biggest.isFinite
     ? constraints.biggest
     : constraints.constrain(Size.zero);
@@ -37,125 +48,29 @@ TimelineBlockWordSlot _slotIn(Size size, TimelineBlockWordCells place) {
   );
 }
 
-/// A block's WORD as a widget — the painters' law
-/// ([timelineBlockWordLayout]) for the words a row builds out of widgets:
-/// a lane key's name, an SE name, an instruction's writing.
-///
-/// 🚨One law for painted and built words alike (유저 2026-09-24: 「법같은거
-/// 최대한 통일하면서. 컷블록의 텍스트든 se텍스트든 뭐든」). ↩️These words had
-/// three rules of their own: a key's name shrank with the zoom, was CLIPPED
-/// to its cell and hid below 14px cells; an SE name shrank WHOLE into its
-/// chip (`FittedBox`); an instruction's writing ran past its span onto the
-/// neighbours' cells. None of the three was the user's — all of them were
-/// mine (`git log -S`: 2026-08-11 · 2026-07-09).
-///
-/// Its box is the word's ROOM — the size its parent gives it. The child is
-/// laid out with no limit, so it keeps its type; it is then placed by F-96
-/// on its cell inside the room and narrowed, each axis on its own, only as
-/// far as the room demands. It never paints outside its box.
-///
-/// It narrows what it is given and nothing more — a word written in a line
-/// is [TimelineBlockText], which sets its letters itself.
-class TimelineBlockWord extends SingleChildRenderObjectWidget {
-  const TimelineBlockWord({
-    super.key,
-    required this.place,
-    required Widget super.child,
-  });
-
-  final TimelineBlockWordCells place;
-
-  @override
-  RenderObject createRenderObject(BuildContext context) =>
-      RenderTimelineBlockWord(place);
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    RenderTimelineBlockWord renderObject,
-  ) {
-    renderObject.place = place;
-  }
-}
-
-/// The render object of [TimelineBlockWord].
-class RenderTimelineBlockWord extends RenderProxyBox {
-  RenderTimelineBlockWord(this._place);
-
-  TimelineBlockWordCells _place;
-  TimelineBlockWordCells get place => _place;
-  set place(TimelineBlockWordCells value) {
-    if (value == _place) {
-      return;
-    }
-    _place = value;
-    markNeedsLayout();
-  }
-
-  ({Offset origin, WordFit fit}) _layout = (
-    origin: Offset.zero,
-    fit: wordFitsAsItIs,
+/// A built word's style as a [Text] resolves one: over the ambient
+/// [DefaultTextStyle] while it inherits, and scaled by the ambient text
+/// scaler.
+TextStyle _resolvedStyle(BuildContext context, TextStyle style) {
+  final merged = DefaultTextStyle.of(context).style.merge(style);
+  return merged.copyWith(
+    fontSize: MediaQuery.textScalerOf(
+      context,
+    ).scale(merged.fontSize ?? kDefaultFontSize),
   );
-
-  @override
-  void performLayout() {
-    size = _roomFor(constraints);
-    final child = this.child;
-    if (child == null) {
-      return;
-    }
-    child.layout(const BoxConstraints(), parentUsesSize: true);
-    _layout = timelineBlockWordLayout(child.size, _slotIn(size, _place));
-  }
-
-  /// Where the word lands in this box, narrowed — ONE transform for what is
-  /// painted and for what a hit test or a rect of the word reports, so the
-  /// two cannot tell different stories.
-  Matrix4 get _childTransform {
-    final (:origin, :fit) = _layout;
-    return Matrix4.translationValues(origin.dx, origin.dy, 0)
-      ..scaleByDouble(fit.x, fit.y, 1, 1);
-  }
-
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    final child = this.child;
-    if (child == null) {
-      return;
-    }
-    context.pushClipRect(
-      needsCompositing,
-      offset,
-      Offset.zero & size,
-      (context, offset) => context.pushTransform(
-        needsCompositing,
-        offset,
-        _childTransform,
-        (context, offset) => context.paintChild(child, offset),
-      ),
-    );
-  }
-
-  @override
-  void applyPaintTransform(RenderBox child, Matrix4 transform) =>
-      transform.multiply(_childTransform);
-
-  /// A word is read, not pressed: the row's own gestures own this box.
-  @override
-  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
-      false;
 }
 
-/// A block's WORD written in a line, as a widget that knows its letters — a
-/// lane key's name, an instruction's writing along the timeline, an SE name
-/// on the sheet. It is set and laid by the painted block word's own code
-/// ([timelineWordSetOnto], [timelineBlockWordLayout]): where its room runs
-/// short its letter gaps give way first (F-234-Q1: 「글자 사이부터 줄이기」),
-/// and only past that is it narrowed, each axis on its own.
+/// A built word WRITTEN IN A LINE — a lane key's name, an instruction's
+/// writing along the timeline, an SE name on the sheet. It is set and laid
+/// by the painted block word's own code ([timelineWordSetOnto],
+/// [timelineBlockWordLayout]): where its room runs short its letter gaps
+/// give way first (F-234-Q1: 「글자 사이부터 줄이기」), and only past that is
+/// it narrowed, each axis on its own.
 ///
-/// ↩️It was a `Text` inside [TimelineBlockWord], which can narrow a word but
-/// cannot set it: the gaps are how a word is set, and only here, at layout,
-/// is its room known — a zoom lays it out again, it does not rebuild it.
+/// ↩️It was a `Text` inside a box that narrowed whatever child it was given
+/// — which can narrow a word but cannot set it: the gaps are how a word is
+/// set, and only here, at layout, is its room known. A zoom lays it out
+/// again; it does not rebuild it.
 class TimelineBlockText extends LeafRenderObjectWidget {
   const TimelineBlockText({
     super.key,
@@ -165,29 +80,14 @@ class TimelineBlockText extends LeafRenderObjectWidget {
   });
 
   final String text;
-
-  /// Resolved as a [Text] resolves its style: over the ambient
-  /// [DefaultTextStyle] while it inherits, and scaled by the ambient text
-  /// scaler.
   final TextStyle style;
   final TimelineBlockWordCells place;
-
-  TextStyle _resolvedStyle(BuildContext context) {
-    final merged = style.inherit
-        ? DefaultTextStyle.of(context).style.merge(style)
-        : style;
-    return merged.copyWith(
-      fontSize: MediaQuery.textScalerOf(
-        context,
-      ).scale(merged.fontSize ?? kDefaultFontSize),
-    );
-  }
 
   @override
   RenderTimelineBlockText createRenderObject(BuildContext context) =>
       RenderTimelineBlockText(
         text: text,
-        style: _resolvedStyle(context),
+        style: _resolvedStyle(context, style),
         place: place,
       );
 
@@ -198,14 +98,63 @@ class TimelineBlockText extends LeafRenderObjectWidget {
   ) {
     renderObject
       ..text = text
-      ..style = _resolvedStyle(context)
+      ..style = _resolvedStyle(context, style)
       ..place = place;
   }
 }
 
-/// The render object of [TimelineBlockText].
-class RenderTimelineBlockText extends RenderBox {
-  RenderTimelineBlockText({
+/// A built word WRITTEN DOWN A COLUMN — an SE name on the timeline, an
+/// instruction's writing on the sheet — set and laid by the same law as
+/// [TimelineBlockText]: where its room runs short down the column, the
+/// space from glyph to glyph gives way first (F-234-Q1), and only past that
+/// is it narrowed. The one vertical renderer draws it ([paintVerticalText]).
+class TimelineBlockColumn extends LeafRenderObjectWidget {
+  const TimelineBlockColumn({
+    super.key,
+    required this.text,
+    required this.style,
+    this.lineHeight = verticalWritingLineHeight,
+    required this.latinForm,
+    required this.place,
+  });
+
+  final String text;
+  final TextStyle style;
+
+  /// A slot's natural extent down the column, in ems.
+  final double lineHeight;
+  final VerticalLatinForm latinForm;
+  final TimelineBlockWordCells place;
+
+  @override
+  RenderTimelineBlockColumn createRenderObject(BuildContext context) =>
+      RenderTimelineBlockColumn(
+        text: text,
+        style: _resolvedStyle(context, style),
+        lineHeight: lineHeight,
+        latinForm: latinForm,
+        place: place,
+      );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderTimelineBlockColumn renderObject,
+  ) {
+    renderObject
+      ..text = text
+      ..style = _resolvedStyle(context, style)
+      ..lineHeight = lineHeight
+      ..latinForm = latinForm
+      ..place = place;
+  }
+}
+
+/// What the two built words share: a word of [text] in its room, laid by
+/// the block-word law, read aloud as its text, and never pressed — the
+/// row's own gestures own its box.
+abstract class RenderTimelineBuiltWord extends RenderBox {
+  RenderTimelineBuiltWord({
     required String text,
     required TextStyle style,
     required TimelineBlockWordCells place,
@@ -244,11 +193,18 @@ class RenderTimelineBlockText extends RenderBox {
     markNeedsLayout();
   }
 
-  TextPainter? _glyph;
+  /// The word as it is set, before the law narrows it.
+  Size _set = Size.zero;
   ({Offset origin, WordFit fit}) _layout = (
     origin: Offset.zero,
     fit: wordFitsAsItIs,
   );
+
+  /// Sets the word in [room] — how long it runs once its gaps gave way.
+  Size setWordIn(Size room);
+
+  /// Paints the word as it was set at [origin], narrowed by [fit].
+  void paintSetWord(Canvas canvas, Offset origin, WordFit fit);
 
   @override
   bool get sizedByParent => true;
@@ -258,33 +214,22 @@ class RenderTimelineBlockText extends RenderBox {
 
   @override
   void performLayout() {
-    final glyph = timelineWordSetOnto(_text, _style, size.width).glyph;
-    _glyph = glyph;
-    _layout = timelineBlockWordLayout(glyph.size, _slotIn(size, _place));
+    _set = setWordIn(size);
+    _layout = timelineBlockWordLayout(_set, _slotIn(size, _place));
   }
 
   /// Where the word lands in this box, narrowed — the box is only its room.
   Rect get wordRect {
-    final glyph = _glyph;
-    if (glyph == null) {
-      return Rect.zero;
-    }
     final (:origin, :fit) = _layout;
-    return origin & Size(glyph.width * fit.x, glyph.height * fit.y);
+    return origin & Size(_set.width * fit.x, _set.height * fit.y);
   }
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    final glyph = _glyph;
-    if (glyph == null) {
+    if (_text.isEmpty) {
       return;
     }
-    paintFittedText(
-      context.canvas,
-      glyph,
-      offset + _layout.origin,
-      _layout.fit,
-    );
+    paintSetWord(context.canvas, offset + _layout.origin, _layout.fit);
   }
 
   @override
@@ -293,5 +238,119 @@ class RenderTimelineBlockText extends RenderBox {
     config
       ..label = _text
       ..textDirection = TextDirection.ltr;
+  }
+}
+
+/// The render object of [TimelineBlockText].
+class RenderTimelineBlockText extends RenderTimelineBuiltWord {
+  RenderTimelineBlockText({
+    required super.text,
+    required super.style,
+    required super.place,
+  });
+
+  TextPainter? _glyph;
+
+  @override
+  Size setWordIn(Size room) {
+    final glyph = timelineWordSetOnto(_text, _style, room.width).glyph;
+    _glyph = glyph;
+    return glyph.size;
+  }
+
+  @override
+  void paintSetWord(Canvas canvas, Offset origin, WordFit fit) {
+    final glyph = _glyph;
+    if (glyph != null) {
+      paintFittedText(canvas, glyph, origin, fit);
+    }
+  }
+}
+
+/// The render object of [TimelineBlockColumn].
+class RenderTimelineBlockColumn extends RenderTimelineBuiltWord {
+  RenderTimelineBlockColumn({
+    required super.text,
+    required super.style,
+    required double lineHeight,
+    required VerticalLatinForm latinForm,
+    required super.place,
+  }) : _lineHeight = lineHeight,
+       _latinForm = latinForm;
+
+  double _lineHeight;
+  double get lineHeight => _lineHeight;
+  set lineHeight(double value) {
+    if (value == _lineHeight) {
+      return;
+    }
+    _lineHeight = value;
+    markNeedsLayout();
+  }
+
+  VerticalLatinForm _latinForm;
+  VerticalLatinForm get latinForm => _latinForm;
+  set latinForm(VerticalLatinForm value) {
+    if (value == _latinForm) {
+      return;
+    }
+    _latinForm = value;
+    markNeedsLayout();
+  }
+
+  int _slots = 0;
+
+  double get _fontSize => _style.fontSize ?? kDefaultFontSize;
+
+  @override
+  Size setWordIn(Size room) {
+    final natural = verticalWritingNaturalBox(
+      _text,
+      fontSize: _fontSize,
+      lineHeight: _lineHeight,
+      latinForm: _latinForm,
+    );
+    _slots = natural.slots;
+    final tightening = wordTightening(
+      extent: natural.size.height,
+      gaps: _slots - 1,
+      room: room.height,
+    );
+    return Size(
+      natural.size.width,
+      natural.size.height - (_slots - 1) * tightening,
+    );
+  }
+
+  @override
+  void paintSetWord(Canvas canvas, Offset origin, WordFit fit) {
+    if (_slots <= 0) {
+      return;
+    }
+    // Slots of one extent, the column exactly as long as it was set: the
+    // gaps it gave are shared out between them. The leading it keeps is
+    // below zero once they gave more than it had, and handing that over is
+    // what keeps the type its size — the renderer would shrink a glyph to
+    // its slot's extent less a leading it no longer has.
+    final slot = _set.height / _slots;
+    canvas
+      ..save()
+      ..translate(origin.dx, origin.dy)
+      ..scale(fit.x, fit.y);
+    paintVerticalText(
+      canvas,
+      _text,
+      style: _style,
+      centerX: _set.width / 2,
+      top: 0,
+      mainExtent: _set.height,
+      naturalCellExtent: slot,
+      cellPadding: slot - _fontSize,
+      maxCellWidth: _set.width,
+      mainAlignment: 0.5,
+      latinForm: _latinForm,
+      overflow: VerticalTextOverflow.ellipsis,
+    );
+    canvas.restore();
   }
 }

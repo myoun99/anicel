@@ -297,7 +297,7 @@ class VerticalWritingText extends StatelessWidget {
     super.key,
     required this.text,
     this.style,
-    this.lineHeight = 1.15,
+    this.lineHeight = verticalWritingLineHeight,
     this.minFontSize = 1,
     this.tateChuYokoDigits = verticalTateChuYokoDigits,
     this.latinForm = VerticalLatinForm.sideways,
@@ -346,14 +346,6 @@ class VerticalWritingText extends StatelessWidget {
       context,
     ).scale(merged.fontSize ?? 12);
     final resolved = merged.copyWith(fontSize: fontSize);
-    // SLOTS, not cells: a sideways word owns several of them.
-    final cellCount = verticalTextSpanCount(
-      verticalTextCells(
-        text,
-        tateChuYokoDigits: tateChuYokoDigits,
-        latinForm: latinForm,
-      ),
-    );
 
     return Semantics(
       label: text,
@@ -364,16 +356,13 @@ class VerticalWritingText extends StatelessWidget {
         // one no longer throws — `SectionBandZone` passes a null extent and
         // is saved today only by the Positioned around it.
         child: CustomPaint(
-          // One em across, plus headroom ONLY when something in the text
-          // actually moves to a corner. Reserving the spare em always made
-          // every SE name pay for a punctuation form they never contain:
-          // the 16px name box's FittedBox went width-limited at 16/18 and
-          // shrank every label ~11%.
-          size: Size(
-            fontSize *
-                (1 + 2 * _maxShiftEm(text, tateChuYokoDigits, latinForm)),
-            cellCount * fontSize * lineHeight,
-          ),
+          size: verticalWritingNaturalBox(
+            text,
+            fontSize: fontSize,
+            lineHeight: lineHeight,
+            tateChuYokoDigits: tateChuYokoDigits,
+            latinForm: latinForm,
+          ).size,
           painter: _VerticalWritingPainter(
             text: text,
             style: resolved,
@@ -388,6 +377,40 @@ class VerticalWritingText extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A column's slot, in ems, where its host names none: the glyph and the
+/// leading after it.
+const double verticalWritingLineHeight = 1.15;
+
+/// The box a column of [text] takes at its natural leading, and how many
+/// SLOTS it runs down — slots, not cells: a sideways word owns several.
+///
+/// One em across, plus headroom ONLY when something in the text actually
+/// moves to a corner. Reserving the spare em always made every SE name pay
+/// for a punctuation form they never contain: the 16px name box's
+/// FittedBox went width-limited at 16/18 and shrank every label ~11%.
+({Size size, int slots}) verticalWritingNaturalBox(
+  String text, {
+  required double fontSize,
+  required double lineHeight,
+  int tateChuYokoDigits = verticalTateChuYokoDigits,
+  VerticalLatinForm latinForm = VerticalLatinForm.sideways,
+}) {
+  final cellCount = verticalTextSpanCount(
+    verticalTextCells(
+      text,
+      tateChuYokoDigits: tateChuYokoDigits,
+      latinForm: latinForm,
+    ),
+  );
+  return (
+    size: Size(
+      fontSize * (1 + 2 * _maxShiftEm(text, tateChuYokoDigits, latinForm)),
+      cellCount * fontSize * lineHeight,
+    ),
+    slots: cellCount,
+  );
 }
 
 /// The largest corner shift anything in [text] takes, as an em fraction —
