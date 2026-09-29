@@ -19,6 +19,10 @@ import 'package:anicel/src/models/cel_bank_lanes.dart';
 import 'package:anicel/src/models/drawing_block_move.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/working_panel.dart';
+import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
+import 'package:anicel/src/ui/session/storyboard_cursor.dart';
 
 /// 🗣️F-227 (유저 2026-09-29/30): 「ol주는컷은 콘티블록의 마지막블록을 늘리고
 /// 받는컷은 처음블록을 늘리라」 · 「콘티블록의 첫블록을 여백길이 이하로
@@ -252,5 +256,53 @@ void main() {
     expect(grips.first.startIndex, 12);
     expect(grips.first.startGrip, isFalse);
     expect(grips.last.startGrip, isTrue);
+  });
+
+  // The storyboard and the conte tab count the CONTE's time; the row counts
+  // the cut's frames — which begin 12 early in the receiving cut.
+  group('conte-time verbs find the receiving cut\'s panel by its conte '
+      'time', () {
+    test('an action written on panel 2 lands on panel 2 — and the conte '
+        'sheet prints it there', () {
+      final s = session();
+      addTearDown(s.dispose);
+      s.storyboardCursor.setStoryboardCellAction(
+        cutId: receiving,
+        cellIndex: 1,
+        action: 'run',
+      );
+      expect(conteRow(s, receiving).timeline[32]!.memo?.actionMemo, 'run');
+      final sheet = buildConteSheetSource(s.repository.requireProject());
+      final cut = sheet.cuts.firstWhere(
+        (cut) => cut.cutId == receiving,
+      );
+      expect(cut.cells[1].action, 'run');
+    });
+
+    test('ink named for panel 2 in the conte tab is written on panel 2', () {
+      final s = session();
+      addTearDown(s.dispose);
+      final inkId = s.storyboardCursor.conteInkIdFor(receiving, 20);
+      s.storyboardCursor.writeConteBlockInk(receiving, inkId);
+      expect(conteRow(s, receiving).timeline[32]!.memo?.inkId, inkId);
+    });
+
+    test('the storyboard cursor 25 frames into the receiving cut stands on '
+        'panel 2 — conte time, not the held-back frames', () {
+      final s = session();
+      addTearDown(s.dispose);
+      s.selectCut(receiving);
+      s.standOnRow(
+        const TrackRowAddress(TrackId('t')),
+        panel: WorkingPanel.storyboard,
+        frameIndex: 25,
+      );
+      final block = s.storyboardCursor.storyboardCursorBlockOrNull();
+      expect(block, isA<StoryboardCursorStoryboardPanel>());
+      expect(
+        (block! as StoryboardCursorStoryboardPanel).panelStartIndex,
+        32,
+      );
+    });
   });
 }

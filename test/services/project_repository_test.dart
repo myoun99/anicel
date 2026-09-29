@@ -952,13 +952,10 @@ void main() {
         name: 'Anim',
         kind: LayerKind.animation,
         frames: [frame],
+        // The block at 0 holds: frame 1 is its ghost (derived — the
+        // repository settles run edges on every write, F-227).
         timeline: {
-          0: TimelineExposure.drawing(frame.id, length: 1),
-          1: TimelineExposure.drawing(
-            frame.id,
-            length: 1,
-            ghostOf: endHoldGhost,
-          ),
+          0: TimelineExposure.drawing(frame.id, length: 1, endEdge: holdMark),
         },
       );
       final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);

@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/controllers/timeline_controller.dart';
 
 import '../helpers/run_edge_fixtures.dart';
 
@@ -203,5 +204,33 @@ void main() {
       leavingRows: [heldRow('bg', kind: LayerKind.image)],
     );
     expect(heldThrough(repository, leaving, 'bg'), 30);
+  });
+
+  test('the timeline\'s own edits derive to the drawn end too — a comma '
+      'preview holds the row through the のりしろ', () {
+    final repository = repositoryWith(olAt: 18);
+    final controller = TimelineController(
+      repository: repository,
+      cutId: leaving,
+    );
+    final retimed = controller.retimedLayerForBlocks(
+      layer: row(repository, leaving, 'ra'),
+      newLengthByStart: {0: 2},
+    )!;
+    expect(authoredTimelineExtent(retimed.timeline), 30);
+  });
+
+  test('a write that does not touch the image row keeps its instance — its '
+      'hold already reaches the drawn end', () {
+    final repository = repositoryWith(
+      olAt: 18,
+      leavingRows: [heldRow('bg', kind: LayerKind.image), heldRow('ra')],
+    );
+    final before = row(repository, leaving, 'bg');
+    repository.updateLayer(
+      layerId: const LayerId('ra'),
+      update: (layer) => layer.copyWith(name: 'renamed'),
+    );
+    expect(identical(row(repository, leaving, 'bg'), before), isTrue);
   });
 }

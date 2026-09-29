@@ -193,6 +193,12 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(
+      find.byKey(const ValueKey<String>('canvas-ol-partner')),
+      findsNothing,
+      reason: 'the parked stack already holds both cuts — the cut it left '
+          'lays neither its wash nor its partner over them',
+    );
+    expect(
       await paperPixels(tester),
       greaterThan(5000),
       reason: 'the parked stack mixes two papers — the leaving cut\'s own '
