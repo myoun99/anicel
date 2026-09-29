@@ -87,8 +87,10 @@ void main() {
     });
 
     test('uses destinationAt for before color', () {
+      // Half FLOW, not half opacity: since F-205 a dab settles at its
+      // opacity, so a half-opacity dab lays nothing on opaque blue.
       final values = brushPixelBlendOperationsForDabSequence(
-        sequence: BrushDabSequence([onePixelDab(opacity: 0.5)]),
+        sequence: BrushDabSequence([onePixelDab(flow: 0.5)]),
         destinationAt: (_, _) => blue,
       );
       expect(values.single.before, blue);
@@ -147,10 +149,12 @@ void main() {
     test(
       'accumulates before color from earlier operations on the same pixel',
       () {
+        // Half FLOW over the red (F-205: a half-OPACITY dab would find the
+        // opaque red already past its ceiling and lay nothing).
         final values = brushPixelBlendOperationsForDabSequence(
           sequence: BrushDabSequence([
             onePixelDab(color: 0xFFFF0000, sequence: 0),
-            onePixelDab(color: 0xFF0000FF, opacity: 0.5, sequence: 1),
+            onePixelDab(color: 0xFF0000FF, flow: 0.5, sequence: 1),
           ]),
           destinationAt: (_, _) => transparent,
         );
