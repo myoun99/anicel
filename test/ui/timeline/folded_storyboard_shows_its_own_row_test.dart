@@ -136,6 +136,20 @@ void main() {
     expect(painter.devicePixelRatio, 2);
   });
 
+  testWidgets('F-234: the folded row prints its words from the ambient style '
+      'the open row prints them from', (tester) async {
+    await _pumpFolded(tester, storyboard: true);
+    final painter =
+        tester.widget<CustomPaint>(_cutBlocks()).painter!
+            as StoryboardCutBlocksPainter;
+    expect(
+      painter.baseTextStyle,
+      DefaultTextStyle.of(tester.element(_cutBlocks())).style,
+      reason: '↩️it was the theme\'s labelSmall, a style no other block '
+          'word reads',
+    );
+  });
+
   testWidgets('D15 ③: thumbnails are ON in the folded row, because the same '
       'painter draws them in the open one', (tester) async {
     await _pumpFolded(tester, storyboard: true);
