@@ -87,6 +87,11 @@ sealed class SheetWindow {
   /// ([SheetInkPlacement.stretch]).
   double get stretch => 1;
 
+  /// What the brush's size is multiplied by on this window's surface — 1,
+  /// the size in the surface's own pixels, but where a sheet lays its paper
+  /// to draw as thick as its pictures (the conte, `contePaperBrushScale`).
+  double get brushScale => 1;
+
   /// The live stroke's overlay when SOMEONE ELSE paints this window's
   /// surface, in its place in a composite — a picture's cel inside the
   /// cut's composite. Null when the window's own view paints it.
@@ -139,6 +144,7 @@ class SheetInkWindow extends SheetWindow {
     required this.placement,
     super.plane,
     this.refusal,
+    this.brushScale = 1,
   });
 
   /// The window of an ink mark a sheet's walk yields — the walk the sheet's
@@ -148,16 +154,21 @@ class SheetInkWindow extends SheetWindow {
     required String id,
     Object? plane,
     String? refusal,
+    double brushScale = 1,
   }) : this(
          id: id,
          key: ink.key,
          placement: ink.placement,
          plane: plane,
          refusal: refusal,
+         brushScale: brushScale,
        );
 
   @override
   final String? refusal;
+
+  @override
+  final double brushScale;
 
   /// Where this window shows its surface — the one mapping between ink
   /// pixels and the paper the printers lay the ink back by.
@@ -213,6 +224,7 @@ class SheetInkWindow extends SheetWindow {
     placement: placement.shiftedBy(by),
     plane: plane,
     refusal: refusal,
+    brushScale: brushScale,
   );
 }
 
@@ -592,9 +604,13 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     );
   }
 
-  /// The brush in hand, as the view asks for it when a stroke starts.
-  BrushEditCanvasInputSettings _inputSettings() =>
-      widget.brushToolState.value.toInputSettings();
+  /// The brush in hand, as [window]'s view asks for it when a stroke
+  /// starts — its size as that window reads it ([SheetWindow.brushScale]).
+  BrushEditCanvasInputSettings _inputSettingsFor(SheetWindow window) {
+    final brush = widget.brushToolState.value.toInputSettings();
+    final scale = window.brushScale;
+    return scale == 1 ? brush : brush.copyWith(size: brush.size * scale);
+  }
 
   /// [window]'s brush view, confined to [region] of its surface.
   Widget _view(SheetWindow window, CanvasSelectionRegion region) =>
@@ -603,7 +619,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
         sessionState: widget.sessionStateFor(window),
         layerId: window.key.layerId,
         frameId: window.key.frameId,
-        inputSettings: _inputSettings,
+        inputSettings: () => _inputSettingsFor(window),
         viewport: window.inkViewport(widget.viewport),
         selectionRegion: region,
         // The sheet paper is painted below this stack; an opaque

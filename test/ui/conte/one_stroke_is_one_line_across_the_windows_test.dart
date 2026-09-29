@@ -499,6 +499,53 @@ void main() {
       );
     });
   }
+
+  // 🗣️F-217 (유저 2026-09-28): 「콘티 프리뷰 패널, 그림에 그려지는 선이랑
+  // 밖에 그려지는 선이랑 역시 크기 제대로 통일하고싶음」 · 답 F-217-Q1
+  // 「종이에서는 붓을 그림 칸 비율로 줄여 긋기」. The camera's frame here is
+  // 640 pixels over a window 243 points wide: a brush 24 pixels wide is
+  // 9 points in the picture, and was 24 on the paper.
+  for (final zoom in const [0.83, 1.9]) {
+    testWidgets('at ${(zoom * 100).round()}%, one stroke from a picture into '
+        'the words beside it is as thick on the paper as in the picture', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1.25;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpPanel(tester, zoom: zoom, size: 24);
+      final form = conteBodyForm();
+      final painter = tester.widget<CustomPaint>(form).painter!
+          as ContePagePainter;
+      final page = painter.page;
+      final slot = contePictureSlot(page.cells[0], page.metrics);
+      final y = slot.center.dy + 20;
+      await draw(
+        tester,
+        onScreen(tester, Offset(slot.center.dx - 30, y)),
+        onScreen(tester, Offset(slot.right + 80, y)),
+      );
+      final shot = await shoot(tester);
+
+      /// The device pixels of ink across the line at paper [x].
+      int thicknessAt(double x) {
+        final middle = onScreen(tester, Offset(x, y));
+        return shot
+            .walk(middle - const Offset(0, 40), middle + const Offset(0, 40))
+            .where(_isInk)
+            .length;
+      }
+
+      final inPicture = thicknessAt(slot.center.dx + 20);
+      final onPaper = thicknessAt(slot.right + 40);
+      expect(inPicture, greaterThan(4), reason: 'fixture: the line is there');
+      expect(
+        (onPaper - inPicture).abs(),
+        lessThanOrEqualTo(2),
+        reason: 'as thick on the paper ($onPaper) as in the picture '
+            '($inPicture)',
+      );
+    });
+  }
 }
 
 /// The stroke's blue — over the paper or the silhouette alike: blue well

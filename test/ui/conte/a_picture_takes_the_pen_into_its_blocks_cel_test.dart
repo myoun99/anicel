@@ -181,6 +181,7 @@ void main() {
                   historyManager: history,
                   viewport: CanvasViewport(),
                   strokeActive: strokeActive,
+                  paperBrushScale: 1,
                   pictures: cels,
                   pictureWindows: [picture.window],
                   unwrittenInkIdOf: bandOf,

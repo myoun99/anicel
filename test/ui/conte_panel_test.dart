@@ -336,12 +336,14 @@ void main() {
   // each frame of a settings slider drag. Its windows read the brush when a
   // stroke starts now, so a change reaches none of them.
   testWidgets('a brush change rebuilds no ink window, and the windows read '
-      'the brush in hand', (tester) async {
+      'the brush in hand — the paper\'s at the pictures\' scale', (
+    tester,
+  ) async {
     final ink = ConteInkController();
     addTearDown(ink.dispose);
     final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     addTearDown(brush.dispose);
-    await _pumpConte(
+    final session = await _pumpConte(
       tester,
       inkController: ink,
       brushToolState: brush,
@@ -358,8 +360,22 @@ void main() {
       find.byType(InteractiveBrushEditCanvasView),
     );
     expect(windows, isNotEmpty);
+    // F-217 (유저 답 F-217-Q1 「종이에서는 붓을 그림 칸 비율로 줄여 긋기」).
+    final paperScale = contePaperBrushScale(
+      ConteSheetMetrics(cameraAspect: session.camera.cameraFrameAspect),
+      session.camera.cameraFrameSize,
+    );
+    expect(paperScale, lessThan(1), reason: 'fixture: the paper is coarser');
     for (final window in windows) {
-      expect(window.inputSettings(), next.toInputSettings());
+      final key = (window.key! as ValueKey<String>).value;
+      final paper = key.startsWith('conte-ink-row-');
+      expect(
+        window.inputSettings(),
+        next.toInputSettings().copyWith(
+          size: next.size * (paper ? paperScale : 1),
+        ),
+        reason: '$key reads the brush in hand, at its own scale',
+      );
     }
   });
 
@@ -405,6 +421,7 @@ void main() {
                 // viewport every painter takes.
                 viewport: CanvasViewport(),
                 strokeActive: strokeActive,
+                paperBrushScale: 1,
               ),
             ),
           ),
@@ -496,6 +513,7 @@ void main() {
                 historyManager: historyManager,
                 viewport: CanvasViewport(),
                 strokeActive: strokeActive,
+                paperBrushScale: 1,
               ),
             ),
           ),

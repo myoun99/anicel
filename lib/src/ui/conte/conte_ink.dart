@@ -92,10 +92,14 @@ typedef ConteShownPage = ({ContePageLayout page, Offset at});
 ///
 /// ⛔Made from the walk the page's printers read ([conteInkMarks]) — the
 /// brush writes through exactly the windows the paper shows.
+///
+/// Each reads the brush at [brushScale] — the paper's scale against the
+/// pictures' (`contePaperBrushScale`, F-217).
 List<SheetInkWindow> conteInkWindows(
   ContePageLayout page, {
   String Function(ContePlacedCell cell)? unwrittenInkIdOf,
   String? rowRefusal,
+  double brushScale = 1,
 }) {
   final blockless = {
     if (unwrittenInkIdOf != null)
@@ -113,6 +117,7 @@ List<SheetInkWindow> conteInkWindows(
         ink,
         id: 'row-${ink.key.cutId.value}-${ink.key.frameId.value}',
         refusal: blockless.contains(ink.key) ? rowRefusal : null,
+        brushScale: brushScale,
       ),
   ];
 }
@@ -130,6 +135,7 @@ class ConteInkLayer extends StatelessWidget {
     required this.historyManager,
     required this.viewport,
     required this.strokeActive,
+    required this.paperBrushScale,
     this.cacheInvalidationSink,
     this.pictures,
     this.pictureWindows = const [],
@@ -155,6 +161,11 @@ class ConteInkLayer extends StatelessWidget {
 
   /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
+
+  /// What the paper's windows multiply the brush's size by — the pictures'
+  /// scale against the paper's (`contePaperBrushScale`, F-217). The
+  /// pictures read the brush in their own cels' pixels.
+  final double paperBrushScale;
 
   final CacheInvalidationSink? cacheInvalidationSink;
 
@@ -192,6 +203,7 @@ class ConteInkLayer extends StatelessWidget {
             page,
             unwrittenInkIdOf: unwrittenInkIdOf,
             rowRefusal: rowRefusal,
+            brushScale: paperBrushScale,
           ))
             window.shiftedBy(at),
         ...pictureWindows,

@@ -9,7 +9,8 @@ import '../../core/page_stack.dart';
 import '../../models/app_input_settings.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/conte/conte_ink_keys.dart' show conteInkRowIdOf;
+import '../../models/conte/conte_ink_keys.dart'
+    show conteInkRowIdOf, contePaperBrushScale;
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
@@ -589,6 +590,12 @@ class _ConteTabHostState extends State<ConteTabHost> {
         historyManager: _session.historyManager,
         viewport: viewport,
         strokeActive: _strokeHold,
+        // Every page shares one sheet's metrics, and every picture the
+        // camera's frame.
+        paperBrushScale: contePaperBrushScale(
+          ink.pages.first.page.metrics,
+          _session.camera.cameraFrameSize,
+        ),
         cacheInvalidationSink: _cacheInvalidationSink,
         pictures: widget.pictures,
         pictureWindows: [

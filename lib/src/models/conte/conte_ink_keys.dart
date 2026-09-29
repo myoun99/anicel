@@ -1,4 +1,5 @@
 import '../brush_frame_key.dart';
+import '../canvas_size.dart';
 import '../cut_id.dart';
 import '../frame_id.dart';
 import '../layer_id.dart';
@@ -6,6 +7,7 @@ import '../project.dart';
 import '../project_id.dart';
 import '../timeline_exposure.dart';
 import '../track_id.dart';
+import 'conte_sheet_layout.dart';
 
 /// The conte ink's cel-key contract (R5) — the ONE place its namespace is
 /// minted and recognized, shared by the ink controller (UI), the session's
@@ -36,7 +38,27 @@ const LayerId conteInkRowLayerId = LayerId('conte-row');
 /// ↩️The page painter kept a copy of the controller's number so as not to
 /// import the input side; two numbers that must agree are two chances to
 /// print ink at a scale it was not drawn at.
+///
+/// ↩️The CONTE's paper no longer draws a brush as wide as the canvas does:
+/// it draws it as wide as the pictures beside it
+/// ([contePaperBrushScale], F-217) — the resolution stays this one.
 const int conteInkScale = 1;
+
+/// What the conte's paper multiplies a brush's size by: its pixels per page
+/// point against the pictures' — so a brush draws as thick on the paper as
+/// in the pictures beside it (유저 2026-09-28, F-217: 「그림에 그려지는
+/// 선이랑 밖에 그려지는 선이랑 역시 크기 제대로 통일하고싶음. 칸 내부
+/// 해상도는 결국 카메라 해상도 기준으로 뭔가 수학적 변환이 있을텐데」 · 답
+/// F-217-Q1 「종이에서는 붓을 그림 칸 비율로 줄여 긋기」).
+///
+/// A picture shows the camera's frame in a window: its pixels per point are
+/// the frame's width over the window's. ↩️This reverses, for the conte's
+/// paper alone, 09-25's 「칸마다 자기 픽셀 크기」 (one-paper-brush-width-
+/// Q1) — the timesheet's and the envelope's paper keep the canvas's brush.
+double contePaperBrushScale(
+  ConteSheetMetrics metrics,
+  CanvasSize cameraFrame,
+) => conteInkScale * metrics.windowRect(0).width / cameraFrame.width;
 
 /// Cell-anchored plane: one surface per storyboard BLOCK — the block's own
 /// [inkId] (`ExposureMemo.inkId`) in the frame slot, not its drawing's id:
