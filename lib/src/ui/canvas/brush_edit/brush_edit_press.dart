@@ -165,11 +165,7 @@ class _BrushEditPress {
     // same tile objects with their pictures already made. (The R22-A
     // live-raster blend re-snapshotted and re-decoded thousands of 128px
     // overlay tiles — the 8K settle-frame stall.)
-    if (_pressAsFillTap(
-      event,
-      canvasPosition,
-      startsInsidePasteboard: startsInsidePasteboard,
-    )) {
+    if (_pressAsFillTap(event, canvasPosition)) {
       return;
     }
 
@@ -232,14 +228,23 @@ class _BrushEditPress {
     }
   }
 
+  /// A press the armed FILL spends on nothing: it lands beyond the
+  /// pasteboard wall, where no fill reaches.
+  ///
+  /// ONE answer for both of the fill's readers — the press that fills, and
+  /// the press on an empty cell that would first make the cel to fill into
+  /// (fill-beyond-wall-notice, 2026-09-29: that one asked for a cel without
+  /// looking where it landed, so a press that did nothing still made a
+  /// block, or said 「프레임이 존재하지 않습니다」). ⛔The fill's alone: a
+  /// stroke that starts beyond the wall can still come inside it.
+  bool fillSpendsNothingAt(CanvasPoint canvasPosition) =>
+      _state.widget.fillDabAt != null &&
+      !_state._isInsidePasteboard(canvasPosition);
+
   /// With the fill tool armed the press IS the fill: off the pasteboard
   /// it does nothing, on touch it waits for the release (a two-finger
   /// navigation may follow), else it runs at once. True when consumed.
-  bool _pressAsFillTap(
-    PointerDownEvent event,
-    CanvasPoint canvasPosition, {
-    required bool startsInsidePasteboard,
-  }) {
+  bool _pressAsFillTap(PointerDownEvent event, CanvasPoint canvasPosition) {
     final fillDabAt = _state.widget.fillDabAt;
     if (fillDabAt != null) {
       // Off-canvas fill taps flow through: the default (stage-bounded)
@@ -247,7 +252,7 @@ class _BrushEditPress {
       // fill's own boundary options decide, not the pointer.
       // The busy half of this used to be here too; it now lives in
       // [_runFillTap], which is the only place that can be sure.
-      if (!startsInsidePasteboard) {
+      if (fillSpendsNothingAt(canvasPosition)) {
         return true;
       }
       // The seed and the axis come from the same pair the STROKE path uses

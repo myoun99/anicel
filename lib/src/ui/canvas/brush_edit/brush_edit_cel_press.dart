@@ -41,6 +41,14 @@ class _BrushEditCelPress {
     if (!canvasPressDraws(event, penTailActive: _state._penTailActive)) {
       return;
     }
+    // Nor for a fill beyond the wall, which does nothing there — so it
+    // makes no cel and explains no silence. The fill's own answer
+    // (`fillSpendsNothingAt`), not a copy of it.
+    if (_state._press.fillSpendsNothingAt(
+      _state._canvasPositionFromLocal(event.localPosition),
+    )) {
+      return;
+    }
     if (!(_state.widget.onPressNeedsCel?.call() ?? false)) {
       return;
     }
