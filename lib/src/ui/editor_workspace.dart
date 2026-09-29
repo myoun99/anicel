@@ -15,7 +15,6 @@ import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
-import '../models/cut.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
@@ -1140,15 +1139,31 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// The panel pictures [session]'s storyboard and conte draw — rendered
   /// through its camera, never past the camera frame's own size.
+  ///
+  /// A picture renders the cut's thumbnail frame THROUGH THE CAMERA (what
+  /// the shot actually frames — conte-sheet style), scaled to a small
+  /// output; always current (a fresh renderer replays surfaces straight
+  /// from the brush store).
+  /// The frame asked for is the PANEL's frame — the store keys by it, and
+  /// the panel resolved which one it is (its own division, or the cut's pin
+  /// when that falls inside it). Clamped here so a later trim can never
+  /// break a request that was legal when it was made.
+  ///
+  /// A region — the canvas a conte cell's moving camera sweeps — is shown
+  /// instead of the camera's view where it is given
+  /// (`ExportFrameRenderer.renderPicture`).
+  ///
+  /// [session] is the project the store was made for, not whichever is on
+  /// screen when a render lands — a render in flight across a tab switch
+  /// finishes for the project that asked (I-7).
   StoryboardCutThumbnailStore _panelPicturesOf(EditorSessionManager session) =>
       StoryboardCutThumbnailStore(
         render: (cut, frameIndex, width, region) =>
-            _renderStoryboardThumbnail(
-              session,
+            ExportFrameRenderer(session: session).renderPicture(
               cut,
-              frameIndex,
-              width,
-              region,
+              frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
+              width: width,
+              region: region,
             ),
         originalSize: () {
           final camera = session.camera.cameraFrameSize;
@@ -1491,35 +1506,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _layout.dispose();
     super.dispose();
   }
-
-  /// Thumbnails render the cut's thumbnail frame THROUGH THE CAMERA (what
-  /// the shot actually frames — conte-sheet style), scaled to a small
-  /// output; always current (a fresh renderer replays surfaces straight
-  /// from the brush store).
-  /// [frameIndex] is the PANEL's frame — the store keys by it, and the
-  /// panel resolved which one it is (its own division, or the cut's pin
-  /// when that falls inside it). Clamped here so a later trim can never
-  /// break a request that was legal when it was made.
-  ///
-  /// [region] — the canvas a conte cell's moving camera sweeps — is shown
-  /// instead of the camera's view where it is given
-  /// (`ExportFrameRenderer.renderPicture`).
-  ///
-  /// [session] is the project the store was made for, not whichever is on
-  /// screen when a render lands — a render in flight across a tab switch
-  /// finishes for the project that asked (I-7).
-  Future<ui.Image?> _renderStoryboardThumbnail(
-    EditorSessionManager session,
-    Cut cut,
-    int frameIndex,
-    int thumbnailWidth,
-    ui.Rect? region,
-  ) => ExportFrameRenderer(session: session).renderPicture(
-    cut,
-    frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
-    width: thumbnailWidth,
-    region: region,
-  );
 
   /// Runs a layout mutation and clamps the playhead when the storyboard
   /// just came on screen (over-end playheads on non-last cuts must land
