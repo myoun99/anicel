@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsConfiguration;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -411,6 +412,9 @@ void main() {
     final painted = _PaintedBoxes();
     word.paintSetWord(painted, Offset.zero, wordFitsAsItIs);
     expect(painted.widths, [natural.width - 1], reason: 'painted as it was set');
+    final read = SemanticsConfiguration();
+    word.describeSemanticsConfiguration(read);
+    expect(read.label, '12', reason: 'read aloud as the Text it replaced was');
   });
 
   test('a column built as a widget gives up the space between its glyphs '
