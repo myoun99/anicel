@@ -112,9 +112,13 @@ void main() {
     Future<void> expectTheComposite(ViewerDocument doc) async {
       expect(doc.pageCount, 1);
       expect(doc.pageSize(0), const ui.Size(8, 6));
-      final small = await doc.renderPage(0, width: 4, height: 3);
+      final small = await doc.renderPage(0, width: 4, height: 2);
       addTearDown(small.dispose);
-      expect((small.width, small.height), (4, 3), reason: 'at the size asked');
+      expect(
+        (small.width, small.height),
+        (4, 2),
+        reason: 'EXACTLY the size asked, a squashed ask included',
+      );
       final whole = await doc.renderPage(0, width: 8, height: 6);
       addTearDown(whole.dispose);
       final pixels = (await whole.toByteData(
