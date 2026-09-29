@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_corner_radii.dart';
+import '../../core/identity_memo.dart';
 import '../../models/app_language.dart';
 import '../text/app_strings.dart';
 
@@ -520,7 +521,29 @@ class _NoPageTransition extends PageTransitionsBuilder {
   ) => child;
 }
 
-ThemeData buildAppTheme() {
+/// The app theme for the live accent and language — the SAME instance for
+/// as long as both hold.
+///
+/// 🚨auto-frame-toggle-hitch (유저 2026-09-11: 「자동생성 누르면 0.5초정도
+/// 버벅임이 생겻어」). The root rebuilds for more than the theme — the
+/// timing overlay, the UI scale, and until this the input settings — and a
+/// theme built afresh is never `==` the last one (its scrollbar thumb
+/// resolves through a closure). Every such rebuild handed `AnimatedTheme` a
+/// "new" theme to lerp to, and the whole app rebuilt on each frame of the
+/// lerp: 7,777 widgets over four frames for one toggle, measured in the
+/// test harness 2026-09-29 (the first frame alone showed 117). Same inputs,
+/// same instance: the theme animates only when it changes.
+/// ⚠️A reader that took a setting at BUILD time rode that cascade without
+/// saying so; it listens for itself now (the timeline's edit pans).
+ThemeData buildAppTheme() => _appTheme.resolve(
+  identity: AppColors.accentSettings.value,
+  key: AppText.language,
+  build: _buildAppTheme,
+);
+
+final _appTheme = IdentityMemo<ThemeData>();
+
+ThemeData _buildAppTheme() {
   final colorScheme = _buildColorScheme();
   return ThemeData(
     useMaterial3: true,

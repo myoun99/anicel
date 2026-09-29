@@ -21,7 +21,7 @@ import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
-import '../../models/app_input_settings.dart' show AppInput;
+import 'timeline_edit_pan_devices.dart';
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/drag_chip.dart';
@@ -884,38 +884,39 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   }
 
   Widget _gestures({required Widget child}) {
-    return RawGestureDetector(
-      // Translucent: the row's own taps (select the layer, the eye, the
-      // sliders) keep firing — only the pan recognizer joins the arena.
-      behavior: HitTestBehavior.translucent,
-      gestures: <Type, GestureRecognizerFactory>{
-        EagerPanGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
-              () => EagerPanGestureRecognizer(debugOwner: this),
-              (recognizer) {
-                // The rail SCROLLS along the same axis this drag runs, so
-                // the device policy is what separates them: pen and mouse
-                // move rows, a finger scrolls (UI-R22 #6).
-                recognizer.supportedDevices = AppInput.timelineEditPanDevices;
-                // PEN-11: RawGestureDetector does not inject these.
-                recognizer.gestureSettings = MediaQuery.maybeGestureSettingsOf(
-                  context,
-                );
-                recognizer.dragStartBehavior = DragStartBehavior.down;
-                recognizer.onStart = (details) => _begin(
-                  details.localPosition,
-                  globalPosition: details.globalPosition,
-                );
-                recognizer.onUpdate = _update;
-                // ⑨: a SELECT drag ends its own way. Falling through to the
-                // move's end would run the DROP COMMIT for a gesture that
-                // never proposed a drop.
-                recognizer.onEnd = (_) => _end();
-                recognizer.onCancel = () => _end(cancelled: true);
-              },
-            ),
-      },
-      child: child,
+    return TimelineEditPanDevices(
+      builder: (context, devices) => RawGestureDetector(
+        // Translucent: the row's own taps (select the layer, the eye, the
+        // sliders) keep firing — only the pan recognizer joins the arena.
+        behavior: HitTestBehavior.translucent,
+        gestures: <Type, GestureRecognizerFactory>{
+          EagerPanGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+                () => EagerPanGestureRecognizer(debugOwner: this),
+                (recognizer) {
+                  // The rail SCROLLS along the same axis this drag runs, so
+                  // the device policy is what separates them: pen and mouse
+                  // move rows, a finger scrolls (UI-R22 #6).
+                  recognizer.supportedDevices = devices;
+                  // PEN-11: RawGestureDetector does not inject these.
+                  recognizer.gestureSettings =
+                      MediaQuery.maybeGestureSettingsOf(context);
+                  recognizer.dragStartBehavior = DragStartBehavior.down;
+                  recognizer.onStart = (details) => _begin(
+                    details.localPosition,
+                    globalPosition: details.globalPosition,
+                  );
+                  recognizer.onUpdate = _update;
+                  // ⑨: a SELECT drag ends its own way. Falling through to
+                  // the move's end would run the DROP COMMIT for a gesture
+                  // that never proposed a drop.
+                  recognizer.onEnd = (_) => _end();
+                  recognizer.onCancel = () => _end(cancelled: true);
+                },
+              ),
+        },
+        child: child,
+      ),
     );
   }
 

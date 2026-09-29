@@ -14,6 +14,7 @@ import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
 import 'timeline_double_tap.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
+import 'timeline_edit_pan_devices.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -988,26 +989,28 @@ Widget _eagerPanDetector({
   required VoidCallback onEnd,
   required VoidCallback onCancel,
 }) {
-  return RawGestureDetector(
-    behavior: HitTestBehavior.translucent,
-    gestures: <Type, GestureRecognizerFactory>{
-      EagerPanGestureRecognizer:
-          GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
-            () => EagerPanGestureRecognizer(debugOwner: debugOwner),
-            (recognizer) {
-              recognizer.firstStepAt = firstStepAt;
-              recognizer.supportedDevices = AppInput.timelineEditPanDevices;
-              recognizer.gestureSettings = MediaQuery.maybeGestureSettingsOf(
-                context,
-              );
-              recognizer.dragStartBehavior = DragStartBehavior.down;
-              recognizer.onStart = (details) => onStart(details.localPosition);
-              recognizer.onUpdate = onUpdate;
-              recognizer.onEnd = (_) => onEnd();
-              recognizer.onCancel = onCancel;
-            },
-          ),
-    },
+  return TimelineEditPanDevices(
+    builder: (context, devices) => RawGestureDetector(
+      behavior: HitTestBehavior.translucent,
+      gestures: <Type, GestureRecognizerFactory>{
+        EagerPanGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+              () => EagerPanGestureRecognizer(debugOwner: debugOwner),
+              (recognizer) {
+                recognizer.firstStepAt = firstStepAt;
+                recognizer.supportedDevices = devices;
+                recognizer.gestureSettings =
+                    MediaQuery.maybeGestureSettingsOf(context);
+                recognizer.dragStartBehavior = DragStartBehavior.down;
+                recognizer.onStart = (details) =>
+                    onStart(details.localPosition);
+                recognizer.onUpdate = onUpdate;
+                recognizer.onEnd = (_) => onEnd();
+                recognizer.onCancel = onCancel;
+              },
+            ),
+      },
+    ),
   );
 }
 
