@@ -113,35 +113,50 @@ double pageScrollOffset(ScrollWindow window, RevealedItem item) {
 /// height, but its frame axis scrolls inside the rows' viewport and keeps
 /// the size it had (measured: 472×168 inside a 936×0 grid). A scrollable
 /// never laid out has no window to measure either, and stands down too.
+///
+/// 🗣️F-225 (유저 2026-09-29): 「플립으로 컷너머 넘어가는등 스크롤 움직이는
+/// 조작 … 타임라인에서는 발생안하고 … 빈공간인 갭부분? 엔드라인 너머부분이
+/// 조작안하는거같음. … 언제든 넘어가도록 통일」. A FRAME axis is endless
+/// (UI-R12 #16): its cells exist because they are shown, so a move that has
+/// to show a frame past the built end goes there, and the axis's growth
+/// builds the cells it stands on — what the ruler's edge drag always did
+/// ([edgeAutoPanOvershoot]). ↩️Every move was held to the built end, so a
+/// walk or a page stopped at the cut's end while the folded row, which
+/// keeps its window as a value, went on. A ROW axis has no cells to grow:
+/// [endless] false keeps it inside its range.
 void _jumpUsing(
   ScrollController controller,
   RevealedItem item,
-  double Function(ScrollWindow window, RevealedItem item) law,
-) {
+  double Function(ScrollWindow window, RevealedItem item) law, {
+  required bool endless,
+}) {
   final position = controller.position;
   if (!scrollableIsShown(position)) {
     return;
   }
-  final target = law((
+  final wanted = law((
     offset: position.pixels,
     viewport: position.viewportDimension,
-  ), item).clamp(position.minScrollExtent, position.maxScrollExtent);
+  ), item);
+  final target = endless
+      ? math.max(position.minScrollExtent, wanted)
+      : wanted.clamp(position.minScrollExtent, position.maxScrollExtent);
   if (target != position.pixels) {
     controller.jumpTo(target);
   }
 }
 
-/// Jumps [controller] the least it can ([revealScrollOffset]) so [item] is
-/// on screen with its margin of the neighbour, within the scrollable's own
-/// range — and not at all when it already is.
+/// Jumps a FRAME axis [controller] the least it can ([revealScrollOffset])
+/// so [item] is on screen with its margin of the neighbour — past the built
+/// end if that is where it is — and not at all when it already is.
 void jumpToReveal(ScrollController controller, RevealedItem item) =>
-    _jumpUsing(controller, item, revealScrollOffset);
+    _jumpUsing(controller, item, revealScrollOffset, endless: true);
 
-/// Turns the page under [controller] so [item] stands at the window's start
-/// ([pageScrollOffset]), within the scrollable's own range — and not at all
-/// when it is already inside.
+/// Turns the page under a FRAME axis [controller] so [item] stands at the
+/// window's start ([pageScrollOffset]) — past the built end if that is where
+/// it is — and not at all when it is already inside.
 void jumpToPage(ScrollController controller, RevealedItem item) =>
-    _jumpUsing(controller, item, pageScrollOffset);
+    _jumpUsing(controller, item, pageScrollOffset, endless: true);
 
 /// Whether the scrollable behind [position] is laid out and not inside a
 /// folded panel — see [_jumpUsing]. A zoom's re-anchoring asks it too
@@ -296,11 +311,23 @@ typedef RevealedStep = ({ScrollController controller, double extent, int at});
 ///
 /// An axis with no clients, a non-positive extent or a negative
 /// [RevealedStep.at] is left where it is; the other still moves.
-void revealSelectionOnBothAxes(RevealedStep first, RevealedStep second) {
-  for (final axis in [first, second]) {
-    if (_axisCanMove(axis)) {
-      jumpToReveal(axis.controller, _itemOf(axis));
-    }
+///
+/// The two are NAMED for what they are because they no longer move alike:
+/// the [frames] reach past the built end (F-225), the [rows] do not.
+void revealSelectionOnBothAxes({
+  required RevealedStep frames,
+  required RevealedStep rows,
+}) {
+  if (_axisCanMove(frames)) {
+    jumpToReveal(frames.controller, _itemOf(frames));
+  }
+  if (_axisCanMove(rows)) {
+    _jumpUsing(
+      rows.controller,
+      _itemOf(rows),
+      revealScrollOffset,
+      endless: false,
+    );
   }
 }
 

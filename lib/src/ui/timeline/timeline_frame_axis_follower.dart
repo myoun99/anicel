@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -128,10 +130,13 @@ class TimelineFrameAxisFollower {
       _follow.ask();
       return;
     }
-    final target = frameAxisOffset.value.clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
-    );
+    // 🗣️F-225 (유저 2026-09-29): 「발생해서 스크롤 바뀐상태에서 타임라인
+    // 펼치면 스크롤 동기화 안되어있음」. The axis may stand past the built end
+    // — the folded row turns it by value, and a walk or a page reaches past
+    // it ([jumpToReveal]) — and the scrollable goes there too, the cells
+    // grown under it below ([_standAt]). ↩️It was held to the built end, so
+    // the grid opened on a page the row had already left.
+    final target = math.max(position.minScrollExtent, frameAxisOffset.value);
     if (target == position.pixels) {
       return;
     }

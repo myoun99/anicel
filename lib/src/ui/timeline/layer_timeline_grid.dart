@@ -491,12 +491,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// One row/cell of margin, so a walk keeps a neighbour in sight and reads
   /// as a walk rather than as a jump to the edge.
   void _revealSelection() => revealSelectionOnBothAxes(
-    (
+    frames: (
       controller: _horizontalScrollController,
       extent: _metrics.frameCellWidth,
       at: widget.hooks.frameCursor.value,
     ),
-    (
+    rows: (
       controller: _verticalScrollController,
       extent: _metrics.layerRowHeight,
       at: indexOfDisplayRow(
