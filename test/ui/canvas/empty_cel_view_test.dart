@@ -385,6 +385,7 @@ void main() {
 
     session.selectFrameIndex(4);
     await tester.pumpAndSettle();
+    final entriesBefore = session.historyManager.undoCount;
 
     final press = await tester.startGesture(
       visibleCanvasPoint(tester),
@@ -396,6 +397,14 @@ void main() {
     await press.up();
     await tester.pumpAndSettle();
     expect(layer().timeline.length, drawnBefore + 1);
+    // ⚠️Counted, because the length alone cannot tell: a block no stroke
+    // claimed is filed as its own entry after the stroke's, and undoing
+    // THAT restores the length too — with the ink still on the stack.
+    expect(
+      session.historyManager.undoCount,
+      entriesBefore + 1,
+      reason: 'the stroke took the block it made as its own first half',
+    );
 
     session.historyManager.undo();
     await tester.pumpAndSettle();
