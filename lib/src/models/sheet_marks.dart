@@ -261,6 +261,20 @@ final class SheetPicture extends SheetMark {
     canvasRegion: canvasRegion,
   );
 
+  /// This picture [by] further on the paper — a page further down a stack
+  /// of pages: its slot and frame move, the canvas it shows does not.
+  ///
+  /// ⛔The one place a picture is moved. A copy spelled field by field
+  /// drops whatever field comes after it — [canvasRegion] did.
+  SheetPicture shiftedBy(Offset by) => SheetPicture(
+    layer,
+    cutId: cutId,
+    pictureFrame: pictureFrame,
+    slot: slot.shift(by),
+    frame: frame.shift(by),
+    canvasRegion: canvasRegion,
+  );
+
   @override
   Object get _prints => (cutId, pictureFrame, slot, frame, canvasRegion);
 }

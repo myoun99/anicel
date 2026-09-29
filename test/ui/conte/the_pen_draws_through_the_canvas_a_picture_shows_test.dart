@@ -2,12 +2,21 @@ import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/painting.dart' show MatrixUtils;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
+import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 /// The pen goes through a picture onto the very canvas the picture shows:
 /// the camera's view at its frame — or, where the cell's camera moves, the
@@ -68,5 +77,34 @@ void main() {
       frame.center,
       'square to it: its middle in the middle',
     );
+  });
+  test('a picture window moved a page on keeps the canvas its picture shows '
+      '— the picture moves, what it shows does not', () {
+    const region = Rect.fromLTRB(40, 20, 680, 380);
+    final overlay = ActiveStrokeOverlayModel();
+    addTearDown(overlay.dispose);
+    final window = SheetPictureWindow(
+      id: 'p',
+      key: const BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('c'),
+        layerId: LayerId('l'),
+        frameId: FrameId('f'),
+      ),
+      picture: (
+        picture: pictureOver(region),
+        canvas: const [Offset.zero, Offset(10, 0), Offset(10, 10)],
+      ),
+      canvasToPaper: Matrix4.identity(),
+      artworkToCanvas: Matrix4.identity(),
+      overlay: overlay,
+    );
+    const by = Offset(0, 900);
+    final moved = window.shiftedBy(by).picture.picture;
+    expect(moved.slot, frame.shift(by));
+    expect(moved.frame, frame.shift(by));
+    expect(moved.canvasRegion, region);
+    expect(moved.key, pictureOver(region).key);
   });
 }

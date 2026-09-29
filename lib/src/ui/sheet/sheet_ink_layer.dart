@@ -319,19 +319,12 @@ class SheetPictureWindow extends SheetWindow {
 
   @override
   SheetPictureWindow shiftedBy(Offset by) {
-    final mark = picture.picture;
     return SheetPictureWindow(
       id: id,
       key: key,
       plane: plane,
       picture: (
-        picture: SheetPicture(
-          mark.layer,
-          cutId: mark.cutId,
-          pictureFrame: mark.pictureFrame,
-          slot: mark.slot.shift(by),
-          frame: mark.frame.shift(by),
-        ),
+        picture: picture.picture.shiftedBy(by),
         canvas: [for (final point in picture.canvas) point + by],
       ),
       canvasToPaper: Matrix4.translationValues(
