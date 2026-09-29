@@ -32,7 +32,7 @@ void main() {
     final recorder = ui.PictureRecorder();
     SheetCanvasPrinter(
       style: _plainFace,
-      images: SheetMarkImages(pictureFor: (cutId, frame, _) => green),
+      images: SheetMarkImages(pictureFor: (_, _) => green),
     ).paint(
       ui.Canvas(recorder),
       const Size(32, 60),

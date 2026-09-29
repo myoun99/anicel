@@ -317,11 +317,12 @@ List<Offset> pictureOutline(SheetPictureOverInk over) {
   ], over.canvas);
 }
 
-/// A cut's picture at a frame, for a window that draws it [shownHeight]
-/// device pixels tall — what the panel's picture law is asked with. An
-/// export's pictures are rendered before it prints, and ignore it.
+/// [picture]'s image — what its [SheetPicture.key] names — for a window
+/// that draws it [shownHeight] device pixels tall: what the panel's picture
+/// law is asked with. An export's pictures are rendered before it prints,
+/// and ignore it.
 typedef SheetPictureLookup =
-    ui.Image? Function(String cutId, int pictureFrame, double shownHeight);
+    ui.Image? Function(SheetPicture picture, double shownHeight);
 
 /// The images a Canvas printer finds by what a mark names.
 class SheetMarkImages {
@@ -377,8 +378,8 @@ double sheetWordsSize(SheetWords words, SheetTextStyle style) {
 /// replays the same list).
 ///
 /// Fills, rules and pictures are cut on the device grid ([SheetDeviceGrid]),
-/// flat fills and rules without anti-aliasing; words and ink are drawn in
-/// paper space.
+/// flat fills and rules without anti-aliasing; words, lines and ink are
+/// drawn in paper space.
 class SheetCanvasPrinter {
   const SheetCanvasPrinter({
     required this.style,
@@ -438,6 +439,8 @@ class _SheetCanvas {
         _flat(grid.snapRule(mark), argb);
       case SheetWords():
         _inPaperSpace(() => _words(mark));
+      case SheetStroke():
+        _inPaperSpace(() => _stroke(mark));
       case SheetPicture():
         _picture(mark);
       case SheetImage(:final assetPath, :final slot):
@@ -520,14 +523,29 @@ class _SheetCanvas {
   void _picture(SheetPicture picture) {
     final shot = grid.printedPicture(picture);
     final image = printer.images.pictureFor?.call(
-      picture.cutId,
-      picture.pictureFrame,
+      picture,
       shot.height * grid.devicePixelRatio,
     );
     if (image == null) {
       return;
     }
     paintSheetImageIn(canvas, image, shot, FilterQuality.medium);
+  }
+
+  /// A line, anti-aliased: a camera's frame may be turned, and no grid
+  /// holds a turned edge.
+  void _stroke(SheetStroke stroke) {
+    if (stroke.points.length < 2) {
+      return;
+    }
+    canvas.drawPath(
+      Path()..addPolygon(stroke.points, stroke.closed),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.width
+        ..strokeJoin = StrokeJoin.miter
+        ..color = Color(stroke.argb),
+    );
   }
 
   void _inPaperSpace(VoidCallback draw) {
@@ -565,6 +583,11 @@ class _SheetCanvas {
             : double.infinity,
       );
     canvas.save();
+    if (words.turn != 0) {
+      canvas.translate(slot.left, slot.top);
+      canvas.rotate(words.turn);
+      canvas.translate(-slot.left, -slot.top);
+    }
     canvas.clipRect(slot);
     painter.paint(
       canvas,

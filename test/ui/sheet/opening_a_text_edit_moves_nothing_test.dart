@@ -207,7 +207,7 @@ void main() {
         cell.actionRect.left,
         m.rowTop(cell.rowOnPage),
         cell.actionRect.right,
-        m.rowTop(cell.rowOnPage + cell.source.rowSpan),
+        m.rowTop(cell.rowOnPage + cell.rowSpan),
       );
       final origin = conteBodyTopLeft(tester);
       return Rect.fromLTRB(

@@ -1,7 +1,13 @@
 import 'dart:math' as math;
+import 'dart:ui' show Offset, Rect, Size;
 
+import 'package:flutter/foundation.dart' show listEquals;
+
+import '../../models/canvas_size.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
+import '../../models/key_range_move.dart'
+    show transformKeyNameUnion, unionMixedKeyName;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -11,6 +17,8 @@ import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track.dart';
+import '../../services/camera_frame_corners.dart'
+    show cameraCornerTrails, cameraFramesBounds, cameraKeyFrames;
 import '../storyboard_layer_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 
@@ -35,7 +43,7 @@ ConteSheetSource buildConteSheetSource(Project project) {
         startFrame: entry.startFrame,
         endFrame: entry.endFrame,
         track: track,
-        cameraAspect: _aspectOf(entry.cut),
+        cameraFrameSize: project.cameraSize,
       ),
     );
   }
@@ -55,17 +63,13 @@ ConteSheetSource buildConteSheetSource(Project project) {
   );
 }
 
-double _aspectOf(Cut cut) => cut.canvasSize.height <= 0
-    ? 16 / 9
-    : cut.canvasSize.width / cut.canvasSize.height;
-
 ConteCutSource _cutSource({
   required Cut cut,
   required String name,
   required int startFrame,
   required int endFrame,
   required Track track,
-  required double cameraAspect,
+  required CanvasSize cameraFrameSize,
 }) {
   final storyboard = storyboardLayerForCut(cut);
   final cells = storyboardCoverageCells(
@@ -83,7 +87,7 @@ ConteCutSource _cutSource({
           cut: cut,
           cell: cell,
           storyboard: storyboard,
-          cameraAspect: cameraAspect,
+          cameraFrameSize: cameraFrameSize,
         ),
     ],
     dialogue: _dialogueOf(track, startFrame, endFrame),
@@ -94,10 +98,9 @@ ConteCellSource _cellSource({
   required Cut cut,
   required StoryboardCoverageCell cell,
   required Layer? storyboard,
-  required double cameraAspect,
+  required CanvasSize cameraFrameSize,
 }) {
   final exposure = storyboard?.timeline[cell.startIndex];
-  final move = _cameraMoveIn(cut, cell, cameraAspect);
   return ConteCellSource(
     startFrame: cell.startIndex,
     endFrameExclusive: cell.endIndexExclusive,
@@ -111,58 +114,112 @@ ConteCellSource _cellSource({
       _ => null,
     },
     action: exposure?.memo?.actionMemo ?? '',
-    rowSpan: move.rowSpan,
-    encroachFraction: move.encroachFraction,
-    cameraLabels: move.labels,
+    camera: _cameraWorkIn(cut, cell, cameraFrameSize),
   );
 }
 
-/// How far the camera travels while this cell is on screen, in SCREENS.
+/// What the camera does while [cell] is on screen: its frame at each key
+/// in the cell (`cameraKeyFrames`), the trail each corner draws between
+/// them and the canvas they sweep — null while it holds still (its keys in
+/// the cell all frame one place, or there are fewer than two) or its work
+/// is bypassed (the camera row's switch shows the canvas centred).
 ///
-/// A vertical move claims an extra row per screen height (design: "세로
-/// 이동 = 1칸씩 추가 차지"), and the leftover of a non-integer amount stays
-/// margin, which is what a hand-drawn sheet does. A horizontal move
-/// encroaches on the ACTION column instead of moving it — the column
-/// positions are the sheet's, fixed for every page.
-({int rowSpan, double encroachFraction, List<String> labels}) _cameraMoveIn(
+/// A window shows the widest of those frames whole ([_widestFrame]): a
+/// frame is what the camera shows, so each frame of a pan takes a window
+/// whatever the zoom, and a push-in's closer frame lies inside the wider.
+///
+/// A key's label is its NAME — the name the camera row's header shows for
+/// it (`transformKeyNameUnion`): its lanes agree on it — else IN for the
+/// first and OUT for the last, the Storyboard Pro rule; a key whose lanes
+/// disagree («...») is unnamed (유저 2026-09-30: 「레인끼리 달라서 헤더가
+/// ...으로 표시되는 경우 … 이름 안정해진거랑 같은 규칙으로 IN OUT」).
+ConteCameraWork? _cameraWorkIn(
   Cut cut,
   StoryboardCoverageCell cell,
-  double cameraAspect,
+  CanvasSize cameraFrameSize,
 ) {
-  final keys = [
-    for (final key in cut.camera.keyframes.entries)
-      if (key.key >= cell.startIndex && key.key < cell.endIndexExclusive) key,
-  ];
-  if (keys.length < 2) {
-    return (rowSpan: 1, encroachFraction: 0.0, labels: const <String>[]);
+  if (cut.layers.cameraWorkBypassed) {
+    return null;
   }
-  var minX = keys.first.value.center.x;
-  var maxX = minX;
-  var minY = keys.first.value.center.y;
-  var maxY = minY;
-  for (final key in keys) {
-    minX = math.min(minX, key.value.center.x);
-    maxX = math.max(maxX, key.value.center.x);
-    minY = math.min(minY, key.value.center.y);
-    maxY = math.max(maxY, key.value.center.y);
+  final frames = cameraKeyFrames(
+    cut.camera.keyframes,
+    cameraFrameSize,
+    from: cell.startIndex,
+    toExclusive: cell.endIndexExclusive,
+  );
+  final corners = [for (final frame in frames) frame.corners];
+  if (corners.every((frame) => listEquals(frame, corners.first))) {
+    return null;
   }
-  // One screen = the camera's view of the canvas at zoom 1.
-  final screenHeight = cut.canvasSize.height.toDouble();
-  final screenWidth = screenHeight * cameraAspect;
-  final verticalScreens = screenHeight <= 0
-      ? 0.0
-      : (maxY - minY) / screenHeight;
-  final horizontalScreens = screenWidth <= 0
-      ? 0.0
-      : (maxX - minX) / screenWidth;
-  return (
-    rowSpan: 1 + verticalScreens.floor().clamp(0, 4),
-    encroachFraction: horizontalScreens.clamp(0.0, 1.0),
-    // The keyframe NAMES are the truth for these labels (design); the model
-    // carries none yet, so the sheet prints the fallback the design named.
-    labels: const <String>['IN', 'OUT'],
+  final names = transformKeyNameUnion(cut.camera.track);
+  return ConteCameraWork(
+    screen: _widestFrame(corners),
+    field: _wholePixelsAround(cameraFramesBounds(corners)),
+    keys: [
+      for (final (index, frame) in frames.indexed)
+        _cameraKey(
+          frame.corners,
+          index == 0
+              ? ConteCameraKeyRole.first
+              : index == frames.length - 1
+              ? ConteCameraKeyRole.last
+              : ConteCameraKeyRole.between,
+          switch (names[frame.frameIndex]) {
+            null || unionMixedKeyName => null,
+            final name => name,
+          },
+        ),
+    ],
+    trails: cameraCornerTrails(corners),
   );
 }
+
+/// The size of the widest of [frames] — by its sides, not its bounds: a
+/// frame is no wider for being turned.
+Size _widestFrame(List<List<Offset>> frames) {
+  var widest = frames.first;
+  for (final frame in frames.skip(1)) {
+    if ((frame[1] - frame[0]).distance > (widest[1] - widest[0]).distance) {
+      widest = frame;
+    }
+  }
+  return Size(
+    (widest[1] - widest[0]).distance,
+    (widest[3] - widest[0]).distance,
+  );
+}
+
+/// [region] grown out to whole canvas pixels — the swept canvas is
+/// rendered pixel for pixel, and a render has no half pixels to give.
+///
+/// An edge a hair off a whole pixel is on it: the corners are poses run
+/// through a matrix and back, and a hair past 0 must not cost a pixel.
+Rect _wholePixelsAround(Rect region) {
+  const hair = 1e-6;
+  return Rect.fromLTRB(
+    (region.left + hair).floorToDouble(),
+    (region.top + hair).floorToDouble(),
+    (region.right - hair).ceilToDouble(),
+    (region.bottom - hair).ceilToDouble(),
+  );
+}
+
+/// A key [named] or not, as the sheet labels it for its [role].
+ConteCameraKey _cameraKey(
+  List<Offset> corners,
+  ConteCameraKeyRole role,
+  String? named,
+) => ConteCameraKey(
+  corners: corners,
+  role: role,
+  label:
+      named ??
+      switch (role) {
+        ConteCameraKeyRole.first => 'IN',
+        ConteCameraKeyRole.last => 'OUT',
+        ConteCameraKeyRole.between => null,
+      },
+);
 
 /// The cut's lines, read off the track's SE rows and clipped to the cut.
 ///

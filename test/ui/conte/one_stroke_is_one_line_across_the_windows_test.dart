@@ -169,7 +169,7 @@ void main() {
               builder: (context, _) => ConteTabHost(
                 session: session,
                 thumbnails: (
-                  resolve: (cut, frame, {required shownHeight}) => printed,
+                  resolve: (cut, frame, {required shownHeight, region}) => printed,
                   landed: const _NeverLands(),
                 ),
                 viewport: seedFromRender(

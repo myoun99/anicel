@@ -96,7 +96,7 @@ void main() {
             activeCutId: const CutId('C1'),
             pixelsPerFrame: ppf,
             thumbnails: fixedThumbnails(
-              (cut, frame, {required shownHeight}) => picture,
+              (cut, frame, {required shownHeight, region}) => picture,
             ),
           ),
         ),

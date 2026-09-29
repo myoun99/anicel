@@ -32,7 +32,10 @@ import '../../models/app_language.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_windows.dart';
 import '../../models/conte/conte_words.dart';
+import '../../models/conte/conte_page_marks.dart'
+    show contePictureOf, contePictureRenderWidth;
 import '../../models/conte/conte_sheet_layout.dart';
+import '../../models/sheet_marks.dart' show SheetPictureKey;
 import '../../models/conte/conte_sheet_source.dart';
 import '../envelope/cut_envelope_ink.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
@@ -1196,11 +1199,12 @@ class ExportDialogState extends State<ExportDialog> {
     return null;
   }
 
-  /// Renders each cell picture the conte [pages] name, once, camera-framed
-  /// at [size] — fresh composites straight from the brush store (the
-  /// storyboard thumbnail rule: the cache is panel-resolution, an export
-  /// re-renders). [have] says which keys the caller already holds, and
-  /// [take] receives each image and owns it from then on.
+  /// Renders each cell picture the conte [pages] name, once — a window's
+  /// [width] wide ([contePictureRenderWidth]) — fresh composites straight from
+  /// the brush store (the storyboard thumbnail rule: the cache is
+  /// panel-resolution, an export re-renders). [have] says which keys the
+  /// caller already holds, and [take] receives each image and owns it from
+  /// then on.
   ///
   /// ⛔ONE WALK FOR BOTH CONTE EXPORTS. The sheets and the PDF each wrote
   /// out the page/cell nesting, the (cut, frame) dedupe key, the cancel
@@ -1209,15 +1213,16 @@ class ExportDialogState extends State<ExportDialog> {
   /// different picture than the other.
   Future<void> _forEachContePicture(
     List<ContePageLayout> pages, {
-    required CanvasSize size,
-    required bool Function((String, int) key) have,
-    required Future<void> Function((String, int) key, ui.Image image) take,
+    required int width,
+    required bool Function(SheetPictureKey key) have,
+    required Future<void> Function(SheetPictureKey key, ui.Image image) take,
   }) async {
-    _contePictureSize = size;
+    _contePictureSize = _session.camera.cameraFrameSize.scaledToWidth(width);
     final renderer = ExportFrameRenderer(session: _session);
     for (final page in pages) {
       for (final cell in page.cells) {
-        final key = (cell.cutId, cell.source.pictureFrame);
+        final picture = contePictureOf(cell, page.metrics);
+        final key = picture.key;
         if (have(key) || _cancelRequested) {
           continue;
         }
@@ -1227,15 +1232,17 @@ class ExportDialogState extends State<ExportDialog> {
         }
         await take(
           key,
-          await renderer.renderComposite(
-            ExportFrameTask(cut: cut, frameIndex: cell.source.pictureFrame),
-            ExportSizeMode.camera,
-            outputSize: size,
+          await renderer.renderPicture(
+            cut,
+            picture.pictureFrame,
+            width: contePictureRenderWidth(picture, page.metrics, width),
+            region: picture.canvasRegion,
           ),
         );
       }
     }
   }
+
 
   /// One conte page rendered with its cell pictures and sheet ink alive
   /// for exactly that render and disposed after — the preview's and the
@@ -1257,7 +1264,7 @@ class ExportDialogState extends State<ExportDialog> {
       return await renderContePageImage(
         page: page,
         source: source,
-        pictureFor: (cutId, frame, _) => pictures[(cutId, frame)],
+        pictureFor: (picture, _) => pictures[picture.key],
         imageFor: (path) => images[path],
         inkImageFor: (key) => ink[key],
         picturesOverInk: contePicturesOverInkIn(_session, page),
@@ -1276,16 +1283,16 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  /// Renders every cell's picture once, camera-framed at [width].
-  Future<Map<(String, int), ui.Image>> _renderContePictures(
+  /// Renders every cell's picture once, a window's [width] wide.
+  Future<Map<SheetPictureKey, ui.Image>> _renderContePictures(
     List<ContePageLayout> pages, {
     required int width,
   }) async {
-    final images = <(String, int), ui.Image>{};
+    final images = <SheetPictureKey, ui.Image>{};
     try {
       await _forEachContePicture(
         pages,
-        size: _session.camera.cameraFrameSize.scaledToWidth(width),
+        width: width,
         have: images.containsKey,
         take: (key, image) async => images[key] = image,
       );
@@ -2586,10 +2593,10 @@ class ExportDialogState extends State<ExportDialog> {
     // before the next renders — only the raw copies (the document's own
     // material) live to the end.
     _reportProgress(0, pages.length + 1);
-    final pdfPictures = <(String, int), ContePdfPicture>{};
+    final pdfPictures = <SheetPictureKey, ContePdfPicture>{};
     await _forEachContePicture(
       pages,
-      size: cameraSize,
+      width: cameraSize.width,
       have: pdfPictures.containsKey,
       take: (key, image) async {
         try {

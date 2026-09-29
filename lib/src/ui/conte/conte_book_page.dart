@@ -166,15 +166,15 @@ class ConteBookPage extends StatelessWidget {
             // on paper, but a tap below belongs to the cell there.
             box: Rect.fromLTRB(
               cell.actionRect.left,
-              m.rowTop(cell.rowOnPage),
+              cell.actionRect.top,
               cell.actionRect.right,
-              m.rowTop(cell.rowOnPage + cell.source.rowSpan),
+              m.rowTop(cell.rowOnPage + cell.rowSpan),
             ),
             textRect: Rect.fromLTRB(
               cell.actionRect.left + 4,
-              m.rowTop(cell.rowOnPage) + 4,
+              cell.actionRect.top + 4,
               cell.actionRect.right - 4,
-              m.rowTop(cell.rowOnPage + cell.source.rowSpan) - 4,
+              m.rowTop(cell.rowOnPage + cell.rowSpan) - 4,
             ),
             text: cell.source.action,
             style: conteTextStyle(

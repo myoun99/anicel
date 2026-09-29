@@ -6,14 +6,17 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 
+import '../helpers/conte_camera.dart';
+
 /// The conte page: five cells, CUT/TIME merged per cut, and a cell that
 /// does not fit moves WHOLE to the next page, leaving a hole.
-ConteCellSource _cell(int start, int end, {int rowSpan = 1}) => ConteCellSource(
-  startFrame: start,
-  endFrameExclusive: end,
-  pictureFrame: start,
-  rowSpan: rowSpan,
-);
+ConteCellSource _cell(int start, int end, {ConteCameraWork? camera}) =>
+    ConteCellSource(
+      startFrame: start,
+      endFrameExclusive: end,
+      pictureFrame: start,
+      camera: camera,
+    );
 
 ConteCutSource _cut(
   String id, {
@@ -117,13 +120,13 @@ void main() {
           _cut('b', duration: 24, cumulativeEnd: 48, cells: [_cell(0, 24)]),
           _cut('c', duration: 24, cumulativeEnd: 72, cells: [_cell(0, 24)]),
           _cut('d', duration: 24, cumulativeEnd: 96, cells: [_cell(0, 24)]),
-          // Two rows tall with only one row left: it moves, and row 4
-          // becomes a hole nobody fills.
+          // Two rows tall — its camera pans down a screen — with only one
+          // row left: it moves, and row 4 becomes a hole nobody fills.
           _cut(
             'e',
             duration: 48,
             cumulativeEnd: 144,
-            cells: [_cell(0, 48, rowSpan: 2)],
+            cells: [_cell(0, 48, camera: conteCameraPan(down: 1))],
           ),
         ],
       ),
@@ -220,5 +223,149 @@ void main() {
       page.cells.last.actionRect.top,
       closeTo(page.metrics.rowTop(1), 0.001),
     );
+  });
+  group('camera work lays the cell out (유저 2026-09-30)', () {
+    const metrics = ConteSheetMetrics();
+
+    /// The page of [cells], each a cut of its own.
+    ContePageLayout pageOf(List<ConteCellSource> cells) => layoutConteSheet(
+      ConteSheetSource(
+        cuts: [
+          for (final (index, cell) in cells.indexed)
+            _cut(
+              '$index',
+              duration: 24,
+              cumulativeEnd: 24 * (index + 1),
+              cells: [cell],
+            ),
+        ],
+      ),
+      metrics: metrics,
+    ).first;
+
+    test('a camera that moves down takes a row a screen, and its words stay '
+        'beside it', () {
+      final cell = pageOf([
+        _cell(0, 24, camera: conteCameraPan(down: 1)),
+      ]).cells.single;
+      expect(cell.rowSpan, 2);
+      expect(cell.pictureRect.bottom, closeTo(metrics.rowTop(2), 1e-9));
+      expect(cell.pictureRect.right, closeTo(metrics.actionLeft, 1e-9));
+      expect(cell.wordsTop, metrics.rowTop(0));
+      expect(cell.actionRect.left, closeTo(metrics.actionLeft, 1e-9));
+    });
+
+    test('however far it moves, its picture takes four rows at most — the '
+        'sweep is laid smaller instead (「그림으로서는 가로도 세로도 길면 '
+        '4코마분까지만」)', () {
+      final work = conteCameraPan(down: 6);
+      final cell = pageOf([_cell(0, 24, camera: work)]).cells.single;
+      expect(conteCameraPictureRowsMax, 4);
+      expect(cell.rowSpan, 4);
+      final plan = conteCameraPlan(metrics, work);
+      final slot = cell.pictureRect.deflate(metrics.silhouetteBorder);
+      expect(
+        work.field.height * plan.scale,
+        closeTo(slot.height, 1e-9),
+        reason: 'seven screens in four rows',
+      );
+      expect(
+        plan.scale,
+        lessThan(metrics.windowHeight / work.screen.height),
+        reason: 'smaller than a screen a window',
+      );
+    });
+
+    test('a camera that moves across reaches into the ACTION column as far as '
+        'it needs, and the ACTION words run on beside it', () {
+      final cell = pageOf([
+        _cell(0, 24, camera: conteCameraPan(across: 0.3)),
+      ]).cells.single;
+      expect(cell.rowSpan, 1);
+      expect(cell.pictureRect.right, greaterThan(metrics.actionLeft + 1));
+      expect(cell.pictureRect.right, lessThan(metrics.dialogueLeft));
+      expect(cell.actionRect.left, cell.pictureRect.right);
+      expect(cell.wordsTop, metrics.rowTop(0));
+    });
+
+    test('past the ACTION column it reaches into the dialogue\'s and the '
+        'time\'s — and with no room left beside it, ACTION, dialogue and '
+        'length ALL move to the row under it (「초수칸까지도 확장가능하게해」 '
+        '· 「내려갈땐 다 같이 내려가도록하자」)', () {
+      final cell = pageOf([
+        _cell(0, 24, camera: conteCameraPan(across: 0.9)),
+      ]).cells.single;
+      expect(
+        cell.pictureRect.right,
+        greaterThan(metrics.timeLeft),
+        reason: 'fixture: into the time column',
+      );
+      expect(
+        conteCameraPlan(metrics, conteCameraPan(across: 0.9)).scale,
+        closeTo(metrics.windowHeight / 1080, 1e-12),
+        reason: 'fixture: at a screen a window, not laid smaller',
+      );
+      expect(cell.rowSpan, 2, reason: 'its picture\'s row and the words\'');
+      expect(cell.pictureRect.bottom, closeTo(metrics.rowTop(1), 1e-9));
+      expect(cell.wordsTop, closeTo(metrics.rowTop(1), 1e-9));
+      expect(cell.dialogueRect.top, cell.wordsTop);
+      expect(
+        cell.actionRect.left,
+        closeTo(metrics.actionLeft, 1e-9),
+        reason: 'the whole ACTION column, under the picture',
+      );
+    });
+
+    test('the words move down as soon as the ACTION column is gone — the '
+        'dialogue\'s still half free', () {
+      final cell = pageOf([
+        _cell(0, 24, camera: conteCameraPan(across: 0.5)),
+      ]).cells.single;
+      expect(cell.pictureRect.right, greaterThan(metrics.dialogueLeft));
+      expect(
+        cell.pictureRect.right,
+        lessThan(metrics.timeLeft),
+        reason: 'fixture: the dialogue column only partly taken',
+      );
+      expect(cell.rowSpan, 2);
+      expect(cell.wordsTop, closeTo(metrics.rowTop(1), 1e-9));
+    });
+
+    test('a sweep wider than the page is laid smaller: its picture stops at '
+        'the page\'s right edge', () {
+      final cell = pageOf([
+        _cell(0, 24, camera: conteCameraPan(across: 3)),
+      ]).cells.single;
+      expect(cell.pictureRect.right, closeTo(metrics.bodyRight, 1e-9));
+    });
+
+    test('a cell\'s words stop where a later picture stands in their column '
+        '— a picture and a value never overlap', () {
+      final page = pageOf([
+        _cell(0, 24),
+        _cell(0, 24, camera: conteCameraPan(across: 0.3)),
+        _cell(0, 24, camera: conteCameraPan(across: 0.9)),
+      ]);
+      final [first, second, third] = page.cells;
+      expect(
+        first.actionRect.bottom,
+        closeTo(second.pictureRect.top, 1e-9),
+        reason: 'the second picture reaches into the ACTION column',
+      );
+      expect(
+        first.dialogueRect.bottom,
+        closeTo(third.pictureRect.top, 1e-9),
+        reason: 'the third reaches into the dialogue\'s',
+      );
+      expect(
+        second.actionRect.bottom,
+        closeTo(third.pictureRect.top, 1e-9),
+      );
+      expect(
+        third.actionRect.bottom,
+        closeTo(metrics.bodyBottom, 1e-9),
+        reason: 'nothing stands under the last one\'s words',
+      );
+    });
   });
 }

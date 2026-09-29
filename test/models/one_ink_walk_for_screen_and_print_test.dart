@@ -33,12 +33,12 @@ void main() {
       pictureFrame: startFrame,
       frameId: frameId == null ? null : FrameId(frameId),
       inkId: inkId,
-      rowSpan: rowSpan,
     ),
     pictureRect: Rect.zero,
     actionRect: Rect.zero,
     dialogueRect: Rect.zero,
     rowOnPage: rowOnPage,
+    rowSpan: rowSpan,
   );
 
   ContePageLayout page(List<ContePlacedCell> cells, {int pageIndex = 0}) =>

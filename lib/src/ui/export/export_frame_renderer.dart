@@ -29,6 +29,8 @@ import '../../services/playback/playback_frame_mapping.dart'
         resolveTransitionContributions,
         sourceOverWeights,
         trackGroupSourceOverWeights;
+import '../../services/camera_frame_corners.dart'
+    show CameraView, cameraViewOver, pictureView;
 import '../camera/camera_frame_render_service.dart';
 import '../../services/composite_effect_paint.dart'
     show alphaOnly, resolveCompositeEffectPlan;
@@ -240,29 +242,56 @@ class ExportFrameRenderer {
     _startFrame();
     return _composite(
       task,
-      mode,
+      _viewFor(task.cut, task.frameIndex, mode),
       outputSize: outputSize,
       withNameTags: withNameTags,
     );
   }
 
-  /// [renderComposite] inside a frame that has already started.
+  /// A panel's picture — the storyboard's, the conte's: [cut] at
+  /// [frameIndex] through its camera, or over the canvas [region] a conte
+  /// cell's moving camera sweeps ([pictureView]) — [width] pixels wide, in
+  /// the shape of what it shows.
+  Future<ui.Image> renderPicture(
+    Cut cut,
+    int frameIndex, {
+    required int width,
+    ui.Rect? region,
+  }) {
+    final view = pictureView(
+      _viewFor(cut, frameIndex, ExportSizeMode.camera),
+      region,
+    );
+    _startFrame();
+    return _composite(
+      ExportFrameTask(cut: cut, frameIndex: frameIndex),
+      view,
+      outputSize: view.frameSize.scaledToWidth(width),
+    );
+  }
+
+  /// What a render of [cut] at [frameIndex] looks through in [mode]: its
+  /// camera there, or the whole canvas — a camera standing square over all
+  /// of it, at its own size.
+  CameraView _viewFor(Cut cut, int frameIndex, ExportSizeMode mode) =>
+      switch (mode) {
+        ExportSizeMode.camera => (
+          pose: session.camera.cameraPoseForCut(cut, frameIndex),
+          frameSize: session.camera.cameraFrameSize,
+        ),
+        ExportSizeMode.canvas => cameraViewOver(cut.canvasSize.canvasRect),
+      };
+
+  /// [renderComposite] inside a frame that has already started, through
+  /// [view].
   Future<ui.Image> _composite(
     ExportFrameTask task,
-    ExportSizeMode mode, {
+    CameraView view, {
     CanvasSize? outputSize,
     bool withNameTags = false,
   }) async {
     final cut = task.cut;
     await _hydrate(cut, task.frameIndex);
-    final pose = mode == ExportSizeMode.camera
-        ? session.camera.cameraPoseForCut(cut, task.frameIndex)
-        : CameraPose(
-            center: CanvasPoint(
-              x: cut.canvasSize.width / 2,
-              y: cut.canvasSize.height / 2,
-            ),
-          );
     return renderService.renderThroughCamera(
       // The rows' own fx switches apply here too (AE semantics: the layer
       // fx switch affects the render) — WYSIWYG with playback. They live on
@@ -274,10 +303,8 @@ class ExportFrameRenderer {
         frameIndex: task.frameIndex,
         surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
       ),
-      pose: pose,
-      cameraFrameSize: mode == ExportSizeMode.camera
-          ? session.camera.cameraFrameSize
-          : cut.canvasSize,
+      pose: view.pose,
+      cameraFrameSize: view.frameSize,
       outputSize: outputSize,
       overlayPass: !withNameTags
           ? null
@@ -384,7 +411,11 @@ class ExportFrameRenderer {
     }
     // The presentation render: the アフレコ name tags belong in the video
     // (their row's eye is the switch).
-    final image = await _composite(task, mode, withNameTags: true);
+    final image = await _composite(
+      task,
+      _viewFor(task.cut, task.frameIndex, mode),
+      withNameTags: true,
+    );
     // The V effects are TRACK data on the global axis (R4).
     final trackFrame = session.rowSpans.trackGlobalFrameOf(
       task.cut.id,
@@ -562,7 +593,11 @@ class ExportFrameRenderer {
                 cut: cut,
                 frameIndex: contribution.localFrameIndex,
               ),
-              ExportSizeMode.canvas,
+              _viewFor(
+                cut,
+                contribution.localFrameIndex,
+                ExportSizeMode.canvas,
+              ),
               withNameTags: true,
             );
             images.add(image);
@@ -812,23 +847,11 @@ class ExportFrameRenderer {
     if (layers.isEmpty) {
       return null;
     }
-    CameraPose pose;
-    if (mode == ExportSizeMode.camera) {
-      pose = session.camera.cameraPoseForCut(task.cut, firstExposure);
-    } else {
-      pose = CameraPose(
-        center: CanvasPoint(
-          x: task.cut.canvasSize.width / 2,
-          y: task.cut.canvasSize.height / 2,
-        ),
-      );
-    }
+    final view = _viewFor(task.cut, firstExposure, mode);
     return renderService.renderThroughCamera(
       layers: layers,
-      pose: pose,
-      cameraFrameSize: mode == ExportSizeMode.camera
-          ? session.camera.cameraFrameSize
-          : task.cut.canvasSize,
+      pose: view.pose,
+      cameraFrameSize: view.frameSize,
       outputSize: outputSize,
     );
   }

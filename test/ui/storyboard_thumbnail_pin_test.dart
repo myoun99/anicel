@@ -75,7 +75,7 @@ void main() {
       var renderCount = 0;
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) {
+        render: (_, _, _, _) {
           renderCount += 1;
           return tinyImage();
         },

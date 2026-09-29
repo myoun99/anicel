@@ -16,6 +16,7 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/project.dart';
+import '../../models/sheet_marks.dart' show SheetPicture;
 import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
 import '../../services/project_lookup.dart'
@@ -307,16 +308,23 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// A cell's picture at the size its window shows it — the zoom and the
   /// screen's density decide, not a size of the conte's own (유저
   /// 2026-09-25: 「화면이 필요한 만큼(최대 원본)」). ↩️It asked one fixed
-  /// 640px picture, which a cell zoomed past about 2.4× stretched.
-  ui.Image? _pictureFor(String cutId, int frame, double shownHeight) {
+  /// 640px picture, which a cell zoomed past about 2.4× stretched. A cell
+  /// whose camera moves asks for the canvas that camera sweeps
+  /// ([SheetPicture.canvasRegion]).
+  ui.Image? _pictureFor(SheetPicture picture, double shownHeight) {
     final resolver = widget.thumbnails?.resolve;
     if (resolver == null) {
       return null;
     }
     for (final track in _session.repository.requireProject().tracks) {
       for (final cut in track.cuts) {
-        if (cut.id.value == cutId) {
-          return resolver(cut, frame, shownHeight: shownHeight);
+        if (cut.id.value == picture.cutId) {
+          return resolver(
+            cut,
+            picture.pictureFrame,
+            shownHeight: shownHeight,
+            region: picture.canvasRegion,
+          );
         }
       }
     }

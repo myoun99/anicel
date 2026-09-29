@@ -932,7 +932,7 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _, {required shownHeight}) =>
+        thumbnailFor: (cut, _, {required shownHeight, region}) =>
             cut.id == const CutId('cut-a') ? image : null,
       );
 
@@ -994,7 +994,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         thumbnailFor:
-            (cut, frameIndex, {required shownHeight}) {
+            (cut, frameIndex, {required shownHeight, region}) {
               asked.add((cut.id, frameIndex));
               return null;
             },
@@ -1074,7 +1074,7 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _, {required shownHeight}) =>
+        thumbnailFor: (cut, _, {required shownHeight, region}) =>
             cut.id == const CutId('cut-a') ? image : null,
       );
 

@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
+import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
@@ -99,8 +100,9 @@ class ContePdfPicture {
 
 /// Writes [pages] as one PDF document.
 ///
-/// [pictures] maps `(cutId, pictureFrame)` to the pre-rendered cell
-/// composites and [images] a media asset path (the logo) to its pixels;
+/// [pictures] maps a picture's key ([SheetPicture.key]) to the
+/// pre-rendered cell composites and [images] a media asset path (the logo)
+/// to its pixels;
 /// absent entries print the page without them, like the panel does while
 /// a render is pending. [inkPictures] maps a sheet-ink window's
 /// [BrushFrameKey] to its composed raster (R5), drawn over the finished
@@ -109,7 +111,7 @@ Future<Uint8List> writeContePdf({
   required ConteSheetSource source,
   required List<ContePageLayout> pages,
   required ContePdfFonts fonts,
-  Map<(String, int), ContePdfPicture> pictures = const {},
+  Map<SheetPictureKey, ContePdfPicture> pictures = const {},
   Map<String, ContePdfPicture> images = const {},
   Map<BrushFrameKey, ContePdfPicture> inkPictures = const {},
   List<SheetPictureOverInk> Function(ContePageLayout page)? picturesOverInkOf,
@@ -165,7 +167,7 @@ class _ContePdfPageWriter {
   final PdfTtfFont bold;
   final PdfTtfFont hangul;
   final PdfTtfFont hangulBold;
-  final Map<(String, int), PdfImage> pictures;
+  final Map<SheetPictureKey, PdfImage> pictures;
   final Map<String, PdfImage> images;
   final Map<BrushFrameKey, PdfImage> inkPictures;
 
@@ -208,8 +210,10 @@ class _ContePdfPageWriter {
         _fillRect(rect, PdfColor.fromInt(argb));
       case SheetWords():
         _words(mark);
-      case SheetPicture(:final cutId, :final pictureFrame, :final frame):
-        final image = pictures[(cutId, pictureFrame)];
+      case SheetStroke():
+        _stroke(mark);
+      case SheetPicture(:final key, :final frame):
+        final image = pictures[key];
         if (image != null && !frame.isEmpty) {
           _drawnIn(image, frame);
         }
@@ -230,6 +234,22 @@ class _ContePdfPageWriter {
     _g.setFillColor(color);
     _g.drawRect(rect.left, _y(rect.bottom), rect.width, rect.height);
     _g.fillPath();
+  }
+
+  /// A line, as the Canvas printer draws it.
+  void _stroke(SheetStroke stroke) {
+    final points = stroke.points;
+    if (points.length < 2) {
+      return;
+    }
+    _g.setStrokeColor(PdfColor.fromInt(stroke.argb));
+    _g.setLineWidth(stroke.width);
+    _g.setLineJoin(PdfLineJoin.miter);
+    _g.moveTo(points.first.dx, _y(points.first.dy));
+    for (final point in points.skip(1)) {
+      _g.lineTo(point.dx, _y(point.dy));
+    }
+    _g.strokePath(close: stroke.closed);
   }
 
   void _contained(PdfImage image, ui.Rect slot) {
@@ -346,6 +366,17 @@ class _ContePdfPageWriter {
     final ascent = (words.bold ? bold : regular).ascent * size;
 
     _g.saveContext();
+    if (words.turn != 0) {
+      // Clockwise on the page about the slot's corner — the other way round
+      // in PDF space, whose y runs up.
+      final (x, y) = (slot.left, _y(slot.top));
+      _g.setTransform(
+        Matrix4.identity()
+          ..translateByDouble(x, y, 0, 1)
+          ..rotateZ(-words.turn)
+          ..translateByDouble(-x, -y, 0, 1),
+      );
+    }
     _g.drawRect(slot.left, _y(slot.bottom), slot.width, slot.height);
     _g.clipPath();
     _g.setFillColor(PdfColor.fromInt(words.argb));

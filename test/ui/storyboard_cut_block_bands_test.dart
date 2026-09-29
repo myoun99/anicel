@@ -619,7 +619,7 @@ void main() {
         tester,
         storyboardLayer: _dividedStoryboardLayer('cut-1', named: named),
         pixelsPerFrame: pixelsPerFrame,
-        thumbnailFor: (cut, frame, {required shownHeight}) =>
+        thumbnailFor: (cut, frame, {required shownHeight, region}) =>
             null,
       );
       return (requireCutBlock(tester, 'cut-1'), _painted(tester));
@@ -904,6 +904,7 @@ void main() {
                 cut,
                 frame, {
                 required shownHeight,
+                region,
               }) {
                 asked.add(shownHeight);
                 return null;
@@ -964,7 +965,7 @@ void main() {
       cutMark: _art,
       pixelsPerFrame: cell,
       // Panel a's picture is there; b's and c's are still being made.
-      thumbnailFor: (cut, frame, {required shownHeight}) =>
+      thumbnailFor: (cut, frame, {required shownHeight, region}) =>
           frame == 0 ? picture : null,
     );
     final block = requireCutBlock(tester, 'cut-1');

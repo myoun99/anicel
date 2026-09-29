@@ -299,7 +299,7 @@ void main() {
       cell.actionRect.left,
       metrics.rowTop(cell.rowOnPage),
       cell.actionRect.right,
-      metrics.rowTop(cell.rowOnPage + cell.source.rowSpan),
+      metrics.rowTop(cell.rowOnPage + cell.rowSpan),
     );
     await tester.tapAt(pageTopLeft + action.center);
     await tester.pumpAndSettle();

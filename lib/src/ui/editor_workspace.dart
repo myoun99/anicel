@@ -64,7 +64,6 @@ import 'editor_session_manager.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'export/export_frame_renderer.dart';
-import 'export/export_plan.dart';
 import 'import/import_dialog.dart';
 import '../services/import/import_layer_spot.dart';
 import 'media/media_asset_drag_data.dart';
@@ -1143,8 +1142,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// through its camera, never past the camera frame's own size.
   StoryboardCutThumbnailStore _panelPicturesOf(EditorSessionManager session) =>
       StoryboardCutThumbnailStore(
-        render: (cut, frameIndex, width) =>
-            _renderStoryboardThumbnail(session, cut, frameIndex, width),
+        render: (cut, frameIndex, width, region) =>
+            _renderStoryboardThumbnail(
+              session,
+              cut,
+              frameIndex,
+              width,
+              region,
+            ),
         originalSize: () {
           final camera = session.camera.cameraFrameSize;
           return ui.Size(camera.width.toDouble(), camera.height.toDouble());
@@ -1496,6 +1501,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// when that falls inside it). Clamped here so a later trim can never
   /// break a request that was legal when it was made.
   ///
+  /// [region] — the canvas a conte cell's moving camera sweeps — is shown
+  /// instead of the camera's view where it is given
+  /// (`ExportFrameRenderer.renderPicture`).
+  ///
   /// [session] is the project the store was made for, not whichever is on
   /// screen when a render lands — a render in flight across a tab switch
   /// finishes for the project that asked (I-7).
@@ -1504,18 +1513,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     Cut cut,
     int frameIndex,
     int thumbnailWidth,
-  ) {
-    final cameraSize = session.camera.cameraFrameSize;
-    final output = cameraSize.scaledToWidth(thumbnailWidth);
-    return ExportFrameRenderer(session: session).renderComposite(
-      ExportFrameTask(
-        cut: cut,
-        frameIndex: frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
-      ),
-      ExportSizeMode.camera,
-      outputSize: output,
-    );
-  }
+    ui.Rect? region,
+  ) => ExportFrameRenderer(session: session).renderPicture(
+    cut,
+    frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
+    width: thumbnailWidth,
+    region: region,
+  );
 
   /// Runs a layout mutation and clamps the playhead when the storyboard
   /// just came on screen (over-end playheads on non-last cuts must land

@@ -33,14 +33,31 @@ import 'media/viewer_render_tier.dart';
 /// pixels it had; it is now the size the surface SHOWS it at
 /// ([pictureRenderWidthFor] — 유저 2026-09-25 「화면이 필요한 만큼(최대
 /// 원본)」, and for the cut blocks 「같은로직으로 법 통일」).
-typedef StoryboardThumbnailKey = ({CutId cutId, int frameIndex, int width});
+///
+/// The REGION is what a conte cell whose camera moves shows instead of the
+/// camera's view: the canvas that camera sweeps (`SheetPicture.canvasRegion`
+/// — 유저 2026-09-29: 「일단 카메라 팬대로 해당 코마에서 보여주고」). The
+/// same frame over another canvas is another picture, so it joins the key;
+/// null is the camera's view.
+typedef StoryboardThumbnailKey = ({
+  CutId cutId,
+  int frameIndex,
+  ui.Rect? region,
+  int width,
+});
 
 /// The resolver the storyboard's rows and the conte's page ask while they
 /// PAINT — only for what their window shows, saying how many device pixels
-/// tall they draw the picture ([shownHeight]). The width that buys is the
-/// store's answer, never the surface's.
+/// tall they draw the picture ([shownHeight]), and over which canvas
+/// [region] where it is not the camera's view ([StoryboardThumbnailKey]).
+/// The width that buys is the store's answer, never the surface's.
 typedef StoryboardThumbnailResolver =
-    ui.Image? Function(Cut cut, int frameIndex, {required double shownHeight});
+    ui.Image? Function(
+      Cut cut,
+      int frameIndex, {
+      required double shownHeight,
+      ui.Rect? region,
+    });
 
 /// A surface's panel pictures: [resolve] asked while it paints, and
 /// [landed] told when a render lands or a picture is let go — ONE value,
@@ -105,7 +122,12 @@ typedef StoryboardThumbnails = ({
 /// is also how a deleted cut's pictures leave.
 class StoryboardCutThumbnailStore extends ChangeNotifier {
   StoryboardCutThumbnailStore({
-    required Future<ui.Image?> Function(Cut cut, int frameIndex, int width)
+    required Future<ui.Image?> Function(
+      Cut cut,
+      int frameIndex,
+      int width,
+      ui.Rect? region,
+    )
     render,
     required ui.Size Function() originalSize,
     EditorCacheInvalidationHub? invalidationHub,
@@ -116,10 +138,17 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     _hub?.addBrushFrameListener(_onBrushFrameInvalidated);
   }
 
-  final Future<ui.Image?> Function(Cut cut, int frameIndex, int width) _render;
+  final Future<ui.Image?> Function(
+    Cut cut,
+    int frameIndex,
+    int width,
+    ui.Rect? region,
+  )
+  _render;
 
   /// The size a picture has at its fullest — the camera frame it renders
-  /// through. No width past it is ever asked for.
+  /// through, or the region it shows at a pixel a pixel. No width past it
+  /// is ever asked for.
   final ui.Size Function() _originalSize;
   final EditorCacheInvalidationHub? _hub;
 
@@ -181,11 +210,16 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     Cut cut,
     int frameIndex, {
     required double shownHeight,
+    ui.Rect? region,
   }) {
     final key = (
       cutId: cut.id,
       frameIndex: frameIndex,
-      width: pictureRenderWidthFor(shownHeight, _originalSize()),
+      region: region,
+      width: pictureRenderWidthFor(
+        shownHeight,
+        region?.size ?? _originalSize(),
+      ),
     );
     final signature = _signatureFor(cut);
     if (_renderedSignatures[key] != signature && key != _rendering) {
@@ -209,6 +243,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     for (final entry in _images.entries) {
       if (entry.key.cutId == key.cutId &&
           entry.key.frameIndex == key.frameIndex &&
+          entry.key.region == key.region &&
           (sharpest == null || entry.value.width > sharpest.width)) {
         sharpest = entry.value;
       }
@@ -236,7 +271,9 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     final ask = _wanted.remove(key)!;
     _rendering = key;
     unawaited(
-      Future.sync(() => _render(ask.cut, key.frameIndex, key.width)).then(
+      Future.sync(
+        () => _render(ask.cut, key.frameIndex, key.width, key.region),
+      ).then(
         (image) => _landed(key, ask.signature, image),
         onError: (Object error, StackTrace stack) {
           // Remember the failed signature: silently swallowing AND

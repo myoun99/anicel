@@ -47,7 +47,9 @@ void main() {
         pages: [page],
         fonts: await ContePdfFonts.load(),
         words: conteWordsIn(AppLanguage.ja),
-        pictures: {('a', 0): picture},
+        pictures: {
+          (cutId: 'a', pictureFrame: 0, canvasRegion: null): picture,
+        },
       ),
     );
 

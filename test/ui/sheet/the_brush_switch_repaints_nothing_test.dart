@@ -125,7 +125,7 @@ void main() {
               () => ConteTabHost(
                 session: session,
                 thumbnails: (
-                  resolve: (cut, frame, {required shownHeight}) => printed,
+                  resolve: (cut, frame, {required shownHeight, region}) => printed,
                   landed: landed,
                 ),
                 inkController: ink,

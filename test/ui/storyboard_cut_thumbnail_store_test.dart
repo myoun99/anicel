@@ -87,7 +87,7 @@ void main() {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) {
+      render: (_, _, _, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -111,7 +111,7 @@ void main() {
       'landings', (tester) async {
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) => tinyImage(),
+      render: (_, _, _, _) => tinyImage(),
     );
     addTearDown(store.dispose);
     final thumbnails = store.thumbnails;
@@ -141,7 +141,7 @@ void main() {
     final widths = <int>[];
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, width) {
+      render: (_, _, width, _) {
         widths.add(width);
         return tinyImage();
       },
@@ -177,7 +177,7 @@ void main() {
     var mostAtOnce = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) {
+      render: (_, _, _, _) {
         final render = Completer<ui.Image?>();
         running.add(render);
         final open = running.where((each) => !each.isCompleted).length;
@@ -223,7 +223,7 @@ void main() {
     final running = <Completer<ui.Image?>>[];
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, frame, width) {
+      render: (_, frame, width, _) {
         rendered.add((frame, width));
         final render = Completer<ui.Image?>();
         running.add(render);
@@ -288,7 +288,7 @@ void main() {
     final pending = <(int, int), Completer<ui.Image?>>{};
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, frame, width) =>
+      render: (_, frame, width, _) =>
           (pending[(frame, width)] = Completer<ui.Image?>()).future,
     );
     addTearDown(store.dispose);
@@ -334,7 +334,7 @@ void main() {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) {
+      render: (_, _, _, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -358,7 +358,7 @@ void main() {
     final hub = EditorCacheInvalidationHub();
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) {
+      render: (_, _, _, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -403,7 +403,7 @@ void main() {
     final hub = EditorCacheInvalidationHub();
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) => tinyImage(),
+      render: (_, _, _, _) => tinyImage(),
       invalidationHub: hub,
     );
     addTearDown(store.dispose);
@@ -447,7 +447,7 @@ void main() {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) async {
+      render: (_, _, _, _) async {
         renderCount += 1;
         return null;
       },
@@ -475,7 +475,7 @@ void main() {
       var renderCount = 0;
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) {
+        render: (_, _, _, _) {
           renderCount += 1;
           return tinyImage();
         },
@@ -563,7 +563,7 @@ void main() {
     // failure after it into a ten-minute hang in the binding's assert.
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) async {
+      render: (_, _, _, _) async {
         renderCount += 1;
         if (failFirst) {
           failFirst = false;
@@ -606,7 +606,7 @@ void main() {
     var renders = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, frame, _) {
+      render: (_, frame, _, _) {
         renders += 1;
         if (frame == 0) {
           throw StateError('no camera');
@@ -661,7 +661,7 @@ void main() {
       final reported = <int>[];
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) {
+        render: (_, _, _, _) {
           renders += 1;
           return tinyImage();
         },
@@ -687,7 +687,7 @@ void main() {
       var renders = 0;
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) {
+        render: (_, _, _, _) {
           renders += 1;
           return tinyImage();
         },
@@ -715,7 +715,7 @@ void main() {
       var notified = 0;
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) => tinyImage(),
+        render: (_, _, _, _) => tinyImage(),
         onHeldBytesChanged: reported.add,
       );
       addTearDown(store.dispose);
@@ -742,7 +742,7 @@ void main() {
       final reported = <int>[];
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) => tinyImage(),
+        render: (_, _, _, _) => tinyImage(),
         onHeldBytesChanged: reported.add,
       );
       await ask(tester, store, [0]);
@@ -750,5 +750,39 @@ void main() {
       store.dispose();
       expect(reported.last, 0);
     });
+  });
+  testWidgets('the REGION is part of the key: a cell whose camera moves asks '
+      'for the canvas that camera sweeps, as wide as that canvas allows, and '
+      'the camera\'s view never stands in for it', (tester) async {
+    final asks = <(int, ui.Rect?)>[];
+    final store = StoryboardCutThumbnailStore(
+      originalSize: _original,
+      render: (_, _, width, region) {
+        asks.add((width, region));
+        return tinyImage();
+      },
+    );
+    addTearDown(store.dispose);
+    const swept = ui.Rect.fromLTWH(0, 0, 3840, 1080);
+
+    await shownUntilIdle(tester, store, () {
+      store.thumbnailFor(cut(), 0, shownHeight: 5000);
+    });
+    await tester.runAsync(() async {
+      expect(
+        store.thumbnailFor(cut(), 0, shownHeight: 5000, region: swept),
+        isNull,
+        reason: 'the camera\'s view is another picture of the frame',
+      );
+    });
+    await shownUntilIdle(tester, store, () {
+      store.thumbnailFor(cut(), 0, shownHeight: 5000, region: swept);
+    });
+
+    expect(asks, [(1920, null), (3840, swept)]);
+    expect(
+      store.thumbnailFor(cut(), 0, shownHeight: 5000, region: swept),
+      isNotNull,
+    );
   });
 }

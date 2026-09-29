@@ -11,6 +11,8 @@ import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/ui/conte/conte_words_in.dart';
 
+import '../helpers/conte_camera.dart';
+
 /// The conte body page, as the marks every printer replays.
 ///
 /// 유저 2026-09-25 — the first preset's page (「위에 헤더에 컷 화면 내용 초 …
@@ -108,20 +110,23 @@ void main() {
     });
 
     test('a picture fills the camera\'s frame in its slot: the whole slot in '
-        'a window of the camera\'s shape, the camera\'s shape centred in one '
-        'its camera work made taller', () {
+        'a window of the camera\'s shape — and where the camera moves, the '
+        'canvas it sweeps, a screen to a window, in the middle of the slot '
+        'its work made taller', () {
       // F-197: every printer and the pen read this one rect, so none of them
       // works out from a rendered picture's pixels where the picture is.
+      // 유저 2026-09-29: 「일단 카메라 팬대로 해당 코마에서 보여주고」.
+      final pan = conteCameraPan(down: 1);
       final worked = ConteSheetSource(
         framesPerSecond: 24,
         cuts: [
           _cut('W', [
             _cell(0, 24),
-            const ConteCellSource(
+            ConteCellSource(
               startFrame: 24,
               endFrameExclusive: 48,
               pictureFrame: 24,
-              rowSpan: 2,
+              camera: pan,
             ),
           ]),
         ],
@@ -154,6 +159,11 @@ void main() {
         plain.slot,
         'the camera\'s shape fills its window',
       );
+      expect(
+        plain.canvasRegion,
+        isNull,
+        reason: 'a camera that holds still shows its own view',
+      );
       final tall = pictures.last;
       expect(
         tall.slot.height,
@@ -161,18 +171,19 @@ void main() {
         reason: 'fixture: the camera work took two rows',
       );
       expect(
-        tall.frame.width / tall.frame.height,
-        closeTo(laid.metrics.cameraAspect, 1e-9),
-        reason: 'the camera\'s shape, kept',
+        tall.canvasRegion,
+        pan.field,
+        reason: 'the canvas the camera sweeps',
       );
+      final window = laid.metrics.windowRect(0);
       expectSame(
         tall.frame,
         Rect.fromCenter(
           center: tall.slot.center,
-          width: tall.slot.width,
-          height: tall.slot.width / laid.metrics.cameraAspect,
+          width: window.width,
+          height: window.height * 2,
         ),
-        'as wide as the window, in its middle',
+        'two screens tall at a window a screen, in the middle of the slot',
       );
     });
 
@@ -190,13 +201,13 @@ void main() {
             name: 'P',
             durationFrames: 24,
             cumulativeEndFrames: 24,
-            cells: const [
+            cells: [
               ConteCellSource(
                 startFrame: 0,
                 endFrameExclusive: 24,
                 pictureFrame: 0,
                 action: 'ハヤト走る',
-                cameraLabels: ['PAN→', 'T.U'],
+                camera: conteCameraPan(across: 1),
               ),
             ],
           ),
@@ -213,16 +224,8 @@ void main() {
       expect(pictures.whereType<SheetPicture>(), hasLength(1));
       expect(
         pictures.whereType<SheetWords>().map((words) => words.text),
-        ['PAN→', 'T.U'],
+        ['IN', 'OUT'],
         reason: 'the camera work is written ON the picture',
-      );
-      expect(
-        pictures.whereType<SheetWords>().map((words) => (words.h, words.v)),
-        [
-          (SheetAlign.start, SheetAlign.start),
-          (SheetAlign.end, SheetAlign.end),
-        ],
-        reason: 'the first label at the picture\'s start, the last at its end',
       );
       final values = framed.where(
         (mark) => mark.layer == SheetPaintLayer.content,
@@ -236,7 +239,12 @@ void main() {
         SheetPicture(:final slot) => slot,
         SheetWords(:final slot) => slot,
         SheetFill(:final rect) => rect,
+        SheetRule(:final rect) => rect,
         SheetImage(:final slot) => slot,
+        SheetStroke(:final points) => points.fold(
+          Rect.fromPoints(points.first, points.first),
+          (box, point) => box.expandToInclude(Rect.fromPoints(point, point)),
+        ),
         _ => Rect.zero,
       };
       for (final picture in pictures) {

@@ -454,8 +454,8 @@ void main() {
 
   // 🚨The shown is the result: while the brush is on, the picture on screen
   // is what the page prints for it — the camera's frame on the print's
-  // ground, the layers cropped at the canvas, inside the slot's rounded
-  // corners, the camera's labels over it — and nothing around it moves.
+  // ground, the layers cropped at the canvas, the camera's work over it —
+  // and nothing around it moves.
   group('on screen, while the brush is on', () {
     const boundary = ValueKey<String>('screen');
     const blue = Color(0xFF0000FF);
@@ -466,9 +466,13 @@ void main() {
     final askedHeights = <double>[];
 
     /// The cut framed by its camera at [zoom] about the canvas's middle,
-    /// held over its one block — two keys, so the page prints IN and OUT
-    /// on the picture — its conte row posed by [rowPose].
-    Project framed({required double zoom, TransformPose? rowPose}) {
+    /// held still over its one block — two keys at one place are no camera
+    /// work — or panning on to [last]; its conte row posed by [rowPose].
+    Project framed({
+      required double zoom,
+      TransformPose? rowPose,
+      CameraPose? last,
+    }) {
       final pose = CameraPose(center: CanvasPoint(x: 320, y: 180), zoom: zoom);
       final base = cut();
       final row = base.layers.single;
@@ -483,7 +487,7 @@ void main() {
             name: 'Video',
             cuts: [
               base.copyWith(
-                camera: CutCamera(keyframes: {0: pose, 9: pose}),
+                camera: CutCamera(keyframes: {0: pose, 9: last ?? pose}),
                 layers: [
                   if (rowPose == null)
                     row
@@ -584,6 +588,7 @@ void main() {
                                 cut,
                                 frame, {
                                 required shownHeight,
+                                region,
                               }) {
                                 askedHeights.add(shownHeight);
                                 return printed;
@@ -640,8 +645,7 @@ void main() {
         slot.topLeft + Offset(slot.width * x, slot.height * y);
 
     testWidgets('the live picture stands on the print\'s ground inside the '
-        'slot with the camera\'s labels over it, and the page around it does '
-        'not change', (tester) async {
+        'slot, and the page around it does not change', (tester) async {
       final printed = (await tester.runAsync(() async {
         final recorder = ui.PictureRecorder();
         Canvas(recorder).drawColor(const Color(0xFFFF0000), BlendMode.src);
@@ -669,19 +673,6 @@ void main() {
       );
       expect(on.colorAt(within(slot, 0.1, 0.12)), blue);
 
-      // OUT sits on the cel's inked right side, printed over the picture.
-      final out = Rect.fromLTRB(
-        slot.right - 40,
-        slot.bottom - 16,
-        slot.right - 2,
-        slot.bottom - 2,
-      );
-      expect(
-        on.countIn(out, (color) => color != blue),
-        greaterThan(10),
-        reason: 'the camera\'s labels are printed over the live picture',
-      );
-
       final around = slot.inflate(30);
       final kept = slot.inflate(2);
       final moved = [
@@ -703,6 +694,41 @@ void main() {
       brushOn.value = false;
       await tester.pumpAndSettle();
       expect(buffers, isEmpty, reason: 'and stops when it goes');
+    });
+
+    testWidgets('the camera\'s work is printed over the live picture — its '
+        'frames, the trails of their corners and its names, as the page '
+        'prints them (유저 2026-09-30)', (tester) async {
+      // At 2× the camera pans from canvas x 160–480 to 240–560: the cell
+      // shows the canvas the two frames sweep, OUT's frame in red.
+      final slot = await pumpPanel(
+        tester,
+        framed(
+          zoom: 2,
+          last: CameraPose(center: CanvasPoint(x: 400, y: 180), zoom: 2),
+        ),
+      );
+      bool red(Color color) =>
+          color.r > 0.5 && color.g < 0.35 && color.b < 0.35;
+      final off = await shoot(tester);
+      expect(
+        off.countIn(slot, red),
+        greaterThan(10),
+        reason: 'fixture: the page prints OUT\'s red frame',
+      );
+      brushOn.value = true;
+      final on = await shoot(tester);
+      expect(
+        find.byKey(const ValueKey<String>('conte-picture-live-picture-39-0')),
+        findsOneWidget,
+        reason: 'fixture: the live picture is up',
+      );
+      expect(
+        on.countIn(slot, red),
+        greaterThan(10),
+        reason: 'the live picture covers the print, and the camera\'s work '
+            'is printed again over it',
+      );
     });
 
     testWidgets('a row posed off the canvas is cropped at the canvas, as the '

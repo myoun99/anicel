@@ -24,7 +24,7 @@ void main() {
       final hub = EditorCacheInvalidationHub();
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) async => null,
+        render: (_, _, _, _) async => null,
         invalidationHub: hub,
       );
       addTearDown(store.dispose);

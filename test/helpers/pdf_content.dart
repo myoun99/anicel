@@ -106,3 +106,42 @@ List<Rect> pdfImagePlacements(Uint8List pdf) => [
             ))
           Rect.fromLTWH(x, y, w, h),
 ];
+
+/// Every stroked path the pages draw: `x y m`, then `x y l` …, then `S` —
+/// or `s`, which closes it first.
+List<({List<Offset> points, bool closed})> pdfStrokes(Uint8List pdf) {
+  final strokes = <({List<Offset> points, bool closed})>[];
+  for (final tokens in _streamTokens(pdf)) {
+    List<Offset>? path;
+    for (var i = 0; i < tokens.length; i += 1) {
+      final x = i >= 2 ? double.tryParse(tokens[i - 2]) : null;
+      final y = i >= 1 ? double.tryParse(tokens[i - 1]) : null;
+      switch (tokens[i]) {
+        case 'm' when x != null && y != null:
+          path = [Offset(x, y)];
+        case 'l' when x != null && y != null && path != null:
+          path.add(Offset(x, y));
+        case 'S' || 's' when path != null:
+          strokes.add((points: path, closed: tokens[i] == 's'));
+          path = null;
+        case 'f' || 'f*' || 'n' || 'W' || 'W*' || 'h':
+          path = null;
+      }
+    }
+  }
+  return strokes;
+}
+
+/// Every `a b c d e f cm` the pages set that places no image — a turn, a
+/// move — as its six numbers.
+List<List<double>> pdfTransforms(Uint8List pdf) => [
+  for (final tokens in _streamTokens(pdf))
+    for (var i = 6; i < tokens.length; i += 1)
+      if (tokens[i] == 'cm' &&
+          (i + 2 >= tokens.length || tokens[i + 2] != 'Do'))
+        if ([
+              for (var j = i - 6; j < i; j += 1) double.tryParse(tokens[j]),
+            ]
+            case final numbers when !numbers.contains(null))
+          [for (final number in numbers) number!],
+];

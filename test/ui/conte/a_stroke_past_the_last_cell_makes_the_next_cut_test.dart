@@ -145,7 +145,7 @@ void main() {
       buildConteSheetSource(session.repository.requireProject()),
       metrics: metrics,
     ).last.cells.last;
-    final row = last.rowOnPage + last.source.rowSpan + past;
+    final row = last.rowOnPage + last.rowSpan + past;
     final top = metrics.rowTop(row);
     final bottom = metrics.rowTop(row + 1);
     final paper = conteBodyTopLeft(tester);

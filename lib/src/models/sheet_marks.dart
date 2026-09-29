@@ -16,6 +16,8 @@ library;
 
 import 'dart:ui' show Offset, Rect, Size;
 
+import 'package:flutter/foundation.dart' show listEquals;
+
 import 'brush_frame_key.dart';
 import 'sheet_paint_layer.dart';
 
@@ -145,6 +147,7 @@ final class SheetWords extends SheetMark {
     this.h = SheetAlign.start,
     this.v = SheetAlign.start,
     this.fit = SheetWordsFit.wrap,
+    this.turn = 0,
   });
 
   final String text;
@@ -159,17 +162,69 @@ final class SheetWords extends SheetMark {
   final SheetAlign v;
   final SheetWordsFit fit;
 
+  /// How far the words are turned — radians, clockwise on the page — about
+  /// the slot's top-left corner, slot and all: a camera key's name written
+  /// along its turned frame (유저 2026-09-29: 「기운 틀의 모서리. 각도
+  /// 그대로따라감」).
+  final double turn;
+
   @override
-  Object get _prints => (text, slot, size, argb, bold, h, v, fit);
+  Object get _prints => (text, slot, size, argb, bold, h, v, fit, turn);
 
   /// Nothing to set, or nowhere to set it: every printer skips these words.
   bool get printsNothing =>
       text.isEmpty || slot.width <= 0 || slot.height <= 0;
 }
 
+/// A line through [points], [width] wide — open, or [closed] into an
+/// outline: a camera key's frame on a picture, the trail each of its
+/// corners draws. A frame the camera turned is no rectangle, so it is no
+/// fill.
+final class SheetStroke extends SheetMark {
+  const SheetStroke(
+    super.layer, {
+    required this.points,
+    required this.argb,
+    required this.width,
+    this.closed = false,
+  });
+
+  final List<Offset> points;
+  final int argb;
+  final double width;
+  final bool closed;
+
+  @override
+  Object get _prints => (_Points(points), argb, width, closed);
+}
+
+/// Points compared by what they hold — a list is equal only to itself, and
+/// a mark's [SheetMark._prints] must say whether it prints alike.
+final class _Points {
+  const _Points(this.points);
+
+  final List<Offset> points;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Points && listEquals(other.points, points);
+
+  @override
+  int get hashCode => Object.hashAll(points);
+}
+
+/// What a picture's image is found by: its cut at its frame, through the
+/// camera or over [SheetPicture.canvasRegion] — the panel's picture store
+/// and an export's rendered pictures both key by it.
+typedef SheetPictureKey = ({
+  String cutId,
+  int pictureFrame,
+  Rect? canvasRegion,
+});
+
 /// A cell's picture: the camera's [frame], in its [slot]. The printer finds
-/// the image by ([cutId], [pictureFrame]) — the panel in its thumbnail
-/// store, the PDF among the pictures its export rendered.
+/// the image by its [key] — the panel in its thumbnail store, the PDF among
+/// the pictures its export rendered.
 final class SheetPicture extends SheetMark {
   const SheetPicture(
     super.layer, {
@@ -177,6 +232,7 @@ final class SheetPicture extends SheetMark {
     required this.pictureFrame,
     required this.slot,
     required this.frame,
+    this.canvasRegion,
   });
 
   final String cutId;
@@ -191,10 +247,22 @@ final class SheetPicture extends SheetMark {
   /// the camera's shape only to the nearest pixel of its height, and a
   /// contain on those pixels left a sliver of the window uncovered — the
   /// page, the PDF and the pen each answered where the picture was (F-197).
+  /// Over a [canvasRegion], it is where that region lies.
   final Rect frame;
 
+  /// The canvas the picture shows, square to it, where its cell's camera
+  /// moves — the region that camera sweeps (`ConteCameraWork.field`); null
+  /// for what the camera shows at [pictureFrame].
+  final Rect? canvasRegion;
+
+  SheetPictureKey get key => (
+    cutId: cutId,
+    pictureFrame: pictureFrame,
+    canvasRegion: canvasRegion,
+  );
+
   @override
-  Object get _prints => (cutId, pictureFrame, slot, frame);
+  Object get _prints => (cutId, pictureFrame, slot, frame, canvasRegion);
 }
 
 /// A media image — the company logo — contained in [slot].

@@ -58,7 +58,7 @@ void main() {
       words: conteWordsIn(AppLanguage.ja),
       viewport: view,
       effectiveRatio: ratio,
-      pictureFor: (_, _, shownHeight) {
+      pictureFor: (_, shownHeight) {
         asked.add(shownHeight);
         return null;
       },

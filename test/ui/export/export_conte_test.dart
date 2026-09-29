@@ -5,11 +5,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
@@ -78,7 +81,7 @@ void main() {
   /// Two cuts with storyboard rows; the SE row carries mixed-script
   /// dialogue (Japanese speaker brackets + Hangul) so the PDF's per-run
   /// font fallback is exercised for real.
-  Project project() => Project(
+  Project project({CutCamera? camera40}) => Project(
     id: const ProjectId('conte-export'),
     name: 'Conte Export',
     cameraSize: const CanvasSize(width: 32, height: 18),
@@ -100,6 +103,7 @@ void main() {
             name: '40',
             duration: 12,
             canvasSize: const CanvasSize(width: 64, height: 36),
+            camera: camera40 ?? CutCamera.empty(),
             layers: [storyboardLayer('40', {0: 12})],
           ),
         ],
@@ -366,6 +370,60 @@ void main() {
     );
     expect(sizes, isNotEmpty, reason: 'fixture: the cells print pictures');
     expect(sizes.toSet(), {(32, 18)});
+  });
+
+  testWidgets('a cell whose camera moves carries the canvas it sweeps, as '
+      'sharp on the paper as every window (유저 2026-09-29: 「일단 카메라 '
+      '팬대로 해당 코마에서 보여주고」)', (tester) async {
+    // Cut 40's camera pans a screen right across its one cell: two screens
+    // wide, laid on the page a hair under a screen a window (the page's
+    // width stops it), so its picture is a hair under two windows wide.
+    final session = EditorSessionManager(
+      initialProject: project(
+        camera40: CutCamera(
+          keyframes: {
+            0: CameraPose(center: CanvasPoint(x: 16, y: 9)),
+            6: CameraPose(center: CanvasPoint(x: 48, y: 9)),
+          },
+        ),
+      ),
+    );
+    addTearDown(session.dispose);
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-browse-button')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    final sizes = pdfImageSizes(
+      File('${temp.path}${Platform.pathSeparator}conte.pdf').readAsBytesSync(),
+    );
+    expect(
+      sizes.toSet(),
+      {(32, 18), (64, 18)},
+      reason: 'the still cells\' camera frames, and the swept 64×18 canvas',
+    );
   });
 
   testWidgets('the page-image format writes one PNG per page of the book '

@@ -9,7 +9,7 @@ import '../../models/brush_history_policy.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/conte/conte_page_marks.dart'
-    show conteCameraLabelsOf, contePictureOf;
+    show conteCameraMarksOf, contePictureOf;
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -23,6 +23,8 @@ import '../../models/track_id.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
+import '../../services/camera_frame_corners.dart'
+    show CameraView, pictureView;
 import '../../services/camera_projection_matrix.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/layer_pose_matrix.dart';
@@ -54,7 +56,7 @@ typedef ContePictureProject = ({
 /// One picture the conte draws into while its brush is on: the window its
 /// pen goes through, and what its live composite is painted from — the
 /// cut at the picture's frame with the block's conte layer drawn live, the
-/// picture as the page prints it and the camera's labels over it.
+/// picture as the page prints it and the camera's work written over it.
 typedef ContePicture = ({
   SheetPictureWindow window,
   Cut cut,
@@ -130,11 +132,10 @@ ContePicture? _pictureOf(
   final mark = contePictureOf(cell, page.metrics);
   final shown = mark.frame;
   final placement = layerPlacementAt(cut: cut, layer: layer, frameIndex: frame);
-  final canvasToPaper = conteCanvasToPaper(
-    mark,
-    project.cameraPoseOf(cut, frame),
-    project.cameraFrameSize,
-  );
+  final canvasToPaper = conteCanvasToPaper(mark, (
+    pose: project.cameraPoseOf(cut, frame),
+    frameSize: project.cameraFrameSize,
+  ));
   // The cell, not the drawing: a drawing exposed twice is two pictures.
   final id = 'picture-${cell.cutId}-${cell.source.startFrame}';
   return (
@@ -162,7 +163,7 @@ ContePicture? _pictureOf(
     frame: frame,
     mark: mark,
     shown: shown,
-    labels: [...conteCameraLabelsOf(cell, page.metrics)],
+    labels: [...conteCameraMarksOf(cell, page.metrics)],
   );
 }
 
@@ -183,20 +184,18 @@ List<Offset> _canvasOnPaper(CanvasSize canvas, Matrix4 canvasToPaper) {
   ];
 }
 
-/// A cut's canvas → the paper, for [mark]'s picture seen by a camera at
-/// [pose]: the camera (`cameraProjectionMatrix`), then the camera's frame
-/// laid in [SheetPicture.frame] — where every printer lays the picture, so
-/// the pen lands where the print shows its stroke.
-Matrix4 conteCanvasToPaper(
-  SheetPicture mark,
-  CameraPose pose,
-  CanvasSize cameraFrame,
-) {
+/// A cut's canvas → the paper, for [mark]'s picture: what the picture
+/// shows ([pictureView] — [camera], the camera at its frame, or the canvas
+/// its cell's moving camera sweeps), then that view laid in
+/// [SheetPicture.frame] — where every printer lays the picture, so the pen
+/// lands where the print shows its stroke.
+Matrix4 conteCanvasToPaper(SheetPicture mark, CameraView camera) {
+  final view = pictureView(camera, mark.canvasRegion);
   final shown = mark.frame;
-  final scale = shown.width / cameraFrame.width;
+  final scale = shown.width / view.frameSize.width;
   return Matrix4.translationValues(shown.left, shown.top, 0)
     ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
-    ..multiply(cameraProjectionMatrix(pose, cameraFrame));
+    ..multiply(cameraProjectionMatrix(view.pose, view.frameSize));
 }
 
 /// The pictures of [page] the paper's ink yields to — each cell's, and
@@ -241,7 +240,7 @@ SheetPictureOverInk _overInk(
   picture: picture,
   canvas: _canvasOnPaper(
     cut.canvasSize,
-    conteCanvasToPaper(picture, pose, cameraFrameSize),
+    conteCanvasToPaper(picture, (pose: pose, frameSize: cameraFrameSize)),
   ),
 );
 

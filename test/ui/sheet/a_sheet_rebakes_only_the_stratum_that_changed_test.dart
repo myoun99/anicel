@@ -120,7 +120,7 @@ void main() {
                 session: session,
                 thumbnails: (
                   resolve:
-                      (cut, frame, {required shownHeight}) =>
+                      (cut, frame, {required shownHeight, region}) =>
                           null,
                   landed: thumbnails,
                 ),
