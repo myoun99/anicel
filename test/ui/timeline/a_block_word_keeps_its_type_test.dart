@@ -186,6 +186,15 @@ void main() {
       final tight = painter.cellWordSetFor(0, 'A1234', styleAt(0));
       expect(tight.style.letterSpacing, -maxGapTightening);
       expect(tight.fit.x, lessThan(1), reason: 'and narrows what is left');
+
+      // And the classic pass paints that set: the tighter word, unnarrowed.
+      final spy = _PaintedBoxes();
+      painter.paint(spy, const Size(cell * 16, rowExtent));
+      final at = spy.boxes.indexWhere(
+        (box) => (box.left - painter.cellRectFor(1).left).abs() < 0.5,
+      );
+      expect(spy.widths[at], lessThan(naturalName(painter, 1).width));
+      expect(spy.xScales[at], 1);
     });
 
     test('a squeezed row narrows it ACROSS instead of shrinking the type', () {
@@ -256,6 +265,39 @@ void main() {
           );
         }
       }
+    });
+
+    test('its letter gaps give way before it narrows (F-234-Q1)', () {
+      // A twelve-frame block a pixel short of its 「12」.
+      const cell = 17 / 12;
+      expect(
+        timelineFrameEdge(12, cell),
+        2 * timelineRunLabelFontSize - 1,
+        reason: '⛔전제: a pixel short',
+      );
+      final painter = TimelineRowRunLabelsPainter(
+        layer: Layer(
+          id: const LayerId('koma'),
+          name: 'K',
+          frames: [
+            Frame(id: const FrameId('k'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('k'), length: 12),
+          },
+        ),
+        geometry: testFrameGeometry(
+          frameCellExtent: cell,
+          frameEndIndexExclusive: 16,
+        ),
+        crossAxisExtent: rowExtent,
+        showSeconds: false,
+        countingBase: 24,
+        baseTextStyle: base,
+      );
+      final spy = _PaintedBoxes();
+      painter.paint(spy, const Size(cell * 16, rowExtent));
+      expect(spy.xScales.single, 1, reason: 'the gap gave the pixel');
     });
   });
 
@@ -475,6 +517,14 @@ void main() {
             'whose paragraph still measured the whole name',
       );
     }
+    expect(
+      [
+        for (var i = 0; i < spy.boxes.length; i += 1)
+          if ((spy.boxes[i].height - 14).abs() < 1e-6) spy.widths[i],
+      ],
+      everyElement(lessThan(8 * 14.0)),
+      reason: 'set tighter first — its letter gaps gave way (F-234-Q1)',
+    );
   });
 
   testWidgets('the folded row\'s fallback strip never drops a word', (
@@ -529,6 +579,14 @@ void main() {
         reason: 'and it stays inside its block',
       );
     }
+    expect(
+      [
+        for (var i = 0; i < spy.boxes.length; i += 1)
+          if (spy.boxes[i].left < 2 * 3) spy.widths[i],
+      ],
+      everyElement(lessThan(8 * 9.5)),
+      reason: 'set tighter first — its letter gaps gave way (F-234-Q1)',
+    );
   });
 
   // 🧪F-220: the zoom follows every percent, so a cell is seldom a whole
@@ -659,6 +717,14 @@ void main() {
 /// word is drawn at the origin of a scaled canvas.
 class _PaintedBoxes implements Canvas {
   final boxes = <Rect>[];
+
+  /// Each painted word's own width, before any narrowing — shorter than its
+  /// natural width when its letter gaps gave way (F-234-Q1).
+  final widths = <double>[];
+
+  /// How far each painted word was narrowed across.
+  final xScales = <double>[];
+
   final _saved = <Matrix4>[];
   var _transform = Matrix4.identity();
 
@@ -685,12 +751,16 @@ class _PaintedBoxes implements Canvas {
   );
 
   @override
-  void drawParagraph(ui.Paragraph paragraph, Offset offset) => boxes.add(
-    MatrixUtils.transformRect(
-      _transform,
-      offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
-    ),
-  );
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) {
+    boxes.add(
+      MatrixUtils.transformRect(
+        _transform,
+        offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
+      ),
+    );
+    widths.add(paragraph.maxIntrinsicWidth);
+    xScales.add(_transform.storage[0]);
+  }
 
   @override
   int getSaveCount() => _saved.length + 1;
