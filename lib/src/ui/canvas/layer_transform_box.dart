@@ -12,6 +12,7 @@ import '../../services/layer_pose_paint.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 import '../widgets/axis_bar_gesture.dart';
+import 'canvas_viewport_offset.dart';
 
 /// Which member of the Transform group a box drag drives (R5 #10, the
 /// user's rule: "그 관련된 동작을 하면 관련된 멤버가 키찍고 값 바꾸도록").
@@ -114,14 +115,11 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
       x: matrix[0] * artwork.dx + matrix[4] * artwork.dy + matrix[12],
       y: matrix[1] * artwork.dx + matrix[5] * artwork.dy + matrix[13],
     );
-    final mapped = widget.viewport.canvasToViewport(posed);
-    return Offset(mapped.x, mapped.y);
+    return widget.viewport.canvasToViewportOffset(posed);
   }
 
-  Offset get _pivotScreen {
-    final mapped = widget.viewport.canvasToViewport(widget.pose.center);
-    return Offset(mapped.x, mapped.y);
-  }
+  Offset get _pivotScreen =>
+      widget.viewport.canvasToViewportOffset(widget.pose.center);
 
   List<Offset> _corners(TransformPose pose) {
     final b = widget.bounds;

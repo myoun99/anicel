@@ -41,6 +41,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
 import '../input/value_control_pointers.dart';
 import '../widgets/app_icon_button.dart';
+import 'canvas_viewport_offset.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -1476,8 +1477,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return null;
     }
     for (var i = 0; i < points.length; i += 1) {
-      final mapped = widget.viewport.canvasToViewport(points[i]);
-      if ((local - Offset(mapped.x, mapped.y)).distance <= _handleHitRadius) {
+      final mapped = _mapCanvasToViewportOffset(points[i]);
+      if ((local - mapped).distance <= _handleHitRadius) {
         return i;
       }
     }
@@ -3153,8 +3154,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final canvasPoint = affine.apply(
       CanvasPoint(x: affine.pivot.x + local.x, y: affine.pivot.y + local.y),
     );
-    final mapped = widget.viewport.canvasToViewport(canvasPoint);
-    return Offset(mapped.x, mapped.y);
+    return _mapCanvasToViewportOffset(canvasPoint);
   }
 
   static const List<TransformHandle> _cornerHandles = [
@@ -3877,10 +3877,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  Offset _mapCanvasToViewportOffset(CanvasPoint point) {
-    final mapped = widget.viewport.canvasToViewport(point);
-    return Offset(mapped.x, mapped.y);
-  }
+  Offset _mapCanvasToViewportOffset(CanvasPoint point) =>
+      widget.viewport.canvasToViewportOffset(point);
 }
 
 // (The fallback float painter moved to selection_float_overlay.dart, beside

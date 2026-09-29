@@ -97,6 +97,7 @@ import '../text/text_measure.dart';
 import '../listenable_rebind.dart';
 import '../repaint_props.dart';
 import '../input/value_control_pointers.dart';
+import '../canvas/canvas_viewport_offset.dart';
 
 part 'canvas_panel/canvas_panel_shell_bars.dart';
 part 'canvas_panel/canvas_panel_selection.dart';
@@ -3367,10 +3368,8 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   /// [rect]'s four corners through the view transform, as a PATH: under
   /// rotation a plane is a quad, and a Rect would silently square it back up.
   Path _quad(Rect rect) {
-    Offset at(double x, double y) {
-      final point = viewport.canvasToViewport(CanvasPoint(x: x, y: y));
-      return Offset(point.x, point.y);
-    }
+    Offset at(double x, double y) =>
+        viewport.canvasToViewportOffset(CanvasPoint(x: x, y: y));
 
     return Path()
       ..moveTo(at(rect.left, rect.top).dx, at(rect.left, rect.top).dy)

@@ -8,6 +8,7 @@ import '../../services/canvas_selection_region.dart';
 import '../theme/app_theme.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
+import 'canvas_viewport_offset.dart';
 
 /// The Ctrl+T box chrome in viewport space: the transformed box outline,
 /// the scale handles, and the anchor cross.
@@ -175,10 +176,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// size at every zoom.
   static const double closeTargetRadius = 9;
 
-  Offset _map(CanvasPoint point) {
-    final mapped = viewport.canvasToViewport(point);
-    return Offset(mapped.x, mapped.y);
-  }
+  Offset _map(CanvasPoint point) => viewport.canvasToViewportOffset(point);
 
   /// The committed region's pixel-edge outline, in SCREEN space.
   ///

@@ -10,6 +10,7 @@ import '../../models/viewport_point.dart';
 import '../../services/guide_geometry.dart';
 import '../../models/app_input_settings.dart';
 import '../repaint_props.dart';
+import 'canvas_viewport_offset.dart';
 
 /// How far from a handle, in screen pixels, a press still grabs it.
 const double kGuideHandleGrabRadius = 14;
@@ -213,10 +214,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
 
   final GuideId? selectedGuideId;
 
-  Offset _toScreen(CanvasPoint point) {
-    final viewportPoint = viewport.canvasToViewport(point);
-    return Offset(viewportPoint.x, viewportPoint.y);
-  }
+  Offset _toScreen(CanvasPoint point) => viewport.canvasToViewportOffset(point);
 
   @override
   void paint(Canvas canvas, Size size) {

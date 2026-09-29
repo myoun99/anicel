@@ -14,14 +14,14 @@ import '../../models/canvas_viewport.dart';
 import '../../services/layer_pose_paint.dart' show cameraProjectionMatrix;
 import '../repaint_props.dart';
 import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
+import '../canvas/canvas_viewport_offset.dart';
 
 /// The camera pose's center in viewport (screen) coordinates.
 Offset cameraCenterInViewport({
   required CameraPose pose,
   required CanvasViewport viewport,
 }) {
-  final mapped = viewport.canvasToViewport(pose.center);
-  return Offset(mapped.x, mapped.y);
+  return viewport.canvasToViewportOffset(pose.center);
 }
 
 /// The camera frame's corners in canvas coordinates:
@@ -81,12 +81,9 @@ List<Offset> cameraFrameCornersInViewport({
   required CanvasSize cameraFrameSize,
   required CanvasViewport viewport,
 }) {
-  Offset toViewport(Offset corner) {
-    final mapped = viewport.canvasToViewport(
-      CanvasPoint(x: corner.dx, y: corner.dy),
-    );
-    return Offset(mapped.x, mapped.y);
-  }
+  Offset toViewport(Offset corner) => viewport.canvasToViewportOffset(
+    CanvasPoint(x: corner.dx, y: corner.dy),
+  );
 
   return [
     for (final corner in cameraFrameCornersInCanvas(

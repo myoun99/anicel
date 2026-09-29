@@ -5,6 +5,7 @@ import '../../models/canvas_viewport.dart';
 import '../input/finger_mode_devices.dart';
 import '../theme/app_theme.dart';
 import '../widgets/axis_bar_gesture.dart';
+import 'canvas_viewport_offset.dart';
 
 /// Which glyph a [CanvasPointGizmo] wears, and the radii that draw it.
 ///
@@ -125,10 +126,8 @@ class _CanvasPointGizmoState extends State<CanvasPointGizmo> {
   /// How far the pointer has gone, on screen.
   Offset _dragDelta = Offset.zero;
 
-  Offset get _screenPoint {
-    final mapped = widget.viewport.canvasToViewport(widget.point);
-    return Offset(mapped.x, mapped.y);
-  }
+  Offset get _screenPoint =>
+      widget.viewport.canvasToViewportOffset(widget.point);
 
   CanvasPoint get _dragged {
     final origin = _origin ?? widget.point;
