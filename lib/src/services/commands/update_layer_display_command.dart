@@ -35,7 +35,7 @@ import '../project_repository.dart';
 /// ⛔ONE LAYER. A sweep down the eye column, Solo and the master opacity
 /// bar all change many rows and must undo in ONE press (유저: 「일괄로 버튼
 /// 조작하고 언두하면 바꼈던 레이어들 다 한번에 언두되야하는데 안됨」) — but
-/// [CompositeCommand] is already how this repo does that, and the legend's
+/// [oneStepOf] is already how this repo does that, and the legend's
 /// sheet/mark actions already land that way. A second batching mechanism
 /// here would be a copy of one that works.
 ///

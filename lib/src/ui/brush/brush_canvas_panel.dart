@@ -2293,20 +2293,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         strokeData: strokeData,
         cacheInvalidationSink: widget.cacheInvalidationSink,
       );
-      final prefix = widget.takeStrokePrefixCommand?.call();
-      historyManager.execute(
-        prefix == null
-            ? stroke
-            // ⚠️The prefix ALREADY RAN at pen-down and re-running it is a
-            // no-op: `UpdateLayerTimelineCommand` holds its before/after
-            // from construction, so applying `after` twice writes the same
-            // layer. The stroke runs for the first time here, into the
-            // block that prefix made.
-            : CompositeCommand(
-                description: 'Draw on a new frame',
-                commands: [prefix, stroke],
-              ),
-      );
+      // ⚠️The prefix ALREADY RAN at pen-down and re-running it is a
+      // no-op: `UpdateLayerTimelineCommand` holds its before/after from
+      // construction, so applying `after` twice writes the same layer. The
+      // stroke runs for the first time here, into the block that prefix
+      // made.
+      historyManager.executeAsOneStep('Draw on a new frame', [
+        ?widget.takeStrokePrefixCommand?.call(),
+        stroke,
+      ]);
     });
   }
 }

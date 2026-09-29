@@ -195,16 +195,22 @@ class HistoryManager extends ChangeNotifier {
     } finally {
       _group = null;
     }
-    if (group.isEmpty) {
-      return;
-    }
-    // Already executed: this pushes them as one entry rather than running
+    // Already executed: this files them as one entry rather than running
     // anything a second time.
-    _push(
-      group.length == 1
-          ? group.single
-          : CompositeCommand(description: description, commands: group),
-    );
+    final step = oneStepOf(description, group);
+    if (step != null) {
+      _push(step);
+    }
+  }
+
+  /// Executes [commands] as ONE undo entry, folded the one way
+  /// [oneStepOf] folds — and does nothing at all when there are none: no
+  /// undo step for a no-op.
+  void executeAsOneStep(String description, List<Command> commands) {
+    final step = oneStepOf(description, commands);
+    if (step != null) {
+      execute(step);
+    }
   }
 
   List<Command>? _group;
@@ -676,6 +682,8 @@ class HistoryGestures {
   void foldSince(HistoryMark since, String description) {
     final stack = _history._undoStack;
     final kept = (_pushed - since.pushed) - (_retracted - since.retracted);
+    // Fewer than two is one step already, or none — [oneStepOf]'s first
+    // two answers, with nothing to re-file.
     if (kept < 2 || stack.length != since.depth + kept) {
       return;
     }
@@ -683,7 +691,7 @@ class HistoryGestures {
     stack.removeRange(since.depth, stack.length);
     // Already executed, as a group's are: this re-files them, it runs
     // nothing a second time.
-    final folded = CompositeCommand(description: description, commands: run);
+    final folded = oneStepOf(description, run)!;
     _history.places.stamp(folded);
     stack.add(folded);
     _history._changed();

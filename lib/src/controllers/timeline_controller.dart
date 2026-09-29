@@ -454,13 +454,10 @@ class TimelineController {
   }
 
   void _executeCommands(List<Command> commands, {required String description}) {
-    if (commands.isEmpty) {
-      return;
+    final command = oneStepOf(description, commands);
+    if (command != null) {
+      _runCommand(command);
     }
-    final command = commands.length == 1
-        ? commands.single
-        : CompositeCommand(description: description, commands: commands);
-    _runCommand(command);
   }
 
   /// THE dispatch: through the history when there is one (undoable), run

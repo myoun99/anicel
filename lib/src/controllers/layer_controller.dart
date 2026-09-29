@@ -208,9 +208,9 @@ class LayerController {
   /// the way zoom changes the view. Show all / Hide all
   /// (`LayerSwitchVerbs.setAllLayersVisibility`) still does.
   ///
-  /// ⛔[CompositeCommand] is how this repo already collapses many edits
-  /// into one entry (the legend's sheet/mark actions land that way), so
-  /// the batch is a wrapper and not a second mechanism.
+  /// ⛔[oneStepOf] is how this repo already collapses many edits into one
+  /// entry (the legend's sheet/mark actions land that way), so the batch
+  /// goes through it and is not a second mechanism.
   void setLayersVisible({
     required List<LayerId> layerIds,
     required bool visible,
@@ -261,33 +261,17 @@ class LayerController {
     required String debugLabel,
     required Layer Function(Layer layer) apply,
   }) {
-    if (layerIds.isEmpty) {
-      return;
-    }
-    if (layerIds.length == 1) {
-      _historyManager.execute(
-        UpdateLayerDisplayCommand(
-          repository: _repository,
-          layerId: layerIds.single,
-          debugLabel: debugLabel,
-          apply: apply,
-        ),
-      );
-      return;
-    }
-    _historyManager.execute(
-      CompositeCommand(
-        description: '$debugLabel (${layerIds.length} layers)',
-        commands: [
-          for (final layerId in layerIds)
-            UpdateLayerDisplayCommand(
-              repository: _repository,
-              layerId: layerId,
-              debugLabel: debugLabel,
-              apply: apply,
-            ),
-        ],
-      ),
+    _historyManager.executeAsOneStep(
+      '$debugLabel (${layerIds.length} layers)',
+      [
+        for (final layerId in layerIds)
+          UpdateLayerDisplayCommand(
+            repository: _repository,
+            layerId: layerId,
+            debugLabel: debugLabel,
+            apply: apply,
+          ),
+      ],
     );
   }
 

@@ -296,18 +296,13 @@ class _FolderAndAttachmentCommands {
     required LayerAttachDrop attach,
     String description = 'Attach layer',
   }) {
-    final commands = layerAttachmentCommands(
-      cutId: cutId,
-      attach: attach,
-      description: description,
-    );
-    if (commands.isEmpty) {
-      return;
-    }
-    _coordinator.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: description, commands: commands),
+    _coordinator.historyManager.executeAsOneStep(
+      description,
+      layerAttachmentCommands(
+        cutId: cutId,
+        attach: attach,
+        description: description,
+      ),
     );
   }
 }

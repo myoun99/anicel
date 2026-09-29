@@ -11,7 +11,6 @@ import '../../models/timeline_coverage.dart';
 import '../../models/timeline_row_address.dart';
 import '../storyboard_layer_policy.dart';
 import '../text/app_strings.dart';
-import '../../services/command.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'range_selections.dart';
@@ -341,14 +340,7 @@ class StoryboardCursor {
     if (commands.isEmpty) {
       return;
     }
-    _project.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Create SE entry',
-              commands: commands,
-            ),
-    );
+    _project.historyManager.executeAsOneStep('Create SE entry', commands);
     _changes.notifyChanged();
   }
 

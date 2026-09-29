@@ -182,8 +182,7 @@ class DrawingBlockMoveDragVerbs {
         ),
       );
     }
-    return commands.length == 1
-        ? commands.single
-        : CompositeCommand(description: description, commands: commands);
+    // Never empty: the source row's rewrite is always the first.
+    return oneStepOf(description, commands)!;
   }
 }

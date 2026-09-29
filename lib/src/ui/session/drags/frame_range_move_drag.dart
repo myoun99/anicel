@@ -1856,14 +1856,7 @@ class FrameRangeMoveDrag {
       _liveSpan = _selectionBefore;
       return false;
     }
-    _project.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Move frame range',
-              commands: commands,
-            ),
-    );
+    _project.historyManager.executeAsOneStep('Move frame range', commands);
     _liveSpan = landedSelection;
     return true;
   }
@@ -1983,23 +1976,18 @@ class FrameRangeMoveDrag {
     seRowChange,
     TimelineFrameRangeSelection? landedSelection,
   ) {
-    _project.historyManager.execute(
-      CompositeCommand(
-        description: 'Move frame range',
-        commands: [
-          UpdateLayerTimelineCommand(
-            repository: _project.repository,
-            before: seRowChange.sourceBefore,
-            after: seRowChange.sourceAfter,
-          ),
-          UpdateLayerTimelineCommand(
-            repository: _project.repository,
-            before: seRowChange.targetBefore,
-            after: seRowChange.targetAfter,
-          ),
-        ],
+    _project.historyManager.executeAsOneStep('Move frame range', [
+      UpdateLayerTimelineCommand(
+        repository: _project.repository,
+        before: seRowChange.sourceBefore,
+        after: seRowChange.sourceAfter,
       ),
-    );
+      UpdateLayerTimelineCommand(
+        repository: _project.repository,
+        before: seRowChange.targetBefore,
+        after: seRowChange.targetAfter,
+      ),
+    ]);
     _liveSpan = landedSelection;
     _controllers.layerController.selectLayer(seRowChange.targetId);
     _changes.warmActiveCut();

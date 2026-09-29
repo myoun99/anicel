@@ -98,7 +98,7 @@ class _TrackCommands {
 
     // "Same name, same value" — the transform law, one for a layer's lanes
     // and a cut's camera ([namedTransformWrites]).
-    final commands = <Command>[
+    _coordinator.historyManager.executeAsOneStep(description, [
       for (final write in namedTransformWrites(
         _coordinator.repository.requireProject(),
         cutId: cutId,
@@ -112,13 +112,7 @@ class _TrackCommands {
           transformTrack: write.track,
           description: description,
         ),
-    ];
-
-    _coordinator.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: description, commands: commands),
-    );
+    ]);
   }
 
   /// The transform track that ALREADY holds [name] in [property]'s lane,

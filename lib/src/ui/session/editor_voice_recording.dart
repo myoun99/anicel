@@ -20,7 +20,6 @@ import '../playback/audio_device_transport.dart';
 import '../../models/audio_sync_settings.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../text/app_strings.dart';
-import '../../services/command.dart';
 import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../native/qa_audio_native.dart' show QaAudioNative;
@@ -1188,42 +1187,37 @@ class EditorVoiceRecording {
     // it ran before this line, so the bytes are held before the pool ever
     // hears the name.
     final pool = mediaAssets;
-    _cutCommandCoordinator.historyManager.execute(
-      CompositeCommand(
-        description: 'Record voice',
-        commands: [
-          if (!pool.any((asset) => asset.path == path))
-            UpdateMediaAssetsCommand(
-              repository: _repository,
-              mediaAssets: [
-                ...pool,
-                MediaAsset(
-                  path: path,
-                  name: mediaAssetDefaultName(path),
-                  // A take is the project's own recording, so the project
-                  // carries it. The shelf copy stays where it is — losing
-                  // a performance because a save never happened is not a
-                  // trade anyone would take.
-                  //
-                  // 🚨And that sentence is exactly why the bytes are staged
-                  // just below: the shelf file is on the user's disk, so
-                  // clearing the Recordings folder before saving used to
-                  // take the performance with it. Carrying now means held,
-                  // not just flagged.
-                  carriedAs: carry.token,
-                  identity: readMediaIdentity(path),
-                ),
-              ],
-              description: 'Record voice',
+    _cutCommandCoordinator.historyManager.executeAsOneStep('Record voice', [
+      if (!pool.any((asset) => asset.path == path))
+        UpdateMediaAssetsCommand(
+          repository: _repository,
+          mediaAssets: [
+            ...pool,
+            MediaAsset(
+              path: path,
+              name: mediaAssetDefaultName(path),
+              // A take is the project's own recording, so the project
+              // carries it. The shelf copy stays where it is — losing a
+              // performance because a save never happened is not a trade
+              // anyone would take.
+              //
+              // 🚨And that sentence is exactly why the bytes are staged
+              // just below: the shelf file is on the user's disk, so
+              // clearing the Recordings folder before saving used to take
+              // the performance with it. Carrying now means held, not just
+              // flagged.
+              carriedAs: carry.token,
+              identity: readMediaIdentity(path),
             ),
-          UpdateLayerTimelineCommand(
-            repository: _repository,
-            before: lane,
-            after: plan.layer,
-          ),
-        ],
+          ],
+          description: 'Record voice',
+        ),
+      UpdateLayerTimelineCommand(
+        repository: _repository,
+        before: lane,
+        after: plan.layer,
       ),
-    );
+    ]);
     // ⚠️AFTER the pool records the take, not before: a take has no file of
     // its own, and its bytes are found through the carry the pool names
     // (`ProjectFile.mediaByteSourceFor`) — asked before the record, there

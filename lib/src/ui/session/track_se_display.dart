@@ -7,7 +7,6 @@ import '../../models/track.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_se_window.dart';
 import '../../models/track_transform_lane_carrier.dart';
-import '../../services/command.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
@@ -264,15 +263,9 @@ class TrackSeDisplay {
     if (fills.isEmpty) {
       return false;
     }
-    final commands = _controllers.timelineController
-        .drawingFramesCommandsForLayers(fills);
-    _project.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Create SE entries',
-              commands: commands,
-            ),
+    _project.historyManager.executeAsOneStep(
+      'Create SE entries',
+      _controllers.timelineController.drawingFramesCommandsForLayers(fills),
     );
     _changes.notifyChanged();
     return true;

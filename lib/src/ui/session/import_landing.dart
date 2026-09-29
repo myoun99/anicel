@@ -22,7 +22,6 @@ import '../../models/timeline_coverage.dart' show drawingBlocks;
 import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/track_se_window.dart';
-import '../../services/command.dart' show CompositeCommand;
 import '../../services/commands/import_media_command.dart';
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
@@ -406,25 +405,20 @@ class ImportLanding {
     if (landed == null) {
       return false;
     }
-    _project.historyManager.execute(
-      CompositeCommand(
-        description: arrival.undoDescription,
-        commands: [
-          UpdateLayerTimelineCommand(
-            repository: _project.repository,
-            before: row,
-            after: rederiveRunBehaviors(landed, cutFrameCount: cutFrameCount),
-          ),
-          if (assets.isNotEmpty)
-            ImportMediaCommand(
-              repository: _project.repository,
-              editingSession: _timeline.editingSession,
-              assetAdditions: assets,
-              description: arrival.undoDescription,
-            ),
-        ],
+    _project.historyManager.executeAsOneStep(arrival.undoDescription, [
+      UpdateLayerTimelineCommand(
+        repository: _project.repository,
+        before: row,
+        after: rederiveRunBehaviors(landed, cutFrameCount: cutFrameCount),
       ),
-    );
+      if (assets.isNotEmpty)
+        ImportMediaCommand(
+          repository: _project.repository,
+          editingSession: _timeline.editingSession,
+          assetAdditions: assets,
+          description: arrival.undoDescription,
+        ),
+    ]);
     return true;
   }
 
@@ -520,32 +514,27 @@ class ImportLanding {
     if (plan == null) {
       return false;
     }
-    _project.historyManager.execute(
-      CompositeCommand(
-        description: arrival.undoDescription,
-        commands: [
-          if (free == null)
-            AddTrackSeLayerCommand(
-              repository: _project.repository,
-              trackId: track.id,
-              layer: plan.layer,
-            )
-          else
-            UpdateLayerTimelineCommand(
-              repository: _project.repository,
-              before: free,
-              after: plan.layer,
-            ),
-          if (assets.isNotEmpty)
-            ImportMediaCommand(
-              repository: _project.repository,
-              editingSession: _timeline.editingSession,
-              assetAdditions: assets,
-              description: arrival.undoDescription,
-            ),
-        ],
-      ),
-    );
+    _project.historyManager.executeAsOneStep(arrival.undoDescription, [
+      if (free == null)
+        AddTrackSeLayerCommand(
+          repository: _project.repository,
+          trackId: track.id,
+          layer: plan.layer,
+        )
+      else
+        UpdateLayerTimelineCommand(
+          repository: _project.repository,
+          before: free,
+          after: plan.layer,
+        ),
+      if (assets.isNotEmpty)
+        ImportMediaCommand(
+          repository: _project.repository,
+          editingSession: _timeline.editingSession,
+          assetAdditions: assets,
+          description: arrival.undoDescription,
+        ),
+    ]);
     return true;
   }
 }

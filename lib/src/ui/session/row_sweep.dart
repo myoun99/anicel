@@ -34,11 +34,6 @@ bool sweepActiveCutRows({
   final commands = <Command>[
     for (final layer in rows(cut)) ?commandFor(cut, layer),
   ];
-  if (commands.isEmpty) {
-    return false;
-  }
-  project.historyManager.execute(
-    CompositeCommand(description: description, commands: commands),
-  );
-  return true;
+  project.historyManager.executeAsOneStep(description, commands);
+  return commands.isNotEmpty;
 }

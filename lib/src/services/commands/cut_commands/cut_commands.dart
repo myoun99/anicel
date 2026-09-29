@@ -267,7 +267,7 @@ class _CutCommands {
       for (final cutId in LinkedCutFieldCommand.linkedCutsOf(project, cutIds))
         requireCut(project, cutId),
     ];
-    final commands = [
+    _coordinator.historyManager.executeAsOneStep('Set cut staff', [
       for (final MapEntry(key: mark, value: name) in names.entries)
         if (cuts.any((cut) => cut.metadata.staffNameFor(mark) != name))
           UpdateCutStaffNameCommand(
@@ -276,15 +276,7 @@ class _CutCommands {
             mark: mark,
             name: name,
           ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    _coordinator.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: 'Set cut staff', commands: commands),
-    );
+    ]);
   }
 
   /// The 타임시트 서식 window's save: the work's sheet format and the paper
@@ -388,37 +380,29 @@ class _CutCommands {
   /// sequence plus the position gaps its cuts took over (the gaps stay
   /// with the position, R5 #13 — each cut carries its own leading gap, so
   /// a bare permutation would let the gaps travel with the cuts). On a
-  /// packed track the gaps map is empty and this stays a plain
-  /// [setCutOrder].
+  /// packed track the gaps map is empty and the step is the order alone,
+  /// as [setCutOrder] writes it.
   void commitCutMoveReorder({
     required TrackId trackId,
     required List<CutId> order,
     required Map<CutId, int> beforeGaps,
     required Map<CutId, int> afterGaps,
   }) {
-    if (afterGaps.isEmpty) {
-      setCutOrder(trackId: trackId, order: order);
-      return;
-    }
-    _coordinator.historyManager.execute(
-      CompositeCommand(
-        description: 'Move cut',
-        commands: [
-          SetCutOrderCommand(
-            repository: _coordinator.repository,
-            trackId: trackId,
-            order: order,
-          ),
-          UpdateCutDurationsCommand(
-            repository: _coordinator.repository,
-            before: const {},
-            after: const {},
-            beforeGaps: beforeGaps,
-            afterGaps: afterGaps,
-          ),
-        ],
+    _coordinator.historyManager.executeAsOneStep('Move cut', [
+      SetCutOrderCommand(
+        repository: _coordinator.repository,
+        trackId: trackId,
+        order: order,
       ),
-    );
+      if (afterGaps.isNotEmpty)
+        UpdateCutDurationsCommand(
+          repository: _coordinator.repository,
+          before: const {},
+          after: const {},
+          beforeGaps: beforeGaps,
+          afterGaps: afterGaps,
+        ),
+    ]);
   }
 
   /// R28 #14: deleting the LAST cut leaves the track empty rather than
@@ -444,28 +428,15 @@ class _CutCommands {
   /// Deletes a batch of cuts as ONE undo step; emptying the track is
   /// allowed (R28 #14).
   void deleteCuts({required List<CutId> cutIds}) {
-    if (cutIds.isEmpty) {
-      return;
-    }
-    if (cutIds.length == 1) {
-      deleteCut(cutId: cutIds.single);
-      return;
-    }
-
-    _coordinator.historyManager.execute(
-      CompositeCommand(
-        description: 'Delete cuts',
-        commands: [
-          for (final cutId in cutIds)
-            DeleteCutCommand(
-              repository: _coordinator.repository,
-              editingSession: _coordinator.editingSession,
-              cutId: cutId,
-              brushFrameStore: _coordinator.brushFrameStore,
-            ),
-        ],
-      ),
-    );
+    _coordinator.historyManager.executeAsOneStep('Delete cuts', [
+      for (final cutId in cutIds)
+        DeleteCutCommand(
+          repository: _coordinator.repository,
+          editingSession: _coordinator.editingSession,
+          cutId: cutId,
+          brushFrameStore: _coordinator.brushFrameStore,
+        ),
+    ]);
   }
 
   DuplicatedCut duplicateCut({

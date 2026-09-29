@@ -90,11 +90,12 @@ void main() {
 
   group('wrapping must not hide weight', () {
     test('CompositeCommand reports the sum of its children', () {
-      final composite = CompositeCommand(
-        description: 'two things',
-        commands: [_Weighted(10), _Weighted(32), _Weighted(0)],
-      );
-      expect(composite, isA<RetainedBytesCommand>());
+      final composite = oneStepOf('three things', [
+        _Weighted(10),
+        _Weighted(32),
+        _Weighted(0),
+      ])!;
+      expect(composite, isA<CompositeCommand>());
       expect(
         (composite as RetainedBytesCommand).estimatedRetainedBytes(undone: false),
         42,
@@ -103,14 +104,12 @@ void main() {
 
     test('a composite on the stack is visible to the budget', () {
       final history = HistoryManager();
-      history.execute(
-        CompositeCommand(
-          description: 'wrapped stroke',
-          commands: [_Weighted(1024)],
-        ),
-      );
-      // Was 0 before: ~30 call sites build one, and one of them wraps a
-      // brush stroke.
+      history.executeAsOneStep('wrapped stroke', [
+        _Weighted(1024),
+        _Weighted(0),
+      ]);
+      // Was 0 before: every step of several writes is one, and one of them
+      // wraps a brush stroke.
       expect(history.retainedBytes, 1024);
     });
   });

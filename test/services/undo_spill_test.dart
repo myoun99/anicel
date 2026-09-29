@@ -361,9 +361,7 @@ void main() {
       final inner = _Parkable(bytes: 4096);
       final history = HistoryManager()..byteBudget = 1;
       history
-        ..execute(
-          CompositeCommand(description: 'wrapped', commands: [inner]),
-        )
+        ..executeAsOneStep('wrapped', [inner, _Parkable(bytes: 0)])
         ..execute(_Parkable(bytes: 4096));
 
       await history.drainSpilling();

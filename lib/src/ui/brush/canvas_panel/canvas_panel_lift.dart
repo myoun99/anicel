@@ -329,14 +329,9 @@ class _CanvasPanelLift {
         readRegion: doors.read,
         restoreRegion: doors.restore,
       );
-      final landings = _landingsPerCel(session, stampDab, landOn, affine);
-      historyManager.execute(
-        landings.length == 1
-            ? landOn
-            : CompositeCommand(
-                description: landOn.description,
-                commands: landings.values.toList(),
-              ),
+      historyManager.executeAsOneStep(
+        landOn.description,
+        _landingsPerCel(session, stampDab, landOn, affine).values.toList(),
       );
     }
 
