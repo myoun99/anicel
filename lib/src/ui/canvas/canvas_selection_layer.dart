@@ -2093,7 +2093,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   CanvasPoint _toCanvas(Offset local) =>
-      widget.viewport.viewportToCanvas(ViewportPoint(x: local.dx, y: local.dy));
+      widget.viewport.viewportOffsetToCanvas(local);
 
   void _handlePointerDown(PointerDownEvent event) {
     // 🚨★★★**A PRESS THAT LANDED ON A CONTROL IS THAT CONTROL'S.**

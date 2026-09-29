@@ -19,7 +19,6 @@ import '../../models/brush_input_source.dart';
 import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
@@ -44,6 +43,7 @@ import 'brush_edit_canvas_view.dart';
 import 'canvas_press.dart';
 import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
+import 'canvas_viewport_offset.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
 part 'brush_edit/brush_edit_opening.dart';
@@ -570,11 +570,8 @@ class _InteractiveBrushEditCanvasViewState
     );
   }
 
-  CanvasPoint _canvasPositionFromLocal(Offset localPosition) {
-    return widget.viewport.viewportToCanvas(
-      ViewportPoint(x: localPosition.dx, y: localPosition.dy),
-    );
-  }
+  CanvasPoint _canvasPositionFromLocal(Offset localPosition) =>
+      widget.viewport.viewportOffsetToCanvas(localPosition);
 
   /// Builds a dab carrying the base tool size/opacity and the current input
   /// pressure. Pressure scaling is applied after interpolation (see

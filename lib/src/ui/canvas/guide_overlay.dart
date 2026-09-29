@@ -6,7 +6,6 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/drawing_guide.dart';
-import '../../models/viewport_point.dart';
 import '../../services/guide_geometry.dart';
 import '../../models/app_input_settings.dart';
 import '../repaint_props.dart';
@@ -626,9 +625,8 @@ class _GuideEditLayerState extends State<GuideEditLayer> {
   int? _pointer;
   CutGuides? _live;
 
-  CanvasPoint _canvasPoint(Offset local) => widget.viewport.viewportToCanvas(
-    ViewportPoint(x: local.dx, y: local.dy),
-  );
+  CanvasPoint _canvasPoint(Offset local) =>
+      widget.viewport.viewportOffsetToCanvas(local);
 
   void _end() {
     final live = _live;

@@ -477,7 +477,6 @@ class _CanvasPanelViewport {
   /// move continues from the last stamp that actually landed, so a slow
   /// drag and a fast one lay the same number of stamps over the same
   /// distance.
-  CanvasPoint canvasPointOf(PointerEvent event) => _viewport.viewportToCanvas(
-    ViewportPoint(x: event.localPosition.dx, y: event.localPosition.dy),
-  );
+  CanvasPoint canvasPointOf(PointerEvent event) =>
+      _viewport.viewportOffsetToCanvas(event.localPosition);
 }
