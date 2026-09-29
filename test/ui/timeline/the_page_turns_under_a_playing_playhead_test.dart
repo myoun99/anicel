@@ -29,7 +29,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 /// answered the arrow keys and nothing else — so the playhead simply left
 /// the window and stayed gone.
 ///
-/// 🧪**Three cells per surface, and the third is the one that says this is a
+/// 🧪**Four cells per surface, and the third is the one that says this is a
 /// SECOND law rather than a setting on the first**:
 /// ① a tick that carries the playhead out of the window turns the page, and
 ///    the playhead's own frame stands at the window's START;
@@ -38,6 +38,9 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 ///    walk would get wrong on every single frame;
 /// ③ the same move with NOTHING PLAYING does not scroll at all. A hand's
 ///    seek is the walk's business, and the walk arrives on its own tick.
+/// ④ the LAST page turns too, past where the built cells end (F-225, 유저
+///    2026-09-29: 「언제든 넘어가도록 통일」) — the frame axis is endless, and
+///    the page was held to the cells already built.
 ///
 /// ⛔**All three surfaces, not the one that was easiest to mount.** The rail
 /// runs its frames across, the x-sheet runs them DOWN, and the storyboard
@@ -93,13 +96,14 @@ void main() {
     onLayerMarkSelected: (_, _) {},
   );
 
-  /// The three cells, driven through whatever the surface calls its cursor.
-  /// [move] puts the playhead on a frame; [offset] reads the frame axis.
-  Future<void> walkTheThreeCells({
+  /// The cells, driven through whatever the surface calls its cursor.
+  /// [move] puts the playhead on a frame; [axis] reads the frame axis.
+  Future<void> walkTheCells({
     required ValueNotifier<int?> playing,
     required Future<void> Function(int frame) move,
-    required double Function() offset,
+    required ScrollPosition Function() axis,
   }) async {
+    double offset() => axis().pixels;
     expect(offset(), 0, reason: 'the fixture starts at the window start');
 
     // ③ FIRST, while nothing plays: the same move that pages below does
@@ -129,6 +133,20 @@ void main() {
       reason: '「스크롤바 한번만 이동」 — a tick inside the window moves '
           'nothing at all',
     );
+
+    // ④ the sheet's LAST page (F-225, 「언제든 넘어가도록 통일」): the page
+    // turns past where the built cells end, and the playhead's frame still
+    // stands at the window's start.
+    final builtMax = axis().maxScrollExtent;
+    final last = (builtMax / cell).floor() + 1;
+    expect(last * cell, greaterThan(builtMax), reason: 'premise: past it');
+    await move(last);
+    expect(
+      offset(),
+      last * cell,
+      reason: '↩️the page stopped at the end of the cells built before it, '
+          'short of the playhead\'s frame',
+    );
   }
 
   testWidgets('the rail turns its page under a playing playhead, once per '
@@ -154,14 +172,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await walkTheThreeCells(
+    await walkTheCells(
       playing: playing,
       move: (frame) async {
         cursor.value = frame;
         await tester.pump();
       },
-      offset: () =>
-          positionOf(tester, 'timeline-frame-scroll-viewport').pixels,
+      axis: () => positionOf(tester, 'timeline-frame-scroll-viewport'),
     );
   });
 
@@ -189,14 +206,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await walkTheThreeCells(
+    await walkTheCells(
       playing: playing,
       move: (frame) async {
         cursor.value = frame;
         await tester.pump();
       },
-      offset: () =>
-          positionOf(tester, 'xsheet-frame-vertical-viewport').pixels,
+      axis: () => positionOf(tester, 'xsheet-frame-vertical-viewport'),
     );
   });
 
@@ -246,24 +262,21 @@ void main() {
 
     // ⚠️The strip has no keyed viewport of its own; its scrollbar rail is
     // handed the very controller the panel scrolls, so that is what the
-    // offset is read off.
-    double offset() => tester
-        .widget<TimelineHorizontalScrollbarRail>(
-          find.byKey(
-            const ValueKey<String>('storyboard-horizontal-scrollbar'),
-          ),
-        )
-        .controller
-        .position
-        .pixels;
-
-    await walkTheThreeCells(
+    // axis is read off.
+    await walkTheCells(
       playing: playing,
       move: (frame) async {
         playhead.value = frame;
         await tester.pump();
       },
-      offset: offset,
+      axis: () => tester
+          .widget<TimelineHorizontalScrollbarRail>(
+            find.byKey(
+              const ValueKey<String>('storyboard-horizontal-scrollbar'),
+            ),
+          )
+          .controller
+          .position,
     );
   });
 }
