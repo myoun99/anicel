@@ -49,8 +49,10 @@ List<(int, int)> pdfImageSizes(Uint8List pdf) {
   ];
 }
 
-/// Every closed path the pages draw: `x y m`, then `x y l` …, then `h`.
-List<List<Offset>> pdfClosedPaths(Uint8List pdf) {
+/// Every closed path the pages draw: `x y m`, then `x y l` …, then `h` —
+/// given [then], only those that operator takes right after (`W*`: the
+/// paths an even-odd clip cuts by).
+List<List<Offset>> pdfClosedPaths(Uint8List pdf, {String? then}) {
   final paths = <List<Offset>>[];
   for (final tokens in _streamTokens(pdf)) {
     List<Offset>? path;
@@ -63,7 +65,10 @@ List<List<Offset>> pdfClosedPaths(Uint8List pdf) {
         case 'l' when x != null && y != null && path != null:
           path.add(Offset(x, y));
         case 'h' when path != null:
-          paths.add(path);
+          final next = i + 1 < tokens.length ? tokens[i + 1] : null;
+          if (then == null || next == then) {
+            paths.add(path);
+          }
           path = null;
       }
     }

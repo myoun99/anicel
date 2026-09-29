@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
@@ -132,22 +130,12 @@ class ContePictureLive extends StatelessWidget {
   }
 
   /// Where [picture] shows on the screen: the camera's frame in its slot,
-  /// inside the slot's rounded corners.
-  ///
-  /// 🚨Cut on the page's grid, INSIDE the frame (F-197): the print under it
-  /// fills the window to the grid's nearest lines, and this composite ends
-  /// where its frame ends — a clip reaching past that end showed the ground
-  /// under the frame's edge, a light line round a dark picture.
-  _Shot _shotOf(ContePicture picture) {
-    final grid = SheetDeviceGrid.through(viewport, effectiveRatio);
-    return _Shot(
-      window: grid.rounded(
-        grid.inside(picture.mark.slot),
-        picture.mark.cornerRadius,
-      ),
-      shown: grid.inside(picture.shown),
-    );
-  }
+  /// inside the slot's rounded corners — cut INSIDE on the page's grid
+  /// ([SheetDeviceGrid.livePicture], F-197), the one call the paper's ink
+  /// around it stops at too (F-216).
+  _Shot _shotOf(ContePicture picture) => _Shot(
+    SheetDeviceGrid.through(viewport, effectiveRatio).livePicture(picture.mark),
+  );
 
   /// Picture [id]'s display buffer, on the census — pushed: the census
   /// cannot reach a widget State; the session can.
@@ -164,21 +152,15 @@ class ContePictureLive extends StatelessWidget {
 /// A picture's shot on screen: the camera's frame where the slot shows
 /// it, inside the slot's rounded corners.
 class _Shot extends CustomClipper<Path> {
-  const _Shot({required this.window, required this.shown});
+  const _Shot(this.shot);
 
-  final ui.RSuperellipse window;
-  final Rect shown;
-
-  @override
-  Path getClip(Size size) => Path.combine(
-    PathOperation.intersect,
-    Path()..addRSuperellipse(window),
-    Path()..addRect(shown),
-  );
+  final SheetPictureShot shot;
 
   @override
-  bool shouldReclip(_Shot oldClipper) =>
-      oldClipper.window != window || oldClipper.shown != shown;
+  Path getClip(Size size) => sheetPictureShotPath(shot);
+
+  @override
+  bool shouldReclip(_Shot oldClipper) => oldClipper.shot != shot;
 }
 
 /// The canvas on screen — turned when the camera is.

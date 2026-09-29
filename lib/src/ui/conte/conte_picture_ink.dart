@@ -4,7 +4,6 @@ import 'package:flutter/painting.dart' show MatrixUtils;
 
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
-import '../../core/convex_clip.dart' show convexIntersection;
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/camera_pose.dart';
@@ -27,10 +26,12 @@ import '../../services/brush_frame_store.dart';
 import '../../services/camera_projection_matrix.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/layer_pose_matrix.dart';
+import '../../services/project_lookup.dart' show cutPositionOf;
 import '../canvas/active_stroke_overlay.dart';
+import '../editor_session_manager.dart';
 import '../sheet/sheet_ink_controller.dart';
 import '../sheet/sheet_ink_layer.dart';
-import '../sheet_painting.dart' show tracedRoundedRect;
+import '../sheet_painting.dart' show SheetPictureOverInk;
 import '../storyboard_layer_policy.dart';
 
 /// What a picture window asks of the project the conte prints — the
@@ -126,17 +127,14 @@ ContePicture? _pictureOf(
   }
   final (:cut, :layer, :frameId, :pending) = drawn;
   final frame = cell.source.pictureFrame;
-  final camera = project.cameraFrameSize;
   final mark = contePictureOf(cell, page.metrics);
-  // Laid where every printer lays the picture ([SheetPicture.frame]).
   final shown = mark.frame;
-  final scale = shown.width / camera.width;
   final placement = layerPlacementAt(cut: cut, layer: layer, frameIndex: frame);
-  final canvasToPaper = Matrix4.translationValues(shown.left, shown.top, 0)
-    ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
-    ..multiply(
-      cameraProjectionMatrix(project.cameraPoseOf(cut, frame), camera),
-    );
+  final canvasToPaper = conteCanvasToPaper(
+    mark,
+    project.cameraPoseOf(cut, frame),
+    project.cameraFrameSize,
+  );
   // The cell, not the drawing: a drawing exposed twice is two pictures.
   final id = 'picture-${cell.cutId}-${cell.source.startFrame}';
   return (
@@ -144,7 +142,10 @@ ContePicture? _pictureOf(
       id: id,
       key: project.celKeyOf(cut, layer.id, frameId),
       plane: cut.canvasSize,
-      slot: mark.slot,
+      picture: (
+        picture: mark,
+        canvas: _canvasOnPaper(cut.canvasSize, canvasToPaper),
+      ),
       canvasToPaper: canvasToPaper,
       artworkToCanvas: placement == null
           ? Matrix4.identity()
@@ -153,7 +154,6 @@ ContePicture? _pictureOf(
               cut.canvasSize,
               anchorPoint: placement.anchorPoint,
             ),
-      paperOutline: _outlineOf(mark, shown, cut.canvasSize, canvasToPaper),
       overlay: overlayOf(id),
       refusal: pending ? project.rowRefusal : null,
     ),
@@ -166,31 +166,84 @@ ContePicture? _pictureOf(
   );
 }
 
-/// What a picture shows of its slot, on the paper — what the sheet clips it
-/// to: the slot's rounded corners ([tracedRoundedRect]), the camera's frame
-/// in it ([shown]) and the cut's canvas, where [canvasToPaper] lays it. The
-/// pen takes exactly this, so a stroke's piece in a corner the picture
-/// cuts away stays on the paper that shows it.
-List<Offset> _outlineOf(
-  SheetPicture mark,
-  Rect shown,
-  CanvasSize canvas,
-  Matrix4 canvasToPaper,
-) {
-  List<Offset> cornersOf(Rect rect) => [
-    rect.topLeft,
-    rect.topRight,
-    rect.bottomRight,
-    rect.bottomLeft,
-  ];
-  final slot = mark.cornerRadius > 0
-      ? tracedRoundedRect(mark.slot, mark.cornerRadius)
-      : cornersOf(mark.slot);
-  return convexIntersection(convexIntersection(slot, cornersOf(shown)), [
-    for (final corner in cornersOf(canvas.canvasRect))
+/// The corners of [canvas] where [canvasToPaper] lays them — what a
+/// picture's outline is cut by (`pictureOutline`): the pen takes exactly
+/// that, so a stroke's piece in a corner the picture cuts away stays on
+/// the paper that shows it.
+List<Offset> _canvasOnPaper(CanvasSize canvas, Matrix4 canvasToPaper) {
+  final rect = canvas.canvasRect;
+  return [
+    for (final corner in [
+      rect.topLeft,
+      rect.topRight,
+      rect.bottomRight,
+      rect.bottomLeft,
+    ])
       MatrixUtils.transformPoint(canvasToPaper, corner),
-  ]);
+  ];
 }
+
+/// A cut's canvas → the paper, for [mark]'s picture seen by a camera at
+/// [pose]: the camera (`cameraProjectionMatrix`), then the camera's frame
+/// laid in [SheetPicture.frame] — where every printer lays the picture, so
+/// the pen lands where the print shows its stroke.
+Matrix4 conteCanvasToPaper(
+  SheetPicture mark,
+  CameraPose pose,
+  CanvasSize cameraFrame,
+) {
+  final shown = mark.frame;
+  final scale = shown.width / cameraFrame.width;
+  return Matrix4.translationValues(shown.left, shown.top, 0)
+    ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
+    ..multiply(cameraProjectionMatrix(pose, cameraFrame));
+}
+
+/// The pictures of [page] the paper's ink yields to — each cell's, and
+/// where it shows its cut's canvas: no ink on the paper shows there, on
+/// any printer (F-216). A cell whose cut [cutOf] does not find prints no
+/// picture, and yields nothing.
+List<SheetPictureOverInk> contePicturesOverInk(
+  ContePageLayout page, {
+  required Cut? Function(CutId cutId) cutOf,
+  required CameraPose Function(Cut cut, int frameIndex) cameraPoseOf,
+  required CanvasSize cameraFrameSize,
+}) => [
+  for (final cell in page.cells)
+    if (cutOf(CutId(cell.cutId)) case final cut?)
+      _overInk(
+        contePictureOf(cell, page.metrics),
+        cut,
+        cameraPoseOf(cut, cell.source.pictureFrame),
+        cameraFrameSize,
+      ),
+];
+
+/// [page]'s pictures as the paper's ink yields to them, read off
+/// [session]'s project and camera — the panel's call, and the exports'.
+List<SheetPictureOverInk> contePicturesOverInkIn(
+  EditorSessionManager session,
+  ContePageLayout page,
+) => contePicturesOverInk(
+  page,
+  cutOf: (cutId) =>
+      cutPositionOf(session.repository.requireProject(), cutId)?.cut,
+  cameraPoseOf: session.camera.cameraPoseForCut,
+  cameraFrameSize: session.camera.cameraFrameSize,
+);
+
+SheetPictureOverInk _overInk(
+  SheetPicture picture,
+  Cut cut,
+  CameraPose pose,
+  CanvasSize cameraFrameSize,
+) => (
+  picture: picture,
+  canvas: _canvasOnPaper(
+    cut.canvasSize,
+    conteCanvasToPaper(picture, pose, cameraFrameSize),
+  ),
+);
 
 /// The cels the conte's pictures draw into: the SESSION's cel store,
 /// through a coordinator of its own per canvas size — a cut's canvas may

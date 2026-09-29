@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import '../../core/convex_clip.dart' show convexContains;
+import '../../core/convex_clip.dart' show convexContains, convexInset;
 import '../../models/brush_edit_canvas_input_settings.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
@@ -20,6 +20,9 @@ import '../../services/viewport_transform_matrix.dart';
 import '../brush/brush_tool_state.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../effective_device_pixel_ratio.dart';
+import '../sheet_painting.dart'
+    show SheetDeviceGrid, SheetPictureOverInk, pictureOutline;
 import '../widgets/cursor_notice.dart' show cursorNotices;
 
 /// A window the sheet's brush draws through: where it sits on the paper,
@@ -72,6 +75,13 @@ sealed class SheetWindow {
   /// Which of its surface's pixels this window shows at all, before the
   /// windows stacked above it take theirs ([sheetInkRegions]).
   CanvasSelectionRegion? get shows;
+
+  /// Where on the screen this window shows its own surface, so that no
+  /// window under it shows its there: its rect, or where a picture shows
+  /// its cut's canvas ([SheetPictureWindow]) — on [grid], the one rounding
+  /// every edge of the sheet goes through (F-216).
+  Path takesOnScreen(SheetDeviceGrid grid, CanvasViewport panelViewport) =>
+      Path()..addRect(screenRect(panelViewport));
 
   /// How much wider than its surface's own shape this window shows it
   /// ([SheetInkPlacement.stretch]).
@@ -223,16 +233,20 @@ class SheetPictureWindow extends SheetWindow {
     required super.id,
     required super.key,
     super.plane,
-    required this.slot,
+    required this.picture,
     required this.canvasToPaper,
     required this.artworkToCanvas,
-    required this.paperOutline,
     required this.overlay,
     this.refusal,
   });
 
+  /// The picture as the sheet prints it, and where its cut's canvas lies
+  /// on the paper — THE shape the pen takes ([paperOutline]) and the one
+  /// the paper's ink yields to on screen ([takesOnScreen]).
+  final SheetPictureOverInk picture;
+
   /// Where the picture sits on the paper.
-  final Rect slot;
+  Rect get slot => picture.picture.slot;
 
   /// What the picture shows of its slot — the outline the sheet clips it
   /// to, as its corners on the paper: in the slot's rounded corners, and
@@ -240,7 +254,13 @@ class SheetPictureWindow extends SheetWindow {
   /// after the placement (「페이스트보드는 포함 안 시킴」). The rest of the
   /// slot is the windows' under it: a stroke there shows, so it is kept.
   @override
-  final List<Offset> paperOutline;
+  List<Offset> get paperOutline => pictureOutline(picture);
+
+  /// Where its live composite shows the cut's canvas on [grid] — cut
+  /// INSIDE (F-197), the same call the composite is clipped by.
+  @override
+  Path takesOnScreen(SheetDeviceGrid grid, CanvasViewport panelViewport) =>
+      grid.pictureCanvas(grid.livePicture(picture.picture), picture.canvas);
 
   @override
   final String? refusal;
@@ -286,21 +306,33 @@ class SheetPictureWindow extends SheetWindow {
       : CanvasSelectionRegion.shape(surfaceShapeOf(paperOutline));
 
   @override
-  SheetPictureWindow shiftedBy(Offset by) => SheetPictureWindow(
-    id: id,
-    key: key,
-    plane: plane,
-    slot: slot.shift(by),
-    canvasToPaper: Matrix4.translationValues(
-      by.dx,
-      by.dy,
-      0,
-    ).multiplied(canvasToPaper),
-    artworkToCanvas: artworkToCanvas,
-    paperOutline: [for (final point in paperOutline) point + by],
-    overlay: overlay,
-    refusal: refusal,
-  );
+  SheetPictureWindow shiftedBy(Offset by) {
+    final mark = picture.picture;
+    return SheetPictureWindow(
+      id: id,
+      key: key,
+      plane: plane,
+      picture: (
+        picture: SheetPicture(
+          mark.layer,
+          cutId: mark.cutId,
+          pictureFrame: mark.pictureFrame,
+          slot: mark.slot.shift(by),
+          frame: mark.frame.shift(by),
+          cornerRadius: mark.cornerRadius,
+        ),
+        canvas: [for (final point in picture.canvas) point + by],
+      ),
+      canvasToPaper: Matrix4.translationValues(
+        by.dx,
+        by.dy,
+        0,
+      ).multiplied(canvasToPaper),
+      artworkToCanvas: artworkToCanvas,
+      overlay: overlay,
+      refusal: refusal,
+    );
+  }
 }
 
 /// [points] as the outline they make.
@@ -319,7 +351,9 @@ CanvasSelectionShape _outlineShape(List<Offset> points) =>
 /// every window's at once, and the paper decides which surface keeps each
 /// piece of it: the window that SHOWS that spot — the topmost one there.
 /// The pieces meet at the window edges, so the line reads as one while
-/// every surface keeps only its own.
+/// every surface keeps only its own — and a ring of [sheetInkApron] past
+/// the edge of a window above it, which the screen never shows it in
+/// ([SheetWindow.takesOnScreen]).
 ///
 /// ↩️A stroke used to belong to the window it STARTED in (pointer capture)
 /// and ran on over its neighbours: into the paper's ink across a strip or
@@ -340,7 +374,7 @@ CanvasSelectionRegion? _inkRegionOf(
     if (region == null) {
       break;
     }
-    final taken = upper.paperOutline;
+    final taken = convexInset(upper.paperOutline, sheetInkApron);
     if (taken.length < 3 || !upper.documentRect.overlaps(window.documentRect)) {
       continue;
     }
@@ -351,6 +385,20 @@ CanvasSelectionRegion? _inkRegionOf(
   }
   return region;
 }
+
+/// How far, in paper units, a window keeps its piece of a stroke on past
+/// the edge of a window stacked above it (F-216, 유저 2026-09-28: 「칸 사이에
+/// 흰 빈공간이 존재. 줌 배율에 따라 사라지거나 생기거나 함 … 근본/구조적으로
+/// 해결」).
+///
+/// The screen shows each window up to an edge cut on the device grid —
+/// never where the edge lies on the paper — and a surface keeps its pixels
+/// on its own grid: the conte's paper ink a point a pixel. Meeting exactly
+/// at the edge, the two pieces left a sliver of either that neither held:
+/// measured one to three device pixels, white where the print under the
+/// picture showed, black where the silhouette did. Three points hold a
+/// device pixel at 50% on a 1× screen and the pixel the edge falls in.
+const double sheetInkApron = 3;
 
 CanvasSelectionShape _surfaceShape(Rect rect) => CanvasSelectionShape.rect(
   left: rect.left,
@@ -505,13 +553,18 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
 
   @override
   Widget build(BuildContext context) {
-    final regions = sheetInkRegions(widget.windows);
+    final windows = widget.windows;
+    final regions = sheetInkRegions(windows);
     final keeping = [
-      for (var index = 0; index < widget.windows.length; index += 1)
+      for (var index = 0; index < windows.length; index += 1)
         if (regions[index] case final region?)
-          (window: widget.windows[index], region: region),
+          (index: index, window: windows[index], region: region),
     ];
     _releaseWindowsGone({for (final entry in keeping) entry.window.id});
+    final grid = SheetDeviceGrid.through(
+      widget.viewport,
+      EffectiveDevicePixelRatio.of(context),
+    );
     // It claims the press, after every window has heard it — and where the
     // window on top refuses the pen, says why, as the canvas does.
     return Listener(
@@ -519,10 +572,17 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       onPointerDown: (event) => _refuseAt(event.localPosition),
       child: Stack(
         children: [
-          for (final (:window, :region) in keeping)
+          for (final (:index, :window, :region) in keeping)
             Positioned.fill(
               child: _InkWindowFrame(
                 shows: window.screenRect(widget.viewport),
+                // Where the windows above it show theirs (F-216): the
+                // piece it keeps past their edges is never on screen.
+                yieldsTo: [
+                  for (final upper in windows.skip(index + 1))
+                    if (upper.documentRect.overlaps(window.documentRect))
+                      upper.takesOnScreen(grid, widget.viewport),
+                ],
                 child: RepaintBoundary(
                   child: _stretched(window, _view(window, region)),
                 ),
@@ -592,25 +652,34 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
 /// press outside the window fell through to the one below, and the stroke
 /// stayed with the window it started in.
 class _InkWindowFrame extends SingleChildRenderObjectWidget {
-  const _InkWindowFrame({required this.shows, required super.child});
+  const _InkWindowFrame({
+    required this.shows,
+    required this.yieldsTo,
+    required super.child,
+  });
 
   final Rect shows;
 
+  /// Where windows above this one show theirs — cut out of [shows].
+  final List<Path> yieldsTo;
+
   @override
   _RenderInkWindowFrame createRenderObject(BuildContext context) =>
-      _RenderInkWindowFrame(shows);
+      _RenderInkWindowFrame(shows, yieldsTo);
 
   @override
   void updateRenderObject(
     BuildContext context,
     _RenderInkWindowFrame renderObject,
   ) {
-    renderObject.shows = shows;
+    renderObject
+      ..shows = shows
+      ..yieldsTo = yieldsTo;
   }
 }
 
 class _RenderInkWindowFrame extends RenderProxyBox {
-  _RenderInkWindowFrame(this._shows);
+  _RenderInkWindowFrame(this._shows, this._yieldsTo);
 
   Rect _shows;
 
@@ -624,7 +693,22 @@ class _RenderInkWindowFrame extends RenderProxyBox {
     markNeedsPaint();
   }
 
+  List<Path> _yieldsTo;
+
+  List<Path> get yieldsTo => _yieldsTo;
+
+  /// A path has no value equality: any shape to yield to repaints the
+  /// frame's clip — never the view under it, which is its own boundary.
+  set yieldsTo(List<Path> value) {
+    if (value.isEmpty && _yieldsTo.isEmpty) {
+      return;
+    }
+    _yieldsTo = value;
+    markNeedsPaint();
+  }
+
   final LayerHandle<ClipRectLayer> _clip = LayerHandle<ClipRectLayer>();
+  final LayerHandle<ClipPathLayer> _cutClip = LayerHandle<ClipPathLayer>();
 
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
@@ -637,18 +721,36 @@ class _RenderInkWindowFrame extends RenderProxyBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    _clip.layer = context.pushClipRect(
+    if (_yieldsTo.isEmpty) {
+      _cutClip.layer = null;
+      _clip.layer = context.pushClipRect(
+        needsCompositing,
+        offset,
+        _shows,
+        super.paint,
+        oldLayer: _clip.layer,
+      );
+      return;
+    }
+    var shows = Path()..addRect(_shows);
+    for (final upper in _yieldsTo) {
+      shows = Path.combine(PathOperation.difference, shows, upper);
+    }
+    _clip.layer = null;
+    _cutClip.layer = context.pushClipPath(
       needsCompositing,
       offset,
       _shows,
+      shows,
       super.paint,
-      oldLayer: _clip.layer,
+      oldLayer: _cutClip.layer,
     );
   }
 
   @override
   void dispose() {
     _clip.layer = null;
+    _cutClip.layer = null;
     super.dispose();
   }
 }

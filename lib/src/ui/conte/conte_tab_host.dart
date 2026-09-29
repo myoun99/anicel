@@ -492,6 +492,10 @@ class _ConteTabHostState extends State<ConteTabHost> {
               inkController: widget.inkController,
               pictures: pictures?[index] ?? const [],
               cels: widget.pictures,
+              picturesOverInk: contePicturesOverInkIn(
+                _session,
+                shown[index].page,
+              ),
             ),
           ),
         if (ink != null) _inkLayer(ink, viewport, pictures!),

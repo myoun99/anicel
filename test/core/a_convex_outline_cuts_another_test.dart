@@ -76,6 +76,29 @@ void main() {
     expect(area(convexIntersection(inner, square)), closeTo(36, 1e-9));
   });
 
+  // F-216: the ring a window below keeps under a picture's edge.
+  test('an outline moved in by 2 keeps what lies 2 within it, either way '
+      'round', () {
+    for (final polygon in [square, square.reversed.toList()]) {
+      final inset = convexInset(polygon, 2);
+      expect(area(inset), closeTo(36, 1e-9));
+      expect(convexContains(inset, const Offset(2.01, 5)), isTrue);
+      expect(convexContains(inset, const Offset(1.99, 5)), isFalse);
+      expect(convexContains(inset, const Offset(5, 7.99)), isTrue);
+      expect(convexContains(inset, const Offset(5, 8.01)), isFalse);
+    }
+    // |x − 5| + |y − 5| ≤ 8, moved in by √2: ≤ 6.
+    final turned = convexInset(const [
+      Offset(5, -3),
+      Offset(13, 5),
+      Offset(5, 13),
+      Offset(-3, 5),
+    ], 1.4142135623730951);
+    expect(area(turned), closeTo(2 * 6 * 6, 1e-6));
+    expect(convexInset(square, 6), isEmpty, reason: 'nothing is 6 within');
+    expect(convexInset(square, 0), same(square));
+  });
+
   test('a point is in an outline on its edges, and not outside them', () {
     expect(convexContains(square, const Offset(5, 5)), isTrue);
     expect(convexContains(square, const Offset(10, 5)), isTrue);

@@ -64,6 +64,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     this.layers,
     this.inkImageFor,
     this.liveInkKeys = const {},
+    this.picturesOverInk = const [],
     this.dragPreview,
     required this.words,
     // The thumbnail store (async pictures): a landed render must repaint
@@ -114,6 +115,10 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   /// translucent ink never composites twice.
   final Set<BrushFrameKey> liveInkKeys;
 
+  /// This page's pictures and where each shows its cut's canvas — no ink
+  /// on the paper shows there (F-216). Empty yields to none.
+  final List<SheetPictureOverInk> picturesOverInk;
+
   ConteSheetMetrics get metrics => page.metrics;
 
   /// What this page prints, with the drag's lengths where one is in flight.
@@ -136,6 +141,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
         inkImageFor: inkImageFor,
         liveInkKeys: liveInkKeys,
       ),
+      picturesOverInk: picturesOverInk,
     ).paint(
       canvas,
       size,
@@ -168,7 +174,14 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   // comparing them re-recorded every stratum for one typed letter (유저
   // 2026-09-25: 「텍스트 바뀌거나 하는데 용지 리빌드하면 너무
   // 비효율적이잖아」).
-  Object get props => (ByList(_printed()), viewport, effectiveRatio);
+  Object get props => (
+    ByList(_printed()),
+    viewport,
+    effectiveRatio,
+    ByList([
+      for (final over in picturesOverInk) (over.picture, ByList(over.canvas)),
+    ]),
+  );
 
   /// What this painter puts on the page: its strata's marks, less the ink a
   /// live window is showing.

@@ -286,6 +286,39 @@ void main() {
       expect(ink.hasInkFor(null, row.key), isTrue);
     });
 
+    // F-216: the paper's piece of a stroke runs on under the picture's edge
+    // by [sheetInkApron], so the line meets the picture wherever a screen's
+    // pixels put that edge — and only by that much.
+    testWidgets('the cell\'s ink keeps a ring of the stroke past the '
+        'picture\'s edge, and nothing deeper', (tester) async {
+      final origin = await pump(
+        tester,
+        CameraPose(center: CanvasPoint(x: 320, y: 180)),
+      );
+      final slot = picture.window.slot;
+      final y = slot.center.dy;
+      await stroke(tester, origin, [
+        slot.center,
+        Offset(slot.right - 10, y),
+        Offset(slot.right + 10, y),
+        Offset(slot.right + 30, y),
+      ]);
+
+      final row = conteInkWindows(
+        page,
+        unwrittenInkIdOf: bandOf,
+      ).singleWhere((window) => window.key == conteInkRowKey(cutId, 'band-0'));
+      final surface = ink.sessionStateFor(null, row.key).canvasState
+          .currentSurface;
+      bool keeps(double inside) => inkAt(
+        surface,
+        row.placement.pixelOf(Offset(slot.right - inside, y)),
+      );
+      expect(keeps(-2), isTrue, reason: 'fixture: the paper keeps its own');
+      expect(keeps(sheetInkApron / 2), isTrue);
+      expect(keeps(sheetInkApron + 1.5), isFalse);
+    });
+
     testWidgets('🚨the slot\'s rounded corner is not the picture\'s: a stroke '
         'through it stays in the cell\'s ink, where the page shows it', (
       tester,

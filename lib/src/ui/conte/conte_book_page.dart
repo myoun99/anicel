@@ -18,7 +18,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
 import '../sheet/sheet_strata.dart';
 import '../sheet/sheet_text_edit_layer.dart';
-import '../sheet_painting.dart' show SheetPictureLookup;
+import '../sheet_painting.dart' show SheetPictureLookup, SheetPictureOverInk;
 import '../sliced_value_listenable_builder.dart'
     show SlicedValueListenableScope;
 import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
@@ -54,6 +54,7 @@ class ConteBookPage extends StatelessWidget {
     this.inkController,
     this.pictures = const [],
     this.cels,
+    this.picturesOverInk = const [],
   });
 
   final ContePageLayout page;
@@ -95,6 +96,10 @@ class ConteBookPage extends StatelessWidget {
 
   /// The cels those pictures draw into.
   final ContePictureInkController? cels;
+
+  /// This page's pictures and where each shows its cut's canvas, brush on
+  /// or off: the page's printed ink shows nowhere there (F-216).
+  final List<SheetPictureOverInk> picturesOverInk;
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +250,7 @@ class ConteBookPage extends StatelessWidget {
       SheetStratum stratum, {
       ValueListenable<TimelineDragPreview?>? dragPreview,
       Set<BrushFrameKey> liveInkKeys = const {},
+      List<SheetPictureOverInk> picturesOverInk = const [],
       List<Listenable?> repaint = const [],
     }) => ContePagePainter(
       page: page,
@@ -266,6 +272,7 @@ class ConteBookPage extends StatelessWidget {
           ? null
           : (key) => ink.displayImageFor(null, key),
       liveInkKeys: liveInkKeys,
+      picturesOverInk: picturesOverInk,
       dragPreview: dragPreview,
       repaint: repaint.isEmpty ? null : Listenable.merge(repaint),
     );
@@ -312,6 +319,7 @@ class ConteBookPage extends StatelessWidget {
                   liveInkKeys: drawing
                       ? {for (final window in conteInkWindows(page)) window.key}
                       : const {},
+                  picturesOverInk: picturesOverInk,
                   repaint: [ink],
                 ),
             },

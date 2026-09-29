@@ -13,7 +13,8 @@ import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../conte/conte_fonts.dart';
 import '../conte/conte_page_painter.dart' show conteWrappedLines;
-import '../sheet_painting.dart' show sheetWordsSize, tracedRoundedRect;
+import '../sheet_painting.dart'
+    show SheetPictureOverInk, pictureOutline, sheetWordsSize, tracedRoundedRect;
 import '../theme/app_theme.dart' show AppTypography;
 
 /// The conte sheet as ONE vector PDF.
@@ -111,6 +112,7 @@ Future<Uint8List> writeContePdf({
   Map<(String, int), ContePdfPicture> pictures = const {},
   Map<String, ContePdfPicture> images = const {},
   Map<BrushFrameKey, ContePdfPicture> inkPictures = const {},
+  List<SheetPictureOverInk> Function(ContePageLayout page)? picturesOverInkOf,
   required ConteWords words,
 }) async {
   final document = PdfDocument();
@@ -140,6 +142,7 @@ Future<Uint8List> writeContePdf({
     writer.writePage(
       contePageMarks(page, source, words: words),
       ui.Size(page.metrics.pageWidth, page.metrics.pageHeight),
+      picturesOverInk: picturesOverInkOf?.call(page) ?? const [],
     );
   }
   return document.save();
@@ -172,10 +175,19 @@ class _ContePdfPageWriter {
   late PdfGraphics _g;
   late double _pageHeight;
 
+  /// The page's pictures and where each shows its cut's canvas — no ink on
+  /// the paper shows there (F-216).
+  List<SheetPictureOverInk> _overInk = const [];
+
   double _y(double top) => _pageHeight - top;
 
-  void writePage(List<SheetMark> marks, ui.Size paper) {
+  void writePage(
+    List<SheetMark> marks,
+    ui.Size paper, {
+    List<SheetPictureOverInk> picturesOverInk = const [],
+  }) {
     _pageHeight = paper.height;
+    _overInk = picturesOverInk;
     final pdfPage = PdfPage(
       document,
       pageFormat: PdfPageFormat(paper.width, paper.height),
@@ -265,13 +277,29 @@ class _ContePdfPageWriter {
       _g.drawImage(image, rect.left, _y(rect.bottom), rect.width, rect.height);
 
   /// An ink raster where its [placement] lays it, clipped to its window —
-  /// the screen's `paintSheetInkWindow`, in PDF.
+  /// the screen's `paintSheetInkWindow`, in PDF — and out of every picture
+  /// over it where that shows its cut's canvas, exactly ([pictureOutline]):
+  /// the ink's ring past that edge (`sheetInkApron`) never lies over the
+  /// picture. Each picture cuts one more clip, and clips intersect.
   void _clippedTo(PdfImage image, SheetInkPlacement placement) {
     final window = placement.window;
     final laid = placement.rasterRect(image.width, image.height);
     _g.saveContext();
     _g.drawRect(window.left, _y(window.bottom), window.width, window.height);
     _g.clipPath();
+    for (final over in _overInk) {
+      final outline = pictureOutline(over);
+      if (outline.length < 3 || !over.picture.slot.overlaps(window)) {
+        continue;
+      }
+      _g.drawRect(window.left, _y(window.bottom), window.width, window.height);
+      _g.moveTo(outline.first.dx, _y(outline.first.dy));
+      for (final point in outline.skip(1)) {
+        _g.lineTo(point.dx, _y(point.dy));
+      }
+      _g.closePath();
+      _g.clipPath(evenOdd: true);
+    }
     _g.drawImage(image, laid.left, _y(laid.bottom), laid.width, laid.height);
     _g.restoreContext();
   }

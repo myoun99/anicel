@@ -26,6 +26,8 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/ui/conte/conte_ink.dart';
+import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -33,6 +35,8 @@ import 'package:anicel/src/ui/export/conte_pdf_writer.dart';
 import 'package:anicel/src/ui/export/export_conte_render.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/sheet_painting.dart' show pictureOutline;
+import '../../helpers/conte_book.dart';
 import '../../helpers/pdf_content.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -581,6 +585,125 @@ void main() {
       pngWidth('conte_p3.png'),
       inInclusiveRange(atOne * 3 - 1, atOne * 3 + 1),
       reason: 'the run rasters at sheetScale × the page\'s point size',
+    );
+  });
+
+  testWidgets('the handwriting under a picture prints nowhere the picture '
+      'shows its canvas — in the page image and in the PDF, as on the '
+      'panel (F-216)', (tester) async {
+    final session = EditorSessionManager(initialProject: project());
+    addTearDown(session.dispose);
+    // Red handwriting on the book's first body cell's band: under its
+    // picture, and beside it.
+    final book = layoutConteBook(
+      buildConteSheetSource(session.repository.requireProject()),
+      metrics: ConteSheetMetrics(
+        cameraAspect: session.camera.cameraFrameAspect,
+      ),
+    );
+    final body = book.indexWhere((page) => page.cells.isNotEmpty);
+    final page = book[body];
+    final cell = page.cells.first;
+    final slot = contePictureSlot(cell, page.metrics);
+    final under = slot.center;
+    final beside = Offset(slot.right + 30, slot.center.dy);
+    final ink = ConteInkController(
+      rowStore: session.renderCaches.conteInkRowStore,
+    )..syncGeometry(page.metrics);
+    addTearDown(ink.dispose);
+    ink.commitStroke(
+      plane: null,
+      key: conteInkRowKey(CutId(cell.cutId), cell.source.inkId!),
+      strokeData: conteBandDabs(
+        cell,
+        page.metrics,
+        [under, beside],
+        color: 0xFFFF0000,
+      ),
+      historyManager: session.historyManager,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-browse-button')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // The page image, at 1×: a point is a pixel.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-png')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-1')));
+    await tester.pump();
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final image = (await tester.runAsync(
+      () => decodeImageFromList(
+        File(
+          '${temp.path}${Platform.pathSeparator}conte_p${body + 1}.png',
+        ).readAsBytesSync(),
+      ),
+    ))!;
+    addTearDown(image.dispose);
+    Future<bool> redAt(Offset point) async {
+      final (r, g, _) = (await tester.runAsync(
+        () => pixelAt(image, point.dx.round(), point.dy.round()),
+      ))!;
+      return r > 200 && g < 60;
+    }
+
+    expect(await redAt(beside), isTrue, reason: 'fixture: the band is inked');
+    expect(
+      await redAt(under),
+      isFalse,
+      reason: 'the picture shows its canvas there, over the band\'s ink',
+    );
+
+    // The PDF: the picture's outline, exactly, cut out of the band's ink.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-pdf')),
+    );
+    await tester.pump();
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final outline = [
+      for (final point in pictureOutline(
+        contePicturesOverInkIn(session, page).first,
+      ))
+        // PDF y runs up.
+        Offset(point.dx, page.metrics.pageHeight - point.dy),
+    ];
+    bool isTheOutline(List<Offset> path) =>
+        path.length == outline.length &&
+        outline.indexed.every(
+          (corner) => (path[corner.$1] - corner.$2).distance < 0.01,
+        );
+    expect(
+      pdfClosedPaths(
+        File('${temp.path}${Platform.pathSeparator}conte.pdf')
+            .readAsBytesSync(),
+        then: 'W*',
+      ).where(isTheOutline),
+      hasLength(1),
     );
   });
 

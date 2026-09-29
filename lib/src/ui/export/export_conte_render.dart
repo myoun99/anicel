@@ -9,7 +9,7 @@ import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../../services/import/raster_cel_import.dart' show readImageFileOrNull;
 import '../conte/conte_page_painter.dart';
-import '../sheet_painting.dart' show SheetPictureLookup;
+import '../sheet_painting.dart' show SheetPictureLookup, SheetPictureOverInk;
 import 'offscreen_raster.dart';
 
 /// Every media image [pages] print — the company logo, the cover's picture
@@ -52,6 +52,7 @@ Future<ui.Image> renderContePageImage({
   SheetPictureLookup? pictureFor,
   ui.Image? Function(String assetPath)? imageFor,
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
+  List<SheetPictureOverInk> picturesOverInk = const [],
   double scale = 1,
   CanvasSize? outputSize,
   required ConteWords words,
@@ -72,6 +73,7 @@ Future<ui.Image> renderContePageImage({
       pictureFor: pictureFor,
       imageFor: imageFor,
       inkImageFor: inkImageFor,
+      picturesOverInk: picturesOverInk,
       words: words,
     ).paint(canvas, ui.Size(width.toDouble(), height.toDouble())),
   );

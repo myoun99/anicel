@@ -42,6 +42,7 @@ import '../../models/project.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../widgets/checkered_picture.dart';
 import '../canvas/tiled_surface_compose.dart';
+import '../conte/conte_picture_ink.dart' show contePicturesOverInkIn;
 import '../conte/conte_sheet_builder.dart';
 import '../conte/conte_words_in.dart';
 import '../envelope/cut_envelope_builder.dart';
@@ -1259,6 +1260,7 @@ class ExportDialogState extends State<ExportDialog> {
         pictureFor: (cutId, frame, _) => pictures[(cutId, frame)],
         imageFor: (path) => images[path],
         inkImageFor: (key) => ink[key],
+        picturesOverInk: contePicturesOverInkIn(_session, page),
         scale: scale,
         outputSize: outputSize,
         words: words,
@@ -2644,6 +2646,7 @@ class ExportDialogState extends State<ExportDialog> {
       pictures: pdfPictures,
       images: pdfImages,
       inkPictures: inkPictures,
+      picturesOverInkOf: (page) => contePicturesOverInkIn(_session, page),
       words: words,
     );
     final file = File(_joinLocation('conte.pdf'));

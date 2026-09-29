@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../core/contain_rect.dart';
+import '../core/convex_clip.dart' show convexIntersection;
 import '../models/brush_frame_key.dart';
 import '../models/canvas_viewport.dart';
 import '../models/sheet_marks.dart';
@@ -253,6 +254,39 @@ class SheetDeviceGrid {
   ui.RSuperellipse rounded(Rect cut, double radius) =>
       ui.RSuperellipse.fromRectAndRadius(cut, Radius.circular(radius * scale));
 
+  /// [paper] where this grid lays it, off the grid — a point of a shape the
+  /// grid does not cut: the cut's canvas, turned with its camera.
+  Offset onDevice(Offset paper) =>
+      Offset(dx + scale * paper.dx, dy + scale * paper.dy);
+
+  /// Where [picture]'s PRINT shows on this grid: in its slot's rounded
+  /// corners and the frame it fills, both cut on the NEAREST lines, as the
+  /// well under it is.
+  SheetPictureShot printedPicture(SheetPicture picture) => (
+    corners: rounded(snap(picture.slot), picture.cornerRadius),
+    frame: snap(picture.frame),
+  );
+
+  /// Where a LIVE composite of [picture] shows on this grid: the same two,
+  /// cut INSIDE (F-197) — the composite ends where its frame ends, and a
+  /// clip reaching past that end showed the ground under the frame's edge,
+  /// a light line round a dark picture.
+  SheetPictureShot livePicture(SheetPicture picture) => (
+    corners: rounded(inside(picture.slot), picture.cornerRadius),
+    frame: inside(picture.frame),
+  );
+
+  /// Where [shot] shows the cut's canvas: the shot, and in it the canvas
+  /// [canvas] outlines on the paper. The paper's own ink shows everywhere
+  /// else — up to this edge, on this grid, and the piece of a stroke either
+  /// side keeps a ring past it (`sheetInkApron`, F-216).
+  Path pictureCanvas(SheetPictureShot shot, List<Offset> canvas) =>
+      Path.combine(
+        PathOperation.intersect,
+        sheetPictureShotPath(shot),
+        Path()..addPolygon([for (final point in canvas) onDevice(point)], true),
+      );
+
   /// [rule]'s rectangle cut on the grid — never thinner than one device
   /// pixel, so a rule survives any zoom out, and widened AWAY from the edge
   /// it holds ([SheetRule.hold]), so that edge still meets the mark it
@@ -305,6 +339,42 @@ class SheetDeviceGrid {
     canvas.scale(scale, scale);
   }
 }
+
+/// Where a picture shows on the device: inside [corners], within [frame]
+/// ([SheetDeviceGrid.printedPicture] · [SheetDeviceGrid.livePicture]).
+typedef SheetPictureShot = ({ui.RSuperellipse corners, Rect frame});
+
+/// A picture the paper's ink yields to: the picture, and [canvas] — the
+/// corners of the cut's canvas on the paper, as its camera lays them.
+typedef SheetPictureOverInk = ({SheetPicture picture, List<Offset> canvas});
+
+/// Where [over] shows its cut's canvas, exactly, on the paper: the slot's
+/// rounded corners ([tracedRoundedRect]), the camera's frame in it and the
+/// canvas — what the pen takes for the picture, and what no ink on the
+/// paper shows in a print that needs no grid (the PDF).
+List<Offset> pictureOutline(SheetPictureOverInk over) {
+  final picture = over.picture;
+  List<Offset> cornersOf(Rect rect) => [
+    rect.topLeft,
+    rect.topRight,
+    rect.bottomRight,
+    rect.bottomLeft,
+  ];
+  final slot = picture.cornerRadius > 0
+      ? tracedRoundedRect(picture.slot, picture.cornerRadius)
+      : cornersOf(picture.slot);
+  return convexIntersection(
+    convexIntersection(slot, cornersOf(picture.frame)),
+    over.canvas,
+  );
+}
+
+/// [shot] as the one outline it is.
+Path sheetPictureShotPath(SheetPictureShot shot) => Path.combine(
+  PathOperation.intersect,
+  Path()..addRSuperellipse(shot.corners),
+  Path()..addRect(shot.frame),
+);
 
 /// A cut's picture at a frame, for a window that draws it [shownHeight]
 /// device pixels tall — what the panel's picture law is asked with. An
@@ -373,6 +443,7 @@ class SheetCanvasPrinter {
     required this.style,
     this.layers,
     this.images = const SheetMarkImages(),
+    this.picturesOverInk = const [],
   });
 
   /// The face the words print in.
@@ -382,6 +453,10 @@ class SheetCanvasPrinter {
   final Set<SheetPaintLayer>? layers;
 
   final SheetMarkImages images;
+
+  /// The pictures the paper's ink yields to: no ink shows where one shows
+  /// its cut's canvas, up to the edge its print shows it by (F-216).
+  final List<SheetPictureOverInk> picturesOverInk;
 
   /// Prints [marks] onto [canvas], in their order.
   void paint(
@@ -441,11 +516,42 @@ class _SheetCanvas {
             ? null
             : images.inkImageFor?.call(key);
         if (image != null) {
+          canvas.save();
+          _yieldToPictures(placement.window);
           _inPaperSpace(
             () => paintSheetInkWindow(canvas, image, placement),
           );
+          canvas.restore();
         }
     }
+  }
+
+  /// No ink of [window] shows where a picture over it shows its cut's
+  /// canvas — cut at the edge the print shows that picture by, so the ink's
+  /// ring past the edge (`sheetInkApron`) never lies over the picture.
+  void _yieldToPictures(Rect window) {
+    final over = [
+      for (final picture in printer.picturesOverInk)
+        if (picture.picture.slot.overlaps(window)) picture,
+    ];
+    if (over.isEmpty) {
+      return;
+    }
+    var shows = Path()
+      ..addRect(
+        Rect.fromPoints(
+          grid.onDevice(window.topLeft),
+          grid.onDevice(window.bottomRight),
+        ).inflate(1),
+      );
+    for (final (:picture, canvas: cut) in over) {
+      shows = Path.combine(
+        PathOperation.difference,
+        shows,
+        grid.pictureCanvas(grid.printedPicture(picture), cut),
+      );
+    }
+    canvas.clipPath(shows);
   }
 
   /// A fill cut on the grid. The app's corner is a curve, so a rounded fill
@@ -483,22 +589,20 @@ class _SheetCanvas {
   /// showed through the rest. A pan keeps each edge's place in its pixel
   /// (whole pixels, the snap's phase), so only a zoom ever moved it.
   void _picture(SheetPicture picture) {
-    final frame = grid.snap(picture.frame);
+    final shot = grid.printedPicture(picture);
     final image = printer.images.pictureFor?.call(
       picture.cutId,
       picture.pictureFrame,
-      frame.height * grid.devicePixelRatio,
+      shot.frame.height * grid.devicePixelRatio,
     );
     if (image == null) {
       return;
     }
     canvas.save();
     if (picture.cornerRadius > 0) {
-      canvas.clipRSuperellipse(
-        grid.rounded(grid.snap(picture.slot), picture.cornerRadius),
-      );
+      canvas.clipRSuperellipse(shot.corners);
     }
-    paintSheetImageIn(canvas, image, frame, FilterQuality.medium);
+    paintSheetImageIn(canvas, image, shot.frame, FilterQuality.medium);
     canvas.restore();
   }
 
