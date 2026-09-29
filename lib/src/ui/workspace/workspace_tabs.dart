@@ -51,6 +51,22 @@ class _WorkspaceTabs {
     return () => session.layerSwitches.toggleLayerFillReference(layer.id);
   }
 
+  /// A SHEET's body — the conte's, the envelope's, the timesheet's: [host],
+  /// built again whenever [listenable] moves, on a layer of its own.
+  ///
+  /// 🚨Its own layer (timesheet-rebuilds-on-every-scrub-move, found by
+  /// I-22's scrub measurement 09-27): a sheet's tab builds its host again on
+  /// every pan and zoom — the view the sheet is printed through — and the
+  /// two that show the cut under the playhead (F-90) on every crossing a
+  /// scrub makes, at a far zoom every move. Built bare in the dock's layout
+  /// scope, each laid the dock out again and repainted it whole.
+  Widget _sheetBody({
+    required Listenable listenable,
+    required WidgetBuilder host,
+  }) => TickLayer(
+    child: PanelAwareListenableBuilder(listenable: listenable, builder: host),
+  );
+
   /// Both viewers, built from one place: same panel, same code, different
   /// [MediaViewerSlot]. Anything that reads as "the main one does X"
   /// belongs in the slot or in the callbacks, never in a second copy of
@@ -998,7 +1014,7 @@ class _WorkspaceTabs {
           // one render rather than two that must be kept in step.
           // _brushTool is deliberately NOT merged (R18 UI-3): only the
           // ink overlay consumes it, through its own boundary builder.
-          builder: (context) => PanelAwareListenableBuilder(
+          builder: (context) => _sheetBody(
             listenable: Listenable.merge([
               _state.widget.session,
               _state._views._conteViewport,
@@ -1010,7 +1026,7 @@ class _WorkspaceTabs {
               // The locale reprints the sheet chrome (labels/tooltips).
               _state.widget.session.languageSettings,
             ]),
-            builder: (context) => ConteTabHost(
+            host: (context) => ConteTabHost(
               session: _state.widget.session,
               // A landed thumbnail render repaints the page painter
               // directly (its compared fields don't change for async
@@ -1047,7 +1063,7 @@ class _WorkspaceTabs {
           keepAlive: true,
           // _brushTool is deliberately NOT merged (R18 UI-3): only the ink
           // overlay consumes it, through its own boundary builder.
-          builder: (context) => PanelAwareListenableBuilder(
+          builder: (context) => _sheetBody(
             listenable: Listenable.merge([
               _state.widget.session,
               _state._views._envelopeViewport,
@@ -1058,7 +1074,7 @@ class _WorkspaceTabs {
               _state.widget.session.cutUnderPlayhead.listenable,
               _state.widget.session.languageSettings,
             ]),
-            builder: (context) => CutEnvelopeTabHost(
+            host: (context) => CutEnvelopeTabHost(
               session: _state.widget.session,
               // The work's choice, written back to the work — one undo.
               formId: _state.widget.session.timesheetInfo.envelopeFormId,
@@ -1098,7 +1114,7 @@ class _WorkspaceTabs {
           // for the whole of playback.
           staticRaster: false,
           keepAlive: true,
-          builder: (context) => PanelAwareListenableBuilder(
+          builder: (context) => _sheetBody(
             // _brushTool is deliberately NOT merged here (R18 UI-3): the
             // sheet layout never depends on it, and rebuilding the whole
             // (keep-alive, often hidden) B4 document on every tool
@@ -1115,7 +1131,7 @@ class _WorkspaceTabs {
               // The notation language reprints the sheet (UI-R10 #7).
               _state.widget.session.languageSettings,
             ]),
-            builder: (context) => TimesheetTabHost(
+            host: (context) => TimesheetTabHost(
               session: _state.widget.session,
               continuous: _state._views._timesheetContinuous.value,
               onContinuousChanged: (continuous) {

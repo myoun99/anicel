@@ -93,6 +93,7 @@ import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
 import 'widgets/static_raster.dart';
 import 'widgets/superellipse_clip.dart';
+import 'widgets/tick_layer.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'conte/conte_ink.dart';
