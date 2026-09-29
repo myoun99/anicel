@@ -6,7 +6,6 @@ library;
 
 import 'dart:math' as math;
 
-import '../models/track_frame_axis.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import '../models/storyboard_timeline_layout.dart';
@@ -222,8 +221,9 @@ void clampPlayheadForStoryboard(EditorSessionManager session) {
   if (cutId == null) {
     return;
   }
-  final layout = storyboardActiveTrackLayout(session);
-  final entry = TrackFrameAxis(layout).entryFor(cutId);
+  final axis = session.trackFrameAxis();
+  final layout = axis.entries;
+  final entry = axis.entryFor(cutId);
   if (entry == null) {
     return;
   }

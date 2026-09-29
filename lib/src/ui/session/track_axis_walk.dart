@@ -68,18 +68,14 @@ class TrackAxisWalk {
   /// the result inside a cut or parks it in the void, so a playhead
   /// standing between cuts can step out under its own power.
   void flipPanels(TrackId trackId, {required bool forward}) {
-    // The MEMOIZED layout (identity-keyed on the project): a flip step is
-    // a per-move cost, and rebuilding the whole cross-track layout for
+    // The MEMOIZED axis (kept beside the layout it narrows): a flip step
+    // is a per-move cost, and rebuilding the whole cross-track layout for
     // each one is exactly the tax that memo exists to remove.
-    final entries = [
-      for (final entry in _projectSettings.projectLayout())
-        if (entry.trackId == trackId) entry,
-    ];
-    if (entries.isEmpty) {
+    final axis = _projectSettings.axisForTrack(trackId);
+    if (axis.isEmpty) {
       return;
     }
-    final axis = TrackFrameAxis(entries);
-    final panels = storyboardPanelsOnTrack(entries);
+    final panels = storyboardPanelsOnTrack(axis.entries);
     final from = _from(axis);
     _land(
       flipColumnStep(
@@ -131,7 +127,7 @@ class TrackAxisWalk {
     if (layer == null) {
       return;
     }
-    final axis = _timeline.axisForTrack(track.id);
+    final axis = _projectSettings.axisForTrack(track.id);
     final from = _from(axis);
     _land(
       flipColumnStep(

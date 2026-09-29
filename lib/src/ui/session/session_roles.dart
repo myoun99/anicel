@@ -118,7 +118,6 @@ abstract interface class FrameIds {
 }
 
 abstract interface class TimelineAccess {
-  TrackFrameAxis axisForTrack(TrackId trackId);
   EditingSessionState get editingSession;
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex);
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);

@@ -56,7 +56,6 @@ import '../models/track_se_window.dart';
 import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import '../core/dev_profile.dart';
-import '../core/identity_memo.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'session/active_cut_span.dart';
 import 'session/cut_placement.dart';
@@ -811,7 +810,6 @@ class EditorSessionManager extends ChangeNotifier
   late final StoryboardRows storyboardRows = StoryboardRows(
     project: this,
     selection: this,
-    timeline: this,
     projectSettings: projectSettings,
     railView: railView,
   );
@@ -862,7 +860,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/row_spans.dart): where a row's material starts
   // and ends, what a range drag over it snaps to, and where a cut's frame
   // sits on the GLOBAL axis.
-  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: projectSettings, trackSe: trackSe, transitions: transitions);
+  late final RowSpans rowSpans = RowSpans(project: this, folderBands: folderBands, projectSettings: projectSettings, trackSe: trackSe, transitions: transitions);
 
   late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections, history: historyManager);
 
@@ -884,7 +882,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     retime: this,
-    timeline: this,
+    projectSettings: projectSettings,
     storyboardRows: storyboardRows,
     trackSe: trackSe,
     rowSpans: rowSpans,
@@ -2275,16 +2273,6 @@ class EditorSessionManager extends ChangeNotifier
   final ValueNotifier<TrackFrameRangeSelection?> trackFrameRangeSelection =
       ValueNotifier<TrackFrameRangeSelection?>(null);
 
-  /// The global frame axis of ONE track (the selected track's is
-  /// [trackFrameAxis]).
-  @override
-  TrackFrameAxis axisForTrack(TrackId trackId) => TrackFrameAxis([
-    for (final entry in buildStoryboardTimelineLayout(
-      repository.requireProject(),
-    ))
-      if (entry.trackId == trackId) entry,
-  ]);
-
   @override
   Track? trackById(TrackId trackId) {
     for (final track in repository.requireProject().tracks) {
@@ -2946,30 +2934,14 @@ class EditorSessionManager extends ChangeNotifier
   /// addresses (a layer timeline's empty frames, at track scale). The
   /// session playhead, the storyboard and the timeline consume THIS ONE
   /// axis — change it and every panel changes together.
+  ///
+  /// The selected track's axis ([ProjectSettings.axisForTrack], kept beside
+  /// the layout it narrows) — every track's when that one has no cut.
   @override
   TrackFrameAxis trackFrameAxis() {
-    final layout = projectSettings.projectLayout();
-    final trackId = selectedTrackId;
-    return _trackFrameAxis.resolve(
-      identity: layout,
-      key: trackId,
-      build: () {
-        final scoped = [
-          for (final entry in layout)
-            if (entry.trackId == trackId) entry,
-        ];
-        return TrackFrameAxis(scoped.isEmpty ? layout : scoped);
-      },
-    );
+    final axis = projectSettings.axisForTrack(selectedTrackId);
+    return axis.isEmpty ? projectSettings.projectAxis() : axis;
   }
-
-  /// [trackFrameAxis] per layout and track: it is asked per playback tick
-  /// ([PlayheadCursors.trackFrameNow]), per scrub move and per repaint of
-  /// the storyboard ruler's green bar — none of them may rebuild the layout
-  /// list each time (R12-⑥, the rule the storyboard host's own memo of this
-  /// kept until it moved here) — and the layout it narrows is already one
-  /// memo per project.
-  final _trackFrameAxis = IdentityMemo<TrackFrameAxis>();
 
   // The gap parking — the editing playhead standing where no cut is — lives
   // beside the active cut it is the other answer to

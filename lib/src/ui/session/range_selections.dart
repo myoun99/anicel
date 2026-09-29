@@ -18,6 +18,7 @@ import '../timeline/timeline_section_policy.dart';
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 import 'playback_rig.dart';
+import 'project_settings.dart';
 import 'row_spans.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
@@ -39,7 +40,7 @@ class RangeSelections {
     required ProjectAccess project,
     required SelectionAccess selection,
     required RetimeLaw retime,
-    required TimelineAccess timeline,
+    required ProjectSettings projectSettings,
     required TimelineRowAddress Function() currentRow,
     required PlaybackRig playbackRig,
     required StoryboardRows storyboardRows,
@@ -53,7 +54,7 @@ class RangeSelections {
   }) : _project = project,
        _selection = selection,
        _retime = retime,
-       _timeline = timeline,
+       _projectSettings = projectSettings,
        _currentRow = currentRow,
        _playbackRig = playbackRig,
        _storyboardRows = storyboardRows,
@@ -67,7 +68,7 @@ class RangeSelections {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final RetimeLaw _retime;
-  final TimelineAccess _timeline;
+  final ProjectSettings _projectSettings;
 
   /// The row the user stands on — `Standing.currentRow`, asked when needed.
   final TimelineRowAddress Function() _currentRow;
@@ -416,7 +417,7 @@ class RangeSelections {
       spanned = railRows.sublist(first, last + 1);
     }
 
-    final axis = _timeline.axisForTrack(trackId);
+    final axis = _projectSettings.axisForTrack(trackId);
     final lanes = <RangeBlock? Function(int)>[
       for (final row in spanned) ?_rowSpans.trackRowSnapLane(row, axis),
     ];

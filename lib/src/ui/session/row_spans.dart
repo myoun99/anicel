@@ -40,20 +40,17 @@ import 'transitions.dart';
 class RowSpans {
   RowSpans({
     required ProjectAccess project,
-    required TimelineAccess timeline,
     required FolderBands folderBands,
     required ProjectSettings projectSettings,
     required TrackSeDisplay trackSe,
     required Transitions transitions,
   }) : _project = project,
-       _timeline = timeline,
        _folderBands = folderBands,
        _projectSettings = projectSettings,
        _trackSe = trackSe,
        _transitions = transitions;
 
   final ProjectAccess _project;
-  final TimelineAccess _timeline;
   final FolderBands _folderBands;
   final ProjectSettings _projectSettings;
   final TrackSeDisplay _trackSe;
@@ -62,7 +59,7 @@ class RowSpans {
   /// D40, the cut row: [trackId]'s whole cut span — the first cut's start
   /// through the last cut's end — or null when the track has no cuts.
   ({int startFrame, int endFrameExclusive})? trackCutSpan(TrackId trackId) {
-    final entries = _timeline.axisForTrack(trackId).entries;
+    final entries = _projectSettings.axisForTrack(trackId).entries;
     if (entries.isEmpty) {
       return null;
     }
