@@ -26,6 +26,7 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_builder.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
@@ -415,6 +416,43 @@ void main() {
       );
       expect(inked!.$1, greaterThan(200), reason: 'red ink, from the store');
       expect(inked.$2, lessThan(80));
+    });
+
+    testWidgets('ink PARKED on a sheet nobody has open rides the export and '
+        'stays parked — the export looks, it does not thaw '
+        '(render-reads-thaw-into-hot)', (tester) async {
+      final session = EditorSessionManager(initialProject: project());
+      addTearDown(session.dispose);
+      final store = session.renderCaches.envelopeInkStore;
+      final inkBox = CutEnvelopePresets.analog.inkBoxes.first;
+      final key = envelopeInkBoxKey(const CutId('39'), inkBox.id);
+      store.restoreBaked({
+        key: AnicelCelBlob.encode(
+          AnicelCelEntry.fromSurface(key, _inkSurface()),
+        ),
+      });
+      final state = await pumpDialog(tester, session);
+      await tapSetting(tester, 'export-envelope-paper-sheet');
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File(
+            '${temp.path}${Platform.pathSeparator}CUT39_envelope.png',
+          ).readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      final placed = analogOn(image.width, image.height).placedBoxes
+          .firstWhere((box) => box.box.id == inkBox.id);
+      final inked = await tester.runAsync(
+        () => pixelAt(image, placed.x.round() + 1, placed.y.round() + 1),
+      );
+      expect(inked!.$1, greaterThan(200), reason: 'LIVENESS: the ink printed');
+      expect(store.hotBakedBytes, 0, reason: 'nothing thawed into the budget');
+      expect(store.isCelCold(key), isTrue, reason: 'the ink stays parked');
     });
 
     testWidgets('the export prints the WORK\'s form, and the tab has no '

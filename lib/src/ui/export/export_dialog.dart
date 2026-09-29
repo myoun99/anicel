@@ -15,6 +15,7 @@ import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
 import '../../native/qa_image_encoder.dart';
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
+import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -1063,6 +1064,9 @@ class ExportDialogState extends State<ExportDialog> {
   ///
   /// ⛔ONE for the three sheets: the conte and the envelope each composed
   /// their own, and the timesheet's would have been the third.
+  ///
+  /// The ink is read as a LOOK, like every render's cel ([CelRead.look]):
+  /// a sheet nobody has open keeps its ink parked.
   Future<Map<BrushFrameKey, ui.Image>> _renderSheetInk(
     Iterable<BrushFrameKey> keys,
   ) async {
@@ -1072,7 +1076,9 @@ class ExportDialogState extends State<ExportDialog> {
       if (images.containsKey(key)) {
         continue;
       }
-      final surface = caches.sheetInkStoreFor(key)?.bakedSurfaceOrNull(key);
+      final surface = caches
+          .sheetInkStoreFor(key)
+          ?.bakedSurfaceOrNull(key, read: CelRead.look);
       if (surface == null) {
         continue;
       }
