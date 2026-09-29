@@ -408,6 +408,9 @@ void main() {
       natural.width - 1,
       reason: 'its gap gave the pixel, and nothing narrowed it',
     );
+    final painted = _PaintedBoxes();
+    word.paintSetWord(painted, Offset.zero, wordFitsAsItIs);
+    expect(painted.widths, [natural.width - 1], reason: 'painted as it was set');
   });
 
   test('a column built as a widget gives up the space between its glyphs '
