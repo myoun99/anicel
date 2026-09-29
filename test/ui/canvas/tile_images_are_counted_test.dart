@@ -13,9 +13,9 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/native_scratch.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
-import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/collect_garbage.dart';
 
 /// 🚨C-ipad-crash (2026-09-11): on a phone every decoded tile is a GPU
@@ -98,7 +98,7 @@ void main() {
       scratch.ensure(1000);
 
       final rows = {
-        for (final item in collectMemoryCensus([session]).items)
+        for (final item in collectMemoryCensusWhereTexturesAreRam([session]).items)
           item.id: item.bytes,
       };
 

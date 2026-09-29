@@ -7,12 +7,12 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
-import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
 import 'package:anicel/src/ui/session/render_caches.dart';
 
+import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
 
@@ -266,7 +266,7 @@ void main() {
       await openConte(tester, pages: 3);
       await turnTo(tester, 1);
 
-      final item = collectMemoryCensus(
+      final item = collectMemoryCensusWhereTexturesAreRam(
         [session],
       ).items.firstWhere((entry) => entry.id == 'viewerPages');
       expect(

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,6 +13,8 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
+
+import '../../helpers/census_where_textures_are_ram.dart';
 
 /// Preferences ▸ Memory (유저 2026-08-28): 「이 앱이 쓰는 메모리의 총합.
 /// 그리고 추가적으로 거기서 어떤항목이 얼만큼 차지하는지도 보여주고」.
@@ -60,10 +63,34 @@ void main() {
     expect(collectMemoryCensus([session]).footprintBytes, greaterThan(0));
   });
 
+  test('🚨F-226-Q1: where the GPU keeps its own memory, its pictures are not '
+      'RAM and the census leaves them out — 「GPU에 들어가는 메모리는 계산에서 '
+      '싹 빼고 RAM만 집계」', () {
+    final session = newSession();
+    addTearDown(session.dispose);
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    final ids = collectMemoryCensus([session]).items.map((i) => i.id).toSet();
+
+    expect(ids, {
+      'drawings',
+      'sheetInk',
+      'undo',
+      'brushTips',
+      'moviePictures',
+      'enginePool',
+      'engineScratch',
+    });
+  });
+
   test('every item carries a label, and the ids are the census ids', () {
     final session = newSession();
     addTearDown(session.dispose);
-    final ids = collectMemoryCensus([session]).items.map((i) => i.id).toSet();
+    // Where the GPU shares the RAM every row is counted — the whole list.
+    final ids = collectMemoryCensusWhereTexturesAreRam([
+      session,
+    ]).items.map((i) => i.id).toSet();
     // A new cache added to the census with no label would render its raw
     // id — `panelRasters` in front of an animator. This is the list the
     // section switches on; the two must not drift.
@@ -164,7 +191,7 @@ void main() {
     final session = newSession();
     addTearDown(session.dispose);
     session.renderCaches.storyboardThumbnailBytes = 12345;
-    final row = collectMemoryCensus(
+    final row = collectMemoryCensusWhereTexturesAreRam(
       [session],
     ).items.singleWhere((item) => item.id == 'storyboardThumbnails');
     expect(row.bytes, 12345);
@@ -238,7 +265,9 @@ void main() {
         expect(line, isNot(contains(inside)), reason: '$inside has a ceiling');
       }
       await tester.pump(const Duration(milliseconds: 600));
-    });
+      // Where the GPU shares the RAM, so the panel rasters are counted and
+      // named ([texturesAreInTheRamFigure], F-226-Q1).
+    }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
     testWidgets('the automatic button puts a chosen allowance back, and '
         'is inert when there is nothing to put back', (tester) async {

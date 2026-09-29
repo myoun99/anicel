@@ -19,7 +19,6 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart'
     show CanvasSelectionDocument;
-import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -34,6 +33,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart'
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/census_where_textures_are_ram.dart';
 import '../helpers/draw_on_current_frame.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart';
@@ -269,7 +269,7 @@ void main() {
     a.renderCaches.storyboardThumbnailBytes = 100;
     b.renderCaches.storyboardThumbnailBytes = 23;
     int row(List<EditorSessionManager> sessions, String id) =>
-        collectMemoryCensus(
+        collectMemoryCensusWhereTexturesAreRam(
           sessions,
         ).items.singleWhere((item) => item.id == id).bytes;
     expect(row([a, b], 'storyboardThumbnails'), 123);
