@@ -209,9 +209,7 @@ class _WorkspaceCollapsedRows {
                     activeCutId: session.activeCutOrNull?.id,
                     rowAddress: TrackRowAddress(track.id),
                     colorScheme: Theme.of(context).colorScheme,
-                    baseTextStyle:
-                        Theme.of(context).textTheme.labelSmall ??
-                        DefaultTextStyle.of(context).style,
+                    baseTextStyle: DefaultTextStyle.of(context).style,
                     showSeconds: _state._showSecondsDisplay.value,
                     countingBase:
                         session.projectSettings.projectFrameRate.countingBase,

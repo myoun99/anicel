@@ -711,6 +711,47 @@ void main() {
       expect(block.strip, named.strip, reason: 'the picture does not grow');
     });
 
+    // 🗣️F-234 (유저 2026-09-29): 「코마텍스트가 위아래 정렬이 중앙이아니라
+    // 살짝위라던가 … 특히 컷블록의 코마텍스트. 관련 텍스트 통일」.
+    testWidgets('🚨F-234: every word in the four bands keeps its whole '
+        'height — the block word\'s box, which the band holds — on the '
+        'band\'s middle', (tester) async {
+      final (block, spy) = await painted(tester, named: true);
+
+      for (final band in [
+        block.topBand,
+        block.innerTopBand,
+        block.innerBottomBand,
+        block.bottomBand,
+      ]) {
+        final words = _wordsIn(band, spy);
+        expect(words, isNotEmpty, reason: 'fixture: $band writes');
+        for (final word in words) {
+          expect(
+            word.height,
+            closeTo(11, 0.01),
+            reason: '↩️a 1.45 line made a 16px box, narrowed to 81% of its '
+                'height to fit a 13px band its ink never overflowed',
+          );
+          expect(word.center.dy, closeTo(band.center.dy, 0.01));
+        }
+      }
+    });
+
+    testWidgets('F-234: the words are printed from the row\'s own ambient '
+        'style — the one every block word is printed from', (tester) async {
+      await painted(tester, named: true);
+
+      expect(
+        cutBlocksPainter(tester).baseTextStyle,
+        DefaultTextStyle.of(
+          tester.element(find.byType(StoryboardPanel)),
+        ).style,
+        reason: '↩️it was the theme\'s labelSmall, a style no other block '
+            'word reads',
+      );
+    });
+
     testWidgets('the cut TITLE follows the ground law too — the cells\' one '
         'writing rule on every label, no scrim anywhere', (tester) async {
       await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));

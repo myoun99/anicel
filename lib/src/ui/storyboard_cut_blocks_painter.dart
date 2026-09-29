@@ -349,6 +349,9 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   final ValueListenable<CutId?> hoveredCutId;
 
   final ColorScheme colorScheme;
+
+  /// The ambient text style the row sits in — the app's face. Every word
+  /// on a block is printed from it the one way ([timelineBlockWordStyle]).
   final TextStyle baseTextStyle;
   final bool showSeconds;
   final int countingBase;
@@ -732,8 +735,9 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     return null;
   }
 
-  TextStyle get _labelStyle =>
-      baseTextStyle.merge(const TextStyle(fontSize: 11));
+  /// D29: the cut-block text grade — the title, the heads and the lengths
+  /// alike, not a cell-fitted 9 that shrank to ~6px at storyboard zooms.
+  static const double _wordSize = 11;
 
   // The CELLS' writing convention on every cut-block label too (user
   // 2026-07-29, "cut blocks and storyboard blocks read as one"): panel ink
@@ -742,18 +746,28 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   // each label sits on, in place of scrims, halos and per-surface colours.
   // The styles' colors are layout/cache identity; the paint resolves the
   // real ink through [paintTimelineGlyphOnGround].
-  TextStyle get _titleStyle => _labelStyle.copyWith(
-    color: timelineDrawingInkColor,
-    fontWeight: FontWeight.bold,
+  //
+  // 🗣️F-234 (유저 2026-09-29): 「코마텍스트가 위아래 정렬이 중앙이아니라
+  // 살짝위라던가 … 특히 컷블록의 코마텍스트. 관련 텍스트 통일」 — the words
+  // are printed the block word's one way ([timelineBlockWordStyle]).
+  // ↩️They were `labelSmall` at 11, whose 1.45 line made a 16px box: taller
+  // than the 13px band, so every word was narrowed to 81% of its height to
+  // fit a band its ink never overflowed.
+  TextStyle get _titleStyle => timelineBlockWordStyle(
+    baseTextStyle,
+    ink: timelineDrawingInkColor,
+    fontSize: _wordSize,
+    bold: true,
   );
 
   /// The bands' LENGTH words — the cut's length and each panel's comma
-  /// count. D29: the cut-block text grade, the same 11 the title wears, not
-  /// a cell-fitted 9 that shrank to ~6px at storyboard zooms.
-  TextStyle get _totalStyle => _labelStyle.copyWith(
-    color: timelineDrawingInkColor.withValues(alpha: 0.72),
-    // R27 #3: bold — the readout was too easy to miss.
-    fontWeight: FontWeight.w700,
+  /// count, at the frame blocks' 0.72 (R27 #3: bold — the readout was too
+  /// easy to miss).
+  TextStyle get _totalStyle => timelineBlockWordStyle(
+    baseTextStyle,
+    ink: timelineDrawingInkColor.withValues(alpha: 0.72),
+    fontSize: _wordSize,
+    bold: true,
   );
 
   /// A pair of BANDS' composited fill — the ground the writing in them sits

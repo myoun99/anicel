@@ -5125,9 +5125,7 @@ class _StoryboardTrackRow extends StatelessWidget {
       rowAddress: TrackRowAddress(track.id),
       hoveredCutId: hoveredCutId,
       colorScheme: Theme.of(context).colorScheme,
-      baseTextStyle:
-          Theme.of(context).textTheme.labelSmall ??
-          DefaultTextStyle.of(context).style,
+      baseTextStyle: DefaultTextStyle.of(context).style,
       showSeconds: showSeconds,
       countingBase: projectFrameRate.countingBase,
       thumbnails: thumbnails,
