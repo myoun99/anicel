@@ -812,7 +812,14 @@ class _LayerStackPaintPass {
         // BELOW a painted effect keys what that effect made, so
         // the layer has to be assembled into an image first —
         // the one thing a buffer cannot hand it.
-        activePlan.preSteps.isNotEmpty;
+        activePlan.preSteps.isNotEmpty ||
+        // 🚨★★★F-243: AN ADVANCED BLEND NEVER RIDES THE TILES. Per
+        // draw it is not per pixel — each tile blended the whole
+        // screen by its edge colour on the Windows app ([blendsInPlace]
+        // has the measurement). Buffered, the blend takes the image
+        // route below: the layer assembled into one image and blended
+        // once, which is what every other row in that blend already is.
+        !blendsInPlace(activePaint.blendMode);
     // Null when the buffer carries it, so nothing applies twice.
     final ridingPaint = needsBuffer ? null : activePaint;
     assert(() {
@@ -881,6 +888,9 @@ class _LayerStackPaintPass {
     // wears a blend that is not srcOver (a stamp ghost, a lifted float):
     // a brush or eraser stroke on the same row showed nothing either way
     // and its frame cost did not move (median UI 1.6 vs 1.4 ms).
+    // ⚠️Since F-243 an advanced blend on the row itself is buffered too
+    // (see `needsBuffer`), so a multiply or screen row pays it on every
+    // paint — the price of being the one image every other such row is.
     final blendsAsImage =
         needsBuffer && activePaint.blendMode != BlendMode.srcOver;
     if (activePlan.preSteps.isNotEmpty || blendsAsImage) {

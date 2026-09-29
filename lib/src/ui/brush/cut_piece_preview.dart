@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../services/straight_rgba_image.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/cut_piece.dart';
+import '../canvas/layer_image_draw.dart' show blendsInPlace;
 import '../canvas/paper_background.dart' show paintAlphaCheckerboard;
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
@@ -189,25 +190,25 @@ void paintCutPiece(
     ..isAntiAlias = false
     ..blendMode = blendMode
     ..color = const Color(0xFF000000).withValues(alpha: opacity.clamp(0, 1));
-  if (!piece.flipHorizontal && !piece.flipVertical) {
-    canvas.drawImageRect(
-      image,
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-      destination,
-      paint,
-    );
-    return;
-  }
-  // A mirror about the destination's own centre, so the piece stays inside
-  // the box it was letterboxed into. Cheaper than re-ordering bytes and, in
-  // a preview, exactly as truthful.
   canvas.save();
-  canvas.translate(destination.center.dx, destination.center.dy);
-  canvas.scale(
-    piece.flipHorizontal ? -1.0 : 1.0,
-    piece.flipVertical ? -1.0 : 1.0,
-  );
-  canvas.translate(-destination.center.dx, -destination.center.dy);
+  // 🚨F-243: a piece in an advanced blend is HELD TO ITS OWN RECT. Drawn by
+  // itself it blends past its edges — on the Windows app a tile drawn that
+  // way blended the whole screen by its edge colour ([blendsInPlace]) — and
+  // a stamp lands inside its box and nowhere else.
+  if (!blendsInPlace(blendMode)) {
+    canvas.clipRect(destination);
+  }
+  if (piece.flipHorizontal || piece.flipVertical) {
+    // A mirror about the destination's own centre, so the piece stays
+    // inside the box it was letterboxed into. Cheaper than re-ordering
+    // bytes and, in a preview, exactly as truthful.
+    canvas.translate(destination.center.dx, destination.center.dy);
+    canvas.scale(
+      piece.flipHorizontal ? -1.0 : 1.0,
+      piece.flipVertical ? -1.0 : 1.0,
+    );
+    canvas.translate(-destination.center.dx, -destination.center.dy);
+  }
   canvas.drawImageRect(
     image,
     Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),

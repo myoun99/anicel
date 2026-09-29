@@ -776,6 +776,103 @@ void main() {
       );
     });
 
+    testWidgets('🚨F-243: an advanced blend on the row itself never rides the '
+        'tiles — the layer is one image, blended once', (tester) async {
+      // 유저 2026-09-30: 「레이어 합성모드 곱하기나 스크린등 표준이 아닌걸로
+      // 바꾸면 화면이 스샷처럼 이상해짐」. On the Windows app each tile drawn
+      // in multiply blended the whole screen by its edge colour
+      // ([blendsInPlace] has the measurement). This VM rasters with Skia and
+      // never shows it, so the pin is the ROUTE: no tile draw carries the
+      // blend, and the one image does.
+      Future<List<Invocation>> callsFor(LayerBlendMode blend) async {
+        final canvas = _ClippedRecordingCanvas(
+          const Rect.fromLTWH(0, 0, 200, 150),
+        );
+        await paintActive(
+          tester,
+          effects: const [],
+          blendMode: blend,
+          disableBuffer: true,
+          recordInto: canvas,
+        );
+        return [for (final call in canvas.invocations) call.invocation];
+      }
+
+      Iterable<BlendMode> blendsOf(
+        List<Invocation> calls,
+        Symbol member,
+        int at,
+      ) => calls
+          .where((call) => call.memberName == member)
+          .map((call) => (call.positionalArguments[at] as Paint).blendMode);
+
+      for (final blend in [
+        LayerBlendMode.multiply,
+        LayerBlendMode.screen,
+        LayerBlendMode.overlay,
+      ]) {
+        final calls = await callsFor(blend);
+        expect(
+          debugLiveLayerRodeTheDraws,
+          isFalse,
+          reason: '${blend.name} rode the tiles',
+        );
+        expect(
+          blendsOf(calls, #drawImage, 2),
+          isNot(contains(blend.paintBlendMode)),
+          reason: 'no tile is drawn in ${blend.name}',
+        );
+        expect(
+          blendsOf(calls, #drawImageRect, 3),
+          contains(blend.paintBlendMode),
+          reason: 'the layer is, once, as one image',
+        );
+      }
+      for (final blend in [LayerBlendMode.normal, LayerBlendMode.add]) {
+        await callsFor(blend);
+        expect(
+          debugLiveLayerRodeTheDraws,
+          isTrue,
+          reason: '${blend.name} blends pixel by pixel, so the tiles keep it',
+        );
+      }
+    });
+
+    testWidgets('🚨F-243: a stamp ghost in an advanced blend is held to its '
+        'own rect', (tester) async {
+      // Drawn by itself, a piece in an advanced blend blends past its edges
+      // on the Windows app, as a tile did — and a stamp lands inside its box.
+      final image = await tester.runAsync(_decodedSquare);
+      final piece = CutPiece(
+        image: BrushStampImage(
+          id: 'ghost',
+          width: 4,
+          height: 4,
+          rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
+        ),
+        originLeft: 0,
+        originTop: 0,
+      );
+      const box = Rect.fromLTWH(8, 8, 4, 4);
+      for (final (blend, held) in [
+        (BlendMode.multiply, true),
+        (BlendMode.screen, true),
+        (BlendMode.srcOver, false),
+      ]) {
+        final canvas = TestRecordingCanvas();
+        paintCutPiece(canvas, box, piece, image, blendMode: blend);
+        expect(
+          [
+            for (final call in canvas.invocations)
+              if (call.invocation.memberName == #clipRect)
+                call.invocation.positionalArguments[0],
+          ],
+          held ? [box] : isEmpty,
+          reason: '${blend.name}: held to its rect = $held',
+        );
+      }
+    });
+
     testWidgets('a colour-only filter does NOT need it', (tester) async {
       // ⛔The other side of the same question: a matrix is per-pixel, so
       // "has effects" would have been the wrong test.
