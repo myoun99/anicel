@@ -28,7 +28,7 @@ class CutPictureEyes {
 
   final Set<CutId> _hidden = {};
 
-  bool isVisible(CutId cutId) => !_hidden.contains(cutId);
+  bool showsPicture(CutId cutId) => !_hidden.contains(cutId);
 
   void toggle(CutId cutId) {
     final editing = _timeline.editingSession;

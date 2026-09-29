@@ -950,7 +950,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     legendOpacityValue: _session.opacityVerbs.lastMasterOpacity,
                     // The V row's picture eye (R9): session view state the
                     // playback display reads.
-                    cutPictureVisibleOf: _session.cutPictureEyes.isVisible,
+                    cutPictureVisibleOf: _session.cutPictureEyes.showsPicture,
                     onToggleCutPictureVisibility:
                         _session.cutPictureEyes.toggle,
                     // R9 #21: the TRACK's own fx master and static opacity —

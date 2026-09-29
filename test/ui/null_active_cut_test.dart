@@ -56,7 +56,7 @@ void main() {
     // Hiding the ACTIVE cut's picture: the index shows nothing anymore —
     // the no-cut state, parked at the exact global.
     s.cutPictureEyes.toggle(first);
-    expect(s.cutPictureEyes.isVisible(first), isFalse);
+    expect(s.cutPictureEyes.showsPicture(first), isFalse);
     expect(s.activeCutId, isNull, reason: 'the active cut ceases');
     expect(s.editingSession.gapGlobalFrame, 2, reason: 'parked where it stood');
     expect(s.editingSession.playheadInGap, isTrue);
@@ -65,7 +65,7 @@ void main() {
     // position were clicked (without this the eye-on read as a no-op:
     // the editing view stayed in the void).
     s.cutPictureEyes.toggle(first);
-    expect(s.cutPictureEyes.isVisible(first), isTrue);
+    expect(s.cutPictureEyes.showsPicture(first), isTrue);
     expect(s.activeCutId, first, reason: 'the parked position restores');
     expect(s.currentFrameIndex, 2);
     expect(s.editingSession.playheadInGap, isFalse);
