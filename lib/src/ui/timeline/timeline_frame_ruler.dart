@@ -101,14 +101,15 @@ class TimelineFrameRuler extends StatelessWidget {
         // rather than standing still — `timelineDrawnEndPreviewFrameCount` is
         // the one function the wash edge and the body's line read too, which is
         // what keeps the three from splitting apart mid-drag.
-        if (dragPreview != null &&
-            (previewCutId != null || movieEndUnder != null))
-          ValueListenableBuilder<TimelineDragPreview?>(
-            valueListenable: dragPreview,
-            builder: (context, preview, _) => _noriShiroUnder(preview),
-          )
-        else
-          _noriShiroUnder(null),
+        TimelineRulerNoriShiro(
+          dragPreview: dragPreview,
+          cutId: previewCutId,
+          movieEndUnder: movieEndUnder,
+          playbackFrameCount: playbackFrameCount,
+          noriShiro: noriShiro,
+          metrics: metrics,
+          axis: axis,
+        ),
         if (dragPreview != null &&
             (previewCutId != null || movieEndUnder != null))
           ValueListenableBuilder<TimelineDragPreview?>(
@@ -135,15 +136,4 @@ class TimelineFrameRuler extends StatelessWidget {
       ],
     );
   }
-
-  Widget _noriShiroUnder(TimelineDragPreview? preview) =>
-      timelineRulerNoriShiroUnder(
-        preview,
-        cutId: previewCutId,
-        movieEndUnder: movieEndUnder,
-        playbackFrameCount: playbackFrameCount,
-        noriShiro: noriShiro,
-        metrics: metrics,
-        axis: axis,
-      );
 }

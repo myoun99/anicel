@@ -468,18 +468,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     layerCount: entries.length,
   );
 
-  /// The rail's drawn-end mark as [preview] leaves it — the timeline ruler's
-  /// own reading, transposed.
-  Widget _railNoriShiroUnder(TimelineDragPreview? preview) =>
-      timelineRulerNoriShiroUnder(
-        preview,
-        cutId: widget.hooks.cutEndDrag?.cutId,
-        playbackFrameCount: widget.hooks.playbackFrameCount,
-        noriShiro: widget.hooks.noriShiro,
-        metrics: _metrics,
-        axis: Axis.vertical,
-      );
-
   Widget _buildRailSplitter(_SheetGeometry geometry) {
     final availableHeaderExtent = geometry.availableHeaderExtent;
     final naturalHeaderBlockExtent = geometry.naturalHeaderBlockExtent;
@@ -931,20 +919,20 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             axis: Axis.vertical,
                             left: cutEndBoundaryOffset,
                           ),
-                        // The のりしろ boundary,
+                        // The のりしろ mark,
                         // transposed: a length
                         // below the cut's end,
                         // riding a drag as the
                         // timeline ruler's does.
-                        if (widget.hooks.cutEndDrag != null &&
-                            widget.hooks.dragPreview != null)
-                          ValueListenableBuilder<TimelineDragPreview?>(
-                            valueListenable: widget.hooks.dragPreview!,
-                            builder: (context, preview, _) =>
-                                _railNoriShiroUnder(preview),
-                          )
-                        else
-                          _railNoriShiroUnder(null),
+                        TimelineRulerNoriShiro(
+                          dragPreview: widget.hooks.dragPreview,
+                          cutId: widget.hooks.cutEndDrag?.cutId,
+                          playbackFrameCount:
+                              widget.hooks.playbackFrameCount,
+                          noriShiro: widget.hooks.noriShiro,
+                          metrics: _metrics,
+                          axis: Axis.vertical,
+                        ),
                       ],
                     ),
                   );
