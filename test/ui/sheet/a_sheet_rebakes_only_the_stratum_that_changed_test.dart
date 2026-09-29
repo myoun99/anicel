@@ -366,6 +366,16 @@ void main() {
           StandDownReason.none,
           reason: 'nor is anything it prints on the move',
         );
+        // A rebuild from above mid-drag — the workspace rebuilds its hosts
+        // for reasons of its own — stands nothing down either: what decides
+        // is what the sheet prints, not that a drag is in flight.
+        thumbnails.notifyListeners();
+        await tester.pumpAndSettle();
+        expect(
+          _contentOf(tester, sheet.sheet).standDown,
+          StandDownReason.none,
+          reason: 'a rebuild mid-drag reads the print, not the channel',
+        );
       }
       session.laneVerbs.endLaneEditPreview();
       await tester.pumpAndSettle();
