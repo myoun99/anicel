@@ -56,19 +56,26 @@ final class ImageViewerDocument implements ViewerDocument {
           ? PsdCompositeDocument.read(bytes)
           : _decoded(await ui.ImmutableBuffer.fromUint8List(bytes));
     }
-    return await _startsLikePsd(file)
+    return _startsLikePsd(file)
         ? PsdCompositeDocument.read(await File(file).readAsBytes())
         : _decoded(await ui.ImmutableBuffer.fromFilePath(file));
   }
 
   /// Whether the file at [path] begins like a Photoshop document — four
   /// bytes read, so an image the codec takes still never enters the heap.
-  static Future<bool> _startsLikePsd(String path) async {
-    final file = await File(path).open();
+  ///
+  /// 🚨SYNCHRONOUS ON PURPOSE: open, read and close in one breath, so the
+  /// file is never held open across an event. An awaited open left a
+  /// handle standing between turns, and on Windows a file with a handle on
+  /// it cannot be deleted — a Drive pick replaced while the import preview
+  /// was reading it kept its copy's folder (`ProviderDocuments.letGo` gave
+  /// up in silence). Four bytes cost nothing on the thread that asks.
+  static bool _startsLikePsd(String path) {
+    final file = File(path).openSync();
     try {
-      return looksLikePsdBytes(await file.read(4));
+      return looksLikePsdBytes(file.readSync(4));
     } finally {
-      await file.close();
+      file.closeSync();
     }
   }
 
