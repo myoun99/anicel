@@ -535,9 +535,12 @@ class _NoPageTransition extends PageTransitionsBuilder {
 /// same instance: the theme animates only when it changes.
 /// ⚠️A reader that took a setting at BUILD time rode that cascade without
 /// saying so; it listens for itself now (the timeline's edit pans).
+/// ⚠️The PLATFORM is an input too: a theme takes `defaultTargetPlatform`
+/// when it is built, and the scroll behaviour reads it back. It never moves
+/// in the app; a test that varies it must get that platform's theme.
 ThemeData buildAppTheme() => _appTheme.resolve(
   identity: AppColors.accentSettings.value,
-  key: AppText.language,
+  key: (AppText.language, defaultTargetPlatform),
   build: _buildAppTheme,
 );
 

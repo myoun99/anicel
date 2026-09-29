@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
@@ -43,6 +45,20 @@ void main() {
     );
 
     expect(identical(buildAppTheme(), before), isFalse);
+  });
+
+  test('a new platform is a new theme — a theme carries the platform it '
+      'was built on, and the scroll behaviour reads it back', () {
+    final before = buildAppTheme();
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      final android = buildAppTheme();
+
+      expect(identical(android, before), isFalse);
+      expect(android.platform, TargetPlatform.android);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('an input toggle leaves the app at rest after its one frame '

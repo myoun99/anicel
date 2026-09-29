@@ -160,14 +160,9 @@ class AnicelApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The theme rides the LIVE accent settings (UI-R22 #5).
-    // ↩️The input settings rode here too (UI-R22 #6, "so gesture device
-    // sets re-derive"), and that re-derive was never this build's: a root
-    // rebuild reached the timeline's edit pans only by handing
-    // `AnimatedTheme` a theme that was not `==` the last, so every input
-    // toggle rebuilt the whole app for a few frames (auto-frame-toggle-
-    // hitch, 2026-09-29). Those pans listen for themselves now, and the
-    // theme is one instance per accent and language ([buildAppTheme]).
+    // The theme rides the LIVE accent settings (UI-R22 #5). ↩️Not the input
+    // settings: their rebuild re-derived nothing but a whole-app theme lerp
+    // (auto-frame-toggle-hitch, 2026-09-29 — see [buildAppTheme]).
     return ListenableBuilder(
       listenable: Listenable.merge([
         AppColors.accentSettings,
