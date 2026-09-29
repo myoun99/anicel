@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
 import '../audio/audio_conform_store.dart';
@@ -33,6 +35,58 @@ class AudioStreamingWindow {
 
   /// Where the last successful upload centred the window.
   int centerSample = 0;
+
+  /// Whether a stream that has got to [positionSamples] needs this window
+  /// centred on it again: past halfway to its leading edge — which leaves
+  /// ~15 s before the mix could read past it — or behind its trailing one.
+  bool wantsRecentreAt(int positionSamples, int deviceRate) =>
+      hasStreaming &&
+      (positionSamples > centerSample + (aheadSeconds * deviceRate) ~/ 2 ||
+          positionSamples < centerSample - backSeconds * deviceRate);
+
+  /// An advance is out — polls cannot stack disk reads.
+  bool _advancing = false;
+
+  /// Moves this window along with a stream that is PLAYING (AUDIO-PRO R6):
+  /// asked every tick, it re-centres on the device when [wantsRecentreAt]
+  /// says so, off the caller's stack and one advance at a time. [current]
+  /// answers when the advance runs — the device still carrying this window
+  /// and its rate, or null once the player has stopped, which uploads
+  /// nothing.
+  ///
+  /// 🚨ONE rule for every player that streams (import-preview-plays-silent,
+  /// 2026-09-29). It lived inside the timeline's transport alone, and the
+  /// media viewer's sound never moved its window at all: a file past two
+  /// minutes streams from disk, so the viewer went silent half a minute
+  /// after play was pressed.
+  void followPlayback({
+    required int positionSamples,
+    required int deviceRate,
+    required AudioConformStore conformStore,
+    required ({QaAudioDevice device, int deviceRate})? Function() current,
+  }) {
+    if (_advancing || !wantsRecentreAt(positionSamples, deviceRate)) {
+      return;
+    }
+    _advancing = true;
+    unawaited(
+      Future(() {
+        try {
+          final now = current();
+          if (now != null) {
+            upload(
+              device: now.device,
+              conformStore: conformStore,
+              deviceRate: now.deviceRate,
+              centerSample: now.device.positionSamples,
+            );
+          }
+        } finally {
+          _advancing = false;
+        }
+      }),
+    );
+  }
 
   /// Uploads [mix] to [device] with streaming windows around
   /// [centerSample], and moves this window there on success.

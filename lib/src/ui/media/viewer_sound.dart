@@ -128,6 +128,28 @@ class ViewerSound {
     stopSample: _endSample,
   );
 
+  /// Moves the streaming window along with the sound — asked every tick of
+  /// a run. A file past two minutes streams from disk, and a window left
+  /// where [play] centred it runs dry half a minute in
+  /// ([AudioStreamingWindow.followPlayback], the timeline's own rule).
+  void keepStreaming() {
+    final device = _device;
+    if (device == null) {
+      return;
+    }
+    _window.followPlayback(
+      positionSamples: device.positionSamples,
+      deviceRate: _deviceRate,
+      conformStore: conformStore,
+      current: () {
+        final carrying = _device;
+        return carrying == null
+            ? null
+            : (device: carrying, deviceRate: _deviceRate);
+      },
+    );
+  }
+
   /// Where the device has got to, or null while nothing is carrying.
   ///
   /// 🚨★★★**THIS IS THE CLOCK.** The device counts samples handed to the

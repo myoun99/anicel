@@ -1224,11 +1224,43 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final at = _sound.positionSeconds;
     if (at == null || _sound.ended) {
       // Ran out: a viewer that kept ticking on a silent device would say
-      // 「재생 중」 to the actuation gate forever.
-      setState(_stopPlaying);
+      // 「재생 중」 to the actuation gate forever. A sound that reached its
+      // end leaves the playhead ON the end — the last tick read it a tick
+      // short, and a press from there would play one tick and stop.
+      setState(() {
+        if (_sound.ended) {
+          _soundSeconds = _soundLengthSeconds ?? _soundSeconds;
+        }
+        _stopPlaying();
+      });
       return;
     }
     setState(() => _soundSeconds = at);
+  }
+
+  /// How long the sound on screen is, once its conform has answered.
+  double? get _soundLengthSeconds {
+    final path = _soundPath;
+    return path == null
+        ? null
+        : widget.session.audioConformStore.durationSecondsFor(path);
+  }
+
+  /// Where a press picks the sound up: where the playhead STANDS — the
+  /// instant of the page in a document that turns its own, the waveform's
+  /// playhead otherwise — and from the top once it has reached the end.
+  ///
+  /// 🗣️The playhead line says it itself (「where the playhead STANDS is
+  /// what tells you where a second press would resume from」), and every
+  /// press started the sound at 0 all the same: a movie resumed mid-way
+  /// played its picture from the page and its sound from the top
+  /// (import-preview-plays-silent, 2026-09-29).
+  double _resumeSeconds() {
+    if (_turnsItsOwnPages) {
+      return _page / _document!.framesPerSecond!;
+    }
+    final length = _soundLengthSeconds;
+    return length == null || _soundSeconds >= length ? 0 : _soundSeconds;
   }
 
   /// 🚨★★★[PlaybackTransport] — this viewer is one of the things the app
@@ -1281,8 +1313,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         _turnToPage(0);
       }
       if (soundPath != null) {
-        _soundSeconds = 0;
-        _sound.play(soundPath, fromSeconds: 0);
+        _soundSeconds = _resumeSeconds();
+        _sound.play(soundPath, fromSeconds: _soundSeconds);
       }
       // ⛔A run with neither pages to turn nor sound coming out is a timer
       // saying 「재생 중」 to the actuation gate while nothing happens — and
@@ -1313,6 +1345,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       return;
     }
     _renders.removeWhere((_, ask) => ask == _RenderAsk.failed);
+    _sound.keepStreaming();
     if (_turnsItsOwnPages) {
       _turnThePage();
     } else {
@@ -1686,9 +1719,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // and giving it a second one in seconds would be two answers to 「어디를
     //보고 있나」. The movie's soundtrack is the next step of the roadmap and
     // it rides the page, not this.
-    final waveformSeconds = _turnsItsOwnPages || _soundPath == null
-        ? null
-        : widget.session.audioConformStore.durationSecondsFor(_soundPath!);
+    final waveformSeconds = _turnsItsOwnPages ? null : _soundLengthSeconds;
 
 
     final message = request == null ? strings.mediaViewerEmpty : _message;
