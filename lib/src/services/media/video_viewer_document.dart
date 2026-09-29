@@ -114,6 +114,10 @@ final class VideoViewerDocument implements ViewerDocument {
   final int _token;
   final QaVideoInfo _info;
 
+  /// What the decoder said the movie is — its size, its frames and its
+  /// rate as a fraction, for a clock built on it ([ProjectClockDocument]).
+  QaVideoInfo get info => _info;
+
   /// The movie's own frame rate. Null when the file does not state one —
   /// then it is a stack of frames a person turns, which is still useful
   /// and is what the paging strip already does.

@@ -24,9 +24,6 @@ abstract interface class MediaRunSurface {
   /// shown cannot carry any.
   String? get soundPath;
 
-  /// How long that sound is, once its conform has answered.
-  double? get soundLengthSeconds;
-
   bool get mounted;
 
   void setState(VoidCallback fn);
@@ -94,6 +91,33 @@ class MediaRun {
   int get _pageCount => _surface.document?.pageCount ?? 0;
 
   int get _page => _surface.page;
+
+  /// How long the sound beside the pages is, once its conform has answered
+  /// — asked of the store the sound plays out of, so no surface can answer
+  /// it from another.
+  double? get soundLengthSeconds {
+    final path = _surface.soundPath;
+    return path == null ? null : sound.conformStore.durationSecondsFor(path);
+  }
+
+  /// How far a cached page is from being wanted again — the measure the
+  /// page cache lets pages go by ([PageRasters]).
+  ///
+  /// 🚨**PLAYBACK ONLY MOVES FORWARD**, so a page already shown is never
+  /// wanted again and is farther than any page ahead. Measuring both with
+  /// `abs()` — which is what stood here — made the read-ahead buffer evict
+  /// ITSELF to keep frames that had just been displayed: a page five ahead
+  /// and a page five behind tied, and the tie went to whichever the map
+  /// listed first.
+  ///
+  /// ⚠️Paging by hand is a different question and keeps `abs()`: someone
+  /// stepping through a PDF is as likely to go back as forward.
+  int distanceTo(int page) {
+    if (!playing) {
+      return (page - _page).abs();
+    }
+    return page >= _page ? page - _page : _pageCount + (_page - page);
+  }
 
   /// Whether this document turns its own pages — 유저 2026-08-29:
   /// 「비디오 … 불러와서 재생가능하게」. It asks the DOCUMENT, so an
@@ -197,6 +221,14 @@ class MediaRun {
     sound.stop();
   }
 
+  /// Stops, and forgets where the sound stood — a fact about a document
+  /// that is gone, as [buffering] is. A surface calls it when its document
+  /// goes: a new sound used to start where the last one had stopped.
+  void letGo() {
+    stop();
+    soundSeconds = 0;
+  }
+
   /// One tick of a run that has SOUND and no pages: move the playhead to
   /// wherever the device has got to.
   ///
@@ -217,7 +249,7 @@ class MediaRun {
       // short, and a press from there would play one tick and stop.
       _surface.setState(() {
         if (sound.ended) {
-          soundSeconds = _surface.soundLengthSeconds ?? soundSeconds;
+          soundSeconds = soundLengthSeconds ?? soundSeconds;
         }
         stop();
       });
@@ -239,7 +271,7 @@ class MediaRun {
     if (turnsItsOwnPages) {
       return _page / _surface.document!.framesPerSecond!;
     }
-    final length = _surface.soundLengthSeconds;
+    final length = soundLengthSeconds;
     return length == null || soundSeconds >= length ? 0 : soundSeconds;
   }
 
@@ -263,6 +295,25 @@ class MediaRun {
       _surface.setState(stop);
       return;
     }
+    _start(fromTheTopAtTheEnd: true);
+  }
+
+  /// The hand moved the playhead while this run goes: it picks up from
+  /// there, sound and all — a sound left where it was would put the
+  /// picture and the sound on two clocks ([_followTheSound]).
+  ///
+  /// ⚠️Not 「from the top at the end」: that answers a PRESS of play on the
+  /// last frame, and a hand that puts the playhead on the end has asked to
+  /// stand there.
+  void movedByHand() {
+    if (!playing) {
+      return;
+    }
+    stop();
+    _start(fromTheTopAtTheEnd: false);
+  }
+
+  void _start({required bool fromTheTopAtTheEnd}) {
     final period = _tickPeriod;
     if (period == null) {
       return;
@@ -272,7 +323,7 @@ class MediaRun {
       // From the top when the playhead is already at the end: pressing play
       // on the last frame has to DO something, and the only sensible
       // something is to play it again.
-      if (_page >= _pageCount - 1) {
+      if (fromTheTopAtTheEnd && _page >= _pageCount - 1) {
         _surface.turnToPage(0);
       }
       if (soundPath != null) {

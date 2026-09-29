@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
 
 import '../../helpers/fake_video_backend.dart';
+import '../../helpers/recording_viewer_sound.dart';
 
 /// 🚨★★★**A PRESS PICKS THE SOUND UP WHERE THE PLAYHEAD STANDS**
 /// (import-preview-plays-silent, 2026-09-29).
@@ -26,7 +27,7 @@ import '../../helpers/fake_video_backend.dart';
 /// the window to follow ([ViewerSound.keepStreaming]).
 void main() {
   late MediaViewerSlot slot;
-  late _RecordingSound sound;
+  late RecordingViewerSound sound;
   EditorSessionManager? session;
 
   setUp(() => slot = MediaViewerSlot());
@@ -68,7 +69,7 @@ void main() {
   group('a movie', () {
     Future<void> openMovie(WidgetTester tester) async {
       session = EditorSessionManager(initialProject: createDefaultProject());
-      sound = _RecordingSound(session!.audioConformStore);
+      sound = RecordingViewerSound(session!.audioConformStore);
       debugVideoDecodeBackend = FakeVideoBackend(frameCount: 12);
       await pumpViewer(tester);
       slot.request.value = const MediaViewerRequest(
@@ -140,7 +141,7 @@ void main() {
           log: (_) {},
         ),
       );
-      sound = _RecordingSound(session!.audioConformStore);
+      sound = RecordingViewerSound(session!.audioConformStore);
       await pumpViewer(tester);
       slot.request.value = const MediaViewerRequest(
         path: 'C:/work/line.wav',
@@ -169,6 +170,31 @@ void main() {
       await press(tester);
     });
 
+    testWidgets('🎯a NEW sound starts from its own top, not where the last '
+        'one stood', (tester) async {
+      await openSound(tester);
+      await press(tester);
+      sound.at = 1.5;
+      await tester.pump(const Duration(milliseconds: 16));
+      await press(tester);
+
+      slot.request.value = const MediaViewerRequest(
+        path: 'C:/work/other.wav',
+        kind: MediaAssetKind.audio,
+        name: 'other',
+      );
+      await tester.pumpAndSettle();
+      await press(tester);
+
+      expect(
+        sound.from,
+        [0, 0],
+        reason: '🪦where the playhead stood was kept across files — a fact '
+            'about a sound that is no longer shown',
+      );
+      await press(tester);
+    });
+
     testWidgets('a sound that ran to its end starts over from the top', (
       tester,
     ) async {
@@ -192,45 +218,4 @@ void main() {
       await press(tester);
     });
   });
-}
-
-/// A [ViewerSound] that records where each press asked it to start, and
-/// whose device clock the test moves by hand.
-class _RecordingSound extends ViewerSound {
-  _RecordingSound(AudioConformStore store) : super(conformStore: store);
-
-  final List<double> from = [];
-  int keeps = 0;
-  bool _carrying = false;
-  double at = 0;
-  bool hasEnded = false;
-
-  @override
-  bool get isCarrying => _carrying;
-
-  @override
-  bool play(String sourcePath, {double fromSeconds = 0}) {
-    from.add(fromSeconds);
-    _carrying = true;
-    hasEnded = false;
-    return true;
-  }
-
-  @override
-  void hold() {}
-
-  @override
-  void resume(double fromSeconds) {}
-
-  @override
-  void keepStreaming() => keeps += 1;
-
-  @override
-  void stop() => _carrying = false;
-
-  @override
-  double? get positionSeconds => _carrying ? at : null;
-
-  @override
-  bool get ended => _carrying && hasEnded;
 }

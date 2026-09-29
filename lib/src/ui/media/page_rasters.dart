@@ -242,6 +242,16 @@ class PageRasters {
     return total;
   }
 
+  /// The OS said memory is tight: the budget halves
+  /// ([ViewerRasterBudget.respondToMemoryPressure]) and the cache sheds down
+  /// to it — never [keeping], the page being looked at.
+  void heardMemoryPressure({required int keeping}) {
+    if (!budget.respondToMemoryPressure()) {
+      return;
+    }
+    _rebuild(() => evictToBudget(keeping: keeping));
+  }
+
   /// A new document takes the place of the one these pages came from, for
   /// the same bytes: what is drawn stays, and a render still out on the old
   /// one lands nowhere and is asked of the new.

@@ -16,17 +16,12 @@ import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/media/held_viewer_document.dart';
-import '../../services/media/image_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
-import '../../services/media/movie_bytes.dart';
-import '../../services/media/video_decode_worker.dart' show videoDecodeBackend;
-import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
-import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/project_lookup.dart' show mediaKindCanCarrySound;
 import '../canvas/canvas_zoom_scale.dart';
@@ -41,10 +36,10 @@ import '../playback/playback_transport.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors;
-import 'audio_viewer_document.dart';
 import 'media_asset_drag_data.dart';
 import 'media_asset_drop_target.dart';
 import 'media_run.dart';
+import 'open_viewer_document.dart';
 import 'page_rasters.dart';
 import 'viewer_raster_budget.dart';
 import 'viewer_render_tier.dart';
@@ -353,7 +348,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
     ),
     document: () => _document,
-    distance: _evictionDistance,
+    distance: (page) => _run.distanceTo(page),
     rebuild: setState,
     mounted: () => mounted,
     // The census cannot reach into this State, so the total goes to it —
@@ -396,32 +391,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// the budget.
   Future<void> _cuts = Future<void>.value();
 
-  /// How far a cached page is from being wanted again.
-  ///
-  /// 🚨**PLAYBACK ONLY MOVES FORWARD**, so a page already shown is never
-  /// wanted again and is farther than any page ahead. Measuring both with
-  /// `abs()` — which is what stood here — made the read-ahead buffer evict
-  /// ITSELF to keep frames that had just been displayed: a page five ahead
-  /// and a page five behind tied, and the tie went to whichever the map
-  /// listed first.
-  ///
-  /// ⚠️Paging by hand is a different question and keeps `abs()`: someone
-  /// stepping through a PDF is as likely to go back as forward.
-  int _evictionDistance(int page) {
-    if (!_run.playing) {
-      return (page - _page).abs();
-    }
-    return page >= _page ? page - _page : _pageCount + (_page - page);
-  }
-
   /// The OS said memory is tight. The session already stood its own caches
   /// down; this is the viewer's share.
-  void _onMemoryPressure() {
-    if (!_rasters.budget.respondToMemoryPressure()) {
-      return;
-    }
-    setState(() => _rasters.evictToBudget(keeping: _page));
-  }
+  void _onMemoryPressure() => _rasters.heardMemoryPressure(keeping: _page);
 
   /// Read-only here — the workspace holds it (see
   /// [MediaViewerTabHost.position]) and [_turnToPage] asks it to move.
@@ -437,19 +409,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   int _generation = 0;
 
   /// This viewer's sound, or silence if the app has no audio device.
-  ///
-  /// ⚠️Built lazily against the session's conform store — the SAME store
-  /// the timeline plays out of, so a file conformed for one is conformed
-  /// for the other and nothing is decoded twice.
-  late final ViewerSound _sound = widget.sound ?? ViewerSound(
-    conformStore: widget.session.audioConformStore,
-    resolveOutputDeviceName: () => widget
-        .session
-        .appSettings
-        .audioSyncSettings
-        .value
-        .outputDeviceName,
-  );
+  late final ViewerSound _sound =
+      widget.sound ?? ViewerSound.ofSession(widget.session);
 
   /// Token that changes once per successfully LOADED document — drives
   /// the panel's auto-reframe so a preserved deep zoom/pan from the
@@ -576,7 +537,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   void _disposeContent() {
     // A timer outliving its document would page a viewer that has none.
-    _run.stop();
+    _run.letGo();
     _rasters.clear();
     final document = _document;
     _document = null;
@@ -784,73 +745,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
   }
 
-  /// Opens whatever [request] names, or null when this medium has nothing
-  /// to show — the one place that knows which document a kind makes.
-  ///
-  /// 🚨★★★**WHERE THE BYTES ARE IS ASKED ONCE, NOT PER KIND** (유저
-  /// 2026-09-11: 「막힌부분 파일 뭐든 관계없이 법 하나로 통일해서
-  /// 해결하도록」). An arm here names only how its medium DECODES; where the
-  /// bytes are is [ProjectFile.holdMediaBytes]'s one question, asked through
-  /// [openOnHeldBytes] for every kind that reads them.
-  ///
-  /// 🚨★★★**THE CARRIED COPY WINS OVER THE ORIGINAL, FOR EVERY KIND.**
-  /// Carrying means 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」
-  /// (유저 2026-08-30), so an original edited or deleted after the import
-  /// changes nothing the viewer shows. One exception, the cost 유저 accepted
-  /// on board `carried-movie-compressed-Q1`: a movie kept compressed, on a
-  /// device whose decoder cannot be fed one (Android below 9), reads its
-  /// original while there is one ([movieBytesToDecode]).
-  /// 🪦Images and PDFs used to read the ORIGINAL only, so a carried one
-  /// whose original was gone — or a project opened on another machine —
-  /// could not be viewed at all (card `carried-image-pdf-cannot-be-viewed`).
-  /// 🪦And a movie read the original whenever it was still there: 「⛔The
-  /// original wins whenever it is still there: an OS opening a file for
-  /// itself beats any range wrapped around one」. It does, and it showed the
-  /// EDITED file for a carried movie whose original had changed since.
-  ///
-  /// [hold] is where the bytes are asked for — the project, or, for a
-  /// document following its bytes, those same bytes again
-  /// ([HeldViewerDocument.again]).
+  /// Opens whatever [request] names — [openViewerDocument], with the
+  /// project's bytes unless [hold] says where else.
   Future<ViewerDocument?> _openDocument(
     MediaViewerRequest request, {
     HoldMediaBytes? hold,
-  }) async {
-    Future<ViewerDocument?> held(
-      Future<ViewerDocument?> Function(MediaByteSource source) open,
-    ) => openHeldViewerDocument(
-      hold ?? widget.session.projectFile.holdMediaBytes,
-      request.path,
-      open,
-    );
-    switch (request.kind) {
-      case MediaAssetKind.image:
-        return held(ImageViewerDocument.open);
-      case MediaAssetKind.pdf:
-        return held(PdfRenderService.open);
-      case MediaAssetKind.video:
-        return held(
-          (source) => VideoViewerDocument.open(
-            movieBytesToDecode(source, request.path, videoDecodeBackend),
-          ),
-        );
-      case MediaAssetKind.audio:
-        // 🪦This used to read 「Sound has no picture — the one medium that
-        // stays absent」. 유저 2026-09-08: 「오디오파일도 열려야하고 …
-        // 오디오는 그래서 파형을 보이게한다던가」. The picture of a sound is
-        // its waveform, and the conform that draws one is the same conform
-        // playback already builds — so this asks for it rather than making
-        // anything.
-        final peaks = await widget.session.audioConformStore.ensurePeaksFor(
-          request.path,
-        );
-        return peaks == null
-            ? null
-            : AudioViewerDocument(
-                peaks: peaks,
-                color: AudioViewerDocument.ink,
-              );
-    }
-  }
+  }) => openViewerDocument(
+    request.kind,
+    request.path,
+    hold: hold ?? widget.session.projectFile.holdMediaBytes,
+    soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
+  );
 
   // --- Paging ------------------------------------------------------------
 
@@ -902,14 +807,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         : null;
   }
 
-  /// How long the sound on screen is, once its conform has answered.
-  double? get _soundLengthSeconds {
-    final path = _soundPath;
-    return path == null
-        ? null
-        : widget.session.audioConformStore.durationSecondsFor(path);
-  }
-
   // --- The run's surface ([MediaRunSurface]) -------------------------------
 
   @override
@@ -923,9 +820,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   @override
   String? get soundPath => _soundPath;
-
-  @override
-  double? get soundLengthSeconds => _soundLengthSeconds;
 
   /// 🚨★★★[PlaybackTransport] — this viewer is one of the things the app
   /// can be playing, so the actuation gate stops it with the same law it
@@ -1264,7 +1158,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // and giving it a second one in seconds would be two answers to 「어디를
     //보고 있나」. The movie's soundtrack is the next step of the roadmap and
     // it rides the page, not this.
-    final waveformSeconds = _turnsItsOwnPages ? null : _soundLengthSeconds;
+    final waveformSeconds = _turnsItsOwnPages ? null : _run.soundLengthSeconds;
 
 
     final message = request == null ? strings.mediaViewerEmpty : _message;

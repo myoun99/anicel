@@ -193,6 +193,7 @@ void main() {
                 width: 400,
                 height: 300,
                 child: ImportPreview(
+                  session: session,
                   path: path,
                   inFrame: 0,
                   outFrame: null,

@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 
-import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
@@ -15,6 +14,8 @@ import 'package:anicel/src/ui/media/viewer_sound.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 
 import '../../helpers/fake_video_backend.dart';
+import '../../helpers/recording_viewer_sound.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨★★★**THE WHOLE TRANSPORT WAITS — SOUND INCLUDED.**
 ///
@@ -43,13 +44,13 @@ import '../../helpers/fake_video_backend.dart';
 void main() {
   late EditorSessionManager session;
   late MediaViewerSlot slot;
-  late _RecordingSound sound;
+  late RecordingViewerSound sound;
   var opens = 0;
 
   setUp(() {
     session = EditorSessionManager(initialProject: createDefaultProject());
     slot = MediaViewerSlot();
-    sound = _RecordingSound(session.audioConformStore);
+    sound = RecordingViewerSound(session.audioConformStore);
     opens = 0;
   });
 
@@ -112,38 +113,9 @@ void main() {
     return fake;
   }
 
-  /// Interleaves REAL time with pumped time until [ready].
-  ///
-  /// 🚨★★★**A PUMPED CLOCK DOES NOT DECODE AN IMAGE.** `renderPage` ends in
-  /// `decodeStraightRgbaImage`, which is engine work on a real thread —
-  /// `pump()` advances the fake clock and drains microtasks, and the decode
-  /// is neither. So a buffer refilled only by pumping never refills, no
-  /// matter how many ticks.
-  ///
-  /// 🪦This cost a round. Pumping 300 times and seeing nothing land, I wrote
-  /// 「the viewer never comes back from a dry buffer」 into a test, a commit
-  /// and a board card as a PRODUCT BUG. It was the bench. The helper for
-  /// this has existed in `media_viewer_tab_host_test` the whole time,
-  /// spelled almost exactly like this and explaining exactly why — 착수 0수
-  /// 는 「이 법이 이미 어딘가에 쓰여 있나」 를 먼저 grep 하는 것이다.
-  /// ⚠️[attempts] is generous on purpose where the test WAITS FOR something
-  /// to land. Real time means real load: at 60×10ms this file passed alone
-  /// and failed inside a 317-test run, which is a flake, and a flaky nail
-  /// is not a nail — the next reader learns to re-run it. Where the test
-  /// waits for something NOT to happen, a shorter window is honest and
-  /// keeps the suite quick.
-  Future<void> settleAsync(
-    WidgetTester tester,
-    bool Function() ready, {
-    int attempts = 60,
-  }) async {
-    for (var i = 0; i < attempts && !ready(); i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(const Duration(milliseconds: 42));
-    }
-  }
+  /// A run's tick at 24fps — the pumped time between real-time rounds, so
+  /// the run moves on while the decoder works ([settleAsync]).
+  const tick = Duration(milliseconds: 42);
 
   Future<void> pressPlay(WidgetTester tester) async {
     await tester.tap(
@@ -194,7 +166,12 @@ void main() {
     // never have delivered anyway. Pumping alone would park this viewer
     // whatever the backend did, and the assertion below would be measuring
     // the bench instead of the law.
-    await settleAsync(tester, () => sound.holds > 0, attempts: 150);
+    await settleAsync(
+      tester,
+      () => sound.holds > 0,
+      attempts: 150,
+      step: tick,
+    );
 
     expect(
       sound.holds,
@@ -209,7 +186,7 @@ void main() {
     // right after pressing play measures nothing about the buffer. What
     // separates 「waiting for these frames」 from 「waiting once, always」 is
     // that real time passes here and the playhead still does not move.
-    await settleAsync(tester, () => slot.position.value > 0);
+    await settleAsync(tester, () => slot.position.value > 0, step: tick);
     expect(
       slot.position.value,
       0,
@@ -224,7 +201,12 @@ void main() {
     // a pumped clock never performs one. See that helper for the round this
     // cost.
     fake.held.clear();
-    await settleAsync(tester, () => sound.resumes > 0, attempts: 150);
+    await settleAsync(
+      tester,
+      () => sound.resumes > 0,
+      attempts: 150,
+      step: tick,
+    );
 
     expect(sound.resumes, greaterThan(0), reason: 'the sound picked back up');
     expect(
@@ -258,9 +240,14 @@ void main() {
     // `asked == [0]` — the read-ahead had not reached the held frame at all,
     // because frame 0's own decode cannot COMPLETE inside the fake-async
     // zone and its marker therefore still said 「asking」. That is the trap
-    // this file's [settleAsync] header is about, walked into one more time:
+    // [settleAsync]'s header is about, walked into one more time:
     // the number would have been the bench's, not the viewer's.
-    await settleAsync(tester, () => fake.asked.contains(1), attempts: 150);
+    await settleAsync(
+      tester,
+      () => fake.asked.contains(1),
+      attempts: 150,
+      step: tick,
+    );
     expect(
       fake.asked,
       contains(1),
@@ -311,44 +298,4 @@ void main() {
           'seam is what makes it visible',
     );
   });
-}
-
-/// A [ViewerSound] that records what it was asked to do, and reports that
-/// it is carrying — so the panel takes the paths a real device would.
-class _RecordingSound extends ViewerSound {
-  _RecordingSound(AudioConformStore store) : super(conformStore: store);
-
-  final List<String> played = [];
-  int holds = 0;
-  int resumes = 0;
-  int stops = 0;
-
-  @override
-  bool get isCarrying => played.isNotEmpty;
-
-  @override
-  bool play(String sourcePath, {double fromSeconds = 0}) {
-    played.add(sourcePath);
-    return true;
-  }
-
-  @override
-  void hold() => holds += 1;
-
-  @override
-  void resume(double fromSeconds) => resumes += 1;
-
-  @override
-  void stop() {
-    stops += 1;
-    played.clear();
-  }
-
-  /// A clock that stands still: the tests here drive the PICTURE, and a
-  /// position that ran on its own would decide when the run ends.
-  @override
-  double? get positionSeconds => 0;
-
-  @override
-  bool get ended => false;
 }

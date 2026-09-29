@@ -18,6 +18,7 @@ import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/settle_async.dart';
 
 /// The media viewer panel (R4, §6-h): images and PDF pages inside the
 /// canvas shell, page stepping, and the honest refusals. The PDF renderer
@@ -84,19 +85,6 @@ void main() {
       ),
     );
     await tester.pump();
-  }
-
-  /// Real IO completes inside runAsync, but the await continuations are
-  /// fake-zone microtasks only pump() drains — interleave the two until
-  /// [ready] (the import-dialog test's loop).
-  Future<void> settleAsync(WidgetTester tester, bool Function() ready) async {
-    for (var i = 0; i < 40 && !ready(); i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
-    expect(ready(), isTrue);
   }
 
   testWidgets('with nothing to view the panel says so', (tester) async {
@@ -425,9 +413,13 @@ void main() {
     );
 
     slot.request.value = MediaViewerRequest(path: path!, kind: MediaAssetKind.image);
-    await settleAsync(
-      tester,
-      () => tester.any(find.byKey(const ValueKey<String>('media-viewer-page'))),
+    expect(
+      await settleAsync(
+        tester,
+        () =>
+            tester.any(find.byKey(const ValueKey<String>('media-viewer-page'))),
+      ),
+      isTrue,
     );
 
     slot.request.value = MediaViewerRequest(
@@ -438,11 +430,14 @@ void main() {
     // under the localized sentence now, so an exact match asserts the
     // absence of a detail this test never cared about — see
     // `no_reader_is_not_cannot_read_test`.
-    await settleAsync(
-      tester,
-      () => tester.any(
-        find.textContaining(AppText.strings.mediaViewerLoadFailed),
+    expect(
+      await settleAsync(
+        tester,
+        () => tester.any(
+          find.textContaining(AppText.strings.mediaViewerLoadFailed),
+        ),
       ),
+      isTrue,
     );
   });
 

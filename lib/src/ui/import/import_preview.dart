@@ -1,39 +1,54 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../../models/kept_span.dart';
-import '../../models/movie_clock.dart';
-import '../../models/project_frame_rate.dart';
-import '../../services/audio/audio_peaks_extractor.dart';
-import '../../services/import/raster_cel_import.dart';
-import '../../services/media/held_viewer_document.dart';
-import '../../services/media/media_byte_source.dart';
-import '../../services/media/movie_bytes.dart';
-import '../../services/straight_rgba_image.dart';
 import '../../models/media_asset.dart';
-import '../../native/qa_video_decoder.dart';
-import '../../services/media/video_decode_worker.dart';
+import '../../models/project_frame_rate.dart';
+import '../../native/qa_native_engine.dart';
+import '../../services/audio/audio_peaks_extractor.dart';
+import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
-import '../../services/pdf/pdf_render_service.dart';
+import '../../services/project_lookup.dart' show mediaKindCanCarrySound;
 import '../audio/waveform_painter.dart';
-import '../media/audio_viewer_document.dart' show AudioViewerDocument;
+import '../editor_session_manager.dart';
+import '../effective_device_pixel_ratio.dart';
+import '../media/audio_viewer_document.dart';
+import '../media/media_run.dart';
+import '../media/open_viewer_document.dart';
+import '../media/page_rasters.dart';
+import '../media/viewer_raster_budget.dart';
+import '../media/viewer_render_tier.dart';
+import '../media/viewer_sound.dart';
 import '../theme/app_theme.dart';
 import '../widgets/checkered_picture.dart';
 import '../widgets/transport_bar.dart';
 
 /// The import window's right-hand zone: the selected file, and the bar that
-/// walks through it.
+/// walks through it — and PLAYS it, sound and all.
 ///
 /// The picture is FITTED into a 16:9 box and nothing else is drawn — no
 /// canvas outline, no placement rectangle. What the window is showing here
 /// is the source, not the composition; the composition is what Fit answers
 /// in the row.
 ///
-/// A still mounts the same bar with one frame. The bar is the shared one
-/// (`widgets/transport_bar.dart`), which is why a video will need nothing
-/// here beyond a frame supplier the day there is a decoder.
+/// 🚨★★★**THE MEDIA VIEWER'S DOCUMENT, PAGES AND RUN — the same code, not a
+/// second player.** 유저 2026-09-27: 「임포트창에서 재생해도 소리안나고
+/// 재생되는지도모르겟네. 뷰어패널이랑 통일할거하면서 소리나게」. The file
+/// opens through the viewer's door ([openViewerDocument]), its pages are
+/// drawn from the viewer's cache ([PageRasters]) and the play button runs
+/// the viewer's run ([MediaRun]) — whose sound, whose wait for a frame that
+/// has not landed, and whose device clock were all written once, there.
+/// 🪦The button used to be `onPlayPause: () {}` under 「Playback belongs to
+/// the day a video arrives」 — the video arrived, and the button stayed a
+/// control that did nothing.
+///
+/// What is the window's own is how it COUNTS: a movie in the frames a
+/// placement counts ([ProjectClockDocument] — the IN/OUT here is what
+/// lands), a sound in the project's frames over its length, a PDF and a GIF
+/// in their pages. The bar never learns what is behind them.
 ///
 /// A sound is its waveform, run over the frames it lasts, with the span
 /// IN/OUT keep washed on it (the mockup's window for a sound — 유저
@@ -41,6 +56,7 @@ import '../widgets/transport_bar.dart';
 class ImportPreview extends StatefulWidget {
   const ImportPreview({
     super.key,
+    required this.session,
     required this.path,
     required this.inFrame,
     required this.outFrame,
@@ -50,7 +66,13 @@ class ImportPreview extends StatefulWidget {
     required this.holdBytes,
     required this.frameRate,
     this.audioSpeed = (numerator: 1, denominator: 1),
+    this.sound,
   });
+
+  /// The session the window imports into: the census its pages are counted
+  /// in, the memory warnings they hear, and the output its sound plays
+  /// through ([ViewerSound.ofSession]).
+  final EditorSessionManager session;
 
   /// The file being looked at, or null when nothing is selected.
   final String? path;
@@ -79,9 +101,14 @@ class ImportPreview extends StatefulWidget {
   final ProjectFrameRate frameRate;
 
   /// The project's accumulated audio pull. A movie's frames are counted on
-  /// the SOUND's clock ([MovieClock]) — the frames its IN/OUT and the block
-  /// it becomes are counted in, the same ones a sound's are.
+  /// the SOUND's clock ([ProjectClockDocument]) — the frames its IN/OUT and
+  /// the block it becomes are counted in, the same ones a sound's are.
   final ({int numerator, int denominator}) audioSpeed;
+
+  /// This preview's sound, or null for the session's — the seam a test
+  /// hands a device through, as the viewer's is
+  /// ([MediaViewerTabHost.sound]).
+  final ViewerSound? sound;
 
   /// The narrowest this zone lays out: the transport's own minimum inside
   /// the inset around it. The window gives the file table the rest.
@@ -94,42 +121,45 @@ class ImportPreview extends StatefulWidget {
   State<ImportPreview> createState() => _ImportPreviewState();
 }
 
-/// What the well shows: the frames the transport runs over, and the
-/// picture under the playhead — or a sound's waveform.
-typedef _Shown = ({int frameCount, ui.Image? picture, AudioPeaks? sound});
-
-class _ImportPreviewState extends State<ImportPreview> {
-  /// The decoded frames of [ImportPreview.path]. A GIF has many, a still
-  /// has one, and anything we cannot decode has none.
-  List<ui.Image> _frames = const [];
+class _ImportPreviewState extends State<ImportPreview>
+    implements MediaRunSurface {
+  /// The file shown, as the viewer would open it — or null while nothing
+  /// is, or nothing here reads it.
+  ViewerDocument? _document;
   String? _loadedPath;
-  int _position = 0;
 
-  /// A PDF is not decoded up front. A hundred-page conte rendered to look
-  /// at ONE page is the thing §6-m says not to do, so the document stays
-  /// open and the page under the playhead is drawn on demand.
-  ViewerDocument? _pdf;
-  int _pdfPages = 0;
-  ui.Image? _pdfPage;
-  int _pdfPageShown = -1;
+  /// The page under the playhead: a movie's project frame, a PDF's page, a
+  /// GIF's frame. A sound's playhead is its run's seconds instead
+  /// ([MediaRun.soundSeconds]) — a waveform is one page.
+  int _page = 0;
 
-  /// A movie, once the reader has said what it is.
-  ///
-  /// ⚠️A token from [videoDecodeBackend], not a decoder handle: the native
-  /// document lives on a worker isolate now, and TWO owners of one
-  /// process-global would make the handle bookkeeping track half the truth.
-  /// The viewer goes through the same door, and `close` gives back the
-  /// bytes it was reading once the movie is shut ([openHeldMovie]).
-  HeldMovie? _video;
-  ui.Image? _videoFrame;
-  int _videoFrameShown = -1;
+  /// Where this preview's pages are counted in the memory census
+  /// ([RenderCaches.viewerRasterBytesByViewer]).
+  static const String _censusKey = 'import-preview';
 
-  /// A sound, once its conform has answered.
-  AudioPeaks? _sound;
+  late final PageRasters _rasters = PageRasters(
+    budget: ViewerRasterBudget(
+      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    ),
+    document: () => _document,
+    distance: (page) => _run.distanceTo(page),
+    rebuild: setState,
+    mounted: () => mounted,
+    report: (bytes) =>
+        widget.session.renderCaches.viewerRasterBytesByViewer[_censusKey] =
+            bytes,
+  );
+
+  late final MediaRun _run = MediaRun(
+    surface: this,
+    rasters: _rasters,
+    sound: widget.sound ?? ViewerSound.ofSession(widget.session),
+  );
 
   @override
   void initState() {
     super.initState();
+    widget.session.memoryPressureTicks.addListener(_onMemoryPressure);
     unawaited(_load());
   }
 
@@ -143,148 +173,25 @@ class _ImportPreviewState extends State<ImportPreview> {
 
   @override
   void dispose() {
-    _disposeFrames();
+    widget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
+    _close();
+    _run.dispose();
+    widget.session.renderCaches.viewerRasterBytesByViewer.remove(_censusKey);
     super.dispose();
   }
 
-  void _disposeFrames() {
-    for (final frame in _frames) {
-      frame.dispose();
-    }
-    _frames = const [];
-    _pdfPage?.dispose();
-    _pdfPage = null;
-    _pdfPageShown = -1;
-    _pdfPages = 0;
-    _videoFrame?.dispose();
-    _videoFrame = null;
-    _videoFrameShown = -1;
-    _sound = null;
-    final video = _video;
-    _video = null;
-    if (video != null) {
-      // ⛔Only if it is still ours — the backend closes by token, and a
-      // token that is not the loaded document is a no-op.
-      unawaited(video.close());
-    }
-    final pdf = _pdf;
-    _pdf = null;
-    if (pdf != null) {
-      unawaited(pdf.dispose());
-    }
-  }
+  void _onMemoryPressure() => _rasters.heardMemoryPressure(keeping: _page);
 
-  /// A movie, on the platforms whose reader exists.
-  ///
-  /// 🪦This used to say 「the decoder holds ONE document, so opening one here
-  /// is also what closes the last」 — a true sentence about a bug. The last
-  /// one was usually the media viewer's, and it went blank with no error.
-  /// A handle says which movie is whose, and the decoder puts it back.
-  Future<void> _loadVideo(String path) async {
-    // The capability belongs to the thing that reads — the BACKEND, as the
-    // viewer asks it ([VideoDecodeBackend.supported]); a decoder asked
-    // beside it could disagree with the one doing the work.
-    if (!videoDecodeBackend.supported) {
-      setState(() {});
-      return;
+  /// Lets go of the file shown — its run, its pages and the document.
+  void _close() {
+    _run.letGo();
+    _rasters.clear();
+    _page = 0;
+    final document = _document;
+    _document = null;
+    if (document != null) {
+      unawaited(document.dispose());
     }
-    final video = await openHeldMovie(
-      videoDecodeBackend,
-      widget.holdBytes,
-      path,
-    );
-    if (!mounted || _loadedPath != path) {
-      if (video != null) {
-        unawaited(video.close());
-      }
-      return;
-    }
-    if (video == null) {
-      setState(() {});
-      return;
-    }
-    setState(() => _video = video);
-    await _renderVideoFrame(0);
-  }
-
-  /// The movie's clock: its transport counts PROJECT frames, and each one
-  /// shows the movie frame that holds its instant — the placement counts
-  /// them the same way, so what IN/OUT frame here is what lands.
-  MovieClock _clockOf(QaVideoInfo info) => movieClockFor(
-    projectRate: widget.frameRate,
-    audioSpeed: widget.audioSpeed,
-    movie: info,
-  );
-
-  /// Draws the frame under the playhead. One at a time: a scrub asks for
-  /// the frame it landed on, not for the ones it passed over.
-  Future<void> _renderVideoFrame(int index) async {
-    final info = _video;
-    if (info == null || index == _videoFrameShown) {
-      return;
-    }
-    _videoFrameShown = index;
-    final rgba = await videoDecodeBackend.frame(info.token, index);
-    if (rgba == null || !mounted || _video != info) {
-      return;
-    }
-    // 🚨A frame the engine refused gets the answer this panel already gives
-    // for a movie it could not open: nothing new is drawn. ⛔It does NOT
-    // throw — this runs under a scrub, and a preview that threw would take
-    // the import window with it.
-    //
-    // 🪦Before 2026-09-08 a refusal could not be observed here: the decode
-    // was a `Completer` with no failure path, so the future stayed pending
-    // forever with `_videoFrameShown` already advanced — the preview then
-    // held the PREVIOUS frame and would never ask for this index again.
-    // Putting the mark back is what lets the next scrub retry, and it is
-    // deliberately on the FAILED road only: a frame that merely arrived too
-    // late belongs to a scrub that has already moved on.
-    final image = await decodedImageStillWanted(
-      decodeStraightRgbaImage(
-        rgba: rgba,
-        width: info.info.width,
-        height: info.info.height,
-      ),
-      wanted: () => mounted && _video == info,
-      onFailed: () => _videoFrameShown = -1,
-    );
-    if (image == null) {
-      return;
-    }
-    setState(() {
-      _videoFrame?.dispose();
-      _videoFrame = image;
-    });
-  }
-
-  /// Draws the page under the playhead, once per page.
-  Future<void> _renderPdfPage(int page) async {
-    final pdf = _pdf;
-    if (pdf == null || page == _pdfPageShown) {
-      return;
-    }
-    _pdfPageShown = page;
-    ui.Image? image;
-    try {
-      final size = pdf.pageSize(page);
-      final scale = size.width <= 0 ? 1.0 : 640 / size.width;
-      image = await pdf.renderPage(
-        page,
-        width: (size.width * scale).round().clamp(1, 2048),
-        height: (size.height * scale).round().clamp(1, 2048),
-      );
-    } on Object {
-      image = null;
-    }
-    if (!mounted || _pdf != pdf) {
-      image?.dispose();
-      return;
-    }
-    setState(() {
-      _pdfPage?.dispose();
-      _pdfPage = image;
-    });
   }
 
   Future<void> _load() async {
@@ -293,117 +200,124 @@ class _ImportPreviewState extends State<ImportPreview> {
       return;
     }
     _loadedPath = path;
-    _disposeFrames();
-    _position = 0;
+    _close();
     if (path == null) {
       setState(() {});
       return;
     }
-    final kind = mediaAssetKindForPath(path);
-    if (kind == MediaAssetKind.video) {
-      await _loadVideo(path);
-      return;
-    }
-    if (kind == MediaAssetKind.audio) {
-      final sound = await widget.soundPeaks(path);
-      if (mounted && _loadedPath == path) {
-        setState(() => _sound = sound);
-      }
-      return;
-    }
-    if (path.toLowerCase().endsWith('.pdf')) {
-      final pdf = await openHeldViewerDocument(
-        widget.holdBytes,
-        path,
-        PdfRenderService.open,
-      );
-      if (!mounted || _loadedPath != path) {
-        unawaited(pdf?.dispose());
-        return;
-      }
-      setState(() {
-        _pdf = pdf;
-        _pdfPages = pdf?.pageCount ?? 0;
-      });
-      await _renderPdfPage(0);
-      return;
-    }
-    var frames = const <ui.Image>[];
+    // By the key the pool and the conform store know it by — the window
+    // conforms each movie's sound under it the moment the file is listed,
+    // so the press that plays it finds the sound already there.
+    final key = normalizedMediaPath(path);
+    final kind = mediaAssetKindForPath(key);
+    ViewerDocument? document;
     try {
-      final bytes = await readHeldMediaBytes(widget.holdBytes, path);
-      frames = [
-        for (final frame in await decodeImageFrames(bytes)) frame.image,
-      ];
+      document = kind == null
+          ? null
+          : await openViewerDocument(
+              kind,
+              key,
+              hold: widget.holdBytes,
+              soundPeaks: widget.soundPeaks,
+              projectClock: (rate: widget.frameRate, speed: widget.audioSpeed),
+            );
     } on Object {
-      // A movie, a PDF, a file being written as we look at it: the zone
-      // shows nothing rather than an error nobody asked for. What cannot
-      // be imported is already named in the footer.
-      frames = const [];
+      // A file being written as we look at it, a movie this build cannot
+      // read: the zone shows nothing rather than an error nobody asked
+      // for. What cannot be imported is already named in the footer.
+      document = null;
     }
-    if (!mounted) {
-      for (final frame in frames) {
-        frame.dispose();
-      }
+    if (!mounted || _loadedPath != path) {
+      unawaited(document?.dispose());
       return;
     }
-    if (_loadedPath != path) {
-      for (final frame in frames) {
-        frame.dispose();
-      }
-      return;
-    }
-    setState(() => _frames = frames);
+    setState(() => _document = document);
   }
 
-  /// What the well is showing right now: how many frames the transport
-  /// runs over, and the picture under the playhead (null = nothing decoded
-  /// yet) — or a sound's waveform.
-  ///
-  /// 🚨THE SOURCES ARE ASKED ONCE. The count and the picture each used to
-  /// walk the same video-then-PDF-then-stills ladder in its own nested
-  /// conditional, so a source added to one and not the other would scrub a
-  /// video's length over a still's picture. A sound is the fourth rung:
-  /// without it a sound fell to the still decode and ran over ONE frame,
-  /// so the window had no range to shorten it with.
-  _Shown _shownSource() {
-    final video = _video;
-    if (video != null) {
-      return (
-        frameCount: _clockOf(
-          video.info,
-        ).projectFramesCovering(video.info.frameCount),
-        picture: _videoFrame,
-        sound: null,
-      );
-    }
+  // --- The run's surface ([MediaRunSurface]) -------------------------------
+
+  @override
+  ViewerDocument? get document => _document;
+
+  @override
+  int get page => _page;
+
+  @override
+  void turnToPage(int page) {
+    final count = _document?.pageCount ?? 0;
+    setState(() => _page = count <= 0 ? 0 : page.clamp(0, count - 1));
+  }
+
+  /// ⛔It asks [mediaKindCanCarrySound], as the viewer does — a movie
+  /// carries a soundtrack, and deciding that here would be a second place
+  /// the app answers 「이게 소리를 가질 수 있나」.
+  @override
+  String? get soundPath {
+    final path = _loadedPath;
+    final key = path == null ? null : normalizedMediaPath(path);
+    final kind = key == null ? null : mediaAssetKindForPath(key);
+    return _document != null && kind != null && mediaKindCanCarrySound(kind)
+        ? key
+        : null;
+  }
+
+  // --- What the transport counts --------------------------------------------
+
+  /// A sound's picture, or null when the file is not one.
+  AudioPeaks? get _sound => switch (_document) {
+    final AudioViewerDocument waveform => waveform.peaks,
+    _ => null,
+  };
+
+  /// How many frames the transport runs over: a sound's in the project's
+  /// frames over its length, anything else its pages — one when there is
+  /// nothing, and the bar sits there inert.
+  int get _frameCount {
     final sound = _sound;
     if (sound != null) {
-      return (
-        frameCount: sound.durationFrames(widget.frameRate),
-        picture: null,
-        sound: sound,
-      );
+      return sound.durationFrames(widget.frameRate);
     }
-    if (_pdfPages > 0) {
-      return (frameCount: _pdfPages, picture: _pdfPage, sound: null);
-    }
-    if (_frames.isEmpty) {
-      return (frameCount: 1, picture: null, sound: null);
-    }
-    return (
-      frameCount: _frames.length,
-      picture: _frames[_position.clamp(0, _frames.length - 1)],
-      sound: null,
-    );
+    return math.max(1, _document?.pageCount ?? 1);
+  }
+
+  /// The instant of a project frame and back, in microseconds, rounded the
+  /// way the mixer's samples are ([ProjectFrameRate.frameToSample]) so the
+  /// pair round-trips: a seek to a frame reads back as that frame.
+  static const int _micros = Duration.microsecondsPerSecond;
+
+  /// Where the playhead stands, in the transport's frames.
+  int get _frame => _sound == null
+      ? _page
+      : widget.frameRate.sampleToFrame(
+          (_run.soundSeconds * _micros).round(),
+          _micros,
+        );
+
+  /// The hand moved the playhead. A sound's seconds move with it; anything
+  /// else turns to the page. A run going picks up from there, sound and all
+  /// ([MediaRun.movedByHand]).
+  void _seek(int frame) {
+    setState(() {
+      if (_sound != null) {
+        _run.soundSeconds =
+            widget.frameRate.frameToSample(frame, _micros) / _micros;
+      } else {
+        _page = frame;
+      }
+      // TURNING A PAGE IS ASKING AGAIN — the viewer's law for a page its
+      // engine once refused ([MediaViewerTabHost]'s `_forgetRefusals`).
+      _rasters.forgetRefusals();
+    });
+    _run.movedByHand();
   }
 
   @override
   Widget build(BuildContext context) {
-    final source = _shownSource();
+    final frameCount = _frameCount;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: _stage(source)),
+        Expanded(child: _stage(frameCount)),
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -412,7 +326,7 @@ class _ImportPreviewState extends State<ImportPreview> {
             ImportPreview._transportInset,
             8,
           ),
-          child: _transport(source.frameCount),
+          child: _transport(frameCount),
         ),
       ],
     );
@@ -425,28 +339,58 @@ class _ImportPreviewState extends State<ImportPreview> {
   /// straight onto the dark well, where open alpha and a dark picture look
   /// the same. A sound has no open alpha to show: its waveform stands on
   /// the well itself.
-  Widget _stage(_Shown source) => ColoredBox(
+  Widget _stage(int frameCount) => ColoredBox(
     color: AppColors.backdrop,
     child: Padding(
       padding: const EdgeInsets.all(8),
       child: Center(
-        child: AspectRatio(aspectRatio: 16 / 9, child: _shown(source)),
+        child: AspectRatio(aspectRatio: 16 / 9, child: _shown(frameCount)),
       ),
     ),
   );
 
-  Widget _shown(_Shown source) {
-    final sound = source.sound;
+  Widget _shown(int frameCount) {
+    final sound = _sound;
     if (sound != null) {
-      return _waveform(sound, source.frameCount);
+      return _waveform(sound, frameCount);
     }
-    final picture = source.picture;
-    return picture == null
-        ? const SizedBox.shrink()
-        : CheckeredPicture(
-            image: picture,
-            checkerKey: const ValueKey<String>('import-preview-checker'),
-          );
+    final document = _document;
+    if (document == null || document.pageCount == 0) {
+      return const SizedBox.shrink();
+    }
+    return LayoutBuilder(
+      builder: (context, box) {
+        final picture = _pictureOf(context, document, box.biggest);
+        return picture == null
+            ? const SizedBox.shrink()
+            : CheckeredPicture(
+                image: picture,
+                checkerKey: const ValueKey<String>('import-preview-checker'),
+              );
+      },
+    );
+  }
+
+  /// Asks for the page under the playhead at the pixels it will be drawn
+  /// at — the viewer's ladder ([viewerRenderScaleFor]) over the box it is
+  /// fitted into — and answers whatever the cache holds for it (a blurrier
+  /// render of the SAME page is not a lie about which frame this is).
+  ui.Image? _pictureOf(BuildContext context, ViewerDocument document, Size box) {
+    final page = _page.clamp(0, document.pageCount - 1);
+    final size = document.pageSize(page);
+    if (size.width > 0 && size.height > 0) {
+      final fitted = math.min(box.width / size.width, box.height / size.height);
+      final scale = viewerRenderScaleFor(
+        fitted * EffectiveDevicePixelRatio.of(context),
+        size,
+      );
+      _rasters
+        ..scale = scale
+        ..shown = {page}
+        ..ensureRendered(page, scale);
+      _run.fillBuffer();
+    }
+    return _rasters.imageOf(page);
   }
 
   /// A sound's picture — the viewer's painter in the viewer's ink
@@ -506,26 +450,15 @@ class _ImportPreviewState extends State<ImportPreview> {
     final kept = _kept(frameCount);
     return TransportBar(
       frameCount: frameCount,
-      currentFrame: _position.clamp(0, frameCount - 1),
+      currentFrame: _frame.clamp(0, frameCount - 1),
       inFrame: kept.first,
       outFrame: kept.last,
-      playing: false,
+      playing: _run.playing,
       showRange: _rangeShown(frameCount),
-      onSeek: (frame) {
-        setState(() => _position = frame);
-        if (_pdfPages > 0) {
-          unawaited(_renderPdfPage(frame));
-        }
-        final video = _video;
-        if (video != null) {
-          unawaited(
-            _renderVideoFrame(_clockOf(video.info).movieFrameAt(frame)),
-          );
-        }
-      },
-      // Playback belongs to the day a video arrives; stepping is what
-      // a page or a GIF frame needs, and that is the scrub.
-      onPlayPause: () {},
+      onSeek: _seek,
+      // A still or a PDF has nothing that advances by itself and no sound:
+      // the button stays where it is, and says so by being off.
+      onPlayPause: _run.canPlay ? _run.toggle : null,
       onRangeChanged: (start, end) =>
           widget.onRangeChanged(start, end >= frameCount - 1 ? null : end),
     );

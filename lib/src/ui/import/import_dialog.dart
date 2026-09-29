@@ -1154,6 +1154,7 @@ class _ImportDialogState extends State<ImportDialog> {
             Expanded(
               child: ImportPreview(
                 key: const ValueKey<String>('import-preview'),
+                session: widget.session,
                 path: previewPath,
                 inFrame: settings.inFrame,
                 outFrame: settings.outFrame,
