@@ -241,7 +241,10 @@ void main() {
     }
 
     BitmapSurface? pictureAt(EditorSessionManager s, Layer layer, int at) =>
-        s.brushSurfaceForLayerFrame(layer, resolveExposedFrameAt(layer, at)!);
+        s.renderCaches.brushSurfaceForLayerFrame(
+          layer,
+          resolveExposedFrameAt(layer, at)!,
+        );
 
     for (final fate in OriginalFate.values) {
       testWidgets('its original ${fate.name}: the row plays what the project '

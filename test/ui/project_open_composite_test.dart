@@ -101,7 +101,7 @@ void main() {
     );
     final frame = Frame(id: drawnKey.frameId, duration: 1, strokes: const []);
 
-    final surface = s.brushSurfaceForLayerFrame(layer, frame);
+    final surface = s.renderCaches.brushSurfaceForLayerFrame(layer, frame);
 
     expect(surface, isNotNull, reason: 'a loaded cel is NOT empty');
     expect(surface!.tiles, isNotEmpty);

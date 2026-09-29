@@ -424,9 +424,10 @@ class _WorkspaceTabs {
                                     ?.canvasSize ??
                                 BrushCanvasDefaults.canvasSize,
                             selectedGuideId:
-                                _state.widget.session.selectedGuideId,
+                                _state.widget.session.cutVerbs.selectedGuideId,
                             onGuideSelected: (id) =>
-                                _state.widget.session.selectedGuideId = id,
+                                _state.widget.session.cutVerbs.selectedGuideId =
+                                    id,
                             onGuidesCommitted: _state
                                 .widget
                                 .session
@@ -505,6 +506,7 @@ class _WorkspaceTabs {
                                           selectedGuideId: _state
                                               .widget
                                               .session
+                                              .cutVerbs
                                               .selectedGuideId,
                                           onGuidesCommitted: _state
                                               .widget

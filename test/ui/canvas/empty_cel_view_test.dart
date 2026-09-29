@@ -267,7 +267,7 @@ void main() {
     // view is mounted and standing down — the case the fix is about.
     expect(hasCel(tester), isFalse);
     expect(
-      session.layerContentBoundsAt(layer(), 4),
+      session.renderCaches.layerContentBoundsAt(layer(), 4),
       isNull,
       reason: 'nothing is on this frame yet',
     );
@@ -290,7 +290,7 @@ void main() {
       reason: '「빈 칸에서 펜다운하면 블록이 자동생성되고」',
     );
     expect(
-      session.layerContentBoundsAt(layer(), 4),
+      session.renderCaches.layerContentBoundsAt(layer(), 4),
       isNotNull,
       reason: '「그대로 스트로크 그려지기시작」 — the half that was missing',
     );
@@ -346,7 +346,7 @@ void main() {
       reason: '「블록은 생기는데」 — the block half already works',
     );
     expect(
-      session.layerContentBoundsAt(layer(), frame),
+      session.renderCaches.layerContentBoundsAt(layer(), frame),
       isNotNull,
       reason: '「그 가장 처음 상태만 선이 안그어짐」 — the first stroke lands too',
     );
@@ -529,7 +529,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(layer().timeline.length, blocksBefore, reason: 'a pick makes none');
-    expect(session.layerContentBoundsAt(layer(), 4), isNull);
+    expect(session.renderCaches.layerContentBoundsAt(layer(), 4), isNull);
 
     session.playbackRig.prerenderScheduler.cancel();
   });

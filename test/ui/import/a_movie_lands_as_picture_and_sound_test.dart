@@ -114,7 +114,7 @@ void main() {
     expect(layer.mediaReference?.assetPath, normalizedMediaPath(moviePath));
     expect(layer.mediaReference?.frameOffset, 4);
     expect(
-      s.brushSurfaceForLayerFrame(layer, layer.frames.single),
+      s.renderCaches.brushSurfaceForLayerFrame(layer, layer.frames.single),
       isNull,
       reason:
           'a reference keeps no pixels — its pictures are decoded where '

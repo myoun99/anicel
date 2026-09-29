@@ -283,7 +283,10 @@ class _InteractiveCanvasBuild {
     // only when something will use it: the scan is memoized on the
     // surface, but asking at all costs a frame lookup.
     final boundsRect = showPositionGizmo
-        ? session.layerContentBoundsAt(activeLayer, session.currentFrameIndex)
+        ? session.renderCaches.layerContentBoundsAt(
+            activeLayer,
+            session.currentFrameIndex,
+          )
         : null;
     final transformBoxBounds = boundsRect == null
         ? null
@@ -432,7 +435,7 @@ class _InteractiveCanvasBuild {
       sampleColorAt: (point) => sampleCompositeColor(
         cut: session.requireActiveCut,
         frameIndex: session.currentFrameIndex,
-        surfaceResolver: session.brushSurfaceForLayerFrame,
+        surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
         point: point,
         paperColor: session.projectSettings.projectBackground.paintedArgb,
         source:
@@ -494,7 +497,7 @@ class _InteractiveCanvasBuild {
       fillDabAt: (point, color, symmetry) => buildFillDab(
         cut: session.requireActiveCut,
         frameIndex: session.currentFrameIndex,
-        surfaceResolver: session.brushSurfaceForLayerFrame,
+        surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
         point: point,
         color: color,
         // TP1: the FILL has its own opacity now — the strip's bar

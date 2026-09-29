@@ -366,6 +366,23 @@ class CutVerbs {
   CutGuides get activeCutGuidesForDisplay =>
       guidesDragPreview.value ?? activeCutGuides;
 
+  /// Which guide the guide tool is editing.
+  ///
+  /// UI state, like the active layer — the CUT stores the guides, not which
+  /// one is under the hand. It lives here rather than in a widget because
+  /// two of them need it (the tool panels and the canvas overlay), and two
+  /// copies of a selection are two answers waiting to disagree. (It moved
+  /// here from the session with the guides it points into — the audit's
+  /// twentieth family, 2026-09-29.)
+  GuideId? get selectedGuideId => _selectedGuideId;
+  GuideId? _selectedGuideId;
+
+  set selectedGuideId(GuideId? id) {
+    if (_selectedGuideId == id) return;
+    _selectedGuideId = id;
+    _changes.notifyChanged();
+  }
+
   /// Shows [guides] without writing anything: a drag in flight.
   void previewActiveCutGuides(CutGuides guides) =>
       guidesDragPreview.value = guides;

@@ -21,12 +21,10 @@ import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
 import '../services/editing/run_id_mint.dart' as frame_ids;
 import '../services/editing/layer_standing_after_change.dart';
-import '../models/bitmap_surface.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
-import '../models/drawing_guide.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -55,8 +53,6 @@ import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
-import '../services/bitmap_surface_geometry.dart'
-    show bitmapSurfaceContentBounds;
 import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import '../core/dev_profile.dart';
@@ -1493,22 +1489,6 @@ class EditorSessionManager extends ChangeNotifier
     playbackRig: playbackRig,
   );
 
-  GuideId? _selectedGuideId;
-
-  /// Which guide the guide tool is editing.
-  ///
-  /// UI state, like the active layer — the CUT stores the guides, not which
-  /// one is under the hand. It lives here rather than in a widget because
-  /// two of them need it (the tool panels and the canvas overlay), and two
-  /// copies of a selection are two answers waiting to disagree.
-  GuideId? get selectedGuideId => _selectedGuideId;
-
-  set selectedGuideId(GuideId? id) {
-    if (_selectedGuideId == id) return;
-    _selectedGuideId = id;
-    notifyListeners();
-  }
-
   // ── the editing canvas: its own object, in its own file ─────────────
   //
   // A collaborator (session/editing_canvas.dart): what the canvas draws at
@@ -1588,67 +1568,6 @@ class EditorSessionManager extends ChangeNotifier
 
   // `activeCutCanvasPoseSample` retired with the V row's transform: there is
   // no track pose for the editing canvas or the scrub preview to apply.
-
-  /// The drawable artwork of one layer frame in the active cut; `null` when
-  /// nothing is drawn. This is the production [LayerFrameSurfaceResolver]
-  /// for camera preview/export compositing and the canvas tools (eyedropper
-  /// sample, fill compose). The store's display cache is consumed when
-  /// valid (the editing coordinator donates the session surface on every
-  /// commit/undo/redo); a cold rebuild replays the frame's paint commands
-  /// ONCE and stores the result back as the new display cache — repeated
-  /// tool taps must not replay the whole stroke history per tap (R11-②③).
-  BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return null; // Gap state: no cut, no artwork.
-    }
-    final frameKey = BrushFrameKey(
-      projectId: repository.requireProject().id,
-      trackId: selectedTrackId,
-      cutId: cut.id,
-      layerId: layer.id,
-      frameId: frame.id,
-    );
-    // R19 P3b: the baked raster is the truth — the resolver is a plain
-    // reference read (valid display cache first, else baked). No replay
-    // exists anymore.
-    return renderCaches.brushFrameStore.currentSurfaceWithoutReplay(
-      frameKey,
-      canvasSize: cut.canvasSize,
-    );
-  }
-
-  /// [layer]'s tight INK bounds at [frameIndex], in the layer's own
-  /// artwork coordinates — what the canvas transform box frames (R5 #10:
-  /// "레이어 그림의 바운드에 걸리는게 알기쉬울거같기도하고? 그렇게하자").
-  /// Null while the row shows nothing there, or the cel is blank.
-  ///
-  /// Memoized on the surface INSTANCE, and that is not an optimisation but
-  /// the condition of calling it at all: the scan reads every tile of the
-  /// cel, and the box is framed from `build`. `BitmapSurface` is immutable
-  /// with structural tile sharing, so identity is an exact key — a changed
-  /// cel is always a new instance. The selection layer's own box learned
-  /// this the hard way (`bitmap_surface_geometry.dart`'s note).
-  ({int left, int top, int rightExclusive, int bottomExclusive})?
-  layerContentBoundsAt(Layer layer, int frameIndex) {
-    final frame = resolveExposedFrameAt(layer, frameIndex);
-    if (frame == null) {
-      return null;
-    }
-    final surface = brushSurfaceForLayerFrame(layer, frame);
-    if (surface == null) {
-      return null;
-    }
-    if (identical(surface, _layerContentBoundsSurface)) {
-      return _layerContentBoundsCached;
-    }
-    _layerContentBoundsSurface = surface;
-    return _layerContentBoundsCached = bitmapSurfaceContentBounds(surface);
-  }
-
-  BitmapSurface? _layerContentBoundsSurface;
-  ({int left, int top, int rightExclusive, int bottomExclusive})?
-  _layerContentBoundsCached;
 
   // `setCutFade` and `updateTrackTransformTrack` retired with the V row's
   // transform. The cut fade is F.I / F.O spans on the TRANSITION row now

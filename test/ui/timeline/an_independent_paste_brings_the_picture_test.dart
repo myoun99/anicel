@@ -78,7 +78,8 @@ void main() {
     if (frame == null) {
       return false;
     }
-    return s.brushSurfaceForLayerFrame(layer, frame)?.tiles.isNotEmpty ?? false;
+    final surface = s.renderCaches.brushSurfaceForLayerFrame(layer, frame);
+    return surface?.tiles.isNotEmpty ?? false;
   }
 
   test('🚨★★★the pasted block carries the drawing, into another row', () {
@@ -172,7 +173,7 @@ void main() {
     final target = f.session.layers.firstWhere((l) => l.id == f.to);
     expect(
       identical(
-        f.session.brushSurfaceForLayerFrame(
+        f.session.renderCaches.brushSurfaceForLayerFrame(
           target,
           exposedAtZero(f.session, f.to)!,
         ),
@@ -230,7 +231,10 @@ void main() {
     final born = layer.frames.firstWhere((frame) => frame.id == bornId);
     expect(born.name, isNull, reason: '「이름만 없는상태로」');
     expect(
-      f.session.brushSurfaceForLayerFrame(layer, born)?.tiles.isNotEmpty,
+      f.session.renderCaches
+          .brushSurfaceForLayerFrame(layer, born)
+          ?.tiles
+          .isNotEmpty,
       isTrue,
       reason: '🚨「그림 복제되고」 — the duplicate is the picture, not an id',
     );

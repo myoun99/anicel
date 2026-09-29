@@ -22,12 +22,19 @@
 import 'dart:async';
 import 'dart:io';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_cache_invalidation.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
+import '../../models/frame.dart';
+import '../../models/layer.dart';
 import '../../models/timesheet_ink_keys.dart';
+import '../../services/bitmap_surface_geometry.dart'
+    show bitmapSurfaceContentBounds;
 import '../../services/brush_frame_store.dart';
+import '../../services/cut_frame_composite_plan.dart'
+    show resolveExposedFrameAt;
 import '../../services/playback/editor_cache_invalidation_hub.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/layer_frame_image_cache.dart';
@@ -206,6 +213,65 @@ class RenderCaches {
   /// prerender scheduler listen here.
   late final EditorCacheInvalidationHub cacheInvalidationHub =
       EditorCacheInvalidationHub();
+
+  /// The drawable artwork of one layer frame in the active cut; `null` when
+  /// nothing is drawn. This is the production [LayerFrameSurfaceResolver]
+  /// for camera preview/export compositing and the canvas tools (eyedropper
+  /// sample, fill compose). The store's display cache is consumed when
+  /// valid (the editing coordinator donates the session surface on every
+  /// commit/undo/redo); a cold rebuild replays the frame's paint commands
+  /// ONCE and stores the result back as the new display cache — repeated
+  /// tool taps must not replay the whole stroke history per tap (R11-②③).
+  ///
+  /// The cel is keyed the one way the project keys it
+  /// ([ProjectAccess.brushFrameKeyForCut]) — this read built its key by
+  /// hand from the SELECTED track, the old name for the active cut's track
+  /// (the audit's twentieth family, 2026-09-29).
+  BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return null; // Gap state: no cut, no artwork.
+    }
+    // R19 P3b: the baked raster is the truth — the resolver is a plain
+    // reference read (valid display cache first, else baked). No replay
+    // exists anymore.
+    return brushFrameStore.currentSurfaceWithoutReplay(
+      _project.brushFrameKeyForCut(cut, layer.id, frame.id),
+      canvasSize: cut.canvasSize,
+    );
+  }
+
+  /// [layer]'s tight INK bounds at [frameIndex], in the layer's own
+  /// artwork coordinates — what the canvas transform box frames (R5 #10:
+  /// "레이어 그림의 바운드에 걸리는게 알기쉬울거같기도하고? 그렇게하자").
+  /// Null while the row shows nothing there, or the cel is blank.
+  ///
+  /// Memoized on the surface INSTANCE, and that is not an optimisation but
+  /// the condition of calling it at all: the scan reads every tile of the
+  /// cel, and the box is framed from `build`. `BitmapSurface` is immutable
+  /// with structural tile sharing, so identity is an exact key — a changed
+  /// cel is always a new instance. The selection layer's own box learned
+  /// this the hard way (`bitmap_surface_geometry.dart`'s note).
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  layerContentBoundsAt(Layer layer, int frameIndex) {
+    final frame = resolveExposedFrameAt(layer, frameIndex);
+    if (frame == null) {
+      return null;
+    }
+    final surface = brushSurfaceForLayerFrame(layer, frame);
+    if (surface == null) {
+      return null;
+    }
+    if (identical(surface, _layerContentBoundsSurface)) {
+      return _layerContentBoundsCached;
+    }
+    _layerContentBoundsSurface = surface;
+    return _layerContentBoundsCached = bitmapSurfaceContentBounds(surface);
+  }
+
+  BitmapSurface? _layerContentBoundsSurface;
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  _layerContentBoundsCached;
 
   // --- Playback render cache stack (all non-notifying; see plan R2-R4) -----
 

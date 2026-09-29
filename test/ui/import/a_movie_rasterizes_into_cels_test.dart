@@ -94,7 +94,7 @@ void main() {
       for (final exposure in after.timeline.values) exposure.length,
     ], [for (var i = 0; i < 12; i += 1) 2]);
     expect(
-      s.brushSurfaceForLayerFrame(after, after.frames.first),
+      s.renderCaches.brushSurfaceForLayerFrame(after, after.frames.first),
       isNotNull,
       reason: 'the pixels are the row\'s own now',
     );

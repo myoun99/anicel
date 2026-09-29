@@ -104,7 +104,7 @@ void main() {
       expect(shownAt(s, 0), a, reason: 'the other showing keeps A');
       final copied = row(s).frames.firstWhere((frame) => frame.id == copy);
       expect(
-        s.brushSurfaceForLayerFrame(row(s), copied)?.tiles,
+        s.renderCaches.brushSurfaceForLayerFrame(row(s), copied)?.tiles,
         isNotEmpty,
         reason: 'the copy shows the same drawing (F-62)',
       );

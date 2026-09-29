@@ -1089,7 +1089,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       child: GuideEditLayer(
         guides: verbs.activeCutGuidesForDisplay,
         viewport: viewport,
-        onGuideSelected: (id) => session.selectedGuideId = id,
+        onGuideSelected: (id) => session.cutVerbs.selectedGuideId = id,
         // A drag PREVIEWS and the release COMMITS, so it is one undo entry.
         // ⛔Through the cut verbs' one preview, not a copy kept here: the
         // settings panel edits the same guides from another subtree
@@ -1124,7 +1124,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               vanishingPointLabel: AppText.strings.guideVanishingPoint,
               color: Theme.of(context).colorScheme.primary,
               face: appFaceOf(DefaultTextStyle.of(context).style),
-              selectedGuideId: session.selectedGuideId,
+              selectedGuideId: session.cutVerbs.selectedGuideId,
             ),
           ),
         ),
