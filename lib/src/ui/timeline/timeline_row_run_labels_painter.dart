@@ -261,7 +261,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
         acrossAlignment: 1.0,
       );
       final set = timelineWordSetOnto(label.text, style, slot.room.width);
-      final layout = timelineBlockWordLayout(set.size, slot);
+      final layout = timelineBlockWordLayout(set.glyph.size, slot);
       // 🚨F-24: the block's OWN ink, the one the cel name inside the block
       // already wears — not the ground law. The number and the name sit on
       // the same paper and now say so in the same colour.

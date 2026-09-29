@@ -448,20 +448,12 @@ class TimelineGridTileStore {
   /// runs past its block is baked narrow, and [wordCondensation] quantises
   /// the factor so the distinct bakes stay few. So is the spacing its letter
   /// gaps gave way to first (F-234-Q1, [wordTightening] — quarter pixels).
-  static String _glyphKey(
-    String text,
-    TextStyle style,
-    ({double dpr, WordFit fit}) at,
-  ) =>
+  static String _glyphKey(String text, TextStyle style, _GlyphBake at) =>
       '$text|${style.fontSize}|${style.fontWeight}|${style.fontStyle}|'
-      '${style.fontFamily}|${style.letterSpacing}|'
+      '${style.fontFamily}|${style.letterSpacing}|${at.tightening}|'
       '${at.dpr}|${at.fit.x}|${at.fit.y}';
 
-  Future<_BakedGlyph?> _glyphA8(
-    String text,
-    TextStyle style,
-    ({double dpr, WordFit fit}) at,
-  ) {
+  Future<_BakedGlyph?> _glyphA8(String text, TextStyle style, _GlyphBake at) {
     final key = _glyphKey(text, style, at);
     return _glyphs.ensure(key, () => _bakeGlyph(text, style, at));
   }
@@ -469,23 +461,20 @@ class TimelineGridTileStore {
   Future<_BakedGlyph?> _bakeGlyph(
     String text,
     TextStyle style,
-    ({double dpr, WordFit fit}) at,
+    _GlyphBake at,
   ) async {
-    final (:dpr, :fit) = at;
+    final (:dpr, :fit, :tightening) = at;
     // COVERAGE bake: white text on transparent, alpha channel out — the
     // GLYPH op multiplies the per-cell ink's alpha by it.
     final textPainter = timelineGlyphPainter(
       text,
       style.copyWith(color: const Color(0xFFFFFFFF)),
+      tightening: tightening,
     );
     if (textPainter.width <= 0 || textPainter.height <= 0) {
       return null;
     }
-    // A word set tighter measures short of its ink by its last letter's
-    // negative spacing ([timelineWordSetOnto]); the bake holds the ink.
-    final inkWidth =
-        textPainter.width + math.max(0.0, -(style.letterSpacing ?? 0));
-    final width = (inkWidth * fit.x * dpr).ceil() + 2;
+    final width = (textPainter.width * fit.x * dpr).ceil() + 2;
     final height = (textPainter.height * fit.y * dpr).ceil() + 2;
     // 🚨★★★TINY TEXT IS RASTERISED BIG AND SHRUNK, not rasterised tiny.
     //
@@ -542,7 +531,7 @@ class TimelineGridTileStore {
     return _BakedGlyph(
       width: width,
       height: height,
-      logicalWidth: inkWidth * fit.x,
+      logicalWidth: textPainter.width * fit.x,
       logicalHeight: textPainter.height * fit.y,
       alpha: bakeScale == 1
           ? big
@@ -785,18 +774,19 @@ class TimelineGridTileStore {
       }
       // Set, laid and narrowed where the classic pass sets it — its letter
       // gaps first ([TimelineTileRasterSource.cellWordSetFor]).
-      final layout = painter.cellWordSetFor(
-        frameIndex,
-        model.glyph,
-        painter.glyphStyleFor(model),
+      final style = painter.glyphStyleFor(model);
+      final layout = painter.cellWordSetFor(frameIndex, model.glyph, style);
+      final bake = (
+        dpr: dpr,
+        fit: layout.fit,
+        tightening: layout.tightening,
       );
-      final style = layout.style;
       glyphCells.add((
         text: model.glyph,
         style: style,
         rgba: timelineGridPackRgba(ink),
-        key: _glyphKey(model.glyph, style, (dpr: dpr, fit: layout.fit)),
-        fit: layout.fit,
+        key: _glyphKey(model.glyph, style, bake),
+        bake: bake,
         origin: horizontal
             ? layout.origin.translate(-originMain, 0)
             : layout.origin.translate(0, -originMain),
@@ -823,11 +813,7 @@ class TimelineGridTileStore {
       if (baked.containsKey(cell.key)) {
         continue;
       }
-      final glyph = await _glyphA8(
-        cell.text,
-        cell.style,
-        (dpr: dpr, fit: cell.fit),
-      );
+      final glyph = await _glyphA8(cell.text, cell.style, cell.bake);
       if (glyph != null) {
         baked[cell.key] = glyph;
       }
@@ -967,9 +953,13 @@ typedef _TileGlyph = ({
   TextStyle style,
   int rgba,
   String key,
-  WordFit fit,
+  _GlyphBake bake,
   Offset origin,
 });
+
+/// How a word's glyph is baked: at the device pixel ratio, narrowed by its
+/// fit, and set as tight as its letter gaps gave way (F-234-Q1).
+typedef _GlyphBake = ({double dpr, WordFit fit, double tightening});
 
 /// What `_raster` hands the drain: the pixels, and the revision and the
 /// substrate they describe.

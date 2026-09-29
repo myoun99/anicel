@@ -850,7 +850,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
         ),
         room.width,
       );
-      paintWordCentredIn(canvas, set.glyph, room, word: set.size);
+      paintWordCentredIn(canvas, set.glyph, room);
     });
   }
 

@@ -123,8 +123,15 @@ void main() {
       for (final cell in zooms) {
         final painter = cellsPainter(cell);
         for (final (start, length) in blocks) {
-          final word = naturalName(painter, start);
-          final layout = painter.cellWordLayoutFor(start, word);
+          final model = painter.cellModelAt(start);
+          final style = painter.glyphStyleFor(model);
+          final layout = painter.cellWordSetFor(start, model.glyph, style);
+          // The word as it is set: its letter gaps gave what they could.
+          final word = timelineGlyphPainter(
+            model.glyph,
+            style,
+            tightening: layout.tightening,
+          ).size;
           final left = layout.origin.dx;
           final right = left + word.width * layout.fit.x;
           final blockLeft = painter.cellRectFor(start).left;
@@ -184,11 +191,11 @@ void main() {
       );
       final set = painter.cellWordSetFor(1, '12', styleAt(1));
       expect(set.fit, wordFitsAsItIs, reason: 'the gap gave the pixel');
-      expect(set.style.letterSpacing, -1);
+      expect(set.tightening, 1);
 
       // A one-cell block is far past what 「A1234」's gaps can give.
       final tight = painter.cellWordSetFor(0, 'A1234', styleAt(0));
-      expect(tight.style.letterSpacing, -maxGapTightening);
+      expect(tight.tightening, maxGapTightening);
       expect(tight.fit.x, lessThan(1), reason: 'and narrows what is left');
 
       // And the classic pass paints that set: the tighter word, unnarrowed.
@@ -255,7 +262,12 @@ void main() {
     test('a squeezed row narrows it ACROSS instead of shrinking the type', () {
       final painter = cellsPainter(24, crossExtent: 8);
       final word = naturalName(painter, 1);
-      final layout = painter.cellWordLayoutFor(1, word);
+      final model = painter.cellModelAt(1);
+      final layout = painter.cellWordSetFor(
+        1,
+        model.glyph,
+        painter.glyphStyleFor(model),
+      );
       expect(painter.glyphStyleFor(painter.cellModelAt(1)).fontSize, 14);
       expect(layout.fit.y, lessThan(1));
       expect(
@@ -654,11 +666,12 @@ void main() {
 
     test('a cell\'s word centres on its cell while it fits', () {
       final painter = cellsPainter(cell);
-      const word = Size(4, 10);
+      final small = base.copyWith(fontSize: 4);
+      final word = timelineGlyphPainter('x', small).size;
       for (final (start, _) in blocks) {
         final laid = painter.cellRectFor(start);
         expect(
-          painter.cellWordLayoutFor(start, word).origin.dx + word.width / 2,
+          painter.cellWordSetFor(start, 'x', small).origin.dx + word.width / 2,
           closeTo(laid.center.dx, 1e-9),
           reason: 'block at $start, on its ${laid.width}px cell',
         );
@@ -674,20 +687,21 @@ void main() {
       // nominal width it ended 0.2px past this block, over its neighbour.
       final blockLeft = edge(1);
       final blockRight = edge(4);
-      final exact = painter.cellWordLayoutFor(
-        1,
-        Size(blockRight - blockLeft, 10),
-      );
+      // One letter an em wide: no gap to give way, so the room is all the
+      // word has.
+      TextStyle wide(double em) => base.copyWith(fontSize: em);
+      final room = blockRight - blockLeft;
+      final exact = painter.cellWordSetFor(1, 'x', wide(room));
       expect(exact.origin.dx, blockLeft);
       expect(exact.fit.x, 1.0, reason: 'the block holds it exactly');
       // ⚠️A narrowing is quantised down to 1/64 (the tile bake is keyed on
       // it), which would hide a fraction of a pixel on a much wider word —
       // so the word is a hair wider than the block: it must narrow.
-      final wider = Size(blockRight - blockLeft + 0.1, 10);
-      final narrowed = painter.cellWordLayoutFor(1, wider);
+      final wider = timelineGlyphPainter('x', wide(room + 0.1)).width;
+      final narrowed = painter.cellWordSetFor(1, 'x', wide(room + 0.1));
       expect(narrowed.fit.x, lessThan(1), reason: 'the block cannot hold it');
       expect(
-        narrowed.origin.dx + wider.width * narrowed.fit.x,
+        narrowed.origin.dx + wider * narrowed.fit.x,
         lessThanOrEqualTo(blockRight),
         reason: 'inside its own block, not past it',
       );

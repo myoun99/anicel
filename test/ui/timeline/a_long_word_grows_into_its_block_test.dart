@@ -289,7 +289,11 @@ void main() {
     }
 
     // Along the word's middle line, across the block (x 0-47): the ink runs.
-    final layout = painter.cellWordLayoutFor(0, natural);
+    final layout = painter.cellWordSetFor(
+      0,
+      model.glyph,
+      painter.glyphStyleFor(model),
+    );
     final y = (layout.origin.dy + natural.height * layout.fit.y / 2).round();
     final paper = sumAt(24, 25);
     final runs = <int>[];

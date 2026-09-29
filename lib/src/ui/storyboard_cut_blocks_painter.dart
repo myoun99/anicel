@@ -957,7 +957,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         _totalStyle,
         span.right - span.left,
       );
-      final layout = timelineBlockWordLayout(set.size, (
+      final layout = timelineBlockWordLayout(set.glyph.size, (
         axis: Axis.horizontal,
         room: Rect.fromLTRB(span.left, band.top, span.right, band.bottom),
         cellStart: lastCell,
@@ -969,9 +969,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         canvas,
         layout.origin,
         comma,
-        set.style,
+        _totalStyle,
         ground: ground,
         fit: layout.fit,
+        tightening: set.tightening,
       );
     }
   }
@@ -1029,18 +1030,19 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     final room = Size(band.width - inset * 2, band.height);
     // Its letter gaps give way first, then it narrows (F-234-Q1).
     final set = timelineWordSetOnto(text, style, room.width);
-    final fit = wordFit(set.size, room);
-    final width = set.size.width * fit.x;
-    final height = set.size.height * fit.y;
+    final fit = wordFit(set.glyph.size, room);
+    final width = set.glyph.width * fit.x;
+    final height = set.glyph.height * fit.y;
     final dx = alignRight ? band.right - inset - width : band.left + inset;
     final origin = Offset(dx, band.top + (band.height - height) / 2);
     paintTimelineGlyphOnGround(
       canvas,
       origin,
       text,
-      set.style,
+      style,
       ground: ground,
       fit: fit,
+      tightening: set.tightening,
     );
   }
 

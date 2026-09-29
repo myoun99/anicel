@@ -104,24 +104,14 @@ void paintFittedText(
 
 /// Paints [painter] narrowed into [room] and centred in it — a word that
 /// owns a box of its own: a flip slot, one glyph's share of a dialogue.
-///
-/// [word] is the length the word's ink runs, when that is not the painter's
-/// own: a word set tighter ([wordTightening]) keeps its last letter's
-/// negative spacing out of the ink.
-void paintWordCentredIn(
-  Canvas canvas,
-  TextPainter painter,
-  Rect room, {
-  Size? word,
-}) {
-  final size = word ?? painter.size;
-  final fit = wordFit(size, room.size);
+void paintWordCentredIn(Canvas canvas, TextPainter painter, Rect room) {
+  final fit = wordFit(painter.size, room.size);
   paintFittedText(
     canvas,
     painter,
     Offset(
-      room.center.dx - size.width * fit.x / 2,
-      room.center.dy - size.height * fit.y / 2,
+      room.center.dx - painter.width * fit.x / 2,
+      room.center.dy - painter.height * fit.y / 2,
     ),
     fit,
   );

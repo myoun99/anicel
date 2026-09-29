@@ -46,8 +46,11 @@ const String _holdDashGlyph = timelineHoldDashGlyph;
 
 /// Glyph TextPainters come from the shared timeline cache (UI-R16):
 /// frame numbers and markers repeat heavily across rows and repaints.
-TextPainter _glyphPainter(String text, TextStyle style) =>
-    timelineGlyphPainter(text, style);
+TextPainter _glyphPainter(
+  String text,
+  TextStyle style, {
+  double tightening = 0,
+}) => timelineGlyphPainter(text, style, tightening: tightening);
 
 /// Where a cell of [layer]'s row can paint differently from the cell before
 /// it, ascending — the edges of its STRETCHES: between two edges every cell
@@ -920,7 +923,7 @@ class TimelineRowCellsPainter extends CustomPainter
       baseTextStyle,
       ink: foregroundInkFor(model),
       // 🚨ONE SIZE AT EVERY ZOOM (유저 2026-09-24, B): the word narrows into
-      // its block instead ([cellWordLayoutFor]). ↩️R26 #38/#4 shrank names
+      // its block instead ([cellWordSetFor]). ↩️R26 #38/#4 shrank names
       // and marks with the cell rather than blanking them below ~14px, and
       // #15 shrank them with a squeezed row — both are the narrowing now, on
       // the axis that ran short.
@@ -932,24 +935,17 @@ class TimelineRowCellsPainter extends CustomPainter
     );
   }
 
-  /// Where the word of the cell at [frameIndex] is laid, row-local, and how
-  /// far it is narrowed — the block-word law ([timelineBlockWordLayout]):
-  /// centred on its cell while it fits, growing on into its block past that
-  /// (F-96), and narrowed only where it would leave the block or its paper
-  /// (B, 유저 2026-09-24: 「이름은 블록안에서만」). PUBLIC: the tile emitter
-  /// bakes its word exactly here.
-  @override
-  ({Offset origin, WordFit fit}) cellWordLayoutFor(int frameIndex, Size word) =>
-      timelineBlockWordLayout(word, _wordSlotFor(frameIndex, word));
-
   /// The word [text] of the cell at [frameIndex], set in [style] where it is
-  /// laid: its letter gaps give way first where its block runs short
-  /// ([timelineWordSetOnto], F-234-Q1), and it narrows only past that
-  /// ([cellWordLayoutFor]). The room is the one its NATURAL length asks for
-  /// — the block's rest, where tightening happens at all. PUBLIC: the tile
-  /// emitter bakes its word exactly here, in this style.
+  /// laid, row-local — the block-word law ([timelineBlockWordLayout]):
+  /// centred on its cell while it fits, growing on into its block past that
+  /// (F-96). Where the block runs short its letter gaps give way first
+  /// ([timelineWordSetOnto], F-234-Q1), and only past that is it narrowed,
+  /// where it would leave the block or its paper (B, 유저 2026-09-24:
+  /// 「이름은 블록안에서만」). The room is the one its NATURAL length asks
+  /// for — the block's rest, where tightening happens at all. PUBLIC: the
+  /// tile emitter bakes its word exactly here, this tight.
   @override
-  ({TextStyle style, Offset origin, WordFit fit}) cellWordSetFor(
+  ({double tightening, Offset origin, WordFit fit}) cellWordSetFor(
     int frameIndex,
     String text,
     TextStyle style,
@@ -959,8 +955,12 @@ class TimelineRowCellsPainter extends CustomPainter
       _glyphPainter(text, style).size,
     );
     final set = timelineWordSetOnto(text, style, slot.room.width);
-    final layout = timelineBlockWordLayout(set.size, slot);
-    return (style: set.style, origin: layout.origin, fit: layout.fit);
+    final layout = timelineBlockWordLayout(set.glyph.size, slot);
+    return (
+      tightening: set.tightening,
+      origin: layout.origin,
+      fit: layout.fit,
+    );
   }
 
   TimelineBlockWordSlot _wordSlotFor(int frameIndex, Size word) {
@@ -1088,16 +1088,13 @@ class TimelineRowCellsPainter extends CustomPainter
     // F-96: centred while the word fits its cell, growing on into the
     // block when it does not, its letter gaps giving way and only then
     // narrowed past the block ([cellWordSetFor]).
-    final layout = cellWordSetFor(
-      frameIndex,
-      model.glyph,
-      glyphStyleFor(model),
-    );
+    final style = glyphStyleFor(model);
+    final layout = cellWordSetFor(frameIndex, model.glyph, style);
     final raw = layout.origin;
     final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
     paintFittedText(
       canvas,
-      _glyphPainter(model.glyph, layout.style),
+      _glyphPainter(model.glyph, style, tightening: layout.tightening),
       Offset(
         (raw.dx * dpr).roundToDouble() / dpr,
         (raw.dy * dpr).roundToDouble() / dpr,

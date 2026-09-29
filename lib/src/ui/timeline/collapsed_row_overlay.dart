@@ -879,7 +879,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
       ),
       room.width,
     );
-    final layout = timelineBlockWordLayout(set.size, (
+    final layout = timelineBlockWordLayout(set.glyph.size, (
       axis: Axis.horizontal,
       room: room,
       cellStart: room.left,
