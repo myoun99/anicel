@@ -877,6 +877,7 @@ void main() {
         reason: '⛔전제: 「12」 is longer than its panel by less than its gap',
       );
       expect(tight.xScale, 1, reason: 'its gap gave the pixel');
+      expect(tight.width, lessThanOrEqualTo(22), reason: 'set that tight');
     });
   });
 
