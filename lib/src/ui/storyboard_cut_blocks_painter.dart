@@ -632,6 +632,9 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // and a 640px picture, and read neither the screen's density nor the
     // camera's shape.
     final shownHeight = strip.height * devicePixelRatio;
+    final conteStart = storyboardConteStart(
+      storyboardLayerForCut(entry.cut)?.timeline,
+    );
     return [
       for (final cell in cells)
         thumbnails.resolve(
@@ -639,6 +642,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
           storyboardCellPictureFrame(
             cell,
             pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
+            conteStart: conteStart,
           ),
           shownHeight: shownHeight,
         ),

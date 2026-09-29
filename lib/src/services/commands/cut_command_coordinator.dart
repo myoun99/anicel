@@ -30,6 +30,7 @@ import '../../models/timesheet_sheet_kind.dart';
 import '../../models/exposure_memo.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
 import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
@@ -834,7 +835,7 @@ class CutCommandCoordinator {
     final cut = _requireCut(cutId);
     final after = rederiveRunBehaviors(
       spans(before),
-      cutFrameCount: cut.duration,
+      drawnFrameCount: cutDrawnFrameCount(repository.requireProject(), cutId)!,
     );
     final notes = note != null && cut.metadata.note != note;
     historyManager.executeAsOneStep(description, [

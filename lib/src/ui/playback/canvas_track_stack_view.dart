@@ -65,6 +65,7 @@ class CanvasTrackStackView extends StatefulWidget {
     this.background = ProjectBackground.defaultBackground,
     this.backdropArgb = defaultProjectBackdropArgb,
     this.backdropNone = false,
+    this.paintsFloor = true,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.pasteboardNone = false,
     this.transformTrackOf,
@@ -139,6 +140,13 @@ class CanvasTrackStackView extends StatefulWidget {
   /// each is the checkerboard where it would be.
   final bool backdropNone;
   final bool pasteboardNone;
+
+  /// Whether the stack stands on its own backdrop floor. False lays it OVER
+  /// whatever is under it: the editing canvas's O.L partner (F-227) is
+  /// painted over the LIVE cut, which is that partner's floor — the share
+  /// the partner leaves is the live cut showing through, exactly the mix
+  /// [sourceOverWeights] describes.
+  final bool paintsFloor;
 
   /// The owning TRACK's transform lanes per cut (R4: pose + fade on the
   /// global axis). Null = no effects (tests, plain fixtures).
@@ -322,7 +330,9 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     // shows the stage's floor, exactly what an opaque export bakes there.
     // An ABSENT backdrop (F-114) is the checkerboard, as on the editing
     // canvas.
-    final floor = widget.backdropNone
+    final Widget? floor = !widget.paintsFloor
+        ? null
+        : widget.backdropNone
         ? const CustomPaint(
             key: ValueKey<String>('canvas-track-stack-floor'),
             painter: AlphaCheckerboardPainter(),
@@ -340,7 +350,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     }
 
     final quality = widget.qualityOf();
-    final layers = <Widget>[floor];
+    final layers = <Widget>[?floor];
     // The unit alpha of each contribution: its transition share times the
     // track's own opacity and fade. The weights that follow turn those into
     // source-over alphas — see [sourceOverWeights] for why they are not the

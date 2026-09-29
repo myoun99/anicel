@@ -409,7 +409,10 @@ class ImportLanding {
       UpdateLayerTimelineCommand(
         repository: _project.repository,
         before: row,
-        after: rederiveRunBehaviors(landed, cutFrameCount: cutFrameCount),
+        after: rederiveRunBehaviors(
+          landed,
+          drawnFrameCount: _project.activeCutDrawnFrameCount,
+        ),
       ),
       if (assets.isNotEmpty)
         ImportMediaCommand(

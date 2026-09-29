@@ -6,10 +6,14 @@ import 'timeline_repeat.dart';
 
 /// [cut] with every IMAGE layer's stored timeline normalized to the D22
 /// form: ONE real 1-frame block at index 0 carrying a FIXED end-side HOLD
-/// ([TimelineRunEdgeMark]) whose ghosts fill to the cut boundary — 「블록은
+/// ([TimelineRunEdgeMark]) whose ghosts fill to the cut's DRAWN end — 「블록은
 /// 1칸 + 성질 hold 고정」 (유저 2026-08-17). One picture simply exists
 /// throughout, and the row SAYS so: a single cell, then the dim hold
 /// dashes every other row uses for the same statement.
+///
+/// [drawnFrameCount] is the cut's conte 尺 plus its のりしろ (F-227: the
+/// margin end line is the real end line), so the picture is there for every
+/// frame the cut is drawn for — through an O.L, not just to the red line.
 ///
 /// The storyboard row absorbs cut-length changes at read time (its
 /// coverage is derived); the image row has no derived reader — the
@@ -17,11 +21,9 @@ import 'timeline_repeat.dart';
 /// exposures — so the store itself must follow the cut. Running as a
 /// repository-write normalization (the always-mirror precedent) covers
 /// every duration path at once: trims, strip drags, undo/redo replay,
-/// file load. Because the ghost pass (`_withDerivedRunEdges`) only runs
-/// on specific verbs, THIS normalization derives its own ghosts inline
-/// ([rederiveRunBehaviors] — identity-preserving when nothing changed),
-/// so any write leaves the image row fully shaped: real cell + hold
-/// ghosts, no matter which verb wrote.
+/// file load. It derives its own ghosts inline ([rederiveRunBehaviors] —
+/// identity-preserving when nothing changed), so any write leaves the image
+/// row fully shaped: real cell + hold ghosts, no matter which verb wrote.
 ///
 /// Coverage is unchanged: `exposedFrameIdAt` resolves ghost cells to
 /// their anchor, so playback, thumbnails and the composite still show
@@ -29,11 +31,11 @@ import 'timeline_repeat.dart';
 /// first write. A layer with no cel yet stays empty (nothing to hold).
 /// Identity-preserving on no-ops so unchanged cuts pass through
 /// untouched.
-Cut cutWithCoveringImageRows(Cut cut) {
-  final duration = cut.duration < 1 ? 1 : cut.duration;
+Cut cutWithCoveringImageRows(Cut cut, {required int drawnFrameCount}) {
+  final drawn = drawnFrameCount < 1 ? 1 : drawnFrameCount;
   final layers = mappedOrSame(
     cut.layers,
-    (layer) => _coveringImageRow(layer, duration),
+    (layer) => _coveringImageRow(layer, drawn),
   );
   return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
 }
@@ -41,7 +43,7 @@ Cut cutWithCoveringImageRows(Cut cut) {
 /// [layer] in the D22 form when it is an image row with a cel — else
 /// [layer] itself. Identity-preserving through [rederiveRunBehaviors],
 /// which answers the same instance when the row already has its shape.
-Layer _coveringImageRow(Layer layer, int duration) {
+Layer _coveringImageRow(Layer layer, int drawnFrameCount) {
   if (!layer.kind.holdsSingleCel || layer.frames.isEmpty) {
     return layer;
   }
@@ -94,5 +96,5 @@ Layer _coveringImageRow(Layer layer, int duration) {
         : TimelineExposure.drawing(celId, length: 1, endEdge: holdMark);
     next = layer.copyWith(timeline: {0: entry});
   }
-  return rederiveRunBehaviors(next, cutFrameCount: duration);
+  return rederiveRunBehaviors(next, drawnFrameCount: drawnFrameCount);
 }

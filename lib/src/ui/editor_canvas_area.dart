@@ -16,6 +16,8 @@ import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/cut_piece_slot.dart';
+import '../services/playback/playback_frame_mapping.dart'
+    show TrackStackContribution;
 import '../services/last_stroke_slot.dart';
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_editor_selection.dart';
@@ -573,9 +575,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 
   /// The track stack (multitrack display path): one camera-frame
   /// projection per covered track, following [globalFrame] per move.
-  /// Three mounts, one construction: the parked contentOverride, the
-  /// scrub preview's gap branch (both on the gap parking) and ALL-CUTS
-  /// playback (on the clock's global frame, R3a).
+  /// Four mounts, one construction: the parked contentOverride, the
+  /// scrub preview's gap branch (both on the gap parking), ALL-CUTS
+  /// playback (on the clock's global frame, R3a) and the editing canvas's
+  /// O.L partner ([_cutFadeWash], floorless, [positionsOf] the other cut).
   ///
   /// 🚨[cameraView] is the CROP, and it belongs to PLAYBACK alone (user
   /// 2026-08-11). The parked canvas has always shown the whole canvas with the
@@ -589,18 +592,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasViewport viewport, {
     ValueListenable<int?>? globalFrame,
     bool cameraView = false,
+    List<TrackStackContribution> Function(int globalFrame)? positionsOf,
+    bool paintsFloor = true,
+    Key key = const ValueKey<String>('canvas-track-stack-view'),
   }) {
     final project = session.repository.requireProject();
     // 🚨canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): the
     // view rebuilds itself as a scrub crosses into another cut, and bare under
     // the panel content's LayoutBuilder every such rebuild relaid out and
     // repainted the whole panel content. Its own TickLayer takes that scope —
-    // all three mounts hand it the panel's size (a Positioned.fill, a
+    // every mount hands it the panel's size (a Positioned.fill, a
     // StackFit.expand).
     return TickLayer(
       child: CanvasTrackStackView(
+        key: key,
         globalFrame: globalFrame ?? session.editingSession.gapParkingListenable,
-        positionsOf: session.rowSpans.trackStackContributionsAt,
+        positionsOf: positionsOf ?? session.rowSpans.trackStackContributionsAt,
+        paintsFloor: paintsFloor,
         compositeCache: session.renderCaches.cutFrameCompositeCache,
         qualityOf: () => session.playbackRig.playbackQuality,
         cameraFrameSize: session.camera.cameraFrameSize,
@@ -1103,6 +1111,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     List<TransitionVeil> veils,
     BuildContext context,
   ) {
+    final standing = session.editingGlobalFrame;
+    final partners = _olPartnersAt(session, standing);
     return Positioned.fill(
       // The cut fade on the EDITING canvas (R9-C →
       // R3b): the fade is transparency, and here the
@@ -1114,21 +1124,94 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       //
       // F-192: a one-sided transition's own screen is part of the unit,
       // so it goes down FIRST and the wash thins it with the rest.
+      //
+      // 🗣️F-227 (유저 2026-09-29): 「컷ol은 두 컷이 동시에 존재하는 상태면서
+      // 오버랩하는건데 … 컷1이 fo하다가 갑자기 컷2가 fi하는 상태」. Inside an
+      // O.L the share the fade takes is not backdrop: it is the OTHER cut,
+      // and the canvas used to dip the cut to the backdrop there — half an
+      // O.L on each side of the boundary. The partner is laid over the live
+      // cut at its own share, the backdrop keeping whatever is left (none,
+      // when the two halves are the whole frame): the mix playback paints.
       child: IgnorePointer(
-        child: CustomPaint(
-          painter: _CutFadeWashPainter(
-            viewport: viewport,
-            canvasSize: canvasSize,
-            veils: veils,
-            color: Color(
-              session.repository.requireProject().backdropArgb,
-            ).withValues(alpha: (1 - cutFadeOpacity).clamp(0.0, 1.0)),
-            devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-          ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomPaint(
+              painter: _CutFadeWashPainter(
+                viewport: viewport,
+                canvasSize: canvasSize,
+                veils: veils,
+                color: Color(
+                  session.repository.requireProject().backdropArgb,
+                ).withValues(
+                  alpha: _backdropShare(
+                    cutFadeOpacity,
+                    partnerShare: _shareOf(session, partners),
+                  ),
+                ),
+                devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+              ),
+            ),
+            if (partners.isNotEmpty)
+              _buildTrackStackView(
+                session,
+                viewport,
+                key: const ValueKey<String>('canvas-ol-partner'),
+                globalFrame: AlwaysStoppedAnimation<int?>(standing),
+                positionsOf: (_) => partners,
+                paintsFloor: false,
+              ),
+          ],
         ),
       ),
     );
   }
+
+  /// The other cuts an O.L composites at [globalFrame] on the ACTIVE
+  /// track — the partner the editing canvas lays over the live cut. Other
+  /// tracks stay off the editing canvas, as they always have.
+  List<TrackStackContribution> _olPartnersAt(
+    EditorSessionManager session,
+    int globalFrame,
+  ) {
+    final activeCutId = session.activeCutId;
+    final trackId = session.activeTrack.id;
+    return [
+      for (final contribution in session.rowSpans.trackStackContributionsAt(
+        globalFrame,
+      ))
+        if (contribution.cutId != activeCutId &&
+            session.trackOwningCut(contribution.cutId)?.id == trackId)
+          contribution,
+    ];
+  }
+
+  /// How much of the frame [partners] claim — each one's ramp times its
+  /// track's own opacity, the unit alpha the track stack weighs it by.
+  double _shareOf(
+    EditorSessionManager session,
+    List<TrackStackContribution> partners,
+  ) {
+    var share = 0.0;
+    for (final partner in partners) {
+      share +=
+          partner.opacity *
+          session.opacityVerbs.trackStaticOpacityForCut(partner.cutId);
+    }
+    return share;
+  }
+
+  /// The backdrop wash over the live cut once a partner claiming
+  /// [partnerShare] is laid above it: the live cut keeps [cutFadeOpacity],
+  /// the partner its share, the backdrop the rest — `1 − fade` with no
+  /// partner (the wash as it always was), nothing when an O.L's two halves
+  /// are the whole frame.
+  static double _backdropShare(
+    double cutFadeOpacity, {
+    required double partnerShare,
+  }) => partnerShare >= 1
+      ? 0
+      : (1 - cutFadeOpacity / (1 - partnerShare)).clamp(0.0, 1.0);
 
   Positioned _seNameTagOverlay(
     CanvasViewport viewport,

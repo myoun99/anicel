@@ -17,6 +17,7 @@ import '../models/timeline_coverage.dart';
 import '../services/editing/cut_duplicate_helpers.dart' show duplicateFrameContent;
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
+import '../models/track_transitions.dart';
 import '../models/timeline_splice.dart';
 import '../services/command.dart';
 import '../services/commands/update_cut_durations_command.dart';
@@ -686,7 +687,7 @@ class TimelineController {
     return UpdateLayerTimelineCommand(
       repository: _repository,
       before: before,
-      after: rederiveRunBehaviors(after, cutFrameCount: _cutFrameCount()),
+      after: rederiveRunBehaviors(after, drawnFrameCount: _drawnFrameCount()),
     );
   }
 
@@ -704,7 +705,7 @@ class TimelineController {
   ) {
     final next = rederiveRunBehaviors(
       layer.copyWith(timeline: timeline),
-      cutFrameCount: _cutFrameCount(),
+      drawnFrameCount: _drawnFrameCount(),
     );
     return next == layer ? null : next;
   }
@@ -779,8 +780,16 @@ class TimelineController {
   }
 
   /// The run-behavior fill boundary: hold/repeat edges fill ghosts to the
-  /// cut end. Zero (no cut) renders no end-side ghosts.
-  int _cutFrameCount() => _findCutOrNull()?.duration ?? 0;
+  /// cut's DRAWN end — the conte 尺 plus its のりしろ (F-227). Zero (no cut)
+  /// renders no end-side ghosts.
+  int _drawnFrameCount() {
+    final project = _repository.currentProject;
+    final cutId = _cutId;
+    if (project == null || cutId == null) {
+      return 0;
+    }
+    return cutDrawnFrameCount(project, cutId) ?? 0;
+  }
 
   Cut? _findCutOrNull() {
     final project = _repository.currentProject;

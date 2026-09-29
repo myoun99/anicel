@@ -9,6 +9,7 @@ import '../../models/storyboard_timeline_layout.dart'
     show buildStoryboardTimelineLayout;
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/commands/cut_command_input_planner.dart'
     show plannedAddLayerCommand;
 import '../../services/editing/default_layer_helpers.dart'
@@ -224,7 +225,13 @@ class AutoFrameForStroke {
       null => UpdateLayerTimelineCommand(
         repository: _project.repository,
         before: storyboardLayerForCut(cut)!,
-        after: rederiveRunBehaviors(layer, cutFrameCount: cut.duration),
+        after: rederiveRunBehaviors(
+          layer,
+          drawnFrameCount: cutDrawnFrameCount(
+            _project.repository.requireProject(),
+            cut.id,
+          )!,
+        ),
       ),
       final index => plannedAddLayerCommand(
         repository: _project.repository,

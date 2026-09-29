@@ -62,9 +62,37 @@ class _TimesheetBandsPass {
           centeredAtX: true,
           maxWidth: value.width,
         );
+        if (box.field == TimesheetHeaderField.time && _owesNoriShiro) {
+          _paintDrawnLength(canvas, value);
+        }
       }
     }
   }
+
+  /// The DRAWN length, small, under the conte 尺 in the duration box.
+  ///
+  /// 🗣️F-227 (유저 2026-09-29): 「ol여백이 있는 컷은 초수에도 기입함. 2+0
+  /// 이라는 기존 초수가 있고, 그 밑에 작게, (2+12)라는 여백포함한 초수를
+  /// 기입해주는것이 관례. 즉 초수가 두개가 생기는거지」. The big number stays
+  /// the conte 尺 — the one that sums to the running time (撮ま!).
+  void _paintDrawnLength(Canvas canvas, Rect value) {
+    _painter._text(
+      canvas,
+      '(${_spacedLength(_painter.liveDrawnFrameCount)})',
+      Offset(
+        value.center.dx,
+        value.top + TimesheetDocumentPainter.headerValueSize + 4,
+      ),
+      fontSize: TimesheetDocumentPainter.headerDrawnLengthSize,
+      centeredAtX: true,
+      maxWidth: value.width,
+    );
+  }
+
+  /// A length in the sheet's 秒+コマ notation, spaced ('2 + 6') like the
+  /// reference forms; the model label stays compact for row labels.
+  String _spacedLength(int frames) =>
+      _painter.document.frameLabel(frames).replaceAll('+', ' + ');
 
   /// The printed box label in the sheet's notation language (UI-R10 #7).
   static String headerFieldLabel(
@@ -96,11 +124,9 @@ class _TimesheetBandsPass {
       // conte will make (유저 09-25), not to the work.
       TimesheetHeaderField.scene => '',
       TimesheetHeaderField.cut => document.cutName,
-      // The sheet's 秒+コマ notation prints spaced ('2 + 6') like the
-      // reference forms; the model label stays compact for row labels.
-      TimesheetHeaderField.time => document
-          .frameLabel(_painter.livePlaybackFrameCount)
-          .replaceAll('+', ' + '),
+      TimesheetHeaderField.time => _spacedLength(
+        _painter.livePlaybackFrameCount,
+      ),
       TimesheetHeaderField.name => document.artist,
       TimesheetHeaderField.sheet => _painter.layout.pageLabel(
         pageIndex,
@@ -138,11 +164,18 @@ class _TimesheetBandsPass {
     // note text.
   }
 
-  /// The cut-end strikethrough at the bottom edge of the last playback
-  /// frame row — DATA rendering (S2-0), the same visual language as the
+  /// The cut-end strikethrough at the bottom edge of the last row the
+  /// animator fills — DATA rendering (S2-0), the same visual language as the
   /// timeline's cut-end boundary, never ink.
+  ///
+  /// 🗣️F-227 (유저 2026-09-29): 「컷ol만들면 … 진짜 엔드라인은 여백라인이
+  /// 엔드라인이됨. 즉 타임시트패널에서 엔드라인을 여백엔드라인에 맞춰서
+  /// 위치시키고, 여백엔드라인이라 여기 그려졌다는 암묵적인 표시용으로 라인을
+  /// 빨간색이 아닌 여백 엔드라인색으로 그림」. A cut that owes のりしろ ends
+  /// its sheet at the DRAWN end, in the のりしろ colour — ONE line, moved;
+  /// the red one at the conte end is not kept beside it.
   void paintCutEndLine(Canvas canvas) {
-    final frameCount = _painter.livePlaybackFrameCount;
+    final frameCount = _painter.liveDrawnFrameCount;
     if (frameCount < 1 || frameCount > _painter.document.rowCount) {
       return;
     }
@@ -157,10 +190,18 @@ class _TimesheetBandsPass {
       Offset(left, line.y),
       Offset(left + _painter.layout.halfWidth, line.y),
       Paint()
-        ..color = AppColors.danger
+        // The のりしろ colour IS the accent ([AppColors.noriShiro]); the
+        // painter reads the one it was built with, for the reason its
+        // `accent` field gives.
+        ..color = _owesNoriShiro ? _painter.accent : AppColors.danger
         ..strokeWidth = 2.4,
     );
   }
+
+  /// Whether this paint's cut is drawn past its conte end — the one fact
+  /// the end line's place and colour and the header's second length follow.
+  bool get _owesNoriShiro =>
+      _painter.liveDrawnFrameCount > _painter.livePlaybackFrameCount;
 
   void paintGroupTitles(Canvas canvas, double halfLeft, double groupTop) {
     // Contiguous kind runs become group headers (ACTION / SE / CELL / CAM).

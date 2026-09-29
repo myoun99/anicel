@@ -65,7 +65,7 @@ Layer _seRow(
     timeline: timeline,
     audioClips: clips,
   ),
-  cutFrameCount: 12,
+  drawnFrameCount: 12,
 );
 
 Project _project() => Project(

@@ -160,7 +160,7 @@ void main() {
           ),
         },
       ),
-      cutFrameCount: 8,
+      drawnFrameCount: 8,
     );
     final painter = TimelineRowCellsPainter(
       layer: repeated,

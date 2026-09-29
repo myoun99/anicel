@@ -898,6 +898,10 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   /// [headerValueRect] (R7-⑥ reference layout).
   static const double headerValueSize = 14;
 
+  /// The duration box's second, parenthesised length — the drawn one
+  /// ([_TimesheetBandsPass._paintDrawnLength]) — set small under the value.
+  static const double headerDrawnLengthSize = 9;
+
   /// Where a header box's value is set: its top this far down the box, no
   /// wider than the box less its margins.
   static Rect headerValueRect(Rect box) => Rect.fromLTRB(

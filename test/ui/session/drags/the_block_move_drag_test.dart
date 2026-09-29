@@ -61,6 +61,7 @@ void main() {
         noticeIneligible: notices.add,
         bankOf: (_) => CelBankLanes.unshared,
         cutFrameCount: () => 12,
+        drawnFrameCount: () => 12,
         preview: preview,
         land: (plan, source) => landings.add((plan: plan, source: source)),
       ),

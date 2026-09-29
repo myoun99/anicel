@@ -100,13 +100,18 @@ ConteCellSource _cellSource({
   required Layer? storyboard,
   required CanvasSize cameraFrameSize,
 }) {
-  final exposure = storyboard?.timeline[cell.startIndex];
+  // The cell counts the conte's frames; the row, the camera and the picture
+  // count the cut's, which begin that much earlier in a cut an O.L arrives
+  // into (F-227).
+  final conteStart = storyboardConteStart(storyboard?.timeline);
+  final exposure = storyboard?.timeline[conteStart + cell.startIndex];
   return ConteCellSource(
     startFrame: cell.startIndex,
     endFrameExclusive: cell.endIndexExclusive,
     pictureFrame: storyboardCellPictureFrame(
       cell,
       pinnedFrameIndex: cut.metadata.thumbnailFrameIndex,
+      conteStart: conteStart,
     ),
     frameId: cell.frameId,
     inkId: switch (exposure?.memo?.inkId) {
@@ -114,7 +119,7 @@ ConteCellSource _cellSource({
       _ => null,
     },
     action: exposure?.memo?.actionMemo ?? '',
-    camera: _cameraWorkIn(cut, cell, cameraFrameSize),
+    camera: _cameraWorkIn(cut, cell, cameraFrameSize, conteStart: conteStart),
   );
 }
 
@@ -136,16 +141,17 @@ ConteCellSource _cellSource({
 ConteCameraWork? _cameraWorkIn(
   Cut cut,
   StoryboardCoverageCell cell,
-  CanvasSize cameraFrameSize,
-) {
+  CanvasSize cameraFrameSize, {
+  required int conteStart,
+}) {
   if (cut.layers.cameraWorkBypassed) {
     return null;
   }
   final frames = cameraKeyFrames(
     cut.camera.keyframes,
     cameraFrameSize,
-    from: cell.startIndex,
-    toExclusive: cell.endIndexExclusive,
+    from: conteStart + cell.startIndex,
+    toExclusive: conteStart + cell.endIndexExclusive,
   );
   final corners = [for (final frame in frames) frame.corners];
   if (corners.every((frame) => listEquals(frame, corners.first))) {

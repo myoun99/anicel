@@ -165,9 +165,17 @@ List<TimelineGluedRun> _gluedRuns(
 /// 2026-09-03 restructure of one 300-line function; every rule and its
 /// comment moved verbatim.)
 class _RunBehaviorPass {
-  _RunBehaviorPass(this.base, {required this.cutFrameCount});
+  _RunBehaviorPass(this.base, {required this.drawnFrameCount});
 
-  final int cutFrameCount;
+  /// Where an end side fills TO: the cut's DRAWN end — its conte 尺 plus
+  /// the のりしろ transitions ask of it — not the red line.
+  ///
+  /// 🗣️F-227 (유저 2026-09-29): 「타임라인패널에서도 홀드같은게 빨간엔드라인에서
+  /// 끝나는게아니라 여백엔드라인까지 가도록, 거기가 진짜 엔드라인이라는 느낌」.
+  /// A hold is "this picture until the end", and with an O.L the end is where
+  /// the cut's material ends: stopping at the conte end left the leaving cut
+  /// nothing to show through the second half of its own O.L.
+  final int drawnFrameCount;
 
   /// Pass 1's output: the authored entries alone — their marks normalized
   /// by pass 2 before anything is derived from them.
@@ -269,12 +277,12 @@ class _RunBehaviorPass {
   }
 
   /// End side: hold = one ghost of the run's last frameId filling to the
-  /// cut end; repeat = the pattern span cycling to the cut end.
+  /// drawn end; repeat = the pattern span cycling to the drawn end.
   void _fillAfter(_RunEdge edge) {
     final ghostStart = edge.run.endIndexExclusive;
-    // Fill limit: the cut end, or the next occupied index (an authored
+    // Fill limit: the drawn end, or the next occupied index (an authored
     // entry or an earlier behavior's ghosts) — whichever comes first.
-    var limit = cutFrameCount;
+    var limit = drawnFrameCount;
     final nextKey = result.firstKeyAfter(ghostStart - 1);
     if (nextKey != null && nextKey < limit) {
       limit = nextKey;
@@ -480,14 +488,15 @@ class _RunBehaviorPass {
 ///    pick are stripped.
 /// 3. Application, holds before repeats, in run order, start side before
 ///    end side. End side: hold = one ghost of the run's last frameId filling
-///    to the cut end; repeat = the pattern span cycling to the cut end.
+///    to the DRAWN end ([_RunBehaviorPass.drawnFrameCount]); repeat = the
+///    pattern span cycling to it.
 ///    Start side is the mirror, ghosts FLUSH-aligned to the run start (a
 ///    partial lead-in shows the pattern's tail). Ghosts clamp against
 ///    authored entries and earlier sides' ghosts — derived frames never
 ///    displace real ones.
 /// 4. A fully occluded side keeps its marks (the property comes back when
 ///    room opens up again).
-Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
+Layer rederiveRunBehaviors(Layer layer, {required int drawnFrameCount}) {
   final carriesAnything = layer.timeline.values.any(
     (entry) => entry.ghost || !entry.startEdge.isNone || !entry.endEdge.isNone,
   );
@@ -497,7 +506,7 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
   // Pass 1: strip every ghost entry (derived state, never authored).
   final pass = _RunBehaviorPass(
     ghostFreeTimeline(layer),
-    cutFrameCount: cutFrameCount,
+    drawnFrameCount: drawnFrameCount,
   );
   pass.resolve();
   for (final edge in pass.applicationOrder) {

@@ -8,6 +8,7 @@ import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'playback_transport.dart';
@@ -329,9 +330,13 @@ class CanvasPlaybackController extends ChangeNotifier
     switch (scope) {
       case PlaybackScope.activeCut:
         final activeCutId = resolveActiveCutId();
-        for (final entry in buildStoryboardTimelineLayout(resolveProject())) {
+        final project = resolveProject();
+        for (final entry in buildStoryboardTimelineLayout(project)) {
           if (entry.cutId == activeCutId) {
-            final duration = math.max(1, entry.cut.duration);
+            // 🗣️F-227 (유저 2026-09-29): 「재생도 타임라인패널의 재생이면 여백까지
+            // 재생」 — the cut plays every frame it is DRAWN for, through the
+            // のりしろ an O.L asks of it, not to the red line.
+            final duration = cutDrawnFrameCount(project, entry.cutId)!;
             return [
               StoryboardTimelineLayoutEntry(
                 trackId: entry.trackId,

@@ -68,6 +68,7 @@ class DrawingBlockMoveDragVerbs {
       noticeIneligible: _folders.noticeSyncedAttachRefusal,
       bankOf: _controllers.timelineController.bankLanesOf,
       cutFrameCount: () => _project.activeCutFrameCount,
+      drawnFrameCount: () => _project.activeCutDrawnFrameCount,
       preview: _dragPreview,
       land: _landDrawingBlockMove,
     );
@@ -154,7 +155,7 @@ class DrawingBlockMoveDragVerbs {
         before: source,
         after: rederiveRunBehaviors(
           plan.sourceAfter,
-          cutFrameCount: _project.activeCutFrameCount,
+          drawnFrameCount: _project.activeCutDrawnFrameCount,
         ),
       ),
       if (plan.targetBefore != null)
@@ -163,7 +164,7 @@ class DrawingBlockMoveDragVerbs {
           before: plan.targetBefore!,
           after: rederiveRunBehaviors(
             plan.targetAfter!,
-            cutFrameCount: _project.activeCutFrameCount,
+            drawnFrameCount: _project.activeCutDrawnFrameCount,
           ),
         ),
     ];

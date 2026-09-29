@@ -833,16 +833,16 @@ class FrameRangeMoveDrag {
         return true;
       }
       _directionRowChange = (plan: plan, source: sourceLayer);
-      final frames = _project.activeCutFrameCount;
+      final drawn = _project.activeCutDrawnFrameCount;
       _dragPreview.value = BlockMoveDragPreview(
         previewLayers: {
           selection.layerId: rederiveRunBehaviors(
             plan.sourceAfter,
-            cutFrameCount: frames,
+            drawnFrameCount: drawn,
           ),
           targetLayerId: rederiveRunBehaviors(
             plan.targetAfter!,
-            cutFrameCount: frames,
+            drawnFrameCount: drawn,
           ),
         },
       );
@@ -1326,7 +1326,7 @@ class FrameRangeMoveDrag {
           for (final entry in plan.layersAfter.entries)
             entry.key: rederiveRunBehaviors(
               entry.value,
-              cutFrameCount: _project.activeCutFrameCount,
+              drawnFrameCount: _project.activeCutDrawnFrameCount,
             ),
         for (final entry in sePreviews.entries) entry.key: entry.value.shown,
         // R27 #8: the frame-axis riders preview in place — a DIRECTION row
@@ -1336,7 +1336,7 @@ class FrameRangeMoveDrag {
         for (final entry in riders.directions.entries)
           entry.key: rederiveRunBehaviors(
             entry.value,
-            cutFrameCount: _project.activeCutFrameCount,
+            drawnFrameCount: _project.activeCutDrawnFrameCount,
           ),
       },
       // C2: the SE passengers' global forms, for the storyboard strips.
@@ -1559,12 +1559,12 @@ class FrameRangeMoveDrag {
       previewLayers: {
         plan.sourceAfter.id: rederiveRunBehaviors(
           plan.sourceAfter,
-          cutFrameCount: _project.activeCutFrameCount,
+          drawnFrameCount: _project.activeCutDrawnFrameCount,
         ),
         if (plan.targetAfter != null)
           plan.targetAfter!.id: rederiveRunBehaviors(
             plan.targetAfter!,
-            cutFrameCount: _project.activeCutFrameCount,
+            drawnFrameCount: _project.activeCutDrawnFrameCount,
           ),
       },
     );
@@ -1690,7 +1690,7 @@ class FrameRangeMoveDrag {
       // form windowed (UI-R18 #1 seam) — the two can never disagree.
       final commitForm = rederiveRunBehaviors(
         plan.sourceAfter,
-        cutFrameCount: _project.activeCutFrameCount,
+        drawnFrameCount: _project.activeCutDrawnFrameCount,
       );
       final forms = _trackSe.previewFormsOf(commitForm);
       previewLayers[commitForm.id] = forms.shown;
@@ -1704,7 +1704,7 @@ class FrameRangeMoveDrag {
     for (final entry in riders.directions.entries) {
       previewLayers[entry.key] = rederiveRunBehaviors(
         entry.value,
-        cutFrameCount: _project.activeCutFrameCount,
+        drawnFrameCount: _project.activeCutDrawnFrameCount,
       );
     }
     for (final entry in _transitionPreviewForms(instructionShifted).entries) {
@@ -1797,7 +1797,7 @@ class FrameRangeMoveDrag {
             before: multiSources[i].commit,
             after: rederiveRunBehaviors(
               multiPlans[i].sourceAfter,
-              cutFrameCount: _project.activeCutFrameCount,
+              drawnFrameCount: _project.activeCutDrawnFrameCount,
             ),
           ),
       ..._riderCommands(cut),
@@ -1831,7 +1831,7 @@ class FrameRangeMoveDrag {
               before: before,
               after: rederiveRunBehaviors(
                 after,
-                cutFrameCount: _project.activeCutFrameCount,
+                drawnFrameCount: _project.activeCutDrawnFrameCount,
               ),
             ),
       if (cameraShifted != null && cut != null)
@@ -1928,7 +1928,7 @@ class FrameRangeMoveDrag {
       }
       final after = rederiveRunBehaviors(
         entry.value,
-        cutFrameCount: _project.activeCutFrameCount,
+        drawnFrameCount: _project.activeCutDrawnFrameCount,
       );
       if (after == before) {
         continue; // An untouched source/target row — no command.

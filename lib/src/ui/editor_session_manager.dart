@@ -53,6 +53,7 @@ import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
+import '../models/track_transitions.dart' show drawnFrameCountsOf;
 import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import '../core/dev_profile.dart';
@@ -562,10 +563,17 @@ class EditorSessionManager extends ChangeNotifier
   ) {
     // Playhead-forward with wrap-around: the frames about to play warm
     // first, so first-pass misses shrink toward zero and a looping second
-    // pass starts fully cached.
+    // pass starts fully cached. Each cut warms every frame it is DRAWN for
+    // (F-227) — an O.L composites the のりしろ, which `entry.duration`
+    // stopped short of — the same count the budget protects while playing.
+    final drawn = drawnFrameCountsOf(repository.requireProject());
     final frames = <(CutId, int)>[
       for (final entry in playlist)
-        for (var index = 0; index < entry.duration; index += 1)
+        for (
+          var index = 0;
+          index < (drawn[entry.cutId] ?? entry.duration);
+          index += 1
+        )
           (entry.cutId, index),
     ];
     if (frames.isEmpty) {
@@ -1879,6 +1887,7 @@ class EditorSessionManager extends ChangeNotifier
     preview: dragPreview,
     layerById: layerById,
     cutFrameCount: () => activeCutFrameCount,
+    drawnFrameCount: () => activeCutDrawnFrameCount,
     // The project's own lookup, not a scan here: five callers already ask
     // 「이 경로의 풀 항목」 through it.
     assetFor: (path) =>
@@ -2643,10 +2652,15 @@ class EditorSessionManager extends ChangeNotifier
 
   // --- Run-edge properties (UI-R9 #10 N/H/R tags) ----------------------------
 
-  /// The run-behavior fill boundary (hold/repeat edges fill to the cut
-  /// end); zero without a cut.
+  /// The active cut's conte 尺 — where a row that TILES its cut stops (the
+  /// conte's blocks); zero without a cut.
   @override
   int get activeCutFrameCount => activeCutOrNull?.duration ?? 0;
+
+  /// The run-behavior fill boundary: hold/repeat edges fill to the cut's
+  /// DRAWN end (F-227), the number the ruler's blue line stands at.
+  @override
+  int get activeCutDrawnFrameCount => activeCutSpan.activeCutDrawnFrameCount;
 
   /// Whether the live frame-range selection can SCOPE a repeat pattern on
   /// this run edge (UI-R10 #5 rules: the selection must cover the edge

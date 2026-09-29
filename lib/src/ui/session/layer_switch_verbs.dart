@@ -4,6 +4,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
+import '../../models/track_transitions.dart' show cutTransitionHandlesIn;
 import '../../services/commands/update_layer_fill_reference_command.dart';
 import '../../services/commands/update_layer_timesheet_command.dart';
 import '../../services/project_lookup.dart' show requireLayerAnywhere;
@@ -296,6 +297,13 @@ class LayerSwitchVerbs {
       final filled = storyboardTimelineFilledToCover(
         timeline: targetLayer.timeline,
         cutDuration: cut.duration,
+        // The row's drawings stay where they are in the cut's frames; its
+        // panels take the conte's timing from where the conte starts in
+        // them — after the のりしろ an arriving O.L asks for (F-227).
+        conteStart: cutTransitionHandlesIn(
+          _project.repository.requireProject(),
+          cut.id,
+        ).head,
       );
       final covered = filled == null
           ? createStoryboardLayer(

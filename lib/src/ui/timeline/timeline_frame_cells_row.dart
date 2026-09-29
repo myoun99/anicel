@@ -346,7 +346,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     // 그렇다고 해도 타임라인 내 콘티블록의 첫번째 블록의 앞엣지는 진짜
     // 컷길이 바꾸니까 그거만 없도록」 — that edge lives on the storyboard's
     // cut row, where it re-times the film rather than the row.
-    suppressStartGripAtZero:
+    suppressFirstStartGrip:
         (spillInLeadFrames != null &&
             layerKindUsesSeSheetCells(layer.kind)) ||
         layer.kind.coversWithoutGaps,

@@ -110,10 +110,31 @@ void main() {
         frameId: FrameId('b'),
       );
 
-      expect(storyboardCellPictureFrame(first, pinnedFrameIndex: 12), 0);
-      expect(storyboardCellPictureFrame(second, pinnedFrameIndex: 12), 12);
+      int frameOf(StoryboardCoverageCell cell, {int? pinned}) =>
+          storyboardCellPictureFrame(
+            cell,
+            pinnedFrameIndex: pinned,
+            conteStart: 0,
+          );
+
+      expect(frameOf(first, pinned: 12), 0);
+      expect(frameOf(second, pinned: 12), 12);
       // No pin: every panel shows its own division.
-      expect(storyboardCellPictureFrame(second), 10);
+      expect(frameOf(second), 10);
+      // F-227: a cut an O.L arrives into counts the conte 6 frames in — the
+      // picture and the pin are the CUT's frames.
+      expect(
+        storyboardCellPictureFrame(second, conteStart: 6),
+        16,
+      );
+      expect(
+        storyboardCellPictureFrame(
+          second,
+          pinnedFrameIndex: 18,
+          conteStart: 6,
+        ),
+        18,
+      );
     });
   });
 

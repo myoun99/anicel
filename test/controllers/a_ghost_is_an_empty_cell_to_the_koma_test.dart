@@ -161,7 +161,7 @@ class _Koma {
         ],
         timeline: authored,
       ),
-      cutFrameCount: 24,
+      drawnFrameCount: 24,
     );
     final cut = Cut(
       id: const CutId('cut-1'),

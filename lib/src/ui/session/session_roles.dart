@@ -32,6 +32,7 @@ import '../timeline/timeline_cell_exposure_state.dart';
 
 abstract interface class ProjectAccess {
   int get activeCutFrameCount;
+  int get activeCutDrawnFrameCount;
   Layer? commitLayerById(LayerId layerId);
   CutCommandCoordinator get cutCommandCoordinator;
   HistoryManager get historyManager;

@@ -17,14 +17,14 @@ class RunFramesAddDrag implements EditorDragSession {
     required Layer before,
     required int blockStartIndex,
     required bool atEnd,
-    required int Function() activeCutFrameCount,
+    required int Function() drawnFrameCount,
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function({required Layer before, required Layer after})
     commitLayerDrag,
   }) : _before = before,
        _blockStart = blockStartIndex,
        _atEnd = atEnd,
-       _activeCutFrameCount = activeCutFrameCount,
+       _drawnFrameCount = drawnFrameCount,
        _preview = preview,
        _commitLayerDrag = commitLayerDrag;
 
@@ -36,7 +36,7 @@ class RunFramesAddDrag implements EditorDragSession {
     required bool atEnd,
     required bool Function(LayerId) blockMoveEligible,
     required Layer? Function(LayerId) layerById,
-    required int Function() activeCutFrameCount,
+    required int Function() drawnFrameCount,
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function({required Layer before, required Layer after})
     commitLayerDrag,
@@ -52,7 +52,7 @@ class RunFramesAddDrag implements EditorDragSession {
       before: layer,
       blockStartIndex: blockStartIndex,
       atEnd: atEnd,
-      activeCutFrameCount: activeCutFrameCount,
+      drawnFrameCount: drawnFrameCount,
       preview: preview,
       commitLayerDrag: commitLayerDrag,
     );
@@ -70,9 +70,9 @@ class RunFramesAddDrag implements EditorDragSession {
   /// with the object.
   final List<FrameId> _reservedIds = [];
 
-  /// The run-behavior fill boundary (hold/repeat edges fill to the cut
-  /// end); read per update.
-  final int Function() _activeCutFrameCount;
+  /// The run-behavior fill boundary (hold/repeat edges fill to the cut's
+  /// DRAWN end, F-227); read per update.
+  final int Function() _drawnFrameCount;
 
   final ValueNotifier<TimelineDragPreview?> _preview;
 
@@ -116,7 +116,7 @@ class RunFramesAddDrag implements EditorDragSession {
         ? null
         : rederiveRunBehaviors(
             result.layer,
-            cutFrameCount: _activeCutFrameCount(),
+            drawnFrameCount: _drawnFrameCount(),
           );
     _preview.value = _after == null
         ? null

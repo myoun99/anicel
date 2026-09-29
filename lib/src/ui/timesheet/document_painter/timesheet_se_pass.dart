@@ -18,8 +18,11 @@ class _TimesheetSePass {
   /// spills into row 0 — the mark sits on the column's first row edge.
   /// Pure display, exactly the timeline rows' meaning.
   void paintSeCrossingMarks(Canvas canvas) {
-    // The `~` straddles the red line, so it follows the same live length —
-    // otherwise a drag leaves the mark hanging where the line used to be.
+    // The `~` straddles the cut's CONTE end — where the next cut's sound
+    // begins — and follows the same live length, or a drag leaves it
+    // hanging where the end used to be. ⚠️F-227 moved the sheet's END LINE
+    // to the drawn end when the cut owes のりしろ; a sound crossing into the
+    // next cut still crosses here, so this mark did not move with it.
     final frameCount = _painter.livePlaybackFrameCount;
     final endLine = _painter.layout.cutEndLineFor(frameCount);
     final startTop = _painter.layout.frameRowTop(0);

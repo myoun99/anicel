@@ -183,7 +183,7 @@ class LayerAttachment {
 Layer detachedLayer({
   required Layer attached,
   required Layer? base,
-  required int cutFrameCount,
+  required int drawnFrameCount,
 }) {
   if (attached.attachedToLayerId == null) {
     return attached;
@@ -211,7 +211,7 @@ Layer detachedLayer({
       baseFrameLinks: const {},
       timeline: baked,
     ),
-    cutFrameCount: cutFrameCount,
+    drawnFrameCount: drawnFrameCount,
   );
 }
 

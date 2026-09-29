@@ -186,7 +186,7 @@ void main() {
           ),
         },
       ),
-      cutFrameCount: 8,
+      drawnFrameCount: 8,
     );
     final cells = documentFor([layer]).columns[0].cells;
 
@@ -229,7 +229,7 @@ void main() {
           ),
         },
       ),
-      cutFrameCount: 12,
+      drawnFrameCount: 12,
     );
     final cells = documentFor([frontRepeat]).columns[0].cells;
 
@@ -271,7 +271,7 @@ void main() {
           ),
         },
       ),
-      cutFrameCount: 12,
+      drawnFrameCount: 12,
     );
     final cells = documentFor([frontHold]).columns[0].cells;
 
@@ -313,7 +313,7 @@ void main() {
           ),
         },
       ),
-      cutFrameCount: 8,
+      drawnFrameCount: 8,
     );
     final cells = documentFor([single]).columns[0].cells;
     // The hold word starts RIGHT AFTER the cel's first row (UI-R25 #1):
@@ -342,7 +342,7 @@ void main() {
           ),
         },
       ),
-      cutFrameCount: 8,
+      drawnFrameCount: 8,
     );
     final multiCells = documentFor([multi]).columns[0].cells;
     expect(multiCells[2].kind, TimesheetCellKind.empty);

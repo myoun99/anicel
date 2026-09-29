@@ -10,6 +10,7 @@ import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
 import '../text/app_strings.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import '../../models/track_transitions.dart';
 import '../../services/commands/track_transition_commands.dart';
 import '../timeline/instruction_span_editing.dart';
 import '../timeline/timeline_drag_preview.dart'
@@ -601,18 +602,9 @@ class Transitions {
     ];
   }
 
-  /// One instruction event as a geometry span, WITH its term's mark.
-  ///
-  /// 🚨The mark is what tells O.L from F.O downstream. Dropping it here — which
-  /// this used to do — made `cutOpacityAt` treat every span as a symmetric
-  /// cross-dissolve, so an F.O faded the next cut IN and behaved as an O.L
-  /// (user 2026-08-11). An id the vocabulary no longer holds falls back to the
-  /// bowtie ([transitionMarkOf]).
-  TransitionSpan transitionSpanOf(MapEntry<int, InstructionEvent> entry) => (
-    start: entry.key,
-    length: entry.value.length,
-    mark: transitionMarkOf(
-      _camera.cameraInstructionSet.defById(entry.value.instructionId),
-    ),
-  );
+  /// One instruction event as a geometry span, WITH its term's mark — the
+  /// project's one reading ([transitionSpanOfEvent], whose note says why the
+  /// mark is load-bearing), in the project's vocabulary.
+  TransitionSpan transitionSpanOf(MapEntry<int, InstructionEvent> entry) =>
+      transitionSpanOfEvent(entry, _camera.cameraInstructionSet);
 }

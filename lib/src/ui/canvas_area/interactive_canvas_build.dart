@@ -676,7 +676,12 @@ class _InteractiveCanvasBuild {
     _HostFrame frame,
   ) {
     final session = frame.session;
-    final fade = _fadeShown(session);
+    // The fade is the ACTIVE cut's, so it stands down where the picture is
+    // not this canvas's — the parked track stack, which carries every cut's
+    // share itself. F-90's law for the SE tags below, said of the fade: a
+    // scrub out of the cut's territory washed the parked O.L with the cut's
+    // own stale fade (F-227).
+    final fade = _inGap ? null : _fadeShown(session);
     final seNameTags = _seNameTagsShown(session);
     return Stack(
       children: [

@@ -211,7 +211,7 @@ class FrameRangeMoveDragVerbs {
     }
     final after = rederiveRunBehaviors(
       before.copyWith(timeline: timeline),
-      cutFrameCount: _project.activeCutFrameCount,
+      drawnFrameCount: _project.activeCutDrawnFrameCount,
     );
     if (after == before) {
       return;

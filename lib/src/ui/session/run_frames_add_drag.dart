@@ -48,7 +48,7 @@ class RunFramesAddDragVerbs {
       atEnd: atEnd,
       blockMoveEligible: _retime.blockMoveEligible,
       layerById: _project.layerById,
-      activeCutFrameCount: () => _project.activeCutFrameCount,
+      drawnFrameCount: () => _project.activeCutDrawnFrameCount,
       preview: _dragPreview,
       commitLayerDrag: ({required before, required after}) {
         _controllers.timelineController.commitLayerTimelineDrag(

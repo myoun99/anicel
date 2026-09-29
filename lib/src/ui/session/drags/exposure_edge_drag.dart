@@ -7,6 +7,7 @@ import '../../../models/cut_id.dart';
 import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/layer_kind.dart';
+import '../../../models/storyboard_coverage.dart' show storyboardConteStart;
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
@@ -175,7 +176,9 @@ int _storedRowEndOf(Layer layer) {
       end = blockEnd;
     }
   }
-  return end;
+  // In the CONTE's frames, which is what the cut's length counts: a cut an
+  // O.L arrives into keeps its panels after the のりしろ it owes (F-227).
+  return end - storyboardConteStart(layer.timeline);
 }
 
 /// What the press grabbed: the row, the block's start key and which edge.

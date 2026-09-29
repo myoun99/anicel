@@ -169,7 +169,7 @@ TimesheetDocument _sheet() => TimesheetDocument.fromCut(
             ),
           },
         ),
-        cutFrameCount: 8,
+        drawnFrameCount: 8,
       ),
       Layer(
         id: const LayerId('b'),

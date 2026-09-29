@@ -172,7 +172,7 @@ class _FolderAndAttachmentCommands {
                 // The counterpart's OWN base in its OWN cut — the pointer
                 // is per-cut even though the relation is shared.
                 base: attachedBaseOf(row, cut.layers),
-                cutFrameCount: cut.duration,
+                drawnFrameCount: cutDrawnFrameCount(project, cut.id)!,
               ),
             ),
             description: description,
@@ -281,7 +281,7 @@ class _FolderAndAttachmentCommands {
         standalone: detachedLayer(
           attached: row,
           base: attachedBaseOf(row, cut.layers),
-          cutFrameCount: cut.duration,
+          drawnFrameCount: cutDrawnFrameCount(project, cut.id)!,
         ),
         base: base,
       ));

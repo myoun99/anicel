@@ -70,7 +70,7 @@ void main() {
                     ),
                   },
                 ),
-                cutFrameCount: 12,
+                drawnFrameCount: 12,
               ),
             ],
           ),

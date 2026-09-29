@@ -218,13 +218,19 @@ abstract interface class TimelineChromeGrounds {
 /// on the reading that every boundary belonged to the trailing edge on its
 /// left. I-21 retired that: a lead edge trades frames with the block in
 /// front of it, so those boundaries are real front edges again. Only the
-/// FIRST block's is still suppressed ([suppressStartGripAtZero]) — that
+/// FIRST real block's is still suppressed ([suppressFirstStartGrip]) — that
 /// one is the cut's own start and lives on the storyboard's cut row.
+///
+/// ⚠️The first REAL block, not a block at frame 0: a cut an O.L arrives
+/// into starts its conte after the のりしろ it owes (F-227), and the frames
+/// in front are its first panel held back to the O.L's start — derived, so
+/// there is no edge there to grip at all.
 List<TimelineChromeGripBlock> timelineLayerGripBlocks(
   Layer layer, {
-  bool suppressStartGripAtZero = false,
+  bool suppressFirstStartGrip = false,
 }) {
   final blocks = drawingBlocks(layer.timeline);
+  final firstReal = blocks.indexWhere((block) => !block.entry.ghost);
   return [
     for (var ordinal = 0; ordinal < blocks.length; ordinal += 1)
       if (!blocks[ordinal].entry.ghost)
@@ -232,8 +238,7 @@ List<TimelineChromeGripBlock> timelineLayerGripBlocks(
           ordinal: ordinal,
           startIndex: blocks[ordinal].startIndex,
           endIndexExclusive: blocks[ordinal].endIndexExclusive,
-          startGrip: !(suppressStartGripAtZero &&
-              blocks[ordinal].startIndex == 0),
+          startGrip: !(suppressFirstStartGrip && ordinal == firstReal),
           endGrip: true,
         ),
   ];

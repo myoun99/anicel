@@ -86,7 +86,10 @@ class StoryboardCursor {
     if (cellIndex < 0 || cellIndex >= cells.length) {
       return;
     }
-    final blockStart = cells[cellIndex].startIndex;
+    // The cell counts the conte's frames; the row's keys count the cut's
+    // (F-227: an arriving O.L's のりしろ comes first).
+    final blockStart =
+        storyboardConteStart(layer.timeline) + cells[cellIndex].startIndex;
     final entry = layer.timeline[blockStart];
     if (entry == null || !entry.isDrawing || entry.ghost) {
       return;
@@ -138,8 +141,11 @@ class StoryboardCursor {
     if (named.isEmpty || layer == null) {
       return;
     }
+    // Named in the conte's frames (the conte tab's cell); the row counts
+    // the cut's (F-227).
     final start = named.single;
-    final entry = layer.timeline[start];
+    final key = storyboardConteStart(layer.timeline) + start;
+    final entry = layer.timeline[key];
     final memo = entry?.memo ?? const ExposureMemo.empty();
     if (entry == null ||
         !entry.isDrawing ||
@@ -151,7 +157,7 @@ class StoryboardCursor {
     _project.cutCommandCoordinator.updateExposureMemo(
       cutId: cutId,
       layerId: layer.id,
-      blockStartIndex: start,
+      blockStartIndex: key,
       memo: memo.copyWith(inkId: inkId),
     );
     _changes.notifyChanged();
@@ -203,9 +209,13 @@ class StoryboardCursor {
         // law outright.
         final row = storyboardLayerForCut(cut);
         if (row != null) {
+          // The storyboard's cursor stands in the CONTE's time; the row's
+          // keys count the cut's frames, which begin earlier in a cut an
+          // O.L arrives into (F-227).
           final panel = coveringDrawingBlockAt(
             row.timeline,
-            _controllers.timelineController.currentFrameIndex,
+            storyboardConteStart(row.timeline) +
+                _controllers.timelineController.currentFrameIndex,
           );
           if (panel != null && !panel.entry.ghost && panel.startIndex >= 0) {
             return StoryboardCursorStoryboardPanel(

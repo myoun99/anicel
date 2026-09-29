@@ -53,7 +53,7 @@ void main() {
         atEnd: atEnd,
         blockMoveEligible: (_) => eligible,
         layerById: (_) => before,
-        activeCutFrameCount: () => 12,
+        drawnFrameCount: () => 12,
         preview: preview,
         commitLayerDrag: ({required before, required after}) =>
             commits.add((before: before, after: after)),

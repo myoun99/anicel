@@ -33,7 +33,7 @@ Layer _repeatLayer() {
       ),
     },
   );
-  return rederiveRunBehaviors(layer, cutFrameCount: 12);
+  return rederiveRunBehaviors(layer, drawnFrameCount: 12);
 }
 
 TimesheetDocument _document(Layer layer, {required bool dataSheet}) {
@@ -103,7 +103,7 @@ void main() {
         ),
       },
     );
-    layer = rederiveRunBehaviors(layer, cutFrameCount: 12);
+    layer = rederiveRunBehaviors(layer, drawnFrameCount: 12);
     expect(layer.timeline[2]!.ghost, isTrue);
 
     final notation = _document(layer, dataSheet: false).columns.first.cells;
@@ -149,7 +149,7 @@ void main() {
         ),
       },
     );
-    layer = rederiveRunBehaviors(layer, cutFrameCount: 12);
+    layer = rederiveRunBehaviors(layer, drawnFrameCount: 12);
 
     final data = _document(layer, dataSheet: true).columns.first.cells;
     final drawingRows = [
@@ -183,7 +183,7 @@ void main() {
         ),
       },
     );
-    layer = rederiveRunBehaviors(layer, cutFrameCount: 12);
+    layer = rederiveRunBehaviors(layer, drawnFrameCount: 12);
 
     final data = _document(layer, dataSheet: true).columns.first.cells;
     expect(data[0].kind, TimesheetCellKind.drawing, reason: '⛔전제');

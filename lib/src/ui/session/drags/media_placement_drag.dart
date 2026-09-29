@@ -46,6 +46,7 @@ class MediaPlacementDrag {
     required ValueNotifier<TimelineDragPreview?> preview,
     required Layer? Function(LayerId layerId) layerById,
     required int Function() cutFrameCount,
+    required int Function() drawnFrameCount,
     required MediaAsset? Function(String path) assetFor,
     required AudioPeaks? Function(String path) peaksFor,
     required ProjectFrameRate Function() frameRate,
@@ -54,6 +55,7 @@ class MediaPlacementDrag {
   }) : _preview = preview,
        _layerById = layerById,
        _cutFrameCount = cutFrameCount,
+       _drawnFrameCount = drawnFrameCount,
        _assetFor = assetFor,
        _peaksFor = peaksFor,
        _frameRate = frameRate,
@@ -62,7 +64,10 @@ class MediaPlacementDrag {
 
   final ValueNotifier<TimelineDragPreview?> _preview;
   final Layer? Function(LayerId layerId) _layerById;
+  /// Where a row that tiles its cut stops (the conte 尺), and where
+  /// hold/repeat ghosts fill to (the DRAWN end, F-227) — two questions.
   final int Function() _cutFrameCount;
+  final int Function() _drawnFrameCount;
 
   /// The pool entry for a path — the PROJECT's own lookup
   /// ([Project.mediaAssetByPath]). ⛔Not a scan of its own: 「이 경로의 풀
@@ -116,7 +121,10 @@ class MediaPlacementDrag {
     }
     _preview.value = MediaPlacementPreview(
       previewLayers: {
-        layerId: rederiveRunBehaviors(after, cutFrameCount: _cutFrameCount()),
+        layerId: rederiveRunBehaviors(
+          after,
+          drawnFrameCount: _drawnFrameCount(),
+        ),
       },
       silhouette: (
         layerId: layerId,

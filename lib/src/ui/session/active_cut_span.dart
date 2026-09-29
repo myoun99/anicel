@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/track_transitions.dart';
 import '../../models/transition_geometry.dart';
 import 'camera.dart';
 import 'editor_app_settings.dart';
@@ -102,12 +103,11 @@ class ActiveCutSpan {
     if (cut == null) {
       return activeCutPlaybackFrameCount;
     }
-    final start = _project.activeCutGlobalStartFrame;
-    return cutTransitionHandles(
-      cutStart: start,
-      cutEnd: start + cut.duration,
+    return drawnFramesOfCutAt(
+      cut: cut,
+      cutStart: _project.activeCutGlobalStartFrame,
       spans: _transitions.activeTrackTransitionSpans,
-    ).drawnFrames(activeCutPlaybackFrameCount);
+    );
   }
 
   /// What the ruler writes across that margin: the TERM that asked for it, then
