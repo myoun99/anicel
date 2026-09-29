@@ -11,6 +11,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/text/vertical_writing.dart'
+    show verticalTextCells;
 import 'package:anicel/src/ui/text/vertical_writing_text.dart'
     show VerticalLatinForm, verticalWritingNaturalBox;
 import 'package:anicel/src/ui/text/word_condensation.dart'
@@ -421,10 +423,9 @@ void main() {
       'first', () {
     const style = TextStyle(fontSize: 9, fontFamily: 'Face');
     final natural = verticalWritingNaturalBox(
-      'ドアー',
+      verticalTextCells('ドアー', latinForm: VerticalLatinForm.upright),
       fontSize: 9,
       lineHeight: 1.05,
-      latinForm: VerticalLatinForm.upright,
     ).size;
     final column = RenderTimelineBlockColumn(
       text: 'ドアー',

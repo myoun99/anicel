@@ -357,11 +357,13 @@ class VerticalWritingText extends StatelessWidget {
         // is saved today only by the Positioned around it.
         child: CustomPaint(
           size: verticalWritingNaturalBox(
-            text,
+            verticalTextCells(
+              text,
+              tateChuYokoDigits: tateChuYokoDigits,
+              latinForm: latinForm,
+            ),
             fontSize: fontSize,
             lineHeight: lineHeight,
-            tateChuYokoDigits: tateChuYokoDigits,
-            latinForm: latinForm,
           ).size,
           painter: _VerticalWritingPainter(
             text: text,
@@ -383,49 +385,34 @@ class VerticalWritingText extends StatelessWidget {
 /// leading after it.
 const double verticalWritingLineHeight = 1.15;
 
-/// The box a column of [text] takes at its natural leading, and how many
-/// SLOTS it runs down — slots, not cells: a sideways word owns several.
+/// The box a column of [cells] ([verticalTextCells]) takes at its natural
+/// leading, and how many SLOTS it runs down — slots, not cells: a sideways
+/// word owns several.
 ///
 /// One em across, plus headroom ONLY when something in the text actually
 /// moves to a corner. Reserving the spare em always made every SE name pay
 /// for a punctuation form they never contain: the 16px name box's
 /// FittedBox went width-limited at 16/18 and shrank every label ~11%.
 ({Size size, int slots}) verticalWritingNaturalBox(
-  String text, {
+  List<VerticalTextCell> cells, {
   required double fontSize,
   required double lineHeight,
-  int tateChuYokoDigits = verticalTateChuYokoDigits,
-  VerticalLatinForm latinForm = VerticalLatinForm.sideways,
 }) {
-  final cellCount = verticalTextSpanCount(
-    verticalTextCells(
-      text,
-      tateChuYokoDigits: tateChuYokoDigits,
-      latinForm: latinForm,
-    ),
-  );
+  final cellCount = verticalTextSpanCount(cells);
   return (
     size: Size(
-      fontSize * (1 + 2 * _maxShiftEm(text, tateChuYokoDigits, latinForm)),
+      fontSize * (1 + 2 * _maxShiftEm(cells)),
       cellCount * fontSize * lineHeight,
     ),
     slots: cellCount,
   );
 }
 
-/// The largest corner shift anything in [text] takes, as an em fraction —
-/// zero for text with no shifted glyph, which is most of it.
-double _maxShiftEm(
-  String text,
-  int tateChuYokoDigits,
-  VerticalLatinForm latinForm,
-) {
+/// The largest corner shift any of [cells] takes, as an em fraction — zero
+/// for text with no shifted glyph, which is most of it.
+double _maxShiftEm(List<VerticalTextCell> cells) {
   var most = 0.0;
-  for (final cell in verticalTextCells(
-    text,
-    tateChuYokoDigits: tateChuYokoDigits,
-    latinForm: latinForm,
-  )) {
+  for (final cell in cells) {
     if (cell.shiftEm > most) {
       most = cell.shiftEm;
     }

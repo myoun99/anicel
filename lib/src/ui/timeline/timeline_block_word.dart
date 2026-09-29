@@ -1,6 +1,7 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../text/vertical_writing.dart' show verticalTextCells;
 import '../text/vertical_writing_text.dart';
 import '../text/word_condensation.dart';
 import 'axis_turn.dart' show extentAlong;
@@ -305,10 +306,9 @@ class RenderTimelineBlockColumn extends RenderTimelineBuiltWord {
   @override
   Size setWordIn(Size room) {
     final natural = verticalWritingNaturalBox(
-      _text,
+      verticalTextCells(_text, latinForm: _latinForm),
       fontSize: _fontSize,
       lineHeight: _lineHeight,
-      latinForm: _latinForm,
     );
     _slots = natural.slots;
     final tightening = wordTightening(
