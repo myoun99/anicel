@@ -595,8 +595,9 @@ Project _projectWithCutTrimPreview(Project project, CutTrimDragPreview trim) {
 
 /// One track under a cut edge drag — and its transition row carried the way
 /// the release will carry it (`TransitionsRideTheCuts`, 유저 2026-08-10:
-/// 「움직일때만 앵커로서 앞 컷에 앵커」): the same function, so an O.L follows
-/// its front cut under the hand rather than jumping there on release.
+/// 「움직일때만 앵커로서 앞 컷에 앵커」 · 2026-09-30: 「경계를 따라간다」): the
+/// same function, so an O.L follows the boundary it crosses under the hand
+/// rather than jumping there on release.
 Track _trackWithCutTrimPreview(Track track, CutTrimDragPreview trim) {
   final moved = track.copyWith(
     cuts: _previewOrdered(track.cuts, trim.previewOrder[track.id])

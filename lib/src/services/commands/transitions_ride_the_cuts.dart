@@ -4,8 +4,9 @@ import '../../models/track_transitions.dart';
 import '../project_repository.dart';
 
 /// What a command that moves cuts owes the transition rows (유저 2026-08-10:
-/// 「움직일때만 앵커로서 앞 컷에 앵커」): every track's row carried to where
-/// its cuts went ([transitionRowFollowingItsCuts]) in the SAME step, and put
+/// 「움직일때만 앵커로서 앞 컷에 앵커」 · 2026-09-30: 「경계를 따라간다」):
+/// every track's row carried to where its cuts and boundaries went
+/// ([transitionRowFollowingItsCuts]) in the SAME step, and put
 /// back first on the way back — so an undo lands the row exactly where it
 /// was, whatever the layout it is undone into.
 ///

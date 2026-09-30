@@ -9,7 +9,8 @@ import 'package:anicel/src/models/track_transitions.dart';
 
 /// 🗣️유저 2026-08-10: 「그냥 글로벌로 두고 행동은 해당 범위의 양 컷을
 /// ol시키는거. 움직일때만 앵커로서 앞 컷에 앵커. 앞 컷이 없으면 현재 컷에
-/// 앵커.」
+/// 앵커.」 · 2026-09-30 (F-227-ol-trim-Q1): 「경계를 따라간다」 — an O.L
+/// rides the boundary it crosses, trimmed or moved, and keeps its のりしろ.
 ///
 /// Three 24-frame cuts z, a, b — frames 0..23, 24..47, 48..71 — and an
 /// O.L over 42..53: six frames before the a|b boundary, six after.
@@ -54,10 +55,38 @@ void main() {
     expect(olStartAfter(before, [cut('z'), cut('b'), cut('a')]), 42 + 24);
   });
 
-  test('its front cut\'s own end trimmed: the cut did not move, so neither '
-      'does the O.L (F-227-ol-trim-Q1 asks whether it should)', () {
+  test('its front cut\'s own end trimmed: the boundary moved back four, and '
+      'the O.L with it — six frames on each side still', () {
     final before = track([cut('z'), cut('a'), cut('b')]);
+    expect(olStartAfter(before, [cut('z'), cut('a', duration: 20), cut('b')]), 38);
+  });
+
+  test('the cut behind it pulled back at its front edge: the boundary moved '
+      'on four, and the O.L with it', () {
+    final before = track([cut('z'), cut('a'), cut('b')]);
+    expect(
+      olStartAfter(before, [cut('z'), cut('a', duration: 28), cut('b', duration: 20)]),
+      46,
+    );
+  });
+
+  test('a span that ends exactly on its cut\'s end crosses nothing: it keeps '
+      'riding the start of its cut', () {
+    final toTheEnd = {42: const InstructionEvent(instructionId: 'ol', length: 6)};
+    final before = track([cut('z'), cut('a'), cut('b')], spans: toTheEnd);
     expect(olStartAfter(before, [cut('z'), cut('a', duration: 20), cut('b')]), 42);
+  });
+
+  test('a span inside one cut crosses no boundary: it keeps riding the '
+      'start of its cut, so trimming that cut\'s end leaves it', () {
+    final inside = {40: const InstructionEvent(instructionId: 'ol', length: 6)};
+    final before = track([cut('z'), cut('a'), cut('b')], spans: inside);
+    expect(olStartAfter(before, [cut('z'), cut('a', duration: 20), cut('b')]), 40);
+    expect(
+      olStartAfter(before, [cut('z', duration: 20), cut('a'), cut('b')]),
+      36,
+      reason: 'the cut it starts in moved back four',
+    );
   });
 
   test('its front cut gone: the next cut it reaches takes it', () {

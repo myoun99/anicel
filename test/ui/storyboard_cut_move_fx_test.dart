@@ -81,9 +81,10 @@ void main() {
     tester,
   ) async {
     final manager = await pumpHost(tester);
-    // The V row's transform is gone; the R4 independence rule it demonstrated
-    // is guarded on the TRANSITION row now — a span straddles a cut boundary,
-    // so a slide moving it would break the O.L outright.
+    // The V row's transform is gone. The span straddles the first cut's end,
+    // and an O.L rides the boundary it crosses (유저 2026-09-30 「경계를
+    // 따라간다」) — sliding the cut BEHIND opens a gap after that end, which
+    // does not move, so neither does the O.L.
     final firstDuration = manager.activeTrack.cuts[0].duration;
     manager.transitions.updateTransitionInstructions({
       firstDuration - 2: const InstructionEvent(

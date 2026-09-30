@@ -91,6 +91,22 @@ void main() {
     );
   });
 
+  // 🗣️유저 2026-09-30 (F-227-ol-trim-Q1): 「경계를 따라간다」.
+  test('its front cut\'s own end trimmed: the O.L follows the boundary — '
+      'one undo takes both back', () {
+    final s = session();
+    addTearDown(s.dispose);
+    s.cutCommandCoordinator.commitCutDurationDrag(
+      beforeDurations: {a: 24},
+      afterDurations: {a: 20},
+    );
+    expect(olStart(s), 38, reason: 'a|b moved back four, and six stay each side');
+    s.historyManager.undo();
+    expect(olStart(s), 42);
+    s.historyManager.redo();
+    expect(olStart(s), 38);
+  });
+
   test('its front cut moved along the track', () {
     final s = session();
     addTearDown(s.dispose);

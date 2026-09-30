@@ -15,7 +15,9 @@ import 'transitions_ride_the_cuts.dart';
 /// ⚠️The transition row is a different law (유저 2026-08-10: 「움직일때만
 /// 앵커로서 앞 컷에 앵커」): its spans ride their front cut, so a trim that
 /// moves the cuts behind it carries the spans across with them
-/// ([TransitionsRideTheCuts]).
+/// ([TransitionsRideTheCuts]) — and an O.L rides the boundary it crosses
+/// (유저 2026-09-30, F-227-ol-trim-Q1: 「경계를 따라간다」), so trimming the
+/// front cut's own end carries it too and its のりしろ stay as they were.
 class UpdateCutDurationsCommand implements Command {
   UpdateCutDurationsCommand({
     required this.repository,

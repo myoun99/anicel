@@ -104,45 +104,40 @@ int? cutDrawnFrameCount(Project project, CutId cutId) {
 /// 해당 범위의 양 컷을 ol시키는거. 움직일때만 앵커로서 앞 컷에 앵커. 앞 컷이
 /// 없으면 현재 컷에 앵커.」
 ///
+/// 🗣️유저 2026-09-30 (F-227-ol-trim-Q1): 「경계를 따라간다」 — 「컷 경계가
+/// 움직이면 그 경계를 걸친 O.L. 이 같은 만큼 움직인다 … 여백은 12+12 그대로.
+/// 앞 컷이 통째로 움직이는 경우도 같은 법으로 답한다」. How an O.L divides
+/// between its two cuts changes only by dragging the span's own edges, never
+/// by a trim.
+///
 /// [after]'s transition row carried to where the cuts under it went since
 /// [before]. The anchor is not stored: it is found in [before], the layout
-/// the edit started from — the FRONT cut, the one a span's first frame lies
-/// in, else (a span that starts in a gap) the first cut it reaches — and the
-/// span moves by as much as that cut's start did. A front cut the edit
-/// removed hands the span to the next cut it reaches (the 08-09 table: 「앞
-/// 컷 삭제 → 새 앞 컷과 맺어진다」); a span that reaches no surviving cut
-/// stays. A span carried before the track's first frame keeps its end and
-/// starts at 0.
-///
-/// ⚠️A cut's own END moving does not move its spans — the rule anchors to
-/// the cut, and the cut did not move. Whether the boundary should carry them
-/// instead is F-227-ol-trim-Q1.
+/// the edit started from. A span that CROSSES a boundary — an O.L — rides the
+/// first cut END inside it and moves by as much as that end did, whether the
+/// front cut was trimmed or moved whole. A span that crosses none keeps the
+/// 08-10 anchor: the cut its first frame lies in, else (a span that starts
+/// in a gap) the first cut it reaches, by as much as that cut's START moved.
+/// A cut the edit removed anchors nothing — the span goes to the next cut it
+/// reaches (the 08-09 table: 「앞 컷 삭제 → 새 앞 컷과 맺어진다」); a span
+/// that reaches no surviving cut stays. A span carried before the track's
+/// first frame keeps its end and starts at 0.
 ///
 /// [after]'s own row comes back when nothing moves.
 Layer transitionRowFollowingItsCuts({
   required Track before,
   required Track after,
 }) {
-  final was = cutSpansOf(before).toList();
-  final now = {
-    for (final placed in cutSpansOf(after)) placed.cut.id: placed.startFrame,
-  };
+  final now = {for (final placed in cutSpansOf(after)) placed.cut.id: placed};
+  final was = [
+    for (final placed in cutSpansOf(before))
+      if (now.containsKey(placed.cut.id)) placed,
+  ];
   final row = after.transitionLayer;
   final carried = <int, InstructionEvent>{};
   var changed = false;
   for (final MapEntry(key: start, value: event) in row.instructions.entries) {
     final end = start + event.length;
-    final anchor = was
-        .where(
-          (placed) =>
-              placed.endFrame > start &&
-              placed.startFrame < end &&
-              now.containsKey(placed.cut.id),
-        )
-        .firstOrNull;
-    final delta = anchor == null
-        ? 0
-        : now[anchor.cut.id]! - anchor.startFrame;
+    final delta = _spanCarry(was, now, start: start, end: end);
     if (delta == 0) {
       carried[start] = event;
       continue;
@@ -154,6 +149,28 @@ Layer transitionRowFollowingItsCuts({
         : event;
   }
   return changed ? row.copyWith(instructions: carried) : row;
+}
+
+/// How far the span `[start, end)` moves: by the boundary it crosses, else
+/// by the cut it starts in — [transitionRowFollowingItsCuts]'s two anchors.
+/// [was] holds only the cuts that survive into [now].
+int _spanCarry(
+  List<({Cut cut, int startFrame, int endFrame})> was,
+  Map<CutId, ({Cut cut, int startFrame, int endFrame})> now, {
+  required int start,
+  required int end,
+}) {
+  for (final placed in was) {
+    if (placed.endFrame > start && placed.endFrame < end) {
+      return now[placed.cut.id]!.endFrame - placed.endFrame;
+    }
+  }
+  for (final placed in was) {
+    if (placed.endFrame > start && placed.startFrame < end) {
+      return now[placed.cut.id]!.startFrame - placed.startFrame;
+    }
+  }
+  return 0;
 }
 
 /// The のりしろ the one cut [cutId] of [project] owes, or
