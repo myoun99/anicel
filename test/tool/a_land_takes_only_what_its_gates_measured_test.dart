@@ -32,7 +32,7 @@ void main() {
       for (final line in script
           .substring(start, script.indexOf('\n}\n', start))
           .split('\n'))
-        line.trimLeft().startsWith('#') ? '' : line,
+        if (line.trimLeft().startsWith('#')) '' else line,
     ];
   }
 
