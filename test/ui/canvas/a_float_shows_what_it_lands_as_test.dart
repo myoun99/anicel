@@ -33,6 +33,14 @@ import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 /// same bytes. The cel and the float are opaque high-frequency patterns, so
 /// nearest sampling and the mean disagree nearly everywhere; the scene
 /// proves it can tell them apart before it is trusted.
+///
+/// ⚠️WHERE IT IS EXACT (measured 2026-09-30): the test runner's Skia and the
+/// real Windows app (Impeller GLES) — 0 pixels apart, all six cases. On
+/// Impeller Vulkan (`--enable-impeller`) it is RED by 1/255 at 2–12 pixels:
+/// the floating region is halved as one image and the landed cel tile by
+/// tile, and Vulkan's halving drifts with the size of what it halves (board
+/// `halving-rounds-differently-per-engine`). The old draw was 133–168/255
+/// off on the same scene there.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
