@@ -54,7 +54,7 @@ void main() {
     try {
       await tester.runAsync(() async {
         paint();
-        for (var wait = 0; store.debugBusy; wait += 1) {
+        for (var wait = 0; store.pending; wait += 1) {
           if (wait == 400) {
             fail('the store never came to rest');
           }
@@ -214,7 +214,7 @@ void main() {
 
     expect(running, hasLength(26), reason: 'and every panel shown is drawn');
     expect(mostAtOnce, 1);
-    expect(store.debugBusy, isFalse);
+    expect(store.pending, isFalse);
   });
 
   testWidgets('🚨a width the hand has passed is never rendered — after each '
@@ -252,7 +252,7 @@ void main() {
         paint();
       }
       await Future<void>.delayed(Duration.zero);
-      while (store.debugBusy) {
+      while (store.pending) {
         running.last.complete(await tinyImage());
         await Future<void>.delayed(Duration.zero);
       }

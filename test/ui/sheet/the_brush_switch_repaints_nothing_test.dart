@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -7,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -36,6 +39,7 @@ import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
+import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
@@ -54,6 +58,11 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 /// drawn came from an asynchronous build, and for the frames it took the
 /// picture showed its ground alone. The sheets' handwriting never did: a
 /// live window shows its cel's tiles, pictured inside the call.
+///
+/// Switched OFF, the conte's pictures go back to their prints — which a
+/// stroke has set rendering again, asynchronously. The pictures stay live
+/// until the store owes none, so the frame the conte is switched off in is
+/// its live one: nothing of a print from before the stroke ever shows.
 void main() {
   const screen = ValueKey<String>('screen');
   late EditorSessionManager session;
@@ -75,6 +84,36 @@ void main() {
       ),
     ],
   );
+
+  Future<_Shot> shoot(WidgetTester tester) async {
+    final render = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(screen),
+    );
+    return (await tester.runAsync(() async {
+      final image = await render.toImage();
+      final data = await image.toByteData();
+      final shot = _Shot(data!.buffer.asUint8List(), image.width);
+      image.dispose();
+      return shot;
+    }))!;
+  }
+
+  /// A session over [_project] with the cut's art cel red all over, the
+  /// brush switch as [brushOn] says — and that cel's key.
+  BrushFrameKey openSession({required bool brushOn}) {
+    session = EditorSessionManager(initialProject: _project());
+    addTearDown(session.dispose);
+    final drawn = session.cutById(_drawn)!;
+    final key = session.brushFrameKeyForCut(drawn, _art, _artFrame);
+    session.renderCaches.brushFrameStore.restoreBaked({
+      key: AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, _red())),
+    });
+    brushAllowed = ValueNotifier<bool>(brushOn);
+    addTearDown(brushAllowed.dispose);
+    brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+    addTearDown(brushTool.dispose);
+    return key;
+  }
 
   // Each sheet's host, and a stroke of handwriting onto it — written once
   // the host has laid its ink out.
@@ -119,7 +158,7 @@ void main() {
             addTearDown(cels.dispose);
             final landed = ChangeNotifier();
             addTearDown(landed.dispose);
-            final printed = await _green();
+            final printed = await _filled(_green);
             addTearDown(printed.dispose);
             return (
               () => ConteTabHost(
@@ -127,6 +166,7 @@ void main() {
                 thumbnails: (
                   resolve: (cut, frame, {required shownHeight, region}) => printed,
                   landed: landed,
+                  pending: () => false,
                 ),
                 inkController: ink,
                 pictures: cels,
@@ -172,17 +212,7 @@ void main() {
     /// it (`workspace_tabs.dart`), with the brush off and all it shows
     /// drawn.
     Future<void> mount(WidgetTester tester) async {
-      session = EditorSessionManager(initialProject: _project());
-      addTearDown(session.dispose);
-      final drawn = session.cutById(_drawn)!;
-      final key = session.brushFrameKeyForCut(drawn, _art, _artFrame);
-      session.renderCaches.brushFrameStore.restoreBaked({
-        key: AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, _red())),
-      });
-      brushAllowed = ValueNotifier<bool>(false);
-      addTearDown(brushAllowed.dispose);
-      brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
-      addTearDown(brushTool.dispose);
+      openSession(brushOn: false);
       final (host, write) = (await tester.runAsync(sheet.mount))!;
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -204,22 +234,16 @@ void main() {
       await _settle(tester);
     }
 
-    Future<_Shot> shoot(WidgetTester tester) async {
-      final render = tester.renderObject<RenderRepaintBoundary>(
-        find.byKey(screen),
-      );
-      return (await tester.runAsync(() async {
-        final image = await render.toImage();
-        final data = await image.toByteData();
-        final shot = _Shot(data!.buffer.asUint8List(), image.width);
-        image.dispose();
-        return shot;
-      }))!;
-    }
-
     for (final on in [true, false]) {
-      testWidgets('${sheet.sheet}: the frame the brush is switched '
-          '${on ? 'on' : 'off'} in is the frame that settles', (tester) async {
+      // The conte switched OFF hands its pictures over to their prints, so
+      // the frame it is switched off in is its live one (the header).
+      final handsOver = sheet.sheet == 'conte' && !on;
+      final title = handsOver
+          ? 'conte: switched off, the pictures stay live through the '
+                'switch\'s own frame and hand over once no print is owed'
+          : '${sheet.sheet}: the frame the brush is switched '
+                '${on ? 'on' : 'off'} in is the frame that settles';
+      testWidgets(title, (tester) async {
         await mount(tester);
         if (!on) {
           brushAllowed.value = true;
@@ -243,6 +267,19 @@ void main() {
                 : 'fixture: the page prints the pictures',
           );
         }
+        if (handsOver) {
+          expect(
+            first.count(_isRed),
+            greaterThan(400),
+            reason: 'the store is asked once the switch\'s frame has painted',
+          );
+          expect(
+            settled.count(_isRed),
+            0,
+            reason: 'no print was owed, so the pictures stood down',
+          );
+          return;
+        }
         expect(
           first.differingFrom(settled),
           0,
@@ -250,6 +287,162 @@ void main() {
         );
       });
     }
+  }
+
+  /// The conte with its brush on, drawing its prints from [prints] —
+  /// rebuilt as the workspace rebuilds it.
+  Future<void> mountConte(
+    WidgetTester tester,
+    StoryboardCutThumbnailStore prints,
+  ) async {
+    final ink = ConteInkController();
+    addTearDown(ink.dispose);
+    final cels = ContePictureInkController(
+      cels: session.renderCaches.brushFrameStore,
+    );
+    addTearDown(cels.dispose);
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: RepaintBoundary(
+            key: screen,
+            child: ListenableBuilder(
+              listenable: Listenable.merge([session, brushAllowed]),
+              builder: (context, _) => ConteTabHost(
+                session: session,
+                thumbnails: prints.thumbnails,
+                inkController: ink,
+                pictures: cels,
+                brushToolState: brushTool,
+                brushAllowed: brushAllowed.value,
+                imageFor: (_) => null,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
+  /// The cut's prints from before a stroke (blue) and after it (green).
+  Future<(ui.Image, ui.Image)> printsAroundAStroke(WidgetTester tester) async {
+    final (before, after) = (await tester.runAsync(
+      () async => (await _filled(_blue), await _filled(_green)),
+    ))!;
+    addTearDown(before.dispose);
+    addTearDown(after.dispose);
+    return (before, after);
+  }
+
+  /// A stroke on [cel]: its cut's signature moves, and the page — which
+  /// paints its prints under the live pictures — asks for each again on
+  /// the frame the store's word of it sets off.
+  Future<void> strike(WidgetTester tester, BrushFrameKey cel) async {
+    session.renderCaches.cacheInvalidationHub.invalidateBrushFrame(
+      BrushFrameCacheInvalidation.wholeFrame(cel),
+    );
+    await tester.pump();
+    await tester.pump();
+  }
+
+  testWidgets('conte: switched off while its prints are still owed, the '
+      'pictures stay live until the last of them is in', (tester) async {
+    final cel = openSession(brushOn: true);
+    final held = _HeldPrints(session);
+    addTearDown(held.store.dispose);
+    final (before, after) = await printsAroundAStroke(tester);
+    await mountConte(tester, held.store);
+    await held.landAll(tester, before);
+    await _settle(tester);
+    // What shows this blue while the pen is in hand — the pictures cover
+    // their prints — is what the switch may show of it too.
+    final drawing = await shoot(tester);
+    final peeking = drawing.count(_isBlue);
+    expect(
+      peeking,
+      lessThan(10),
+      reason: 'premise: the live pictures cover their prints '
+          '(blue at ${drawing.where(_isBlue)})',
+    );
+
+    await strike(tester, cel);
+    expect(held.store.pending, isTrue, reason: 'premise: the prints are owed');
+
+    brushAllowed.value = false;
+    await tester.pump();
+    final switched = await shoot(tester);
+    expect(
+      switched.count(_isBlue),
+      lessThanOrEqualTo(peeking),
+      reason: 'the print from before the stroke never shows',
+    );
+    expect(
+      switched.count(_isRed),
+      greaterThan(400),
+      reason: 'the pictures stay live, as drawn',
+    );
+
+    // One print lands. The store empties what was asked, and the page asks
+    // again for the one still owed only as it repaints.
+    held.landOne(after);
+    await tester.pump();
+    await tester.pump();
+    expect(held.store.pending, isTrue, reason: 'premise: one is still owed');
+    expect(
+      (await shoot(tester)).count(_isBlue),
+      lessThanOrEqualTo(peeking),
+      reason: 'a landing is not the last one until the page has asked again',
+    );
+
+    await held.landAll(tester, after);
+    await _settle(tester);
+    final settled = await shoot(tester);
+    expect(settled.count(_isBlue), 0);
+    expect(settled.count(_isRed), 0, reason: 'the pictures stood down');
+    expect(
+      settled.count(_isGreen),
+      greaterThan(400),
+      reason: 'the prints of the cut as drawn took over',
+    );
+  });
+}
+
+/// A real print store whose renders the test lands by hand.
+class _HeldPrints {
+  _HeldPrints(EditorSessionManager session) {
+    store = StoryboardCutThumbnailStore(
+      render: (cut, frame, width, region) {
+        final render = Completer<ui.Image?>();
+        _renders.add(render);
+        return render.future;
+      },
+      originalSize: () => const ui.Size(640, 360),
+      invalidationHub: session.renderCaches.cacheInvalidationHub,
+    );
+  }
+
+  late final StoryboardCutThumbnailStore store;
+  final List<Completer<ui.Image?>> _renders = [];
+
+  /// Lands the render still out, a copy of [print].
+  void landOne(ui.Image print) => _renders
+      .firstWhere((render) => !render.isCompleted)
+      .complete(print.clone());
+
+  /// Lands every print the store owes — the ones each landing sets the
+  /// page asking for too.
+  Future<void> landAll(WidgetTester tester, ui.Image print) async {
+    for (var round = 0; round < 10 && store.pending; round += 1) {
+      _renders
+          .where((render) => !render.isCompleted)
+          .firstOrNull
+          ?.complete(print.clone());
+      await tester.pump();
+    }
+    expect(store.pending, isFalse, reason: 'every print landed');
   }
 }
 
@@ -287,19 +480,26 @@ BitmapSurface _red() {
   );
 }
 
-/// The picture the page prints for a cell: green, so it is told from the
+/// A picture the page prints for a cell, all [color] — green for the cut as
+/// drawn, blue for a print from before a stroke — so each is told from the
 /// live one.
-Future<ui.Image> _green() {
+Future<ui.Image> _filled(Color color) {
   final recorder = ui.PictureRecorder();
-  Canvas(recorder).drawColor(const Color(0xFF00FF00), BlendMode.src);
+  Canvas(recorder).drawColor(color, BlendMode.src);
   return recorder.endRecording().toImage(64, 36);
 }
+
+const Color _green = Color(0xFF00FF00);
+const Color _blue = Color(0xFF0000FF);
 
 bool _isRed(Color color) =>
     color.r > 0.9 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9;
 
 bool _isGreen(Color color) =>
     color.g > 0.9 && color.r < 0.1 && color.b < 0.1 && color.a > 0.9;
+
+bool _isBlue(Color color) =>
+    color.b > 0.9 && color.r < 0.1 && color.g < 0.1 && color.a > 0.9;
 
 const CanvasSize _canvas = CanvasSize(width: 640, height: 360);
 
@@ -381,6 +581,18 @@ class _Shot {
       }
     }
     return n;
+  }
+
+  /// Where the first [limit] pixels that read as [test] says lie, (x, y).
+  List<(int, int)> where(bool Function(Color color) test, {int limit = 8}) {
+    final found = <(int, int)>[];
+    for (var i = 0; i < rgba.length && found.length < limit; i += 4) {
+      if (test(_at(i))) {
+        final pixel = i ~/ 4;
+        found.add((pixel % width, pixel ~/ width));
+      }
+    }
+    return found;
   }
 
   /// How many pixels differ from [other]'s.

@@ -70,9 +70,15 @@ typedef StoryboardThumbnailResolver =
 /// resolver alone and heard nothing: its pictures showed whenever
 /// something else happened to repaint it. The painters that ask are the
 /// ones that repaint now.
+///
+/// [pending] says whether a picture a surface asked for is still to come.
+/// ⚠️Ask it once the surfaces have PAINTED: a landing empties what was
+/// asked, and the repaint it sets off is what asks again for a picture
+/// still behind — heard where the landing is, it answers no for that one.
 typedef StoryboardThumbnails = ({
   StoryboardThumbnailResolver resolve,
   Listenable landed,
+  bool Function() pending,
 });
 
 /// Renders and caches the composites the storyboard's panels show.
@@ -169,11 +175,11 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   bool _nextScheduled = false;
   bool _disposed = false;
 
-  /// Whether a render runs or waits to. ⚠️TEST ONLY — what a test waits
-  /// on, as the timeline's tiles do: silence for N ms misreads a slow
-  /// render for a finished one.
-  @visibleForTesting
-  bool get debugBusy => _rendering != null || _wanted.isNotEmpty;
+  /// Whether a picture a surface asked for is still to come: a render runs
+  /// or waits to. What the conte's live pictures wait on before they stand
+  /// down (F-215), and what a test waits on, as the timeline's tiles do —
+  /// silence for N ms misreads a slow render for a finished one.
+  bool get pending => _rendering != null || _wanted.isNotEmpty;
 
   /// Told whenever [thumbnailBytes] changes, so an owner the memory census
   /// CAN reach is able to report a store that lives in a widget State — the
@@ -191,11 +197,12 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   /// What the held pictures cost resident, 4 bytes a pixel.
   int get thumbnailBytes => _heldBytes;
 
-  /// What a surface takes to draw these pictures: [thumbnailFor], and this
-  /// store as what says one landed.
+  /// What a surface takes to draw these pictures: [thumbnailFor], this
+  /// store as what says one landed, and whether one is still to come.
   late final StoryboardThumbnails thumbnails = (
     resolve: thumbnailFor,
     landed: this,
+    pending: () => pending,
   );
 
   /// The cached picture of [cut] at [frameIndex] for a surface drawing it

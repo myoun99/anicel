@@ -123,6 +123,7 @@ void main() {
                       (cut, frame, {required shownHeight, region}) =>
                           null,
                   landed: thumbnails,
+                  pending: () => false,
                 ),
                 inkController: ink,
                 brushToolState: brushTool,

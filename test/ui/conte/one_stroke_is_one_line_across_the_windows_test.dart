@@ -171,6 +171,7 @@ void main() {
                 thumbnails: (
                   resolve: (cut, frame, {required shownHeight, region}) => printed,
                   landed: const _NeverLands(),
+                  pending: () => false,
                 ),
                 viewport: seedFromRender(
                   tester,

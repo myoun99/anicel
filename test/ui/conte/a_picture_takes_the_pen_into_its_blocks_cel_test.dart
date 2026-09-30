@@ -594,6 +594,7 @@ void main() {
                                 return printed;
                               },
                           landed: const _NeverLands(),
+                          pending: () => false,
                         ),
                   viewport: seedFromRender(
                     tester,
