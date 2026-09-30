@@ -939,6 +939,8 @@ void main() {
     'frameCountEntryFrames': (s) => s.frameCountEntryFrames,
     'frameCountEntrySecondsPlusFrames': (s) =>
         s.frameCountEntrySecondsPlusFrames,
+    // I-18: 자동 이름 지정's start number.
+    'autoNameStartField': (s) => s.autoNameStartField,
     'projectFpsTitle': (s) => s.projectFpsTitle,
     'projectFpsField': (s) => s.projectFpsField,
   };

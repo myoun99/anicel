@@ -268,6 +268,9 @@ abstract final class EditorActionIds {
   static const editPasteIndependent = 'edit-paste-independent';
   static const editDelete = 'edit-delete';
 
+  /// 🗣️I-18 — 자동 이름 지정, the shared pill's button beside Edit.
+  static const editAutoName = 'edit-auto-name';
+
   /// The colour edit list's four verbs, in its order — every one an action
   /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
   static const editReplaceColour = 'edit-replace-colour';
@@ -463,6 +466,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Delete',
     category: 'Edit',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.delete)],
+  ),
+  // 🗣️I-18 (유저): 「타임라인 공용 알약에 새 버튼 신설 … 버튼은 자동 이름
+  // 지정」 — a button, so a row a key can be put on (유저 2026-09-13:
+  // 「버튼이면 왠만해선 숏컷 지정 가능하게」). It ships unbound: nobody named a
+  // key. The label is the button's own, and a bar button's writing carries
+  // no '…' (B9).
+  const EditorActionDefinition(
+    id: EditorActionIds.editAutoName,
+    label: 'Auto Name',
+    category: 'Edit',
+    defaultActivators: [],
   ),
   // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
   // 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야.

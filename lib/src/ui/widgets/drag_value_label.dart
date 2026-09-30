@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
+import '../text/full_width_numerals.dart' show halfWidthDigitsOnly;
 import 'axis_bar_gesture.dart';
 import 'inline_numeric_field.dart';
 
@@ -47,7 +48,14 @@ class DragValueLabel extends StatefulWidget {
     this.textAlign = TextAlign.center,
     this.enabled = true,
     this.onOperationStart,
+    this.digitsOnly = false,
   });
+
+  /// Whether the typed value is a whole number with no sign: the field
+  /// takes digits alone (full-width ones converted) on the number pad —
+  /// what `AppPromptDialog.numeric` means for its field. The readouts that
+  /// type a sign or a point leave it false.
+  final bool digitsOnly;
 
   /// Called ONCE at the top of a scrub or a typed commit, before the value
   /// moves — for a host that records operations rather than values.
@@ -191,6 +199,8 @@ class _DragValueLabelState extends State<DragValueLabel> {
           ),
           initialText: _seed,
           textStyle: style,
+          keyboardType: widget.digitsOnly ? TextInputType.number : null,
+          inputFormatters: widget.digitsOnly ? halfWidthDigitsOnly : null,
           onSubmit: _commitEdit,
           onCancel: () => setState(() => _editing = false),
         ),

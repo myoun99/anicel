@@ -1698,6 +1698,9 @@ enum AppStrings {
   String get frameCountEntryFrames => _s('frameCountEntryFrames');
   String get frameCountEntrySecondsPlusFrames =>
       _s('frameCountEntrySecondsPlusFrames');
+
+  /// 자동 이름 지정's one field (I-18): the number the first block takes.
+  String get autoNameStartField => _s('autoNameStartField');
   String get projectFpsTitle => _s('projectFpsTitle');
   String get projectFpsField => _s('projectFpsField');
 
@@ -2830,6 +2833,7 @@ enum AppStrings {
     'frameCountEntrySecondsPlusFrames': 'Seconds+frames',
     'projectFpsTitle': 'Project frame rate',
     'projectFpsField': 'Frames per second',
+    'autoNameStartField': 'Start number',
   };
 
   static const _jaValues = <String, String>{
@@ -3352,6 +3356,7 @@ enum AppStrings {
     'shortcutAction.edit-copy-pixels': 'ピクセルコピー',
     'shortcutAction.edit-paste-pixels-above': 'ピクセルを上に貼り付け',
     'shortcutAction.edit-paste-pixels-below': 'ピクセルを下に貼り付け',
+    'shortcutAction.edit-auto-name': '自動命名',
     'blendMode.passThrough': '通過',
     'blendMode.normal': '通常',
     'blendMode.color': '通常',
@@ -4183,6 +4188,7 @@ enum AppStrings {
     'frameCountEntrySecondsPlusFrames': '秒+コマ',
     'projectFpsTitle': 'プロジェクトのフレームレート',
     'projectFpsField': '1秒あたりのフレーム数',
+    'autoNameStartField': '開始番号',
   };
 
   static const _koValues = <String, String>{
@@ -4704,6 +4710,7 @@ enum AppStrings {
     'shortcutAction.edit-copy-pixels': '픽셀 복사',
     'shortcutAction.edit-paste-pixels-above': '픽셀 위 붙여넣기',
     'shortcutAction.edit-paste-pixels-below': '픽셀 아래 붙여넣기',
+    'shortcutAction.edit-auto-name': '자동 이름 지정',
     'blendMode.passThrough': '통과',
     'blendMode.normal': '표준',
     'blendMode.color': '표준',
@@ -5531,6 +5538,7 @@ enum AppStrings {
     'frameCountEntrySecondsPlusFrames': '초+코마',
     'projectFpsTitle': '프로젝트 프레임레이트',
     'projectFpsField': '초당 프레임 수',
+    'autoNameStartField': '시작 번호',
   };
 
   static const _frValues = <String, String>{
@@ -6086,6 +6094,7 @@ enum AppStrings {
     'shortcutAction.edit-copy-pixels': 'Copier les pixels',
     'shortcutAction.edit-paste-pixels-above': 'Coller les pixels dessus',
     'shortcutAction.edit-paste-pixels-below': 'Coller les pixels dessous',
+    'shortcutAction.edit-auto-name': 'Nommer automatiquement',
     'blendMode.passThrough': 'Transfert',
     'blendMode.normal': 'Normal',
     'blendMode.color': 'Normal',
@@ -6954,6 +6963,7 @@ enum AppStrings {
     'frameCountEntrySecondsPlusFrames': 'Secondes+images',
     'projectFpsTitle': 'Fréquence du projet',
     'projectFpsField': 'Images par seconde',
+    'autoNameStartField': 'Numéro de départ',
   };
 
   static const _zhHansValues = <String, String>{
@@ -7442,6 +7452,7 @@ enum AppStrings {
     'shortcutAction.edit-copy-pixels': '复制像素',
     'shortcutAction.edit-paste-pixels-above': '粘贴像素到上方',
     'shortcutAction.edit-paste-pixels-below': '粘贴像素到下方',
+    'shortcutAction.edit-auto-name': '自动命名',
     'blendMode.passThrough': '穿透',
     'blendMode.normal': '正常',
     'blendMode.color': '正常',
@@ -8227,5 +8238,6 @@ enum AppStrings {
     'frameCountEntrySecondsPlusFrames': '秒+帧',
     'projectFpsTitle': '项目帧率',
     'projectFpsField': '每秒帧数',
+    'autoNameStartField': '起始编号',
   };
 }
