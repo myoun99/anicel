@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../../core/draw_space.dart';
 import 'blends_in_place.dart';
 import 'colour_key_shader.dart';
+import 'display_resample.dart';
 import '../../services/composite_effect_paint.dart';
 import 'raster_picture.dart';
 
@@ -127,12 +128,7 @@ SubtreeRasterPlan? _planSubtreeRaster({
     bounds: bounds.size,
     maxSide: (maxPixelSide - 2).toDouble(),
   );
-  final destination = Rect.fromLTRB(
-    (bounds.left * scale).floorToDouble() / scale,
-    (bounds.top * scale).floorToDouble() / scale,
-    (bounds.right * scale).ceilToDouble() / scale,
-    (bounds.bottom * scale).ceilToDouble() / scale,
-  );
+  final destination = rectOutwardOnGrid(bounds, scale);
   final width = (destination.width * scale).round();
   final height = (destination.height * scale).round();
   if (width <= 0 || height <= 0) {

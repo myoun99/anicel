@@ -117,13 +117,31 @@ double displayResidualOf(double scale) =>
 /// of the two rects is larger, and a region on it halves [level] times into
 /// whole level pixels. It is also what makes a carry exact: two buffers of
 /// one level are offset by whole buffer pixels.
-ui.Rect wholeLevelPixelsOutward(ui.Rect bounds, int level) {
-  final step = (1 << level).toDouble();
+ui.Rect wholeLevelPixelsOutward(ui.Rect bounds, int level) =>
+    rectOutwardOnGrid(bounds, 1.0 / (1 << level));
+
+/// [bounds] grown out to the grid of [scale] cells per canvas unit counted
+/// from [origin] — the smallest rect on that grid that holds [bounds].
+///
+/// 🚨ONE snap for every raster grid: a display level's, the pyramid's from a
+/// surface's content origin, a sub-tree image's at its device scale — three
+/// copies of it once. It multiplies by the scale and divides back, which is
+/// exact whenever the scale is a power of two, so every level grid lands to
+/// the bit where the copy that divided by the level's step put it.
+ui.Rect rectOutwardOnGrid(
+  ui.Rect bounds,
+  double scale, {
+  ui.Offset origin = ui.Offset.zero,
+}) {
+  double down(double value, double start) =>
+      start + ((value - start) * scale).floorToDouble() / scale;
+  double up(double value, double start) =>
+      start + ((value - start) * scale).ceilToDouble() / scale;
   return ui.Rect.fromLTRB(
-    (bounds.left / step).floorToDouble() * step,
-    (bounds.top / step).floorToDouble() * step,
-    (bounds.right / step).ceilToDouble() * step,
-    (bounds.bottom / step).ceilToDouble() * step,
+    down(bounds.left, origin.dx),
+    down(bounds.top, origin.dy),
+    up(bounds.right, origin.dx),
+    up(bounds.bottom, origin.dy),
   );
 }
 
