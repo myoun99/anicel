@@ -451,7 +451,14 @@ void main() {
       session.selectLayer(_bMinus1);
       session.layerVerbs.deleteActiveLayer();
       await tester.pumpAndSettle();
-      await _twirl(tester, _b);
+      // ↩️The group was folded with the twirl here. The twirl is an undo
+      // step since I-32 (유저 2026-08-29: 「아무튼 레이어에 있는 버튼
+      // 싹다」 — the lane twirl beside it already was), so the undo below
+      // would take the FOLD back first and never reach the delete. The law
+      // this pins is the unfolding, so the group is folded the way the undo
+      // stream does not hold — the rail's view set, written directly.
+      session.railView.collapsedAttachBaseIds.value = {_b};
+      await tester.pumpAndSettle();
       expect(_row(_bMinus2), findsNothing);
 
       session.undo();
