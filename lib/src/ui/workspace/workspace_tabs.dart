@@ -51,16 +51,20 @@ class _WorkspaceTabs {
     return () => session.layerSwitches.toggleLayerFillReference(layer.id);
   }
 
-  /// A SHEET's body — the conte's, the envelope's, the timesheet's: [host],
-  /// built again whenever [listenable] moves, on a layer of its own.
+  /// A panel's host — the timeline's, the storyboard's, the conte's, the
+  /// envelope's, the timesheet's: [host], built again whenever [listenable]
+  /// moves, on a layer of its own.
   ///
   /// 🚨Its own layer (timesheet-rebuilds-on-every-scrub-move, found by
   /// I-22's scrub measurement 09-27): a sheet's tab builds its host again on
   /// every pan and zoom — the view the sheet is printed through — and the
   /// two that show the cut under the playhead (F-90) on every crossing a
   /// scrub makes, at a far zoom every move. Built bare in the dock's layout
-  /// scope, each laid the dock out again and repainted it whole.
-  Widget _sheetBody({
+  /// scope, each laid the dock out again and repainted it whole. 🚨F-244: the
+  /// frame panels too — they build their host again on every edit, and bare,
+  /// every commit (a comma drag's release) laid the dock out again and
+  /// repainted the page's root around the panel.
+  Widget _panelHost({
     required Listenable listenable,
     required WidgetBuilder host,
   }) => TickLayer(
@@ -263,28 +267,36 @@ class _WorkspaceTabs {
           builder: (context) => Stack(
             fit: StackFit.expand,
             children: [
-              EditorCanvasArea(
-                key: _state._canvasAreaKey,
-                onInvokeAction: _state.widget.onInvokeAction,
-                session: _state.widget.session,
-                brushToolState: _state._brushTool,
-                onBrushToolStateChanged: (state) =>
-                    _state._brushTool.value = state,
-                canvasViewCommands: _state.widget.canvasViewCommands,
-                navigationRegionKey: _state.widget.canvasNavigationRegionKey,
-                canvasSelectionCommands: _state.widget.canvasSelectionCommands,
-                cutPieceSlot: _state._cutPieceSlot,
-                lastStroke: _state.widget.lastStroke,
-                toolHold: _state.widget.toolHold,
-                cameraViewEnabled: _state._views._cameraViewEnabled,
-                cameraDimOpacity: _state._views._cameraDimOpacity,
-                expandedLaneLayerIds:
-                    _state.widget.session.railView.expandedLaneLayerIds,
-                fillOptions: _state._views._fillOptions,
-                selectionMaskOptions: _state._views._selectionMaskOptions,
-                transformOptions: _state._transformOptions,
-                eyedropperSource: _state._views._eyedropperSource,
-                flipHud: _state.widget.flipHud,
+              // 🚨F-244: the area hears every edit (its session subscription
+              // is its own), and bare in the workspace's layout scope each
+              // rebuild laid the workspace out again and repainted the
+              // page's root — the canvas is a panel host like the others
+              // ([_panelHost]), on a layer of its own. The expanding stack is
+              // what makes the layer's constraints tight.
+              TickLayer(
+                child: EditorCanvasArea(
+                  key: _state._canvasAreaKey,
+                  onInvokeAction: _state.widget.onInvokeAction,
+                  session: _state.widget.session,
+                  brushToolState: _state._brushTool,
+                  onBrushToolStateChanged: (state) =>
+                      _state._brushTool.value = state,
+                  canvasViewCommands: _state.widget.canvasViewCommands,
+                  navigationRegionKey: _state.widget.canvasNavigationRegionKey,
+                  canvasSelectionCommands: _state.widget.canvasSelectionCommands,
+                  cutPieceSlot: _state._cutPieceSlot,
+                  lastStroke: _state.widget.lastStroke,
+                  toolHold: _state.widget.toolHold,
+                  cameraViewEnabled: _state._views._cameraViewEnabled,
+                  cameraDimOpacity: _state._views._cameraDimOpacity,
+                  expandedLaneLayerIds:
+                      _state.widget.session.railView.expandedLaneLayerIds,
+                  fillOptions: _state._views._fillOptions,
+                  selectionMaskOptions: _state._views._selectionMaskOptions,
+                  transformOptions: _state._transformOptions,
+                  eyedropperSource: _state._views._eyedropperSource,
+                  flipHud: _state.widget.flipHud,
+                ),
               ),
               // A pool row dropped on the STAGE (§7): the cut and the layer
               // are the ones already under the cursor, so this entrance
@@ -779,7 +791,7 @@ class _WorkspaceTabs {
             playbackStartFrame: () => _state.widget.session.currentFrameIndex,
             onSkipToStart: () => _state.widget.session.selectFrameIndex(0),
           ),
-          builder: (context) => PanelAwareListenableBuilder(
+          builder: (context) => _panelHost(
             // The session subscription lives HERE now (HomePage no longer
             // setStates the world). Seeks are NOT session notifies — the
             // grids ride the frame cursor and never rebuild for them.
@@ -798,7 +810,7 @@ class _WorkspaceTabs {
               _state.widget.session.railView.collapsedAttachBaseIds,
               _state.widget.session.railView.rowFilter,
             ]),
-            builder: (context) => TimelineTabHost(
+            host: (context) => TimelineTabHost(
               session: _state.widget.session,
               // A pool row dropped on a drawing layer: select what it
               // landed on, then open the place window with the file
@@ -921,7 +933,7 @@ class _WorkspaceTabs {
             onSkipToStart: () =>
                 seekStoryboardPlayheadToTrackStart(_state.widget.session),
           ),
-          builder: (context) => PanelAwareListenableBuilder(
+          builder: (context) => _panelHost(
             // Session subscription — the timeline tab's list exactly, and
             // for the same reason: seeks are NOT session notifies, so this
             // panel never rebuilds for one. Scrub moves, playback ticks and
@@ -944,7 +956,7 @@ class _WorkspaceTabs {
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),
-            builder: (context) => StoryboardTabHost(
+            host: (context) => StoryboardTabHost(
               session: _state.widget.session,
               // A pool row let go on a track's frames: the place window, with
               // the drop's answer — a NEW cut there — shown locked.
@@ -1014,7 +1026,7 @@ class _WorkspaceTabs {
           // one render rather than two that must be kept in step.
           // _brushTool is deliberately NOT merged (R18 UI-3): only the
           // ink overlay consumes it, through its own boundary builder.
-          builder: (context) => _sheetBody(
+          builder: (context) => _panelHost(
             listenable: Listenable.merge([
               _state.widget.session,
               _state._views._conteViewport,
@@ -1063,7 +1075,7 @@ class _WorkspaceTabs {
           keepAlive: true,
           // _brushTool is deliberately NOT merged (R18 UI-3): only the ink
           // overlay consumes it, through its own boundary builder.
-          builder: (context) => _sheetBody(
+          builder: (context) => _panelHost(
             listenable: Listenable.merge([
               _state.widget.session,
               _state._views._envelopeViewport,
@@ -1114,7 +1126,7 @@ class _WorkspaceTabs {
           // for the whole of playback.
           staticRaster: false,
           keepAlive: true,
-          builder: (context) => _sheetBody(
+          builder: (context) => _panelHost(
             // _brushTool is deliberately NOT merged here (R18 UI-3): the
             // sheet layout never depends on it, and rebuilding the whole
             // (keep-alive, often hidden) B4 document on every tool
