@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -103,7 +104,11 @@ void main() {
     s.selectLayer(seRow.id);
     s.selectFrameIndex(0);
     s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 4);
-    s.seEntries.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
+    s.seEntries.updateSelectedSeEntry(
+      dialogue: 'おはよう',
+      seName: 'タモツ',
+      seType: SeLineType.on,
+    );
 
     final cut = s.requireActiveCut;
     // R5 #7: two runs — the name in the box, the dialogue beside it.
@@ -134,7 +139,11 @@ void main() {
     s.selectLayer(seRow.id);
     s.selectFrameIndex(0);
     s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 2);
-    s.seEntries.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
+    s.seEntries.updateSelectedSeEntry(
+      dialogue: 'おはよう',
+      seName: 'タモツ',
+      seType: SeLineType.on,
+    );
 
     final cut = s.requireActiveCut;
     final atEnd = s.seEntries.seNameTagsForCutFrame(cut, cut.duration - 1);
@@ -157,7 +166,11 @@ void main() {
     s.selectLayer(seRow.id);
     s.selectFrameIndex(0);
     s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 4);
-    s.seEntries.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
+    s.seEntries.updateSelectedSeEntry(
+      dialogue: 'おはよう',
+      seName: 'タモツ',
+      seType: SeLineType.on,
+    );
 
     final cut = s.requireActiveCut;
     final shot = shotRectIn(

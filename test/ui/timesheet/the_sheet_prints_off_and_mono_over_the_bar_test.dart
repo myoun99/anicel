@@ -68,6 +68,7 @@ void main() {
     final layout = TimesheetDocumentLayout(document: document);
     TimesheetDocumentPainter(
       words: timesheetWordsIn(AppLanguage.en),
+      face: const TextStyle(),
       document: document,
       layout: layout,
     ).paint(painted, layout.documentSize);

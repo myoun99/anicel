@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/app_clipboard.dart';
@@ -150,7 +151,11 @@ void main() {
         ..clearAllSelections()
         ..selectLayer(se)
         ..selectFrameIndex(1);
-      b.seEntries.updateSelectedSeEntry(dialogue: 'from B', seName: 'B');
+      b.seEntries.updateSelectedSeEntry(
+        dialogue: 'from B',
+        seName: 'B',
+        seType: SeLineType.on,
+      );
 
       a.copyFrameAtCurrentFrame();
       b
