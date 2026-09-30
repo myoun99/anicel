@@ -1681,6 +1681,11 @@ enum AppStrings {
   // --- Timeline toolbar prompts ---
   String get setCommasTitle => _s('setCommasTitle');
   String get setCommasField => _s('setCommasField');
+
+  /// I-24: the two ways a count of frames is typed (`FrameCountField`).
+  String get frameCountEntryFrames => _s('frameCountEntryFrames');
+  String get frameCountEntrySecondsPlusFrames =>
+      _s('frameCountEntrySecondsPlusFrames');
   String get projectFpsTitle => _s('projectFpsTitle');
   String get projectFpsField => _s('projectFpsField');
 
@@ -2805,6 +2810,8 @@ enum AppStrings {
     'tlStoryboardLayer': 'Storyboard layer',
     'setCommasTitle': 'Set commas',
     'setCommasField': 'Exposure frames',
+    'frameCountEntryFrames': 'Frames',
+    'frameCountEntrySecondsPlusFrames': 'Seconds+frames',
     'projectFpsTitle': 'Project frame rate',
     'projectFpsField': 'Frames per second',
   };
@@ -4150,6 +4157,8 @@ enum AppStrings {
     'tlStoryboardLayer': '絵コンテレイヤー',
     'setCommasTitle': 'コマ数の設定',
     'setCommasField': '露光フレーム数',
+    'frameCountEntryFrames': 'コマ数',
+    'frameCountEntrySecondsPlusFrames': '秒+コマ',
     'projectFpsTitle': 'プロジェクトのフレームレート',
     'projectFpsField': '1秒あたりのフレーム数',
   };
@@ -5490,6 +5499,8 @@ enum AppStrings {
     'tlStoryboardLayer': '콘티 레이어',
     'setCommasTitle': '코마 수 설정',
     'setCommasField': '노출 프레임 수',
+    'frameCountEntryFrames': '프레임',
+    'frameCountEntrySecondsPlusFrames': '초+코마',
     'projectFpsTitle': '프로젝트 프레임레이트',
     'projectFpsField': '초당 프레임 수',
   };
@@ -6905,6 +6916,8 @@ enum AppStrings {
     'tlStoryboardLayer': 'Calque storyboard',
     'setCommasTitle': 'Définir les commas',
     'setCommasField': "Images d'exposition",
+    'frameCountEntryFrames': 'Images',
+    'frameCountEntrySecondsPlusFrames': 'Secondes+images',
     'projectFpsTitle': 'Fréquence du projet',
     'projectFpsField': 'Images par seconde',
   };
@@ -8170,6 +8183,8 @@ enum AppStrings {
     'tlStoryboardLayer': '分镜图层',
     'setCommasTitle': '设置格数',
     'setCommasField': '曝光帧数',
+    'frameCountEntryFrames': '帧数',
+    'frameCountEntrySecondsPlusFrames': '秒+帧',
     'projectFpsTitle': '项目帧率',
     'projectFpsField': '每秒帧数',
   };

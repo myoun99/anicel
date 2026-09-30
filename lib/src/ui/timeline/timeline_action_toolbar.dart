@@ -27,7 +27,8 @@ import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
-import '../dialogs/app_prompt_dialog.dart';
+import '../widgets/app_window.dart';
+import '../widgets/frame_count_field.dart';
 
 /// The N-comma input (UI-R17 #7): asks for an exposure count and applies
 /// it to the selection (or the current block). Shared by the toolbar's N
@@ -41,28 +42,66 @@ Future<void> showTimelineCommaCountDialog(
   EditorSessionManager session, {
   ToolbarPanelContext? panel,
 }) async {
-  final strings = AppText.strings;
-  final entered = await showDialog<String>(
+  final comma = await showDialog<int>(
     context: context,
-    builder: (context) => AppPromptDialog(
-      windowKey: const ValueKey<String>('set-comma-n-dialog'),
-      title: strings.setCommasTitle,
-      titleIcon: Icons.timelapse_outlined,
-      fieldLabel: strings.setCommasField,
-      initialValue: '',
-      confirmLabel: strings.commonApply,
-      numeric: true,
-      fieldKey: const ValueKey<String>('set-comma-n-field'),
-      confirmKey: const ValueKey<String>('set-comma-n-apply'),
+    builder: (context) => _CommaCountWindow(
+      framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
     ),
   );
-  final comma = int.tryParse(entered ?? '');
   if (comma != null && comma >= 1) {
     if (panel != null) {
       panel.setComma(comma);
     } else {
       session.exposureVerbs.setCommaForSelectionOrCurrent(comma);
     }
+  }
+}
+
+/// The N-comma window: the count typed as frames or as seconds+frames
+/// ([FrameCountField], I-24), popped as frames.
+class _CommaCountWindow extends StatefulWidget {
+  const _CommaCountWindow({required this.framesPerSecond});
+
+  final int framesPerSecond;
+
+  @override
+  State<_CommaCountWindow> createState() => _CommaCountWindowState();
+}
+
+class _CommaCountWindowState extends State<_CommaCountWindow> {
+  int? _count;
+
+  void _apply() => Navigator.of(context).pop(_count);
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppText.strings;
+    return AppWindow(
+      windowKey: const ValueKey<String>('set-comma-n-dialog'),
+      title: strings.setCommasTitle,
+      titleIcon: Icons.timelapse_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 300,
+      body: FrameCountField(
+        keyPrefix: 'set-comma-n',
+        label: strings.setCommasField,
+        framesPerSecond: widget.framesPerSecond,
+        onChanged: (count) => _count = count,
+        onSubmitted: _apply,
+      ),
+      actions: [
+        AppWindowAction(
+          label: strings.commonCancel,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        AppWindowAction(
+          label: strings.commonApply,
+          actionKey: const ValueKey<String>('set-comma-n-apply'),
+          emphasis: AppWindowActionEmphasis.primary,
+          onPressed: _apply,
+        ),
+      ],
+    );
   }
 }
 

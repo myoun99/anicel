@@ -271,6 +271,14 @@ String runningTimeLabel(int frames, int framesPerSecond) {
   return (seconds: frames ~/ fps, frames: frames % fps);
 }
 
+/// The frames a [seconds]+[frames] duration counts — [durationSecondsAndFrames]
+/// the other way, for a field that TAKES the notation (I-24), guarding the
+/// rate the way the split does.
+int framesOfSecondsAndFrames(int seconds, int frames, int framesPerSecond) {
+  final fps = framesPerSecond < 1 ? 1 : framesPerSecond;
+  return seconds * fps + frames;
+}
+
 /// The audio pull that keeps every sound's exact FRAME span across a
 /// [from]→[to] rate change, or null when the question does not arise
 /// (EXPORT-AUDIO ④, the RT conform semantics).

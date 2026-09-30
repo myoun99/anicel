@@ -932,6 +932,9 @@ void main() {
     'sheetPrintHold': (s) => s.sheetPrintHold,
     'setCommasTitle': (s) => s.setCommasTitle,
     'setCommasField': (s) => s.setCommasField,
+    'frameCountEntryFrames': (s) => s.frameCountEntryFrames,
+    'frameCountEntrySecondsPlusFrames': (s) =>
+        s.frameCountEntrySecondsPlusFrames,
     'projectFpsTitle': (s) => s.projectFpsTitle,
     'projectFpsField': (s) => s.projectFpsField,
   };
