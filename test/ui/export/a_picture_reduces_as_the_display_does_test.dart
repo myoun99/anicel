@@ -33,7 +33,9 @@ import 'package:anicel/src/ui/sheet_painting.dart';
 /// while the brush is on: halved a 2×2 box mean at a time, and only what is
 /// left of the reduction filtered as the display filters it.
 void main() {
-  const canvas = CanvasSize(width: 128, height: 72);
+  // One tile exactly: the composed image IS the canvas rect, the case the
+  // legacy draw at the origin is kept for — which a level must not take.
+  const canvas = CanvasSize(width: 128, height: 128);
   const size = 128;
 
   /// A picture [width] pixels wide of a cut whose one cel is black on the
