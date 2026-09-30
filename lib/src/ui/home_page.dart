@@ -62,6 +62,7 @@ import 'shortcuts/editor_key_holds.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_settings_store.dart';
+import 'timeline/instance_editor_commands.dart' show autoNameWithWindow;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
 import 'timeline/timeline_action_toolbar.dart'
     show showTimelineCommaCountDialog;
@@ -964,6 +965,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           unawaited(
             showTimelineCommaCountDialog(context, _session, panel: panel),
           );
+        }
+      // I-18: 자동 이름 지정, pressed by key — the shared pill's button on the
+      // panel being worked in, behind the gate that button reads.
+      case EditorActionIds.editAutoName:
+        final panel = _workingPanel;
+        if (panel.canAutoName) {
+          unawaited(autoNameWithWindow(context, _session, panel: panel));
         }
       // 🗣️I-19: the shared pill's own buttons, pressed by key — through the
       // very getters the buttons fire, so a key cannot act where its button

@@ -1130,6 +1130,10 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // drawn one moved nothing this token held, and the cached bar kept
       // the dark head. (I-55: the head's gate is every row's now.)
       session.pixelVerbs.canOpenColourEdit,
+      // I-18: 자동 이름 지정 lights on a BLOCK under the playhead and dims on
+      // an empty cell or a ghost — a seek moves it, and a seek is no notify.
+      // The timeline context's answer, read where it comes from.
+      session.blockNaming.timelineTargets != null,
       // The Add button gates on the active layer's kind + cell state.
       // NOTE: these two move together with the can* getters above in every
       // reachable scenario, so the guard test cannot isolate them — they are

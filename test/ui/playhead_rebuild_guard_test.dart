@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
+import '../helpers/home_page_probes.dart' show isActionButtonEnabled;
+
 /// R13-2 playhead rebuild guards: committed seeks and cursor moves must
 /// not rebuild what they don't change — measured on device as the
 /// frame-flip hitch (the timesheet repainted the whole B4 sheet per
@@ -73,6 +75,56 @@ void main() {
       isFalse,
       reason: 'enablement changes still refresh the toolbar',
     );
+
+    // Drain the prerender scheduler's debounced warming.
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a seek onto a block lights 자동 이름 지정, and one onto an empty '
+      'cell dims it — its gate rides the seek token (I-18)', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TimelineTabHost(
+            session: session,
+            orientation: TimelineOrientation.horizontal,
+            onOrientationChanged: (_) {},
+            pixelsPerFrame: 24,
+            onPixelsPerFrameChanged: (_) {},
+            showSeconds: false,
+            onShowSecondsChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    const button = ValueKey<String>('shared-auto-name-button');
+
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    session.selectFrameIndex(3);
+    await tester.pump();
+    expect(
+      await isActionButtonEnabled(tester, button),
+      isFalse,
+      reason: 'an empty cell holds no block',
+    );
+
+    session.selectFrameIndex(0);
+    await tester.pump();
+    expect(
+      await isActionButtonEnabled(tester, button),
+      isTrue,
+      reason: 'the seek landed on a block',
+    );
+    // ⚠️HONEST SCOPE: this seek flips the other cell gates with it (delete,
+    // copy …), so it proves the BUTTON follows the seek — not that its own
+    // token entry is what carried it there.
 
     // Drain the prerender scheduler's debounced warming.
     await tester.pump(const Duration(seconds: 1));

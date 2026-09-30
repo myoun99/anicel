@@ -19,6 +19,7 @@ import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
+import 'instance_editor_commands.dart' show autoNameWithWindow;
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'rasterize_reference_rows.dart';
 import 'timeline_section_policy.dart';
@@ -961,6 +962,8 @@ class TimelineActionToolbar extends StatelessWidget {
       session.pixelVerbs.canOpenColourEdit,
       // I-45: the link-independent button, from its own one answer.
       panelContext.canUnlink,
+      // I-18: 자동 이름 지정, likewise.
+      panelContext.canAutoName,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
@@ -994,6 +997,24 @@ class TimelineActionToolbar extends StatelessWidget {
           onPressed: onEditInstance != null && panelContext.canEditInstance
               ? onEditInstance
               : null,
+        ),
+        // 🗣️I-18 — 자동 이름 지정, beside Edit (유저: 「타임라인 공용 알약에
+        // 새 버튼 신설. 내용은 블록 이름 자동편집으로 … 버튼은 자동 이름
+        // 지정」). It asks what is selected, the pill's one ladder, and
+        // numbers what the panel names from the number its window asks for.
+        // A context of its own: the window opens from where it was pressed.
+        Builder(
+          builder: (context) => _iconButton(
+            key: const ValueKey<String>('shared-auto-name-button'),
+            tooltip: editorActionLabel(EditorActionIds.editAutoName),
+            shortcuts: const [EditorActionIds.editAutoName],
+            icon: Icons.format_list_numbered,
+            onPressed: panelContext.canAutoName
+                ? () => unawaited(
+                    autoNameWithWindow(context, session, panel: panelContext),
+                  )
+                : null,
+          ),
         ),
         const PillDivider(),
         // 🚨T3 신설 — 잘라내기, 「복사 버튼 왼쪽」 (유저 2026-08-13).

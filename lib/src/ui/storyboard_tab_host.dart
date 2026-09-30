@@ -1166,6 +1166,9 @@ class _CursorGatedStoryboardToolbarState
       panel.canPasteIndependentFrame,
       panel.canPasteLinkedFrame,
       panel.canUnlink,
+      // I-18: 자동 이름 지정 lights over a cut and dims in a gap — the
+      // playhead moves it, and a playhead move is no notify.
+      panel.canAutoName,
       // F-75: the 색 편집 head on this bar reads the session's own answer —
       // whether the cel under the playhead has a drawing — which none of the
       // entries above moves with. (I-55: the head's gate is every row's now.)
