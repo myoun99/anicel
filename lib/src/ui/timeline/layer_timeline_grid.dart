@@ -16,7 +16,7 @@ import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
-import 'layer_drop_policy.dart' show rowsWithSilhouette;
+import 'layer_drop_policy.dart' show LayerRowCaret, rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
 import '../listenable_rebind.dart';
@@ -179,6 +179,15 @@ typedef _RailRowMemoInputs = ({
   // every visible fact is in its token, and a row word that stopped reading
   // the theme would keep the last language's without it.
   AppLanguage language,
+  // F-244: the row's DRAG wrapper is kept with it, so a commit that moved no
+  // row rebuilds no wrapper (it rebuilt all of them, ~170 elements on 24
+  // rows). What the wrapper is built from: the host's hooks (bound once
+  // there), the span verb (a tear-off — equal from build to build) and the
+  // caret line it paints; the crossing reads the rows at the event.
+  ByIdentity<TimelineRowDragHooks?> dragHooks,
+  void Function(List<TimelineDisplayRow> rows, int rowDelta)? onRowSelectionSpan,
+  int? caretSlot,
+  bool? caretIsLastRow,
 });
 
 /// The legend header's memo token (UI-R7 #1): every legend-visible fact.

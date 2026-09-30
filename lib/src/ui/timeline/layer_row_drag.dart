@@ -1157,8 +1157,9 @@ DragChipItem effectRowDragChip(PropertyLaneRow header) =>
 /// and found missing on the sheet later. The audit's clone scan
 /// (2026-09-03) found the pair; this is the one that stays.
 ///
-/// [dragRows] is a getter: the caret reads the rows drawn at build time,
-/// the selection closures the rows drawn at EVENT time.
+/// [dragRows] is a getter: the caret LINE a row paints reads the rows drawn
+/// at build time; the crossing and the selection closures, the rows drawn
+/// at EVENT time.
 ///
 /// 🚨B4-3 (유저, 몇 번째인지 세지 않겠다고 했다) — **EVERY ROW JOINS A
 /// SELECTION.**
@@ -1252,16 +1253,20 @@ Widget layerRowDragWrapper({
     onCrossed: hooks == null
         ? (_, _, _) {}
         : (steps, onRow, inRow) {
-      final slot = caret.slotFor(steps);
-      final target = caret.onRowLayer(onRow);
+      // The rows as drawn NOW (F-244): the rail keeps this wrapper across
+      // builds that moved no row, so the rows it was built over may carry
+      // older layers than the ones the drag lands among.
+      final drawn = LayerRowCaret.of(dragRows(), row.layer.id) ?? caret;
+      final slot = drawn.slotFor(steps);
+      final target = drawn.onRowLayer(onRow);
       if (target != null) {
-        hooks.onRowTarget(caret.layers, slot, target.id);
+        hooks.onRowTarget(drawn.layers, slot, target.id);
         return;
       }
       hooks.onUpdate(
-        caret.layers,
+        drawn.layers,
         slot,
-        pointerInRow: caret.onRowLayer(inRow)?.id,
+        pointerInRow: drawn.onRowLayer(inRow)?.id,
       );
     },
     onSelectCrossed: hooks?.onSelectBegin == null

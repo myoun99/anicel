@@ -89,6 +89,8 @@ class _LayerGridRailRows {
       return _state._rowDrags.draggable(row, _railRow(row));
     }
     final fold = _groupFoldFor(row);
+    // The caret line the wrapper paints — the rows as this build draws them.
+    final caret = LayerRowCaret.of(_state._dragRows, row.layer.id);
     final inputs = (
       layer: ControlsRowFace(row.layer),
       active: _layerRowIsActive(row.layer),
@@ -126,14 +128,18 @@ class _LayerGridRailRows {
       sectionLabelGutterWidth: _state._metrics.sectionLabelGutterWidth,
       opacityDragPreview: ByIdentity(_state.widget.hooks.opacityDragPreview),
       language: AppText.language,
+      dragHooks: ByIdentity(_state.widget.hooks.rowDragHooks),
+      onRowSelectionSpan: _state.widget.hooks.onRowSelectionSpan,
+      caretSlot: caret?.slot,
+      caretIsLastRow: caret?.isLastRow,
     );
     final cached = _state._railRowMemo[row.layer.id];
     if (cached != null && cached.inputs == inputs) {
-      return _state._rowDrags.draggable(row, cached.row);
+      return cached.row;
     }
-    final built = _railRow(row);
+    final built = _state._rowDrags.draggable(row, _railRow(row));
     _state._railRowMemo[row.layer.id] = (inputs: inputs, row: built);
-    return _state._rowDrags.draggable(row, built);
+    return built;
   }
 
   /// The rail row's element key — ONE builder for the window loop and the

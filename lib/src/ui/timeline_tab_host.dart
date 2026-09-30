@@ -191,6 +191,62 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
 
+  /// P2b: the rail row IS the handle. Pen and mouse move it; a finger
+  /// scrolls, because the rail scrolls along the very axis this drag runs.
+  ///
+  /// 🚨Bound ONCE, like the sources above (F-244): the rail keeps each row's
+  /// drag wrapper across an edit only while this is the same object — a
+  /// fresh set per build rebuilt every row's wrapper at every commit (~170
+  /// elements on 24 rows). Nothing in it reads the build it was made in: the
+  /// verbs are the session's, and the closures ask the session at the event.
+  late final TimelineRowDragHooks _rowDragHooks = TimelineRowDragHooks(
+    drag: _session.layerRowDragVerbs.inFlight,
+    onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
+    onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
+    onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,
+    onEffectUpdate: _session.layerRowDragVerbs.updateEffectRowDrag,
+    onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
+    onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
+    // A file from the pool over the layer area raises the caret a
+    // moved row does (「레이어 영역(가로선) → 새 레이어」) AND the
+    // row it would make, standing in that gap (라운드 2d 2부).
+    // ⛔One verb, not two hooks: the line and the row are one
+    // answer, and a surface that raised only one of them would be
+    // showing half of what the release does.
+    onPlacementHover: _session.showLayerPlacement,
+    onPlacementLeave: _session.clearLayerPlacement,
+    acceptsPlacement: (displayLayers, slot, path) =>
+        _session.layerSlotSpotFor(displayLayers, slot, path) != null,
+    // ⑨: the first drag SELECTS, and a drag that starts INSIDE the
+    // selection moves it — the cells' grammar, transposed.
+    //
+    // 🚨T5 (유저 2026-08-13): 「모든 셀은 선택범위 자유롭게 규칙없이
+    // 가능하듯이 **모든 행은 자유롭게 규칙없이 선택가능.** 지금 fx랑
+    // fx멤버가 선택범위 안됨」 — and on the fx header's chain drag
+    // specifically: 「셀과 같은문법으로 통일」.
+    //
+    // ⛔The old answer here was `null` for every subject that is not
+    // a layer row, which this file called "not a row selection's
+    // business". That was a KIND deciding whether a row may be
+    // selected, and the whole of ③/⑨'s law is that kind decides
+    // what an edit DOES, never whether the row can be named.
+    //
+    // The chain drag is not lost by this: it is the second phase
+    // now, exactly as a layer row's move is. Start outside the
+    // selection and the drag selects; start inside it and the drag
+    // re-orders the chain.
+    isInRowSelection: (subject) =>
+        _session.rowSelectionVerbs.rowIsSelected(
+          timelineRowAddressOfDragSubject(subject),
+        ),
+    onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
+      timelineRowAddressOfDragSubject(subject),
+    ),
+    onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
+    // I-39: what a picked-up row carries, named at the pointer.
+    rowsActedOnBy: _session.rowSelectionVerbs.rowsActedOnBy,
+  );
+
   /// Every kind's twirl-down lanes — the SAME AE Transform lanes on truly
   /// every layer (unified layer controls): the camera rides the cut camera
   /// track, every other kind its own layer track (applied at composite
@@ -758,56 +814,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               currentRow: _session.standing.currentRowListenable,
               onStandOnLane: _standOnLaneRow,
             ),
-            // P2b: the rail row IS the handle. Pen and mouse move it; a
-            // finger scrolls, because the rail scrolls along the very axis
-            // this drag runs.
-            rowDragHooks: TimelineRowDragHooks(
-              drag: _session.layerRowDragVerbs.inFlight,
-              onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
-              onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
-              onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,
-              onEffectUpdate: _session.layerRowDragVerbs.updateEffectRowDrag,
-              onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
-              onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
-              // A file from the pool over the layer area raises the caret a
-              // moved row does (「레이어 영역(가로선) → 새 레이어」) AND the
-              // row it would make, standing in that gap (라운드 2d 2부).
-              // ⛔One verb, not two hooks: the line and the row are one
-              // answer, and a surface that raised only one of them would be
-              // showing half of what the release does.
-              onPlacementHover: _session.showLayerPlacement,
-              onPlacementLeave: _session.clearLayerPlacement,
-              acceptsPlacement: (displayLayers, slot, path) =>
-                  _session.layerSlotSpotFor(displayLayers, slot, path) != null,
-              // ⑨: the first drag SELECTS, and a drag that starts INSIDE the
-              // selection moves it — the cells' grammar, transposed.
-              //
-              // 🚨T5 (유저 2026-08-13): 「모든 셀은 선택범위 자유롭게 규칙없이
-              // 가능하듯이 **모든 행은 자유롭게 규칙없이 선택가능.** 지금 fx랑
-              // fx멤버가 선택범위 안됨」 — and on the fx header's chain drag
-              // specifically: 「셀과 같은문법으로 통일」.
-              //
-              // ⛔The old answer here was `null` for every subject that is not
-              // a layer row, which this file called "not a row selection's
-              // business". That was a KIND deciding whether a row may be
-              // selected, and the whole of ③/⑨'s law is that kind decides
-              // what an edit DOES, never whether the row can be named.
-              //
-              // The chain drag is not lost by this: it is the second phase
-              // now, exactly as a layer row's move is. Start outside the
-              // selection and the drag selects; start inside it and the drag
-              // re-orders the chain.
-              isInRowSelection: (subject) =>
-                  _session.rowSelectionVerbs.rowIsSelected(
-                    timelineRowAddressOfDragSubject(subject),
-                  ),
-              onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
-                timelineRowAddressOfDragSubject(subject),
-              ),
-              onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
-              // I-39: what a picked-up row carries, named at the pointer.
-              rowsActedOnBy: _session.rowSelectionVerbs.rowsActedOnBy,
-            ),
+            rowDragHooks: _rowDragHooks,
             onRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
             // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
             // drawings onto a run; the property tag sets the edge's
