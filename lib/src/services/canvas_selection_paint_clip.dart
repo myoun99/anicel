@@ -219,12 +219,8 @@ ClippedStrokePixels? clipDabsToSelection({
 /// is left — or, for stamps, each stamp clipped in its own picture
 /// ([clipStampDabToSelection]) and landed 1:1.
 ///
-/// ⚠️It is the ordinary case on a sheet, not an edge: a timesheet page's
-/// two halves are two windows onto ONE band surface, and a stroke over
-/// both lands twice on it in the same pen-up.
-///
 /// ⛔ONE funnel for the canvas's selection (R26 #18, 「선택하고 그리면 선택
-/// 내부만 그려진다」) and a sheet window's slice of one paper — the same
+/// 내부만 그려진다」) and what a sheet window keeps of its stroke — the same
 /// question, 「only here」, asked of the same payload.
 BrushStrokeCommitData? clipStrokeCommitToSelection(
   BrushStrokeCommitData data, {

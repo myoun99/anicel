@@ -247,23 +247,27 @@ void main() {
     });
   }
 
-  testWidgets('one stroke from the picture into the band makes ONE block: '
-      'the picture\'s part in its cel, the band\'s in its handwriting', (
-    tester,
-  ) async {
+  testWidgets('a stroke from the picture out into the band makes ONE block, '
+      'the picture\'s: its cel takes the stroke and the band none of it '
+      '(H49: 「선 시작한곳에따라 칸 나누자」)', (tester) async {
     final cell = await pumpPanel(tester, autoCreates: true);
 
     await strokeFrom(tester, cell.picture.center, besideThePicture(cell));
 
     final row = storyboardLayerForCut(cutOf(empty))!;
-    expect(row.frames, hasLength(1), reason: 'one block, not one per part');
+    expect(row.frames, hasLength(1), reason: 'one block');
     final cel = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(
       session.brushFrameKeyForCut(cutOf(empty), row.id, row.frames.single.id),
     );
     expect(cel, isNotNull);
     // The picture's middle is the camera's centre, the canvas's middle.
     expect(surfacePixelRgba(cel!, 320, 180) ?? 0, isNot(0));
-    expect(bandHasInk(empty, inkIdOf(empty)!), isTrue);
+    expect(
+      inkIdOf(empty),
+      isNull,
+      reason: 'the band was never written on, so its block has no '
+          'handwriting',
+    );
 
     session.historyManager.undo();
     await tester.pumpAndSettle();
@@ -271,7 +275,7 @@ void main() {
   });
 
   testWidgets('with it off, the band takes nothing, and the press says '
-      'why, in the canvas\'s words', (
+      'why: its cut has no conte layer (H51)', (
     tester,
   ) async {
     final cell = await pumpPanel(tester, autoCreates: false);
@@ -291,7 +295,7 @@ void main() {
       cursorNotices.message,
       AppStrings.of(
         session.languageSettings.value.programLanguage,
-      ).noticeNoFrameHere,
+      ).noticeNoConteLayer,
     );
     // The notice goes of itself.
     await tester.pump(CursorNoticeController.defaultDuration);

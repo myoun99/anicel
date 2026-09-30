@@ -335,15 +335,14 @@ void main() {
   // H40 ② (2026-09-24): the ink layer was rebuilt on every brush change —
   // each frame of a settings slider drag. Its windows read the brush when a
   // stroke starts now, so a change reaches none of them.
-  testWidgets('a brush change rebuilds no ink window, and the windows read '
-      'the brush in hand — the paper\'s at the pictures\' scale', (
-    tester,
-  ) async {
+  testWidgets('a brush change rebuilds no ink window, and every window reads '
+      'the brush in hand as it is — the paper\'s too (H50: 「원본 1:1그대로 '
+      '공용로직 그대로」)', (tester) async {
     final ink = ConteInkController();
     addTearDown(ink.dispose);
     final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     addTearDown(brush.dispose);
-    final session = await _pumpConte(
+    await _pumpConte(
       tester,
       inkController: ink,
       brushToolState: brush,
@@ -359,22 +358,16 @@ void main() {
     final windows = tester.widgetList<InteractiveBrushEditCanvasView>(
       find.byType(InteractiveBrushEditCanvasView),
     );
-    expect(windows, isNotEmpty);
-    // F-217 (유저 답 F-217-Q1 「종이에서는 붓을 그림 칸 비율로 줄여 긋기」).
-    final paperScale = contePaperBrushScale(
-      ConteSheetMetrics(cameraAspect: session.camera.cameraFrameAspect),
-      session.camera.cameraFrameSize,
+    expect(
+      windows.map((window) => (window.key! as ValueKey<String>).value),
+      contains(startsWith('conte-ink-row-')),
+      reason: 'fixture: a paper window among them',
     );
-    expect(paperScale, lessThan(1), reason: 'fixture: the paper is coarser');
     for (final window in windows) {
-      final key = (window.key! as ValueKey<String>).value;
-      final paper = key.startsWith('conte-ink-row-');
       expect(
         window.inputSettings(),
-        next.toInputSettings().copyWith(
-          size: next.size * (paper ? paperScale : 1),
-        ),
-        reason: '$key reads the brush in hand, at its own scale',
+        next.toInputSettings(),
+        reason: '${window.key} reads the brush in hand',
       );
     }
   });
@@ -421,7 +414,6 @@ void main() {
                 // viewport every painter takes.
                 viewport: CanvasViewport(),
                 strokeActive: strokeActive,
-                paperBrushScale: 1,
               ),
             ),
           ),
@@ -476,13 +468,11 @@ void main() {
     expect(controller.hasInkFor(null, rowKey), isTrue);
   });
 
-  // 🚨ONE PAPER (유저 2026-09-25: 「진짜 하나의 용지처럼. 데이터는
-  // 나누더라도」): the stroke used to belong to the window it started in
-  // and ran on over the cells below it, in the paper's ink.
-  testWidgets('one paper: a stroke from the band above the table down into '
-      'a cell leaves the cell its piece and the header none — ONE undo', (
-    tester,
-  ) async {
+  // 🚨A stroke is the cell's it starts in (유저 2026-09-30, H49: 「선
+  // 시작한곳에따라 칸 나누자」). ↩️From 09-25 (one paper) the cell kept the
+  // piece of a stroke drawn over it wherever the stroke began.
+  testWidgets('a stroke started above the table, on no cell, leaves nothing '
+      '— not even in the cell it runs into', (tester) async {
     final source = buildConteSheetSource(_project());
     final page = layoutConteSheet(
       source,
@@ -513,7 +503,6 @@ void main() {
                 historyManager: historyManager,
                 viewport: CanvasViewport(),
                 strokeActive: strokeActive,
-                paperBrushScale: 1,
               ),
             ),
           ),
@@ -554,14 +543,8 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(inkUnder(cell, end), isTrue);
-    expect(
-      inkUnder(cell, start),
-      isFalse,
-      reason: 'the header is no cell\'s, so no surface keeps that piece',
-    );
-
-    historyManager.undo();
+    expect(inkUnder(cell, end), isFalse);
     expect(controller.hasInkFor(null, cell.key), isFalse);
+    expect(historyManager.canUndo, isFalse, reason: 'nothing landed');
   });
 }

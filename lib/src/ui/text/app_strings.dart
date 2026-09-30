@@ -154,6 +154,11 @@ enum AppStrings {
   /// why, right where the user is looking.
   String get noticeNoFrameHere => _s('noticeNoFrameHere');
 
+  /// The conte's pen on a cut with no conte row to draw into, while
+  /// 「프레임 자동 생성」 is off (유저 2026-09-30, H51: 「콘티레이어없으면
+  /// 프레임이 없다고뜨는데 … 콘티레이어가 없다고」).
+  String get noticeNoConteLayer => _s('noticeNoConteLayer');
+
   /// R27 #16: the refusal is about the LAYER, not the section — the CAM
   /// section is no longer uniformly undrawable in the user's model.
   String get noticeLayerNotDrawable => _s('noticeLayerNotDrawable');
@@ -1692,6 +1697,7 @@ enum AppStrings {
     'pageLabel': 'Page',
     'continuousLabel': 'Continuous',
     'noticeNoFrameHere': 'No frame here',
+    'noticeNoConteLayer': 'This cut has no storyboard layer',
     'noticeLayerNotDrawable': 'This layer cannot be drawn on',
     'noticeEditAttachOwner': 'Edit the owner layer',
     'commonCancel': 'Cancel',
@@ -2808,6 +2814,7 @@ enum AppStrings {
     'pageLabel': 'ページ',
     'continuousLabel': '連続表示',
     'noticeNoFrameHere': 'フレームがありません',
+    'noticeNoConteLayer': 'このカットには絵コンテレイヤーがありません',
     'noticeLayerNotDrawable': 'このレイヤーには描けません',
     'noticeEditAttachOwner': '親レイヤーを編集してください',
     'commonCancel': 'キャンセル',
@@ -4152,6 +4159,7 @@ enum AppStrings {
     'pageLabel': '페이지',
     'continuousLabel': '콘티너스',
     'noticeNoFrameHere': '프레임이 존재하지 않습니다',
+    'noticeNoConteLayer': '콘티 레이어가 존재하지 않습니다',
     'noticeLayerNotDrawable': '드로잉이 허용되지 않은 레이어입니다',
     'noticeEditAttachOwner': '주인 레이어를 편집하세요',
     'commonCancel': '취소',
@@ -5491,6 +5499,7 @@ enum AppStrings {
     'pageLabel': 'Page',
     'continuousLabel': 'Continu',
     'noticeNoFrameHere': 'Aucune image ici',
+    'noticeNoConteLayer': 'Ce plan n\'a pas de calque storyboard',
     'noticeLayerNotDrawable': 'Ce calque n\'accepte pas le dessin',
     'noticeEditAttachOwner': 'Modifiez le calque parent',
     'commonCancel': 'Annuler',
@@ -6905,6 +6914,7 @@ enum AppStrings {
     'pageLabel': '页',
     'continuousLabel': '连续视图',
     'noticeNoFrameHere': '此处没有帧',
+    'noticeNoConteLayer': '该镜头没有分镜图层',
     'noticeLayerNotDrawable': '该图层不可绘制',
     'noticeEditAttachOwner': '请编辑父图层',
     'commonCancel': '取消',

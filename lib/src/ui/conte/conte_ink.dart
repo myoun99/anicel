@@ -79,33 +79,29 @@ class ConteInkController extends SheetInkController<Null> {
 typedef ConteShownPage = ({ContePageLayout page, Offset at});
 
 /// The ink windows for one page: a window per cell's band, so a stroke
-/// over several cells leaves each its own piece ([sheetInkRegions]) and a
-/// stroke outside every cell leaves nothing — ink is the cells' alone (유저
-/// 09-26, H44 「칸에만」). A block not yet written on writes under the name
+/// keeps to the cell it starts in ([sheetInkRegions]) and one that starts
+/// outside every cell leaves nothing — ink is the cells' alone (유저 09-26,
+/// H44 「칸에만」). A block not yet written on writes under the name
 /// [unwrittenInkIdOf] gives it ahead.
 ///
 /// A cell with no block draws its band as its picture draws (유저 답
 /// conte-drawing-target-Q3 「그림 칸과 같이 (토글을 따른다)」): into the
 /// handwriting of the block its first stroke makes — or, while the
 /// canvas's 「프레임 자동 생성」 is off, into nothing, refusing the pen with
-/// [rowRefusal] as the picture does.
+/// what [refusalOf] says of the cell, as the picture does.
 ///
 /// ⛔Made from the walk the page's printers read ([conteInkMarks]) — the
 /// brush writes through exactly the windows the paper shows.
-///
-/// Each reads the brush at [brushScale] — the paper's scale against the
-/// pictures' (`contePaperBrushScale`, F-217).
 List<SheetInkWindow> conteInkWindows(
   ContePageLayout page, {
   String Function(ContePlacedCell cell)? unwrittenInkIdOf,
-  String? rowRefusal,
-  double brushScale = 1,
+  String? Function(ContePlacedCell cell)? refusalOf,
 }) {
   final blockless = {
     if (unwrittenInkIdOf != null)
       for (final cell in page.cells)
         if (cell.source.frameId == null)
-          conteInkRowKey(CutId(cell.cutId), unwrittenInkIdOf(cell)),
+          conteInkRowKey(CutId(cell.cutId), unwrittenInkIdOf(cell)): cell,
   };
   return [
     for (final ink in conteInkMarks(
@@ -116,8 +112,10 @@ List<SheetInkWindow> conteInkWindows(
       SheetInkWindow.of(
         ink,
         id: 'row-${ink.key.cutId.value}-${ink.key.frameId.value}',
-        refusal: blockless.contains(ink.key) ? rowRefusal : null,
-        brushScale: brushScale,
+        refusal: switch (blockless[ink.key]) {
+          final cell? => refusalOf?.call(cell),
+          null => null,
+        },
       ),
   ];
 }
@@ -135,13 +133,12 @@ class ConteInkLayer extends StatelessWidget {
     required this.historyManager,
     required this.viewport,
     required this.strokeActive,
-    required this.paperBrushScale,
     this.cacheInvalidationSink,
     this.pictures,
     this.pictureWindows = const [],
     this.pictureInvalidationSink,
     this.unwrittenInkIdOf,
-    this.rowRefusal,
+    this.refusalOf,
     this.beforeLanding,
   });
 
@@ -162,11 +159,6 @@ class ConteInkLayer extends StatelessWidget {
   /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
 
-  /// What the paper's windows multiply the brush's size by — the pictures'
-  /// scale against the paper's (`contePaperBrushScale`, F-217). The
-  /// pictures read the brush in their own cels' pixels.
-  final double paperBrushScale;
-
   final CacheInvalidationSink? cacheInvalidationSink;
 
   /// The cels the pictures draw into, and the windows they draw through
@@ -182,14 +174,13 @@ class ConteInkLayer extends StatelessWidget {
   /// The name a block not yet written on writes under ([conteInkWindows]).
   final String Function(ContePlacedCell cell)? unwrittenInkIdOf;
 
-  /// Why the band of a cell with no block takes no ink — the pictures'
+  /// Why the band of a cell with no block takes no ink — its picture's
   /// refusal, word for word ([conteInkWindows]).
-  final String? rowRefusal;
+  final String? Function(ContePlacedCell cell)? refusalOf;
 
-  /// Told each piece of a stroke is landing, before it is kept — where what
-  /// it was drawn into is made or named: the block a cell with none draws
-  /// into (its picture or its band), the id a block's first handwriting
-  /// puts on it.
+  /// Told a stroke is landing, before it is kept — where what it was drawn
+  /// into is made or named: the block a cell with none draws into (its
+  /// picture or its band), the id a block's first handwriting puts on it.
   /// So the stroke lands in something its cut has, in the stroke's own undo
   /// step.
   final ValueChanged<SheetWindow>? beforeLanding;
@@ -202,8 +193,7 @@ class ConteInkLayer extends StatelessWidget {
           for (final window in conteInkWindows(
             page,
             unwrittenInkIdOf: unwrittenInkIdOf,
-            rowRefusal: rowRefusal,
-            brushScale: paperBrushScale,
+            refusalOf: refusalOf,
           ))
             window.shiftedBy(at),
         ...pictureWindows,

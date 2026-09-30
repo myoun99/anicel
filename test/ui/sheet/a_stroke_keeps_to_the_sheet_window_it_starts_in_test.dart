@@ -23,15 +23,16 @@ import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 
-/// 🚨★★★ONE PAPER — 유저 2026-09-25 (conte-drawing-target): 「진짜 하나의
-/// 용지처럼. 데이터는 나누더라도」, and the shown is the result.
+/// 🚨★★★A STROKE IS THE WINDOW'S IT STARTS IN — 유저 2026-09-30 (H49):
+/// 「그냥 선 시작한곳에따라 칸 나누자 … 일반칸은 일반칸내에서만 지정된 범위
+/// 안에서만 그려지도록」.
 ///
-/// A stroke crosses a sheet's windows without lifting: every window hears
-/// it, each keeps the piece drawn over it — the topmost window at each spot,
-/// the one the paper shows — and the pen-up is ONE undo. It used to belong
-/// to the window it STARTED in and ran on over its neighbours: into the
-/// paper's ink across a strip, and off the bottom of a timesheet's left
-/// half into the top of the right one, which is the same band surface.
+/// The window on top where the pen lands takes the whole stroke and keeps
+/// it where it shows — nothing of it lands in a window it crosses into —
+/// and the pen-up is ONE undo. ↩️From 09-25 a stroke crossed the sheet as
+/// one paper, every window keeping the piece drawn over it (「진짜 하나의
+/// 용지처럼」); before that the start window kept it all, unclipped, off
+/// the bottom of a timesheet's left half into the top of the right one.
 void main() {
   const cutId = CutId('cut-1');
 
@@ -245,13 +246,13 @@ void main() {
       );
     });
 
-    testWidgets('a stroke from the memo band into the grid leaves each plane '
-        'its piece, rises and falls once, and is ONE undo', (tester) async {
+    testWidgets('a stroke from the memo band into the grid is the page\'s: '
+        'the grid keeps none of it — one hold, and ONE undo', (tester) async {
       final origin = await pumpSheet(tester);
       final page = window('page-0');
       final strip = window('strip-0-h0');
       // What the pen being up lets go of — the session's held seeks and cut
-      // switches — must find every window's piece already landed.
+      // switches — must find the stroke already landed.
       List<bool>? landedAtRelease;
       strokeActive.addListener(() {
         if (!strokeActive.value) {
@@ -271,51 +272,75 @@ void main() {
       ]);
 
       expect(inkUnder(page, start), isTrue);
-      expect(inkUnder(strip, end), isTrue);
       expect(
         inkUnder(page, end),
         isFalse,
-        reason: 'the paper under the strip is the strip\'s',
+        reason: 'the page keeps it where it shows, and the strip shows there',
+      );
+      expect(
+        controller.hasInkFor(TimesheetInkPlane.strip, strip.key),
+        isFalse,
+        reason: 'the grid it crossed into takes none of it',
       );
       expect(holds, [true, false], reason: 'one pen, one hold');
-      expect(landedAtRelease, [true, true]);
+      expect(landedAtRelease, [true, false]);
 
       history.undo();
       expect(controller.hasInkFor(TimesheetInkPlane.page, page.key), isFalse);
-      expect(controller.hasInkFor(TimesheetInkPlane.strip, strip.key), isFalse);
       history.redo();
       expect(controller.hasInkFor(TimesheetInkPlane.page, page.key), isTrue);
-      expect(controller.hasInkFor(TimesheetInkPlane.strip, strip.key), isTrue);
     });
 
-    testWidgets('the eraser crosses the windows as the brush does — each '
-        'window rubs out its own piece, and ONE undo brings both back', (
-      tester,
-    ) async {
+    testWidgets('and one from the grid out onto the memo band is the '
+        'strip\'s', (tester) async {
+      final origin = await pumpSheet(tester);
+      final page = window('page-0');
+      final strip = window('strip-0-h0');
+      final x = layout.halfLeft(0, 0) + 30;
+      final start = Offset(x, layout.halfRowsTop(0) + 60);
+      await stroke(tester, origin, [
+        start,
+        Offset(x, layout.halfRowsTop(0) - 10),
+        Offset(x, layout.memoBandRect(0).top + 20),
+      ]);
+
+      expect(inkUnder(strip, start), isTrue);
+      expect(controller.hasInkFor(TimesheetInkPlane.page, page.key), isFalse);
+    });
+
+    testWidgets('the eraser keeps to the window it starts in, as the brush '
+        'does — and ONE undo brings back what it rubbed out', (tester) async {
       final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
       addTearDown(brush.dispose);
       final origin = await pumpSheet(tester, brush: brush);
       final page = window('page-0');
       final strip = window('strip-0-h0');
       final x = layout.halfLeft(0, 0) + 30;
-      final start = Offset(x, layout.memoBandRect(0).top + 20);
-      final end = Offset(x, layout.halfRowsTop(0) + 60);
-      final path = [start, Offset(x, layout.halfRowsTop(0) - 10), end];
-      await stroke(tester, origin, path);
-      expect(inkUnder(page, start), isTrue, reason: '⛔CONTROL: drawn');
-      expect(inkUnder(strip, end), isTrue, reason: '⛔CONTROL: drawn');
+      final onMemo = Offset(x, layout.memoBandRect(0).top + 20);
+      final onGrid = Offset(x, layout.halfRowsTop(0) + 60);
+      await stroke(tester, origin, [onMemo, onMemo + const Offset(12, 0)]);
+      await stroke(tester, origin, [onGrid, onGrid + const Offset(12, 0)]);
+      expect(inkUnder(page, onMemo), isTrue, reason: '⛔CONTROL: drawn');
+      expect(inkUnder(strip, onGrid), isTrue, reason: '⛔CONTROL: drawn');
 
       brush.value = brush.value.copyWith(
         tool: CanvasTool.eraser,
         size: brush.value.size * 4,
       );
-      await stroke(tester, origin, path);
-      expect(inkUnder(page, start), isFalse);
-      expect(inkUnder(strip, end), isFalse);
+      await stroke(tester, origin, [
+        onMemo,
+        Offset(x, layout.halfRowsTop(0) - 10),
+        onGrid,
+      ]);
+      expect(inkUnder(page, onMemo), isFalse, reason: 'where it started');
+      expect(
+        inkUnder(strip, onGrid),
+        isTrue,
+        reason: 'the grid it crossed into kept its ink',
+      );
 
       history.undo();
-      expect(inkUnder(page, start), isTrue);
-      expect(inkUnder(strip, end), isTrue);
+      expect(inkUnder(page, onMemo), isTrue);
     });
 
     testWidgets('off the bottom of the left half nothing lands in the right '
@@ -340,8 +365,10 @@ void main() {
       );
     });
 
-    testWidgets('across the halves both pieces land on their one band '
-        'surface, the gap between them on the paper', (tester) async {
+    testWidgets('a stroke across the halves keeps to the half it starts in: '
+        'the paper between and the other half keep none of it', (
+      tester,
+    ) async {
       final origin = await pumpSheet(tester);
       final y = layout.halfRowsTop(0) + 100;
       final leftEnd = layout.halfLeft(0, 0) + layout.halfWidth;
@@ -356,18 +383,20 @@ void main() {
       final left = window('strip-0-h0');
       final right = window('strip-0-h1');
       expect(inkUnder(left, Offset(leftEnd - 20, y)), isTrue);
-      expect(inkUnder(right, Offset(rightStart + 20, y)), isTrue);
-      expect(inkUnder(page, Offset((leftEnd + rightStart) / 2, y)), isTrue);
       expect(
-        inkUnder(left, Offset(leftEnd + 10, y)),
+        inkUnder(right, Offset(rightStart + 20, y)),
         isFalse,
-        reason: 'the band\'s second landing is clipped to its slice as '
-            'well, though the surface moved under it',
+        reason: 'the right half is the same band surface, and none of the '
+            'stroke reached it',
+      );
+      expect(
+        controller.hasInkFor(TimesheetInkPlane.page, page.key),
+        isFalse,
+        reason: 'nor the paper between the halves',
       );
 
       history.undo();
       expect(controller.hasInkFor(TimesheetInkPlane.strip, left.key), isFalse);
-      expect(controller.hasInkFor(TimesheetInkPlane.page, page.key), isFalse);
     });
 
     testWidgets('🚨F-233: a window reads its band when the pen lands, not when '
@@ -419,74 +448,6 @@ void main() {
         reason: 'no frame has built since, and the window still answers '
             'with the band as it stands',
       );
-    });
-
-    testWidgets('every window rolls the dice of the one press: a scattered, '
-        'jittered stroke is the same stroke in each', (tester) async {
-      await pumpSheet(tester);
-      final landed = <String, BrushStrokeCommitData>{};
-      final size = layout.documentSize;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(
-                width: size.width,
-                height: size.height,
-                child: SheetInkLayer(
-                  windows: windows,
-                  keyPrefix: 'timesheet',
-                  viewport: CanvasViewport(),
-                  brushToolState: ValueNotifier(
-                    BrushToolState.defaults.copyWith(
-                      scatterRadiusRatio: 1,
-                      scatterCount: 2,
-                      sizeJitter: 0.5,
-                      spacingJitter: 0.5,
-                    ),
-                  ),
-                  strokeActive: strokeActive,
-                  history: history.gestures,
-                  sessionStateFor: (window) => controller.sessionStateFor(
-                    window.plane! as TimesheetInkPlane,
-                    window.key,
-                  ),
-                  onStrokeCommitted: (window, strokeData) {
-                    landed[window.id] = strokeData;
-                    controller.commitStroke(
-                      plane: window.plane! as TimesheetInkPlane,
-                      key: window.key,
-                      strokeData: strokeData,
-                      historyManager: history,
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      final origin = tester.getTopLeft(find.byType(SheetInkLayer));
-      final x = layout.halfLeft(0, 0) + 30;
-      await stroke(tester, origin, [
-        Offset(x, layout.memoBandRect(0).top + 20),
-        Offset(x + 20, layout.halfRowsTop(0) - 10),
-        Offset(x + 40, layout.halfRowsTop(0) + 60),
-      ]);
-
-      final onPaper = landed['page-0']!.sourceDabs;
-      final onStrip = landed['strip-0-h0']!.sourceDabs;
-      expect(onStrip, hasLength(onPaper.length));
-      final dx = onPaper.first.center.x - onStrip.first.center.x;
-      final dy = onPaper.first.center.y - onStrip.first.center.y;
-      for (var index = 0; index < onPaper.length; index += 1) {
-        final paper = onPaper[index];
-        final strip = onStrip[index];
-        expect(paper.center.x - strip.center.x, closeTo(dx, 1e-6));
-        expect(paper.center.y - strip.center.y, closeTo(dy, 1e-6));
-        expect(paper.size, closeTo(strip.size, 1e-9));
-      }
     });
 
     testWidgets('a window taken away mid-stroke does not hold the pen down '
@@ -580,8 +541,10 @@ void main() {
     });
   });
 
-  testWidgets('the envelope: a stroke from box to box leaves each box its '
-      'piece, and is ONE undo', (tester) async {
+  testWidgets('the envelope: a stroke from box to box is the box\'s it '
+      'starts in — the next box keeps none of it — and ONE undo', (
+    tester,
+  ) async {
     final layout = CutEnvelopeLayout.fit(
       form: const CutEnvelopeForm(
         id: 'test',
@@ -655,8 +618,9 @@ void main() {
       isTrue,
     );
     expect(
-      inkAt(surfaceOf(right), right.placement.pixelOf(const Offset(250, 200))),
-      isTrue,
+      controller.hasInkFor(null, right.key),
+      isFalse,
+      reason: 'the box it crossed into takes none of it',
     );
     expect(
       inkAt(surfaceOf(left), left.placement.pixelOf(const Offset(250, 200))),
@@ -666,6 +630,5 @@ void main() {
 
     history.undo();
     expect(controller.hasInkFor(null, left.key), isFalse);
-    expect(controller.hasInkFor(null, right.key), isFalse);
   });
 }

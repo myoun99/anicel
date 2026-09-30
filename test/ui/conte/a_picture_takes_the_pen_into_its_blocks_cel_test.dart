@@ -51,10 +51,11 @@ import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 /// 그림으로」 · 「진짜 하나의 용지처럼. 데이터는 나누더라도」 · 「보이는
 /// 거 = 결과」).
 ///
-/// The part of a stroke drawn on a cell's picture lands in the cel the
-/// picture shows — through the camera and the layer's placement, the maps
-/// the picture is printed by — and the rest on the sheet's own ink, as one
-/// stroke and one undo. While the brush is on, the picture is the cut's
+/// A stroke started on a cell's picture lands in the cel the picture shows
+/// — through the camera and the layer's placement, the maps the picture is
+/// printed by — all of it, past the picture's edge into the canvas beyond
+/// the camera; one started on the sheet's own ink stays there (유저
+/// 2026-09-30, H49: 「선 시작한곳에따라 칸 나누자」). While the brush is on, the picture is the cut's
 /// live composite (유저 답 conte-picture-display-Q1 「실시간 합성
 /// (정확)」), so the stroke shows in it while it is drawn.
 void main() {
@@ -159,7 +160,7 @@ void main() {
         cameraFrameSize: canvas,
         // The cut has its conte row.
         conteCelOf: (cut) => null,
-        rowRefusal: null,
+        refusalOf: (_) => null,
       ), (id) => stroke).single;
 
       await tester.binding.setSurfaceSize(
@@ -181,7 +182,6 @@ void main() {
                   historyManager: history,
                   viewport: CanvasViewport(),
                   strokeActive: strokeActive,
-                  paperBrushScale: 1,
                   pictures: cels,
                   pictureWindows: [picture.window],
                   unwrittenInkIdOf: bandOf,
@@ -235,12 +235,16 @@ void main() {
       );
     });
 
-    testWidgets('one paper: a stroke from the picture out over its cell\'s '
-        'band keeps the picture\'s part in the block\'s cel and the rest in '
-        'the cell\'s ink — ONE undo', (tester) async {
+    testWidgets('🗣️H49: a stroke from the picture out over its cell\'s band '
+        'is the picture\'s — past the camera it goes on into the cut\'s '
+        'canvas, and the cell\'s ink keeps none of it — ONE undo (유저 '
+        '2026-09-30: 「밖으로 나가면 해당 캔버스의 카메라 밖 영역에 그리긴 '
+        '하게」)', (tester) async {
+      // Closed in on the canvas's middle, so the canvas runs on past the
+      // camera's frame.
       final origin = await pump(
         tester,
-        CameraPose(center: CanvasPoint(x: 320, y: 180)),
+        CameraPose(center: CanvasPoint(x: 320, y: 180), zoom: 2),
       );
       final slot = picture.window.slot;
       final inside = slot.center;
@@ -256,42 +260,49 @@ void main() {
         page,
         unwrittenInkIdOf: bandOf,
       ).singleWhere((window) => window.key == conteInkRowKey(cutId, 'band-0'));
-      BitmapSurface rowSurface() => ink
-          .sessionStateFor(null, row.key)
-          .canvasState
-          .currentSurface;
-      // The picture's middle is the pose's centre: the camera at rest.
+      // The picture's middle is the pose's centre; past its edge, the
+      // canvas the camera leaves out.
       const underInside = Offset(320, 180);
-
-      expect(inkAt(store.bakedSurfaceOrNull(picture.window.key), underInside),
-          isTrue);
-      expect(inkAt(rowSurface(), row.placement.pixelOf(outside)), isTrue);
+      final pastTheCamera = picture.window
+          .surfaceShapeOf([
+            outside,
+            outside + const Offset(1, 0),
+            outside + const Offset(0, 1),
+          ])
+          .points
+          .first;
       expect(
-        inkAt(rowSurface(), row.placement.pixelOf(inside)),
+        pastTheCamera.x,
+        allOf(greaterThan(480), lessThan(canvas.width.toDouble())),
+        reason: 'fixture: on the canvas, right of the camera\'s frame',
+      );
+      BitmapSurface? cel() => store.bakedSurfaceOrNull(picture.window.key);
+
+      expect(inkAt(cel(), underInside), isTrue);
+      expect(
+        inkAt(cel(), Offset(pastTheCamera.x, pastTheCamera.y)),
+        isTrue,
+        reason: 'the canvas past the camera takes the rest of it',
+      );
+      expect(
+        ink.hasInkFor(null, row.key),
         isFalse,
-        reason: 'the picture shows that spot, so the cel keeps it',
+        reason: 'the band it crossed into takes none of it',
       );
 
       history.undo();
-      expect(
-        inkAt(store.bakedSurfaceOrNull(picture.window.key), underInside),
-        isFalse,
-      );
-      expect(ink.hasInkFor(null, row.key), isFalse);
-
+      expect(inkAt(cel(), underInside), isFalse);
       history.redo();
-      expect(
-        inkAt(store.bakedSurfaceOrNull(picture.window.key), underInside),
-        isTrue,
-      );
-      expect(ink.hasInkFor(null, row.key), isTrue);
+      expect(inkAt(cel(), underInside), isTrue);
     });
 
-    // F-216: the paper's piece of a stroke runs on under the picture's edge
-    // by [sheetInkApron], so the line meets the picture wherever a screen's
+    // F-216: a band's stroke runs on under the picture's edge by
+    // [sheetInkApron], so the line meets the picture wherever a screen's
     // pixels put that edge — and only by that much.
-    testWidgets('the cell\'s ink keeps a ring of the stroke past the '
-        'picture\'s edge, and nothing deeper', (tester) async {
+    testWidgets('a stroke from the cell\'s band into its picture keeps a ring '
+        'of itself past the picture\'s edge, and nothing deeper', (
+      tester,
+    ) async {
       final origin = await pump(
         tester,
         CameraPose(center: CanvasPoint(x: 320, y: 180)),
@@ -299,10 +310,10 @@ void main() {
       final slot = picture.window.slot;
       final y = slot.center.dy;
       await stroke(tester, origin, [
-        slot.center,
-        Offset(slot.right - 10, y),
-        Offset(slot.right + 10, y),
         Offset(slot.right + 30, y),
+        Offset(slot.right + 10, y),
+        Offset(slot.right - 10, y),
+        slot.center,
       ]);
 
       final row = conteInkWindows(

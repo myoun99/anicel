@@ -9,8 +9,7 @@ import '../../core/page_stack.dart';
 import '../../models/app_input_settings.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/conte/conte_ink_keys.dart'
-    show conteInkRowIdOf, contePaperBrushScale;
+import '../../models/conte/conte_ink_keys.dart' show conteInkRowIdOf;
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
@@ -32,6 +31,7 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
+import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../text/app_strings.dart';
 import '../widgets/page_turn_strip.dart';
 import 'conte_book_page.dart';
@@ -567,18 +567,28 @@ class _ConteTabHostState extends State<ConteTabHost> {
     cameraPoseOf: _session.camera.cameraPoseForCut,
     cameraFrameSize: _session.camera.cameraFrameSize,
     conteCelOf: _session.autoFrame.conteCelFor,
-    rowRefusal: _rowRefusal,
+    refusalOf: _refusalFor,
   );
 
-  /// Why a cell with no block takes no ink, picture and band alike — the
-  /// canvas's notice, word for word, for a press on a cell it may not fill
-  /// (`EditorCanvasArea._drawRefusalFor`); null while its 「프레임 자동
-  /// 생성」 is on and the stroke makes the block.
-  String? get _rowRefusal => _session.autoFrame.autoCreates
-      ? null
-      : AppStrings.of(
-          _session.languageSettings.value.programLanguage,
-        ).noticeNoFrameHere;
+  /// Why a cell of [cutId] with no block takes no ink, picture and band
+  /// alike — the canvas's notice for a press on a cell it may not fill
+  /// (`EditorCanvasArea._drawRefusalFor`), naming what the cut lacks: its
+  /// conte row itself, or a block on it (유저 2026-09-30, H51: 「콘티레이어
+  /// 없으면 프레임이 없다고뜨는데 이런 메시지 제대로 표시. 콘티레이어가
+  /// 없다고」). Null while its 「프레임 자동 생성」 is on and the stroke makes
+  /// what is missing.
+  String? _refusalFor(CutId cutId) {
+    if (_session.autoFrame.autoCreates) {
+      return null;
+    }
+    final strings = AppStrings.of(
+      _session.languageSettings.value.programLanguage,
+    );
+    final cut = _session.cutById(cutId);
+    return cut != null && storyboardLayerForCut(cut) == null
+        ? strings.noticeNoConteLayer
+        : strings.noticeNoFrameHere;
+  }
 
   /// A piece of a stroke landing makes what it was drawn into, in the
   /// stroke's own undo step: the next cut's slot the cut (H44), a cell with
@@ -628,12 +638,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
         historyManager: _session.historyManager,
         viewport: viewport,
         strokeActive: _strokeHold,
-        // Every page shares one sheet's metrics, and every picture the
-        // camera's frame.
-        paperBrushScale: contePaperBrushScale(
-          ink.pages.first.page.metrics,
-          _session.camera.cameraFrameSize,
-        ),
         cacheInvalidationSink: _cacheInvalidationSink,
         pictures: widget.pictures,
         pictureWindows: [
@@ -643,7 +647,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         ],
         pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
         unwrittenInkIdOf: _unwrittenInkIdOf,
-        rowRefusal: _rowRefusal,
+        refusalOf: (cell) => _refusalFor(CutId(cell.cutId)),
         beforeLanding: _makeWhatTheStrokeLandsIn,
       ),
     );

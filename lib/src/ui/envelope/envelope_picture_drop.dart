@@ -12,7 +12,6 @@ import '../../models/media_asset.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/canvas_selection_paint_clip.dart';
-import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cut_piece_stamp.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
@@ -189,16 +188,15 @@ typedef EnvelopeHandwriting = ({
 
 /// Stamps the pool picture at [path] into [target]'s box: contained in it,
 /// its shape kept (「늘어난 도장은 도장이 아니다」 — [containRect]), at the
-/// ink's own pixels, and landed on [envelope]'s boxes as one paper in one
-/// undo step. False when there is nothing to stamp — no picture, or a form
-/// switched while the picture decoded, which moved every box.
+/// ink's own pixels, and landed in that box in one undo step. False when
+/// there is nothing to stamp — no picture, or a form switched while the
+/// picture decoded, which moved every box.
 ///
 /// Nothing new underneath: the viewer's decode at the size asked for
 /// ([openHeldViewerDocument] — the project's carried copy first), a cut
 /// piece's paste ([buildCutPasteDab] — an RGBA box stamped 1:1), and the
-/// sheet's own landing: each window keeps the piece it SHOWS
-/// ([sheetInkRegions]), and the pieces fold into one step as a stroke's
-/// do (「진짜 하나의 용지처럼」).
+/// sheet's own landing: the box keeps what it SHOWS of it
+/// ([sheetInkRegions]), as it keeps a stroke started in it.
 Future<bool> stampEnvelopePicture(
   EnvelopeHandwriting envelope, {
   required SheetInkWindow target,
@@ -250,15 +248,14 @@ Future<bool> stampEnvelopePicture(
 }
 
 /// [image] laid on the paper at [paper]'s corner — inside [target]'s box —
-/// as ONE undo step: the box it was dropped on, and every box stacked over
-/// it, keeps the piece it shows.
+/// as ONE undo step, the box it was dropped on's alone: kept where that
+/// box shows it, as a stroke started there is (유저 2026-09-30, H49:
+/// 「선 시작한곳에따라 칸 나누자」).
 ///
-/// ⚠️Only the boxes it truly lies on. A box's edges are fractions of the
-/// form, so neighbours meet a hair apart or a hair over each other, and a
-/// neighbour a hair over the picture took a sliver of it at the shared
-/// edge. A box below the target shows nothing of it (the target is over
-/// it there); a box over it takes a piece only where the two meet by a
-/// whole ink pixel each way.
+/// ↩️Every box stacked over it kept the piece it showed (one paper,
+/// 09-25) — down to a neighbour a hair over the picture, which took a
+/// sliver of it at the shared edge until a piece had to be a whole ink
+/// pixel each way.
 void _land(
   EnvelopeHandwriting envelope, {
   required SheetInkWindow target,
@@ -266,48 +263,35 @@ void _land(
   required BrushStampImage image,
 }) {
   final (:session, :ink, :windows, :cacheInvalidationSink) = envelope;
-  final from = windows.indexOf(target);
-  if (from < 0) {
+  final index = windows.indexOf(target);
+  final region = index < 0 ? null : sheetInkRegions(windows)[index];
+  if (region == null) {
     return;
   }
-  final history = session.historyManager;
-  final start = history.gestures.mark;
-  final regions = sheetInkRegions(windows);
-  for (var index = from; index < windows.length; index += 1) {
-    final window = windows[index];
-    final region = regions[index];
-    final meets = window.documentRect.intersect(paper);
-    final pixel = 1 / window.surfaceScale;
-    if (region == null ||
-        meets.width < pixel ||
-        meets.height < pixel) {
-      continue;
-    }
-    final corner = window.placement.pixelOf(paper.topLeft);
-    final landed = clipStrokeCommitToSelection(
-      BrushStrokeCommitData(
-        sourceDabs: [
-          buildCutPasteDab(
-            CutPiece(
-              image: image,
-              originLeft: corner.dx.round(),
-              originTop: corner.dy.round(),
-            ),
+  final corner = target.placement.pixelOf(paper.topLeft);
+  final landed = clipStrokeCommitToSelection(
+    BrushStrokeCommitData(
+      sourceDabs: [
+        buildCutPasteDab(
+          CutPiece(
+            image: image,
+            originLeft: corner.dx.round(),
+            originTop: corner.dy.round(),
           ),
-        ],
-      ),
-      region: region,
-      surface: ink.sessionStateFor(null, window.key).canvasState.currentSurface,
-    );
-    if (landed != null) {
-      ink.commitStroke(
-        plane: null,
-        key: window.key,
-        strokeData: landed,
-        historyManager: history,
-        cacheInvalidationSink: cacheInvalidationSink,
-      );
-    }
+        ),
+      ],
+    ),
+    region: region,
+    surface: ink.sessionStateFor(null, target.key).canvasState.currentSurface,
+  );
+  if (landed == null) {
+    return;
   }
-  history.gestures.foldSince(start, BrushStrokeHistoryCommand.label);
+  ink.commitStroke(
+    plane: null,
+    key: target.key,
+    strokeData: landed,
+    historyManager: session.historyManager,
+    cacheInvalidationSink: cacheInvalidationSink,
+  );
 }

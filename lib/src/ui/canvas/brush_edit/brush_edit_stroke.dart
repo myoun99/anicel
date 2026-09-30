@@ -72,10 +72,9 @@ class _BrushEditStroke {
         : symmetryTransforms(symmetry);
     // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
     // jitter come from its press, so every view that hears the press rolls
-    // the same numbers. A sheet's windows each draw their own slice of one
-    // stroke (one paper, 유저 2026-09-25), and the pieces meet as the one
-    // stroke they are — a scattered dab cut at a window edge goes on in the
-    // window beside it — without any view being told who else heard it.
+    // the same numbers. ↩️Written for a sheet's windows each drawing their
+    // own slice of one stroke (one paper, 유저 2026-09-25); a stroke is one
+    // window's now (H49, 09-30), and the press still decides its dice.
     final dice = Object.hash(event.pointer, event.timeStamp);
     _state._spacingRandom = math.Random(dice);
     _state._dualPhaseRandom = math.Random(dice + 1);

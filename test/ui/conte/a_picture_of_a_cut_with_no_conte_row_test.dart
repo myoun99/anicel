@@ -331,7 +331,8 @@ void main() {
   }
 
   testWidgets('with it off, nothing is made and nothing drawn there — the '
-      'press says why, in the canvas\'s words', (tester) async {
+      'press says why: the cut has no conte layer (H51: 「콘티레이어가 '
+      '없다고」)', (tester) async {
     final picture = await pumpPanel(tester, autoCreates: false);
     final notices = cursorNotices.revision;
 
@@ -361,9 +362,32 @@ void main() {
       cursorNotices.message,
       AppStrings.of(
         session.languageSettings.value.programLanguage,
-      ).noticeNoFrameHere,
+      ).noticeNoConteLayer,
     );
     // The notice goes of itself.
+    await tester.pump(CursorNoticeController.defaultDuration);
+  });
+
+  testWidgets('with it off, a cut that HAS a conte row but no block there '
+      'says there is no frame — the row is not what is missing (H51)', (
+    tester,
+  ) async {
+    final picture = await pumpPanel(tester, autoCreates: false, of: hollow);
+    expect(storyboardLayerForCut(cutOf(hollow)), isNotNull, reason: 'fixture');
+
+    final gesture = await tester.startGesture(picture.center, pointer: 7);
+    await tester.pump();
+    await gesture.moveTo(picture.center + const Offset(8, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      cursorNotices.message,
+      AppStrings.of(
+        session.languageSettings.value.programLanguage,
+      ).noticeNoFrameHere,
+    );
     await tester.pump(CursorNoticeController.defaultDuration);
   });
 

@@ -18,10 +18,10 @@ import 'timesheet_ink_bands.dart';
 import 'timesheet_ink_controller.dart';
 
 /// Computes the ink windows for the current view mode, bottom-of-stack
-/// first: page ink lies under the strip windows, so what a stroke draws on
-/// the column grid goes to the frame-anchored strip plane and everything
-/// else (header, memo band, margins, gaps) goes to the page plane — one
-/// stroke, split where it crosses ([sheetInkRegions]).
+/// first: page ink lies under the strip windows, so a stroke started on
+/// the column grid goes to the frame-anchored strip plane and one started
+/// anywhere else (header, memo band, margins, gaps) to the page plane —
+/// each kept to what its window shows ([sheetInkRegions]).
 ///
 /// [pages] are the pages of the page view to lay windows for — every
 /// page the layout prints when null.

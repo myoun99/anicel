@@ -28,6 +28,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
@@ -36,14 +37,16 @@ import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
-/// 🗣️F-216 (유저 2026-09-28): 「브러시허용on인상태로 쭉 그림 그렸는데, 보면
-/// 알겠지만 칸 사이에 흰 빈공간이 존재. 줌 배율에 따라 사라지거나 생기거나
-/// 함. 렌더링쪽 문제같은데 근본/구조적으로 해결」.
+/// 🗣️H49 (유저 2026-09-30): 「그냥 선 시작한곳에따라 칸 나누자. 픽쳐칸에서
+/// 그리기시작하면 해당 레이어? 칸에서만 작동하도록. 밖으로 나가면 해당
+/// 캔버스의 카메라 밖 영역에 그리긴 하게 … 일반칸은 일반칸내에서만 지정된
+/// 범위 안에서만 그려지도록」.
 ///
-/// One stroke drawn across the conte's windows — a cell's picture, its
-/// silhouette, its band, the next cell's band and picture; a picture and
-/// the words beside it — is one line on the paper, at every zoom: no device
-/// pixel along its middle shows what lies under it.
+/// A stroke on the conte is the cell's it starts in: a picture's goes on
+/// into its cut's canvas wherever the pen goes, and a band's stays in the
+/// band — right up to a picture's edge, at every zoom, with no device pixel
+/// between the two (F-216, 유저 2026-09-28: 「칸 사이에 흰 빈공간이 존재.
+/// 줌 배율에 따라 사라지거나 생기거나 함」).
 void main() {
   const canvas = CanvasSize(width: 640, height: 360);
   const boundary = ValueKey<String>('screen');
@@ -248,64 +251,86 @@ void main() {
     await _settle(tester);
   }
 
-  for (final ratio in const [1.25, 3.0]) {
-    for (final zoom in const [0.83, 1.0, 1.37, 1.9]) {
-      testWidgets('at ${(zoom * 100).round()}% on a ${ratio}x screen, one '
-          'stroke down through two cells and one across into the words are '
-          'unbroken lines', (tester) async {
-        tester.view.devicePixelRatio = ratio;
-        addTearDown(tester.view.resetDevicePixelRatio);
-        await pumpPanel(tester, zoom: zoom, size: 24);
-        final form = conteBodyForm();
-        final painter = tester.widget<CustomPaint>(form).painter!
-            as ContePagePainter;
-        final page = painter.page;
-        final upper = contePictureSlot(page.cells[0], page.metrics);
-        final lower = contePictureSlot(page.cells[1], page.metrics);
-        expect(lower.top, greaterThan(upper.bottom), reason: 'fixture');
+  for (final zoom in const [0.83, 1.37]) {
+    testWidgets('at ${(zoom * 100).round()}%, a stroke started in a picture '
+        'is the picture\'s: down through the silhouette into the next cell, '
+        'nothing of it shows outside the picture', (tester) async {
+      tester.view.devicePixelRatio = 1.25;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpPanel(tester, zoom: zoom, size: 24);
+      final page = (tester.widget<CustomPaint>(conteBodyForm()).painter!
+              as ContePagePainter)
+          .page;
+      final upper = contePictureSlot(page.cells[0], page.metrics);
+      final lower = contePictureSlot(page.cells[1], page.metrics);
+      expect(lower.top, greaterThan(upper.bottom), reason: 'fixture');
 
-        // Down the middle of both pictures, through the silhouettes and
-        // the two cells' bands between them. Each stroke is drawn past both
-        // ends of the stretch read: a stroke's own ends are the brush's.
-        final down = (
-          from: onScreen(tester, upper.center),
-          to: onScreen(tester, lower.center),
-        );
-        await draw(
-          tester,
-          onScreen(tester, upper.center - const Offset(0, 30)),
-          onScreen(tester, lower.center + const Offset(0, 30)),
-        );
-        // Across the upper picture's middle into its ACTION words.
-        final across = (
-          from: onScreen(tester, upper.center + const Offset(0, 20)),
-          to: onScreen(
-            tester,
-            Offset(upper.right + 40, upper.center.dy + 20),
-          ),
-        );
-        await draw(
-          tester,
-          onScreen(tester, upper.center + const Offset(-30, 20)),
-          onScreen(tester, Offset(upper.right + 80, upper.center.dy + 20)),
-        );
+      await draw(
+        tester,
+        onScreen(tester, upper.center),
+        onScreen(tester, lower.center + const Offset(0, 30)),
+      );
 
-        final shot = await shoot(tester);
-        final gaps = <String>[
-          for (final (name, line) in [('down', down), ('across', across)])
-            ...shot.gapsAlong(line.from, line.to).map((gap) => '$name $gap'),
-        ];
-        expect(gaps, isEmpty);
-      });
-    }
+      final shot = await shoot(tester);
+      final between = Offset(upper.center.dx, (upper.bottom + lower.top) / 2);
+      expect(
+        _isInk(shot.pixelAt(onScreen(tester, upper.center))),
+        isTrue,
+        reason: 'fixture: the picture shows it',
+      );
+      expect(
+        _isInk(shot.pixelAt(onScreen(tester, between))),
+        isFalse,
+        reason: 'the black between the pictures is the band\'s, which took '
+            'none of it',
+      );
+      expect(
+        _isInk(shot.pixelAt(onScreen(tester, lower.center))),
+        isFalse,
+        reason: 'nor the next picture',
+      );
+    });
+
+    testWidgets('at ${(zoom * 100).round()}%, a stroke started in a cell\'s '
+        'band stays in that band: the next cell\'s keeps none of it', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1.25;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpPanel(tester, zoom: zoom, size: 24);
+      final page = (tester.widget<CustomPaint>(conteBodyForm()).painter!
+              as ContePagePainter)
+          .page;
+      final upper = contePictureSlot(page.cells[0], page.metrics);
+      final lower = contePictureSlot(page.cells[1], page.metrics);
+      final x = upper.right + 40;
+
+      await draw(
+        tester,
+        onScreen(tester, Offset(x, upper.center.dy)),
+        onScreen(tester, Offset(x, lower.center.dy)),
+      );
+
+      final shot = await shoot(tester);
+      expect(
+        _isInk(shot.pixelAt(onScreen(tester, Offset(x, upper.center.dy)))),
+        isTrue,
+        reason: 'fixture: the band shows it',
+      );
+      expect(
+        _isInk(shot.pixelAt(onScreen(tester, Offset(x, lower.center.dy)))),
+        isFalse,
+        reason: 'the next cell\'s band took none of it',
+      );
+    });
   }
 
-  // With the brush off the picture is its print, and the paper's ink —
+  // With the brush off the picture is its print, and the band's ink —
   // which keeps a ring of the stroke past the picture's edge — shows up to
   // that edge and not a device pixel into it.
   for (final zoom in const [0.83, 1.37]) {
-    testWidgets('at ${(zoom * 100).round()}%, the brush off: the ink runs to '
-        'the printed picture\'s edge and not into it', (tester) async {
+    testWidgets('at ${(zoom * 100).round()}%, the brush off: a band\'s ink '
+        'runs to the printed picture\'s edge and not into it', (tester) async {
       tester.view.devicePixelRatio = 1.25;
       addTearDown(tester.view.resetDevicePixelRatio);
       await pumpPanel(tester, zoom: zoom, size: 24);
@@ -319,10 +344,11 @@ void main() {
         tester,
         Offset(slot.right + 40, slot.center.dy + 20),
       );
+      // From the words into the picture: the band's stroke.
       await draw(
         tester,
-        onScreen(tester, slot.center + const Offset(-30, 20)),
         onScreen(tester, Offset(slot.right + 80, slot.center.dy + 20)),
+        onScreen(tester, slot.center + const Offset(-30, 20)),
       );
       brushOn.value = false;
       await _settle(tester);
@@ -347,12 +373,15 @@ void main() {
   }
 
   // A camera that sees past the canvas: its frame shows the pasteboard, and
-  // the picture is cropped at the canvas — a stroke there is the band's
-  // (「페이스트보드는 포함 안 시킴」). Across the canvas's edge in the frame the
-  // two pieces are still one line.
+  // the picture is cropped at the canvas (「페이스트보드는 포함 안 시킴」). A
+  // stroke started on the canvas is the picture's all the way — past the
+  // canvas's edge it goes on into the cel, cropped from view like the rest
+  // of the pasteboard, and the band under the frame takes none of it.
   for (final zoom in const [0.83, 1.37]) {
     testWidgets('at ${(zoom * 100).round()}%, a stroke out of the canvas into '
-        'the pasteboard its picture shows is one line', (tester) async {
+        'the pasteboard its picture shows stays the picture\'s', (
+      tester,
+    ) async {
       tester.view.devicePixelRatio = 1.25;
       addTearDown(tester.view.resetDevicePixelRatio);
       final session = await pumpPanel(
@@ -375,15 +404,34 @@ void main() {
         lessThan(slot.right - 10),
         reason: 'fixture: the frame shows pasteboard right of the canvas',
       );
-      final from = onScreen(tester, slot.center);
-      final to = onScreen(tester, Offset(slot.right + 40, slot.center.dy));
       await draw(
         tester,
         onScreen(tester, slot.center - const Offset(30, 0)),
         onScreen(tester, Offset(slot.right + 80, slot.center.dy)),
       );
 
-      expect((await shoot(tester)).gapsAlong(from, to), isEmpty);
+      final shot = await shoot(tester);
+      expect(
+        _isInk(shot.pixelAt(onScreen(tester, slot.center))),
+        isTrue,
+        reason: 'fixture: the canvas shows it',
+      );
+      final pasteboard = Offset((canvasRight + slot.right) / 2, slot.center.dy);
+      expect(
+        _isInk(shot.pixelAt(onScreen(tester, pasteboard))),
+        isFalse,
+        reason: 'the pasteboard the frame shows is cropped, and the band '
+            'under it took none of the stroke',
+      );
+      expect(
+        _isInk(
+          shot.pixelAt(
+            onScreen(tester, Offset(slot.right + 40, slot.center.dy)),
+          ),
+        ),
+        isFalse,
+        reason: 'nor the words beside the picture',
+      );
     });
   }
 
@@ -501,52 +549,54 @@ void main() {
     });
   }
 
-  // 🗣️F-217 (유저 2026-09-28): 「콘티 프리뷰 패널, 그림에 그려지는 선이랑
-  // 밖에 그려지는 선이랑 역시 크기 제대로 통일하고싶음」 · 답 F-217-Q1
-  // 「종이에서는 붓을 그림 칸 비율로 줄여 긋기」. The camera's frame here is
-  // 640 pixels over a window 243 points wide: a brush 24 pixels wide is
-  // 9 points in the picture, and was 24 on the paper.
-  for (final zoom in const [0.83, 1.9]) {
-    testWidgets('at ${(zoom * 100).round()}%, one stroke from a picture into '
-        'the words beside it is as thick on the paper as in the picture', (
+  // 🗣️H50 (유저 2026-09-30): 「원본 1:1그대로 공용로직 그대로 적용해서
+  // 원복하자. 지금 브러시 너무작은데 중요한건 너무작아서 브러시가 끊겨서」.
+  // ↩️F-217 drew the paper's brush at the pictures' scale — 640 pixels of
+  // camera over a window 243 points wide — so a 24-pixel brush was 9 on
+  // the paper.
+  testWidgets('🗣️H50: the paper reads the brush at its own size, a pixel of '
+      'it a pixel of the paper — as the timesheet and the envelope do', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1.25;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await pumpPanel(tester, zoom: 1.37, size: 24);
+    final page = (tester.widget<CustomPaint>(conteBodyForm()).painter!
+            as ContePagePainter)
+        .page;
+    final slot = contePictureSlot(page.cells[0], page.metrics);
+    final y = slot.center.dy;
+    await draw(
       tester,
-    ) async {
-      tester.view.devicePixelRatio = 1.25;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      await pumpPanel(tester, zoom: zoom, size: 24);
-      final form = conteBodyForm();
-      final painter = tester.widget<CustomPaint>(form).painter!
-          as ContePagePainter;
-      final page = painter.page;
-      final slot = contePictureSlot(page.cells[0], page.metrics);
-      final y = slot.center.dy + 20;
-      await draw(
-        tester,
-        onScreen(tester, Offset(slot.center.dx - 30, y)),
-        onScreen(tester, Offset(slot.right + 80, y)),
-      );
-      final shot = await shoot(tester);
+      onScreen(tester, Offset(slot.right + 20, y)),
+      onScreen(tester, Offset(slot.right + 90, y)),
+    );
 
-      /// The device pixels of ink across the line at paper [x].
-      int thicknessAt(double x) {
-        final middle = onScreen(tester, Offset(x, y));
-        return shot
-            .walk(middle - const Offset(0, 40), middle + const Offset(0, 40))
-            .where(_isInk)
-            .length;
+    final band = conteInkWindows(page).singleWhere(
+      (window) => window.key == conteInkRowKey(const CutId('39'), 'ink-0'),
+    );
+    final surface = ink
+        .sessionStateFor(null, band.key)
+        .canvasState
+        .currentSurface;
+    final across = band.placement.pixelOf(Offset(slot.right + 55, y));
+    var inked = 0;
+    for (var dy = -40; dy <= 40; dy += 1) {
+      final rgba = surfacePixelRgba(
+        surface,
+        across.dx.floor(),
+        across.dy.floor() + dy,
+      );
+      if ((rgba ?? 0) != 0) {
+        inked += 1;
       }
-
-      final inPicture = thicknessAt(slot.center.dx + 20);
-      final onPaper = thicknessAt(slot.right + 40);
-      expect(inPicture, greaterThan(4), reason: 'fixture: the line is there');
-      expect(
-        (onPaper - inPicture).abs(),
-        lessThanOrEqualTo(2),
-        reason: 'as thick on the paper ($onPaper) as in the picture '
-            '($inPicture)',
-      );
-    });
-  }
+    }
+    expect(
+      inked,
+      inInclusiveRange(22, 26),
+      reason: 'a brush 24 pixels wide, 24 pixels of the paper',
+    );
+  });
 }
 
 /// The stroke's blue — over the paper or the silhouette alike: blue well
@@ -598,19 +648,6 @@ class _Shot {
   Color _at(Offset device) {
     final o = (device.dy.floor() * width + device.dx.floor()) * 4;
     return Color.fromARGB(rgba[o + 3], rgba[o], rgba[o + 1], rgba[o + 2]);
-  }
-
-  /// The device pixels along the segment [from]–[to] that are not the
-  /// stroke's blue, each said as where it is and what it shows instead.
-  List<String> gapsAlong(Offset from, Offset to) {
-    final a = from * ratio;
-    final b = to * ratio;
-    final steps = (b - a).distance.ceil();
-    return [
-      for (var i = 0; i <= steps; i += 1)
-        if (Offset.lerp(a, b, i / steps)! case final at when !_isInk(_at(at)))
-          '(${at.dx.floor()}, ${at.dy.floor()}): ${_at(at)}',
-    ];
   }
 }
 

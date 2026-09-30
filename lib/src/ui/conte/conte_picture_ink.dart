@@ -48,9 +48,10 @@ typedef ContePictureProject = ({
   // is on and the cut the picture draws through — named before it exists
   // (`AutoFrameForStroke.conteCelFor`); null for a cut with a block.
   ({Cut cut, Layer layer, FrameId frameId})? Function(Cut cut) conteCelOf,
-  // Why a picture of a cell with no block takes no ink — null while the
-  // canvas's 「프레임 자동 생성」 is on and the stroke makes its cel.
-  String? rowRefusal,
+  // Why a picture of a cell with no block takes no ink, said of its cut —
+  // null while the canvas's 「프레임 자동 생성」 is on and the stroke makes
+  // its cel.
+  String? Function(CutId cutId) refusalOf,
 });
 
 /// One picture the conte draws into while its brush is on: the window its
@@ -78,7 +79,7 @@ typedef ContePicture = ({
 /// Q2 「토글을 따른다 (캔버스와 한 법)」): into the cel its first stroke
 /// makes, through the cut as it will stand — or, with the toggle off, into
 /// nothing, refusing the pen as the canvas does
-/// ([ContePictureProject.rowRefusal]).
+/// ([ContePictureProject.refusalOf]).
 ///
 /// [overlayOf] gives picture `id`'s live stroke, the one its pen draws and
 /// its composite paints — held by what holds them both, which lets it go
@@ -156,7 +157,7 @@ ContePicture? _pictureOf(
               anchorPoint: placement.anchorPoint,
             ),
       overlay: overlayOf(id),
-      refusal: pending ? project.rowRefusal : null,
+      refusal: pending ? project.refusalOf(CutId(cell.cutId)) : null,
     ),
     cut: cut,
     layer: layer,

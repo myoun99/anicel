@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../core/convex_clip.dart' show convexContains, convexInset;
-import '../../models/brush_edit_canvas_input_settings.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
@@ -63,7 +62,7 @@ sealed class SheetWindow {
   CanvasSelectionShape surfaceShapeOf(List<Offset> paper);
 
   /// What of the paper this window takes — its rect, unless it shows less
-  /// of it: a picture's rounded slot, only where its canvas is. The windows
+  /// of it: a picture's slot, only where its canvas is. The windows
   /// under it keep the rest ([sheetInkRegions]), and a press there is its.
   List<Offset> get paperOutline => [
     documentRect.topLeft,
@@ -87,11 +86,6 @@ sealed class SheetWindow {
   /// ([SheetInkPlacement.stretch]).
   double get stretch => 1;
 
-  /// What the brush's size is multiplied by on this window's surface — 1,
-  /// the size in the surface's own pixels, but where a sheet lays its paper
-  /// to draw as thick as its pictures (the conte, `contePaperBrushScale`).
-  double get brushScale => 1;
-
   /// The live stroke's overlay when SOMEONE ELSE paints this window's
   /// surface, in its place in a composite — a picture's cel inside the
   /// cut's composite. Null when the window's own view paints it.
@@ -104,6 +98,12 @@ sealed class SheetWindow {
   /// A refusing window still covers what lies under it: nothing of a stroke
   /// is kept where it shows, by it or by the paper below.
   String? get refusal => null;
+
+  /// Whether a stroke this window takes is kept only where the window
+  /// shows it ([sheetInkRegions]) — the sheet's own ink is (유저
+  /// 2026-09-30, H49: 「일반칸은 일반칸내에서만 지정된 범위 안에서만」); a
+  /// picture keeps the whole stroke ([SheetPictureWindow]).
+  bool get keepsOnlyWhatItShows => true;
 
   /// The same window on a page that lies [by] further on in a stack of
   /// pages (F-201): one layer hears the strokes of every page on screen, so
@@ -144,7 +144,6 @@ class SheetInkWindow extends SheetWindow {
     required this.placement,
     super.plane,
     this.refusal,
-    this.brushScale = 1,
   });
 
   /// The window of an ink mark a sheet's walk yields — the walk the sheet's
@@ -154,21 +153,16 @@ class SheetInkWindow extends SheetWindow {
     required String id,
     Object? plane,
     String? refusal,
-    double brushScale = 1,
   }) : this(
          id: id,
          key: ink.key,
          placement: ink.placement,
          plane: plane,
          refusal: refusal,
-         brushScale: brushScale,
        );
 
   @override
   final String? refusal;
-
-  @override
-  final double brushScale;
 
   /// Where this window shows its surface — the one mapping between ink
   /// pixels and the paper the printers lay the ink back by.
@@ -224,7 +218,6 @@ class SheetInkWindow extends SheetWindow {
     placement: placement.shiftedBy(by),
     plane: plane,
     refusal: refusal,
-    brushScale: brushScale,
   );
 }
 
@@ -276,6 +269,13 @@ class SheetPictureWindow extends SheetWindow {
 
   @override
   final String? refusal;
+
+  /// A stroke that leaves the picture goes on into its cut's canvas, past
+  /// the camera (유저 2026-09-30, H49: 「밖으로 나가면 해당 캔버스의 카메라
+  /// 밖 영역에 그리긴 하게. 픽쳐칸만 칸 외부공간이 있으니」) — drawn as the
+  /// canvas draws it.
+  @override
+  bool get keepsOnlyWhatItShows => false;
 
   /// The picture is painted live in the cut's composite while the brush is
   /// on, its stroke in the cel's place there (유저 답 conte-picture-display-Q1
@@ -346,24 +346,26 @@ CanvasSelectionShape _outlineShape(List<Offset> points) =>
     ]);
 
 /// Where each of [windows] keeps ink, in its OWN surface's pixels: what it
-/// [SheetWindow.shows], less every window stacked above it. Null for a
-/// window the ones above cover whole — it keeps nothing, so it is not
-/// mounted.
+/// [SheetWindow.shows], less every window stacked above it — and a ring of
+/// [sheetInkApron] past the edge of a window above it, which the screen
+/// never shows it in ([SheetWindow.takesOnScreen]). Null for a window the
+/// ones above cover whole — it keeps nothing, so it is not mounted.
 ///
-/// 🚨★★★ONE PAPER (유저 2026-09-25, conte-drawing-target: 「진짜 하나의
-/// 용지처럼. 데이터는 나누더라도」 · 「보이는 거 = 결과」). A stroke is
-/// every window's at once, and the paper decides which surface keeps each
-/// piece of it: the window that SHOWS that spot — the topmost one there.
-/// The pieces meet at the window edges, so the line reads as one while
-/// every surface keeps only its own — and a ring of [sheetInkApron] past
-/// the edge of a window above it, which the screen never shows it in
-/// ([SheetWindow.takesOnScreen]).
+/// 🚨★★★A STROKE IS THE WINDOW'S IT STARTS IN (유저 2026-09-30, H49: 「그냥
+/// 선 시작한곳에따라 칸 나누자 … 일반칸은 일반칸내에서만 지정된 범위
+/// 안에서만 그려지도록」): the window on top where the pen lands takes the
+/// whole stroke ([sheetInkOwnerAt]), and a window of the sheet's own ink
+/// keeps of it only this — what it shows. A picture keeps all of it: a
+/// stroke that leaves the picture goes on into its cut's canvas, past the
+/// camera (「밖으로 나가면 해당 캔버스의 카메라 밖 영역에 그리긴 하게」).
 ///
-/// ↩️A stroke used to belong to the window it STARTED in (pointer capture)
-/// and ran on over its neighbours: into the paper's ink across a strip or
-/// a box, and on a paged timesheet off the bottom of the left half into
-/// the top of the right one — the same band surface, which that window
-/// shows.
+/// ↩️Twice over. A stroke first belonged to the window it started in and
+/// ran on over its neighbours unclipped — into the paper's ink across a
+/// strip or a box, off the bottom of a paged timesheet's left half into
+/// the top of the right one, the same band surface. Then every window took
+/// the piece of every stroke drawn over it (유저 2026-09-25,
+/// conte-drawing-target: 「진짜 하나의 용지처럼」), until the user split
+/// the strokes by where they start again.
 List<CanvasSelectionRegion?> sheetInkRegions(List<SheetWindow> windows) => [
   for (var index = 0; index < windows.length; index += 1)
     _inkRegionOf(windows[index], windows.skip(index + 1)),
@@ -390,18 +392,30 @@ CanvasSelectionRegion? _inkRegionOf(
   return region;
 }
 
-/// How far, in paper units, a window keeps its piece of a stroke on past
-/// the edge of a window stacked above it (F-216, 유저 2026-09-28: 「칸 사이에
-/// 흰 빈공간이 존재. 줌 배율에 따라 사라지거나 생기거나 함 … 근본/구조적으로
-/// 해결」).
+/// The window a stroke that lands at paper point [paper] belongs to: the
+/// topmost of [windows] whose outline holds it — a refusing one too, which
+/// keeps the stroke from the windows under it — or null off every window.
+SheetWindow? sheetInkOwnerAt(List<SheetWindow> windows, Offset paper) {
+  for (final window in windows.reversed) {
+    if (convexContains(window.paperOutline, paper)) {
+      return window;
+    }
+  }
+  return null;
+}
+
+/// How far, in paper units, a window keeps a stroke on past the edge of a
+/// window stacked above it (F-216, 유저 2026-09-28: 「칸 사이에 흰 빈공간이
+/// 존재. 줌 배율에 따라 사라지거나 생기거나 함 … 근본/구조적으로 해결」).
 ///
 /// The screen shows each window up to an edge cut on the device grid —
 /// never where the edge lies on the paper — and a surface keeps its pixels
-/// on its own grid: the conte's paper ink a point a pixel. Meeting exactly
-/// at the edge, the two pieces left a sliver of either that neither held:
-/// measured one to three device pixels, white where the print under the
-/// picture showed, black where the silhouette did. Three points hold a
-/// device pixel at 50% on a 1× screen and the pixel the edge falls in.
+/// on its own grid: the conte's paper ink a point a pixel. A stroke stopped
+/// exactly at the edge left a sliver of the pixel the edge falls in that
+/// nothing held: measured one to three device pixels, white where the
+/// print under the picture showed, black where the silhouette did. Three
+/// points hold a device pixel at 50% on a 1× screen and the pixel the edge
+/// falls in.
 const double sheetInkApron = 3;
 
 CanvasSelectionShape _surfaceShape(Rect rect) => CanvasSelectionShape.rect(
@@ -418,10 +432,11 @@ CanvasSelectionShape _surfaceShape(Rect rect) => CanvasSelectionShape.rect(
 /// asks nothing about what a plane is. That is what let three panels with
 /// three different controller shapes mount ink through one widget.
 ///
-/// Every window HEARS every press ([sheetInkRegions] says what each keeps
-/// of it), and the layer takes the press once for them all: with the brush
-/// on, what lies under it — the header's editors, the cells' taps — is not
-/// reachable (the switch doubles as the edit-mode switch).
+/// The window on top where the pen lands hears the stroke, the whole of it
+/// ([sheetInkOwnerAt]; [sheetInkRegions] says what it keeps), and the
+/// layer takes the press once for them all: with the brush on, what lies
+/// under it — the header's editors, the cells' taps — is not reachable
+/// (the switch doubles as the edit-mode switch).
 class SheetInkLayer extends StatefulWidget {
   const SheetInkLayer({
     super.key,
@@ -450,14 +465,15 @@ class SheetInkLayer extends StatefulWidget {
   /// window. The hosts used to rebuild this whole layer on every one.
   final ValueListenable<BrushToolState> brushToolState;
 
-  /// Raised while the pen is down on the sheet — once for the stroke,
-  /// however many windows it crosses — so the panel's gesture layer holds
-  /// navigation exactly as it does for canvas strokes.
+  /// Raised while the pen is down on the sheet, once for the stroke — so
+  /// the panel's gesture layer holds navigation exactly as it does for
+  /// canvas strokes.
   final ValueNotifier<bool> strokeActive;
 
-  /// Where one stroke's landings become ONE step: every window lands its
-  /// own piece on its own surface, and the pen-up folds them — the rail
-  /// swipe's many-landings-one-undo, said of a stroke.
+  /// Where a stroke's landing becomes ONE step with what was made for it
+  /// to land in (the conte's block, its cut — [onStrokeCommitted]'s
+  /// caller): the pen-up folds them — the rail swipe's
+  /// many-landings-one-undo, said of a stroke.
   final HistoryGestures history;
 
   final BrushEditSessionState Function(SheetWindow window) sessionStateFor;
@@ -497,38 +513,39 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     widget.strokeActive.value = down;
   }
 
-  /// A window's piece of the stroke, confined to its slice on the surface
-  /// as it stands NOW — the canvas selection's funnel. A band surface two
-  /// windows share has taken the other half's piece by the time the
-  /// second one lands.
+  /// The stroke [window] took, confined to [keeps] of its surface as it
+  /// stands NOW — the canvas selection's funnel — or whole where the window
+  /// keeps it all.
   void _land(
     SheetWindow window,
-    CanvasSelectionRegion region,
+    CanvasSelectionRegion? keeps,
     BrushStrokeCommitData strokeData,
   ) {
-    final landed = clipStrokeCommitToSelection(
-      strokeData,
-      region: region,
-      surface: widget.sessionStateFor(window).canvasState.currentSurface,
-    );
+    final landed = keeps == null
+        ? strokeData
+        : clipStrokeCommitToSelection(
+            strokeData,
+            region: keeps,
+            surface: widget.sessionStateFor(window).canvasState.currentSurface,
+          );
     if (landed != null) {
       widget.onStrokeCommitted(window, landed);
     }
   }
 
-  /// The refusal of the window on top at [position], at the cursor — the
-  /// canvas's notice for a press on an empty cell it may not fill.
-  void _refuseAt(Offset position) {
+  /// [position], a point of this layer, on the paper.
+  Offset _paperOf(Offset position) {
     final viewport = widget.viewport;
-    final paper =
-        (position - Offset(viewport.panX, viewport.panY)) / viewport.zoom;
-    for (final window in widget.windows.reversed) {
-      if (convexContains(window.paperOutline, paper)) {
-        if (window.refusal case final refusal?) {
-          cursorNotices.show(refusal);
-        }
-        return;
-      }
+    return (position - Offset(viewport.panX, viewport.panY)) / viewport.zoom;
+  }
+
+  /// The refusal of the window a press at [position] lands on, at the
+  /// cursor — the canvas's notice for a press on an empty cell it may not
+  /// fill.
+  void _refuseAt(Offset position) {
+    if (sheetInkOwnerAt(widget.windows, _paperOf(position))?.refusal
+        case final refusal?) {
+      cursorNotices.show(refusal);
     }
   }
 
@@ -569,8 +586,8 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       widget.viewport,
       EffectiveDevicePixelRatio.of(context),
     );
-    // It claims the press, after every window has heard it — and where the
-    // window on top refuses the pen, says why, as the canvas does.
+    // It claims the press, after the window it lands on has heard it — and
+    // where that window refuses the pen, says why, as the canvas does.
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: (event) => _refuseAt(event.localPosition),
@@ -580,8 +597,14 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
             Positioned.fill(
               child: _InkWindowFrame(
                 shows: window.screenRect(widget.viewport),
-                // Where the windows above it show theirs (F-216): the
-                // piece it keeps past their edges is never on screen.
+                // The press is its own where it is the window on top, and
+                // the stroke with it wherever the pen goes after (H49).
+                owns: (position) => identical(
+                  sheetInkOwnerAt(windows, _paperOf(position)),
+                  window,
+                ),
+                // Where the windows above it show theirs (F-216): what it
+                // keeps past their edges is never on screen.
                 yieldsTo: [
                   for (final upper in windows.skip(index + 1))
                     if (upper.documentRect.overlaps(window.documentRect))
@@ -597,36 +620,39 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     );
   }
 
-  /// The brush in hand, as [window]'s view asks for it when a stroke
-  /// starts — its size as that window reads it ([SheetWindow.brushScale]).
-  BrushEditCanvasInputSettings _inputSettingsFor(SheetWindow window) {
-    final brush = widget.brushToolState.value.toInputSettings();
-    final scale = window.brushScale;
-    return scale == 1 ? brush : brush.copyWith(size: brush.size * scale);
+  /// [window]'s brush view: a stroke it takes kept to [region] of its
+  /// surface, or whole where the window keeps it all
+  /// ([SheetWindow.keepsOnlyWhatItShows]).
+  ///
+  /// The brush is read as it is, a pixel of its size a pixel of the
+  /// surface — the canvas's own reading (유저 2026-09-30, H50: 「원본
+  /// 1:1그대로 공용로직 그대로 적용해서 원복하자」). ↩️The conte's paper
+  /// read it at the pictures' scale (F-217) while a stroke crossed from a
+  /// picture onto the paper; a stroke stays in its window now (H49), and so
+  /// scaled a brush drew too thin to hold together.
+  Widget _view(SheetWindow window, CanvasSelectionRegion region) {
+    final keeps = window.keepsOnlyWhatItShows ? region : null;
+    return InteractiveBrushEditCanvasView(
+      key: ValueKey<String>('${widget.keyPrefix}-ink-${window.id}'),
+      celNow: () => widget.sessionStateFor(window).canvasState.currentSurface,
+      layerId: window.key.layerId,
+      frameId: window.key.frameId,
+      inputSettings: () => widget.brushToolState.value.toInputSettings(),
+      viewport: window.inkViewport(widget.viewport),
+      selectionRegion: keeps,
+      // The sheet paper is painted below this stack; an opaque
+      // background here would cover it.
+      showTransparentBackground: false,
+      // The canvas's MERGED pairing: a surface painted in its place in a
+      // composite leaves its view input only.
+      overlayModel: window.overlay,
+      paintsContent: window.overlay == null,
+      onActiveStrokeChanged: (active) =>
+          _windowStroking(window.id, active: active),
+      onSourceStrokeCommitted: (strokeData) =>
+          _land(window, keeps, strokeData),
+    );
   }
-
-  /// [window]'s brush view, confined to [region] of its surface.
-  Widget _view(SheetWindow window, CanvasSelectionRegion region) =>
-      InteractiveBrushEditCanvasView(
-        key: ValueKey<String>('${widget.keyPrefix}-ink-${window.id}'),
-        celNow: () => widget.sessionStateFor(window).canvasState.currentSurface,
-        layerId: window.key.layerId,
-        frameId: window.key.frameId,
-        inputSettings: () => _inputSettingsFor(window),
-        viewport: window.inkViewport(widget.viewport),
-        selectionRegion: region,
-        // The sheet paper is painted below this stack; an opaque
-        // background here would cover it.
-        showTransparentBackground: false,
-        // The canvas's MERGED pairing: a surface painted in its place in a
-        // composite leaves its view input only.
-        overlayModel: window.overlay,
-        paintsContent: window.overlay == null,
-        onActiveStrokeChanged: (active) =>
-            _windowStroking(window.id, active: active),
-        onSourceStrokeCommitted: (strokeData) =>
-            _land(window, region, strokeData),
-      );
 
   /// [view] — a window's — laid [SheetWindow.stretch] times as wide from
   /// the window's left edge on screen. The view draws its surface at the
@@ -649,31 +675,34 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   }
 }
 
-/// A window SHOWS its own rect and HEARS the whole layer.
-///
-/// It hit-tests its view and never claims the hit, so the Stack offers the
-/// press to every window under it too; and it clips what the view PAINTS,
-/// not what it hears.
+/// A window SHOWS its own rect and HEARS the presses it [owns] — the ones
+/// it is the window on top at ([sheetInkOwnerAt]) — and every move of the
+/// stroke after, wherever the pen goes: the pointer is its view's. It
+/// clips what the view PAINTS, not what it hears.
 ///
 /// ↩️It was a `ClipRect` with a rect clipper — the one `CustomClipper` the
-/// 08-28 audit left of three byte-identical copies — which clips both: a
-/// press outside the window fell through to the one below, and the stroke
-/// stayed with the window it started in.
+/// 08-28 audit left of three byte-identical copies — which clipped the
+/// press by the window's rect; then it heard every press (09-25, one
+/// paper), until strokes were split by where they start again (H49).
 class _InkWindowFrame extends SingleChildRenderObjectWidget {
   const _InkWindowFrame({
     required this.shows,
+    required this.owns,
     required this.yieldsTo,
     required super.child,
   });
 
   final Rect shows;
 
+  /// Whether a press at a point of the layer is this window's.
+  final bool Function(Offset position) owns;
+
   /// Where windows above this one show theirs — cut out of [shows].
   final List<Path> yieldsTo;
 
   @override
   _RenderInkWindowFrame createRenderObject(BuildContext context) =>
-      _RenderInkWindowFrame(shows, yieldsTo);
+      _RenderInkWindowFrame(shows, owns, yieldsTo);
 
   @override
   void updateRenderObject(
@@ -682,12 +711,16 @@ class _InkWindowFrame extends SingleChildRenderObjectWidget {
   ) {
     renderObject
       ..shows = shows
+      ..owns = owns
       ..yieldsTo = yieldsTo;
   }
 }
 
 class _RenderInkWindowFrame extends RenderProxyBox {
-  _RenderInkWindowFrame(this._shows, this._yieldsTo);
+  _RenderInkWindowFrame(this._shows, this.owns, this._yieldsTo);
+
+  /// A hit test's question alone — nothing is painted by it.
+  bool Function(Offset position) owns;
 
   Rect _shows;
 
@@ -719,10 +752,8 @@ class _RenderInkWindowFrame extends RenderProxyBox {
   final LayerHandle<ClipPathLayer> _cutClip = LayerHandle<ClipPathLayer>();
 
   @override
-  bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    super.hitTest(result, position: position);
-    return false;
-  }
+  bool hitTest(BoxHitTestResult result, {required Offset position}) =>
+      owns(position) && super.hitTest(result, position: position);
 
   @override
   Rect? describeApproximatePaintClip(RenderObject child) => _shows;
