@@ -150,7 +150,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     final olWord = AppStrings.of(
       session.languageSettings.value.notationLanguage,
     ).tlTransitionCutOl;
-    final transitionLayer = session.transitions.transitionRowNamed(
+    final transitionLayer = session.transitions.names.rowNamed(
       session.activeTrack,
       session.activeTrack.transitionLayer,
       olWord: olWord,

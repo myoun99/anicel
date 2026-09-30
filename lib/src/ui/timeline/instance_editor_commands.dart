@@ -616,8 +616,8 @@ Future<void> editTransitionSpanInstance(
     // preview draws a draft of its own), and writes none of them.
     namedByItsCuts: covering == null
         ? null
-        : (draft) => session.transitions
-              .transitionEventShownAt(
+        : (draft) => session.transitions.names
+              .eventShownAt(
                 covering.key,
                 draft.copyWith(length: covering.value.length),
               )

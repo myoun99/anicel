@@ -1017,7 +1017,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // row is track-owned and its spans address the global
                     // axis, so the cut timeline shows them read-only.
                     transitionDefById: _session.camera.cameraInstructionSet.defById,
-                    transitionRowShown: _session.transitions.transitionRowNamed,
+                    transitionRowShown: _session.transitions.names.rowNamed,
                     rowsChannel: widget.rowsChannel,
                     // D26: crossing fades are refused and wear the red
                     // corner — the session answers by global key on this
