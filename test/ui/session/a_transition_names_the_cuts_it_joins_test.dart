@@ -5,6 +5,7 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart'
     show createTrackTransitionLayer;
 import 'package:anicel/src/models/project.dart';
@@ -14,7 +15,10 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/canvas/flip_hud_controller.dart'
+    show FlipHudAxis;
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart';
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
@@ -168,6 +172,17 @@ void main() {
       'cuts\' and writes none', (tester) async {
     final s = session();
     addTearDown(s.dispose);
+    // Writing typed into it before the names were the cuts' — the window
+    // hands none of it back, so the first edit leaves the span clean.
+    s.transitions.updateTransitionInstructions({
+      18: const InstructionEvent(
+        instructionId: 'ol',
+        length: 12,
+        text: 'typed',
+        valueA: 'A',
+        valueB: 'B',
+      ),
+    });
     late BuildContext context;
     await tester.pumpWidget(
       MaterialApp(
@@ -258,6 +273,40 @@ void main() {
         findsOneWidget,
       );
     }
+
+    // The flip window reads the storyboard's rows: the span carries the
+    // same name there.
+    final snapshot = tester
+        .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+        .rowsChannel!
+        .snapshotFor(FlipHudAxis.row)!;
+    expect(
+      snapshot.rows
+          .firstWhere((row) => row.kind == LayerKind.transition)
+          .runs
+          .single
+          .label,
+      AppText.strings.tlTransitionCutOl,
+    );
+  });
+
+  test('a drag of the row shows its form in the cut named too — the hand '
+      'never sees the names drop out', () {
+    final s = session();
+    addTearDown(s.dispose);
+    final dragged = s.activeTrack.transitionLayer.copyWith(
+      instructions: {
+        17: const InstructionEvent(instructionId: 'ol', length: 12),
+      },
+    );
+    final shown = s.transitions
+        .previewFormsOf(dragged)
+        .shown
+        .instructions
+        .values
+        .single;
+    expect(shown.valueA, 'c301');
+    expect(shown.valueB, 'c302');
   });
 
   testWidgets('a direction\'s window still asks for its names — its ends are '

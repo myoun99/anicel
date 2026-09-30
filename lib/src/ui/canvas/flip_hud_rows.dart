@@ -19,9 +19,9 @@ import 'flip_hud_model.dart';
 ///
 /// [withRuns] false skips the runs a frame-axis window never draws (it shows
 /// ONE row's blocks), keeping the row's place in the list.
-/// [celNameAt] prints a block's cel name; a transition span prints the name
-/// of the term [spanDefById] finds for it, or the raw id when that term
-/// was deleted (the row's own fallback).
+/// [celNameAt] prints a block's cel name; a transition span prints its
+/// writing, else the name of the term [spanDefById] finds for it, else the
+/// raw id when that term was deleted (the row's own fallback).
 FlipHudRow flipHudLayerRow(
   Layer layer, {
   required bool withRuns,
@@ -40,9 +40,12 @@ FlipHudRow flipHudLayerRow(
           FlipHudRun(
             startIndex: entry.key,
             length: entry.value.length,
-            label:
-                spanDefById?.call(entry.value.instructionId)?.name ??
-                entry.value.instructionId,
+            // The name the rows print for the span — its writing, else its
+            // term's name, else the raw id — so a transition named by the
+            // cuts it joins (F-229) reads the same here.
+            label: entry.value.displayLabel(
+              spanDefById?.call(entry.value.instructionId),
+            ),
           ),
         );
       }
