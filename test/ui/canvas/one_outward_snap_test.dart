@@ -59,11 +59,22 @@ void main() {
     );
   }
 
+  /// [anyRect] on whole pixels — what a tile rect is.
+  ui.Rect anyWholeRect() {
+    final r = anyRect();
+    return ui.Rect.fromLTRB(
+      r.left.floorToDouble(),
+      r.top.floorToDouble(),
+      r.right.ceilToDouble(),
+      r.bottom.ceilToDouble(),
+    );
+  }
+
   test('a display level snaps where dividing by its step put it', () {
     for (var i = 0; i < 4000; i += 1) {
       final bounds = i.isEven
           ? anyRect()
-          : anyRect().shift(ui.Offset.zero).roundOut().translate(0.5, -0.25);
+          : anyWholeRect().translate(0.5, -0.25);
       final level = i % 7;
       expect(
         wholeLevelPixelsOutward(bounds, level),
@@ -87,7 +98,7 @@ void main() {
 
   test('the pyramid grid counts from the content origin, as it did', () {
     for (var i = 0; i < 4000; i += 1) {
-      final bounds = anyRect().roundOut();
+      final bounds = anyWholeRect();
       final origin = ui.Offset(
         (random.nextInt(400) - 200).toDouble(),
         (random.nextInt(400) - 200).toDouble(),
