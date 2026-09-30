@@ -18,7 +18,7 @@ import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track.dart';
 import '../../services/camera_frame_corners.dart'
-    show cameraCornerTrails, cameraFramesBounds, cameraKeyFrames;
+    show cameraCornerTrails, cameraFramesBounds, cameraFramesShown;
 import '../storyboard_layer_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 
@@ -123,11 +123,12 @@ ConteCellSource _cellSource({
   );
 }
 
-/// What the camera does while [cell] is on screen: its frame at each key
-/// in the cell (`cameraKeyFrames`), the trail each corner draws between
-/// them and the canvas they sweep — null while it holds still (its keys in
-/// the cell all frame one place, or there are fewer than two) or its work
-/// is bypassed (the camera row's switch shows the canvas centred).
+/// What the camera does while [cell] is on screen: its frame at the cell's
+/// first and last frames and at each key between, as playback shows them
+/// (`cameraFramesShown`, H54), the trail each corner draws through them and
+/// the canvas they sweep — null while it holds still (every one of those
+/// frames framing one place) or its work is bypassed (the camera row's
+/// switch shows the canvas centred).
 ///
 /// A window shows the widest of those frames whole ([_widestFrame]): a
 /// frame is what the camera shows, so each frame of a pan takes a window
@@ -147,11 +148,12 @@ ConteCameraWork? _cameraWorkIn(
   if (cut.layers.cameraWorkBypassed) {
     return null;
   }
-  final frames = cameraKeyFrames(
-    cut.camera.keyframes,
-    cameraFrameSize,
-    from: conteStart + cell.startIndex,
-    toExclusive: conteStart + cell.endIndexExclusive,
+  final frames = cameraFramesShown(
+    cut.camera,
+    canvasSize: cut.canvasSize,
+    cameraFrameSize: cameraFrameSize,
+    first: conteStart + cell.startIndex,
+    last: conteStart + cell.endIndexExclusive - 1,
   );
   final corners = [for (final frame in frames) frame.corners];
   if (corners.every((frame) => listEquals(frame, corners.first))) {

@@ -1,11 +1,14 @@
 import 'dart:ui' show Offset, Rect;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
 import '../core/point_bounds.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
+import '../models/cut_camera.dart';
+import 'camera_pose_resolver.dart';
 import 'camera_projection_matrix.dart';
 
 /// The camera frame's corners in canvas coordinates:
@@ -58,6 +61,52 @@ List<({int frameIndex, List<Offset> corners})> cameraKeyFrames(
           cameraFrameSize: cameraFrameSize,
         ),
       ),
+  ];
+}
+
+/// The camera's frame from frame [first] to frame [last] as playback shows
+/// it ([resolveCameraPoseAt]): at [first], at each key after it, and at
+/// [last] — in frame order. What a stretch of the camera's path is drawn
+/// from (유저 2026-10-01, H54: 「카메라 움직임을 키 기준으로 생각하는게
+/// 아니라, 제대로 보여지는 카메라대로 … 그 블록 안에서 일어나는 카메라를
+/// 기록」). ↩️It was the keys inside the stretch alone, so a stretch a move
+/// ran through with no key in it showed no move at all.
+///
+/// An end the camera stands at a key for — a key on it, or the pose a key
+/// left the camera in, held — IS that key's frame, never a second frame
+/// over it (유저 확인 10-01).
+List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
+  CutCamera camera, {
+  required CanvasSize canvasSize,
+  required CanvasSize cameraFrameSize,
+  required int first,
+  required int last,
+}) {
+  ({int frameIndex, List<Offset> corners}) shownAt(int frameIndex) => (
+    frameIndex: frameIndex,
+    corners: cameraFrameCornersInCanvas(
+      pose: resolveCameraPoseAt(
+        camera: camera,
+        canvasSize: canvasSize,
+        frameIndex: frameIndex,
+      ),
+      cameraFrameSize: cameraFrameSize,
+    ),
+  );
+  final keys = cameraKeyFrames(
+    camera.keyframes,
+    cameraFrameSize,
+    from: first,
+    toExclusive: last + 1,
+  );
+  final opening = shownAt(first);
+  final closing = shownAt(last);
+  return [
+    if (keys.isEmpty || !listEquals(keys.first.corners, opening.corners))
+      opening,
+    ...keys,
+    if (keys.isEmpty || !listEquals(keys.last.corners, closing.corners))
+      closing,
   ];
 }
 

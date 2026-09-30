@@ -21,8 +21,9 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 
 /// A conte cell's camera work, read off its cut's camera (유저 2026-09-29/30):
-/// every key inside the cell, what the sheet calls each one, and the canvas
-/// their frames sweep.
+/// the camera at the cell's first and last frames and every key between
+/// (H54, 10-01), what the sheet calls each one, and the canvas their frames
+/// sweep.
 void main() {
   CameraPose at(double x, double y, {double zoom = 1}) =>
       CameraPose(center: CanvasPoint(x: x, y: y), zoom: zoom);
@@ -49,9 +50,22 @@ void main() {
   CutCamera calledEverywhere(CutCamera camera, int frame, String name) =>
       named(camera, frame, position: name, scale: name, rotation: name);
 
-  /// The one cell of a 24-frame cut whose camera is [camera] — a 160×90
-  /// camera over a 640×360 canvas.
-  ConteCellSource cellOf(CutCamera camera, {bool bypassed = false}) {
+  /// The cells of a 24-frame cut whose camera is [camera] — a 160×90 camera
+  /// over a 640×360 canvas — one block to each of [lengths], in order.
+  List<ConteCellSource> cellsOf(
+    CutCamera camera, {
+    List<int> lengths = const [24],
+    bool bypassed = false,
+  }) {
+    final frames = <Frame>[];
+    final timeline = <int, TimelineExposure>{};
+    var at = 0;
+    for (final (index, length) in lengths.indexed) {
+      final id = FrameId('f$index');
+      frames.add(Frame(id: id, duration: 1, strokes: const []));
+      timeline[at] = TimelineExposure.drawing(id, length: length);
+      at += length;
+    }
     final project = Project(
       id: const ProjectId('camera-work'),
       name: 'Camera work',
@@ -73,16 +87,8 @@ void main() {
                   id: const LayerId('sb'),
                   name: 'SB',
                   kind: LayerKind.storyboard,
-                  frames: [
-                    Frame(
-                      id: const FrameId('f'),
-                      duration: 1,
-                      strokes: const [],
-                    ),
-                  ],
-                  timeline: const {
-                    0: TimelineExposure.drawing(FrameId('f'), length: 24),
-                  },
+                  frames: frames,
+                  timeline: timeline,
                 ),
                 Layer(
                   id: const LayerId('camera'),
@@ -98,8 +104,20 @@ void main() {
         ),
       ],
     );
-    return buildConteSheetSource(project).cuts.single.cells.single;
+    return buildConteSheetSource(project).cuts.single.cells;
   }
+
+  /// The one cell of such a cut.
+  ConteCellSource cellOf(CutCamera camera, {bool bypassed = false}) =>
+      cellsOf(camera, bypassed: bypassed).single;
+
+  /// The camera's frame on the canvas with its centre at ([x], 45).
+  List<Offset> frameAround(double x) => [
+    Offset(x - 80, 0),
+    Offset(x + 80, 0),
+    Offset(x + 80, 90),
+    Offset(x - 80, 90),
+  ];
 
   final pan = CutCamera(keyframes: {0: at(80, 45), 12: at(240, 45)});
 
@@ -172,18 +190,106 @@ void main() {
     expect(cellOf(mixed).camera!.keys.map((key) => key.label), ['IN', 'OUT']);
   });
 
-  test('a camera that holds still in the cell, or whose work is switched '
-      'off on the camera row, shows its own view', () {
+  test('a camera that holds still while the cell is on screen — one key, or '
+      'none — or whose work is switched off on the camera row, shows its '
+      'own view', () {
     expect(
-      cellOf(CutCamera(keyframes: {0: at(80, 45), 30: at(240, 45)})).camera,
+      cellOf(CutCamera(keyframes: {0: at(80, 45)})).camera,
       isNull,
-      reason: 'one key in the cell: nothing moves while it is on screen',
+      reason: 'one key: the camera stands there the whole cell',
+    );
+    expect(
+      cellOf(CutCamera()).camera,
+      isNull,
+      reason: 'no key: the camera never moves',
     );
     expect(
       cellOf(pan, bypassed: true).camera,
       isNull,
       reason: 'a bypassed camera shows the canvas centred, whatever its keys',
     );
+  });
+
+  test('🗣️H54: a cell marks the camera it shows — its first and last frames '
+      'as playback has them and the keys between — not only the keys inside '
+      'it (유저 2026-10-01: 「카메라 움직임을 키 기준으로 생각하는게 아니라, '
+      '제대로 보여지는 카메라대로 … 사각형을 B너머의 블록의 마지막칸부분을 '
+      '사각형으로 그리고, 결국 키 이름 없으니 OUT」)', () {
+    var abc = CutCamera(
+      keyframes: {0: at(80, 45), 10: at(240, 45), 24: at(520, 45)},
+    );
+    for (final (frame, name) in const [(0, 'A'), (10, 'B'), (24, 'C')]) {
+      abc = calledEverywhere(abc, frame, name);
+    }
+    final cells = cellsOf(abc, lengths: const [14, 10]);
+
+    final first = cells[0].camera!;
+    expect(first.keys.map((key) => key.role), [
+      ConteCameraKeyRole.first,
+      ConteCameraKeyRole.between,
+      ConteCameraKeyRole.last,
+    ]);
+    expect(
+      first.keys.map((key) => key.label),
+      ['A', 'B', 'OUT'],
+      reason: 'the block runs on past B: its last frame closes it, unnamed',
+    );
+    expectPoints(
+      first.keys.last.corners,
+      frameAround(300),
+      reason: 'frame 13, three fourteenths of the way from B to C',
+    );
+
+    final second = cells[1].camera;
+    expect(
+      second,
+      isNotNull,
+      reason: 'no key inside it, and the camera moves the whole block',
+    );
+    expect(second!.keys.map((key) => key.label), ['IN', 'OUT']);
+    expectPoints(second.keys.first.corners, frameAround(320), reason: '14');
+    expectPoints(second.keys.last.corners, frameAround(500), reason: '23');
+    expect(second.field, const Rect.fromLTRB(240, 0, 580, 90));
+    expectPoints(
+      second.trails.first,
+      const [Offset(240, 0), Offset(420, 0)],
+      reason: 'the top-left corner\'s trail, first frame to last',
+    );
+  });
+
+  test('a key past the cell moves the camera while the cell is on screen: '
+      'the camera at the cell\'s last frame closes it, OUT (H54)', () {
+    final work = cellOf(
+      CutCamera(keyframes: {0: at(80, 45), 32: at(240, 45)}),
+    ).camera!;
+    expect(work.keys.map((key) => key.label), ['IN', 'OUT']);
+    expectPoints(
+      work.keys.last.corners,
+      frameAround(195),
+      reason: 'frame 23 of a move that reaches its key at 32',
+    );
+  });
+
+  test('an end the camera stands at a key for is that key, not a second '
+      'frame over it (유저 확인 10-01) — the camera holds its first key\'s '
+      'pose before it and its last key\'s after', () {
+    final held = calledEverywhere(
+      CutCamera(keyframes: {5: at(80, 45), 12: at(240, 45)}),
+      12,
+      'B',
+    );
+    final work = cellOf(held).camera!;
+    expect(work.keys.map((key) => key.role), [
+      ConteCameraKeyRole.first,
+      ConteCameraKeyRole.last,
+    ]);
+    expect(
+      work.keys.map((key) => key.label),
+      ['IN', 'B'],
+      reason: 'the key the camera stops at closes the cell, by its name',
+    );
+    expectPoints(work.keys.first.corners, frameAround(80));
+    expectPoints(work.keys.last.corners, frameAround(240));
   });
 
   test('keys that all frame one place are a camera holding still — the '

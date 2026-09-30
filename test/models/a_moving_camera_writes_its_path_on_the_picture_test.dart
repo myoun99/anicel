@@ -293,6 +293,100 @@ void main() {
     expect(between.argb >>> 24, 0xFF, reason: 'a name in full ink (H47)');
   });
 
+  test('🗣️H55: a named key between has its corner crossed — small, turned '
+      'with its frame — and the cross and the name are the sheet\'s black '
+      '(유저 2026-10-01: 「s의 꼭짓점에 표시하고싶어서. 해당 위치 꼭짓점에 '
+      '십자가 … 작고 검정색으로? 그리고 그 색으로 키 색도 바꾸고」); the '
+      'trails keep H47\'s light grey', () {
+    const turn = math.pi / 6;
+    List<Offset> turned(Offset centre) => [
+      for (final corner in const [
+        Offset(-960, -540),
+        Offset(960, -540),
+        Offset(960, 540),
+        Offset(-960, 540),
+      ])
+        centre +
+            Offset(
+              corner.dx * math.cos(turn) - corner.dy * math.sin(turn),
+              corner.dx * math.sin(turn) + corner.dy * math.cos(turn),
+            ),
+    ];
+    final frames = [
+      for (final x in const [1500.0, 2000.0, 2500.0, 3000.0])
+        turned(Offset(x, 1000)),
+    ];
+    final work = ConteCameraWork(
+      screen: const Size(1920, 1080),
+      field: const Rect.fromLTRB(0, 0, 4200, 2000),
+      keys: [
+        ConteCameraKey(
+          corners: frames[0],
+          role: ConteCameraKeyRole.first,
+          label: 'A',
+        ),
+        ConteCameraKey(
+          corners: frames[1],
+          role: ConteCameraKeyRole.between,
+          label: 'S',
+        ),
+        ConteCameraKey(corners: frames[2], role: ConteCameraKeyRole.between),
+        ConteCameraKey(
+          corners: frames[3],
+          role: ConteCameraKeyRole.last,
+          label: 'OUT',
+        ),
+      ],
+      trails: [
+        for (var corner = 0; corner < 4; corner += 1)
+          [for (final frame in frames) frame[corner]],
+      ],
+    );
+    final marks = printed([moving(work)]).marks;
+    final picture = marks.whereType<SheetPicture>().single;
+    final open = marks
+        .whereType<SheetStroke>()
+        .where((stroke) => !stroke.closed)
+        .toList();
+    final cross = [
+      for (final stroke in open)
+        if (stroke.argb == conteInkArgb) stroke,
+    ];
+    expect(
+      cross,
+      hasLength(2),
+      reason: 'two arms, S\'s — the unnamed key between has none',
+    );
+    final corner = onPaper(picture, work, frames[1].first);
+    final sides = [
+      Offset(math.cos(turn), math.sin(turn)),
+      Offset(-math.sin(turn), math.cos(turn)),
+    ];
+    for (final (index, arm) in cross.indexed) {
+      expect(arm.points, hasLength(2));
+      expectPoint(
+        (arm.points.first + arm.points.last) / 2,
+        corner,
+        'centred on the corner S\'s name stands at',
+      );
+      final reach = arm.points.last - arm.points.first;
+      expect(reach.distance, closeTo(5, 1e-9), reason: 'small');
+      expectPoint(reach / reach.distance, sides[index], 'square to its frame');
+    }
+    expect(
+      marks.whereType<SheetWords>().singleWhere((words) => words.text == 'S'),
+      isA<SheetWords>().having((words) => words.argb, 'argb', conteInkArgb),
+    );
+    final trails = [
+      for (final stroke in open)
+        if (stroke.argb != conteInkArgb) stroke,
+    ];
+    expect(trails, hasLength(4), reason: 'fixture: the four trails');
+    for (final trail in trails) {
+      expect(trail.argb, 0x805F5E5A, reason: 'a trail, as light as H47 left it');
+    }
+  });
+
   test('every name stands inside its frame\'s top-left corner and turns with '
       'the frame (「기운 틀의 모서리. 각도 그대로따라감」) — a name the first '
       'key has takes IN\'s green', () {

@@ -47,18 +47,20 @@ class ConteCellSource {
   final String action;
 
   /// What the camera does while the cell is on screen — or null while it
-  /// holds still (its keys in the cell frame one place, or there are fewer
-  /// than two). It decides how much of
-  /// the sheet the cell's picture takes and what is drawn over it.
+  /// holds still, every frame it shows in the cell framing one place. It
+  /// decides how much of the sheet the cell's picture takes and what is
+  /// drawn over it.
   final ConteCameraWork? camera;
 
   int get lengthFrames => endFrameExclusive - startFrame;
 }
 
-/// A cell's camera work, on the cut's canvas: the camera's frame at each of
-/// its keys in the cell, the trail each corner draws between them, and the
-/// canvas they sweep together — the picture the cell shows (유저
-/// 2026-09-29: 「일단 카메라 팬대로 해당 코마에서 보여주고」).
+/// A cell's camera work, on the cut's canvas: the camera's frame at the
+/// cell's first and last frames and at each key between (H54 — the camera
+/// as the cell shows it, not only where it was keyed), the trail each
+/// corner draws through them, and the canvas they sweep together — the
+/// picture the cell shows (유저 2026-09-29: 「일단 카메라 팬대로 해당
+/// 코마에서 보여주고」).
 class ConteCameraWork {
   const ConteCameraWork({
     required this.screen,
@@ -74,7 +76,9 @@ class ConteCameraWork {
   /// The canvas the camera sweeps: every corner of every key.
   final Rect field;
 
-  /// The camera's frame at each key in the cell, first to last.
+  /// The camera's frames the cell marks, first to last: its first frame,
+  /// each key between, its last frame — an end the camera stands at a key
+  /// for being that key.
   final List<ConteCameraKey> keys;
 
   /// The trail each corner of the frame draws from key to key — four
@@ -97,7 +101,8 @@ enum ConteCameraKeyRole {
   last,
 }
 
-/// One camera key as the sheet draws it.
+/// One camera frame the sheet marks: a key, or the camera at the cell's
+/// first or last frame where no key stands (H54).
 class ConteCameraKey {
   const ConteCameraKey({
     required this.corners,

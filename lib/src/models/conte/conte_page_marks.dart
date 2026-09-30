@@ -44,17 +44,28 @@ const int _blockLength = 0xFF8C8C8C;
 const int _cameraIn = 0xFF3B6D11;
 const int _cameraOut = 0xFFA32D2D;
 
-/// The name of a key between the first and the last.
-const int _cameraBetween = 0xFF5F5E5A;
+/// A key between the first and the last: its name and the cross on its
+/// corner, in the sheet's own black (유저 2026-10-01, H55: 「작고
+/// 검정색으로? 그리고 그 색으로 키 색도 바꾸고」). ↩️The name was
+/// 0xFF5F5E5A, the grey the trails still wear.
+const int _cameraBetween = conteInkArgb;
 
-/// The trails a camera's corners draw: a key between's ink at half its
-/// strength (유저 2026-09-30, H47: 「꼭짓점 궤도 좀 더 연하게.(불투명도
-/// 낮추는방식)」) — every printer keeps the alpha, the PDF's too.
+/// The trails a camera's corners draw: a grey at half its strength (유저
+/// 2026-09-30, H47: 「꼭짓점 궤도 좀 더 연하게.(불투명도 낮추는방식)」) —
+/// every printer keeps the alpha, the PDF's too. ⚠️Its own grey, no longer
+/// a key between's ink at half strength: that ink went black (H55), and
+/// the trails stay as light as H47 made them.
 const int _cameraTrail = 0x805F5E5A;
 
 const double _cameraFrameWidth = 1.2;
 const double _cameraTrailWidth = 0.8;
 const double _cameraLabelSize = 8;
+
+/// How far each arm of a key between's cross reaches from its corner, and
+/// how thick it is: small — it has one point to show (H55 「좀 작아도
+/// 알기쉬우니 작고」).
+const double _cameraCrossArm = 2.5;
+const double _cameraCrossWidth = 0.8;
 
 /// How far a key's label sits inside its frame's corner, along both sides.
 const double _cameraLabelInset = 2;
@@ -440,8 +451,8 @@ int contePictureRenderWidth(
 /// 말고 중간키는 실루엣을 안그려」); every label at its frame's top-left
 /// corner, turned with the frame (「기운 틀의 모서리. 각도 그대로따라감」) —
 /// a key between is labelled where its frame would be (「원래
-/// 위치해야할곳에 위치시키고 틀만 안보이게」). Labels may overlap (「글자
-/// 겹치는거 어쩔수없는거니까」).
+/// 위치해야할곳에 위치시키고 틀만 안보이게」), its corner crossed there in
+/// black (H55). Labels may overlap (「글자 겹치는거 어쩔수없는거니까」).
 Iterable<SheetMark> conteCameraMarksOf(
   ContePlacedCell cell,
   ConteSheetMetrics m,
@@ -479,18 +490,52 @@ Iterable<SheetMark> conteCameraMarksOf(
       );
     }
     if (key.label case final label?) {
+      if (key.role == ConteCameraKeyRole.between) {
+        yield* _cameraCross(corners);
+      }
       yield _cameraLabel(label, corners, argb);
     }
   }
+}
+
+/// The corner a key between's name stands at, crossed — where a trail runs
+/// straight through it, nothing else says where on the trail the name
+/// belongs (유저 2026-10-01, H55: 「s가 어딨는지 … 알기어렵잖아. 그래서
+/// 무언가 s의 꼭짓점에 표시하고싶어서. 해당 위치 꼭짓점에 십자가」). It
+/// goes with the name, and turns with the frame as the name does.
+Iterable<SheetStroke> _cameraCross(List<Offset> corners) sync* {
+  final (:right, :down, turn: _) = _frameAxes(corners);
+  for (final arm in [right, down]) {
+    yield SheetStroke(
+      SheetPaintLayer.picture,
+      points: [
+        corners[0] - arm * _cameraCrossArm,
+        corners[0] + arm * _cameraCrossArm,
+      ],
+      argb: _cameraBetween,
+      width: _cameraCrossWidth,
+    );
+  }
+}
+
+/// Which way the frame [corners] draw runs from its top-left corner —
+/// along its top side ([right]) and down its left ([down]), at [turn]
+/// radians — for what stands square to a turned frame.
+({Offset right, Offset down, double turn}) _frameAxes(List<Offset> corners) {
+  final along = corners[1] - corners[0];
+  final turn = math.atan2(along.dy, along.dx);
+  return (
+    right: Offset(math.cos(turn), math.sin(turn)),
+    down: Offset(-math.sin(turn), math.cos(turn)),
+    turn: turn,
+  );
 }
 
 /// [label] at the top-left corner of the frame [corners] draw, inside it
 /// and turned with it.
 SheetWords _cameraLabel(String label, List<Offset> corners, int argb) {
   final along = corners[1] - corners[0];
-  final turn = math.atan2(along.dy, along.dx);
-  final right = Offset(math.cos(turn), math.sin(turn));
-  final down = Offset(-math.sin(turn), math.cos(turn));
+  final (:right, :down, :turn) = _frameAxes(corners);
   final at = corners[0] + (right + down) * _cameraLabelInset;
   return SheetWords(
     SheetPaintLayer.picture,
