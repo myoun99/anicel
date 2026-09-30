@@ -230,6 +230,13 @@ void _theCapabilityTable() {
     LayerKind.camera,
     LayerKind.adjustment,
   });
+  // I-18 targets-Q1 (유저): 「애니메이션 · 콘티 + 이미지 행」 — the rows 자동
+  // 이름 지정 numbers.
+  column('numbersItsDrawings', (kind) => kind.numbersItsDrawings, {
+    LayerKind.animation,
+    LayerKind.storyboard,
+    LayerKind.image,
+  });
 
   // ---- derived columns ---------------------------------------------------
   // Each of these is a composition the file states as a law of its own, and
