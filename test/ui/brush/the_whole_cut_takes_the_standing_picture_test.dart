@@ -7,7 +7,6 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -51,8 +50,14 @@ void main() {
                           ),
                       ],
                       timeline: {
-                        0: TimelineExposure.drawing(FrameId('c0'), length: 1),
-                        1: TimelineExposure.drawing(FrameId('c1'), length: 1),
+                        0: const TimelineExposure.drawing(
+                          FrameId('c0'),
+                          length: 1,
+                        ),
+                        1: const TimelineExposure.drawing(
+                          FrameId('c1'),
+                          length: 1,
+                        ),
                       },
                     )
                   else
@@ -89,7 +94,7 @@ void main() {
     final key = session.brushFrameKeyForCut(
       session.requireActiveCut,
       layer.id,
-      FrameId('c0'),
+      const FrameId('c0'),
     );
     final coordinator = session.pixelEditing.coordinator!;
     final base = coordinator.currentSurfaceOf(key);

@@ -8,7 +8,6 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/pixel_clipboard_verb.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -74,6 +73,9 @@ void main() {
     );
   }
 
+  Layer row(EditorSessionManager session) =>
+      session.layers.firstWhere((l) => l.frames.length == cels.length);
+
   Future<EditorSessionManager> pump(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1700, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -89,9 +91,6 @@ void main() {
     await tester.pump();
     return session;
   }
-
-  Layer row(EditorSessionManager session) =>
-      session.layers.firstWhere((l) => l.frames.length == cels.length);
 
   BrushFrameKey keyOf(EditorSessionManager session, String cel) =>
       session.brushFrameKeyForCut(
