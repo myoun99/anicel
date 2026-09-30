@@ -28,6 +28,7 @@ import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
 import 'layer_drop_policy.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
+import 'memo_token.dart' show ByIdentity;
 import 'property_lane_model.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
 import 'held_row_pin.dart';
@@ -1273,6 +1274,39 @@ Widget layerRowDragWrapper({
         ? null
         : (rowDelta) => onRowSelectionSpan?.call(dragRows(), rowDelta),
     child: child,
+  );
+}
+
+/// What [layerRowDragWrapper] builds a row's wrapper FROM — equal while the
+/// wrapper it would build is the same one, so a rail that keeps its rows'
+/// widgets keys them on this too (F-244).
+///
+/// The caret LINE is what a build paints (the slot at the row's leading
+/// edge, and whether the row is the last); the crossing reads the rows at
+/// the event and needs no key. [drawnRows] is what the wrapper's
+/// `dragRows` getter reads while this build draws.
+typedef LayerRowDragInputs = ({
+  ByIdentity<TimelineRowDragHooks?> hooks,
+  void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onRowSelectionSpan,
+  int? caretSlot,
+  bool? caretIsLastRow,
+});
+
+/// See [LayerRowDragInputs].
+LayerRowDragInputs layerRowDragInputs({
+  required TimelineDisplayRow row,
+  required List<TimelineDisplayRow> drawnRows,
+  required TimelineRowDragHooks? hooks,
+  required void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onRowSelectionSpan,
+}) {
+  final caret = LayerRowCaret.of(drawnRows, row.layer.id);
+  return (
+    hooks: ByIdentity(hooks),
+    onRowSelectionSpan: onRowSelectionSpan,
+    caretSlot: caret?.slot,
+    caretIsLastRow: caret?.isLastRow,
   );
 }
 

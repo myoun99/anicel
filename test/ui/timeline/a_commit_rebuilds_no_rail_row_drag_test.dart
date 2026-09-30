@@ -13,6 +13,7 @@ import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -131,5 +132,106 @@ void main() {
       release.rebuilt.where((type) => type == LayerRowDragTarget),
       isEmpty,
     );
+  });
+
+  // A kept wrapper is only right while it is the one a fresh build would
+  // make: the oracle is the grid mounted afresh (the x-sheet and back), whose
+  // rail has kept nothing.
+  group('a kept row drag is the one a fresh rail makes', () {
+    Future<EditorSessionManager> openApp(WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: HomePage(initialProject: project()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+    }
+
+    Future<void> remountTheGrid(WidgetTester tester) async {
+      final flip = find.byKey(
+        const ValueKey<String>('timeline-orientation-toggle-button'),
+      );
+      await tester.tap(flip);
+      await tester.pumpAndSettle();
+      await tester.tap(flip);
+      await tester.pumpAndSettle();
+    }
+
+    LayerRowDragTarget targetOf(WidgetTester tester, String layer) =>
+        tester.widget<LayerRowDragTarget>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is LayerRowDragTarget &&
+                widget.subject == LayerRowSubject(LayerId(layer)),
+          ),
+        );
+
+    Map<LayerRowDragSubject, (int, bool)> caretLines(WidgetTester tester) => {
+      for (final target in tester.widgetList<LayerRowDragTarget>(
+        find.byType(LayerRowDragTarget),
+      ))
+        target.subject: (target.slotBefore, target.isLastRow),
+    };
+
+    testWidgets('its caret line, after the rows move and the last one goes', (
+      tester,
+    ) async {
+      final session = await openApp(tester);
+      // The top row (the last layer) goes down two rows, through its own
+      // wrapper — the way a hand moves it.
+      final top = targetOf(tester, 'd');
+      top.hooks!.onBegin(top.subject);
+      top.onCrossed(2, null, 0);
+      top.hooks!.onEnd();
+      await tester.pumpAndSettle();
+      final moved = caretLines(tester);
+      await remountTheGrid(tester);
+      expect(moved, caretLines(tester), reason: 'after the move');
+
+      // The bottom row goes: the one above it becomes the last row, at the
+      // slot it already had.
+      session.selectLayer(const LayerId('a'));
+      session.layerVerbs.deleteActiveLayer();
+      await tester.pumpAndSettle();
+      final shortened = caretLines(tester);
+      await remountTheGrid(tester);
+      expect(shortened, caretLines(tester), reason: 'after the delete');
+    });
+
+    testWidgets('its crossing, after the row below it opens its lanes', (
+      tester,
+    ) async {
+      final session = await openApp(tester);
+      final kept = targetOf(tester, 'd');
+      session.railView.expandedLaneLayerIds.value = {const LayerId('c')};
+      await tester.pumpAndSettle();
+      expect(
+        identical(targetOf(tester, 'd'), kept),
+        isTrue,
+        reason: 'premise: the top row\'s wrapper was kept — its slot and its '
+            'place as a row did not move',
+      );
+
+      int? slotCrossingTwoRows() {
+        final target = targetOf(tester, 'd');
+        target.hooks!.onBegin(target.subject);
+        target.onCrossed(2, null, 0);
+        final slot = session.layerRowDragVerbs.inFlight.value?.caretSlot;
+        target.hooks!.onCancel();
+        return slot;
+      }
+
+      final throughTheKept = slotCrossingTwoRows();
+      await tester.pumpAndSettle();
+      await remountTheGrid(tester);
+      expect(throughTheKept, isNotNull, reason: 'premise: the drag ran');
+      expect(throughTheKept, slotCrossingTwoRows());
+    });
   });
 }

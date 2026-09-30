@@ -30,4 +30,13 @@ class _LayerGridRowDrags {
     pin: _state._heldRow,
     child: child,
   );
+
+  /// What [draggable] builds [row]'s wrapper from — the rail keeps the
+  /// wrapped row while this holds (F-244).
+  LayerRowDragInputs inputsFor(TimelineDisplayRow row) => layerRowDragInputs(
+    row: row,
+    drawnRows: _state._dragRows,
+    hooks: _state.widget.hooks.rowDragHooks,
+    onRowSelectionSpan: _state.widget.hooks.onRowSelectionSpan,
+  );
 }
