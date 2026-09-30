@@ -6592,4 +6592,175 @@ void main() {
       );
     });
   });
+
+  /// 🚨I-23 — 유저 2026-09-30: 「근데 지금 보니까 페이스트보드 밖도
+  /// 선택가능하네? 해당부분 안으로만 가능하게 구조적으로 변경하면서 작업」.
+  ///
+  /// The doors, driven through the real panel: a drawn outline and a
+  /// transform's landing are cut at the pasteboard wall. A 200×150 canvas
+  /// puts the right wall at x = 400, which a pointer on the 800-wide test
+  /// view can reach — and the viewport is identity, so widget offsets ARE
+  /// canvas coordinates.
+  group('a selection stops at the pasteboard wall', () {
+    const small = CanvasSize(width: 200, height: 150);
+    final wall = small.pasteboardRect;
+
+    void expectInsideTheWall(
+      ({double left, double top, double right, double bottom}) box,
+    ) {
+      expect(box.left, greaterThanOrEqualTo(wall.left));
+      expect(box.top, greaterThanOrEqualTo(wall.top));
+      expect(box.right, lessThanOrEqualTo(wall.right));
+      expect(box.bottom, lessThanOrEqualTo(wall.bottom));
+    }
+
+    testWidgets('a marquee dragged past the wall lands cut at it, and the '
+        'live outline shows the cut before the release', (tester) async {
+      final env = await pumpSelectionPanel(tester, canvasSize: small);
+      expect(wall.right, 400, reason: 'the premise: the wall is reachable');
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(
+        origin + const Offset(300, 100),
+      );
+      await tester.pump();
+      await gesture.moveTo(origin + const Offset(480, 200));
+      await tester.pump();
+
+      final live = antsOnScreen(tester)!.marqueeShapes;
+      expect(live, isNotEmpty, reason: 'the drag is tracing');
+      for (final point in [for (final shape in live) ...shape.points]) {
+        expect(point.x, lessThanOrEqualTo(wall.right), reason: '$point');
+      }
+
+      await gesture.up();
+      await tester.pump();
+      final region = env.commands.region!;
+      expectInsideTheWall(region.selectedBounds);
+      expect(region.selectedBounds.left, 300, reason: 'the near side stays');
+      expect(region.selectedBounds.right, wall.right);
+      expect(region.containsPoint(CanvasPoint(x: 390.5, y: 150.5)), isTrue);
+      expect(
+        region.containsPoint(CanvasPoint(x: 410.5, y: 150.5)),
+        isFalse,
+        reason: 'past the wall',
+      );
+    });
+
+    testWidgets('a lasso dragged past the wall lands cut at it', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        canvasSize: small,
+        shapeKind: CanvasShapeKind.lasso,
+      );
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(origin + const Offset(350, 50));
+      await tester.pump();
+      for (final point in const [
+        Offset(450, 80),
+        Offset(460, 180),
+        Offset(340, 200),
+      ]) {
+        await gesture.moveTo(origin + point);
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+
+      final region = env.commands.region!;
+      expectInsideTheWall(region.selectedBounds);
+      expect(region.containsPoint(CanvasPoint(x: 390.5, y: 120.5)), isTrue);
+      expect(
+        region.containsPoint(CanvasPoint(x: 420.5, y: 120.5)),
+        isFalse,
+        reason: 'the lasso went there; the selection does not',
+      );
+    });
+
+    testWidgets('a move carried past the wall SHOWS the whole drag and '
+        'LANDS cut at the wall', (tester) async {
+      // Ink under the selection, so the move has pixels to lift.
+      final env = await pumpSelectionPanel(
+        tester,
+        canvasSize: small,
+        sourceDabs: [dab(340, 70), dab(360, 90)],
+      );
+      await dragOnLayer(tester, const Offset(320, 50), const Offset(380, 110));
+      await env.setTool(CanvasTool.move);
+
+      // A quadrant midpoint of the 60×60 box — clear of every handle and of
+      // the anchor cross (see [insideOffTheCross]).
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(origin + const Offset(335, 65));
+      await tester.pump();
+      await gesture.moveTo(origin + const Offset(385, 65));
+      await tester.pump();
+      expect(
+        env.commands.transformValues?.tx,
+        50,
+        reason:
+            '「편집값은 절대값」: the box carries the whole drag, the part past '
+            'the wall included',
+      );
+      await gesture.up();
+      await tester.pump();
+
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      final region = env.commands.region!;
+      expect(region.selectedBounds.left, 370, reason: 'moved +50');
+      expect(region.selectedBounds.right, wall.right, reason: 'cut there');
+      expect(region.containsPoint(CanvasPoint(x: 390.5, y: 80.5)), isTrue);
+      expect(region.containsPoint(CanvasPoint(x: 410.5, y: 80.5)), isFalse);
+    });
+
+    testWidgets('a whole-wall selection scaled up lands as the wall itself, '
+        'and the next box opens inside it', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        canvasSize: small,
+      );
+      env.commands.applyRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(
+            left: wall.left,
+            top: wall.top,
+            right: wall.right,
+            bottom: wall.bottom,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.setTransformValues(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        scale: 2,
+      );
+      await tester.pump();
+      env.commands.applyTransform();
+      await tester.pump();
+
+      final box = env.commands.region!.selectedBounds;
+      expect(
+        (box.left, box.top, box.right, box.bottom),
+        (wall.left, wall.top, wall.right, wall.bottom),
+        reason: 'twice the wall, cut at the wall, is the wall',
+      );
+
+      env.commands.beginTransform();
+      await tester.pump();
+      final chrome = chromeOnScreen(tester);
+      expect(chrome, isNotNull, reason: 'a second box opened');
+      for (final corner in chrome!.box) {
+        expect(corner.dx, inInclusiveRange(wall.left - 1, wall.right + 1));
+        expect(corner.dy, inInclusiveRange(wall.top - 1, wall.bottom + 1));
+      }
+    });
+  });
 }

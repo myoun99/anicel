@@ -401,8 +401,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// whole-picture box was reinstalled as a REAL selection the moment the
   /// transform committed, right before the confirm that was supposed to end
   /// it. 🔬Measured: pending `region=null`, confirmed `region=4pts`.
-  void _moveRegion(CanvasSelectionRegion region) =>
-      _setRegion(region, implicit: _shapeIsImplicitWholePicture);
+  ///
+  /// 🚨And it lands through the stage door (I-23): whatever a transform
+  /// carries past the pasteboard wall is cut there, as the landing already
+  /// cuts the pixels it carried. Only the LANDING — the box, its affine and
+  /// the outline riding it keep their absolute values until then (the
+  /// tool law: 「편집값은 절대값」).
+  void _moveRegion(CanvasSelectionRegion region) => _setRegion(
+    region.clippedTo(widget.canvasSize.pasteboardRect),
+    implicit: _shapeIsImplicitWholePicture,
+  );
 
   /// True whenever the shape's pixels are NOT already floating: from a
   /// USER selection (marquee commit, shape channel apply) until a Move
@@ -2916,16 +2924,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R26 #16: the drawn polygon FOLDS into the region under the active
     // mode. A click (degenerate polygon) still deselects in 갱신 mode —
     // Photoshop's click-away — and is inert in the other three.
-    final after = CanvasSelectionRegion.combineCopies(
+    final folded = CanvasSelectionRegion.combineCopies(
       before,
       _symmetryCopies(drawn),
       _marqueeMode(),
     );
-    if (before == null && after == null) {
+    if (identical(folded, before)) {
+      // Nothing folded (a click in add/subtract/intersect, or with nothing
+      // selected): no history — and no door either, so a selection kept
+      // from a larger cut's wall is not cut by a click.
       return;
     }
+    // 🚨THE STAGE DOOR (I-23): what lands is cut at the pasteboard wall —
+    // marquee, ellipse and lasso on release, the polygon on its close.
+    final after = folded?.clippedTo(widget.canvasSize.pasteboardRect);
     if (before == after) {
-      // Nothing folded (a click in add/subtract/intersect): no history.
+      // The wall left nothing to change (an 추가 wholly past it).
       return;
     }
     // The change routes through ONE undoable step (R11-⑧: selecting is
@@ -2946,6 +2960,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// A copy that lands entirely off the canvas is kept, not dropped: a
   /// selection may extend past the edge (the pasteboard is a real place),
   /// and dropping it would make the mirror silently asymmetric.
+  ///
+  /// ⚠️Past the pasteboard WALL is another matter (I-23): the stage door in
+  /// [_commitDrawnOutline] cuts every copy there alike, and drops one with
+  /// nothing inside — the wall is the edge of the world for a mirror's
+  /// copy as much as for the drag that made it.
   List<CanvasSelectionShape> _symmetryCopies(CanvasSelectionShape? drawn) {
     if (drawn == null) {
       return const [];
@@ -3368,7 +3387,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // already carries it — and adding the drag on top would
             // step the ants twice.
             screenOffset: Offset.zero,
-            marqueeShapes: _symmetryCopies(_marqueeDrag?.shape()),
+            // What the release will land: each copy cut at the wall by the
+            // same door [_commitDrawnOutline] takes (I-23).
+            marqueeShapes: [
+              for (final copy in _symmetryCopies(_marqueeDrag?.shape()))
+                ?copy.clippedTo(widget.canvasSize.pasteboardRect),
+            ],
             openTrail: _tapsVertices
                 ? (widget.selectionCommands?.polygonPoints ?? const [])
                 : (_marqueeDrag?.openTrail ?? const []),
