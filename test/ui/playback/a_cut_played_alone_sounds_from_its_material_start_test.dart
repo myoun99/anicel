@@ -190,9 +190,9 @@ void main() {
     final s = session();
     addTearDown(s.dispose);
     s.selectLayer(const LayerId('se'));
-    s.trackFrameRangeSelection.value = TrackFrameRangeSelection(
-      trackId: const TrackId('t'),
-      anchorRow: const LayerRowAddress(LayerId('se')),
+    s.trackFrameRangeSelection.value = const TrackFrameRangeSelection(
+      trackId: TrackId('t'),
+      anchorRow: LayerRowAddress(LayerId('se')),
       startFrame: 30,
       endFrameExclusive: 34,
     );
