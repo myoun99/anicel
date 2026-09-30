@@ -806,24 +806,30 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _shapeNeedsLift = channelRegion != null;
       _shapeIsImplicitWholePicture = false;
       // 🚨★★★THIS DROPS A PENDING MOVE WITHOUT LANDING IT, and what makes
-      // that safe is not visible from here. [_clearLiftState] forgets the
-      // token and the floating stamp; the lift's ERASE is already
-      // committed, so a pending session reaching this line loses the
-      // user's pixels outright and leaks its anchor in `_liftAnchors`.
+      // that safe is not visible from here. [_letGoOfSession] lets the
+      // float go, so a pending session reaching this line loses the user's
+      // unconfirmed edit. ↩️It lost their PIXELS while the lift's erase was
+      // committed up front; a session writes nothing until it lands now
+      // (`314aa6e8`), and the helpers this named are gone.
       //
-      // Two facts keep it unreachable, and BOTH are one edit away from
-      // stopping being true (checked 2026-09-08):
-      //  - `CanvasSelectionCommands.setRegion` has exactly TWO callers,
-      //    both in this layer's own path, and a write that came from here
-      //    echoes back equal and stops at the guard above.
-      //  - The one outside writer is the history command's `restoreRegion`,
-      //    and every undo/redo confirms first — `home_page.dart` wires
+      // What keeps it unreachable — each line one edit away from stopping
+      // being true (re-checked 2026-10-01 for I-23: the 09-08 count of
+      // 「exactly TWO callers」 no longer held):
+      //  - `CanvasSelectionCommands.setRegion` has four callers. This
+      //    layer's `_setRegion` echoes back equal and stops at the guard
+      //    above. The channel's `applyRegion` hands the region on to
+      //    [applyCommittedRegion], which confirms first — the path the
+      //    selection history and the inverse take. The channel's
+      //    `deselect` writes only while no layer is bound.
+      //  - The one writer from outside is the lift command's
+      //    `restoreRegion` (`canvas_panel_lift.dart`), and every undo/redo
+      //    confirms first — `home_page.dart` wires
       //    `historyManager.onBeforeUndoRedo` to `confirmPendingMove`.
       //
-      // ⛔So a THIRD caller of `setRegion` opens this hole. If you are that
-      // caller, confirm the session first (`_confirmMoveSession()`, the way
-      // the committed-region path below does) rather than widening this
-      // comment.
+      // ⛔So a NEW caller of `setRegion` opens this hole. If you are that
+      // caller, go through `applyRegion`, or confirm the session first
+      // (`_confirmMoveSession()`, the way the committed-region path below
+      // does), rather than widening this comment.
       _letGoOfSession();
       if (channelRegion == null) {
         _clearTransform();
