@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/cut_id.dart';
+import '../widgets/tick_layer.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_header_row.dart';
@@ -93,46 +94,56 @@ class TimelineFrameRuler extends StatelessWidget {
           viewportMainExtent: viewportMainExtent,
           playhead: playhead,
         ),
-        // The のりしろ boundary UNDER the red line: it marks how much is
-        // DRAWN, which is a length, while the red line marks where the cut
-        // ends. Both, so the two questions stay two answers.
-        //
-        // The handle is a LENGTH past the boundary, so it RIDES a live trim
-        // rather than standing still — `timelineDrawnEndPreviewFrameCount` is
-        // the one function the wash edge and the body's line read too, which is
-        // what keeps the three from splitting apart mid-drag.
-        TimelineRulerNoriShiro(
-          dragPreview: dragPreview,
-          cutId: previewCutId,
-          movieEndUnder: movieEndUnder,
-          playbackFrameCount: playbackFrameCount,
-          noriShiro: noriShiro,
-          metrics: metrics,
-          axis: axis,
-        ),
-        if (dragPreview != null &&
-            (previewCutId != null || movieEndUnder != null))
-          ValueListenableBuilder<TimelineDragPreview?>(
-            valueListenable: dragPreview,
-            builder: (context, preview, _) => TimelineRulerCutEndBoundary(
-              left: timelineCutEndBoundaryX(
-                playbackFrameCount: timelineCutEndPreviewFrameCount(
-                  preview: preview,
-                  cutId: previewCutId,
-                  movieEndUnder: movieEndUnder,
-                  playbackFrameCount: playbackFrameCount,
-                ),
-                metrics: metrics,
-              ),
-            ),
-          )
-        else
-          TimelineRulerCutEndBoundary(
-            left: timelineCutEndBoundaryX(
+        // 🚨F-244: the two marks a drag moves are asked on EVERY step of every
+        // drag, so they lay out and paint on a layer of their own — rebuilt
+        // bare in the grid's layout scope, a step laid that scope out again
+        // and repainted the whole panel around them, the layer rail's
+        // controls included.
+        TickOverlay(
+          children: [
+            // The のりしろ boundary UNDER the red line: it marks how much is
+            // DRAWN, which is a length, while the red line marks where the cut
+            // ends. Both, so the two questions stay two answers.
+            //
+            // The handle is a LENGTH past the boundary, so it RIDES a live
+            // trim rather than standing still —
+            // `timelineDrawnEndPreviewFrameCount` is the one function the wash
+            // edge and the body's line read too, which is what keeps the three
+            // from splitting apart mid-drag.
+            TimelineRulerNoriShiro(
+              dragPreview: dragPreview,
+              cutId: previewCutId,
+              movieEndUnder: movieEndUnder,
               playbackFrameCount: playbackFrameCount,
+              noriShiro: noriShiro,
               metrics: metrics,
+              axis: axis,
             ),
-          ),
+            if (dragPreview != null &&
+                (previewCutId != null || movieEndUnder != null))
+              ValueListenableBuilder<TimelineDragPreview?>(
+                valueListenable: dragPreview,
+                builder: (context, preview, _) => TimelineRulerCutEndBoundary(
+                  left: timelineCutEndBoundaryX(
+                    playbackFrameCount: timelineCutEndPreviewFrameCount(
+                      preview: preview,
+                      cutId: previewCutId,
+                      movieEndUnder: movieEndUnder,
+                      playbackFrameCount: playbackFrameCount,
+                    ),
+                    metrics: metrics,
+                  ),
+                ),
+              )
+            else
+              TimelineRulerCutEndBoundary(
+                left: timelineCutEndBoundaryX(
+                  playbackFrameCount: playbackFrameCount,
+                  metrics: metrics,
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }

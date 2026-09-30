@@ -1,4 +1,5 @@
 import '../widgets/empty_state_text.dart';
+import '../widgets/tick_layer.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -892,46 +893,56 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         Positioned.fill(
                           child: _buildRailCursorOverlay(geometry),
                         ),
-                        // UI-R18 #14: the rail's
-                        // line follows the live
-                        // trim preview so it never
-                        // splits from the body's.
-                        if (widget.hooks.cutEndDrag != null &&
-                            widget.hooks.dragPreview != null)
-                          ValueListenableBuilder<TimelineDragPreview?>(
-                            valueListenable: widget.hooks.dragPreview!,
-                            builder: (context, preview, _) =>
-                                TimelineRulerCutEndBoundary(
-                                  axis: Axis.vertical,
-                                  left: timelineFrameEdge(
-                                    timelineCutEndPreviewFrameCount(
-                                      preview: preview,
-                                      cutId: widget.hooks.cutEndDrag!.cutId,
-                                      playbackFrameCount:
-                                          widget.hooks.playbackFrameCount,
+                        // 🚨F-244: the two marks
+                        // a drag moves, on a layer
+                        // of their own — as the
+                        // timeline ruler's.
+                        TickOverlay(
+                          children: [
+                            // UI-R18 #14: the rail's
+                            // line follows the live
+                            // trim preview so it
+                            // never splits from the
+                            // body's.
+                            if (widget.hooks.cutEndDrag != null &&
+                                widget.hooks.dragPreview != null)
+                              ValueListenableBuilder<TimelineDragPreview?>(
+                                valueListenable: widget.hooks.dragPreview!,
+                                builder: (context, preview, _) =>
+                                    TimelineRulerCutEndBoundary(
+                                      axis: Axis.vertical,
+                                      left: timelineFrameEdge(
+                                        timelineCutEndPreviewFrameCount(
+                                          preview: preview,
+                                          cutId:
+                                              widget.hooks.cutEndDrag!.cutId,
+                                          playbackFrameCount:
+                                              widget.hooks.playbackFrameCount,
+                                        ),
+                                        _metrics.frameCellWidth,
+                                      ),
                                     ),
-                                    _metrics.frameCellWidth,
-                                  ),
-                                ),
-                          )
-                        else
-                          TimelineRulerCutEndBoundary(
-                            axis: Axis.vertical,
-                            left: cutEndBoundaryOffset,
-                          ),
-                        // The のりしろ mark,
-                        // transposed: a length
-                        // below the cut's end,
-                        // riding a drag as the
-                        // timeline ruler's does.
-                        TimelineRulerNoriShiro(
-                          dragPreview: widget.hooks.dragPreview,
-                          cutId: widget.hooks.cutEndDrag?.cutId,
-                          playbackFrameCount:
-                              widget.hooks.playbackFrameCount,
-                          noriShiro: widget.hooks.noriShiro,
-                          metrics: _metrics,
-                          axis: Axis.vertical,
+                              )
+                            else
+                              TimelineRulerCutEndBoundary(
+                                axis: Axis.vertical,
+                                left: cutEndBoundaryOffset,
+                              ),
+                            // The のりしろ mark,
+                            // transposed: a length
+                            // below the cut's end,
+                            // riding a drag as the
+                            // timeline ruler's does.
+                            TimelineRulerNoriShiro(
+                              dragPreview: widget.hooks.dragPreview,
+                              cutId: widget.hooks.cutEndDrag?.cutId,
+                              playbackFrameCount:
+                                  widget.hooks.playbackFrameCount,
+                              noriShiro: widget.hooks.noriShiro,
+                              metrics: _metrics,
+                              axis: Axis.vertical,
+                            ),
+                          ],
                         ),
                       ],
                     ),

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../widgets/tick_layer.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_body_norishiro_boundary.dart';
@@ -127,16 +128,25 @@ class TimelineFrameGridStack extends StatelessWidget {
           ),
         rowsBody,
         _playheadSlot(),
-        // The out-of-cut wash and the cut-end line are the TOP layers (the
-        // user's layer order 2026-08-02): where the film stops is stated over
-        // everything, cursor and selection included. The wash being its own
-        // layer at all is what lets a cut-length drag repaint one rect
-        // instead of re-baking every row's tiles.
-        _wash(context),
-        // Over the wash, under nothing: one continuous mark with the ruler's.
-        _noriShiro(),
-        _cutEndLine(),
-        ?_grip(),
+        // 🚨F-244: what follows a drag here is asked on EVERY step of every
+        // drag, so it lays out and paints on a layer of its own — rebuilt
+        // bare in the grid's layout scope, a step laid that scope out again
+        // and repainted everything around it.
+        TickOverlay(
+          children: [
+            // The out-of-cut wash and the cut-end line are the TOP layers (the
+            // user's layer order 2026-08-02): where the film stops is stated
+            // over everything, cursor and selection included. The wash being
+            // its own layer at all is what lets a cut-length drag repaint one
+            // rect instead of re-baking every row's tiles.
+            _wash(context),
+            // Over the wash, under nothing: one continuous mark with the
+            // ruler's.
+            _noriShiro(),
+            _cutEndLine(),
+            ?_grip(),
+          ],
+        ),
       ],
     );
   }
