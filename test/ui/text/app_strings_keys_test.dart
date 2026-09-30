@@ -58,6 +58,8 @@ void main() {
     'recordClipMarkerTooltip': (s) => s.recordClipMarkerTooltip,
     // D26: the crossing-fade refusal warning (red corner marker).
     'tlTransitionCrossingWarning': (s) => s.tlTransitionCrossingWarning,
+    // F-229: the word an O.L prints as, in the sheet's language.
+    'tlTransitionCutOl': (s) => s.tlTransitionCutOl,
     'audioMicGainLabel': (s) => s.audioMicGainLabel,
     'audioInputChannelLabel': (s) => s.audioInputChannelLabel,
     'audioInputChannelDevice': (s) => s.audioInputChannelDevice,
