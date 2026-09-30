@@ -54,6 +54,9 @@ class _XSheetGridColumns {
         columns: _state.widget.metrics.railColumns,
       );
 
+  /// One column wrapped in its repaint boundary + drag-preview gate: an
+  /// edge-drag step re-runs the builder with the preview layer substituted
+  /// for the drag target's column only.
   Widget _gatedColumn(
     TimelineDisplayRow entry,
     TimelineVisibleRange frameRange,

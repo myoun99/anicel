@@ -6,8 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
-import '../../models/attached_layer_resolve.dart'
-    show attachRowWearsBaseComposite;
 import '../../models/layer_kind.dart';
 import '../text/app_face.dart';
 import '../text/app_strings.dart' show AppText;
@@ -29,12 +27,13 @@ import 'timeline_cut_end_handle.dart';
 import 'lane_row_slice.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
-import '../../models/timeline_row_address.dart';
+import '../../models/layer_id.dart';
 import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'layer_drop_policy.dart'
     show effectHeaderRowsOf, rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
+import 'layer_controls_row_facts.dart';
 import '../listenable_rebind.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -434,16 +433,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         onToggleAttachGroup: widget.hooks.onToggleAttachGroup,
       );
 
-  /// One column wrapped in its repaint boundary + drag-preview gate: an
-  /// edge-drag step re-runs the builder with the preview layer substituted
-  /// for the drag target's column only.
-  /// One lane's HEADER cell — the transposed rail row.
-  ///
-  /// Lane headers show the value AT the cursor, so they subscribe to the
-  /// cursor here and a tick rebuilds only these cells. R10 adds the drag
-  /// gate for the same reason the horizontal rail has it: the blue value
-  /// column must follow a key move per step, not sit on the committed
-  /// track until the pointer lifts.
   /// The display entries of the pass in flight, for the drag's row → slot
   /// conversion (see [effectHeaderRowsOf]).
   List<TimelineDisplayRow> _dragRows = const [];
@@ -673,15 +662,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                               stack: widget.layers,
                               child: Row(
                                 children: [
-                                  for (
-                                    var index = 0;
-                                    index < entries.length;
-                                    index += 1
-                                  )
-                                    _headers.draggableHeader(
-                                      entries[index],
-                                      _headers.headerFor(entries[index]),
-                                    ),
+                                  for (final entry in entries)
+                                    _headers.header(entry),
                                 ],
                               ),
                             ),

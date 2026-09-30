@@ -1,14 +1,10 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/attached_layer_resolve.dart'
-    show attachRowWearsBaseComposite;
-import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import 'held_row_pin.dart';
@@ -18,6 +14,7 @@ import 'timeline_frame_axis_follower.dart';
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'layer_drop_policy.dart' show rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
+import 'layer_controls_row_facts.dart';
 import 'layer_row_drag.dart';
 import '../listenable_rebind.dart';
 import 'timeline_edge_auto_pan.dart';
@@ -136,57 +133,6 @@ class LayerTimelineGrid extends StatefulWidget {
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
 }
 
-/// The data snapshot a memoized RAIL row was built from (UI-R7 #1) —
-/// zoom-independent by construction: nothing here reads frameCellWidth,
-/// so zoom steps always hit.
-typedef _RailRowMemoInputs = ({
-  // What the row SHOWS gates content, not the Layer's identity: a
-  // timesheet edit rebuilds the edited layer's instance while every
-  // rail-visible field stays put (see the completeness contract on
-  // [ControlsRowFace]).
-  ControlsRowFace layer,
-  bool active,
-  // ㉞: the row selection wash. SESSION state like [active] and invisible to
-  // the Layer comparison — ⑨ passed `selected` to the row without giving the
-  // memo a way to see it change, so the wash never appeared until some other
-  // fact happened to invalidate the entry. The state was right the whole
-  // time; the cache answered "unchanged" (the ㉘ shape).
-  bool selected,
-  bool hasLanes,
-  bool lanesExpanded,
-  int depth,
-  bool hasGroupFold,
-  bool groupFoldExpanded,
-  LayerFxState fxState,
-  bool onionSkinEnabled,
-  // The rows the pictures are shared with — a fresh list every build, so
-  // compared by what it holds ([ByList]).
-  ByList<String> linkPartners,
-  bool soloed,
-  AttachedPlacement? attachArrow,
-  double layerRowHeight,
-  double layerControlsWidth,
-  double sectionLabelGutterWidth,
-  ByIdentity<ValueListenable<({Set<LayerId> layerIds, double opacity})?>?>
-  opacityDragPreview,
-  // R27 #6: the blend chip prints a LANGUAGE-dependent name — a language
-  // switch must invalidate the memo like any other visible fact. Read from
-  // [AppText.language] when the token is made (F-170), not handed down.
-  // ⛔MUTANT SURVIVES HERE (2026-09-23): a fixed language in this slot left
-  // `a_language_that_lands_late_reaches_every_word_test` green — the chip
-  // reads the theme, so it rebuilds itself when the app root rebuilds for
-  // the language, memo or no memo. Kept because the memo's own rule is that
-  // every visible fact is in its token, and a row word that stopped reading
-  // the theme would keep the last language's without it.
-  AppLanguage language,
-  // F-244: the row's DRAG wrapper is kept with it, so a commit that moved no
-  // row rebuilds no wrapper (it rebuilt all of them, ~170 elements on 24
-  // rows) — keyed on what the wrapper is built from, which its own module
-  // answers ([layerRowDragInputs]: the host's hooks, bound once there, the
-  // span verb and the caret line it paints).
-  LayerRowDragInputs drag,
-});
-
 /// The legend header's memo token (UI-R7 #1): every legend-visible fact.
 /// A new legend-reading cell must join this record — miss one and the
 /// header shows stale state.
@@ -223,11 +169,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// a zoom step re-lays-out the frame grid, but the rail's Material-heavy
   /// control rows (tooltips, ink wells, sliders) don't depend on the zoom
   /// — identical inputs hand the SAME widget instance back so Flutter
-  /// skips their whole subtree rebuild. Layer identity gates content
-  /// (commits swap instances); callbacks follow the R13-2 rule (host
+  /// skips their whole subtree rebuild. What the row shows gates content
+  /// ([LayerControlsRowFacts]); callbacks follow the R13-2 rule (host
   /// callbacks close over the stable session only).
-  final Map<LayerId, ({_RailRowMemoInputs inputs, Widget row})> _railRowMemo =
-      {};
+  final Map<LayerId, KeptLayerControlsRow> _railRowMemo = {};
 
   /// The legend header's memo — same idea, token-gated (R13-2): the
   /// header's ~15 tooltip/flyout cells rebuild only when a legend-visible

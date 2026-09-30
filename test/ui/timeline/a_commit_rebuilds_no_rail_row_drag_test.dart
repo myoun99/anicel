@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/frame_census.dart';
@@ -30,6 +32,10 @@ import '../../helpers/frame_census.dart';
 /// made its drag hooks anew each build, so nothing about the wrapper could
 /// be kept: ~170 elements on 24 rows, at every commit. The host binds its
 /// hooks once now, and the row's memo keeps the wrapped row.
+///
+/// The x-sheet kept nothing at all: every header of the sheet — the rail
+/// row turned on its side — was built again at every commit (8,276 elements
+/// on 24 layers). It keeps them by the rail's memo now.
 void main() {
   Project project() => Project(
     id: const ProjectId('rail-drags'),
@@ -74,9 +80,17 @@ void main() {
     ],
   );
 
-  testWidgets('a comma drag released rebuilds no rail row\'s drag target', (
-    tester,
-  ) async {
+  Future<void> flip(WidgetTester tester) async {
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<EditorSessionManager> openApp(
+    WidgetTester tester, {
+    bool sheet = false,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -86,81 +100,82 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final session = tester
+    if (sheet) {
+      await flip(tester);
+    }
+    expect(
+      find.byType(XSheetTimelineGrid),
+      sheet ? findsOneWidget : findsNothing,
+      reason: 'premise: the grid is the one the test names',
+    );
+    return tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    expect(
-      find.byType(LayerRowDragTarget),
-      findsWidgets,
-      reason: 'premise: the rail rows wear their drag targets',
-    );
+  }
 
-    void dragTheComma(int by) {
+  // The x-sheet's header strip is the rail turned on its side, and keeps
+  // its headers by the rail's own memo.
+  for (final sheet in [false, true]) {
+    final rows = sheet ? 'x-sheet header' : 'rail row';
+    testWidgets('a comma drag released rebuilds no $rows nor its drag '
+        'target', (tester) async {
+      final session = await openApp(tester, sheet: sheet);
       expect(
-        session.edgeDrag.beginExposureEdgeDrag(
-          layerId: const LayerId('b'),
-          blockStartIndex: 12,
-          edge: TimelineBlockEdge.end,
-        ),
-        isTrue,
-        reason: 'premise: the block is there to grab',
+        find.byType(LayerRowDragTarget),
+        findsWidgets,
+        reason: 'premise: the ${rows}s wear their drag targets',
       );
-      session.edgeDrag.updateExposureEdgeDrag(by);
-    }
 
-    // A first release first: what the FIRST edit changes once is not what
-    // every edit costs.
-    dragTheComma(2);
-    await tester.pump();
-    session.edgeDrag.endExposureEdgeDrag();
-    await tester.pumpAndSettle();
+      void dragTheComma(int by) {
+        expect(
+          session.edgeDrag.beginExposureEdgeDrag(
+            layerId: const LayerId('b'),
+            blockStartIndex: 12,
+            edge: TimelineBlockEdge.end,
+          ),
+          isTrue,
+          reason: 'premise: the block is there to grab',
+        );
+        session.edgeDrag.updateExposureEdgeDrag(by);
+      }
 
-    dragTheComma(-2);
-    await tester.pump();
-    final release = await frameCensus(
-      tester,
-      session.edgeDrag.endExposureEdgeDrag,
-    );
-    await tester.pumpAndSettle();
+      // A first release first: what the FIRST edit changes once is not what
+      // every edit costs.
+      dragTheComma(2);
+      await tester.pump();
+      session.edgeDrag.endExposureEdgeDrag();
+      await tester.pumpAndSettle();
 
-    expect(
-      release.rebuilt,
-      contains(TimelineTabHost),
-      reason: 'premise: the commit rebuilt the host the rail hangs from',
-    );
-    expect(
-      release.rebuilt.where((type) => type == LayerRowDragTarget),
-      isEmpty,
-    );
-  });
+      dragTheComma(-2);
+      await tester.pump();
+      final release = await frameCensus(
+        tester,
+        session.edgeDrag.endExposureEdgeDrag,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        release.rebuilt,
+        contains(TimelineTabHost),
+        reason: 'premise: the commit rebuilt the host the ${rows}s hang from',
+      );
+      expect(
+        release.rebuilt.where(
+          (type) =>
+              type == TimelineLayerControlsRow || type == LayerRowDragTarget,
+        ),
+        isEmpty,
+      );
+    });
+  }
 
   // A kept wrapper is only right while it is the one a fresh build would
-  // make: the oracle is the grid mounted afresh (the x-sheet and back), whose
-  // rail has kept nothing.
-  group('a kept row drag is the one a fresh rail makes', () {
-    Future<EditorSessionManager> openApp(WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildAppTheme(),
-          home: HomePage(initialProject: project()),
-        ),
-      );
-      await tester.pumpAndSettle();
-      return tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
-    }
-
+  // make: the oracle is the grid mounted afresh (the other grid and back),
+  // whose rows have kept nothing.
+  group('a kept row drag is the one a fresh grid makes', () {
     Future<void> remountTheGrid(WidgetTester tester) async {
-      final flip = find.byKey(
-        const ValueKey<String>('timeline-orientation-toggle-button'),
-      );
-      await tester.tap(flip);
-      await tester.pumpAndSettle();
-      await tester.tap(flip);
-      await tester.pumpAndSettle();
+      await flip(tester);
+      await flip(tester);
     }
 
     LayerRowDragTarget targetOf(WidgetTester tester, String layer) =>
@@ -179,30 +194,35 @@ void main() {
         target.subject: (target.slotBefore, target.isLastRow),
     };
 
-    testWidgets('its caret line, after the rows move and the last one goes', (
-      tester,
-    ) async {
-      final session = await openApp(tester);
-      // The top row (the last layer) goes down two rows, through its own
-      // wrapper — the way a hand moves it.
-      final top = targetOf(tester, 'd');
-      top.hooks!.onBegin(top.subject);
-      top.onCrossed(2, null, 0);
-      top.hooks!.onEnd();
-      await tester.pumpAndSettle();
-      final moved = caretLines(tester);
-      await remountTheGrid(tester);
-      expect(moved, caretLines(tester), reason: 'after the move');
+    for (final sheet in [false, true]) {
+      testWidgets('its caret line, after the rows move and the last one goes'
+          '${sheet ? ' (x-sheet)' : ''}', (tester) async {
+        final session = await openApp(tester, sheet: sheet);
+        List<LayerId> order() => [for (final layer in session.layers) layer.id];
+        final before = order();
+        // The top layer goes two rows toward the bottom one, through its own
+        // wrapper — the way a hand moves it. The rail lists the stack
+        // reversed and the sheet raw, so the steps run the other way there.
+        final top = targetOf(tester, 'd');
+        top.hooks!.onBegin(top.subject);
+        top.onCrossed(sheet ? -2 : 2, null, 0);
+        top.hooks!.onEnd();
+        await tester.pumpAndSettle();
+        expect(order(), isNot(before), reason: 'premise: the move moved it');
+        final moved = caretLines(tester);
+        await remountTheGrid(tester);
+        expect(moved, caretLines(tester), reason: 'after the move');
 
-      // The bottom row goes: the one above it becomes the last row, at the
-      // slot it already had.
-      session.selectLayer(const LayerId('a'));
-      session.layerVerbs.deleteActiveLayer();
-      await tester.pumpAndSettle();
-      final shortened = caretLines(tester);
-      await remountTheGrid(tester);
-      expect(shortened, caretLines(tester), reason: 'after the delete');
-    });
+        // The bottom layer goes: every row's place among the rest moves or
+        // one becomes the last, and a kept wrapper must follow.
+        session.selectLayer(const LayerId('a'));
+        session.layerVerbs.deleteActiveLayer();
+        await tester.pumpAndSettle();
+        final shortened = caretLines(tester);
+        await remountTheGrid(tester);
+        expect(shortened, caretLines(tester), reason: 'after the delete');
+      });
+    }
 
     testWidgets('its crossing, after the row below it opens its lanes', (
       tester,
