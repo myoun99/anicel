@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -97,6 +98,9 @@ void main() {
             tipShape: BrushTipShape.round,
             pressure: 1,
             sequence: 0,
+            // Solid to its rim: at 3단계 a 4px nib is all anti-alias edge
+            // (I-50), and this pin reads a pixel of it.
+            antiAlias: BrushAntiAlias.none,
           ),
         ],
       );

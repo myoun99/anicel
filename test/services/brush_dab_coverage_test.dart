@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_pixel_coverage.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -21,6 +22,7 @@ void main() {
     double roundness = 1.0,
     double angleDegrees = 0.0,
     BrushTipMask? tipMask,
+    BrushAntiAlias antiAlias = BrushAntiAlias.high,
   }) {
     return BrushDab(
       center: CanvasPoint(x: x, y: y),
@@ -35,8 +37,14 @@ void main() {
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: tipMask,
+      antiAlias: antiAlias,
     );
   }
+
+  // ↩️I-50: at 3단계 a nib smaller than the step's edge is all edge, so the
+  // pins on a HARD nib's own disc read it at 없음 — the one step that adds
+  // no edge and leaves full coverage full.
+  const noEdge = BrushAntiAlias.none;
 
   // Left half fully opaque, right half transparent: orientation-revealing.
   final halfMask = BrushTipMask(
@@ -158,15 +166,23 @@ void main() {
 
     test('round hard tip gives coverage 1 inside radius', () {
       final values = brushPixelCoveragesForDab(
-        dab(x: 1, y: 1, size: 2, hardness: 1),
+        dab(x: 1, y: 1, size: 2, hardness: 1, antiAlias: noEdge),
       );
       expect(values, hasLength(4));
       expect(values.every((value) => value.coverage == 1), isTrue);
     });
 
     test('round soft tip gives lower coverage near edge', () {
+      // 1단계's edge is narrower than this ramp, so the ramp is the
+      // hardness's own (I-50: 「경도 램프가 더 넓으면 그쪽」).
       final values = brushPixelCoveragesForDab(
-        dab(x: 10, y: 10, size: 4, hardness: 0.5),
+        dab(
+          x: 10,
+          y: 10,
+          size: 4,
+          hardness: 0.5,
+          antiAlias: BrushAntiAlias.low,
+        ),
       );
       final nearCenter = values.firstWhere(
         (value) => value.x == 9 && value.y == 9,
@@ -180,7 +196,7 @@ void main() {
 
     test('round hardness 1 produces hard coverage', () {
       final values = brushPixelCoveragesForDab(
-        dab(x: 10, y: 10, size: 4, hardness: 1),
+        dab(x: 10, y: 10, size: 4, hardness: 1, antiAlias: noEdge),
       );
       expect(values, isNotEmpty);
       expect(values.every((value) => value.coverage == 1), isTrue);
@@ -292,7 +308,7 @@ void main() {
 
     test('fractional center includes pixels exactly on radius boundary', () {
       final values = brushPixelCoveragesForDab(
-        dab(x: 10.5, y: 10.5, size: 2, hardness: 1),
+        dab(x: 10.5, y: 10.5, size: 2, hardness: 1, antiAlias: noEdge),
       );
       expect(values.map((value) => (value.x, value.y)), [
         (10, 9),

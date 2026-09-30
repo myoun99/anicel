@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
@@ -92,7 +93,11 @@ void main() {
   test('a hard round resolved dab covers the same disc: full alpha at the '
       'center, empty outside the radius', () {
     final cache = BrushTipStampCache();
-    final resolved = cache.resolveDab(dab(size: 16, x: 16, y: 16));
+    // At 없음: the disc itself, with no anti-alias edge grown inside it
+    // (I-50 — at 3단계 the stamp carries a ramp in from the rim).
+    final resolved = cache.resolveDab(
+      dab(size: 16, x: 16, y: 16).copyWith(antiAlias: BrushAntiAlias.none),
+    );
     final result = materializeBrushDabSequenceOnBitmapSurface(
       surface: BitmapSurface(
         canvasSize: const CanvasSize(width: 32, height: 32),
