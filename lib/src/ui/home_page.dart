@@ -1160,32 +1160,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                       ),
                                     ),
                                     // What the strip shows of the open
-                                    // projects is their TABS — every one of
-                                    // them, since a tab behind this one is
-                                    // renamed by its own save — so it hears
-                                    // every project and rebuilds when a tab
-                                    // changes. 🚨F-244: it rebuilt on every
-                                    // notify, and so on every commit — the
-                                    // release frame's whole build phase on the
-                                    // user's own cut. The flyouts (the panels'
-                                    // checks, the export gate) build their
-                                    // entries when they open; the floor switch
-                                    // and the brush bars hear their own.
+                                    // projects is their TABS. A tab opened,
+                                    // closed or brought on screen rebuilds
+                                    // this page ([_followProjectOnScreen]);
+                                    // what a PROJECT changes of its own tab
+                                    // is its name, by its own save — every
+                                    // one of them, a tab behind this one
+                                    // too. 🚨F-244: the strip rebuilt on
+                                    // every notify, and so on every commit —
+                                    // the release frame's whole build phase
+                                    // on the user's own cut. The flyouts (the
+                                    // panels' checks, the export gate) build
+                                    // their entries when they open; the floor
+                                    // switch and the brush bars hear their
+                                    // own.
                                     child: SlicedListenableBuilder<Object>(
-                                      listenable: Listenable.merge([
-                                        _projects,
-                                        ..._projects.sessions,
-                                      ]),
+                                      listenable: Listenable.merge(
+                                        _projects.sessions,
+                                      ),
                                       slice: () => ByList([
                                         for (final session
                                             in _projects.sessions)
-                                          (
-                                            projectTabLabel(_projects, session),
-                                            identical(
-                                              session,
-                                              _projects.active,
-                                            ),
-                                          ),
+                                          projectTabLabel(_projects, session),
                                       ]),
                                       builder: (context, _) => EditorTopStrip(
                                         projects: _projects,
