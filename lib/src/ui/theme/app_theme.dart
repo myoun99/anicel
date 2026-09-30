@@ -697,9 +697,10 @@ ThemeData _buildAppTheme() {
     // from Flutter's defaults.
     //
     // What this theme still governs after the scroll BEHAVIOUR takes over
-    // the rest: the dropdown and MenuAnchor menus. Both wrap themselves in
-    // `copyWith(scrollbars: false)` and build their own Scrollbar, so no
-    // ScrollBehavior can reach them and this is their only styling.
+    // the rest: the framework surfaces that build their own Scrollbar, so
+    // no ScrollBehavior can reach them and this is their only styling — the
+    // About dialog's license page, now that every picker is the shared
+    // flyout (F-230) rather than a dropdown or MenuAnchor menu.
     scrollbarTheme: ScrollbarThemeData(
       thumbVisibility: const WidgetStatePropertyAll<bool>(true),
       trackVisibility: const WidgetStatePropertyAll<bool>(false),

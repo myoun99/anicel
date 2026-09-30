@@ -5,6 +5,7 @@ import '../timeline/instruction_icon_palette.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
 import '../widgets/app_window.dart';
+import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
 
 /// What the instruction event dialog resolved to: an event to apply, a
@@ -139,6 +140,9 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
   @override
   Widget build(BuildContext context) {
     final instructionId = _instructionId;
+    final picked = widget.instructionSet.defs
+        .where((def) => def.id == instructionId)
+        .firstOrNull;
     final strings = AppText.strings;
     return InstanceEditDialogShell(
       title: widget.editing
@@ -152,25 +156,19 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
           AppWindowField(
             label: strings.instructionMarkLabel,
             emphasized: true,
-            child: DropdownButtonFormField<String>(
+            child: PanelFlyoutButton(
               key: const ValueKey<String>('instruction-def-dropdown'),
-              initialValue: _instructionId,
-              items: [
-                for (final def in widget.instructionSet.defs)
-                  DropdownMenuItem<String>(
-                    key: ValueKey<String>('instruction-option-${def.id}'),
-                    value: def.id,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(instructionIconFor(def.iconKey), size: 16),
-                        const SizedBox(width: 8),
-                        Text(def.name),
-                      ],
-                    ),
+              label: picked?.name ?? '',
+              icon: picked == null ? null : instructionIconFor(picked.iconKey),
+              expand: true,
+              entriesBuilder: () =>
+                  widget.instructionSet.defs.asFlyoutValueChoices(
+                    current: picked,
+                    keyOf: (def) => 'instruction-option-${def.id}',
+                    labelOf: (def) => def.name,
+                    iconOf: (def) => instructionIconFor(def.iconKey),
+                    onPicked: (def) => setState(() => _instructionId = def.id),
                   ),
-              ],
-              onChanged: (value) => setState(() => _instructionId = value),
             ),
           ),
           const SizedBox(height: 12),

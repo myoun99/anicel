@@ -1449,16 +1449,13 @@ class _ProjectTabOverflow extends StatelessWidget {
       key: const ValueKey<String>('project-tab-overflow'),
       tooltip: '+${hidden.length}',
       padding: EdgeInsets.zero,
-      entriesBuilder: () => [
-        for (final session in hidden)
-          PanelFlyoutItem(
-            keyValue: 'project-tab-overflow-${sessions.indexOf(session)}',
-            label: projectTabLabel(projects, session),
-            // ⛔NOT a check: the open one accents, as a tab does.
-            selected: identical(session, active),
-            onSelected: () => projects.activate(session),
-          ),
-      ],
+      // ⛔NOT a check: the open one accents, as a tab does.
+      entriesBuilder: () => hidden.asFlyoutValueChoices(
+        current: active,
+        keyOf: (session) => 'project-tab-overflow-${sessions.indexOf(session)}',
+        labelOf: (session) => projectTabLabel(projects, session),
+        onPicked: projects.activate,
+      ),
       child: Center(
         child: Text(
           activeHidden

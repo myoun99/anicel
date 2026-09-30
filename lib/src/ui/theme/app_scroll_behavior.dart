@@ -39,9 +39,11 @@ import '../panels/panel_scrollbar.dart';
 /// than content opt out by hand, because a 12px lane laid across a 30px
 /// toolbar takes the bottom third of every button in it.
 ///
-/// ⚠️Two surfaces it provably cannot reach: `DropdownButton`'s menu and
-/// `MenuAnchor`'s panel both wrap themselves in `copyWith(scrollbars:
-/// false)` and build their own `Scrollbar`. `ScrollbarThemeData` in
+/// ⚠️Surfaces it provably cannot reach build their own `Scrollbar` inside
+/// the framework — `DropdownButton`'s menu and `MenuAnchor`'s panel wrap
+/// themselves in `copyWith(scrollbars: false)` to do it, and the About
+/// dialog's license page does too. The app opens only the last of them now
+/// (every picker is the shared flyout since F-230). `ScrollbarThemeData` in
 /// [buildAppTheme] is their only styling, and it is kept in step with this
 /// on purpose rather than left as dead prose.
 class AppScrollBehavior extends MaterialScrollBehavior {

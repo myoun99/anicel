@@ -149,14 +149,12 @@ void main() {
     // so a persistent choice and a held key were two entrances to one
     // question). The ratchet only ever comes DOWN.
     'lib/src/ui/brush/tool_settings_panel.dart': 9,
-    'lib/src/ui/dialogs/audio_settings_section.dart': 3,
+    // ↓2026-09-30, F-230: the nine framework dropdowns became the shared
+    // flyout's button, which claims — audio settings 3, input settings 3,
+    // the linked cut, the instruction and the language dialogs → gone.
     'lib/src/ui/dialogs/camera_size_dialog.dart': 1,
     'lib/src/ui/dialogs/canvas_size_dialog.dart': 1,
-    'lib/src/ui/dialogs/convert_to_linked_cut_dialog.dart': 1,
-    'lib/src/ui/dialogs/input_settings_dialog.dart': 3,
-    'lib/src/ui/dialogs/instruction_event_dialog.dart': 1,
     'lib/src/ui/dialogs/instruction_set_editor_dialog.dart': 1,
-    'lib/src/ui/dialogs/language_settings_dialog.dart': 1,
     'lib/src/ui/import/import_dialog.dart': 2,
     'lib/src/ui/widgets/app_window.dart': 1,
     'lib/src/ui/widgets/panel_flyout.dart': 1,

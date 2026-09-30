@@ -189,34 +189,29 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
   /// the pool names it.
   Widget _pictureField(WorkPicture picture, AppStrings strings) {
     final path = _pictures[picture];
+    String labelOf(String? value) => value == null
+        ? strings.commonNone
+        : mediaAssetNameFor(
+            widget.pictures.where((asset) => asset.path == value).firstOrNull,
+            value,
+          );
     return AppWindowField(
       label: strings.workPictureName(picture),
       child: PanelFlyoutButton(
         key: ValueKey<String>('work-settings-picture-${picture.name}'),
-        label: path == null
-            ? strings.commonNone
-            : mediaAssetNameFor(
-                widget.pictures
-                    .where((asset) => asset.path == path)
-                    .firstOrNull,
-                path,
-              ),
+        label: labelOf(path),
         expand: true,
-        entriesBuilder: () => [
-          PanelFlyoutItem(
-            keyValue: 'work-settings-picture-${picture.name}-none',
-            label: strings.commonNone,
-            selected: path == null,
-            onSelected: () => setState(() => _pictures[picture] = null),
-          ),
-          for (final asset in widget.pictures)
-            PanelFlyoutItem(
-              keyValue: 'work-settings-picture-${picture.name}-${asset.path}',
-              label: asset.name,
-              selected: asset.path == path,
-              onSelected: () => setState(() => _pictures[picture] = asset.path),
+        entriesBuilder: () =>
+            <String?>[
+              null,
+              for (final asset in widget.pictures) asset.path,
+            ].asFlyoutValueChoices(
+              current: path,
+              keyOf: (value) =>
+                  'work-settings-picture-${picture.name}-${value ?? 'none'}',
+              labelOf: labelOf,
+              onPicked: (value) => setState(() => _pictures[picture] = value),
             ),
-        ],
       ),
     );
   }

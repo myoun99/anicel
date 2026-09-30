@@ -591,15 +591,12 @@ class ExportDialogState extends State<ExportDialog> {
       label: celGroupCutName(project, shown),
       expand: true,
       enabled: cuts.length > 1 && !_isExporting,
-      entriesBuilder: () => [
-        for (final cut in cuts)
-          PanelFlyoutItem(
-            keyValue: 'export-cels-cut-${cut.id.value}',
-            label: celGroupCutName(project, cut),
-            selected: cut.id == shown.id,
-            onSelected: () => _showCelCut(cut),
-          ),
-      ],
+      entriesBuilder: () => cuts.asFlyoutValueChoices(
+        current: cuts.where((cut) => cut.id == shown.id).firstOrNull,
+        keyOf: (cut) => 'export-cels-cut-${cut.id.value}',
+        labelOf: (cut) => celGroupCutName(project, cut),
+        onPicked: _showCelCut,
+      ),
     );
   }
 

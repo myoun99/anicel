@@ -9,6 +9,7 @@ import '../../models/audio_sync_settings.dart';
 import '../playback/voice_take_processing.dart'
     show micGainFactor, voiceClipThreshold;
 import '../text/app_strings.dart';
+import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
 
 /// Audio program 2D: the A/V offset and the sync inspector
@@ -51,34 +52,38 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
     required ValueChanged<String?> onChanged,
   }) {
     final devices = widget.session.playbackRig.audioDevicesOf(capture: capture);
+    final defaultNames = {
+      for (final device in devices)
+        if (device.isDefault) device.name,
+    };
     final names = {for (final device in devices) device.name};
+    String labelOf(String? name) => switch (name) {
+      null => strings.audioSystemDefault,
+      final String device when !names.contains(device) =>
+        '$device${strings.audioDeviceMissingSuffix}',
+      final String device when defaultNames.contains(device) =>
+        '$device${strings.audioDeviceDefaultSuffix}',
+      final String device => device,
+    };
     return Row(
       children: [
         Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-        DropdownButton<String?>(
+        PanelFlyoutButton(
           key: ValueKey<String>(keyValue),
-          value: selected,
-          isDense: true,
-          style: const TextStyle(fontSize: 12),
-          items: [
-            DropdownMenuItem<String?>(child: Text(strings.audioSystemDefault)),
-            for (final device in devices)
-              DropdownMenuItem<String?>(
-                value: device.name,
-                child: Text(
-                  device.isDefault
-                      ? '${device.name}${strings.audioDeviceDefaultSuffix}'
-                      : device.name,
-                  overflow: TextOverflow.ellipsis,
-                ),
+          label: labelOf(selected),
+          entriesBuilder: () =>
+              <String?>[
+                null,
+                ...names,
+                if (selected != null && !names.contains(selected)) selected,
+              ].asFlyoutValueChoices(
+                current: selected,
+                keyOf: (name) => name == null
+                    ? '$keyValue-system-default'
+                    : '$keyValue-device-$name',
+                labelOf: labelOf,
+                onPicked: onChanged,
               ),
-            if (selected != null && !names.contains(selected))
-              DropdownMenuItem<String?>(
-                value: selected,
-                child: Text('$selected${strings.audioDeviceMissingSuffix}'),
-              ),
-          ],
-          onChanged: onChanged,
         ),
       ],
     );
@@ -89,6 +94,20 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
   /// number's own; only the plus has to be added.
   static String _signedDb(double db, String derived) =>
       '${db > 0 ? '+' : ''}$derived';
+
+  static String _unitLabel(AvOffsetUnit unit, AppStrings strings) =>
+      switch (unit) {
+        AvOffsetUnit.milliseconds => 'ms',
+        AvOffsetUnit.frames => strings.audioUnitFrames,
+      };
+
+  static String _channelLabel(VoiceInputChannelMode mode, AppStrings strings) =>
+      switch (mode) {
+        VoiceInputChannelMode.device => strings.audioInputChannelDevice,
+        VoiceInputChannelMode.monoMix => strings.audioInputChannelMonoMix,
+        VoiceInputChannelMode.left => strings.audioInputChannelLeft,
+        VoiceInputChannelMode.right => strings.audioInputChannelRight,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -139,36 +158,29 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                DropdownButton<AvOffsetUnit>(
+                PanelFlyoutButton(
                   key: const ValueKey<String>('settings-av-offset-unit'),
-                  value: settings.unit,
-                  isDense: true,
-                  style: const TextStyle(fontSize: 12),
-                  items: [
-                    const DropdownMenuItem(
-                      value: AvOffsetUnit.milliseconds,
-                      child: Text('ms'),
-                    ),
-                    DropdownMenuItem(
-                      value: AvOffsetUnit.frames,
-                      child: Text(strings.audioUnitFrames),
-                    ),
-                  ],
-                  // Switching units keeps the NUMBER (it is what the user
-                  // typed), re-clamped into the new unit's range.
-                  onChanged: (unit) {
-                    if (unit != null && unit != settings.unit) {
-                      widget.session.appSettings.setAudioSyncSettings(
-                        AudioSyncSettings(
-                          offset: AudioSyncSettings.clampOffset(
-                            settings.offset,
-                            unit,
+                  label: _unitLabel(settings.unit, strings),
+                  entriesBuilder: () => AvOffsetUnit.values.asFlyoutChoices(
+                    current: settings.unit,
+                    keyPrefix: 'settings-av-offset-unit-',
+                    labelOf: (unit) => _unitLabel(unit, strings),
+                    // Switching units keeps the NUMBER (it is what the user
+                    // typed), re-clamped into the new unit's range.
+                    onPicked: (unit) {
+                      if (unit != settings.unit) {
+                        widget.session.appSettings.setAudioSyncSettings(
+                          AudioSyncSettings(
+                            offset: AudioSyncSettings.clampOffset(
+                              settings.offset,
+                              unit,
+                            ),
+                            unit: unit,
                           ),
-                          unit: unit,
-                        ),
-                      );
-                    }
-                  },
+                        );
+                      }
+                    },
+                  ),
                 ),
               ],
             ),
@@ -322,36 +334,22 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
-                DropdownButton<VoiceInputChannelMode>(
+                PanelFlyoutButton(
                   key: const ValueKey<String>('settings-input-channel-mode'),
-                  value: settings.inputChannelMode,
-                  isDense: true,
-                  style: const TextStyle(fontSize: 12),
-                  items: [
-                    DropdownMenuItem(
-                      value: VoiceInputChannelMode.device,
-                      child: Text(strings.audioInputChannelDevice),
-                    ),
-                    DropdownMenuItem(
-                      value: VoiceInputChannelMode.monoMix,
-                      child: Text(strings.audioInputChannelMonoMix),
-                    ),
-                    DropdownMenuItem(
-                      value: VoiceInputChannelMode.left,
-                      child: Text(strings.audioInputChannelLeft),
-                    ),
-                    DropdownMenuItem(
-                      value: VoiceInputChannelMode.right,
-                      child: Text(strings.audioInputChannelRight),
-                    ),
-                  ],
-                  onChanged: (mode) {
-                    if (mode != null && mode != settings.inputChannelMode) {
-                      widget.session.appSettings.setAudioSyncSettings(
-                        settings.copyWith(inputChannelMode: mode),
-                      );
-                    }
-                  },
+                  label: _channelLabel(settings.inputChannelMode, strings),
+                  entriesBuilder: () =>
+                      VoiceInputChannelMode.values.asFlyoutChoices(
+                        current: settings.inputChannelMode,
+                        keyPrefix: 'settings-input-channel-mode-',
+                        labelOf: (mode) => _channelLabel(mode, strings),
+                        onPicked: (mode) {
+                          if (mode != settings.inputChannelMode) {
+                            widget.session.appSettings.setAudioSyncSettings(
+                              settings.copyWith(inputChannelMode: mode),
+                            );
+                          }
+                        },
+                      ),
                 ),
               ],
             ),

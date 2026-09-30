@@ -4,6 +4,7 @@ import '../../models/cut_id.dart';
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/panel_flyout.dart';
 import 'app_confirm_dialog.dart';
 
 /// 겸용 변경 dialog: pick a target cut, read the 안내문 (what links, what
@@ -41,6 +42,9 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
   Widget build(BuildContext context) {
     final keys = confirmDialogKeys('convert-linked-cut');
     final targetCutId = _targetCutId;
+    final target = widget.candidates
+        .where((candidate) => candidate.id == targetCutId)
+        .firstOrNull;
     final preview = targetCutId == null ? null : widget.previewOf(targetCutId);
     final strings = AppText.strings;
     return AppWindow(
@@ -64,17 +68,18 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
           AppWindowField(
             label: strings.convertLinkedCutTargetLabel,
             emphasized: true,
-            child: DropdownButtonFormField<CutId>(
+            child: PanelFlyoutButton(
               key: const ValueKey<String>('convert-linked-cut-target'),
-              initialValue: targetCutId,
-              items: [
-                for (final candidate in widget.candidates)
-                  DropdownMenuItem(
-                    value: candidate.id,
-                    child: Text(candidate.name),
-                  ),
-              ],
-              onChanged: (value) => setState(() => _targetCutId = value),
+              label: target?.name ?? '',
+              expand: true,
+              entriesBuilder: () => widget.candidates.asFlyoutValueChoices(
+                current: target,
+                keyOf: (candidate) =>
+                    'convert-linked-cut-target-${candidate.id.value}',
+                labelOf: (candidate) => candidate.name,
+                onPicked: (candidate) =>
+                    setState(() => _targetCutId = candidate.id),
+              ),
             ),
           ),
           if (preview != null) ...[
