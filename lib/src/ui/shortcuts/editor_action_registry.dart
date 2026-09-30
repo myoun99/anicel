@@ -122,6 +122,11 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
         // 「선택도구의 올가미 선택에 w로 두고싶어」.
         if (verb == CanvasTool.select && shape == CanvasShapeKind.lasso)
           const SingleActivator(LogicalKeyboardKey.keyW),
+        // 🗣️I-53 (유저 2026-09-28): 「잘라내기도구에서 올가미 잘라내기를
+        // 단축키 c로 두도록 변경하고, 스탬프를 v로」 — 「잘라내기를
+        // 고르고싶으면 올가미 잘라내기의 단축키를 사용할 예정」.
+        if (verb == CanvasTool.cut && shape == CanvasShapeKind.lasso)
+          const SingleActivator(LogicalKeyboardKey.keyC),
       ],
       toolPress: ShapeTilePress(verb, shape),
     ),
@@ -535,20 +540,25 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     toolPress: TransformModePress(TransformMode.mesh),
   ),
-  // 「잘라내기는 잘라내기 툴 자체에 c로 설정」.
+  // ↩️「잘라내기는 잘라내기 툴 자체에 c로 설정」 (09-13) gave C to the tool
+  // itself; I-53 (09-28) moved it to the lasso cut's tile — see
+  // `_shapeTileActions`.
   const EditorActionDefinition(
     id: EditorActionIds.toolCut,
     label: 'Cut Tool',
     category: 'Tools',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyC)],
+    defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.cut),
   ),
   ..._shapeTileActions(CanvasTool.cut),
+  // 🗣️I-53 (유저 2026-09-28): 「스탬프를 v로」. ↩️V alone was retired from
+  // the move tool on 09-13 (「v 삭제하고 v 관련 잔재있으면 삭제」) — the
+  // key left that tool; this is the user handing it to another.
   const EditorActionDefinition(
     id: EditorActionIds.toolCutStamp,
     label: 'Stamp',
     category: 'Tools',
-    defaultActivators: [],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyV)],
     toolPress: ToolTilePress(CanvasTool.cutStamp),
   ),
   const EditorActionDefinition(

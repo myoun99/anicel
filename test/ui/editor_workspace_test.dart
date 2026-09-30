@@ -379,13 +379,14 @@ void main() {
       expect(await tileSelected(tester, 'sub-tool-fill-polygon'), isTrue);
     });
 
-    testWidgets('the cut button comes back to the GRAB, never to the stamp', (
+    testWidgets('the cut button comes back to the stamp like any tile', (
       tester,
     ) async {
-      // 유저 확정 2026-08-15: "찍기는 아예 성질이 다른거니까 그 외만
-      // 기억하도록." The fill's two tiles are two ways of choosing an area,
-      // so picking one is a setting worth keeping; the stamp is not a way
-      // of cutting at all, and it arms itself on a fresh cut.
+      // 🗣️I-53 (유저 2026-09-28): 「잘라내기 도구 선택시 스탬프 선택된
+      // 상태면 다른 잘라내기로 바꾸는 해당로직 싹 삭제 … 이제부터는
+      // 잘라내기도구 선택시 마지막 스탬프 선택된상태여도 다른 도구처럼 스탬프
+      // 선택되도록」. ↩️It came back to the grab (유저 확정 2026-08-15:
+      // 「찍기는 아예 성질이 다른거니까 그 외만 기억하도록」).
       await _pumpHome(tester);
       await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
       await tester.pumpAndSettle();
@@ -405,14 +406,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(await tileSelected(tester, 'sub-tool-cut-stamp'), isTrue);
 
-      // Away and back: the tile from BEFORE the stamp is what waited, still
-      // wearing the lasso.
+      // Away and back: the stamp is what waited.
       await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
       await tester.pumpAndSettle();
-      expect(await tileSelected(tester, 'sub-tool-cut-stamp'), isFalse);
-      expect(await tileSelected(tester, 'sub-tool-cut-lasso'), isTrue);
+      expect(await tileSelected(tester, 'sub-tool-cut-stamp'), isTrue);
+      expect(await tileSelected(tester, 'sub-tool-cut-lasso'), isFalse);
     });
 
     // TS2: 유저 — "잘라내고 나면 찍기로 모드전환".

@@ -147,9 +147,8 @@ ToolChoice toolChoiceOf(PaintToolStateNotifier tools) {
 
 /// Puts [choice] back into [tools] THROUGH ITS ONE SETTER, so the tools' own
 /// laws decide what the file's words become (F-123): a tile is filed under
-/// its own group and the stamp is never remembered, a paint tool's brush is
-/// banked when another tool is taken up, and a pure switch hands a paint
-/// tool back its banked brush.
+/// its own group, a paint tool's brush is banked when another tool is taken
+/// up, and a pure switch hands a paint tool back its banked brush.
 ///
 /// [brushFor] answers the state holding [BrushPresetId]'s brush for that
 /// tool — null when the library has no such preset, and then that tool keeps

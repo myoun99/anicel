@@ -141,17 +141,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.eyedropper);
 
-    // 🗣️유저 2026-09-13: 「채우기툴을 f로 변경하고, 가이드 툴을 g로 지정」 ·
-    // 「잘라내기는 잘라내기 툴 자체에 c로 설정」.
+    // 🗣️유저 2026-09-13: 「채우기툴을 f로 변경하고, 가이드 툴을 g로 지정」.
     await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.fill);
     await tester.sendKeyEvent(LogicalKeyboardKey.keyG);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.guide);
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
-    await tester.pumpAndSettle();
-    expect(toolOf(), CanvasTool.cut);
 
     // 「선택도구의 올가미 선택에 w로 두고싶어」 — the select tool, tracing the
     // lasso. Read it off the DRAG SURFACE, not off the tool library: the
@@ -161,6 +157,17 @@ void main() {
     CanvasShapeKind shapeOf() => tester
         .widget<CanvasSelectionLayer>(find.byType(CanvasSelectionLayer))
         .shapeKind;
+
+    // 🗣️I-53 (유저 2026-09-28): 「잘라내기도구에서 올가미 잘라내기를 단축키
+    // c로 두도록 변경하고, 스탬프를 v로」.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.cut);
+    expect(shapeOf(), CanvasShapeKind.lasso);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.cutStamp);
+
     await tester.sendKeyEvent(LogicalKeyboardKey.keyW);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.select);
@@ -187,8 +194,8 @@ void main() {
     expect(modeOf(), TransformMode.normal);
 
     // 🪦The keys that had grown up beside the tools press nothing now.
+    // ↩️V was one of them until I-53 gave it to the stamp (pressed above).
     for (final retired in [
-      LogicalKeyboardKey.keyV,
       LogicalKeyboardKey.keyM,
       LogicalKeyboardKey.keyL,
     ]) {

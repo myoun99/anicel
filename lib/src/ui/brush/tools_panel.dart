@@ -194,12 +194,12 @@ class ToolsPanel extends StatelessWidget {
             // the drag and stamps them back elsewhere; the source is never
             // removed.
             //
-            // Pressing it while the stamp is armed leaves the stamp alone;
-            // coming back from another tool lands on the GRAB, because the
-            // stamp is not one of the tiles the memory keeps (유저 확정 —
-            // 찍기는 성질이 다르다). The grab wears whatever outline it last
-            // wore either way, because that memory is the shape's, not this
-            // button's.
+            // Pressing it while the stamp is armed leaves the stamp alone,
+            // and coming back from another tool lands on the tile it was left
+            // on, the stamp included (I-53 — see
+            // `PaintToolStateNotifier._rememberRailTile`). The grab wears
+            // whatever outline it last wore either way, because that memory
+            // is the shape's, not this button's.
             _toolButton(
               keyValue: 'tool-cut-button',
               group: CanvasTool.cut,
