@@ -4,10 +4,13 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/timeline/instruction_icon_palette.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// 🗣️F-230 (유저 2026-09-29): 「오디오의 출력 선택이나 트랜지션레이어의 ol선택등
@@ -171,6 +174,30 @@ void main() {
       'language-option-${other.name}',
     );
     expect(session.languageSettings.value.notationLanguage, other);
+  });
+
+  testWidgets('the instruction picker wears the kind it holds — the glyph '
+      'the list gives that kind', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InstructionEventDialog(
+            instructionSet: CameraInstructionSet.standard,
+            initialInstructionId: 'pan',
+          ),
+        ),
+      ),
+    );
+    final button = byKey('instruction-def-dropdown');
+    Finder wearing(String iconKey) => find.descendant(
+      of: button,
+      matching: find.byIcon(instructionIconFor(iconKey)),
+    );
+    expect(wearing('pan'), findsOneWidget);
+
+    await pick(tester, button, 'instruction-option-ol');
+    expect(wearing('overlap'), findsOneWidget);
+    expect(wearing('pan'), findsNothing);
   });
 
   testWidgets('a project tab waiting in the overflow list is picked from it', (
