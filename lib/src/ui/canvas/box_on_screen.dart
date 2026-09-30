@@ -147,6 +147,16 @@ class BoxOnScreen {
   CanvasSelectionShape _transformedBoxShape(TransformBox box) =>
       _boxShapeFor(box.affine, box.baseWidth, box.baseHeight);
 
+  /// The box as it stood when its session opened — the untouched rectangle
+  /// the transform began from, in canvas space: the TRANSFORM TOOL's own
+  /// silhouette, which the green 「기존 실루엣」 line is drawn along (I-38 ·
+  /// F-231 ①).
+  CanvasSelectionShape startSilhouette(TransformBox box) => _boxShapeFor(
+    SelectionAffine(pivot: box.affine.pivot),
+    box.baseWidth,
+    box.baseHeight,
+  );
+
   CanvasSelectionShape _boxShapeFor(
     SelectionAffine affine,
     double width,

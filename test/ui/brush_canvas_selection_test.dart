@@ -842,6 +842,37 @@ void main() {
     expect(find.byType(CanvasSelectionLayer), findsOneWidget);
   });
 
+  // 🗣️F-231 ② (유저 2026-09-29): 「선택도구 쓴채로 변형하고, 언두하면 선택도구
+  // 개미행렬 라인이 과거로 안돌아가고 그것만 남아있는데 그거도 같이 한번에
+  // 언두되도록」. The entry has carried the selection since F-38c — but it was
+  // told the shape the box had ALREADY moved, so the undo put that one back.
+  testWidgets('a moved selection comes back with its pixels in the one undo '
+      'the confirm made — and a redo moves it again', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    final selected = env.commands.region!.selectedBounds;
+
+    await env.setTool(CanvasTool.move);
+    await moveBoxBy(tester, const Offset(10, 5));
+    env.commands.confirmPendingMove();
+    await tester.pump();
+    final moved = env.commands.region!.selectedBounds;
+    expect(moved.left, selected.left + 10, reason: 'the outline went too');
+
+    env.history.undo();
+    await tester.pump();
+    expect(env.commands.region!.selectedBounds, selected);
+    expect(
+      inkAt(env.coordinator, 30, 30),
+      isNonZero,
+      reason: 'and the pixels, in the same step',
+    );
+
+    env.history.redo();
+    await tester.pump();
+    expect(env.commands.region!.selectedBounds, moved);
+  });
+
   testWidgets('marquee selects; the MOVE tool floats a session and the '
       'confirm lands ONE undoable pixel move (R11-⑧/R16-①)', (tester) async {
     final env = await pumpSelectionPanel(tester);
@@ -2318,9 +2349,9 @@ void main() {
     await moveBoxBy(tester, const Offset(15, 5));
     expect(
       antsOnScreen(tester)?.startShape,
-      same(started),
+      started,
       reason:
-          '🚨it is the shape the SESSION began with, not the live one — a '
+          '🚨it is the box the SESSION began with, not the live one — a '
           'line that followed the drag would be saying nothing',
     );
 
@@ -2811,11 +2842,15 @@ void main() {
     expect(env.commands.hasSelection, isTrue);
   });
 
-  testWidgets('I-38: and it is whatever shape the session began with — a '
-      'LASSO starts as a lasso', (tester) async {
-    // 🎯유저: 「사각형 라인이나 메시워프든 **낡지 않을 구조로**」. Nothing in
-    // the painter knows the shapes apart, which is what makes that true —
-    // so the case that would break a rectangle assumption is the pin.
+  testWidgets('F-231 ①: over a LASSO the line is still the box the transform '
+      'began from — the tool\'s rectangle, not the selection\'s outline', (
+    tester,
+  ) async {
+    // 🎯유저 I-38: 「사각형 라인이나 메시워프든 **낡지 않을 구조로**」, and
+    // F-231 ① (2026-09-29): 「기존 초록 프리뷰는 항상 사각형 변형도구
+    // 실루엣만으로 작동됨. 이상한 쓸데없는 규칙 넣지말고 … 잔재 삭제」.
+    // ↩️This pinned the opposite — a lasso started as a lasso — which is the
+    // rule the user named and asked gone.
     final env = await pumpSelectionPanel(
       tester,
       shapeKind: CanvasShapeKind.lasso,
@@ -2838,14 +2873,15 @@ void main() {
 
     final started = antsOnScreen(tester)?.startShape;
     expect(started, isNotNull);
+    final corners = started!.singleShape!.points;
+    expect(corners, hasLength(4), reason: 'the box, not the triangle');
+    final bounds = env.commands.region!.selectedBounds;
     expect(
-      started!.singleShape?.points.length,
-      3,
-      reason:
-          '⛔the TRIANGLE the drag traced, corner for corner. A rectangle '
-          'would read 4, so this is what says nothing between the session '
-          'and the painter flattened the shape into a box',
+      {for (final point in corners) point.x},
+      {bounds.left, bounds.right},
+      reason: 'the triangle\'s own box, edge to edge',
     );
+    expect({for (final point in corners) point.y}, {bounds.top, bounds.bottom});
   });
 
   testWidgets('H28: an OPEN box that has moved already reads as changed — 유저: '

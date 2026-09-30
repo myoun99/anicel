@@ -69,10 +69,13 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// > **초록색 선**(변형하지 않았다는 그 선 ui 그대로)으로 보여줌. 확정시
   /// > 사라짐. 즉 변형중에는 보이도록」 (유저 2026-09-16)
   ///
-  /// ⛔**NOT A RECTANGLE, and that is the 「낡지 않을 구조로」**: it is the
-  /// session's own [CanvasSelectionRegion], so a lasso starts as a lasso and
-  /// a warped one starts as whatever it was. Nothing here knows the shapes
-  /// apart, which is why nothing here can go stale when a new one arrives.
+  /// 🗣️F-231 ① (유저 2026-09-29): 「기존 초록 프리뷰는 **항상 사각형
+  /// 변형도구 실루엣**만으로 작동됨. 이상한 쓸데없는 규칙 넣지말고 기존거에
+  /// 맞춰서 법 통일하고 잔재 삭제」 — it is the transform box the session
+  /// began from (`BoxOnScreen.startSilhouette`), whatever shape the
+  /// selection has. ↩️It used to be the session's own selection region, so a
+  /// lasso started as a lasso: a reading of 「기존의 실루엣」 as the
+  /// selection's outline rather than the tool's, which the user corrected.
   ///
   /// The colour is the one the ants and the confirm button already speak —
   /// `selectionSession(changed: false)`, the 「hasn't been touched」 green —

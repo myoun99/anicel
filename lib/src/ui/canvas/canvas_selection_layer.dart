@@ -3455,13 +3455,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             //
             // ⛔The condition is the BOX, not the float: 「변형중」 is what
             // the user said, and a confirm closes the box, which is what
-            // makes it go. The session already carries the shape it began
-            // with — nothing new is remembered for this.
+            // makes it go.
             // ⚠️Since 확정 became one verb (confirm-button) no door leaves a
             // session without its box — Enter on an untouched box used to —
             // so this states the law rather than guarding a case a user can
             // reach.
-            startShape: _transform == null ? null : _moveSessionStartShape,
+            //
+            // 🗣️F-231 ① (유저 2026-09-29): 「기존 초록 프리뷰는 항상 사각형
+            // 변형도구 실루엣만으로 작동됨. 이상한 쓸데없는 규칙 넣지말고
+            // 기존거에 맞춰서 법 통일하고 잔재 삭제」 — the line is the
+            // TRANSFORM TOOL's silhouette, the box it began from, whatever
+            // shape the selection has.
+            startShape: switch (_box) {
+              null => null,
+              final box => CanvasSelectionRegion.shape(
+                _onScreen.startSilhouette(box),
+              ),
+            },
             // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
             // 선택 커밋될떈 픽셀에 제대로 안착한 상태로」.
             //
