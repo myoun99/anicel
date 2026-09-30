@@ -91,7 +91,7 @@ void main() {
       path: moviePath,
       settings: ImportFileSettings(
         mode: ImportFileMode.reference,
-        sound: false,
+        movieParts: MovieParts.picture,
         inFrame: inFrame,
         fit: fit,
       ),

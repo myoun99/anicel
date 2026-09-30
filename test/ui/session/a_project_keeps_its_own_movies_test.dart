@@ -80,7 +80,7 @@ void main() {
         path: movie,
         settings: const ImportFileSettings(
           mode: ImportFileMode.keepInside,
-          sound: false,
+          movieParts: MovieParts.picture,
         ),
       );
       await session.projectDoor.saveProjectToFile(
@@ -228,7 +228,7 @@ void main() {
           path: movie,
           settings: const ImportFileSettings(
             mode: ImportFileMode.keepInside,
-            sound: false,
+            movieParts: MovieParts.picture,
           ),
         );
       }

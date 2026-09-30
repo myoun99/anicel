@@ -6,12 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/media/audio_viewer_document.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/fake_video_backend.dart';
 import '../../helpers/the_file_itself.dart';
 
 /// 🚨A SOUND IN THE IMPORT WINDOW IS ITS WAVEFORM, AND IT CAN BE TRIMMED
@@ -77,6 +79,82 @@ void main() {
 
     expect(bar(tester).frameCount, 48);
     expect(bar(tester).showRange, isTrue);
+  });
+
+  testWidgets('🎯a MOVIE that brings its sound alone shows the sound it '
+      'brings — its waveform, over the frames the sound lasts', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 480,
+            height: 360,
+            child: ImportPreview(
+              session: session,
+              path: 'C:/mov/take.mp4',
+              opensAsSound: true,
+              inFrame: 0,
+              outFrame: null,
+              rangeEditable: true,
+              onRangeChanged: (_, _) {},
+              soundPeaks: (_) async => twoSeconds,
+              holdBytes: theFileItself,
+              frameRate: ProjectFrameRate.fps24,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('import-preview-waveform')),
+      findsOneWidget,
+    );
+    expect(bar(tester).frameCount, 48, reason: 'two seconds at 24');
+  });
+
+  testWidgets('⛔a sound that answers after the row turned back to its '
+      'picture is not shown — the same file, opened the other way', (
+    tester,
+  ) async {
+    // No reader: the picture's load settles at once, on nothing.
+    debugVideoDecodeBackend = FakeVideoBackend(supported: false);
+    addTearDown(() => debugVideoDecodeBackend = null);
+    final answer = Completer<AudioPeaks?>();
+    Widget preview({required bool asSound}) => MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 480,
+          height: 360,
+          child: ImportPreview(
+            session: session,
+            path: 'C:/mov/take.mp4',
+            opensAsSound: asSound,
+            inFrame: 0,
+            outFrame: null,
+            rangeEditable: true,
+            onRangeChanged: (_, _) {},
+            soundPeaks: (_) => answer.future,
+            holdBytes: theFileItself,
+            frameRate: ProjectFrameRate.fps24,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(preview(asSound: true));
+    await tester.pumpWidget(preview(asSound: false));
+    answer.complete(twoSeconds);
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('import-preview-waveform')),
+      findsNothing,
+    );
   });
 
   testWidgets('its frames are the PROJECT\'s', (tester) async {

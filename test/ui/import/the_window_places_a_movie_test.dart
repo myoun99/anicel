@@ -48,6 +48,7 @@ void main() {
     WidgetTester tester,
     List<String> paths, {
     FakeVideoBackend? backend,
+    ImportLayerSpot Function(EditorSessionManager session)? droppedOn,
   }) async {
     debugVideoDecodeBackend = backend ?? FakeVideoBackend();
     tester.view.physicalSize = const Size(1400, 1600);
@@ -61,7 +62,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ImportDialog(session: s, initialPaths: paths),
+          body: ImportDialog(
+            session: s,
+            initialPaths: paths,
+            spot: droppedOn?.call(s),
+          ),
         ),
       ),
     );
@@ -129,15 +134,16 @@ void main() {
 
     test('the seed: a movie starts WITH its sound — without it on a picture '
         'row\'s frames (「프레임 영역 드롭은 끔」)', () {
-      expect(seedImportSettings().sound, isTrue);
+      expect(seedImportSettings().movieParts, MovieParts.pictureAndSound);
       final onFrames = seedImportSettings(
         spot: const RowFramesSpot(layerId: LayerId('a'), frameIndex: 0),
       );
-      expect(onFrames.sound, isFalse);
+      expect(onFrames.movieParts, MovieParts.picture);
     });
 
-    test('on an SE row\'s cell the sound is the PLACE\'s answer, locked on '
-        '(「SE 행 드롭은 켬으로 잠김」)', () {
+    test('on an SE row\'s cell the PLACE answers: the sound alone, whatever '
+        'the row was answered — what that cell always landed (「SE 행 빈 '
+        '칸은 소리만」), back when the column could only say 켬', () {
       const cell = SeCellSpot(
         layerId: LayerId('se'),
         trackFrame: 0,
@@ -145,9 +151,9 @@ void main() {
       );
       expect(importSoundLocked(cell), isTrue);
       expect(importSoundLocked(null), isFalse);
-      ImportFileSettings resolve(ImportLayerSpot? spot) =>
+      ImportFileSettings resolve(ImportLayerSpot? spot, MovieParts parts) =>
           resolvedImportSettings(
-            const ImportFileSettings(sound: false),
+            ImportFileSettings(movieParts: parts),
             kind: MediaAssetKind.video,
             isPsd: false,
             placing: true,
@@ -155,12 +161,103 @@ void main() {
             lasting: true,
             spot: spot,
           );
-      expect(resolve(cell).sound, isTrue);
+      for (final parts in MovieParts.values) {
+        expect(
+          resolve(cell, parts).movieParts,
+          MovieParts.sound,
+          reason: '$parts',
+        );
+      }
       expect(
-        resolve(null).sound,
-        isFalse,
+        resolve(null, MovieParts.picture).movieParts,
+        MovieParts.picture,
         reason: 'anywhere else it is the row\'s own answer',
       );
+    });
+
+    test('a bake is a PICTURE\'s answer: a movie brought in as its sound '
+        'alone does not bake — and brought with its picture, the bake '
+        'pressed before stands', () {
+      ImportFileSettings resolve(MovieParts parts, {ImportLayerSpot? spot}) =>
+          resolvedImportSettings(
+            ImportFileSettings(bake: true, movieParts: parts),
+            kind: MediaAssetKind.video,
+            isPsd: false,
+            placing: true,
+            hasActiveCut: true,
+            lasting: true,
+            spot: spot,
+          );
+      expect(resolve(MovieParts.sound).bake, isFalse);
+      expect(resolve(MovieParts.pictureAndSound).bake, isTrue);
+      expect(resolve(MovieParts.picture).bake, isTrue);
+      expect(
+        resolve(
+          MovieParts.pictureAndSound,
+          spot: const SeCellSpot(
+            layerId: LayerId('se'),
+            trackFrame: 0,
+            shownCell: 0,
+          ),
+        ).bake,
+        isFalse,
+        reason: 'an SE row\'s cell takes the sound alone',
+      );
+    });
+
+    test('🎯the sound ALONE is the third answer (유저 2026-09-27: 「소리만 '
+        '임포트 영상만 임포트도 고를수있게」), and it lands as a sound', () {
+      const alone = ImportFileSettings(movieParts: MovieParts.sound);
+      expect(
+        importLandsAsSound(kind: MediaAssetKind.video, settings: alone),
+        isTrue,
+      );
+      expect(
+        importLandsAsSound(
+          kind: MediaAssetKind.video,
+          settings: const ImportFileSettings(),
+        ),
+        isFalse,
+        reason: 'a movie with its picture places a picture',
+      );
+      expect(
+        importLandsAsSound(kind: MediaAssetKind.image, settings: alone),
+        isFalse,
+        reason: 'only a movie has parts to leave behind',
+      );
+      expect(
+        importLandsAsSound(
+          kind: MediaAssetKind.audio,
+          settings: const ImportFileSettings(),
+        ),
+        isTrue,
+      );
+    });
+
+    test('what a drop\'s place keeps in stays in: the picture on a picture '
+        'row\'s frames, and an SE cell takes the sound alone', () {
+      const frames = RowFramesSpot(layerId: LayerId('a'), frameIndex: 0);
+      const cell = SeCellSpot(
+        layerId: LayerId('se'),
+        trackFrame: 0,
+        shownCell: 0,
+      );
+      expect(
+        importMovieParts(MovieParts.sound, frames),
+        MovieParts.pictureAndSound,
+      );
+      expect(importMovieParts(MovieParts.picture, frames), MovieParts.picture);
+      expect(
+        importMovieParts(MovieParts.pictureAndSound, frames),
+        MovieParts.pictureAndSound,
+      );
+      expect(importMovieParts(MovieParts.picture, cell), MovieParts.sound);
+      expect(
+        importMovieParts(MovieParts.pictureAndSound, cell),
+        MovieParts.sound,
+      );
+      expect(importMovieParts(MovieParts.sound, cell), MovieParts.sound);
+      expect(importMovieParts(MovieParts.sound, null), MovieParts.sound);
     });
   });
 
@@ -293,5 +390,152 @@ void main() {
       isTrue,
       reason: 'its sound came with it',
     );
+  });
+
+  testWidgets('🎯set to its sound ALONE it lands only the sound — on the SE '
+      'rows, no picture row, and still ONE pool entry, the movie\'s', (
+    tester,
+  ) async {
+    final movie = await writeMovie(tester, 'take.mp4');
+    final s = await open(
+      tester,
+      [movie],
+      backend: FakeVideoBackend(frameCount: 24),
+    );
+    await settle(
+      tester,
+      () => tester.any(find.byKey(ValueKey<String>('import-cell-sound-$movie'))),
+    );
+    final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
+    await tester.ensureVisible(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-sound-sound')),
+    );
+    await tester.pumpAndSettle();
+    expect(cellText(tester, 'sound', movie), 'Sound only');
+    expect(
+      cellText(tester, 'fit', movie),
+      '—',
+      reason: 'the column stands by the file\'s kind — only its cell went '
+          'blank, so nothing pops out when the answer changes',
+    );
+    await settle(
+      tester,
+      () => tester.any(
+        find.byKey(const ValueKey<String>('import-preview-waveform')),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('import-preview-waveform')),
+      findsOneWidget,
+      reason: 'the preview shows what lands — the sound',
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await settle(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
+    await settle(tester, () => !tester.any(find.text('Importing…')));
+    await tester.pumpAndSettle();
+
+    final key = normalizedMediaPath(movie);
+    expect(
+      s.requireActiveCut.layers.any(
+        (layer) => layer.mediaReference?.assetPath == key,
+      ),
+      isFalse,
+      reason: 'no picture came',
+    );
+    expect(
+      s.activeTrack.seLayers.any(
+        (layer) => layer.audioClips.any((clip) => clip.filePath == key),
+      ),
+      isTrue,
+      reason: 'the sound came, by a sound\'s own door',
+    );
+    expect(
+      s.mediaPool.mediaAssets.single.kind,
+      MediaAssetKind.video,
+      reason: 'the pool keeps the MOVIE — one entry for the pair it can '
+          'still become',
+    );
+  });
+
+  testWidgets('let go on an SE row\'s cell the row reads 「소리만」, locked — '
+      'the cell\'s answer — and ONLY the sound lands, on that row from that '
+      'cell', (tester) async {
+    final movie = await writeMovie(tester, 'take.mp4');
+    late LayerId seRow;
+    late int start;
+    final s = await open(
+      tester,
+      [movie],
+      backend: FakeVideoBackend(frameCount: 24),
+      droppedOn: (s) {
+        seRow = s.activeTrack.seLayers.first.id;
+        start = s.activeCutGlobalStartFrame;
+        return SeCellSpot(layerId: seRow, trackFrame: start, shownCell: 0);
+      },
+    );
+    final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
+    await settle(tester, () => tester.any(cell));
+
+    expect(cellText(tester, 'sound', movie), 'Sound only');
+    expect(
+      tester.widget<InkWell>(cell).onTap,
+      isNull,
+      reason: 'the cell answered it — nothing to open',
+    );
+    expect(cellText(tester, 'bake', movie), '—', reason: 'no picture comes');
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await settle(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
+    await settle(tester, () => !tester.any(find.text('Importing…')));
+    await tester.pumpAndSettle();
+
+    final key = normalizedMediaPath(movie);
+    final row = s.activeTrack.seLayers.firstWhere(
+      (layer) => layer.id == seRow,
+    );
+    expect(row.timeline[start], isNotNull, reason: 'the cell it was let go on');
+    expect(row.audioClips.single.filePath, key);
+    expect(
+      s.requireActiveCut.layers.any(
+        (layer) => layer.mediaReference?.assetPath == key,
+      ),
+      isFalse,
+      reason: 'no picture came',
+    );
+    expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
+  });
+
+  testWidgets('let go on a picture row\'s frames, 「소리만」 is there and '
+      'cannot be pressed — the row takes the picture', (tester) async {
+    final movie = await writeMovie(tester, 'take.mp4');
+    await open(
+      tester,
+      [movie],
+      backend: FakeVideoBackend(frameCount: 24),
+      droppedOn: (s) => RowFramesSpot(
+        layerId: s.requireActiveCut.layers.first.id,
+        frameIndex: 0,
+      ),
+    );
+    final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
+    await settle(tester, () => tester.any(cell));
+    expect(cellText(tester, 'sound', movie), 'Off', reason: 'its seed');
+
+    await tester.ensureVisible(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+
+    InkWell option(String value) => tester.widget<InkWell>(
+      find.byKey(ValueKey<String>('import-option-sound-$value')),
+    );
+    expect(option('sound').onTap, isNull);
+    expect(option('picture').onTap, isNotNull);
+    expect(option('pictureAndSound').onTap, isNotNull);
   });
 }

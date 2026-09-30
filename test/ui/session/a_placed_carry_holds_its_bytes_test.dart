@@ -146,7 +146,7 @@ void main() {
         path: path,
         settings: ImportFileSettings(
           mode: keep ? ImportFileMode.keepInside : ImportFileMode.reference,
-          sound: false,
+          movieParts: MovieParts.picture,
         ),
       ),
     ),

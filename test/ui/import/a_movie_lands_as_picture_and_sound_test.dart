@@ -2,7 +2,8 @@
 // frame on the SOUND's clock, a frame the clock shows twice held — or as ONE
 // reference cel over its span when it does not; on a picture row's frames it
 // always bakes; and its sound lands on the SE rows with it, same start, same
-// span, one undo for the pair — or alone, on an SE row's cell.
+// span, one undo for the pair — or alone, through a sound's own door, when
+// the 「소리」 answer is the sound alone (what an SE row's cell takes).
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -55,7 +56,7 @@ void main() {
     WidgetTester tester,
     EditorSessionManager s, {
     bool rasterize = false,
-    bool withSound = false,
+    MovieParts parts = MovieParts.picture,
     int inFrame = 0,
     int? outFrame,
     ImportLayerSpot? spot,
@@ -65,7 +66,7 @@ void main() {
       settings: ImportFileSettings(
         mode: ImportFileMode.reference,
         bake: rasterize,
-        sound: withSound,
+        movieParts: parts,
         inFrame: inFrame,
         outFrame: outFrame,
       ),
@@ -161,7 +162,10 @@ void main() {
     final start = s.activeCutGlobalStartFrame;
     final layersBefore = s.requireActiveCut.layers.length;
 
-    expect(await place(tester, s, withSound: true, inFrame: 3), isTrue);
+    expect(
+      await place(tester, s, parts: MovieParts.pictureAndSound, inFrame: 3),
+      isTrue,
+    );
 
     expect(movieRow(s).timeline[0]!.length, 21);
     final se = s.activeTrack.seLayers.firstWhere(
@@ -189,24 +193,28 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('let go on an SE row\'s cell a movie is its sound alone, and '
-      'the pool keeps ONE entry — the movie, not a sound', (tester) async {
+  testWidgets('its sound ALONE goes through a sound\'s own door — let go on '
+      'an SE row\'s cell, that row from that cell — and the pool keeps ONE '
+      'entry, the movie, not a sound', (tester) async {
     final s = session();
-    final seRow = s.activeTrack.seLayers.first;
+    final seRow = s.activeTrack.seLayers.first.id;
+    final start = s.activeCutGlobalStartFrame;
 
-    final ok = await tester.runAsync(
-      () => s.importDoors.importSoundFile(
-        path: moviePath,
-        copyIntoProject: false,
-        spot: SeCellSpot(
-          layerId: seRow.id,
-          trackFrame: s.activeCutGlobalStartFrame,
-          shownCell: 0,
-        ),
+    expect(
+      await place(
+        tester,
+        s,
+        parts: MovieParts.sound,
+        spot: SeCellSpot(layerId: seRow, trackFrame: start, shownCell: 0),
       ),
+      isTrue,
     );
 
-    expect(ok, isTrue);
+    final row = s.activeTrack.seLayers.firstWhere(
+      (layer) => layer.id == seRow,
+    );
+    expect(row.timeline[start], isNotNull, reason: 'the cell it was let go on');
+    expect(row.audioClips.single.filePath, normalizedMediaPath(moviePath));
     expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
     expect(
       s.requireActiveCut.layers.where((layer) => layer.name == 'take3'),

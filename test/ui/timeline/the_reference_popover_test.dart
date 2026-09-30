@@ -129,7 +129,7 @@ void main() {
         path: path,
         settings: ImportFileSettings(
           mode: ImportFileMode.reference,
-          sound: false,
+          movieParts: MovieParts.picture,
           inFrame: inFrame,
         ),
       );

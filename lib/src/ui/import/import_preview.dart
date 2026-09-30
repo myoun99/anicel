@@ -67,6 +67,7 @@ class ImportPreview extends StatefulWidget {
     required this.frameRate,
     this.audioSpeed = (numerator: 1, denominator: 1),
     this.sound,
+    this.opensAsSound = false,
   });
 
   /// The session the window imports into: the census its pages are counted
@@ -110,6 +111,11 @@ class ImportPreview extends StatefulWidget {
   /// ([MediaViewerTabHost.sound]).
   final ViewerSound? sound;
 
+  /// Whether the file is shown as its SOUND — a movie that brings its sound
+  /// alone ([MovieParts.sound]) shows the waveform that lands, counted in
+  /// the frames its trim is counted in, not the picture that does not.
+  final bool opensAsSound;
+
   /// The narrowest this zone lays out: the transport's own minimum inside
   /// the inset around it. The window gives the file table the rest.
   static double get minimumWidth =>
@@ -127,6 +133,7 @@ class _ImportPreviewState extends State<ImportPreview>
   /// is, or nothing here reads it.
   ViewerDocument? _document;
   String? _loadedPath;
+  bool _loadedAsSound = false;
 
   /// The page under the playhead: a movie's project frame, a PDF's page, a
   /// GIF's frame. A sound's playhead is its run's seconds instead
@@ -166,7 +173,7 @@ class _ImportPreviewState extends State<ImportPreview>
   @override
   void didUpdateWidget(ImportPreview old) {
     super.didUpdateWidget(old);
-    if (old.path != widget.path) {
+    if (old.path != widget.path || old.opensAsSound != widget.opensAsSound) {
       unawaited(_load());
     }
   }
@@ -196,10 +203,12 @@ class _ImportPreviewState extends State<ImportPreview>
 
   Future<void> _load() async {
     final path = widget.path;
-    if (path == _loadedPath) {
+    final asSound = widget.opensAsSound;
+    if (path == _loadedPath && asSound == _loadedAsSound) {
       return;
     }
     _loadedPath = path;
+    _loadedAsSound = asSound;
     _close();
     if (path == null) {
       setState(() {});
@@ -209,7 +218,7 @@ class _ImportPreviewState extends State<ImportPreview>
     // conforms each movie's sound under it the moment the file is listed,
     // so the press that plays it finds the sound already there.
     final key = normalizedMediaPath(path);
-    final kind = mediaAssetKindForPath(key);
+    final kind = asSound ? MediaAssetKind.audio : mediaAssetKindForPath(key);
     ViewerDocument? document;
     try {
       document = kind == null
@@ -227,7 +236,7 @@ class _ImportPreviewState extends State<ImportPreview>
       // for. What cannot be imported is already named in the footer.
       document = null;
     }
-    if (!mounted || _loadedPath != path) {
+    if (!mounted || _loadedPath != path || _loadedAsSound != asSound) {
       unawaited(document?.dispose());
       return;
     }

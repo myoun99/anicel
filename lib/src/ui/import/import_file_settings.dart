@@ -47,6 +47,28 @@ enum PsdPlaceMode {
   expand,
 }
 
+/// What of a MOVIE comes in — the 「소리」 column (라운드 6): its picture, its
+/// picture with its sound on the SE rows beside it, or its sound alone.
+///
+/// 🗣️유저 2026-09-27: 「소리만 임포트 영상만 임포트도 고를수있게」. The
+/// picture alone was already the column's 「끔」; the sound alone is the
+/// third answer, and it goes through a SOUND's own door
+/// ([importLandsAsSound]).
+///
+/// ⛔One field with three answers, not a picture flag beside a sound flag:
+/// two flags could both be off, which is a row that brings nothing.
+enum MovieParts {
+  /// The picture only — the column's 「끔」.
+  picture,
+
+  /// The picture, and its sound on the SE rows from where the picture
+  /// starts — the column's 「켬」.
+  pictureAndSound,
+
+  /// The sound only, on the SE rows, the way a sound file lands.
+  sound,
+}
+
 /// One row's answers.
 class ImportFileSettings {
   const ImportFileSettings({
@@ -57,7 +79,7 @@ class ImportFileSettings {
     this.psd = PsdPlaceMode.merge,
     this.inFrame = 0,
     this.outFrame,
-    this.sound = true,
+    this.movieParts = MovieParts.pictureAndSound,
   });
 
   final ImportFileMode mode;
@@ -82,10 +104,9 @@ class ImportFileSettings {
   final int inFrame;
   final int? outFrame;
 
-  /// Whether a MOVIE brings its sound onto the SE rows (the 「소리」
-  /// column, 라운드 6) — asked only of a movie that has one
-  /// ([importSoundAllowed]).
-  final bool sound;
+  /// What of a MOVIE comes in (the 「소리」 column) — asked only of a movie
+  /// that has a sound ([importSoundAllowed]).
+  final MovieParts movieParts;
 
   bool get isTrimmed => inFrame > 0 || outFrame != null;
 
@@ -98,7 +119,7 @@ class ImportFileSettings {
     int? inFrame,
     int? outFrame,
     bool clearOut = false,
-    bool? sound,
+    MovieParts? movieParts,
   }) => ImportFileSettings(
     mode: mode ?? this.mode,
     bake: bake ?? this.bake,
@@ -107,7 +128,7 @@ class ImportFileSettings {
     psd: psd ?? this.psd,
     inFrame: inFrame ?? this.inFrame,
     outFrame: clearOut ? null : (outFrame ?? this.outFrame),
-    sound: sound ?? this.sound,
+    movieParts: movieParts ?? this.movieParts,
   );
 
   @override
@@ -120,11 +141,11 @@ class ImportFileSettings {
       other.psd == psd &&
       other.inFrame == inFrame &&
       other.outFrame == outFrame &&
-      other.sound == sound;
+      other.movieParts == movieParts;
 
   @override
   int get hashCode =>
-      Object.hash(mode, bake, into, fit, psd, inFrame, outFrame, sound);
+      Object.hash(mode, bake, into, fit, psd, inFrame, outFrame, movieParts);
 }
 
 /// Whether [path] is a Photoshop document — the only kind with a second
@@ -178,9 +199,39 @@ bool importSoundAllowed({
   required bool hasSound,
 }) => placing && kind == MediaAssetKind.video && hasSound;
 
-/// Whether the 「소리」 answer is the PLACE's: a movie let go on an SE row's
-/// empty cell IS its sound (「SE 행 드롭은 켬으로 잠김」).
+/// Whether the PLACE answers for a movie's sound: a movie let go on an SE
+/// row's empty cell IS its sound (「SE 행 드롭은 켬으로 잠김」) — and what
+/// that drop landed was always the sound ALONE, through a sound's own door,
+/// so that is the answer the row shows now ([importMovieParts]).
 bool importSoundLocked(ImportLayerSpot? spot) => spot is SeCellSpot;
+
+/// Whether the PLACE keeps a movie's picture in: frames dropped on a row
+/// are that row's own pixels (「셀에 떨어뜨리면 항상 굽기」) — the sound
+/// alone would leave the row nothing, so it is not an answer there.
+bool importPictureLocked(ImportLayerSpot? spot) => spot is RowFramesSpot;
+
+/// [parts] as the place leaves it: an SE row's cell takes the sound alone
+/// ([importSoundLocked]), and a picture row's frames keep the picture in,
+/// with the sound if it was asked for ([importPictureLocked]).
+MovieParts importMovieParts(MovieParts parts, ImportLayerSpot? spot) {
+  if (importSoundLocked(spot)) {
+    return MovieParts.sound;
+  }
+  if (parts == MovieParts.sound && importPictureLocked(spot)) {
+    return MovieParts.pictureAndSound;
+  }
+  return parts;
+}
+
+/// Whether a row of [kind] lands as a SOUND on the SE rows — a sound file,
+/// or a movie that brings its sound alone (MovieParts.sound): one door
+/// for both, the sound's.
+bool importLandsAsSound({
+  required MediaAssetKind? kind,
+  required ImportFileSettings settings,
+}) =>
+    kind == MediaAssetKind.audio ||
+    (kind == MediaAssetKind.video && settings.movieParts == MovieParts.sound);
 
 /// What a row answers before anyone has answered for it — the settings' own
 /// starting answers, and its PLACE's: a movie dropped on a picture row's
@@ -206,7 +257,11 @@ bool importSoundLocked(ImportLayerSpot? spot) => spot is SeCellSpot;
 ///  * 2026-09-16 — the movie default and the size warning both went, by the
 ///    answer above.
 ImportFileSettings seedImportSettings({ImportLayerSpot? spot}) =>
-    ImportFileSettings(sound: spot is! RowFramesSpot);
+    ImportFileSettings(
+      movieParts: spot is RowFramesSpot
+          ? MovieParts.picture
+          : MovieParts.pictureAndSound,
+    );
 
 /// Whether the bake question has one answer: frames dropped on a row are
 /// that row's own pixels (08-14 「셀에 떨어뜨리면 항상 굽기」), and an
@@ -250,8 +305,15 @@ ImportFileSettings resolvedImportSettings(
   ImportLayerSpot? spot,
 }) {
   final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;
+  final movieParts = importMovieParts(settings.movieParts, spot);
+  // A bake is a PICTURE's answer: a movie that brings its sound alone
+  // places none, so a bake pressed before 「소리만」 does not stand.
   final bake =
       importBakeAllowed(kind: kind, placing: placing) &&
+      !importLandsAsSound(
+        kind: kind,
+        settings: settings.copyWith(movieParts: movieParts),
+      ) &&
       (settings.bake ||
           importBakeLocked(
             isPsd: isPsd,
@@ -284,7 +346,7 @@ ImportFileSettings resolvedImportSettings(
     into: into,
     fit: fit,
     psd: psd,
-    sound: importSoundLocked(spot) || settings.sound,
+    movieParts: movieParts,
   );
 }
 
@@ -318,3 +380,11 @@ String importPsdLabel(PsdPlaceMode mode) => switch (mode) {
 
 String importOnOffLabel(bool on) =>
     on ? AppText.strings.commonOn : AppText.strings.commonOff;
+
+/// The 「소리」 column's three answers: its 끔 and 켬 as they always read,
+/// and the sound alone.
+String importMoviePartsLabel(MovieParts parts) => switch (parts) {
+  MovieParts.picture => importOnOffLabel(false),
+  MovieParts.pictureAndSound => importOnOffLabel(true),
+  MovieParts.sound => AppText.strings.imSoundOnly,
+};

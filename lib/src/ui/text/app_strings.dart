@@ -1363,6 +1363,7 @@ enum AppStrings {
   String get imModeReference => _s('imModeReference');
   String get imBake => _s('imBake');
   String get imSound => _s('imSound');
+  String get imSoundOnly => _s('imSoundOnly');
   String get commonOn => _s('commonOn');
   String get commonOff => _s('commonOff');
   String get imFitContain => _s('imFitContain');
@@ -2442,6 +2443,7 @@ enum AppStrings {
     'imModeReference': 'Link',
     'imBake': 'Rasterize',
     'imSound': 'Sound',
+    'imSoundOnly': 'Sound only',
     'commonOn': 'On',
     'commonOff': 'Off',
     'imFitContain': 'Keep aspect',
@@ -3684,6 +3686,7 @@ enum AppStrings {
     'imModeReference': 'リンク',
     'imBake': 'ラスタライズ',
     'imSound': '音',
+    'imSoundOnly': '音のみ',
     'commonOn': 'オン',
     'commonOff': 'オフ',
     'imFitContain': 'アスペクト維持',
@@ -5025,6 +5028,7 @@ enum AppStrings {
     'imModeReference': '참조',
     'imBake': '굽기',
     'imSound': '소리',
+    'imSoundOnly': '소리만',
     'commonOn': '켬',
     'commonOff': '끔',
     'imFitContain': '비율 유지',
@@ -6443,6 +6447,7 @@ enum AppStrings {
     'imModeReference': 'Lier',
     'imBake': 'Pixelliser',
     'imSound': 'Son',
+    'imSoundOnly': 'Son seul',
     'commonOn': 'Oui',
     'commonOff': 'Non',
     'imFitContain': 'Proportions',
@@ -7736,6 +7741,7 @@ enum AppStrings {
     'imModeReference': '链接',
     'imBake': '栅格化',
     'imSound': '声音',
+    'imSoundOnly': '仅声音',
     'commonOn': '开',
     'commonOff': '关',
     'imFitContain': '保持比例',

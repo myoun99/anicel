@@ -563,8 +563,9 @@ class ProjectImportDoors {
   /// does — kept as a REFERENCE when the window's bake is off (one cel over
   /// the span, decoded when it is shown), baked into cels when it is on or
   /// when the drop was a picture row's frames (「프레임 영역은 늘
-  /// 굽는다」) — and its SOUND, when [withSound] asks and the movie has
-  /// one, lands on the SE rows by the sound's own law, starting where the
+  /// 굽는다」) — and its SOUND, when the 「소리」 answer
+  /// ([ImportFileSettings.movieParts]) brings it and the movie has one,
+  /// lands on the SE rows by the sound's own law, starting where the
   /// picture starts (「같은 시작 · 같은 구간」). One undo step for the pair;
   /// after that they are two blocks (「짝 = 따로따로」).
   ///
@@ -582,6 +583,21 @@ class ProjectImportDoors {
     /// Where [path] was cut from — see [importImageFile]'s.
     String? sourcePath,
   }) async {
+    // 🗣️유저 2026-09-27: 「소리만 임포트 … 고를수있게」 — a movie that brings
+    // its sound ALONE lands the way a sound does, through the sound's own
+    // door: its SE rows, its trim, and the ONE pool entry the pair shares
+    // (the door keeps a movie's kind for it). Asked here, so every caller
+    // of this door gets the same answer.
+    if (settings.movieParts == MovieParts.sound) {
+      return importSoundFile(
+        path: path,
+        copyIntoProject: settings.mode == ImportFileMode.keepInside,
+        inFrame: settings.inFrame,
+        outFrame: settings.outFrame,
+        spot: spot,
+        sourcePath: sourcePath,
+      );
+    }
     // The destination gate runs BEFORE the movie opens — a refused import
     // must not have a document to leak.
     final gate = _landing.arriveAt(settings.into, path: path, spot: spot);
@@ -610,7 +626,7 @@ class ProjectImportDoors {
       // The conform answers whether there is a sound at all — the one the
       // sound's playback will read.
       final withMovieSound =
-          settings.sound &&
+          settings.movieParts == MovieParts.pictureAndSound &&
           await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
               null;
       await _pool.holdCarriedBytes([asset]);
