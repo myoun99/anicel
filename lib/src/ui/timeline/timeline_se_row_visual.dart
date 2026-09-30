@@ -593,29 +593,48 @@ class _SeNameBox extends StatelessWidget {
     // dark ink writing carrying the contrast. Writing follows the strip:
     // upright glyph stack on the row strip, horizontal on the X-sheet
     // band. Same tint on the printed sheet.
+    final box = Semantics(
+      label: 'SE name $name',
+      // Own node even where an ancestor would merge labels (the dialog
+      // preview) — tests and screen readers address the box directly.
+      container: true,
+      child: ColoredBox(
+        // R6-②: soft accent tint (the full-strength accent read too loud);
+        // dark ink writing carries the contrast — matches the sheet.
+        color: AppColors.accent.withValues(alpha: 0.3),
+        child: _word(),
+      ),
+    );
+    return alongBox(axis, extent, child: box);
+  }
+
+  /// The name written in the chip: down it on the row strip, along it on
+  /// the X-sheet band.
+  ///
+  /// R10 R6: the vertical arm was its own glyph stack, so an SE name with a
+  /// long vowel or a bracket — `ドアー`, `[SE]` — kept those glyphs lying the
+  /// wrong way while the timesheet beside it rotated them. It reads the one
+  /// shared table now.
+  ///
+  /// 유저 2026-08-24 (F-27): 「se블록의 이름이 세로쓰기세로표기 인거같은데,
+  /// 가로쓰기 세로표기가 되도록. x시트는 그대로 냅둠」 — the two readings the
+  /// user named on 2026-08-08 ([VerticalLatinForm]): the SCREEN block stands
+  /// its Latin up, and the PRINT timesheet keeps the Japanese typesetting
+  /// default. The X-sheet arm is the line branch, so it is untouched by
+  /// construction rather than by an exception.
+  ///
+  /// A LONG name stays inside the chip instead of overflowing the row (the
+  /// striped-error report — R4 improvement 2) — by the block-word law now
+  /// (B, 유저 2026-09-24: 「se텍스트든 뭐든」): it keeps its type and narrows,
+  /// each axis on its own, into the chip. ↩️It shrank WHOLE into the chip
+  /// (`FittedBox.scaleDown`), height with width.
+  Widget _word() {
     const style = TextStyle(
       color: timelineDrawingInkColor,
       fontSize: 9,
       fontWeight: FontWeight.bold,
       height: 1.05,
     );
-    // R10 R6: the vertical arm was its own glyph stack, so an SE name with
-    // a long vowel or a bracket — `ドアー`, `[SE]` — kept those glyphs lying
-    // the wrong way while the timesheet beside it rotated them. It reads
-    // the one shared table now.
-    //
-    // 유저 2026-08-24 (F-27): 「se블록의 이름이 세로쓰기세로표기 인거같은데,
-    // 가로쓰기 세로표기가 되도록. x시트는 그대로 냅둠」 — the two readings
-    // the user named on 2026-08-08 ([VerticalLatinForm]): the SCREEN block
-    // stands its Latin up, and the PRINT timesheet keeps the Japanese
-    // typesetting default. The X-sheet arm below is the line branch, so it
-    // is untouched by construction rather than by an exception.
-    //
-    // A LONG name stays inside the chip instead of overflowing the row (the
-    // striped-error report — R4 improvement 2) — by the block-word law now
-    // (B, 유저 2026-09-24: 「se텍스트든 뭐든」): it keeps its type and
-    // narrows, each axis on its own, into the chip. ↩️It shrank WHOLE into
-    // the chip (`FittedBox.scaleDown`), height with width.
     final place = (
       axis: axis,
       cells: 1,
@@ -623,7 +642,7 @@ class _SeNameBox extends StatelessWidget {
       growth: TimelineBlockWordGrowth.towardBlockEnd,
       acrossAlignment: 0.0,
     );
-    final word = ExcludeSemantics(
+    return ExcludeSemantics(
       child: axis == Axis.horizontal
           ? TimelineBlockColumn(
               text: name,
@@ -634,19 +653,6 @@ class _SeNameBox extends StatelessWidget {
             )
           : TimelineBlockText(text: name, style: style, place: place),
     );
-    final box = Semantics(
-      label: 'SE name $name',
-      // Own node even where an ancestor would merge labels (the dialog
-      // preview) — tests and screen readers address the box directly.
-      container: true,
-      child: ColoredBox(
-        // R6-②: soft accent tint (the full-strength accent read too loud);
-        // dark ink writing carries the contrast — matches the sheet.
-        color: AppColors.accent.withValues(alpha: 0.3),
-        child: word,
-      ),
-    );
-    return alongBox(axis, extent, child: box);
   }
 }
 
