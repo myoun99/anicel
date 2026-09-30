@@ -24,6 +24,7 @@ void main() {
     double roundness = 1,
     double angleDegrees = 0,
     BrushTipMask? tipMask,
+    double edgeWidth = 0,
   }) => (
     size: size,
     hardness: hardness,
@@ -31,6 +32,7 @@ void main() {
     angleDegrees: angleDegrees,
     tipShape: BrushTipShape.round,
     tipMask: tipMask,
+    edgeWidth: edgeWidth,
   );
 
   group('what the geometry decides once, before the pixel loop', () {
@@ -121,6 +123,56 @@ void main() {
       final atRim = analyticRoundTipCoverage(tip, 10, 0);
       expect(atRim, 1.0);
       expect(atRim.isFinite, isTrue);
+    });
+  });
+
+  // I-50 (유저 2026-09-30 「경도와 따로 — 단계마다 고정 폭」): the anti-alias
+  // step gives a round tip an edge at least its width wide, INSIDE the rim.
+  group('the anti-alias edge', () {
+    test('it pulls the hard radius in and leaves the rim where it was', () {
+      final tip = brushTipGeometry(round(edgeWidth: 2));
+      expect(tip.radius, 10, reason: 'the rim is the thickness that holds');
+      expect(tip.hardRadius, 8);
+      expect(analyticRoundTipCoverage(tip, 7.9, 0), 1.0);
+      expect(analyticRoundTipCoverage(tip, 9, 0), closeTo(0.5, 1e-12));
+      expect(analyticRoundTipCoverage(tip, 10.01, 0), 0.0);
+    });
+
+    test('a hardness ramp wider than the step stands to the bit', () {
+      final plain = brushTipGeometry(round(hardness: 0.5));
+      final stepped = brushTipGeometry(round(hardness: 0.5, edgeWidth: 2.75));
+      expect(stepped.hardRadius, plain.hardRadius);
+      for (var d = 0.0; d <= 10.5; d += 0.25) {
+        expect(
+          analyticRoundTipCoverage(stepped, d, 0),
+          analyticRoundTipCoverage(plain, d, 0),
+          reason: 'at $d',
+        );
+      }
+    });
+
+    test('it moves continuously with hardness — no jump where the two '
+        'ramps trade places', () {
+      var previous = brushTipGeometry(round(hardness: 0.5, edgeWidth: 2.75));
+      for (var h = 0.501; h <= 1.0; h += 0.001) {
+        final tip = brushTipGeometry(round(hardness: h, edgeWidth: 2.75));
+        expect(tip.hardRadius, greaterThanOrEqualTo(previous.hardRadius));
+        expect(
+          tip.hardRadius - previous.hardRadius,
+          lessThanOrEqualTo(0.001 * 10 + 1e-9),
+          reason: 'at hardness $h',
+        );
+        previous = tip;
+      }
+    });
+
+    test('a tip smaller than its edge is all edge, full only at its centre',
+        () {
+      final tip = brushTipGeometry(round(size: 4, edgeWidth: 2.75));
+      expect(tip.hardRadius, 0.0, reason: 'never past the centre');
+      expect(analyticRoundTipCoverage(tip, 0, 0), 1.0);
+      expect(analyticRoundTipCoverage(tip, 1, 0), closeTo(0.5, 1e-12));
+      expect(analyticRoundTipCoverage(tip, 2.01, 0), 0.0);
     });
   });
 

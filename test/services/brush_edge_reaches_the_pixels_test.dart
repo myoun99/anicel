@@ -1,9 +1,10 @@
 // THE EDGE SETTING REACHES THE PIXELS, AND IT LANDS BEFORE THE TEXTURES.
 //
-// The enum's own arithmetic is pinned in `brush_anti_alias_test.dart`. What
-// is pinned HERE is that a dab carrying it actually rasterizes differently
-// — a setting that only travels through the model is a setting that does
-// nothing.
+// The law's own arithmetic is pinned in `brush_edge_law_test.dart` and the
+// round tip's geometry in `the_analytic_tip_is_one_law_test.dart`. What is
+// pinned HERE is that a dab carrying the step actually rasterizes
+// differently — a setting that only travels through the model is a setting
+// that does nothing.
 //
 // ⚠️These run the REFERENCE path (`brushPixelCoveragesForDab`). The tile
 // kernel and the C kernel are the other two transcriptions of the same
@@ -61,39 +62,52 @@ void main() {
     expect(softPixels(BrushAntiAlias.none), isEmpty);
   });
 
-  test('3단계 has a soft ring, and each step down thins it', () {
+  test('🚨a HARD nib gets a soft ring, and each step up widens it', () {
+    // I-50 (「aa 값이 3인데도 너무 약함」): a hardness-100% nib has no ramp of
+    // its own, so a ladder on its ramp drew the same staircase at every
+    // step. The step now gives it the edge.
     final counts = [
-      softPixels(BrushAntiAlias.high).length,
-      softPixels(BrushAntiAlias.medium).length,
-      softPixels(BrushAntiAlias.low).length,
-      softPixels(BrushAntiAlias.none).length,
+      for (final step in BrushAntiAlias.values)
+        softPixels(step, hardness: 1).length,
     ];
-    expect(counts.first, greaterThan(0), reason: 'the soft ring exists');
+    expect(counts.first, 0, reason: '없음');
     for (var i = 1; i < counts.length; i += 1) {
       expect(
         counts[i],
-        lessThanOrEqualTo(counts[i - 1]),
-        reason: 'step $i must not be softer than the one before it',
+        greaterThan(counts[i - 1]),
+        reason: '${BrushAntiAlias.values[i]} must be softer than the step '
+            'before it',
       );
     }
-    expect(counts.last, 0);
   });
 
-  test('🚨the stroke does NOT get thinner — the painted footprint holds', () {
-    // 유저: 「굵기 안바꾸고 가장자리만 조이는거였어」. Measured as the count of
-    // pixels the eye reads as inside: coverage at or above a half.
-    int solidish(BrushAntiAlias step) =>
-        brushPixelCoveragesForDab(dab(antiAlias: step))
-            .where((c) => c.coverage >= 0.5)
-            .length;
-    final base = solidish(BrushAntiAlias.high);
+  test('🚨the rim holds — no step paints a pixel the hard nib does not', () {
+    // ↩️「굵기 안바꾸고」 was pinned here as the half-coverage footprint. Clip
+    // Studio's own lines said the rim is what holds (board I-50): the ramp
+    // grows inward, so the footprint is the same at every step.
+    Set<(int, int)> footprint(BrushAntiAlias step) => {
+      for (final c in brushPixelCoveragesForDab(
+        dab(antiAlias: step, hardness: 1),
+      ))
+        if (c.coverage > 0.0) (c.x, c.y),
+    };
+    final hard = footprint(BrushAntiAlias.none);
+    expect(hard, isNotEmpty, reason: 'premise');
     for (final step in BrushAntiAlias.values) {
-      expect(
-        solidish(step),
-        base,
-        reason: '$step moved the half-coverage footprint',
-      );
+      expect(footprint(step), hard, reason: '$step');
     }
+  });
+
+  test('a soft tip\'s own ramp is wider than any step, and stands at every '
+      'step but 없음', () {
+    List<double> coverages(BrushAntiAlias step) => [
+      for (final c in brushPixelCoveragesForDab(dab(antiAlias: step)))
+        c.coverage,
+    ];
+    final high = coverages(BrushAntiAlias.high);
+    expect(high.where((c) => c > 0.0 && c < 1.0), isNotEmpty);
+    expect(coverages(BrushAntiAlias.medium), high);
+    expect(coverages(BrushAntiAlias.low), high);
   });
 
   test('⛔the edge is cut BEFORE the paper texture, so the texture inside '

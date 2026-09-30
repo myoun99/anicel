@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../models/brush_anti_alias.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/brush_tip_shape.dart';
@@ -73,7 +74,15 @@ class BrushTipStampCache {
     );
     final angleQ = ((dab.angleDegrees.round() % 360) + 360) % 360;
     final tipId = sourceTip?.id ?? 'analytic:${dab.tipShape.name}';
-    final key = '$resolvedIdPrefix$tipId|$sizeQ|$hardnessQ|$roundnessQ|$angleQ';
+    // I-50: an analytic ROUND tip's stamp carries the anti-alias step's edge
+    // ([brushTipGeometry]), so the step is part of what the stamp is; every
+    // other tip's step applies after sampling, as before.
+    final bakedStep = sourceTip == null && dab.tipShape == BrushTipShape.round
+        ? dab.antiAlias
+        : null;
+    final step = bakedStep == null ? '' : '|${bakedStep.name}';
+    final key =
+        '$resolvedIdPrefix$tipId|$sizeQ|$hardnessQ|$roundnessQ|$angleQ$step';
 
     var mask = _masks.remove(key);
     if (mask != null) {
@@ -87,6 +96,7 @@ class BrushTipStampCache {
         hardness: hardnessQ / 128.0,
         roundness: roundnessQ / 128.0,
         angleDegrees: angleQ.toDouble(),
+        bakedStep: bakedStep,
       );
       _masks[key] = mask;
       _bytes += _maskCost(mask);
@@ -140,7 +150,8 @@ class BrushTipStampCache {
   /// per-pixel path would compute at the canvas offset the consumer's
   /// sampler maps that texel to — so consuming the mask through the
   /// existing unrotated bilinear samplers reproduces the tip, with
-  /// rotation/roundness/hardness baked in.
+  /// rotation/roundness/hardness baked in — and, given [bakedStep], that
+  /// anti-alias step's edge (I-50).
   BrushTipMask _render({
     required String key,
     required BrushTipMask? sourceTip,
@@ -149,6 +160,7 @@ class BrushTipStampCache {
     required double hardness,
     required double roundness,
     required double angleDegrees,
+    required BrushAntiAlias? bakedStep,
   }) {
     final radius = size / 2.0;
     // ≈1 texel per canvas pixel, CAPPED for huge brushes (R21): a 1000px
@@ -171,6 +183,7 @@ class BrushTipStampCache {
       angleDegrees: angleDegrees,
       tipShape: tipShape,
       tipMask: sourceTip,
+      edgeWidth: bakedStep?.edgeWidth ?? 0.0,
     ));
 
     // The consumer maps texel i to tip-space (canvas-offset) coordinates
@@ -202,6 +215,11 @@ class BrushTipStampCache {
         alpha[index] = (coverage * 255.0).round().clamp(0, 255);
       }
     }
-    return BrushTipMask(id: key, size: maskSize, alpha: alpha);
+    return BrushTipMask(
+      id: key,
+      size: maskSize,
+      alpha: alpha,
+      edgeBaked: bakedStep != null,
+    );
   }
 }

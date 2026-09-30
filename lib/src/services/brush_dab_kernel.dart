@@ -4,7 +4,6 @@ import 'dart:typed_data';
 
 import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
-import '../models/brush_anti_alias.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/separable_blend_mode.dart';
@@ -132,12 +131,13 @@ class BrushDabPlan {
   final double centerX;
   final double centerY;
 
-  /// The edge step, hoisted out of the pixel loop (see [BrushAntiAlias]).
+  /// The edge step, hoisted out of the pixel loop ([brushDabEdgeLaw]).
   /// [aaThreshold] is 없음 — a hard cut at half coverage; otherwise
   /// [aaContrast] scales the ramp about 0.5, and 1.0 leaves it alone.
-  /// ⛔TWO FIELDS FOR ONE ENUM ON PURPOSE: this is the per-pixel form of
-  /// [BrushAntiAlias.applyTo], derived once here so the loop needs no
-  /// switch. The enum stays the definition.
+  /// ⛔TWO FIELDS FOR ONE LAW ON PURPOSE: this is the per-pixel form of
+  /// [brushEdgeApplied], derived once here so the loop needs no switch.
+  /// ↩️It was the anti-alias step's own `applyTo` until I-50 made the answer
+  /// depend on the tip as well as the step.
   final bool aaThreshold;
   final double aaContrast;
   final double radius;
@@ -219,6 +219,7 @@ class BrushDabPlan {
       :tipSin,
       :inverseRoundness,
     ) = brushDabTipGeometry(dab);
+    final edge = brushDabEdgeLaw(dab);
     final centerX = dab.center.x;
     final centerY = dab.center.y;
 
@@ -265,8 +266,8 @@ class BrushDabPlan {
       radius: radius,
       hardRadius: hardRadius,
       edgeSpan: radius - hardRadius,
-      aaThreshold: dab.antiAlias == BrushAntiAlias.none,
-      aaContrast: dab.antiAlias.contrast ?? 1.0,
+      aaThreshold: edge.threshold,
+      aaContrast: edge.contrast,
       minorRadius: minorRadius,
       radiusSqSkip: radius * radius * (1.0 + 1e-12),
       tipCos: tipCos,

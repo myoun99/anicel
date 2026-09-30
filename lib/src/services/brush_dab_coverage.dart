@@ -34,6 +34,7 @@ void forEachBrushPixelCoverage(
   }
 
   final tip = brushDabTipGeometry(dab);
+  final edge = brushDabEdgeLaw(dab);
   final tipMask = tip.tipMask;
   final isRound = tip.isRound;
 
@@ -113,7 +114,7 @@ void forEachBrushPixelCoverage(
       // The brush's own EDGE, ahead of the tiled masks — the same place and
       // the same arithmetic as `blendDabTilesDart`, which is what makes this
       // a reference for it rather than a second opinion.
-      coverage = dab.antiAlias.applyTo(coverage);
+      coverage = brushEdgeApplied(edge, coverage);
       if (coverage <= 0.0) {
         continue;
       }

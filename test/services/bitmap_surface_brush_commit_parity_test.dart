@@ -345,12 +345,27 @@ void main() {
       // 🧪Measured 2026-09-08: `+ 0.5` -> `+ 0.6` in the C kernel alone,
       // rebuilt, and this went red on `edge step low` — so the C really is
       // what the C route runs.
+      //
+      // I-50: the hard nib and the near-hard ellipse are the tips whose edge
+      // the step WIDENS (the step pulls the hard radius in); the soft two
+      // keep their own ramp.
       for (final step in BrushAntiAlias.values) {
         expectParity(
           surface: blankSurface(),
           sequence: strokeOf([
             dab(x: 40, y: 40, hardness: 0.0, antiAlias: step),
             dab(x: 80, y: 40, hardness: 0.6, antiAlias: step, sequence: 1),
+            dab(x: 120, y: 40, hardness: 1.0, antiAlias: step, sequence: 2),
+            dab(
+              x: 160.3,
+              y: 40.6,
+              size: 17,
+              hardness: 0.95,
+              roundness: 0.55,
+              angleDegrees: 30,
+              antiAlias: step,
+              sequence: 3,
+            ),
           ]),
           reason: 'edge step ${step.name}',
         );
