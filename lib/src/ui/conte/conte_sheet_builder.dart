@@ -149,9 +149,8 @@ ConteCameraWork? _cameraWorkIn(
     return null;
   }
   final frames = cameraFramesShown(
-    cut.camera,
-    canvasSize: cut.canvasSize,
-    cameraFrameSize: cameraFrameSize,
+    cut,
+    cameraFrameSize,
     first: conteStart + cell.startIndex,
     last: conteStart + cell.endIndexExclusive - 1,
   );

@@ -7,7 +7,7 @@ import '../core/point_bounds.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
-import '../models/cut_camera.dart';
+import '../models/cut.dart';
 import 'camera_pose_resolver.dart';
 import 'camera_projection_matrix.dart';
 
@@ -64,9 +64,9 @@ List<({int frameIndex, List<Offset> corners})> cameraKeyFrames(
   ];
 }
 
-/// The camera's frame from frame [first] to frame [last] as playback shows
-/// it ([resolveCameraPoseAt]): at [first], at each key after it, and at
-/// [last] — in frame order. What a stretch of the camera's path is drawn
+/// [cut]'s camera frame from frame [first] to frame [last] as playback
+/// shows it ([resolveCameraPoseAt]): at [first], at each key after it, and
+/// at [last] — in frame order. What a stretch of the camera's path is drawn
 /// from (유저 2026-10-01, H54: 「카메라 움직임을 키 기준으로 생각하는게
 /// 아니라, 제대로 보여지는 카메라대로 … 그 블록 안에서 일어나는 카메라를
 /// 기록」). ↩️It was the keys inside the stretch alone, so a stretch a move
@@ -76,9 +76,8 @@ List<({int frameIndex, List<Offset> corners})> cameraKeyFrames(
 /// left the camera in, held — IS that key's frame, never a second frame
 /// over it (유저 확인 10-01).
 List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
-  CutCamera camera, {
-  required CanvasSize canvasSize,
-  required CanvasSize cameraFrameSize,
+  Cut cut,
+  CanvasSize cameraFrameSize, {
   required int first,
   required int last,
 }) {
@@ -86,15 +85,15 @@ List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
     frameIndex: frameIndex,
     corners: cameraFrameCornersInCanvas(
       pose: resolveCameraPoseAt(
-        camera: camera,
-        canvasSize: canvasSize,
+        camera: cut.camera,
+        canvasSize: cut.canvasSize,
         frameIndex: frameIndex,
       ),
       cameraFrameSize: cameraFrameSize,
     ),
   );
   final keys = cameraKeyFrames(
-    camera.keyframes,
+    cut.camera.keyframes,
     cameraFrameSize,
     from: first,
     toExclusive: last + 1,
