@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 /// Whether the key bound to 「이동」 is held (I-15).
 ///
@@ -12,4 +12,27 @@ import 'package:flutter/foundation.dart';
 /// Written only by the shell's held keys (`EditorKeyHolds`).
 abstract final class CanvasPanHold {
   static final ValueNotifier<bool> held = ValueNotifier<bool>(false);
+}
+
+/// While 「이동」 is held, [child] takes no pointer and the hand says what a
+/// press will do — every tool under it stands down for the pan at once.
+///
+/// The canvas's deck and every panel that pans the canvas's way (R26 #34)
+/// stand down through this one gate; the pan itself is heard ABOVE it, by a
+/// translucent listener that still receives the press.
+class PanHoldGate extends StatelessWidget {
+  const PanHoldGate({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+    valueListenable: CanvasPanHold.held,
+    builder: (context, held, deck) => MouseRegion(
+      opaque: false,
+      cursor: held ? SystemMouseCursors.grab : MouseCursor.defer,
+      child: IgnorePointer(ignoring: held, child: deck),
+    ),
+    child: child,
+  );
 }

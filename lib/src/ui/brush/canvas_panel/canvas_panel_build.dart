@@ -135,15 +135,8 @@ class _PanelBuild {
   /// behind the pan hold's gate (I-15): while the 「이동」 key is held the
   /// deck takes no pointer at all, so every tool stands down for the pan at
   /// once, and the hand says what a press will do.
-  Widget _cursorDeck(BuildContext context) => ValueListenableBuilder<bool>(
-    valueListenable: CanvasPanHold.held,
-    builder: (context, held, deck) => MouseRegion(
-      opaque: false,
-      cursor: held ? SystemMouseCursors.grab : MouseCursor.defer,
-      child: IgnorePointer(ignoring: held, child: deck),
-    ),
-    child: _toolDeck(context),
-  );
+  Widget _cursorDeck(BuildContext context) =>
+      PanHoldGate(child: _toolDeck(context));
 
   /// The deck — underlay, canvas, overlay, the tap layer, the tool cursors,
   /// the selection layer and the idle ants.

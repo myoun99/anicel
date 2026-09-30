@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../input/panel_pan.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_beat_lines.dart';
 
@@ -44,13 +45,20 @@ class TimelineGridShell extends StatelessWidget {
       framesPerSecond: framesPerSecond,
       child: StylusGlideStop(
         controllers: controllers,
-        // PEN-12 #7: no overscroll stretch/glow — the painterized ruler
-        // and rails mirror the offset and cannot stretch with the cells,
-        // so Android's stretch tore the two apart at the edges. A hard
-        // clamp matches the desktop feel everywhere.
-        child: ScrollConfiguration(
-          behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
-          child: child,
+        // R26 #34: the canvas's pan — Space held, a button 「손바닥」 —
+        // moves the grid too ([PanelPanDriver]).
+        child: PanelPanDriver(
+          controllers: controllers,
+          // PEN-12 #7: no overscroll stretch/glow — the painterized ruler
+          // and rails mirror the offset and cannot stretch with the cells,
+          // so Android's stretch tore the two apart at the edges. A hard
+          // clamp matches the desktop feel everywhere.
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(overscroll: false),
+            child: child,
+          ),
         ),
       ),
     );

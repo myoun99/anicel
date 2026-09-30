@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -1171,6 +1172,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         HitTestBehavior
                                                             .translucent,
                                                     onPointerDown: (event) {
+                                                      // R26 #34: a press that
+                                                      // pans is the pan's.
+                                                      if (canvasPressPans(
+                                                        canvasPressButtons(
+                                                          event,
+                                                        ),
+                                                      )) {
+                                                        return;
+                                                      }
                                                       _rulerScrub.resetTracking();
                                                       _rulerScrub.pressAt(
                                                         event.position,

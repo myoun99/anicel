@@ -25,6 +25,7 @@ import '../models/timeline_coverage.dart'
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_transform_lane_carrier.dart';
+import 'canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import 'canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
@@ -79,6 +80,7 @@ import 'timeline/layer_row_drag.dart'
         layerRowDragChips;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
+import 'input/panel_pan.dart';
 import 'input/scroller_press_hold.dart';
 import 'timeline/transform_lane_policy.dart'
     show laneSelectionCoversBandRow, transformGroupHeader;
@@ -1537,7 +1539,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return TimelineGridLaw(
       ground: Theme.of(context).colorScheme.surface,
       framesPerSecond: _countingFps,
-      child: ValueListenableBuilder<double?>(
+      // R26 #34: the canvas's pan moves the conte panel too, through the
+      // timeline grids' one driver.
+      child: PanelPanDriver(
+        controllers: [_verticalController, _horizontalController],
+        child: ValueListenableBuilder<double?>(
         valueListenable: _railRows._railExtent,
         builder: (context, _, child) => LayoutBuilder(
           builder: (context, constraints) {
@@ -1600,6 +1606,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             );
           },
         ),
+      ),
       ),
     );
   }
@@ -2444,6 +2451,10 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
       key: const ValueKey<String>('storyboard-ruler'),
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
+        // R26 #34: a press that pans is the pan's, not a scrub.
+        if (canvasPressPans(canvasPressButtons(event))) {
+          return;
+        }
         _resetScrubTracking();
         _scrubAtGlobal(event.position);
       },

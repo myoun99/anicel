@@ -1,3 +1,4 @@
+import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../widgets/empty_state_text.dart';
 import '../widgets/tick_layer.dart';
 import 'dart:math' as math;
@@ -767,6 +768,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       key: const ValueKey<String>('xsheet-frame-rail-scrub-area'),
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
+        // R26 #34: a press that pans is the pan's, not a scrub.
+        if (canvasPressPans(canvasPressButtons(event))) {
+          return;
+        }
         _railScrub.resetTracking();
         _railScrub.pressAt(event.position);
       },
