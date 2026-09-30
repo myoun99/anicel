@@ -19,6 +19,7 @@ import '../../models/timeline_coverage.dart';
 import '../../models/transition_geometry.dart'
     show TransitionVeil, cutTransitionVeilsAt;
 import '../../services/brush_frame_store.dart' show CelRead;
+import '../../models/composite_tree.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
@@ -258,15 +259,17 @@ class ExportFrameRenderer {
     int frameIndex, {
     required int width,
     ui.Rect? region,
-  }) {
+  }) async {
     final view = pictureView(
       _viewFor(cut, frameIndex, ExportSizeMode.camera),
       region,
     );
     _startFrame();
-    return _composite(
-      ExportFrameTask(cut: cut, frameIndex: frameIndex),
-      view,
+    await _hydrate(cut, frameIndex);
+    return renderService.renderThroughCamera(
+      nodes: _nodesFor(ExportFrameTask(cut: cut, frameIndex: frameIndex)),
+      pose: view.pose,
+      cameraFrameSize: view.frameSize,
       outputSize: view.frameSize.scaledToWidth(width),
       displayLevels: true,
     );
@@ -291,25 +294,14 @@ class ExportFrameRenderer {
     CameraView view, {
     CanvasSize? outputSize,
     bool withNameTags = false,
-    bool displayLevels = false,
   }) async {
     final cut = task.cut;
     await _hydrate(cut, task.frameIndex);
     return renderService.renderThroughCamera(
-      // The rows' own fx switches apply here too (AE semantics: the layer
-      // fx switch affects the render) — WYSIWYG with playback. They live on
-      // the layers now (R8), so the dialog's 'Apply layer FX' master toggle
-      // is expressed by rendering an FX-STRIPPED VIEW of the cut rather
-      // than by threading an override through the plan.
-      nodes: planCutFrameCompositeTree(
-        cut: _cutForRender(cut),
-        frameIndex: task.frameIndex,
-        surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
-      ),
+      nodes: _nodesFor(task),
       pose: view.pose,
       cameraFrameSize: view.frameSize,
       outputSize: outputSize,
-      displayLevels: displayLevels,
       overlayPass: !withNameTags
           ? null
           : (canvas) {
@@ -324,6 +316,19 @@ class ExportFrameRenderer {
             },
     );
   }
+
+  /// [task]'s composite tree. The rows' own fx switches apply here too (AE
+  /// semantics: the layer fx switch affects the render) — WYSIWYG with
+  /// playback. They live on the layers now (R8), so the dialog's 'Apply
+  /// layer FX' master toggle is expressed by rendering an FX-STRIPPED VIEW
+  /// of the cut rather than by threading an override through the plan.
+  List<CompositeNode<CutFrameCompositeLayer>> _nodesFor(
+    ExportFrameTask task,
+  ) => planCutFrameCompositeTree(
+    cut: _cutForRender(task.cut),
+    frameIndex: task.frameIndex,
+    surfaceResolver: (layer, frame) => _surfaceFor(task.cut, layer, frame),
+  );
 
   /// The BACKDROP ground (R3b) under a video frame — and nothing at all
   /// when [preserveAlpha].

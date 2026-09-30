@@ -394,8 +394,12 @@ Future<PositionedSurfaceImage> _halved(
   for (var step = 0; step < level; step += 1) {
     final size = halvedSize(image.width, image.height);
     final picture = halvingPicture([(image: image, at: ui.Offset.zero)]);
-    final halved = await picture.toImage(size.width, size.height);
-    picture.dispose();
+    final ui.Image halved;
+    try {
+      halved = await picture.toImage(size.width, size.height);
+    } finally {
+      picture.dispose();
+    }
     image.dispose();
     image = halved;
   }
