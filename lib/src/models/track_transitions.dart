@@ -161,7 +161,18 @@ Layer transitionRowFollowingItsCuts({
 CutTransitionHandles cutTransitionHandlesIn(Project project, CutId cutId) =>
     _handlesOfOne(project, cutId)?.handles ?? CutTransitionHandles.none;
 
-({Cut cut, CutTransitionHandles handles})? _handlesOfOne(
+/// The track frame [cutId]'s OWN frame 0 shows: its conte start, less the
+/// のりしろ an O.L arriving into it asks. The arriving cut's material starts
+/// that much early — 08-09's settled form, and 08-11's 「`localFrameIndex =
+/// global − media.start` 는 그 규약의 정확한 구현이다」 (메모리
+/// `cut-ol-design.md`) — so a frame of the cut's own is this plus its index.
+/// Null when no track holds [cutId].
+int? cutMediaStartFrame(Project project, CutId cutId) {
+  final found = _handlesOfOne(project, cutId);
+  return found == null ? null : found.start - found.handles.head;
+}
+
+({Cut cut, int start, CutTransitionHandles handles})? _handlesOfOne(
   Project project,
   CutId cutId,
 ) {
@@ -170,6 +181,7 @@ CutTransitionHandles cutTransitionHandlesIn(Project project, CutId cutId) =>
       if (placed.cut.id == cutId) {
         return (
           cut: placed.cut,
+          start: placed.startFrame,
           handles: cutTransitionHandles(
             cutStart: placed.startFrame,
             cutEnd: placed.endFrame,

@@ -730,17 +730,14 @@ class EditorVoiceRecording {
   );
 
   /// The playing position on the TRACK-global axis, or null while
-  /// playback is inactive. The all-cuts playlist IS the track axis
-  /// (gaps included); the active-cut playlist is that cut alone, so its
-  /// frames shift by the cut's global start.
+  /// playback is inactive — the run's own answer
+  /// ([CanvasPlaybackController.trackFrameOf]).
   int? _playbackTrackGlobalFrame() {
     final global = playback.globalFrameIndexListenable.value;
     if (global == null) {
       return null;
     }
-    return playback.scope == PlaybackScope.allCuts
-        ? global
-        : activeCutGlobalStartFrame + global;
+    return playback.trackFrameOf(global);
   }
 
   /// Opens the microphone and ROLLS the transport (REC1-B): record =
@@ -960,7 +957,7 @@ class EditorVoiceRecording {
     // stated in it.
     final axisShift =
         playback.isActive && playback.scope == PlaybackScope.activeCut
-        ? activeCutGlobalStartFrame
+        ? playback.trackFrameOf(0)
         : 0;
     final settingsNow = audioSyncSettings.value;
     if (settingsNow.cueBeeps) {

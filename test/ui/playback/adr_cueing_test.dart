@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/playback/recording_streamer_overlay.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/canned_audio_recorder.dart';
 
 /// ADR cueing (REC1-E): the 3-beep countdown into a punch, the streamer
 /// window, and the stopped-⏺ count-in that delays the roll but not the
@@ -69,7 +70,7 @@ void main() {
     manager.selectLayer(laneId);
     manager.selectFrameIndex(0);
     // No range selection at all: the take simply anchors at the roll.
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOfSeconds(1));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
     expect(manager.voiceRecording.voiceRecordCueClips, isEmpty);
@@ -90,7 +91,7 @@ void main() {
       startIndex: 2,
       endIndexExclusive: 6,
     );
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOfSeconds(1));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
     expect(
@@ -120,7 +121,7 @@ void main() {
       startIndex: 4,
       endIndexExclusive: 8,
     );
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(4));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOfSeconds(4));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
     expect(
@@ -148,7 +149,7 @@ void main() {
       startIndex: 13,
       endIndexExclusive: 16,
     );
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(
       // The take must outlast the 13-frame run-up (3.25 s at 4 fps): the
       // punch head-trim eats that much before anything lands.
       takeOfSeconds(4.0),
@@ -194,7 +195,7 @@ void main() {
       startIndex: 13,
       endIndexExclusive: 16,
     );
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOfSeconds(1.0));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(manager.voiceRecording.voiceRecordCueClips, isEmpty);
     expect(manager.voiceRecording.voiceRecordStreamerWindow, isNull);
@@ -211,7 +212,7 @@ void main() {
     );
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(
       takeOfSeconds(2.5), // 2 s of count-in ride the head trim.
     );
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
@@ -248,7 +249,7 @@ void main() {
       startIndex: 13,
       endIndexExclusive: 16,
     );
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOfSeconds(1.0));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -314,7 +315,7 @@ void main() {
         endIndexExclusive: 16,
       );
       manager.voiceRecording.debugVoiceRecorderFactory = () =>
-          _FakeRecorder(takeOfSeconds(4.0));
+          CannedAudioRecorder(takeOfSeconds(4.0));
       expect(
         manager.voiceRecording.startVoiceRecording(),
         VoiceRecordStartResult.started,
@@ -339,31 +340,3 @@ void main() {
 
 /// A microphone stand-in: start always succeeds at the take's rate and
 /// stop hands the prepared take back once.
-class _FakeRecorder extends AudioRecorder {
-  _FakeRecorder(this.recording);
-
-  final AudioRecording recording;
-  bool _started = false;
-
-  @override
-  bool get isRecording => _started;
-
-  @override
-  int start({
-    required int sampleRate,
-    bool useNullBackend = false,
-    int deviceIndex = -1,
-  }) {
-    _started = true;
-    return recording.sampleRate;
-  }
-
-  @override
-  AudioRecording? stop() {
-    if (!_started) {
-      return null;
-    }
-    _started = false;
-    return recording;
-  }
-}

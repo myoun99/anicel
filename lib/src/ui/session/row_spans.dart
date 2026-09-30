@@ -1,12 +1,12 @@
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/storyboard_timeline_layout.dart';
 import '../../models/timeline_frame_range.dart' show exposureBlockAt;
 import '../../models/range_snap.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_frame_axis.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart' show cutMediaStartFrame;
 import '../../services/playback/playback_frame_mapping.dart';
 import '../timeline/instruction_span_editing.dart';
 import 'folder_bands.dart';
@@ -191,17 +191,12 @@ class RowSpans {
   }
 
   /// The GLOBAL frame of [cutId]'s local [frameIndex] on its track's axis
-  /// — what the track-owned lanes are keyed in.
-  int trackGlobalFrameOf(CutId cutId, int frameIndex) {
-    for (final entry in buildStoryboardTimelineLayout(
-      _project.repository.requireProject(),
-    )) {
-      if (entry.cutId == cutId) {
-        return entry.startFrame + frameIndex;
-      }
-    }
-    return frameIndex;
-  }
+  /// — what the track-owned lanes are keyed in. A frame of the cut's OWN
+  /// (the picture's) counts from where its material starts, which is ahead
+  /// of the conte start in a cut an O.L arrives into ([cutMediaStartFrame]).
+  int trackGlobalFrameOf(CutId cutId, int frameIndex) =>
+      (cutMediaStartFrame(_project.repository.requireProject(), cutId) ?? 0) +
+      frameIndex;
 
   /// The multitrack display resolution WITH transitions: every track's
   /// covered cut at [globalFrame], in project track order, and an O.L
