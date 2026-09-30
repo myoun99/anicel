@@ -571,8 +571,8 @@ class CanvasSelectionRegion {
   /// the overwhelming case costs one box test. ⛔Asked at the doors only:
   /// a selection that is merely KEPT, across a walk to a smaller cut, is
   /// not cut (「뭘 하든 안사라지도록」, F-86), and [combine] never asks it,
-  /// because it also folds for callers that are not selections (a sheet
-  /// window's ink, a cut's outline).
+  /// because it also folds for a caller that is not a selection (a sheet
+  /// window's ink region).
   ///
   /// Null when nothing is left — or when what is left selects nothing
   /// ([_noSelectionWhenEmpty]).
