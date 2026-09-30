@@ -25,9 +25,11 @@ import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
+import 'timeline_section_runs.dart' show timelineDisplayRowExtent;
 
 import '../../models/project_frame_rate.dart';
 import '../listenable_rebind.dart';
+import '../widgets/tick_layer.dart';
 
 /// See [TimelineFrameRowsScrollBody.memoAux].
 class TimelineRowMemoAux {
@@ -590,27 +592,36 @@ class _TimelineFrameRowsScrollBodyState
       'timeline-row-${row.layer.id}-${_rowKeySuffix(row)}',
     );
 
-    // RepaintBoundary per row: one row's repaint (ink, hover, drags) never
+    // A layer per row: one row's repaint (ink, hover, drags) never
     // re-rasterizes its neighbours, and the cursor layer above repaints
     // without touching the row layers at all. The gate inside makes an
-    // edge-drag step rebuild exactly this row when it is the drag target.
-    Widget buildGated() => RepaintBoundary(
+    // edge-drag step rebuild exactly this row when it is the drag target —
+    // and 🚨F-244: that rebuild is laid out in the row's OWN scope. A plain
+    // boundary here held the paint in but not the layout: the step rebuilt in
+    // the grid's layout scope, laid it out again and repainted the rows'
+    // viewport around the one row that moved (a drag step is a tick:
+    // [TickLayer], which keeps a layout in only at the row's own size).
+    Widget buildGated() => SizedBox(
       key: rowKey,
-      child: TimelineDragPreviewRowGate(
-        dragPreview: widget.dragPreview,
-        layer: row.layer,
-        slice: row.isLane
-            ? (layer) => laneRowSlice(layer, row.lane!.laneId)
-            : null,
-        // R10: a FOLDER row is a cells row. Its band arrives as the display
-        // clone's own timeline, so it takes the shared painter, the shared
-        // press policy — the playhead can be put on it at last — and the
-        // tile bake, while staying non-editable for free: every edit
-        // affordance below gates on `LayerKind.holdsDrawings`, which a
-        // folder fails.
-        rowBuilder: (context, layer) => row.isLane
-            ? _buildLaneRow(row, layer)
-            : _buildCellsRow(layer, baseLayer: row.layer),
+      width: widget.totalFrameContentWidth,
+      height: timelineDisplayRowExtent(row, widget.metrics),
+      child: TickLayer(
+        child: TimelineDragPreviewRowGate(
+          dragPreview: widget.dragPreview,
+          layer: row.layer,
+          slice: row.isLane
+              ? (layer) => laneRowSlice(layer, row.lane!.laneId)
+              : null,
+          // R10: a FOLDER row is a cells row. Its band arrives as the display
+          // clone's own timeline, so it takes the shared painter, the shared
+          // press policy — the playhead can be put on it at last — and the
+          // tile bake, while staying non-editable for free: every edit
+          // affordance below gates on `LayerKind.holdsDrawings`, which a
+          // folder fails.
+          rowBuilder: (context, layer) => row.isLane
+              ? _buildLaneRow(row, layer)
+              : _buildCellsRow(layer, baseLayer: row.layer),
+        ),
       ),
     );
 

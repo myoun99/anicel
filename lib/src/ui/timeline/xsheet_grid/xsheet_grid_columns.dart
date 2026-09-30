@@ -60,18 +60,24 @@ class _XSheetGridColumns {
     TimelineVirtualizationPlan plan,
     double viewportExtent,
   ) {
-    return RepaintBoundary(
+    // 🚨F-244: a layer of the column's own size, as the horizontal rows have
+    // — a drag step rebuilds the dragged column in ITS scope, not the grid's.
+    return SizedBox(
       key: ValueKey<String>(
         'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
       ),
-      child: TimelineDragPreviewRowGate(
-        dragPreview: _state.widget.hooks.dragPreview,
-        layer: entry.layer,
-        slice: entry.isLane
-            ? (layer) => laneRowSlice(layer, entry.lane!.laneId)
-            : null,
-        rowBuilder: (context, layer) =>
-            _columnFor(entry, layer, frameRange, plan, viewportExtent),
+      width: timelineDisplayRowExtent(entry, _state._metrics),
+      height: plan.totalFrameContentWidth,
+      child: TickLayer(
+        child: TimelineDragPreviewRowGate(
+          dragPreview: _state.widget.hooks.dragPreview,
+          layer: entry.layer,
+          slice: entry.isLane
+              ? (layer) => laneRowSlice(layer, entry.lane!.laneId)
+              : null,
+          rowBuilder: (context, layer) =>
+              _columnFor(entry, layer, frameRange, plan, viewportExtent),
+        ),
       ),
     );
   }
