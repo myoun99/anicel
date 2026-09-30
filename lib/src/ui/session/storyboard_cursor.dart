@@ -202,32 +202,40 @@ class StoryboardCursor {
           return null;
         }
         // D28: with a storyboard layer on the cut, the frame verbs target
-        // the PANEL under the cut-local cursor. A ghost or uncovered cell
-        // (junk the coverage rule merely tolerates) falls back to the cut
-        // block rather than lighting a verb the machinery will refuse
-        // (T25); a cut with NO storyboard layer keeps the old cut-block
-        // law outright.
-        final row = storyboardLayerForCut(cut);
-        if (row != null) {
-          // The storyboard's cursor stands in the CONTE's time; the row's
-          // keys count the cut's frames, which begin earlier in a cut an
-          // O.L arrives into (F-227).
-          final panel = coveringDrawingBlockAt(
-            row.timeline,
-            storyboardConteStart(row.timeline) +
-                _controllers.timelineController.currentFrameIndex,
-          );
-          if (panel != null && !panel.entry.ghost && panel.startIndex >= 0) {
-            return StoryboardCursorStoryboardPanel(
-              cut,
-              row,
-              panel.startIndex,
-              panel.entry.length!,
-            );
-          }
-        }
-        return StoryboardCursorCutBlock(cut);
+        // the PANEL under the cut-local cursor; a cut with NO storyboard
+        // layer keeps the old cut-block law outright.
+        return _panelUnderCursor(cut) ?? StoryboardCursorCutBlock(cut);
     }
+  }
+
+  /// D28: the conte PANEL the cut-local cursor stands on in [cut]'s
+  /// storyboard row. Null without a row — and for a ghost or uncovered
+  /// cell (junk the coverage rule merely tolerates), which falls back to
+  /// the cut block rather than lighting a verb the machinery will refuse
+  /// (T25).
+  ///
+  /// The storyboard's cursor stands in the CONTE's time; the row's keys
+  /// count the cut's frames, which begin earlier in a cut an O.L arrives
+  /// into (F-227).
+  StoryboardCursorStoryboardPanel? _panelUnderCursor(Cut cut) {
+    final row = storyboardLayerForCut(cut);
+    if (row == null) {
+      return null;
+    }
+    final panel = coveringDrawingBlockAt(
+      row.timeline,
+      storyboardConteStart(row.timeline) +
+          _controllers.timelineController.currentFrameIndex,
+    );
+    if (panel == null || panel.entry.ghost || panel.startIndex < 0) {
+      return null;
+    }
+    return StoryboardCursorStoryboardPanel(
+      cut,
+      row,
+      panel.startIndex,
+      panel.entry.length!,
+    );
   }
 
   /// Whether the storyboard's comma press (1/2/3/4/N) has a target: a live

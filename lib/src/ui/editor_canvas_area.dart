@@ -80,6 +80,17 @@ import 'repaint_props.dart';
 
 part 'canvas_area/interactive_canvas_build.dart';
 
+/// What one mount of the track stack says of itself: the frame it follows,
+/// whose contributions it draws there, whether it lays its own floor,
+/// whether it crops to the camera, and the key it is found by.
+typedef _TrackStackMount = ({
+  ValueListenable<int?> globalFrame,
+  List<TrackStackContribution> Function(int globalFrame) positionsOf,
+  bool paintsFloor,
+  bool cameraView,
+  Key key,
+});
+
 /// The central drawing area: the interactive brush canvas with its layer
 /// composites, camera overlay and playback swap.
 ///
@@ -574,11 +585,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   /// The track stack (multitrack display path): one camera-frame
-  /// projection per covered track, following [globalFrame] per move.
-  /// Four mounts, one construction: the parked contentOverride, the
-  /// scrub preview's gap branch (both on the gap parking), ALL-CUTS
-  /// playback (on the clock's global frame, R3a) and the editing canvas's
-  /// O.L partner ([_cutFadeWash], floorless, [positionsOf] the other cut).
+  /// projection per covered track, following [globalFrame] per move — the
+  /// parked contentOverride, the scrub preview's gap branch (both on the gap
+  /// parking) and ALL-CUTS playback (on the clock's global frame, R3a).
   ///
   /// 🚨[cameraView] is the CROP, and it belongs to PLAYBACK alone (user
   /// 2026-08-11). The parked canvas has always shown the whole canvas with the
@@ -592,10 +601,35 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasViewport viewport, {
     ValueListenable<int?>? globalFrame,
     bool cameraView = false,
-    List<TrackStackContribution> Function(int globalFrame)? positionsOf,
-    bool paintsFloor = true,
-    Key key = const ValueKey<String>('canvas-track-stack-view'),
-  }) {
+  }) => _trackStack(session, viewport, (
+    globalFrame: globalFrame ?? session.editingSession.gapParkingListenable,
+    positionsOf: session.rowSpans.trackStackContributionsAt,
+    paintsFloor: true,
+    cameraView: cameraView,
+    key: const ValueKey<String>('canvas-track-stack-view'),
+  ));
+
+  /// The editing canvas's O.L partner ([_cutFadeWash]): [partners] held at
+  /// [standing], laid OVER the live cut — so no floor of its own.
+  Widget _olPartnerStack(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+    int standing,
+    List<TrackStackContribution> partners,
+  ) => _trackStack(session, viewport, (
+    globalFrame: AlwaysStoppedAnimation<int?>(standing),
+    positionsOf: (_) => partners,
+    paintsFloor: false,
+    cameraView: false,
+    key: const ValueKey<String>('canvas-ol-partner'),
+  ));
+
+  /// The one construction every mount of the track stack shares.
+  Widget _trackStack(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+    _TrackStackMount mount,
+  ) {
     final project = session.repository.requireProject();
     // 🚨canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): the
     // view rebuilds itself as a scrub crosses into another cut, and bare under
@@ -605,14 +639,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // StackFit.expand).
     return TickLayer(
       child: CanvasTrackStackView(
-        key: key,
-        globalFrame: globalFrame ?? session.editingSession.gapParkingListenable,
-        positionsOf: positionsOf ?? session.rowSpans.trackStackContributionsAt,
-        paintsFloor: paintsFloor,
+        key: mount.key,
+        globalFrame: mount.globalFrame,
+        positionsOf: mount.positionsOf,
+        paintsFloor: mount.paintsFloor,
         compositeCache: session.renderCaches.cutFrameCompositeCache,
         qualityOf: () => session.playbackRig.playbackQuality,
         cameraFrameSize: session.camera.cameraFrameSize,
-        cameraViewEnabled: cameraView,
+        cameraViewEnabled: mount.cameraView,
         cameraPoseOf: session.camera.cameraPoseForCut,
         seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
         cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
@@ -1153,14 +1187,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               ),
             ),
             if (partners.isNotEmpty)
-              _buildTrackStackView(
-                session,
-                viewport,
-                key: const ValueKey<String>('canvas-ol-partner'),
-                globalFrame: AlwaysStoppedAnimation<int?>(standing),
-                positionsOf: (_) => partners,
-                paintsFloor: false,
-              ),
+              _olPartnerStack(session, viewport, standing, partners),
           ],
         ),
       ),

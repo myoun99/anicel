@@ -676,12 +676,7 @@ class _InteractiveCanvasBuild {
     _HostFrame frame,
   ) {
     final session = frame.session;
-    // The fade is the ACTIVE cut's, so it stands down where the picture is
-    // not this canvas's — the parked track stack, which carries every cut's
-    // share itself. F-90's law for the SE tags below, said of the fade: a
-    // scrub out of the cut's territory washed the parked O.L with the cut's
-    // own stale fade (F-227).
-    final fade = _inGap ? null : _fadeShown(session);
+    final fade = _fadeShown(session);
     final seNameTags = _seNameTagsShown(session);
     return Stack(
       children: [
@@ -741,9 +736,18 @@ class _InteractiveCanvasBuild {
   /// times the TRANSITION row's ramp now. F-192: and the screens one-sided
   /// transitions lay over it — the same veils the playback and the export
   /// paint. Null when neither dims this frame.
+  ///
+  /// ⛔And null in the gap parking. The fade is the ACTIVE cut's, so it
+  /// stands down where the picture is not this canvas's — the parked track
+  /// stack, which carries every cut's share itself. F-90's law for the SE
+  /// tags below, said of the fade: a scrub out of the cut's territory
+  /// washed the parked O.L with the cut's own stale fade (F-227).
   ({double opacity, List<TransitionVeil> veils})? _fadeShown(
     EditorSessionManager session,
   ) {
+    if (_inGap) {
+      return null;
+    }
     final opacity = session.opacityVerbs.activeCutEditingFadeOpacity();
     final veils = session.opacityVerbs.activeCutEditingVeils();
     return opacity < 1 || veils.isNotEmpty
