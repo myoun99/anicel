@@ -113,17 +113,46 @@ class _PreviewSummary extends StatelessWidget {
 
   final ConvertToLinkedCutPreviewData preview;
 
+  /// One line of the 안내문.
+  Widget _line(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Text(
+      text,
+      key: ValueKey<String>('convert-linked-cut-line-$text'),
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+  );
+
+  /// 원본 승리, announced up front (user-confirmed rule): the origin's
+  /// picture wins each same-name conflict, exactly once, undoable.
+  ///
+  /// 🗣️I-18 link-notice-Q1 (유저): 「겸용 변환 안내문을 목록으로」 — the
+  /// drawings it replaces are LISTED under the sentence, in the notices' own
+  /// fold, open: which ones is what the line is about.
+  List<Widget> _replaced(BuildContext context) => [
+    if (preview.replacedDrawings.isNotEmpty) ...[
+      _line(
+        context,
+        AppText.strings.convertLinkedCutReplacedTemplate.replaceAll(
+          '{cut}',
+          preview.targetCutName,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: DetailsDisclosure(
+          heading: AppText.strings.convertLinkedCutReplacedHeading,
+          lines: preview.replacedDrawings,
+          startsOpen: true,
+        ),
+      ),
+    ],
+  ];
+
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    Widget line(String text) => Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Text(
-        text,
-        key: ValueKey<String>('convert-linked-cut-line-$text'),
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-    );
+    Widget line(String text) => _line(context, text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -134,27 +163,7 @@ class _PreviewSummary extends StatelessWidget {
               preview.linkingLayerNames.join(', '),
             ),
           ),
-        // 원본 승리, announced up front (user-confirmed rule): the origin's
-        // picture wins each same-name conflict, exactly once, undoable.
-        // 🗣️I-18 link-notice-Q1 (유저): 「겸용 변환 안내문을 목록으로」 — the
-        // drawings it replaces are LISTED under the sentence, in the notices'
-        // own fold, open: which ones is what the line is about.
-        if (preview.replacedDrawings.isNotEmpty) ...[
-          line(
-            strings.convertLinkedCutReplacedTemplate.replaceAll(
-              '{cut}',
-              preview.targetCutName,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: DetailsDisclosure(
-              heading: strings.convertLinkedCutReplacedHeading,
-              lines: preview.replacedDrawings,
-              startsOpen: true,
-            ),
-          ),
-        ],
+        ..._replaced(context),
         if (preview.joiningFrameCount > 0)
           line(
             strings.convertLinkedCutJoiningTemplate.replaceAll(

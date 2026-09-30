@@ -15,18 +15,19 @@ import 'app_strings.dart';
 
 /// A ROW as one line: what holds it — its cut, or its track — and its name.
 ///
-/// Three lists name a row — a frame's place (its first two parts), a media
-/// pool file's row uses and a link badge's partners — so a row reads the
-/// same wherever it is listed.
+/// Four lists name a row — a frame's place (its first two parts), a media
+/// pool file's row uses, a link badge's partners and a lane key's link
+/// notice — so a row reads the same wherever it is listed.
 String rowPlaceLine({required String ownerName, required String layerName}) =>
     '$ownerName · $layerName';
 
 /// A place in a project as one line of a list: the names it is found by,
 /// joined the way the canvas title joins a cut, a layer and a frame.
 ///
-/// Two lists speak in these lines — the pictures a save could not carry
-/// (C-save-percent) and the uses of a media pool file (F-118) — so a frame
-/// on a row reads the same in both.
+/// The lists that speak in these lines — the pictures a save could not
+/// carry (C-save-percent), the uses of a media pool file (F-118) and the
+/// frames a link takes (I-18, [drawingPlaceLines]) — so a frame on a row
+/// reads the same in all of them.
 String celPlaceLine(CelPlace place) {
   final strings = AppText.strings;
   return switch (place) {
@@ -50,8 +51,8 @@ String celPlaceLine(CelPlace place) {
 /// its bank does not.
 ///
 /// What a LINK notice lists (I-18): 「대상의 프레임을 리스트로서」 — the
-/// drawings a join by name discards, one line each, however many there
-/// are.
+/// drawings a join by name discards, and those a 겸용 conversion replaces,
+/// one line each, however many there are.
 List<String> drawingPlaceLines(
   Project project,
   LayerId layerId,

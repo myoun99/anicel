@@ -25,7 +25,8 @@ class StartNumberWindow extends StatefulWidget {
 class _StartNumberWindowState extends State<StartNumberWindow> {
   int _start = 1;
 
-  /// A number never goes below zero — a drag to the left stops there.
+  /// A drag to the left stops at zero: 「숫자만 입력가능」 leaves typing no
+  /// sign, so the drag does not reach a number the field could not take.
   void _setStart(int value) => setState(() => _start = value < 0 ? 0 : value);
 
   void _typed(String text) {
