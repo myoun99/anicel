@@ -166,6 +166,28 @@ void main() {
       );
     });
 
+    test('surfaceInkWorldRect counts its grid from the content origin', () {
+      // A 2px tile off the canvas's left edge puts the content's origin at
+      // x = -2, off the deepest level's 4px grid counted from 0 — the
+      // halvings of the whole content line up only counted from -2.
+      final surface =
+          BitmapSurface(
+            canvasSize: const CanvasSize(width: 16, height: 16),
+            tileSize: 2,
+          ).putTiles([
+            (coord: TileCoord(x: -1, y: 0), tile: BitmapTile.blank(size: 2)),
+            (coord: TileCoord(x: 4, y: 3), tile: BitmapTile.blank(size: 2)),
+          ]);
+      expect(
+        surfaceContentWorldRect(surface),
+        const ui.Rect.fromLTRB(-2, 0, 16, 16),
+      );
+      expect(
+        surfaceInkWorldRect(surface),
+        const ui.Rect.fromLTRB(-2, 0, 10, 8),
+      );
+    });
+
     testWidgets('a canvas-only surface composes byte-identical to the '
         'canvas-extent route, worldRect = canvas', (tester) async {
       await tester.runAsync(() async {
