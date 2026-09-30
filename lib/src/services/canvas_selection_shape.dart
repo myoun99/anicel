@@ -280,6 +280,14 @@ CanvasPoint _crossing(_WallSide side, CanvasPoint a, CanvasPoint b) {
   final t =
       (side.bound - _across(side, a)) / (_across(side, b) - _across(side, a));
   return side.bindsX
-      ? CanvasPoint(x: side.bound, y: a.y + (b.y - a.y) * t)
-      : CanvasPoint(x: a.x + (b.x - a.x) * t, y: side.bound);
+      ? CanvasPoint(x: side.bound, y: _between(a.y, b.y, t))
+      : CanvasPoint(x: _between(a.x, b.x, t), y: side.bound);
 }
+
+/// [from] → [to] at [t], held between the two.
+///
+/// ⚠️Not a nicety: rounding can carry the interpolation an ulp past an end,
+/// and so past a side an earlier pass already cut to — and then the cut
+/// outline pokes out of the wall, and cutting it again is not a no-op.
+double _between(double from, double to, double t) =>
+    (from + (to - from) * t).clamp(math.min(from, to), math.max(from, to));
