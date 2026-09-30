@@ -365,6 +365,57 @@ void main() {
       );
     });
 
+    testWidgets('off the bottom of the left half nothing lands in the right '
+        'half even when the band moved under the stroke before the pen came '
+        'up — the landing is kept to the half the stroke is in', (
+      tester,
+    ) async {
+      final origin = await pumpSheet(tester);
+      final left = window('strip-0-h0');
+      final x = layout.halfLeft(0, 0) + 30;
+      final seam = layout.halfRowsTop(0) + rowsHeight(0);
+      final gesture = await tester.startGesture(
+        origin + Offset(x, seam - 40),
+        pointer: 7,
+      );
+      await tester.pump();
+      for (final y in [seam - 10, seam + 30]) {
+        await gesture.moveTo(origin + Offset(x, y));
+        await tester.pump();
+      }
+      // Something else lands on the band while the pen is down: what the
+      // stroke blended against is gone, and it lands from its dabs.
+      controller.commitStroke(
+        plane: TimesheetInkPlane.strip,
+        key: left.key,
+        strokeData: BrushStrokeCommitData(
+          sourceDabs: [
+            BrushDab(
+              center: CanvasPoint(x: 4, y: 4),
+              color: 0xFF000000,
+              size: 4,
+              opacity: 1,
+              flow: 1,
+              hardness: 1,
+              tipShape: BrushTipShape.round,
+              pressure: 1,
+              sequence: 0,
+            ),
+          ],
+        ),
+        historyManager: history,
+      );
+      await gesture.up();
+      await tester.pump();
+
+      expect(inkUnder(left, Offset(x, seam - 20)), isTrue);
+      expect(
+        inkUnder(left, Offset(x, seam + 12)),
+        isFalse,
+        reason: 'the top of the right half is not where the pen went',
+      );
+    });
+
     testWidgets('a stroke across the halves keeps to the half it starts in: '
         'the paper between and the other half keep none of it', (
       tester,
