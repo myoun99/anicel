@@ -14,7 +14,9 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
@@ -181,5 +183,41 @@ void main() {
       ).singleWhere((block) => block.frameId == take.frameId).startIndex,
       21,
     );
+  });
+
+  test('a punch ahead of b\'s run is counted into on b\'s own frames — the '
+      'streamer runs where the run is', () async {
+    final s = session();
+    addTearDown(s.dispose);
+    s.selectLayer(const LayerId('se'));
+    s.trackFrameRangeSelection.value = TrackFrameRangeSelection(
+      trackId: const TrackId('t'),
+      anchorRow: const LayerRowAddress(LayerId('se')),
+      startFrame: 30,
+      endFrameExclusive: 34,
+    );
+    final playback = s.playbackRig.playback;
+    playback.play(scope: PlaybackScope.activeCut);
+    // A second: it outlasts the twelve-frame run-up the head trim eats.
+    s.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(
+      AudioRecording(
+        samples: Float32List(48000)..fillRange(0, 48000, 0.25),
+        channels: 1,
+        sampleRate: 48000,
+        droppedFrames: 0,
+      ),
+    );
+    expect(
+      s.voiceRecording.startVoiceRecording(),
+      VoiceRecordStartResult.started,
+    );
+    // The roll is b's frame 0, track 18; the punch at track 30 is b's 12.
+    expect(
+      s.voiceRecording.voiceRecordStreamerWindow,
+      (startFrame: 0, punchFrame: 12),
+    );
+    await s.voiceRecording.stopVoiceRecordingAndPlace();
+    playback.stop();
+    await pumpEventQueue();
   });
 }
