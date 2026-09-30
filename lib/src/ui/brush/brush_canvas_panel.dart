@@ -2004,9 +2004,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  /// What is hidden from the artwork by the panels lying on it. Zero for a
-  /// panel nothing lies on, which is every one but the floor.
-  EdgeInsets get _framingInsets => widget.floorCover;
+  /// What is hidden from the artwork: the panels lying on the floor, and a
+  /// docked panel's own lanes — its panbars stand on the artwork's right and
+  /// bottom edges (F-209), and framing keeps out from under them as it keeps
+  /// out from under a panel.
+  EdgeInsets get _framingInsets =>
+      widget.floorCover +
+      (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes);
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
@@ -2327,6 +2331,23 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// width IS that bar's hit lane.
   static const double rightStripWidth = AppScrollbarLane.medium;
 
+  /// 🗣️F-209 (유저 2026-09-28): 「도킹시 스크롤바는 어차피 창 최대크기로
+  /// 되어있으니까 그냥 알약이아니라 패널로서 공간 차지해서? 두자. 뒤에 캔버스
+  /// 안보이게 되도 되니까」 — and the two capsules that F-201 stretched along
+  /// their whole edges (「도킹된 패널은 스크롤바 알약 최대치로 늘리자 길이」)
+  /// crossed at the corner (「가로 세로 스크롤바끼리 오른쪽끝에서 서로
+  /// 겹치니까 안겹치도록」). A DOCKED panel's panbars are its own lanes now,
+  /// flush with its right and bottom edges and meeting at a corner square of
+  /// neither's. The artwork runs on behind them, and framing keeps out from
+  /// under them as it does from under a panel (`_framingInsets`). A lane in
+  /// a column of its own is the timeline rails' width.
+  static const double dockedLane = AppScrollbarLane.wide;
+
+  static const EdgeInsets dockedLanes = EdgeInsets.only(
+    right: dockedLane,
+    bottom: dockedLane,
+  );
+
   const _CanvasEditorPanelShell({
     required this.child,
     required this.bottomBar,
@@ -2344,10 +2365,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   final Widget rightStripBar;
 
   /// Whether this panel is the FLOOR under the others — the canvas or the
-  /// viewer — rather than a panel docked in a rail ([_capsuleTrack]).
+  /// viewer — rather than a panel docked in a rail ([dockedLanes]).
   final bool onFloor;
 
-  /// The horizontal panbar, its own capsule on the top edge.
+  /// The horizontal panbar: its own capsule on the floor's bottom edge, its
+  /// own lane on a docked panel's.
   final Widget horizontalStripBar;
 
   /// See [BrushCanvasPanel.pageStrip] — empty means no capsule at all.
@@ -2392,10 +2414,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// second rail.
   static const double _pageStripWidth = 32;
 
-  /// What a scrollbar capsule spans ON THE FLOOR, as a share of the edge it
-  /// rides — clamped, because the point of a capsule is that it says where
-  /// you are and lets you drag back, not that it maps the whole pasteboard.
-  /// A docked panel's runs its whole edge ([_capsuleTrack]).
+  /// What a scrollbar capsule spans — only the floor has capsules — as a
+  /// share of the edge it rides: clamped, because the point of a capsule is
+  /// that it says where you are and lets you drag back, not that it maps
+  /// the whole pasteboard. A docked panel's bars are lanes ([dockedLanes]).
   static const double _capsuleTrackFraction = 0.34;
   static const double _capsuleTrackMin = 80;
 
@@ -2406,12 +2428,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     // has nowhere to travel — a scrollbar that cannot be dragged is not a
     // scrollbar, and dragging is the ONLY way back from a runaway pan.
     final room = math.max(0.0, edge - 2 * _capsuleMargin);
-    // 🗣️F-201 (유저 2026-09-27): 「바탕에 깔린 캔버스나 뷰어말고 도킹된
-    // 패널은 스크롤바 알약 최대치로 늘리자 길이」 — a DOCKED panel's capsule
-    // runs its whole edge; only the floor's keeps the short one below.
-    if (!onFloor) {
-      return room;
-    }
     final wanted = (edge * _capsuleTrackFraction).clamp(
       _capsuleTrackMin,
       _capsuleTrackMax,
@@ -2469,101 +2485,20 @@ class _CanvasEditorPanelShell extends StatelessWidget {
             ),
           ),
         ),
-        // THE PANBARS ARE FURNITURE — but furniture in a room, not in the
-        // wall.
-        //
-        // 🆕유저, R3 #5·#6, and it is the third pass over this: the bars now
-        // CENTRE ON WHAT YOU CAN SEE. Both are placed inside the visible
-        // rectangle rather than the panel's — the vertical one at the middle
-        // of the visible HEIGHT (so docking the region at the bottom walks
-        // it up, which is what "하단패널이 열린거에 따라 중앙계산" asked back),
-        // the horizontal one at the middle of the visible WIDTH, on the
-        // BOTTOM edge (패널열리면 위치바뀌는거 허용).
-        //
-        // ★And the vertical bar only steps IN from the edge when the rail is
-        // actually beside it. A rail panel is as tall as it was left at, so
-        // a short one covers a band, not an edge: stepping in for the whole
-        // edge left the bar hanging in the middle of nothing.
-        Positioned.fill(
-          child: LayoutBuilder(
-            builder: (context, panel) {
-              final insets = cover;
-              final visibleTop = insets.top;
-              final visibleBottom = math.max(
-                visibleTop,
-                panel.maxHeight - insets.bottom,
-              );
-              final track = _capsuleTrack(visibleBottom - visibleTop);
-              final centre = (visibleTop + visibleBottom) / 2;
-              final barTop = centre - track / 2;
-              final intrudes = canvasFloorBandIntrudes(
-                railBand,
-                top: barTop,
-                bottom: barTop + track,
-              );
-              final edge = intrudes
-                  ? insets.right + _capsuleMargin
-                  : _capsuleMargin;
-              return Stack(
-                children: [
-                  Positioned(
-                    right: edge,
-                    top: barTop,
-                    height: track,
-                    child: _capsule(
-                      colorScheme,
-                      keyValue: 'canvas-panbar-vertical',
-                      width: rightStripWidth,
-                      height: track,
-                      child: rightStripBar,
-                    ),
-                  ),
-                  // 🆕유저 (R4): 가로스크롤바나 알약은 그냥 양옆에서
-                  // 펼치든말든 중앙에. The two axes are NOT the same
-                  // question, and the answer differs by axis rather than
-                  // by widget:
-                  //
-                  //  * ALONG the edge it rides, the bar holds the window's
-                  //    centre. A side panel opening is not a reason for
-                  //    the thing you read to walk sideways — that is the
-                  //    「읽는 것은 안 움직인다」 rule, and the earlier pass
-                  //    over-applied "centre on what you can see" to it.
-                  //  * ACROSS that edge it still yields, because there it
-                  //    is not a matter of taste: a bar on the bottom edge
-                  //    with the region docked below would be UNDER it.
-                  Positioned(
-                    left: _capsuleMargin,
-                    right: _capsuleMargin,
-                    // ⑩: …and above whatever lies ON the artwork at that
-                    // edge. The collapsed row frames nothing, so it is not
-                    // in `insets` — but it is exactly where this bar was,
-                    // which is what the user saw.
-                    bottom: insets.bottom + bottomOverlaySpan + _capsuleMargin,
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: _capsule(
-                        colorScheme,
-                        keyValue: 'canvas-panbar-horizontal',
-                        height: AppScrollbarLane.medium,
-                        width: _capsuleTrack(panel.maxWidth),
-                        child: horizontalStripBar,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
+        if (onFloor)
+          _floorCapsules(colorScheme)
+        else
+          ..._dockedLanes(colorScheme),
         Positioned(
           // The pill answers the same way the horizontal bar does (유저,
           // R4): it holds the window's centre across the axis it sits on,
           // and yields only on the axis that would bury it — the region
-          // docked on TOP is above it, a rail beside it is not.
+          // docked on TOP is above it, a rail beside it is not. On a docked
+          // panel it floats over what the lanes leave.
           left: 0,
           top: cover.top,
-          right: 0,
-          bottom: cover.bottom,
+          right: onFloor ? 0 : dockedLane,
+          bottom: cover.bottom + (onFloor ? 0 : dockedLane),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final window = Size(
@@ -2598,6 +2533,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                             colorScheme,
                             keyValue: 'canvas-page-strip',
                             width: _pageStripWidth,
+                            seenThrough: !onFloor,
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: pageStrip,
@@ -2648,6 +2584,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                           colorScheme,
                           keyValue: 'canvas-view-pill',
                           height: _CanvasViewportBottomBar.heightIn(context),
+                          seenThrough: !onFloor,
                           child: bottomBar,
                         ),
                       ),
@@ -2660,6 +2597,137 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// The floor's panbars, in capsules. THE PANBARS ARE FURNITURE — but
+  /// furniture in a room, not in the wall.
+  ///
+  /// 🆕유저, R3 #5·#6, and it is the third pass over this: the bars now
+  /// CENTRE ON WHAT YOU CAN SEE. Both are placed inside the visible
+  /// rectangle rather than the panel's — the vertical one at the middle
+  /// of the visible HEIGHT (so docking the region at the bottom walks
+  /// it up, which is what "하단패널이 열린거에 따라 중앙계산" asked back),
+  /// the horizontal one at the middle of the visible WIDTH, on the
+  /// BOTTOM edge (패널열리면 위치바뀌는거 허용).
+  ///
+  /// ★And the vertical bar only steps IN from the edge when the rail is
+  /// actually beside it. A rail panel is as tall as it was left at, so
+  /// a short one covers a band, not an edge: stepping in for the whole
+  /// edge left the bar hanging in the middle of nothing.
+  Widget _floorCapsules(ColorScheme colorScheme) => Positioned.fill(
+    child: LayoutBuilder(
+      builder: (context, panel) {
+        final insets = cover;
+        final visibleTop = insets.top;
+        final visibleBottom = math.max(
+          visibleTop,
+          panel.maxHeight - insets.bottom,
+        );
+        final track = _capsuleTrack(visibleBottom - visibleTop);
+        final centre = (visibleTop + visibleBottom) / 2;
+        final barTop = centre - track / 2;
+        final intrudes = canvasFloorBandIntrudes(
+          railBand,
+          top: barTop,
+          bottom: barTop + track,
+        );
+        final edge = intrudes
+            ? insets.right + _capsuleMargin
+            : _capsuleMargin;
+        return Stack(
+          children: [
+            Positioned(
+              right: edge,
+              top: barTop,
+              height: track,
+              child: _capsule(
+                colorScheme,
+                keyValue: 'canvas-panbar-vertical',
+                width: rightStripWidth,
+                height: track,
+                child: rightStripBar,
+              ),
+            ),
+            // 🆕유저 (R4): 가로스크롤바나 알약은 그냥 양옆에서
+            // 펼치든말든 중앙에. The two axes are NOT the same
+            // question, and the answer differs by axis rather than
+            // by widget:
+            //
+            //  * ALONG the edge it rides, the bar holds the window's
+            //    centre. A side panel opening is not a reason for
+            //    the thing you read to walk sideways — that is the
+            //    「읽는 것은 안 움직인다」 rule, and the earlier pass
+            //    over-applied "centre on what you can see" to it.
+            //  * ACROSS that edge it still yields, because there it
+            //    is not a matter of taste: a bar on the bottom edge
+            //    with the region docked below would be UNDER it.
+            Positioned(
+              left: _capsuleMargin,
+              right: _capsuleMargin,
+              // ⑩: …and above whatever lies ON the artwork at that
+              // edge. The collapsed row frames nothing, so it is not
+              // in `insets` — but it is exactly where this bar was,
+              // which is what the user saw.
+              bottom: insets.bottom + bottomOverlaySpan + _capsuleMargin,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: _capsule(
+                  colorScheme,
+                  keyValue: 'canvas-panbar-horizontal',
+                  height: AppScrollbarLane.medium,
+                  width: _capsuleTrack(panel.maxWidth),
+                  child: horizontalStripBar,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+
+  /// A docked panel's panbars ([dockedLanes]): each bar in a lane of its
+  /// own, flush with its edge, and the corner between them left to neither.
+  /// Each lane is ringed on its artwork side in the backdrop, for the
+  /// capsule's reason ([_capsule]).
+  List<Widget> _dockedLanes(ColorScheme colorScheme) {
+    const ring = BorderSide(color: AppColors.backdrop);
+    Widget lane(String keyValue, Border ringed, [Widget? bar]) => DecoratedBox(
+      key: ValueKey<String>(keyValue),
+      decoration: BoxDecoration(color: colorScheme.surface, border: ringed),
+      child: bar,
+    );
+    return [
+      Positioned(
+        top: 0,
+        right: 0,
+        bottom: dockedLane,
+        width: dockedLane,
+        child: lane(
+          'canvas-panbar-vertical',
+          const Border(left: ring),
+          rightStripBar,
+        ),
+      ),
+      Positioned(
+        left: 0,
+        right: dockedLane,
+        bottom: 0,
+        height: dockedLane,
+        child: lane(
+          'canvas-panbar-horizontal',
+          const Border(top: ring),
+          horizontalStripBar,
+        ),
+      ),
+      Positioned(
+        right: 0,
+        bottom: 0,
+        width: dockedLane,
+        height: dockedLane,
+        child: lane('canvas-panbar-corner', const Border()),
+      ),
+    ];
   }
 
   /// One floating control surface: opaque, superellipse, ringed in the
@@ -2675,6 +2743,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required Widget child,
     double? width,
     double? height,
+    bool seenThrough = false,
   }) {
     // The corner follows the SHORT axis, the way every control's does. A
     // capsule with neither axis stated would ask for an infinite radius, so
@@ -2683,7 +2752,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     final shape = short.isFinite
         ? AppShapes.control(short)
         : AppShapes.container(AppShapes.wellRadius);
-    return DecoratedBox(
+    final capsule = DecoratedBox(
       key: ValueKey<String>(keyValue),
       decoration: ShapeDecoration(
         color: colorScheme.surface,
@@ -2696,7 +2765,52 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         child: SizedBox(width: width, height: height, child: child),
       ),
     );
+    return seenThrough ? _SeenThroughUntilHeld(child: capsule) : capsule;
   }
+}
+
+/// 🗣️F-209 (유저 2026-09-28): 「도킹된 패널은 기존 알약, 상단이나 왼쪽?
+/// 그거는 비호버시 반투명하게 뒤에 비치게. 호버시 불투명하도록」 — a docked
+/// panel's capsules (its pill and its page strip) let the artwork show
+/// through until the pointer is over them, or a finger is on them: a touch
+/// has no hover.
+///
+/// ⛔Not the stroke fade H3 took out (「알약 불투명도 낮추는거만 심플하게
+/// 삭제」): that dimmed the floor's capsules for the length of a stroke.
+/// This is how a docked panel's capsules rest, and the hand brings them up.
+class _SeenThroughUntilHeld extends StatefulWidget {
+  const _SeenThroughUntilHeld({required this.child});
+
+  /// How much of a capsule at rest shows — half: 「반투명」.
+  static const double resting = 0.5;
+
+  final Widget child;
+
+  @override
+  State<_SeenThroughUntilHeld> createState() => _SeenThroughUntilHeldState();
+}
+
+class _SeenThroughUntilHeldState extends State<_SeenThroughUntilHeld> {
+  bool _hovered = false;
+  int _pressed = 0;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    // Hovering the capsule is not leaving the canvas: the cursor under it
+    // keeps whatever it had.
+    opaque: false,
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: Listener(
+      onPointerDown: (_) => setState(() => _pressed += 1),
+      onPointerUp: (_) => setState(() => _pressed -= 1),
+      onPointerCancel: (_) => setState(() => _pressed -= 1),
+      child: Opacity(
+        opacity: _hovered || _pressed > 0 ? 1 : _SeenThroughUntilHeld.resting,
+        child: widget.child,
+      ),
+    ),
+  );
 }
 
 /// The floor's controls, laid on the drawing.

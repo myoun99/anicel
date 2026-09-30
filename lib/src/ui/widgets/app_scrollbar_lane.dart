@@ -9,11 +9,12 @@
 /// a lane from a viewport are calculation-only files, and they must be
 /// able to say WHICH lane without pulling Flutter in behind them.
 abstract final class AppScrollbarLane {
-  /// Timeline rails — the lanes a finger sweeps along most often, and the
-  /// only ones that are always visible in their own reserved column.
+  /// Timeline rails — the lanes a finger sweeps along most often — and a
+  /// docked canvas panel's panbars: the lanes that stand in a reserved
+  /// column of their own, always visible.
   static const double wide = 16;
 
-  /// Canvas panbars.
+  /// The floor's canvas panbars, in capsules on the artwork.
   static const double medium = 14;
 
   /// The tool rail and the panel docks, where width is the scarce axis.
