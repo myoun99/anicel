@@ -261,7 +261,13 @@ void main() {
 /// the envelope painter each drew a picture contained in its box; both go
 /// through `paintSheetImageContained` now, which owns the quality its
 /// caller names.
-const int _knownRawDraws = 29;
+/// **30** on 2026-09-30 (board `F-240`, 유저 「변형중에도 필터 통일적용하도록
+/// 근본/구조적 해결」): +1 in surface_paint/surface_paint_pass — below 100%
+/// the region a landing preview covers is painted at level 0, halved down
+/// through `drawHalvings`, and drawn 1:1 in the level's pixels
+/// (`_paintLandingAtLevel`). The 1:1 blit class, on the tile paint
+/// (`FilterQuality.none`), the blit a level tile gets.
+const int _knownRawDraws = 30;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

@@ -30,6 +30,11 @@ part 'surface_paint/level_blocks.dart';
 part 'surface_paint/overlay_pass.dart';
 part 'surface_paint/surface_paint_pass.dart';
 
+/// A selection's float as a row paints it: the [preview], in CANVAS space,
+/// and the matrix that carries canvas space into the row's own — null while
+/// the row stands where the canvas does, the posed row's inverse otherwise.
+typedef RowFloat = ({LandingPreview preview, Matrix4? canvasToRow});
+
 /// Paints the brush canvas — committed artwork plus the in-progress stroke —
 /// with the viewport transform applied INSIDE the picture.
 ///
@@ -299,14 +304,12 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// falls back to its tiles under the caller's scale ([_LevelBlocks]).
   ///
   /// [float] is a selection's lifted float, drawn over this surface's
-  /// coordinates — CANVAS space, so a caller drawing into a posed row hands
-  /// the canvas-to-row matrix as [floatToSlot].
+  /// coordinates ([RowFloat]).
   void paintContentInto(
     Canvas canvas, {
     Paint? layerPaint,
     int level = 0,
-    LandingPreview? float,
-    Matrix4? floatToSlot,
+    RowFloat? float,
   }) =>
       // Constructed PER PAINT: the pass keeps one paint's state in `late
       // final` fields, and a painter paints more than once.
@@ -315,7 +318,6 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
         layerPaint: layerPaint,
         level: level,
         float: float,
-        floatToSlot: floatToSlot,
       );
 
   /// The part of CANVAS space this paint can actually reach, read off the

@@ -22,8 +22,7 @@ class _SurfacePaintPass {
   late final Paint _tileImagePaint;
   late final int _level;
   late final Rect _visibleRect;
-  late final LandingPreview? _float;
-  late final Matrix4? _floatToSlot;
+  late final RowFloat? _float;
 
   /// The one answer to what a coordinate shows ([_CoordinatePicture]).
   late final _CoordinatePicture _coordinates = _CoordinatePicture(this);
@@ -56,14 +55,14 @@ class _SurfacePaintPass {
     Canvas canvas, {
     Paint? layerPaint,
     int level = 0,
-    LandingPreview? float,
-    Matrix4? floatToSlot,
+    RowFloat? float,
   }) {
     _canvas = canvas;
     _layerPaint = layerPaint;
     _level = level;
-    _float = float == null || float.drawnWorldRect.isEmpty ? null : float;
-    _floatToSlot = floatToSlot;
+    _float = float == null || float.preview.drawnWorldRect.isEmpty
+        ? null
+        : float;
     _painter.pictureBudget.paintBegan(_painter.lineage);
     if (_level > 0) {
       TilePyramid.instance.paintBegan(_painter.lineage);
@@ -335,26 +334,26 @@ class _SurfacePaintPass {
   }
 
   /// The selection's lifted float, over everything this surface drew. It
-  /// is CANVAS space, so into a posed row it goes through [_floatToSlot].
+  /// is CANVAS space, so into a posed row it goes through the row's matrix.
   void _paintFloat() {
     final float = _float;
     if (float == null) {
       return;
     }
-    final toSlot = _floatToSlot;
-    if (toSlot == null) {
-      float.paintInto(_canvas);
+    final toRow = float.canvasToRow;
+    if (toRow == null) {
+      float.preview.paintInto(_canvas);
       return;
     }
     _canvas.save();
-    _canvas.transform(toSlot.storage);
-    float.paintInto(_canvas);
+    _canvas.transform(toRow.storage);
+    float.preview.paintInto(_canvas);
     _canvas.restore();
   }
 
   /// Where this paint's landing previews — the stamp's ghost, the float —
-  /// draw, in this paint's own space and inside what it shows, snapped out
-  /// to whole pixels of [_level]; null when none draws.
+  /// draw, in this paint's own space and inside what it shows, grown out to
+  /// whole pixels of [_level]; null when none draws.
   Rect? _landingRegion() {
     Rect? covered;
     final ghost = _painter.stampPreview?.value;
@@ -363,26 +362,18 @@ class _SurfacePaintPass {
     }
     final float = _float;
     if (float != null) {
-      final toSlot = _floatToSlot;
-      final drawn = toSlot == null
-          ? float.drawnWorldRect
-          : MatrixUtils.transformRect(toSlot, float.drawnWorldRect);
-      covered = covered?.expandToInclude(drawn) ?? drawn;
+      final toRow = float.canvasToRow;
+      final drawn = float.preview.drawnWorldRect;
+      final inRow = toRow == null
+          ? drawn
+          : MatrixUtils.transformRect(toRow, drawn);
+      covered = covered?.expandToInclude(inRow) ?? inRow;
     }
     if (covered == null) {
       return null;
     }
     final shown = covered.intersect(_visibleRect);
-    if (shown.isEmpty) {
-      return null;
-    }
-    final span = (1 << _level).toDouble();
-    return Rect.fromLTRB(
-      (shown.left / span).floorToDouble() * span,
-      (shown.top / span).floorToDouble() * span,
-      (shown.right / span).ceilToDouble() * span,
-      (shown.bottom / span).ceilToDouble() * span,
-    );
+    return shown.isEmpty ? null : wholeLevelPixelsOutward(shown, _level);
   }
 
   /// 🚨★★★F-240 (유저 2026-09-29: 「변형툴 변형도중이랑 확정이랑 그림 바뀌는
@@ -406,35 +397,49 @@ class _SurfacePaintPass {
   /// Windows app and the test runner, the ≤2/255 Vulkan gap of any level
   /// aside (board `halving-rounds-differently-per-engine`).
   void _paintLandingAtLevel(Rect region) {
+    var image = _rasterAtLevelZero(region);
+    try {
+      for (var halvings = 0; halvings < _level; halvings += 1) {
+        final halved = _halved(image);
+        image.dispose();
+        image = halved;
+      }
+      // 1:1 in the level's pixels, the blit a level tile gets.
+      _canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        region,
+        _tileImagePaint,
+      );
+    } finally {
+      // Safe once drawn: the draw holds its own claim on the pixels.
+      image.dispose();
+    }
+  }
+
+  /// [region] as level 0 shows it — this same pass, one canvas pixel to one
+  /// raster pixel.
+  ui.Image _rasterAtLevelZero(Rect region) {
     final recorder = ui.PictureRecorder();
     final atFull = Canvas(recorder)
       ..translate(-region.left, -region.top)
       ..clipRect(region);
-    _SurfacePaintPass(_painter).paintContentInto(
-      atFull,
-      float: _float,
-      floatToSlot: _floatToSlot,
-    );
+    _SurfacePaintPass(_painter).paintContentInto(atFull, float: _float);
     final picture = recorder.endRecording();
-    var image = picture.toImageSync(
-      region.width.round(),
-      region.height.round(),
-    );
-    picture.dispose();
-    for (var halvings = 0; halvings < _level; halvings += 1) {
-      final halving = halvingPicture([(image: image, at: Offset.zero)]);
-      final halved = halving.toImageSync(image.width ~/ 2, image.height ~/ 2);
-      halving.dispose();
-      image.dispose();
-      image = halved;
+    try {
+      return picture.toImageSync(region.width.round(), region.height.round());
+    } finally {
+      picture.dispose();
     }
-    _canvas.drawImageRect(
-      image,
-      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      region,
-      _tileImagePaint,
-    );
-    // Safe once drawn: the draw holds its own claim on the pixels.
-    image.dispose();
+  }
+
+  /// [image] halved once through the one halving law.
+  static ui.Image _halved(ui.Image image) {
+    final halving = halvingPicture([(image: image, at: Offset.zero)]);
+    try {
+      return halving.toImageSync(image.width ~/ 2, image.height ~/ 2);
+    } finally {
+      halving.dispose();
+    }
   }
 }

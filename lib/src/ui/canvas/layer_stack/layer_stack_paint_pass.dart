@@ -876,6 +876,7 @@ class _LayerStackPaintPass {
     void paintLiveBody(Canvas into) {
       into.save();
       into.clipRect(_painter.activeSurfacePainter!.pasteboardRect);
+      final float = _painter.floatOverlay?.value;
         _painter.activeSurfacePainter!.paintContentInto(
           into,
           layerPaint: ridingPaint,
@@ -902,8 +903,9 @@ class _LayerStackPaintPass {
           // drawn here after it — below 100% the surface draws level
           // tiles, and a float laid over them 1:1 at `none` was sampled one
           // pixel in two, so it looked sharper than what it landed as.
-          float: _painter.floatOverlay?.value,
-          floatToSlot: _slotFromCanvas,
+          float: float == null
+              ? null
+              : (preview: float, canvasToRow: _slotFromCanvas),
         );
       into.restore();
     }
@@ -1123,7 +1125,7 @@ class _LayerStackPaintPass {
     return (
       at: at,
       rasterPays: rasterPays,
-      rasterRect: _wholeBufferPixelsOutward(_bakeExtent),
+      rasterRect: wholeLevelPixelsOutward(_bakeExtent, _level),
     );
   }
 
@@ -1209,22 +1211,6 @@ class _LayerStackPaintPass {
     _paintSplit(into, _painter.nodes, 0, rasterScale);
   }
 
-  /// [bounds] grown out to whole BUFFER pixels — canvas pixels at level 0,
-  /// 2^[_level] canvas pixels below 100% — the grid the display buffer is
-  /// made on, and the backdrop raster inside it with it, so the raster
-  /// lands 1:1 on the buffer's pixels whichever of the two rects is larger.
-  /// A rect on this grid is also what makes a carry exact: two buffers of
-  /// one level are offset by whole buffer pixels.
-  Rect _wholeBufferPixelsOutward(Rect bounds) {
-    final step = _levelStep;
-    return Rect.fromLTRB(
-      (bounds.left / step).floorToDouble() * step,
-      (bounds.top / step).floorToDouble() * step,
-      (bounds.right / step).ceilToDouble() * step,
-      (bounds.bottom / step).ceilToDouble() * step,
-    );
-  }
-
   /// Rasterises [_paintContent] over [bounds] at CANVAS resolution — at the
   /// display's level below 100% ([_level]) — or null when the stack should
   /// just paint itself onto the screen.
@@ -1248,7 +1234,7 @@ class _LayerStackPaintPass {
     // Whole pixels, and the DESTINATION is the rounded rect too — a src/dst
     // pair that disagree by a fraction of a pixel would resample the buffer
     // a second time and undo the point of having it.
-    final rect = _wholeBufferPixelsOutward(bounds);
+    final rect = wholeLevelPixelsOutward(bounds, _level);
     final width = (rect.width / _levelStep).round();
     final height = (rect.height / _levelStep).round();
     if (width <= 0 || height <= 0) {
@@ -1417,7 +1403,7 @@ class _LayerStackPaintPass {
         _displayScale != _displayScale.roundToDouble()) {
       return false;
     }
-    final region = _wholeBufferPixelsOutward(dirty);
+    final region = wholeLevelPixelsOutward(dirty, _level);
     final onPaper =
         _painter.paintPaper &&
         _painter.paperBackground.paintedArgb >>> 24 == 0xFF &&
@@ -1665,7 +1651,7 @@ class _LayerStackPaintPass {
         ..filterQuality = ui.FilterQuality.none
         ..isAntiAlias = false,
     );
-    _recomposeOverCarried(into, [_wholeBufferPixelsOutward(dirty)]);
+    _recomposeOverCarried(into, [wholeLevelPixelsOutward(dirty, _level)]);
   }
 
   /// Carries the overlap of the previous buffer ([scroll]) into [rect]
@@ -1709,7 +1695,7 @@ class _LayerStackPaintPass {
       if (overlap.right < rect.right)
         Rect.fromLTRB(overlap.right, overlap.top, rect.right, overlap.bottom),
       if (dirty != null && !dirty.intersect(overlap).isEmpty)
-        _wholeBufferPixelsOutward(dirty).intersect(overlap),
+        wholeLevelPixelsOutward(dirty, _level).intersect(overlap),
     ];
     var area = 0.0;
     for (final band in bands) {

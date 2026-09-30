@@ -111,6 +111,22 @@ const int maxDisplayLevel = 4;
 double displayResidualOf(double scale) =>
     scale.abs() * (1 << displayLevelOf(scale));
 
+/// [bounds] grown out to whole pixels of [level] — canvas pixels at level 0,
+/// 2^[level] canvas pixels below 100% — the grid the display buffer is made
+/// on. A raster on this grid lands 1:1 on a level buffer's pixels whichever
+/// of the two rects is larger, and a region on it halves [level] times into
+/// whole level pixels. It is also what makes a carry exact: two buffers of
+/// one level are offset by whole buffer pixels.
+ui.Rect wholeLevelPixelsOutward(ui.Rect bounds, int level) {
+  final step = (1 << level).toDouble();
+  return ui.Rect.fromLTRB(
+    (bounds.left / step).floorToDouble() * step,
+    (bounds.top / step).floorToDouble() * step,
+    (bounds.right / step).ceilToDouble() * step,
+    (bounds.bottom / step).ceilToDouble() * step,
+  );
+}
+
 /// Whether the OUTER EDGE of what lands on the display — the display
 /// buffer's blit, the paper rect under it, the playback composite that
 /// stands in for both during a scrub — is anti-aliased.

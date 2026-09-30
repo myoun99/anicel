@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -102,7 +100,9 @@ void main() {
     painter.paintContentInto(
       canvas,
       level: level,
-      float: floatOnTop ? null : float,
+      float: floatOnTop || float == null
+          ? null
+          : (preview: float, canvasToRow: null),
     );
     if (floatOnTop) {
       float!.paintInto(canvas);
