@@ -290,6 +290,7 @@ class BrushEditCanvasInputSettings {
     double? textureDensity,
     bool? erase,
     BrushBlendMode? blendMode,
+    BrushAntiAlias? antiAlias,
     double? stabilizerStrength,
   }) {
     return BrushEditCanvasInputSettings(
@@ -337,6 +338,9 @@ class BrushEditCanvasInputSettings {
       textureDensity: textureDensity ?? this.textureDensity,
       erase: erase ?? this.erase,
       blendMode: blendMode ?? this.blendMode,
+      // ↩️The edge step rode the rebuild at its default until 2026-10-01: a
+      // colour change or a mapped-erase press put a 없음 brush back at 3단계.
+      antiAlias: antiAlias ?? this.antiAlias,
       stabilizerStrength: stabilizerStrength ?? this.stabilizerStrength,
     );
   }
