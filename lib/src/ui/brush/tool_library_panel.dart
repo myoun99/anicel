@@ -30,6 +30,8 @@ List<({SubToolPress press, IconData icon})> subToolTilesOf(CanvasTool group) =>
       // different outline.
       CanvasTool.cut || CanvasTool.cutStamp => [
         ..._shapeTiles(CanvasTool.cut),
+        // I-28: a cut too — of the whole picture, run at the press.
+        (press: const CutWholePress(), icon: Icons.fit_screen),
         (
           press: const ToolTilePress(CanvasTool.cutStamp),
           icon: Icons.approval_outlined,
@@ -156,6 +158,8 @@ class ToolLibraryPanel extends StatelessWidget {
             tool == verb && shapeKind == shape,
           ToolTilePress(tool: final armed) => tool == armed,
           TransformModePress(:final mode) => options?.mode == mode,
+          // A tile that runs holds no state to be current in.
+          CutWholePress() => false,
         },
         onPress: onPress,
       ),

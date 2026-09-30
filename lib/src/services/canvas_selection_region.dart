@@ -493,6 +493,41 @@ class CanvasSelectionRegion {
         pixels.top < box.bottom + 0.5;
   }
 
+  /// The whole-pixel box a read over this region works in: [coverageBounds]
+  /// widened by [pad] — the room the soft-mask post-passes write into
+  /// (`SelectionMaskOptions.bboxPad`) — inside the half-open [clip]. Null
+  /// when the two do not meet.
+  ///
+  /// ⛔ONE BOX. The cut, the move's lift and the pixel verbs each typed
+  /// this arithmetic out for themselves (the cut without the pad), which is
+  /// one algorithm three times; the pixel copy (I-55) would have been a
+  /// fourth, the cut's with the pad added by hand.
+  ({int left, int top, int width, int height})? pixelBoxWithin(
+    DirtyRegion clip, {
+    int pad = 0,
+  }) {
+    final bounds = coverageBounds;
+    final left = math.max(clip.left, bounds.left.floor() - pad);
+    final top = math.max(clip.top, bounds.top.floor() - pad);
+    final rightExclusive = math.min(
+      clip.rightExclusive,
+      bounds.right.ceil() + 1 + pad,
+    );
+    final bottomExclusive = math.min(
+      clip.bottomExclusive,
+      bounds.bottom.ceil() + 1 + pad,
+    );
+    if (rightExclusive <= left || bottomExclusive <= top) {
+      return null;
+    }
+    return (
+      left: left,
+      top: top,
+      width: rightExclusive - left,
+      height: bottomExclusive - top,
+    );
+  }
+
   ({double left, double top, double right, double bottom})? _selectedBounds;
 
   /// The tight box around what is ACTUALLY selected — the fold, with

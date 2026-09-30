@@ -12,6 +12,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
 import '../models/tile_coord.dart';
 import 'canvas_selection_region.dart';
 import 'canvas_selection_shape.dart';
@@ -901,6 +902,47 @@ Uint8List buildSelectionMask({
   return mask;
 }
 
+/// A selection's mask over the box it covers — nothing is selected outside
+/// [box].
+typedef SelectionMaskReading = ({
+  Uint8List mask,
+  ({int left, int top, int width, int height}) box,
+});
+
+/// A selection READ the way every pixel reader reads one: [region]
+/// rasterized at [options] ([buildSelectionMask]) over its own box —
+/// coverage, padded for the post-passes, inside the pasteboard wall of
+/// [canvasSize] ([CanvasSelectionRegion.pixelBoxWithin]). Null when that
+/// box is empty.
+///
+/// ⛔ONE READING. The move's lift, the pixel verbs' walk, the copy and the
+/// paste (I-55) each computed this box and then this mask; four copies of
+/// two steps is how a selection comes to mean two things.
+SelectionMaskReading? selectionMaskOnPasteboard(
+  CanvasSelectionRegion region, {
+  required CanvasSize canvasSize,
+  SelectionMaskOptions options = SelectionMaskOptions.none,
+}) {
+  final box = region.pixelBoxWithin(
+    canvasSize.pasteboardRegion,
+    pad: options.bboxPad,
+  );
+  if (box == null) {
+    return null;
+  }
+  return (
+    mask: buildSelectionMask(
+      region: region,
+      options: options,
+      left: box.left,
+      top: box.top,
+      width: box.width,
+      height: box.height,
+    ),
+    box: box,
+  );
+}
+
 SelectionLiftDabs? buildSelectionLiftDabs({
   required CanvasSelectionRegion region,
   required BitmapSurface surface,
@@ -909,40 +951,17 @@ SelectionLiftDabs? buildSelectionLiftDabs({
 }) {
   // Pasteboard clip, not canvas — off-canvas artwork is selectable and
   // liftable (the whole point of moving things on and off the stage).
-  final canvasSize = surface.canvasSize;
-  // Coverage, not the tight fold: the mask box must hold every pixel a
-  // step could have added, and `maskFor` zeroes what a 삭제 took back.
-  final regionBounds = region.coverageBounds;
-  final minX = regionBounds.left;
-  final minY = regionBounds.top;
-  final maxX = regionBounds.right;
-  final maxY = regionBounds.bottom;
-  // R26: grow/feather/AA may write beyond the polygon's bbox.
-  final pad = options.bboxPad;
-  final left = math.max(canvasSize.pasteboardLeft, minX.floor() - pad);
-  final top = math.max(canvasSize.pasteboardTop, minY.floor() - pad);
-  final rightExclusive = math.min(
-    canvasSize.pasteboardRightExclusive,
-    maxX.ceil() + 1 + pad,
+  // R26: grow/feather/AA may write beyond the polygon's bbox, hence the pad.
+  final read = selectionMaskOnPasteboard(
+    region,
+    canvasSize: surface.canvasSize,
+    options: options,
   );
-  final bottomExclusive = math.min(
-    canvasSize.pasteboardBottomExclusive,
-    maxY.ceil() + 1 + pad,
-  );
-  if (rightExclusive <= left || bottomExclusive <= top) {
+  if (read == null) {
     return null;
   }
-  final width = rightExclusive - left;
-  final height = bottomExclusive - top;
-
-  final mask = buildSelectionMask(
-    region: region,
-    options: options,
-    left: left,
-    top: top,
-    width: width,
-    height: height,
-  );
+  final (:mask, :box) = read;
+  final (:left, :top, :width, :height) = box;
 
   // 🚨WHOLE PIXELS unless the softness was ASKED for. A feathered selection
   // is a soft edge on purpose; anti-aliasing is not, and splitting a pixel

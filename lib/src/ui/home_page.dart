@@ -831,12 +831,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // presses, through the one [pressTool]; a colour edit action runs its
     // row's verb behind the gate that row opens behind.
     if (definition?.toolPress case final press?) {
-      pressTool(press, tool: _brushTool, transform: _transformOptions);
+      pressTool(
+        press,
+        tool: _brushTool,
+        transform: _transformOptions,
+        cutWhole: _session.cells.cutWhole,
+      );
       return;
     }
     if (definition?.pixelVerb case final verb?) {
       if (_session.cells.canRunPixelVerb) {
         _session.cells.runPixelVerb(verb);
+      }
+      return;
+    }
+    if (definition?.pixelClipboardVerb case final verb?) {
+      if (_session.cells.canRunPixelClipboardVerb(verb)) {
+        _session.cells.runPixelClipboardVerb(verb);
       }
       return;
     }

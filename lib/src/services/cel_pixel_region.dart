@@ -4,10 +4,10 @@ import 'dart:typed_data';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
-import '../models/pasteboard_bounds.dart';
 import '../models/transform_track.dart' show TransformPose;
 import 'layer_pose_matrix.dart' show canvasToArtwork;
-import 'canvas_selection.dart' show SelectionMaskOptions, buildSelectionMask;
+import 'canvas_selection.dart'
+    show SelectionMaskOptions, selectionMaskOnPasteboard;
 import 'canvas_selection_region.dart';
 import 'cel_pixel_overwrite.dart';
 
@@ -46,40 +46,22 @@ CelPixelWalk celPixelWalkFor({
   }
 
   final tileSize = surface.tileSize;
-  final canvasSize = surface.canvasSize;
-  // Coverage, not the tight fold: the mask must be allocated over every
-  // pixel a step could have added, and the fold zeroes what a 삭제 took
-  // back. Padded for the post-passes, then clipped to the pasteboard wall.
-  final bounds = region.coverageBounds;
-  final pad = options.bboxPad;
-  final left = math.max(canvasSize.pasteboardLeft, bounds.left.floor() - pad);
-  final top = math.max(canvasSize.pasteboardTop, bounds.top.floor() - pad);
-  final right = math.min(
-    canvasSize.pasteboardRightExclusive,
-    bounds.right.ceil() + 1 + pad,
-  );
-  final bottom = math.min(
-    canvasSize.pasteboardBottomExclusive,
-    bounds.bottom.ceil() + 1 + pad,
-  );
-  if (right <= left || bottom <= top) {
-    return (visit) {};
-  }
-  final width = right - left;
-  final height = bottom - top;
-
   // ONE mask over the whole region, sliced per tile — not one mask per
   // tile. The post-passes (grow/feather/AA) read neighbouring pixels, so a
   // tile rasterized on its own would soften against its own edge and leave
   // a seam at every tile boundary.
-  final mask = buildSelectionMask(
-    region: region,
+  final read = selectionMaskOnPasteboard(
+    region,
+    canvasSize: surface.canvasSize,
     options: options,
-    left: left,
-    top: top,
-    width: width,
-    height: height,
   );
+  if (read == null) {
+    return (visit) {};
+  }
+  final (:mask, :box) = read;
+  final (:left, :top, :width, :height) = box;
+  final right = left + width;
+  final bottom = top + height;
 
   return (visit) {
     // One reusable tile buffer: the kernel reads the mask inside the visit

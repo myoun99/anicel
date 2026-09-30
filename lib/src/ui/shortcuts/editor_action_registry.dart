@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/pixel_clipboard_verb.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../brush/brush_tool_state.dart' show CanvasTool, canvasToolRailGroup;
 import '../brush/tool_press.dart';
@@ -38,6 +39,7 @@ class EditorActionDefinition {
     this.toolPress,
     this.pixelVerb,
     this.blendMode,
+    this.pixelClipboardVerb,
     this.readsTheSheet = false,
   });
 
@@ -90,6 +92,10 @@ class EditorActionDefinition {
   /// `BrushToolState.blendIsAChoice`.
   final BrushBlendMode? blendMode;
 
+  /// The clipboard row of the colour edit list a row runs (I-55), or null —
+  /// the same rule as [pixelVerb], for the list's other kind of verb.
+  final PixelClipboardVerb? pixelClipboardVerb;
+
   /// A move on the sheet (F-241): its ARROW keys are written as the timeline
   /// reads them, and on the X-sheet a pressed arrow is turned to the
   /// timeline's before it is matched, and a bound one is shown turned
@@ -108,6 +114,15 @@ final Map<ToolPress, String> _toolActionIds = {
 
 /// The action a colour edit row runs, found by its verb.
 String pixelVerbActionIdFor(CelPixelVerb verb) => _pixelVerbActionIds[verb]!;
+
+/// The action a clipboard row of the colour edit list runs (I-55).
+String pixelClipboardActionIdFor(PixelClipboardVerb verb) =>
+    _pixelClipboardActionIds[verb]!;
+
+final Map<PixelClipboardVerb, String> _pixelClipboardActionIds = {
+  for (final definition in editorActionDefinitions)
+    ?definition.pixelClipboardVerb: definition.id,
+};
 
 final Map<CelPixelVerb, String> _pixelVerbActionIds = {
   for (final definition in editorActionDefinitions)
@@ -217,6 +232,7 @@ abstract final class EditorActionIds {
   static const toolTransformFree = 'tool-transform-free';
   static const toolTransformMesh = 'tool-transform-mesh';
   static const toolCut = 'tool-cut';
+  static const toolCutWhole = 'tool-cut-whole';
   static const toolCutStamp = 'tool-cut-stamp';
   static const selectionDeselect = 'selection-deselect';
   static const layerUp = 'layer-up';
@@ -258,6 +274,11 @@ abstract final class EditorActionIds {
   static const editClearPixels = 'edit-clear-pixels';
   static const editDeleteColour = 'edit-delete-colour';
   static const editKeepColour = 'edit-keep-colour';
+
+  /// Its clipboard rows (I-55) — 픽셀 복사 and the two pastes.
+  static const editCopyPixels = 'edit-copy-pixels';
+  static const editPastePixelsAbove = 'edit-paste-pixels-above';
+  static const editPastePixelsBelow = 'edit-paste-pixels-below';
 
   /// 「컨트롤s로 저장 로직 연결, 컨트롤쉬프트s로 다른이름저장」.
   static const fileSave = 'file-save';
@@ -476,6 +497,29 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     pixelVerb: CelPixelVerb.keepColour,
   ),
+  // 🗣️I-55 (유저 2026-10-01): the list's clipboard rows, under the same rule
+  // — actions, in the list's order. No key ships with them: none was named.
+  const EditorActionDefinition(
+    id: EditorActionIds.editCopyPixels,
+    label: 'Copy Pixels',
+    category: 'Edit',
+    defaultActivators: [],
+    pixelClipboardVerb: PixelClipboardVerb.copy,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editPastePixelsAbove,
+    label: 'Paste Pixels Above',
+    category: 'Edit',
+    defaultActivators: [],
+    pixelClipboardVerb: PixelClipboardVerb.pasteAbove,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editPastePixelsBelow,
+    label: 'Paste Pixels Below',
+    category: 'Edit',
+    defaultActivators: [],
+    pixelClipboardVerb: PixelClipboardVerb.pasteBelow,
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSave,
     label: 'Save',
@@ -603,6 +647,15 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     toolPress: RailToolPress(CanvasTool.cut),
   ),
   ..._shapeTileActions(CanvasTool.cut),
+  // 🗣️I-28 (유저 2026-09-30): 「잘라내기 툴의 도구 라이브러리에 전체 잘라내기
+  // 신설」 — a tile that runs at the press (I-28-Q2), and so a key that does.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolCutWhole,
+    label: 'Whole Picture Cut',
+    category: 'Tools',
+    defaultActivators: [],
+    toolPress: CutWholePress(),
+  ),
   // 🗣️I-53 (유저 2026-09-28): 「스탬프를 v로」. ↩️V alone was retired from
   // the move tool on 09-13 (「v 삭제하고 v 관련 잔재있으면 삭제」) — the
   // key left that tool; this is the user handing it to another.

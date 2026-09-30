@@ -139,15 +139,65 @@ BrushDab? clipStampDabToSelection(
   if (!region.mayCover(landing)) {
     return null;
   }
-  final rgba = Uint8List.fromList(stamp.rgba);
-  applySelectionMaskToStrokeAlpha(
-    pixels: rgba,
-    mask: region.maskFor(
+  return _stampThroughWindow(
+    dab,
+    region.maskFor(
       left: landing.left,
       top: landing.top,
       width: stamp.width,
       height: stamp.height,
     ),
+  );
+}
+
+/// [dab]'s stamp through a selection mask rasterized ALREADY — [mask]
+/// covering [box], nothing selected outside it — which is how the PIXEL
+/// verbs read a selection: once over its own box, at its 확장·페더·AA
+/// (`buildSelectionMask`; 유저 2026-09-09 「선택의 aa 따르게」).
+///
+/// ⛔The same fold as [clipStampDabToSelection], from a different mask: a
+/// soft mask must be read off the selection's OWN box, because its passes
+/// read neighbours and a box cut to the stamp would ramp against its own
+/// edge. Which one a caller hands in is the reading its verb has; what the
+/// stamp does with it is this one rule.
+///
+/// Null when nothing of it survives.
+BrushDab? clipStampDabToSelectionMask(
+  BrushDab dab, {
+  required Uint8List mask,
+  required ({int left, int top, int width, int height}) box,
+}) {
+  final stamp = dab.stamp!;
+  final landing = stamp.landingRect(dab.center);
+  final window = Uint8List(stamp.width * stamp.height);
+  final left = landing.left > box.left ? landing.left : box.left;
+  final right = landing.rightExclusive < box.left + box.width
+      ? landing.rightExclusive
+      : box.left + box.width;
+  final top = landing.top > box.top ? landing.top : box.top;
+  final bottom = landing.bottomExclusive < box.top + box.height
+      ? landing.bottomExclusive
+      : box.top + box.height;
+  if (right <= left || bottom <= top) {
+    return null;
+  }
+  for (var y = top; y < bottom; y += 1) {
+    final from = (y - box.top) * box.width + (left - box.left);
+    final to = (y - landing.top) * stamp.width + (left - landing.left);
+    window.setRange(to, to + (right - left), mask, from);
+  }
+  return _stampThroughWindow(dab, window);
+}
+
+/// [dab]'s stamp with [window] — one mask byte per stamp pixel — folded
+/// into its alpha ([applySelectionMaskToStrokeAlpha]); null when nothing
+/// is left.
+BrushDab? _stampThroughWindow(BrushDab dab, Uint8List window) {
+  final stamp = dab.stamp!;
+  final rgba = Uint8List.fromList(stamp.rgba);
+  applySelectionMaskToStrokeAlpha(
+    pixels: rgba,
+    mask: window,
     pixelCount: stamp.width * stamp.height,
   );
   for (var alpha = 3; alpha < rgba.length; alpha += 4) {

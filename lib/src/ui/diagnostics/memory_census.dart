@@ -384,6 +384,11 @@ int _clipboardOnlyBytes(Iterable<EditorSessionManager> sessions) {
   final counted = Set<Object>.identity();
   var bytes = 0;
   for (final session in sessions) {
+    // 픽셀 복사's board (I-55) holds a copy of its own — never a tile a
+    // store shares — so it is weighed whole, once per clipboard.
+    if (counted.add(session.appClipboard)) {
+      bytes += session.appClipboard.pixels.heldBytes;
+    }
     for (final picture in session.appClipboard.heldPictures) {
       for (final tile in picture.tiles.values) {
         if (!hot.contains(tile) && counted.add(tile)) {

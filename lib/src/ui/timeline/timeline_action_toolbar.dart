@@ -9,6 +9,7 @@ import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
+import '../../models/pixel_clipboard_verb.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
@@ -630,9 +631,13 @@ class TimelineActionToolbar extends StatelessWidget {
   /// 하고싶음」 — the buttons match the colour exactly, and the graded
   /// version is the Delete Color / Keep Color EFFECT.
   ///
-  /// Every item is live whenever the head is: they share one gate
-  /// ([EditorSessionManager.canRunPixelVerb]) and there is no way to open
-  /// the list without passing it.
+  /// ↩️The four were live whenever the head was — one gate for all of them.
+  /// I-55 put a second kind of verb in the list, so the head opens when any
+  /// row can run (`canOpenColourEdit`) and each row dims on its own gate:
+  /// the four on theirs, the clipboard rows on theirs.
+  ///
+  /// 🗣️I-55 (유저 2026-10-01): 「색편집버튼에 새 기능으로서 … 픽셀복사/픽셀
+  /// 아래 붙여넣기/픽셀 위 붙여넣기」 — after the four, as their own group.
   List<PanelFlyoutEntry> _colourEditEntries() => [
     PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
     for (final verb in CelPixelVerb.values)
@@ -656,7 +661,26 @@ class TimelineActionToolbar extends StatelessWidget {
           CelPixelVerb.keepColour => Icons.colorize_outlined,
         },
         shortcuts: [pixelVerbActionIdFor(verb)],
+        enabled: session.cells.canRunPixelVerb,
         onSelected: () => session.cells.runPixelVerb(verb),
+      ),
+    const PanelFlyoutDivider(),
+    for (final verb in PixelClipboardVerb.values)
+      PanelFlyoutItem(
+        keyValue: switch (verb) {
+          PixelClipboardVerb.copy => 'shared-copy-pixels-button',
+          PixelClipboardVerb.pasteAbove => 'shared-paste-pixels-above-button',
+          PixelClipboardVerb.pasteBelow => 'shared-paste-pixels-below-button',
+        },
+        label: editorActionLabel(pixelClipboardActionIdFor(verb)),
+        icon: switch (verb) {
+          PixelClipboardVerb.copy => Icons.content_copy,
+          PixelClipboardVerb.pasteAbove => Icons.flip_to_front,
+          PixelClipboardVerb.pasteBelow => Icons.flip_to_back,
+        },
+        shortcuts: [pixelClipboardActionIdFor(verb)],
+        enabled: session.cells.canRunPixelClipboardVerb(verb),
+        onSelected: () => session.cells.runPixelClipboardVerb(verb),
       ),
   ];
 
@@ -908,6 +932,9 @@ class TimelineActionToolbar extends StatelessWidget {
       // cursor gate carry `canRunPixelVerb`); this listener stays for the cel
       // emptied in place.
       session.layerStack.celTintRevision,
+      // I-55: and the pixel board — a copy fills it without moving anything
+      // above, and the two pastes open behind it.
+      session.appClipboard.pixels,
     ]),
     builder: (context, _) => _sharedPillBody(),
   );
@@ -930,8 +957,8 @@ class TimelineActionToolbar extends StatelessWidget {
       // reason the delete reads `deleteSubject` — the button's enablement
       // and what the press DOES have to come from one answer.
       onEditInstance != null && panelContext.canEditInstance,
-      // The two pixel verbs read the same one-question gate their press runs.
-      session.cells.canRunPixelVerb,
+      // The 색 편집 head reads the gate its rows open behind.
+      session.cells.canOpenColourEdit,
       // I-45: the link-independent button, from its own one answer.
       panelContext.canUnlink,
     ),
@@ -1061,7 +1088,7 @@ class TimelineActionToolbar extends StatelessWidget {
             key: const ValueKey<String>('shared-colour-edit-button'),
             tooltip: AppText.strings.tlSharedColourEdit,
             icon: Icons.palette_outlined,
-            onPressed: session.cells.canRunPixelVerb
+            onPressed: session.cells.canOpenColourEdit
                 ? () => showPanelFlyout(context, entries: _colourEditEntries())
                 : null,
           ),

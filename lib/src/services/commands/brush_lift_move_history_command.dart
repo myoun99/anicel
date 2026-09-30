@@ -1,4 +1,5 @@
 import '../../models/bitmap_surface.dart';
+import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
@@ -30,6 +31,13 @@ import 'cel_snapshot_restore.dart';
 /// that on 09-17 — the hole the user sees is a view now, not an edit — and
 /// the two consequences meet here: the landing carries both dabs, and the
 /// undo target costs nothing to name.
+///
+/// 🆕I-55 (유저 2026-10-01): 픽셀 위 / 아래 붙여넣기 lands through this same
+/// door — a paste is dabs on a NAMED cel as one step, the question this
+/// command already answers for every cel a range confirm reaches (「변형도구
+/// 처럼 여러 프레임 선택해서 동시 붙여넣기」). [blendMode] is the one thing a
+/// paste adds: 위 = `color`, 아래 = `behind` (위/아래 was always composite
+/// order, 유저 08-10). ⛔Not a second command for the same landing.
 class BrushLiftMoveHistoryCommand
     implements
         Command,
@@ -45,12 +53,21 @@ class BrushLiftMoveHistoryCommand
     this.regionBefore,
     this.restoreRegion,
     this.readRegion,
+    this.blendMode = BrushBlendMode.color,
+    this.description = 'Move selection',
   }) : _preLiftSurface = preLiftSurface,
        _landingDabs = landingDabs;
 
   final BrushFrameEditingCoordinator coordinator;
   final BrushFrameKey frameKey;
   final CacheInvalidationSink? cacheInvalidationSink;
+
+  /// How the landing composites — `color` for a move, either order for a
+  /// paste (see the class note).
+  final BrushBlendMode blendMode;
+
+  @override
+  final String description;
 
   /// The selection as the SESSION FOUND IT, and the way back to it.
   ///
@@ -148,9 +165,6 @@ class BrushLiftMoveHistoryCommand
       _surfaces?.visitHeldTiles(visit, undone: undone);
 
   @override
-  String get description => 'Move selection';
-
-  @override
   void execute() {
     if (_landed) {
       _restore(_surfaces?.after);
@@ -211,6 +225,7 @@ class BrushLiftMoveHistoryCommand
   void _landOnFrameKey() {
     final derived = coordinator.deriveSurfaceWith(
       _landingDabs!,
+      blendMode: blendMode,
       key: frameKey,
     );
     if (derived == null) {

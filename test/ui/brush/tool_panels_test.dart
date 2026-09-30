@@ -693,8 +693,12 @@ void main() {
         app(
           ToolLibraryPanel(
             tool: CanvasTool.move,
-            onPress: (press) =>
-                pressTool(press, tool: tool, transform: options),
+            onPress: (press) => pressTool(
+              press,
+              tool: tool,
+              transform: options,
+              cutWhole: () {},
+            ),
             brushLibrary: const SizedBox.shrink(),
             transformOptions: options,
           ),

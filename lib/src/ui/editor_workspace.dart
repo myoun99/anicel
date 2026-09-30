@@ -740,8 +740,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// What a rail button or a tile presses — the write a tool shortcut makes
   /// in the shell, through the same [pressTool].
-  void _pressTool(ToolPress press) =>
-      pressTool(press, tool: _brushTool, transform: _transformOptions);
+  void _pressTool(ToolPress press) => pressTool(
+    press,
+    tool: _brushTool,
+    transform: _transformOptions,
+    cutWhole: widget.session.cells.cutWhole,
+  );
 
   /// The one piece the cut tool is holding.
   ///
@@ -1128,6 +1132,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       argb: _brushTool.value.color,
       mask: _views._selectionMaskOptions.value,
     );
+    // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
+    session.cells.cutToolHand = _cutPieceSlot.hold;
     // The marquee, as the fifth selection kind — so one 선택 해제 can let go
     // of everything rather than half of it.
     // ⛔Not a cascade: an arrow closure swallows the next `..` section.
@@ -1210,6 +1216,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // A project behind the one on screen has no canvas: its marquee is not
     // this window's to report or to clear.
     session.cells.pixelVerbCanvas = null;
+    session.cells.cutToolHand = null;
     session.rangeSelections
       ..canvasHasSelection = null
       ..clearCanvasSelection = null;

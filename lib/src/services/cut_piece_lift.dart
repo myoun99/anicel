@@ -1,10 +1,9 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/cut_piece.dart';
-import '../models/pasteboard_bounds.dart';
+import '../models/dirty_region.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 
@@ -27,31 +26,28 @@ import 'canvas_selection_region.dart';
 ///
 /// The clip is the PASTEBOARD, not the canvas: artwork that overshoots the
 /// frame is real artwork, and an animator draws limbs past the edge daily.
+///
+/// [options] is the softness of a USER'S SELECTION, and only ever that. The
+/// pixel copy (I-55) reads through the marquee the user drew, and a pixel
+/// verb follows that marquee's 확장·페더·AA (유저 2026-09-09,
+/// pixel-verbs-mask-options: 「선택의 aa 따르게」) — the same reading the
+/// move's lift gives it. ⛔The cut tool's own outline and a whole picture
+/// pass nothing: the hard edge above is their law, not a default.
 CutPiece? buildCutPiece({
   required CanvasSelectionRegion region,
   required BitmapSurface surface,
+  SelectionMaskOptions options = SelectionMaskOptions.none,
 }) {
-  final canvasSize = surface.canvasSize;
-  final box = cutPieceBox(
+  final read = selectionMaskOnPasteboard(
     region,
-    clip: (
-      left: canvasSize.pasteboardLeft,
-      top: canvasSize.pasteboardTop,
-      rightExclusive: canvasSize.pasteboardRightExclusive,
-      bottomExclusive: canvasSize.pasteboardBottomExclusive,
-    ),
+    canvasSize: surface.canvasSize,
+    options: options,
   );
-  if (box == null) {
+  if (read == null) {
     return null;
   }
+  final (:mask, :box) = read;
   final (:left, :top, :width, :height) = box;
-
-  final mask = region.maskFor(
-    left: left,
-    top: top,
-    width: width,
-    height: height,
-  );
   final gathered = gatherMaskedSurfacePixels(
     surface: surface,
     mask: mask,
@@ -59,12 +55,10 @@ CutPiece? buildCutPiece({
     top: top,
     width: width,
     height: height,
-    // ⚠️Nothing changes here either way: this mask comes from `maskFor` with
-    // no soft options, so every byte is 0 or 255 and there is no partial
-    // pixel to decide about. Set to match the move's law rather than left to
-    // a default, because a default is where the next soft mask would land
-    // silently.
-    takeWholePixels: true,
+    // The MOVE's law (`buildSelectionLiftDabs`): whole pixels unless a
+    // feather asked for a soft edge. With no options every mask byte is 0
+    // or 255 and there is nothing to decide.
+    takeWholePixels: options.featherPx <= 0,
   );
   // Scraping an empty stretch of cel must NOT hand back a blank piece: the
   // slot is a long-term holder that survives frames, cuts and projects, and
@@ -112,43 +106,13 @@ String _nextCutPieceId() => 'cut-$_cutPieceRun-${_cutPieceSequence += 1}';
 final String _cutPieceRun = '${DateTime.now().microsecondsSinceEpoch}';
 var _cutPieceSequence = 0;
 
-/// The pixel box a cut over [region] reads: the outline's coverage, inside
-/// the half-open clip — null when the two do not meet.
-///
-/// Coverage, not the tight fold: the piece's box has to hold every pixel
-/// a step could have added, and the mask zeroes what a 삭제 removed.
-({int left, int top, int width, int height})? cutPieceBox(
-  CanvasSelectionRegion region, {
-  required ({int left, int top, int rightExclusive, int bottomExclusive}) clip,
-}) {
-  final bounds = region.coverageBounds;
-  final left = math.max(clip.left, bounds.left.floor());
-  final top = math.max(clip.top, bounds.top.floor());
-  final rightExclusive = math.min(
-    clip.rightExclusive,
-    bounds.right.ceil() + 1,
-  );
-  final bottomExclusive = math.min(
-    clip.bottomExclusive,
-    bounds.bottom.ceil() + 1,
-  );
-  if (rightExclusive <= left || bottomExclusive <= top) {
-    return null;
-  }
-  return (
-    left: left,
-    top: top,
-    width: rightExclusive - left,
-    height: bottomExclusive - top,
-  );
-}
-
 /// The CUT verb over a picture that is not a cel — a page in the media
 /// viewer (I-14, 유저 2026-09-11: 「뷰어패널의 잘라내기툴 사용 가능하도록.
 /// 원본크기로 잘라냄. 그걸 캔버스에 배치하는용도」).
 ///
 /// [region] is in the picture's own pixels, and [readRgba] hands back the
-/// straight RGBA of the box [cutPieceBox] chose, at that size — so the piece
+/// straight RGBA of the box the region chose
+/// ([CanvasSelectionRegion.pixelBoxWithin]), at that size — so the piece
 /// holds the SOURCE's pixels, whatever zoom the drag was made at. The laws
 /// are [buildCutPiece]'s: a hard mask, no blank piece for an empty drag
 /// (the slot outlives frames, cuts and projects), and its id minted here.
@@ -163,9 +127,8 @@ Future<CutPiece?> buildCutPieceFromPicture({
   )
   readRgba,
 }) async {
-  final box = cutPieceBox(
-    region,
-    clip: (
+  final box = region.pixelBoxWithin(
+    DirtyRegion(
       left: 0,
       top: 0,
       rightExclusive: picture.width,

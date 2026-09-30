@@ -1129,8 +1129,8 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // cel under the playhead HAS A DRAWING, and two drawn cels answer every
       // other gate here alike — so a seek from a cel emptied in place to a
       // drawn one moved nothing this token held, and the cached bar kept
-      // the dark head.
-      session.cells.canRunPixelVerb,
+      // the dark head. (I-55: the head's gate is every row's now.)
+      session.cells.canOpenColourEdit,
       // The Add button gates on the active layer's kind + cell state.
       // NOTE: these two move together with the can* getters above in every
       // reachable scenario, so the guard test cannot isolate them — they are
