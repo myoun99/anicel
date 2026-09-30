@@ -50,9 +50,12 @@ void main() {
       // One button, two actions: both keys land on it.
       ('tool-fill-button', 'Fill Tool (F)'),
       ('tool-guide-button', 'Guide Tool (G)'),
-      ('tool-cut-button', 'Cut Tool (C)'),
       // A tool with no key of its own shows its name alone — M, L and V
       // are retired (I-19, 2026-09-13).
+      // ↩️The cut tool wore C until I-53 (유저 2026-09-28): C is the lasso
+      // cut's tile now — 「잘라내기를 고르고싶으면 올가미 잘라내기의 단축키를
+      // 사용할 예정」 — and the tool itself ships unbound.
+      ('tool-cut-button', 'Cut Tool'),
       ('tool-select-button', 'Select Tool'),
       ('tool-move-button', 'Transform Tool'),
       // The film verbs ship unbound, so they show their name alone.
