@@ -385,6 +385,11 @@ void main() {
       tester.widget<Text>(reads).data,
       AppText.strings.toolReadsEveryVisibleLayer,
     );
+    expect(
+      tester.widget<PillStrip>(segments).axis,
+      Axis.vertical,
+      reason: 'stood up — side by side the answers fold in the panel',
+    );
     await press(
       tester,
       find.descendant(
@@ -393,5 +398,14 @@ void main() {
       ),
     );
     expect(tester.widget<Text>(reads).data, color.value);
+    bool lit(CanvasReadSource offer) => tester
+        .widget<Pill>(
+          find.byKey(ValueKey<String>('eyedropper-source-${offer.name}')),
+        )
+        .selected;
+    expect(
+      (lit(CanvasReadSource.display), lit(CanvasReadSource.layer)),
+      (false, true),
+    );
   });
 }

@@ -84,10 +84,16 @@ void main() {
 
     final strip = tester.getSize(find.byType(PillStrip)).width;
     for (final key in ['a', 'b', 'c']) {
+      final pill = find.byKey(ValueKey<String>(key));
       expect(
-        tester.getSize(find.byKey(ValueKey<String>(key))).width,
+        tester.getSize(pill).width,
         closeTo(strip, 2.01),
         reason: 'the outline takes a pixel each side',
+      );
+      expect(
+        tester.getCenter(find.text(key)).dx,
+        closeTo(tester.getCenter(pill).dx, 0.5),
+        reason: 'its word in the middle, as in a pill as wide as its word',
       );
     }
     final line = lineOf(tester, 'b');
