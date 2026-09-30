@@ -81,6 +81,7 @@ class TimelinePanel extends StatefulWidget {
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
+    this.onOpenLayerLinks,
     this.layerSourceIsShortOf,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
@@ -291,6 +292,10 @@ class TimelinePanel extends StatefulWidget {
   /// 3). Null hides the button.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
+
+  /// A linked row's badge, both orientations: the link window (I-25).
+  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerLinks;
 
   /// Whether that row asks its file for more than the file can show.
   final bool Function(LayerId layerId)? layerSourceIsShortOf;
@@ -622,6 +627,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onDropMediaAssetBetweenLayers: widget.onDropMediaAssetBetweenLayers,
       onOpenLayerMixer: widget.onOpenLayerMixer,
       onOpenLayerReference: widget.onOpenLayerReference,
+      onOpenLayerLinks: widget.onOpenLayerLinks,
       layerSourceIsShortOf: widget.layerSourceIsShortOf,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
       isLayerSoloed: widget.isLayerSoloed,

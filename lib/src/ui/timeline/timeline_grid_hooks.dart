@@ -93,6 +93,7 @@ class TimelineGridHooks {
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
+    this.onOpenLayerLinks,
     this.layerSourceIsShortOf,
     this.attachArrowPlacementOf,
     required this.onToggleLayerVisibility,
@@ -292,6 +293,11 @@ class TimelineGridHooks {
   /// 라운드 3). Null hides the button.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
+
+  /// A linked row's badge: the link window (I-25). Null leaves the badge a
+  /// picture.
+  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerLinks;
 
   /// Whether that row asks its file for more than the file can show — the
   /// button goes red and the popover says by how much (유저 2026-09-12).

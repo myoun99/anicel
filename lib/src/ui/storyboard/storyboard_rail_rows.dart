@@ -1430,6 +1430,8 @@ class _StoryboardRailRows {
         showSeconds: _state.widget.showSeconds,
         projectFrameRate: _state.widget.projectFrameRate,
         onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
+        linkedCutIds: _state.widget.linkedCutIds,
+        onOpenCutLinks: _state.widget.onOpenCutLinks,
       ),
       if (_state.widget.expandedTransformTracks.contains(track.id.value))
         for (final strip in _trackTransformLaneStrips(

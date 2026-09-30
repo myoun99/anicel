@@ -190,6 +190,7 @@ Widget layerControlsRowFrom(
     onToggleLayerFillReference: hooks.onToggleLayerFillReference,
     onOpenLayerMixer: hooks.onOpenLayerMixer,
     onOpenLayerReference: hooks.onOpenLayerReference,
+    onOpenLayerLinks: hooks.onOpenLayerLinks,
     isReferenceSourceShort: facts.isReferenceSourceShort,
     isLayerSoloed: facts.soloed,
     attachArrowPlacement: facts.attachArrow,

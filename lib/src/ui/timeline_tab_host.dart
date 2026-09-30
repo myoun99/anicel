@@ -10,6 +10,7 @@ import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
 import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
+import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
 import 'timeline/se_layer_mixer.dart';
@@ -692,6 +693,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   session: _session,
                   layerId: layerId,
                 ),
+            onOpenLayerLinks: (anchorContext, layerId) => showLayerLinkWindow(
+              anchorContext,
+              session: _session,
+              layerId: layerId,
+            ),
             // ONE law, two readers: the rail asks whether to go red, the
             // popover asks by how much, and both get the answer from
             // [movieSourceShortfall].

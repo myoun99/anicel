@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart' show IterableExtension;
+
 import '../../services/editing/layer_standing_after_change.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/conte/conte_ink_keys.dart' show conteInkRowKey;
@@ -8,6 +10,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
 import '../../models/timeline_row_address.dart';
+import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
@@ -314,15 +317,6 @@ class LayerVerbs {
         .linkDuplicateLayer(cutId: cutId, layerId: layerId),
   );
 
-  bool get canUnlinkActiveLayer {
-    final activeLayer = _selection.activeLayer;
-    final cut = _project.activeCutOrNull;
-    if (activeLayer == null || cut == null) {
-      return false;
-    }
-    return groupIsLinked(activeLayer, cut);
-  }
-
   /// Whether [layer]'s attach group shares its pictures through a link —
   /// the one question 독립시키기 answers, from the layer menu and from the
   /// shared pill alike.
@@ -349,30 +343,53 @@ class LayerVerbs {
     return _selectedLayerIdsWhere((layer) => groupIsLinked(layer, cut));
   }
 
-  /// 독립시키기 for every selected linked row, as ONE undo step. Two
-  /// selected rows of one attach group unlink once: the second finds its
-  /// group already forked, and the coordinator's own guard makes it a no-op.
-  void unlinkSelectedLayers() => _eachRowAsOneStep(
-    linkedSelectedLayerIds(),
-    'Unlink rows',
-    (cutId, layerId) {
-      _project.cutCommandCoordinator.unlinkLayer(
-        cutId: cutId,
-        layerId: layerId,
-      );
-      return null;
-    },
-  );
+  /// 독립시키기 for every selected linked row, as ONE undo step.
+  void unlinkSelectedLayers() => unlinkLayers(linkedSelectedLayerIds());
 
-  /// 독립시키기: forks the active layer's group out of its links — the
-  /// pictures stay identical but stop being shared from here on.
-  void unlinkActiveLayer() => _activeCutEdits.onActiveLayer(
-    when: canUnlinkActiveLayer,
-    command: (cutId, layerId) => _project.cutCommandCoordinator.unlinkLayer(
-      cutId: cutId,
-      layerId: layerId,
-    ),
-  );
+  /// 독립시키기 for each of [layerIds] whose group is linked, as ONE undo
+  /// step. Two rows of one attach group unlink once: the second finds its
+  /// group already forked, and the coordinator's own guard makes it a no-op.
+  ///
+  /// The link window's button (I-25) presses this with the rows a press acts
+  /// on (`RowSelection.rowsActedOnBy`), the pill with the selection.
+  void unlinkLayers(Iterable<LayerId> layerIds) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    _eachRowAsOneStep(
+      [
+        for (final id in layerIds)
+          if (cut.layers.firstWhereOrNull((layer) => layer.id == id)
+              case final layer? when groupIsLinked(layer, cut))
+            id,
+      ],
+      'Unlink rows',
+      (cutId, layerId) {
+        _project.cutCommandCoordinator.unlinkLayer(
+          cutId: cutId,
+          layerId: layerId,
+        );
+        return null;
+      },
+    );
+  }
+
+  /// Whether the ACTIVE cut is a linked cut (겸용 — its linked rows all have
+  /// counterparts in another cut, [linkedCutSiblings]): its rows then share
+  /// their pictures as the cut does, and one row cannot leave alone.
+  ///
+  /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
+  /// 표시. 여기서 링크컷일경우엔 링크해제버튼 비활성화하고 툴팁으로 링크컷이기
+  /// 때문에 불가능하다고 띄움. 링크컷아니면 해제해도 되니까 해제버튼 활성화」.
+  bool get activeCutIsLinkedCut {
+    final cut = _project.activeCutOrNull;
+    return cut != null &&
+        linkedCutSiblings(
+          _project.repository.requireProject(),
+          cutId: cut.id,
+        ).isNotEmpty;
+  }
 
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.

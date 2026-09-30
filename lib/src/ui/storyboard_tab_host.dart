@@ -10,6 +10,7 @@ import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
     show trackTransformLaneCarrierId;
 import '../services/import/import_layer_spot.dart';
+import 'storyboard/cut_link_window.dart';
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
@@ -672,6 +673,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         _session.layerStack.addLayerOfKind(LayerKind.storyboard);
                       }
                     },
+                    // I-25: a linked cut's name wears the link icon, and the
+                    // icon opens the link window.
+                    linkedCutIds: _session.cutVerbs.linkedCutIds,
+                    onOpenCutLinks: (context, cutId) => showCutLinkWindow(
+                      context,
+                      session: _session,
+                      cutId: cutId,
+                    ),
                     // The end line edits the MOVIE length (UI-R20 #3): the
                     // project's trailing gap, never the cuts.
                     movieEnd: StoryboardMovieEndCallbacks(

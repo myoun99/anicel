@@ -111,6 +111,7 @@ class StoryboardCutBlockVisual {
     required Rect bottomBand,
     required this.cutLabel,
     required this.conteLabel,
+    this.isLinkedCut = false,
   }) : _topBand = topBand,
        _innerTopBand = innerTopBand,
        _strip = strip,
@@ -164,6 +165,10 @@ class StoryboardCutBlockVisual {
   /// wear (유저 2026-09-26: 「안쪽띠, 콘티블록 라벨 반영」); null when the cut
   /// has no storyboard layer — its inner bands are the plate then.
   final Color? conteLabel;
+
+  /// Whether the cut is a LINKED cut (I-25) — its name wears the link
+  /// icon, which opens the link window.
+  final bool isLinkedCut;
 
   /// The cut's panels — the divisions the strip draws, under the coverage
   /// rule. Never empty: a cut with no storyboard row still has one cell.
@@ -230,6 +235,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   StoryboardThumbnails? thumbnails,
   required double devicePixelRatio,
   ValueListenable<int>? windowBucket,
+  Set<CutId> linkedCutIds = const {},
   double viewportMainExtent = 0,
 }) => StoryboardCutBlocksPainter(
   entries: entries,
@@ -244,6 +250,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   // The STRIP's content: the cut's panels, under the coverage rule — the
   // same reading the row's edge grips hang on and its flip steps through.
   storyboardCellsByCut: storyboardCellsByCut(entries),
+  linkedCutIds: linkedCutIds,
   geometry: geometry,
   crossAxisExtent: crossAxisExtent,
   minBlockWidth: minBlockWidth,
@@ -284,6 +291,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
     required this.entries,
     required this.storyboardLayerNames,
     required this.storyboardCellsByCut,
+    this.linkedCutIds = const {},
     required this.geometry,
     required this.crossAxisExtent,
     required this.minBlockWidth,
@@ -323,6 +331,10 @@ class StoryboardCutBlocksPainter extends CustomPainter
   /// the strip's content AND its grip material, one resolution for both.
   /// A cut always has at least one.
   final Map<CutId, List<StoryboardCoverageCell>> storyboardCellsByCut;
+
+  /// The LINKED cuts among [entries] (I-25), resolved by the host that
+  /// knows the project's links — the painter only reads them.
+  final Set<CutId> linkedCutIds;
 
   /// The LIVE frame-axis geometry: a zoom step repaints instead of
   /// rebuilding the row that built this.
@@ -521,6 +533,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       // the frame blocks' paper ask the same function.
       cutLabel: layerMarkColor(entry.cut.metadata.mark),
       conteLabel: conteLayer == null ? null : layerMarkColor(conteLayer.mark),
+      isLinkedCut: linkedCutIds.contains(entry.cutId),
       cells: cells,
       cellHeads: writing.heads,
       cellCommaLabels: writing.commaLabels,
@@ -717,6 +730,59 @@ class StoryboardCutBlocksPainter extends CustomPainter
     return block.innerTopBand;
   }
 
+  /// 🗣️I-25 (유저 2026-09-14): 「링크컷이 발생해있는 경우, 모든 컷에 적용.
+  /// 내용은 컷블록에서 컷 이름 오른쪽에 링크아이콘(레이어에서 사용하는거랑
+  /// 똑같은 것) 사용. 그리고 해당 버튼 클릭시 공용창 띄움」 — the icon's
+  /// square right after a linked cut's name, in its top band: the ONE rect the
+  /// paint draws and the press reads (the D30 create affordance's shape).
+  /// Null on a cut that is not linked, or a band too narrow for the square.
+  Rect? linkAffordanceRectOf(StoryboardCutBlockVisual block) {
+    if (!block.isLinkedCut) {
+      return null;
+    }
+    final band = block.topBand;
+    final side = band.height;
+    final inset = math.min(_padding, band.width / 2);
+    final titleRoom = band.width - inset * 2 - side;
+    if (side <= 0 || titleRoom < 0) {
+      return null;
+    }
+    final titleWidth = _bandTextWidth(
+      block.title,
+      _titleStyle,
+      Size(titleRoom, band.height),
+    );
+    return Rect.fromLTWH(band.left + inset + titleWidth, band.top, side, side);
+  }
+
+  /// The width [text] is painted at in a [room] ([_paintBandText]'s fit).
+  double _bandTextWidth(String text, TextStyle style, Size room) {
+    if (text.isEmpty || room.width <= 0) {
+      return 0;
+    }
+    final set = timelineWordSetOnto(text, style, room.width);
+    return set.glyph.width * wordFit(set.glyph.size, room).x;
+  }
+
+  /// The layer badge's glyph ([Icons.link]) in the accent, centred in [rect].
+  void _paintLinkIcon(Canvas canvas, Rect rect) {
+    const icon = Icons.link;
+    final glyph = timelineGlyphPainter(
+      String.fromCharCode(icon.codePoint),
+      TextStyle(
+        fontSize: rect.height,
+        fontFamily: icon.fontFamily,
+        package: icon.fontPackage,
+        color: colorScheme.primary,
+        height: 1.0,
+      ),
+    );
+    glyph.paint(
+      canvas,
+      rect.center - Offset(glyph.width / 2, glyph.height / 2),
+    );
+  }
+
   /// The block covering row-local [position], or null between blocks.
   StoryboardCutBlockVisual? blockAt(Offset position) {
     for (final block in blocks()) {
@@ -849,14 +915,23 @@ class StoryboardCutBlocksPainter extends CustomPainter
     final conteGround = _bandGround(block, StoryboardBand.conte);
     canvas.save();
     canvas.clipRect(block.topBand);
+    final link = linkAffordanceRectOf(block);
+    final top = block.topBand;
     _paintBandText(
       canvas,
       text: block.title,
       style: _titleStyle,
-      band: block.topBand,
+      // A linked cut's name gives up the icon's square at its end, so the
+      // icon stands right of it however the name narrows.
+      band: link == null
+          ? top
+          : Rect.fromLTRB(top.left, top.top, top.right - link.width, top.bottom),
       alignRight: false,
       ground: cutGround,
     );
+    if (link != null) {
+      _paintLinkIcon(canvas, link);
+    }
     canvas.restore();
 
     canvas.save();
@@ -1178,6 +1253,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
   Object get props => (
     ByIdentity(entries),
     ByMap(storyboardLayerNames),
+    BySet(linkedCutIds),
     crossAxisExtent,
     minBlockWidth,
     rowAddress,

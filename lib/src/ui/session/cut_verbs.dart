@@ -15,6 +15,8 @@ import '../../models/layer_mark.dart';
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
+import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
+import '../../services/persistence/cel_places.dart' show rowOwnerName;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
@@ -541,6 +543,28 @@ class CutVerbs {
     return cut.layers.any(
       (layer) => registry.isLinked(cutId: cutId, layerId: layer.id),
     );
+  }
+
+  /// The LINKED cuts (겸용 — [linkedCutSiblings]), which wear the link icon
+  /// on their blocks (I-25: 「링크컷이 발생해있는 경우, 모든 컷에 적용」).
+  Set<CutId> get linkedCutIds {
+    final project = _project.repository.requireProject();
+    return {
+      for (final track in project.tracks)
+        for (final cut in track.cuts)
+          if (linkedCutSiblings(project, cutId: cut.id).isNotEmpty) cut.id,
+    };
+  }
+
+  /// The cuts [cutId] is linked with, named as a place line names them — the
+  /// link window's list (I-25).
+  List<String> linkedCutLines(CutId cutId) {
+    final project = _project.repository.requireProject();
+    return [
+      for (final siblingId in linkedCutSiblings(project, cutId: cutId))
+        if (cutPositionOf(project, siblingId) case final position?)
+          rowOwnerName(track: position.track, cut: position.cut),
+    ];
   }
 
   /// 독립시키기 for every linked row of every cut in [cutIds] — ONE undo

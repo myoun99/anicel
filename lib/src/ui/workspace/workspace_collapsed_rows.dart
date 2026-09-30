@@ -206,6 +206,8 @@ class _WorkspaceCollapsedRows {
                     geometry: geometry,
                     crossAxisExtent: height,
                     minBlockWidth: StoryboardPanel.cutBlockMinWidth,
+                    // D15: the folded row shows the link icons too (I-25).
+                    linkedCutIds: session.cutVerbs.linkedCutIds,
                     rowAddress: TrackRowAddress(track.id),
                     colorScheme: Theme.of(context).colorScheme,
                     baseTextStyle: DefaultTextStyle.of(context).style,
@@ -310,6 +312,7 @@ class _WorkspaceCollapsedRows {
       onToggleLayerFillReference: (_) {},
       onOpenLayerMixer: (_, _) {},
       onOpenLayerReference: (_, _) async {},
+      onOpenLayerLinks: (_, _) async {},
       onLayerBlendModeSelected: (_, _) {},
     );
     // Its eye is the rail's, a folder above that hides the row included

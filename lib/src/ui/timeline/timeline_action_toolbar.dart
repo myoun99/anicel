@@ -539,13 +539,9 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: serves && session.layerVerbs.canLinkDuplicateActiveLayer,
         onSelected: session.layerVerbs.linkDuplicateActiveLayer,
       ),
-      PanelFlyoutItem(
-        keyValue: 'timeline-unlink-layer-button',
-        label: AppText.strings.tlUnlinkLayer,
-        icon: Icons.link_off,
-        enabled: serves && session.layerVerbs.canUnlinkActiveLayer,
-        onSelected: session.layerVerbs.unlinkActiveLayer,
-      ),
+      // ↩️「링크 해제」 stood here. 🗣️I-25 (유저 2026-09-14): 「레이어 버튼의
+      // 링크해제는 필요없어졌으니 삭제」 — the link badge on the row opens the
+      // link window, and its button unlinks.
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'toggle-storyboard-layer-button',

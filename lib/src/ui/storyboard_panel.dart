@@ -467,6 +467,8 @@ class StoryboardPanel extends StatefulWidget {
     this.cutSelect,
     this.stripSelect,
     this.onCreateStoryboardLayer,
+    this.linkedCutIds = const {},
+    this.onOpenCutLinks,
     this.movieEnd,
     this.trackLaneHeight = defaultTrackLaneHeight,
     this.onResizeTrackLanes,
@@ -812,6 +814,13 @@ class StoryboardPanel extends StatefulWidget {
   /// slot. The host's gate/dispatch pair is the session's
   /// canAddLayerOfKind/addLayerOfKind (T25). Null = display-only.
   final ValueChanged<CutId>? onCreateStoryboardLayer;
+
+  /// The LINKED cuts (I-25): their names wear the link icon.
+  final Set<CutId> linkedCutIds;
+
+  /// Pressed on a linked cut's link icon: the link window (I-25). Null
+  /// keeps the icon display-only.
+  final void Function(BuildContext context, CutId cutId)? onOpenCutLinks;
 
   /// Movie-end drag hooks (UI-R20 #3); null hides the end grip (the line
   /// still shows).
@@ -4648,6 +4657,8 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.projectFrameRate,
     this.railRowAt,
     this.onCreateStoryboardLayer,
+    this.linkedCutIds = const {},
+    this.onOpenCutLinks,
   });
 
   /// R9 #25: the rail row a cross-axis pointer offset lands on, resolved
@@ -4663,6 +4674,13 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// host's session pair (canAddLayerOfKind/addLayerOfKind — T25); null
   /// keeps the affordance display-only.
   final ValueChanged<CutId>? onCreateStoryboardLayer;
+
+  /// The LINKED cuts on this track (I-25): their names wear the link icon.
+  final Set<CutId> linkedCutIds;
+
+  /// Pressed on a linked cut's link icon: the link window (I-25). Null
+  /// keeps the icon display-only.
+  final void Function(BuildContext context, CutId cutId)? onOpenCutLinks;
 
   final Track track;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
@@ -5132,6 +5150,7 @@ class _StoryboardTrackRow extends StatelessWidget {
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
       windowBucket: windowBucket,
       viewportMainExtent: viewportWidth,
+      linkedCutIds: linkedCutIds,
     );
 
     return KeyedSubtree(
@@ -5170,7 +5189,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
                   onPointerDown: (event) {
-                    _onCutPressDown(event, blocksPainter);
+                    _onCutPressDown(context, event, blocksPainter);
                   },
                 ),
               ),
@@ -5369,6 +5388,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// A press on the cut blocks: gated first, then the press itself, then
   /// the storyboard-layer create judged on the painter this build drew.
   void _onCutPressDown(
+    BuildContext context,
     PointerDownEvent event,
     StoryboardCutBlocksPainter blocksPainter,
   ) {
@@ -5380,6 +5400,24 @@ class _StoryboardTrackRow extends StatelessWidget {
     // painter this build drew), so running after the
     // press's activation cannot widen it (D30).
     _maybeCreateStoryboardLayer(blocksPainter, event);
+    _maybeOpenCutLinks(context, blocksPainter, event);
+  }
+
+  /// I-25: a press inside a linked cut's link icon opens the link window —
+  /// the rect is [StoryboardCutBlocksPainter.linkAffordanceRectOf]'s, the
+  /// SAME call the paint made (the D30 create affordance's shape).
+  void _maybeOpenCutLinks(
+    BuildContext context,
+    StoryboardCutBlocksPainter painter,
+    PointerDownEvent event,
+  ) {
+    final onOpen = onOpenCutLinks;
+    final block = onOpen == null ? null : painter.blockAt(event.localPosition);
+    final icon = block == null ? null : painter.linkAffordanceRectOf(block);
+    if (icon == null || !icon.contains(event.localPosition)) {
+      return;
+    }
+    onOpen!(context, block!.cutId);
   }
 
   double _timelineWidthFor(
