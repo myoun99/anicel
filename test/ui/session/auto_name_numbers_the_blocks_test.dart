@@ -116,7 +116,8 @@ void main() {
     expect(reads(s, row, 4), ['6', '5', '6', '3']);
   });
 
-  test('a band over several rows numbers each row from the start', () {
+  test('a band over several rows numbers each row from the start — every '
+      'row in ONE undo step', () {
     final s = session();
     final first = s.activeLayerId!;
     drawn(s, 0, 'a');
@@ -131,11 +132,16 @@ void main() {
       endIndexExclusive: 2,
       layerIds: [first, second],
     );
+    final entries = s.historyManager.undoCount;
 
     press(s, 5);
 
     expect(reads(s, first, 2), ['5', '6']);
     expect(reads(s, second, 2), ['5', '6']);
+    expect(s.historyManager.undoCount, entries + 1, reason: 'ONE step');
+    s.undo();
+    expect(reads(s, first, 2), ['a', 'b']);
+    expect(reads(s, second, 2), ['c', 'd']);
   });
 
   test('⛔an empty cell and a GHOST are no block (targets-Q2 「블록으로 치지 '
@@ -332,6 +338,13 @@ void main() {
         )
         .id;
     expect(rowOf(s, copy).timeline[0]?.frameId, a, reason: '⛔전제');
+    // The copy shows b alone — so counted row by row it would be the copy's
+    // FIRST drawing and take 5, where the bank's order gives it 6.
+    s.selectLayer(copy);
+    s.selectFrameIndex(0);
+    s.cells.deleteCellAtCurrentFrame();
+    expect(rowOf(s, copy).timeline[0], isNull, reason: '⛔전제');
+    expect(rowOf(s, copy).timeline[1]?.frameId, b, reason: '⛔전제');
     s.frameRangeSelection.value = TimelineFrameRangeSelection(
       layerId: original,
       startIndex: 0,
@@ -342,7 +355,7 @@ void main() {
     press(s, 5);
 
     expect(reads(s, original, 2), ['5', '6']);
-    expect(reads(s, copy, 2), ['5', '6']);
+    expect(reads(s, copy, 2), [null, '6']);
     expect(
       [for (final frame in rowOf(s, original).frames) frame.id],
       [a, b],
