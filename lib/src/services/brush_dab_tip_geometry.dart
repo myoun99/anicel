@@ -122,19 +122,40 @@ double brushEdgeApplied(BrushEdgeLaw law, double coverage) {
   return ((coverage - 0.5) * law.contrast + 0.5).clamp(0.0, 1.0).toDouble();
 }
 
-/// What an ANALYTIC round tip covers at ([dx], [dy]) from the dab centre —
-/// 0.0 where the tip does not reach, so a caller skips on `<= 0.0` exactly
-/// as it did when it wrote the cascade out.
+/// What [tip] covers at ([dx], [dy]) from the dab centre, whatever kind of
+/// tip it is — 0.0 where it does not reach, so a caller skips on `<= 0.0`
+/// exactly as it did when it wrote the cascade out.
 ///
 /// ⛔THE THREE ROUTES DISAGREEING HERE IS A SILENT REPAINT: the stamp cache
 /// BAKES this into a mask, and a stroke picks the baked route or the direct
 /// one by cache state alone — so a falloff changed in one place would make
 /// the same brush paint two different edges depending on what was cached.
-double analyticRoundTipCoverage(
-  BrushDabTipGeometry tip,
-  double dx,
-  double dy,
-) {
+/// 🚨That goes for WHICH law a tip takes as much as for the law: the cache
+/// and the coverage list each picked raster, round or square themselves
+/// until 2026-10-01, and this is now the one place the choice is made. The
+/// three are one body so the per-pixel loop still makes one call.
+double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
+  final mask = tip.tipMask;
+  if (mask != null) {
+    // A ROTATED raster tip: nothing outside the mask's square.
+    final tipU = dx * tip.tipCos - dy * tip.tipSin;
+    final tipV = (dx * tip.tipSin + dy * tip.tipCos) * tip.inverseRoundness;
+    if (tipU.abs() > tip.radius || tipV.abs() > tip.radius) {
+      return 0.0;
+    }
+    return sampleBrushTipMaskCoverage(
+      mask: mask,
+      tipU: tipU,
+      tipV: tipV,
+      radius: tip.radius,
+    );
+  }
+  if (!tip.isRound) {
+    // A square dab is the fill and stamp verbs' "cover exactly this rect",
+    // and the dab constructor refuses to build one that is squashed or
+    // rotated — so there is no rotated-rect case to test.
+    return 1.0;
+  }
   final double distance;
   if (tip.isEllipse) {
     final tipU = dx * tip.tipCos - dy * tip.tipSin;
@@ -151,25 +172,4 @@ double analyticRoundTipCoverage(
     return 1.0;
   }
   return (1.0 - ((distance - tip.hardRadius) / edgeSpan)).clamp(0.0, 1.0);
-}
-
-/// What a ROTATED raster tip covers at ([dx], [dy]) — 0.0 outside the
-/// mask's square, which is the skip the callers already made.
-double rotatedTipMaskCoverage(
-  BrushDabTipGeometry tip,
-  BrushTipMask mask,
-  double dx,
-  double dy,
-) {
-  final tipU = dx * tip.tipCos - dy * tip.tipSin;
-  final tipV = (dx * tip.tipSin + dy * tip.tipCos) * tip.inverseRoundness;
-  if (tipU.abs() > tip.radius || tipV.abs() > tip.radius) {
-    return 0.0;
-  }
-  return sampleBrushTipMaskCoverage(
-    mask: mask,
-    tipU: tipU,
-    tipV: tipV,
-    radius: tip.radius,
-  );
 }

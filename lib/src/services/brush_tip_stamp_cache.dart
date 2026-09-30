@@ -196,19 +196,9 @@ class BrushTipStampCache {
       final dy = (j + 0.5) * texelSpan - radius;
       for (var i = 0; i < maskSize; i += 1, index += 1) {
         final dx = (i + 0.5) * texelSpan - radius;
-        double coverage;
-        if (sourceTip != null) {
-          // Raster tip: today's rotated sampling, evaluated once here.
-          coverage = rotatedTipMaskCoverage(tip, sourceTip, dx, dy);
-        } else if (tip.isRound) {
-          // Analytic circle/ellipse with the hardness falloff — the same
-          // law the materializer runs per canvas pixel.
-          coverage = analyticRoundTipCoverage(tip, dx, dy);
-        } else {
-          // Analytic square: full coverage inside, and axis-aligned by
-          // construction — the dab constructor refuses any other kind.
-          coverage = 1.0;
-        }
+        // The law the coverage list runs per canvas pixel, evaluated once
+        // per texel here.
+        final coverage = tipCoverageAt(tip, dx, dy);
         if (coverage <= 0.0) {
           continue;
         }
