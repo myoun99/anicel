@@ -10,7 +10,9 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
+import '../../models/track.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
 import '../../services/project_tree_editor.dart';
 import '../listenable_rebind.dart';
@@ -531,28 +533,37 @@ List<Cut> _previewOrdered(List<Cut> cuts, List<CutId>? order) {
 Project _projectWithCutTrimPreview(Project project, CutTrimDragPreview trim) {
   final resized = project.copyWith(
     tracks: [
-      for (final track in project.tracks)
-        track.copyWith(
-          cuts: _previewOrdered(track.cuts, trim.previewOrder[track.id])
-              .map(
-                (cut) =>
-                    trim.previewDurations.containsKey(cut.id) ||
-                        trim.previewGaps.containsKey(cut.id)
-                    ? cut.copyWith(
-                        duration:
-                            trim.previewDurations[cut.id] ?? cut.duration,
-                        leadingGapFrames:
-                            trim.previewGaps[cut.id] ?? cut.leadingGapFrames,
-                      )
-                    : cut,
-              )
-              .toList(growable: false),
-        ),
+      for (final track in project.tracks) _trackWithCutTrimPreview(track, trim),
     ],
   );
   return trim.previewLayers.isEmpty
       ? resized
       : _projectWithLayersSubstituted(resized, trim.previewLayers);
+}
+
+/// One track under a cut edge drag — and its transition row carried the way
+/// the release will carry it (`TransitionsRideTheCuts`, 유저 2026-08-10:
+/// 「움직일때만 앵커로서 앞 컷에 앵커」): the same function, so an O.L follows
+/// its front cut under the hand rather than jumping there on release.
+Track _trackWithCutTrimPreview(Track track, CutTrimDragPreview trim) {
+  final moved = track.copyWith(
+    cuts: _previewOrdered(track.cuts, trim.previewOrder[track.id])
+        .map(
+          (cut) =>
+              trim.previewDurations.containsKey(cut.id) ||
+                  trim.previewGaps.containsKey(cut.id)
+              ? cut.copyWith(
+                  duration: trim.previewDurations[cut.id] ?? cut.duration,
+                  leadingGapFrames:
+                      trim.previewGaps[cut.id] ?? cut.leadingGapFrames,
+                )
+              : cut,
+        )
+        .toList(growable: false),
+  );
+  return moved.copyWith(
+    transitionLayer: transitionRowFollowingItsCuts(before: track, after: moved),
+  );
 }
 
 /// A project snapshot with an in-flight drag preview substituted in —

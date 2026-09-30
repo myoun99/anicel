@@ -10,6 +10,7 @@ import '../brush_frame_store.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
+import 'transitions_ride_the_cuts.dart';
 
 class DeleteCutCommand implements Command {
   DeleteCutCommand({
@@ -49,8 +50,15 @@ class DeleteCutCommand implements Command {
   @override
   String get description => 'Delete cut $cutId';
 
+  late final TransitionsRideTheCuts _ride = TransitionsRideTheCuts(repository);
+
   @override
-  void execute() {
+  void execute() => _ride.carry(_execute);
+
+  @override
+  void undo() => _ride.carryBack(_undo);
+
+  void _execute() {
     final project = repository.requireProject();
     final location = requireCutPosition(project, cutId);
     final previousActiveCutId = editingSession.activeCutId;
@@ -129,8 +137,7 @@ class DeleteCutCommand implements Command {
     _hasExecuted = true;
   }
 
-  @override
-  void undo() {
+  void _undo() {
     final deletedCut = _deletedCut;
     final originalTrackId = _originalTrackId;
     final originalIndex = _originalIndex;

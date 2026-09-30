@@ -3,6 +3,7 @@ import '../../models/project.dart';
 import '../../models/track_id.dart';
 import '../command.dart';
 import '../project_repository.dart';
+import 'transitions_ride_the_cuts.dart';
 
 class AddCutCommand implements Command {
   AddCutCommand({
@@ -20,10 +21,16 @@ class AddCutCommand implements Command {
   @override
   String get description => 'Add cut ${cut.name}';
 
+  late final TransitionsRideTheCuts _ride = TransitionsRideTheCuts(repository);
+
+  /// Appending moves no cut, so the ride carries nothing — it is here
+  /// because every command that writes a cut layout takes it, and the one
+  /// that "cannot move anything" is the one a later edit makes move.
+  /// The undo puts the whole project back, rows included.
   @override
   void execute() {
     _previousProject = repository.requireProject();
-    repository.addCut(trackId: trackId, cut: cut);
+    _ride.carry(() => repository.addCut(trackId: trackId, cut: cut));
   }
 
   @override

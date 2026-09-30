@@ -2,6 +2,7 @@ import '../../models/cut_id.dart';
 import '../../models/track_id.dart';
 import '../command.dart';
 import '../project_repository.dart';
+import 'transitions_ride_the_cuts.dart';
 
 /// Resequences a track's cuts — THE cut-order edit.
 ///
@@ -26,10 +27,12 @@ class SetCutOrderCommand implements Command {
   @override
   String get description => 'Reorder cuts on track $trackId';
 
+  late final TransitionsRideTheCuts _ride = TransitionsRideTheCuts(repository);
+
   @override
   void execute() {
     _originalOrder ??= _currentOrder();
-    repository.setCutOrder(trackId: trackId, order: order);
+    _ride.carry(() => repository.setCutOrder(trackId: trackId, order: order));
     _hasExecuted = true;
   }
 
@@ -40,7 +43,9 @@ class SetCutOrderCommand implements Command {
       throw StateError('Command has not been executed.');
     }
 
-    repository.setCutOrder(trackId: trackId, order: originalOrder);
+    _ride.carryBack(
+      () => repository.setCutOrder(trackId: trackId, order: originalOrder),
+    );
   }
 
   List<CutId> _currentOrder() {

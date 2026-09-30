@@ -221,8 +221,10 @@ class _CutCommands {
 
   /// Commits a storyboard edge drag as one undoable step: durations (end
   /// trims) and leading gaps (start slides / gap consumption) together.
-  /// The fade re-anchor rewrites are gone (R4: fade keys are TRACK data
-  /// on the global axis — a trim moves none of them).
+  /// The fade re-anchor rewrites are gone (R4: the V lanes' keys are TRACK
+  /// data on the global axis — a trim moves none of them). The transition
+  /// row's spans ride their front cut inside the command itself
+  /// ([UpdateCutDurationsCommand]).
   void commitCutDurationDrag({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
