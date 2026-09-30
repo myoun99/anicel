@@ -6,7 +6,11 @@ import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
@@ -518,6 +522,88 @@ void main() {
       await tester.tap(find.byKey(buttonKey));
       await tester.pump();
       expect(commands.hasOpenPolygon, isFalse);
+    });
+  });
+
+  // 🚨I-23 — 유저 2026-09-12: 「선택반전기능. 내용은 선택되지 않은 부분을
+  // 선택함. 위치는 선택툴일때의 툴설정. 버튼.」
+  group('선택 반전 in the selection tool\'s settings', () {
+    const buttonKey = ValueKey<String>('selection-invert-button');
+    const canvas = CanvasSize(width: 20, height: 15);
+
+    CanvasSelectionRegion selected() => CanvasSelectionRegion.shape(
+      CanvasSelectionShape.rect(left: 2, top: 3, right: 12, bottom: 9),
+    );
+
+    Future<void> pumpSelectSettings(
+      WidgetTester tester, {
+      required CanvasSelectionCommands commands,
+      CanvasSize? canvasSize = canvas,
+    }) async {
+      await tester.pumpWidget(
+        app(
+          ToolSettingsPanel(
+            state: BrushToolState.defaults.copyWith(tool: CanvasTool.select),
+            onChanged: (_) {},
+            fillOptions: const FloodFillOptions(),
+            onFillOptionsChanged: (_) {},
+            selectionCommands: commands,
+            canvasSize: canvasSize,
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    OutlinedButton button(WidgetTester tester) =>
+        tester.widget<OutlinedButton>(find.byKey(buttonKey));
+
+    testWidgets('stands in one place, live, with a selection and without', (
+      tester,
+    ) async {
+      final commands = CanvasSelectionCommands();
+      await pumpSelectSettings(tester, commands: commands);
+      final without = tester.getRect(find.byKey(buttonKey));
+      expect(
+        button(tester).onPressed,
+        isNotNull,
+        reason: 'nothing selected still inverts — to the whole wall',
+      );
+
+      commands.setRegion(selected());
+      await tester.pump();
+
+      expect(tester.getRect(find.byKey(buttonKey)), without);
+      expect(button(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('a tap inverts the selection', (tester) async {
+      final commands = CanvasSelectionCommands()..setRegion(selected());
+      await pumpSelectSettings(tester, commands: commands);
+
+      await tester.tap(find.byKey(buttonKey));
+      await tester.pump();
+
+      expect(
+        commands.region,
+        CanvasSelectionRegion.invertedWithin(
+          selected(),
+          canvas.pasteboardRect,
+        ),
+      );
+    });
+
+    testWidgets('is greyed, never gone, with no canvas to take a wall from', (
+      tester,
+    ) async {
+      await pumpSelectSettings(
+        tester,
+        commands: CanvasSelectionCommands(),
+        canvasSize: null,
+      );
+
+      expect(find.byKey(buttonKey), findsOneWidget);
+      expect(button(tester).onPressed, isNull);
     });
   });
 

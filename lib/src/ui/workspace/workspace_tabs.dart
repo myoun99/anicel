@@ -607,6 +607,13 @@ class _WorkspaceTabs {
                                           selectionCommands: _state
                                               .widget
                                               .canvasSelectionCommands,
+                                          // The wall 선택 반전 inverts out
+                                          // to (I-23): the cut on screen.
+                                          canvasSize: _state
+                                              .widget
+                                              .session
+                                              .activeCutOrNull
+                                              ?.canvasSize,
                                           cutPieceSlot: _state._cutPieceSlot,
                                           // TS8: composite order is
                                           // the BLEND's answer, so

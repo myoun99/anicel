@@ -90,6 +90,7 @@ void main() {
     'fpsAudioKeep': (s) => s.fpsAudioKeep,
     'fpsAudioPull': (s) => s.fpsAudioPull,
     'selectionClosePolygon': (s) => s.selectionClosePolygon,
+    'selectionInvert': (s) => s.selectionInvert,
     'commonSave': (s) => s.commonSave,
     'commonDelete': (s) => s.commonDelete,
     'commonRename': (s) => s.commonRename,

@@ -280,6 +280,10 @@ enum AppStrings {
   /// deselect button exists).
   String get selectionClosePolygon => _s('selectionClosePolygon');
 
+  /// 선택 반전 (I-23) — the selection tool's settings button that selects
+  /// what is not selected, out to the pasteboard wall.
+  String get selectionInvert => _s('selectionInvert');
+
   // --- Shared window verbs (the AppWindow action row) ---
   String get commonSave => _s('commonSave');
   String get commonDelete => _s('commonDelete');
@@ -1784,6 +1788,7 @@ enum AppStrings {
     'fpsAudioKeep': 'Keep audio timing',
     'fpsAudioPull': 'Pull audio 0.1%',
     'selectionClosePolygon': 'Close shape',
+    'selectionInvert': 'Invert Selection',
     'commonSave': 'Save',
     'commonDelete': 'Delete',
     'commonRename': 'Rename',
@@ -2902,6 +2907,7 @@ enum AppStrings {
     'fpsAudioKeep': '音のタイミングを維持',
     'fpsAudioPull': '音を0.1%プル',
     'selectionClosePolygon': '形を閉じる',
+    'selectionInvert': '選択範囲を反転',
     'commonSave': '保存',
     'commonDelete': '削除',
     'commonRename': '名前を変更',
@@ -4249,6 +4255,7 @@ enum AppStrings {
     'fpsAudioKeep': '오디오 타이밍 유지',
     'fpsAudioPull': '오디오 0.1% 당김',
     'selectionClosePolygon': '도형 닫기',
+    'selectionInvert': '선택 반전',
     'commonSave': '저장',
     'commonDelete': '삭제',
     'commonRename': '이름 변경',
@@ -5595,6 +5602,7 @@ enum AppStrings {
     'fpsAudioKeep': 'Garder le timing audio',
     'fpsAudioPull': 'Tirer l\'audio de 0,1 %',
     'selectionClosePolygon': 'Fermer la forme',
+    'selectionInvert': 'Inverser la sélection',
     'commonSave': 'Enregistrer',
     'commonDelete': 'Supprimer',
     'commonRename': 'Renommer',
@@ -7006,6 +7014,7 @@ enum AppStrings {
     'fpsAudioKeep': '保持音频时间',
     'fpsAudioPull': '拉伸音频 0.1%',
     'selectionClosePolygon': '闭合形状',
+    'selectionInvert': '反选',
     'commonSave': '保存',
     'commonDelete': '删除',
     'commonRename': '重命名',

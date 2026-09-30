@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_tip_entry.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_flood_fill.dart';
@@ -48,6 +49,7 @@ class ToolSettingsPanel extends StatelessWidget {
     this.transformOptions = TransformToolOptions.defaults,
     this.onTransformOptionsChanged,
     this.selectionCommands,
+    this.canvasSize,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasReadSource.display,
     this.onEyedropperSourceChanged,
@@ -110,6 +112,11 @@ class ToolSettingsPanel extends StatelessWidget {
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// The canvas on screen, whose pasteboard wall the selection tool's
+  /// 선택 반전 inverts out to (I-23). Null = no canvas to take a wall from,
+  /// and the button keeps its place, greyed.
+  final CanvasSize? canvasSize;
 
   /// The piece the cut tool is holding — the stamp tile's knobs pose it.
   final CutPieceSlot? cutPieceSlot;
@@ -231,6 +238,7 @@ class ToolSettingsPanel extends StatelessWidget {
           maskOptions: selectionMaskOptions,
           onMaskOptionsChanged: onSelectionMaskOptionsChanged,
           selectionCommands: selectionCommands,
+          canvasSize: canvasSize,
           language: language,
         ),
         // The CUT grab: nothing to set whatever shape it is wearing (the
@@ -525,6 +533,7 @@ class _SelectionSettings extends StatelessWidget {
     required this.maskOptions,
     required this.onMaskOptionsChanged,
     required this.selectionCommands,
+    required this.canvasSize,
     required this.language,
   });
 
@@ -533,12 +542,14 @@ class _SelectionSettings extends StatelessWidget {
   final SelectionMaskOptions maskOptions;
   final ValueChanged<SelectionMaskOptions>? onMaskOptionsChanged;
   final CanvasSelectionCommands? selectionCommands;
+  final CanvasSize? canvasSize;
   final AppLanguage language;
 
   @override
   Widget build(BuildContext context) {
     final onMask = onMaskOptionsChanged;
     final commands = selectionCommands;
+    final canvas = canvasSize;
     // R26 #12: the rectangle/lasso CHOICE lives in the tool library
     // (two tools there), so the settings panel no longer duplicates
     // it — only the mask knobs remain.
@@ -561,6 +572,18 @@ class _SelectionSettings extends StatelessWidget {
               language: language,
               onChanged: (mode) => commands.combineMode = mode,
             ),
+          ),
+          const SizedBox(height: 8),
+          // 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능 … 위치는
+          // 선택툴일때의 툴설정. 버튼.」 In its place whatever is selected
+          // (with nothing selected it selects the whole wall), and greyed —
+          // never gone — when there is no canvas to take the wall from.
+          OutlinedButton(
+            key: const ValueKey<String>('selection-invert-button'),
+            onPressed: canvas == null
+                ? null
+                : () => commands.invertSelection(canvasSize: canvas),
+            child: Text(AppText.strings.selectionInvert),
           ),
         ],
         if (onMask != null) ...[
