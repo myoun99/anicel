@@ -770,7 +770,6 @@ class _WorkspaceTabs {
           // The legacy mode-toggle keys stay on the tab buttons so every
           // existing flow (and test helper) keeps working.
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
-          minContentWidth: _state._minContentWidthFor(tabId),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
           // The heavy frame-axis panels keep their subtree offstage
@@ -919,7 +918,6 @@ class _WorkspaceTabs {
           label: AppText.strings.panelStoryboard,
           icon: Icons.movie_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
-          minContentWidth: _state._minContentWidthFor(tabId),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
@@ -1020,7 +1018,6 @@ class _WorkspaceTabs {
           label: AppText.strings.panelConte,
           icon: Icons.grid_on_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
-          minContentWidth: _state._minContentWidthFor(tabId),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
@@ -1072,7 +1069,6 @@ class _WorkspaceTabs {
           label: AppText.strings.panelEnvelope,
           icon: Icons.mail_outline,
           buttonKey: const ValueKey<String>('timeline-mode-envelope-button'),
-          minContentWidth: _state._minContentWidthFor(tabId),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,

@@ -509,12 +509,20 @@ class EditorWorkspace extends StatefulWidget {
     timesheetTabId,
   ];
 
-  /// The WIDTH frame-axis panels lay out at when docked somewhere narrower
-  /// (their label rails and toolbars assume a wide region); the tab shell
-  /// hosts them inside a horizontal scroller then. Unchanged by the
-  /// shrink-floor round — in a narrow side dock, scrolling sideways is
-  /// genuinely what helps.
-  static const double _frameAxisMinContentWidth = 640;
+  /// The width the floating region's DEFAULT never squeezes below
+  /// ([_bottomInsetFor]).
+  ///
+  /// ↩️It was also the width the frame-axis panels INSISTED on: docked
+  /// narrower, a panel laid out 640 wide inside the tab shell's sideways
+  /// scroller. 🐛유저 R3 #11 took it off the conte and the envelope — a page
+  /// that scales has no column to protect, and everything pinned to its
+  /// right edge went off the end. 🗣️scrollbar-unify-Q1 (유저 2026-09-30:
+  /// 「640 을 걷는다 — 콘티·컷봉투와 같은 법」) took it off the timeline and
+  /// the storyboard too: in a narrow slot the shell's sideways bar and the
+  /// panel's own frame rail sat on one line at the bottom edge (seen on the
+  /// device 08-08). Every panel draws at its slot's width now, and what a
+  /// narrow timeline loses its own rails take up.
+  static const double _defaultRegionMinWidth = 640;
 
   @override
   State<EditorWorkspace> createState() => _EditorWorkspaceState();
@@ -1620,21 +1628,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// dock. The shell's scroller is left as the guard for what neither can
   /// reach: an unbounded parent, or a dock too small to pay every section's
   /// floor at once.
-  /// The WIDTH a frame-axis panel insists on, or null for one that has no
-  /// opinion.
-  ///
-  /// 🐛유저, R3 #11: the conte and the envelope had one, and they should
-  /// not. A panel narrower than its minimum renders at the minimum inside a
-  /// horizontal scroller, so in a 260px rail the page laid out 640 wide and
-  /// everything pinned to its right edge went off the end — the vertical
-  /// panbar vanished outright and the horizontal one lost its tail. That is
-  /// correct for a sheet made of COLUMNS, where scrolling sideways is what
-  /// helps; it is wrong for a page that scales, which has no column to
-  /// protect and a Fit button to answer with instead.
-  double? _minContentWidthFor(String tabId) => switch (tabId) {
-    EditorWorkspace.conteTabId || EditorWorkspace.envelopeTabId => null,
-    _ => EditorWorkspace._frameAxisMinContentWidth,
-  };
+  // No panel insists on a WIDTH any more — see [_defaultRegionMinWidth] for
+  // the two decisions (R3 #11, scrollbar-unify-Q1) that took it off.
 
   double? _minContentHeightFor(String tabId) => switch (tabId) {
     // NOT one number for this tab: the x-sheet is the timeline toggled on
@@ -1720,15 +1715,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return chosen;
     }
     final wanted = windowWidth * (1 - _defaultBottomRegionWidthFraction) / 2;
-    // …but the DEFAULT never squeezes the region below what its panels lay
-    // out at. Under that width the timeline renders at its own minimum
-    // inside a sideways scroller — which is a fine answer to a window
-    // somebody made small, and a terrible one to arrive at by itself. Drag
-    // the edge in past here and you get it; the app does not choose it.
-    final floor = math.min(
-      windowWidth,
-      EditorWorkspace._frameAxisMinContentWidth,
-    );
+    // …but the DEFAULT never squeezes the region below 640. A narrower
+    // timeline is a fine answer to a window somebody made small, and a poor
+    // one to arrive at by itself. Drag the edge in past here and you get it;
+    // the app does not choose it.
+    final floor = math.min(windowWidth, EditorWorkspace._defaultRegionMinWidth);
     return math.max(0.0, math.min(wanted, (windowWidth - floor) / 2));
   }
 
