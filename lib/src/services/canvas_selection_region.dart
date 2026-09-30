@@ -135,6 +135,11 @@ sealed class CanvasSelectionStep {
   CanvasSelectionShape? get _loneShape;
 
   CanvasSelectionStep mapped(CanvasPoint Function(CanvasPoint) map);
+
+  /// The operand cut at [wall], as a step under [mode] — null when nothing
+  /// of it is left inside ([CanvasSelectionRegion.clippedTo] reads that as
+  /// the empty set).
+  CanvasSelectionStep? _clippedTo(ui.Rect wall, SelectionCombineMode mode);
 }
 
 /// The polygons ONE act drew — usually one, several under a symmetry guide
@@ -207,6 +212,13 @@ final class CanvasSelectionCopies extends CanvasSelectionStep {
           CanvasSelectionShape([for (final point in shape.points) map(point)]),
       ], mode);
 
+  /// A copy with nothing inside drops out, and the rest stay one act.
+  @override
+  CanvasSelectionStep? _clippedTo(ui.Rect wall, SelectionCombineMode mode) {
+    final kept = [for (final shape in shapes) ?shape.clippedTo(wall)];
+    return kept.isEmpty ? null : CanvasSelectionCopies(kept, mode);
+  }
+
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) {
@@ -275,6 +287,14 @@ final class CanvasSelectionNested extends CanvasSelectionStep {
   CanvasSelectionStep mapped(CanvasPoint Function(CanvasPoint) map) =>
       CanvasSelectionNested(region.mapped(map), mode);
 
+  /// Through the same door as the top: a nested selection that selects
+  /// nothing once cut is as good as no operand.
+  @override
+  CanvasSelectionStep? _clippedTo(ui.Rect wall, SelectionCombineMode mode) {
+    final kept = region.clippedTo(wall);
+    return kept == null ? null : CanvasSelectionNested(kept, mode);
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -300,8 +320,12 @@ final class CanvasSelectionNested extends CanvasSelectionStep {
 /// marching ants, transforms) reads the SAME fold, so what the ants draw
 /// is exactly what lifts.
 ///
-/// Empty regions do not exist: a combination that selects nothing returns
-/// null from [combinedWith], which is the app's "no selection" state.
+/// A fold that selects nothing does not LAND: the stage door ([clippedTo])
+/// hands back null for it, the app's "no selection" state (I-23-empty-Q1,
+/// pending — see [_noSelectionWhenEmpty]). ↩️This paragraph said
+/// [combinedWith] returned null for one, which it never did: 삭제 of
+/// everything folds to a region there, and [combine] keeps doing so for the
+/// callers that are not selections.
 class CanvasSelectionRegion {
   CanvasSelectionRegion(List<CanvasSelectionStep> steps)
     : steps = List<CanvasSelectionStep>.unmodifiable(steps),
@@ -328,8 +352,9 @@ class CanvasSelectionRegion {
       steps.length == 1 ? steps.first._loneShape : null;
 
   /// Folds [shape] into the region under [mode]. Null result = nothing is
-  /// selected any more (subtract/intersect can empty a region, and
-  /// subtract/intersect from NOTHING stays nothing).
+  /// selected any more: a click in 갱신, or 삭제/선택중 from NOTHING (which
+  /// stays nothing). A fold that 삭제/선택중 EMPTIED is still a region here —
+  /// what turns it into none is the stage door ([clippedTo]).
   static CanvasSelectionRegion? combine(
     CanvasSelectionRegion? region,
     CanvasSelectionShape? shape,
@@ -497,6 +522,91 @@ class CanvasSelectionRegion {
 
   CanvasSelectionRegion translated({required double dx, required double dy}) =>
       mapped((point) => CanvasPoint(x: point.x + dx, y: point.y + dy));
+
+  /// 🚨THE STAGE DOOR (I-23): this selection as it may LAND — cut at
+  /// [wall], the pasteboard's edge.
+  ///
+  /// 유저 2026-09-30: 「선택도구로 사용할수있는 모든부분까지임. 근데 지금
+  /// 보니까 페이스트보드 밖도 선택가능하네? 해당부분 안으로만 가능하게
+  /// 구조적으로 변경하면서 작업」. So a selection past the wall is not refused
+  /// or warned about — it cannot be MADE: every door a selection lands
+  /// through (a drawn outline's fold, a transform's landing, the inverse)
+  /// asks this.
+  ///
+  /// Every operand is cut ([CanvasSelectionShape.clippedTo], a nested one
+  /// through this), which is exact because cutting commutes with the fold:
+  /// (A ∘ B) ∩ W is (A ∩ W) ∘ (B ∩ W) for all four modes. An operand with
+  /// nothing left is the empty set, folded by the one table like any other.
+  ///
+  /// ⚠️This region ITSELF when its coverage already lies inside the wall —
+  /// the overwhelming case costs one box test. ⛔Asked at the doors only:
+  /// a selection that is merely KEPT, across a walk to a smaller cut, is
+  /// not cut (「뭘 하든 안사라지도록」, F-86), and [combine] never asks it,
+  /// because it also folds for callers that are not selections (a sheet
+  /// window's ink, a cut's outline).
+  ///
+  /// Null when nothing is left — or when what is left selects nothing
+  /// ([_noSelectionWhenEmpty]).
+  CanvasSelectionRegion? clippedTo(ui.Rect wall) {
+    final kept = _keptInside(wall);
+    return kept == null ? null : _noSelectionWhenEmpty(kept);
+  }
+
+  CanvasSelectionRegion? _keptInside(ui.Rect wall) {
+    final box = coverageBounds;
+    if (box.left >= wall.left &&
+        box.top >= wall.top &&
+        box.right <= wall.right &&
+        box.bottom <= wall.bottom) {
+      return this;
+    }
+    final kept = <CanvasSelectionStep>[];
+    for (final step in steps) {
+      // An empty fold only grows under a mode that can add, and whatever
+      // starts it again REPLACES — nothing precedes it any more.
+      final foldIsEmpty = kept.isEmpty;
+      if (foldIsEmpty && !step.mode._fold(false, true)) {
+        continue;
+      }
+      final cut = step._clippedTo(
+        wall,
+        foldIsEmpty ? SelectionCombineMode.replace : step.mode,
+      );
+      if (cut != null) {
+        kept.add(cut);
+      } else if (!step.mode._fold(true, false)) {
+        // Folding in nothing emptied it (갱신, 선택중).
+        kept.clear();
+      }
+    }
+    return kept.isEmpty ? null : CanvasSelectionRegion(kept);
+  }
+
+  /// 🚨I-23-empty-Q1: A FOLD THAT SELECTS NOTHING IS NO SELECTION.
+  ///
+  /// ⏳PENDING — the user has not answered yet. This applies the
+  /// RECOMMENDED answer (A, 「어디서든 선택 없음으로」, the PS/CSP rule), so
+  /// 삭제 of everything, a 선택중 that misses and the inverse of everything
+  /// all land as no selection — which is also what brings two presses of
+  /// the inverse back where they started. Until now such a fold stayed a
+  /// live selection with no ants, and the brush's clip to it drew nothing.
+  ///
+  /// ⚠️ONE place on purpose. If the answer is B (「반전에서만」) this call
+  /// moves from [clippedTo] into [invertedWithin]; if it is C (「그대로
+  /// 둔다」) it goes. Nothing else changes either way.
+  static CanvasSelectionRegion? _noSelectionWhenEmpty(
+    CanvasSelectionRegion region,
+  ) => region._selectsNothing ? null : region;
+
+  /// Whether the fold selects nothing at all: its folded path is empty —
+  /// or, when nothing can shrink it, its operands enclose no box.
+  bool get _selectsNothing {
+    if (!_shrinks) {
+      final box = coverageBounds;
+      return box.right <= box.left || box.bottom <= box.top;
+    }
+    return _foldedPathBounds.isEmpty;
+  }
 
   /// The region as ONE path in an arbitrary (usually viewport) space, for
   /// the marching ants and for display clips. Path booleans are exact for
