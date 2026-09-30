@@ -3,51 +3,26 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
-import '../../models/se_audio_spans.dart';
-import '../../services/audio/audio_peaks_extractor.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart';
 import 'timeline_frame_range_gesture.dart';
-import 'timeline_run_end_handles.dart';
-import 'timeline_cell_exposure_state.dart';
-import 'memo_token.dart';
-import 'lane_row_slice.dart';
-import 'timeline_drag_preview.dart';
-import 'timeline_exposure_comma_drag_policy.dart';
-import 'timeline_cel_content_source.dart';
-import 'timeline_frame_cells_row.dart';
+import 'timeline_cells_row_facts.dart';
+import 'timeline_grid_hooks.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
-import 'timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 import 'timeline_section_runs.dart' show timelineDisplayRowExtent;
 
-import '../../models/project_frame_rate.dart';
 import '../listenable_rebind.dart';
-import '../widgets/tick_layer.dart';
-
-/// See [TimelineFrameRowsScrollBody.memoAux].
-class TimelineRowMemoAux {
-  const TimelineRowMemoAux({this.cameraTrack, this.instructionDefs});
-
-  /// The active cut's camera track object (immutable — a key edit is a
-  /// new instance).
-  final Object? cameraTrack;
-
-  /// The camera-instruction registry object.
-  final Object? instructionDefs;
-}
 
 class TimelineFrameRowsScrollBody extends StatefulWidget {
   const TimelineFrameRowsScrollBody({
     super.key,
     required this.rows,
-    required this.playbackFrameCount,
+    required this.hooks,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
     required this.leadingFrameSpacerWidth,
@@ -60,52 +35,17 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.pinnedTrailingRow,
     this.pinnedTrailingOffset = 0,
     required this.metrics,
-    required this.exposureStateForLayer,
-    this.frameNameForLayer,
-    this.celContent,
-    required this.onSelectLayer,
-    required this.onSelectFrame,
-    this.onSettledPress,
-    this.onActivateCell,
-    this.instructionDefById,
-    this.instructionCrossingTooltip,
-    this.audioPeaksFor,
-    this.seClipMarkerTooltip,
-    this.projectFrameRate = ProjectFrameRate.fps24,
-    this.audioLane,
-    this.onDropMediaAssetOnLayer,
-    this.acceptsMediaAssetOnLayer,
-    this.onHoverMediaAssetOnLayer,
-    this.onLeaveMediaAssetOnLayer,
-    this.showSeconds = false,
-    this.commaDrag,
     this.rangeGesture,
     this.laneRange,
-    this.lanesForLayer,
-    this.unionLaneForLayer,
-    this.runEdit,
-    this.laneEdit,
-    this.dragPreview,
-    this.spillInLeadFrames = const {},
     this.windowBucket,
     this.viewportMainExtent = 0,
-    this.substrateGeneration = '',
-    this.memoAux = const TimelineRowMemoAux(),
   });
 
-  /// #29: the (project, cut) world the rows' resolvers answer from — see
-  /// [TimelineRowCellsPainter.substrateGeneration]. Joins the row MEMO key
-  /// too: linked cuts can share Layer instances, and a memoized row from
-  /// another generation would carry its old token into the tile store's
-  /// live-generation tracking.
-  final String substrateGeneration;
-
-  /// Identity tokens for the sparse rows' EXTERNAL inputs (UI-R20 #4):
-  /// the camera row reads the cut's camera track and instruction rows
-  /// read the instruction registry — both outside the Layer value, so
-  /// their identities join the memo key here. Hosts pass the live
-  /// objects; a key change is exactly an edit.
-  final TimelineRowMemoAux memoAux;
+  /// What the session answers to the rows — the grid's ONE bundle, which
+  /// the x-sheet's columns read too ([timelineCellsRowFacts]). The body
+  /// used to take some thirty of its fields one by one, a third list of
+  /// the answers both grids must agree on.
+  final TimelineGridHooks hooks;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the drawing rows
   /// build once for the full bounds (their painters window themselves off
@@ -119,7 +59,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// May be a layer-axis WINDOW of the full row list — the spacer heights
   /// preserve the scroll geometry of the rows sliced away.
   final List<TimelineDisplayRow> rows;
-  final int playbackFrameCount;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
   final double leadingFrameSpacerWidth;
@@ -142,179 +81,18 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   final double pinnedTrailingOffset;
 
   final TimelineGridMetrics metrics;
-  final TimelineCellExposureState Function(Layer layer, int frameIndex)
-  exposureStateForLayer;
-  final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
-
-  /// R26 #44: the unworked-block tint's fact AND its event (null = no
-  /// tint). The event replaced a per-layer "empty cels" token that joined
-  /// the memo key: the token forced a row REBUILD and only when something
-  /// else already announced, while the revision repaints the row painter
-  /// the moment a cel gains pixels — and costs no per-row string build.
-  final TimelineCelContentSource? celContent;
-  final ValueChanged<LayerId> onSelectLayer;
-  final ValueChanged<int> onSelectFrame;
-
-  /// T10's settled-tap clear, passed straight through — see
-  /// [TimelineFrameCellsRow.onSettledPress].
-  final VoidCallback? onSettledPress;
-  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
-  final CameraInstructionDef? Function(String instructionId)?
-  instructionDefById;
-
-  /// D26: the crossing-fade warning resolver (see
-  /// [TimelineFrameCellsRow.instructionCrossingTooltip]). A callback, so
-  /// it stays OUT of the row memo token (R13-2); its ANSWERS are covered —
-  /// instruction edits move the memoAux identity and the display clone's
-  /// layer identity, and a cut-duration change moves playbackFrameCount.
-  final String? Function(int spanStartKey)? instructionCrossingTooltip;
-  final AudioPeaks? Function(String filePath)? audioPeaksFor;
-
-  /// Clipped-take marker tooltip (REC1-D); null = markers off. A display
-  /// fact, so it joins the row memo token below.
-  final String? seClipMarkerTooltip;
-  final ProjectFrameRate projectFrameRate;
-
-  /// What the audio lane may ask the session to do; null = display-only.
-  final TimelineAudioLaneCallbacks? audioLane;
-
-  /// A media-browser row dropped on a DRAWING layer: the window opens with
-  /// this cut and this layer already answered.
-  final void Function(LayerId layerId, int frameIndex, String path)?
-  onDropMediaAssetOnLayer;
-
-  /// Whether a file at a frame of a row can land there; null is yes.
-  final bool Function(LayerId layerId, int frameIndex, String path)?
-  acceptsMediaAssetOnLayer;
-
-  /// Where a file being dragged stands on a row, per pointer step — the
-  /// other half of the hover, and what the row's silhouette comes from.
-  final void Function(LayerId layerId, int frameIndex, String path)?
-  onHoverMediaAssetOnLayer;
-
-  /// It left, or it was let go.
-  final void Function()? onLeaveMediaAssetOnLayer;
-
-  /// The shared frames/seconds display toggle (block duration labels,
-  /// R26 #7).
-  final bool showSeconds;
-
-  final TimelineCommaDragCallbacks? commaDrag;
 
   /// The range select/move gesture bundle (UI-R8 — the block-body move
   /// handle's successor); null keeps rows display-only.
   final TimelineRangeGestureCallbacks? rangeGesture;
 
-
   /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
   /// keeps the lane bands display-only.
   final TimelineLaneRangeCallbacks? laneRange;
 
-  /// The host's lane provider — THE one the display rows were built with.
-  /// A lane row re-derives through it when the drag gate hands it a
-  /// previewed layer (R10), so the band's keys follow the drag per step
-  /// instead of sitting where they were when the row was built.
-  final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
-
-  /// The union-summary provider (the CAMERA row, B4) — resolved per row
-  /// BUILD, so the drag gate's per-step rebuild re-derives the union from
-  /// the session's preview-aware camera track exactly as [lanesForLayer]
-  /// re-derives the member lanes. Null = no union overlays.
-  final PropertyLaneRow? Function(Layer layer)? unionLaneForLayer;
-
-  /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
-  final TimelineRunEditCallbacks? runEdit;
-  final PropertyLaneEditCallbacks? laneEdit;
-
-  /// The session's edit-drag preview channel: a drag step rebuilds ONLY the
-  /// dragged layer's row (through its gate), never this body.
-  final ValueListenable<TimelineDragPreview?>? dragPreview;
-
-  /// Track-owned rows whose display clone starts with a block spilling in
-  /// from an earlier cut, each with how far into it the cut starts — see
-  /// [TimelineGridHooks.spillInLeadFrames].
-  final Map<LayerId, int> spillInLeadFrames;
-
   @override
   State<TimelineFrameRowsScrollBody> createState() =>
       _TimelineFrameRowsScrollBodyState();
-}
-
-/// The data snapshot a memoized row was built from. The CONTENT-deciding
-/// callbacks (exposure state, frame names) join the key by equality —
-/// session method tearoffs compare equal across host rebuilds, so the
-/// memo still hits in production while injected test closures invalidate
-/// it. Behavior-only callbacks (select/activate hooks) are deliberately
-/// NOT part of the key: every timeline host callback closes over the
-/// stable session only, so a cached row's captured hooks stay
-/// behaviorally identical even when their object identities churn.
-typedef _RowMemoInputs = ({
-  // The Layer INSTANCE: on a commit-time rebuild the untouched layers come
-  // back as the same instances from the repository, and `Layer.==` is a
-  // deep walk over frames that this gate must never pay.
-  ByIdentity<Layer> layer,
-  int playbackFrameCount,
-  // The frame-axis GEOMETRY, present only for rows that still read it at
-  // build time (R28 #4). The painted drawing rows take the live handle and
-  // follow it through repaint/relayout, so a zoom step must NOT invalidate
-  // them — null here. The sparse widget-cell kinds keep the value and
-  // rebuild on zoom exactly as before.
-  TimelineFrameGeometry? geometry,
-  double crossAxisExtent,
-  ProjectFrameRate projectFrameRate,
-  // #29: the substrate generation — linked cuts can share Layer
-  // instances, so layer identity alone cannot say "same world".
-  String substrateGeneration,
-  // THE RESIZE LAW (device report 2026-08-17): the painted rows' request
-  // set — the frame window their painters draw and request substrate
-  // tiles for — is computed FROM this scalar, frozen into the painter at
-  // build time. A viewport that widens must therefore rebuild the row,
-  // or the newly exposed cells stay outside every request set forever:
-  // opening a project in a small window and enlarging it left the new
-  // width's blocks unrendered until a cut round-trip rebuilt the rows.
-  // Zoom steps do not move it (it is a pixel quantity), so the zoom
-  // memo-keep this record exists for is untouched.
-  double viewportMainExtent,
-  TimelineCellExposureState Function(Layer layer, int frameIndex)
-  exposureStateForLayer,
-  String? Function(Layer layer, int frameIndex)? frameNameForLayer,
-  bool hasCommaDrag,
-  bool hasRangeGesture,
-  bool hasActivateCell,
-  ByIdentity<ValueListenable<TimelineDragPreview?>?> dragPreview,
-  // The sparse rows' EXTERNAL inputs (UI-R20 #4): identity tokens for
-  // the camera track / instruction registry, and the SE spill-in lead
-  // (F-113: the waveform's start moves with it, so it keys the memo too).
-  ByIdentity<Object?> auxiliaryIdentity,
-  int? spillInLeadFrames,
-  // REC1-D: the clip-marker switch is a display fact — toggling it must
-  // invalidate SE rows (the memo-token discipline).
-  String? seClipMarkerTooltip,
-  // The waveform an SE row paints arrives on its OWN — a conform lands
-  // after the take or the import is placed, and the store's notification
-  // rebuilds the host with the same Layer. So the peaks join the key, one
-  // per sound the row draws, by identity (null while extracting). 🪦The
-  // row was built while the take's conform still ran, and every rebuild
-  // after handed that blank row back until an edit replaced the layer —
-  // 「이름/대사 지정하니까 보이네」 (유저 09-25, card `F-178` ⑥).
-  ByList<AudioPeaks?> seAudioPeaks,
-  // A1 (2026-08-17): the frames/seconds display mode is a display fact
-  // too — the run-duration labels ride the rows as a foreground painter,
-  // so a memo hit on toggle returned the identical widget and the block
-  // text stayed in the old mode until an unrelated token field moved
-  // (layer activation was the user's observed workaround). Same
-  // discipline as seClipMarkerTooltip and THE RESIZE LAW above. The tile
-  // bake stays out of this on purpose: duration text is never baked into
-  // tiles (the labels painter exists as a foreground layer precisely so
-  // this toggle is a plain repaint, never a re-raster).
-  bool showSeconds,
-});
-
-class _RowMemoEntry {
-  const _RowMemoEntry({required this.inputs, required this.widget});
-
-  final _RowMemoInputs inputs;
-  final Widget widget;
 }
 
 class _TimelineFrameRowsScrollBodyState
@@ -323,10 +101,10 @@ class _TimelineFrameRowsScrollBodyState
   /// commit-time rebuild the untouched layers come back as the SAME Layer
   /// instances from the repository, so their rows reuse the cached widget
   /// INSTANCE and Flutter skips their whole subtree rebuild. What a row
-  /// shows beyond its Layer joins the key ([_RowMemoInputs]) — the camera
-  /// track, the SE waveform peaks — and lane rows, which are few, are not
-  /// memoized.
-  final Map<Object, _RowMemoEntry> _rowMemo = {};
+  /// shows beyond its Layer joins the key ([TimelineCellsRowFacts]) — the
+  /// camera track, the SE waveform peaks — and lane rows, which are few,
+  /// are not memoized ([keptTimelineCellsRow], the x-sheet's columns' too).
+  final Map<LayerId, KeptTimelineCellsRow> _rowMemo = {};
 
   /// The LIVE frame-axis geometry every painted row follows (R28 #4).
   ///
@@ -417,115 +195,10 @@ class _TimelineFrameRowsScrollBodyState
   /// folder row is a cells row now, so it keys like one.
   String _rowKeySuffix(TimelineDisplayRow row) => row.lane?.laneId ?? 'cells';
 
-  /// What an SE row's waveform strips paint, one per sound it draws
-  /// ([seAudioSpans]) — nothing for every other row.
-  List<AudioPeaks?> _seAudioPeaksOf(Layer layer) {
-    final peaksFor = widget.audioPeaksFor;
-    if (peaksFor == null || !layerKindUsesSeSheetCells(layer.kind)) {
-      return const [];
-    }
-    return [
-      for (final span in seAudioSpans(layer)) peaksFor(span.clip.filePath),
-    ];
-  }
-
-  bool _rowIsMemoizable(TimelineDisplayRow row) {
-    // Every non-lane row memoizes now (UI-R20 #4): the churny inputs the
-    // sparse kinds depended on joined the memo token — the camera track
-    // and the instruction registry ride [TimelineRowMemoAux] identities,
-    // SE spill-in rides a per-layer flag, the SE row's waveform peaks ride
-    // the key by identity, and the SE/camera display clones themselves are
-    // identity-cached upstream. 🪦「The audio WAVEFORM stays safe because it
-    // lives on the (unmemoized) lane rows」 stood here — the SE row paints
-    // one under its blocks too, and it stayed blank (09-25).
-    //
-    // R10 brought FOLDER rows in: their band used to churn a fresh runs
-    // list per build, which is exactly why they were excluded — now the
-    // band is an identity-cached display clone, so the memo key answers
-    // for them like any other row.
-    return !row.isLane;
-  }
-
-  /// The row kind's external-input identity for the memo token.
-  ///
-  /// The def table is external input for EVERY instruction-carrying row: a
-  /// renamed or recoloured term has to reach the transition row's marks too,
-  /// and a row whose external input is missing from this token memoises stale.
-  Object? _auxiliaryIdentityFor(Layer layer) {
-    if (layer.kind == LayerKind.camera) {
-      return widget.memoAux.cameraTrack;
-    }
-    if (layer.kind.carriesInstructions) {
-      return widget.memoAux.instructionDefs;
-    }
-    return null;
-  }
-
-  /// The handle every row follows.
-  ///
-  /// The sparse kinds used to be excluded: their span overlays were placed
-  /// from build-time scalars, so a window sliding under them without a
-  /// rebuild would have stranded them. [TimelineFrameSpanLayout] places those
-  /// overlays during layout now, so every kind rides the window.
-  ValueNotifier<TimelineFrameGeometry> _geometryFor(LayerKind kind) =>
-      _windowedGeometry;
-
-
-  Widget _buildCellsRow(Layer layer, {required Layer baseLayer}) {
-    return TimelineFrameCellsRow(
-      layer: layer,
-      baseLayer: baseLayer,
-      // The cells a hovering file would author. Read off the channel the
-      // GATE above already subscribes to — it rebuilt this builder to hand
-      // over [layer], and the span belongs to the same step — so the drag
-      // preview keeps exactly one subscriber per row.
-      silhouette: timelineDragSilhouetteFor(
-        widget.dragPreview?.value,
-        layer.id,
-      ),
-      playbackFrameCount: widget.playbackFrameCount,
-      geometry: _geometryFor(layer.kind),
-      crossAxisExtent: widget.metrics.layerRowHeight,
-      exposureStateForLayer: widget.exposureStateForLayer,
-      frameNameForLayer: widget.frameNameForLayer,
-      celContent: widget.celContent,
-      // ㉘: the same value the row MEMO keys on. It had to reach the
-      // painter too — the memo only decides whether to rebuild the row,
-      // and a rebuilt row whose painter says "nothing changed" repaints
-      // nothing and re-uses the tile it baked before the key existed.
-      coverageIdentity: _auxiliaryIdentityFor(baseLayer),
-      onSelectLayer: widget.onSelectLayer,
-      onSelectFrame: widget.onSelectFrame,
-      onSettledPress: widget.onSettledPress,
-      onActivateCell: widget.onActivateCell,
-      instructionDefById: widget.instructionDefById,
-      instructionCrossingTooltip: widget.instructionCrossingTooltip,
-      audioPeaksFor: widget.audioPeaksFor,
-      seClipMarkerTooltip: widget.seClipMarkerTooltip,
-      projectFrameRate: widget.projectFrameRate,
-      showSeconds: widget.showSeconds,
-      audioLane: widget.audioLane,
-      onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
-      acceptsMediaAssetOnLayer: widget.acceptsMediaAssetOnLayer,
-      onHoverMediaAssetOnLayer: widget.onHoverMediaAssetOnLayer,
-      onLeaveMediaAssetOnLayer: widget.onLeaveMediaAssetOnLayer,
-      commaDrag: widget.commaDrag,
-      rangeGesture: widget.rangeGesture,
-      runEdit: widget.runEdit,
-      spillInLeadFrames: widget.spillInLeadFrames[layer.id],
-      windowBucket: widget.windowBucket,
-      viewportMainExtent: widget.viewportMainExtent,
-      substrateGeneration: widget.substrateGeneration,
-      // Resolved from the GATE's layer, per rebuild — a drag step
-      // re-derives the union like the lanes re-derive (B4).
-      unionLane: widget.unionLaneForLayer?.call(layer),
-    );
-  }
-
   /// The lane to render: the drag preview's version while one is staged
   /// for this row's layer (R10), the committed one otherwise.
   PropertyLaneRow _laneOf(TimelineDisplayRow row, Layer layer) {
-    final lanesForLayer = widget.lanesForLayer;
+    final lanesForLayer = widget.hooks.lanesForLayer;
     if (lanesForLayer == null) {
       return row.lane!;
     }
@@ -545,22 +218,22 @@ class _TimelineFrameRowsScrollBodyState
             leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
             trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
             metrics: widget.metrics,
-            frameRate: widget.projectFrameRate,
-            audioPeaksFor: widget.audioPeaksFor,
-            spillInLeadFrames: widget.spillInLeadFrames[layer.id],
-            onSetClipOffset: widget.audioLane?.onSetClipOffset == null
+            frameRate: widget.hooks.projectFrameRate,
+            audioPeaksFor: widget.hooks.audioPeaksFor,
+            spillInLeadFrames: widget.hooks.spillInLeadFrames[layer.id],
+            onSetClipOffset: widget.hooks.audioLane?.onSetClipOffset == null
                 ? null
                 : (clipIndex, offsetFrames) =>
-                      widget.audioLane!.onSetClipOffset!(
+                      widget.hooks.audioLane!.onSetClipOffset!(
                         layer.id,
                         clipIndex,
                         offsetFrames,
                       ),
-            offsetDrag: widget.audioLane?.offsetDrag,
-            onSetClipFades: widget.audioLane?.onSetClipFades == null
+            offsetDrag: widget.hooks.audioLane?.offsetDrag,
+            onSetClipFades: widget.hooks.audioLane?.onSetClipFades == null
                 ? null
                 : (clipIndex, fadeIn, fadeOut) =>
-                      widget.audioLane!.onSetClipFades!(
+                      widget.hooks.audioLane!.onSetClipFades!(
                         layer.id,
                         clipIndex,
                         fadeIn,
@@ -599,75 +272,30 @@ class _TimelineFrameRowsScrollBodyState
       key: rowKey,
       width: widget.totalFrameContentWidth,
       height: timelineDisplayRowExtent(row, widget.metrics),
-      child: _layeredRow(row, rowKey.value),
+      child: _layeredRow(row),
     );
   }
 
-  Widget _layeredRow(TimelineDisplayRow row, String memoKey) {
-    // A layer per row: one row's repaint (ink, hover, drags) never
-    // re-rasterizes its neighbours, and the cursor layer above repaints
-    // without touching the row layers at all. The gate inside makes an
-    // edge-drag step rebuild exactly this row when it is the drag target —
-    // and 🚨F-244: that rebuild is laid out in the row's OWN scope. A plain
-    // boundary here held the paint in but not the layout: the step rebuilt in
-    // the grid's layout scope, laid it out again and repainted the rows'
-    // viewport around the one row that moved (a drag step is a tick:
-    // [TickLayer]).
-    Widget buildGated() => TickLayer(
-      child: TimelineDragPreviewRowGate(
-        dragPreview: widget.dragPreview,
-        layer: row.layer,
-        slice: row.isLane
-            ? (layer) => laneRowSlice(layer, row.lane!.laneId)
-            : null,
-        // R10: a FOLDER row is a cells row. Its band arrives as the display
-        // clone's own timeline, so it takes the shared painter, the shared
-        // press policy — the playhead can be put on it at last — and the
-        // tile bake, while staying non-editable for free: every edit
-        // affordance below gates on `LayerKind.holdsDrawings`, which a
-        // folder fails.
-        rowBuilder: (context, layer) => row.isLane
-            ? _buildLaneRow(row, layer)
-            : _buildCellsRow(layer, baseLayer: row.layer),
-      ),
-    );
+  /// The rows as their cells see them — the x-sheet's columns read the same
+  /// record turned on its side.
+  TimelineCellsRowGrid get _cellsRowGrid => (
+    hooks: widget.hooks,
+    metrics: widget.metrics,
+    geometry: _windowedGeometry,
+    windowBucket: widget.windowBucket,
+    viewportMainExtent: widget.viewportMainExtent,
+    rangeGesture: widget.rangeGesture,
+    axis: Axis.horizontal,
+    keyPrefix: 'timeline',
+  );
 
-    if (!_rowIsMemoizable(row)) {
-      return buildGated();
-    }
-
-    final inputs = (
-      layer: ByIdentity(row.layer),
-      playbackFrameCount: widget.playbackFrameCount,
-      // THE line: every row's geometry consumers are live now — painters
-      // through `repaint`, span overlays through the span layout — so a zoom
-      // step keeps every memo entry. It stays in the record (as a constant
-      // null) to say that deliberately.
-      geometry: null,
-      crossAxisExtent: widget.metrics.layerRowHeight,
-      projectFrameRate: widget.projectFrameRate,
-      substrateGeneration: widget.substrateGeneration,
-      viewportMainExtent: widget.viewportMainExtent,
-      exposureStateForLayer: widget.exposureStateForLayer,
-      frameNameForLayer: widget.frameNameForLayer,
-      hasCommaDrag: widget.commaDrag != null,
-      hasRangeGesture: widget.rangeGesture != null,
-      hasActivateCell: widget.onActivateCell != null,
-      dragPreview: ByIdentity(widget.dragPreview),
-      auxiliaryIdentity: ByIdentity(_auxiliaryIdentityFor(row.layer)),
-      spillInLeadFrames: widget.spillInLeadFrames[row.layer.id],
-      seClipMarkerTooltip: widget.seClipMarkerTooltip,
-      seAudioPeaks: ByList(_seAudioPeaksOf(row.layer)),
-      showSeconds: widget.showSeconds,
-    );
-    final cached = _rowMemo[memoKey];
-    if (cached != null && cached.inputs == inputs) {
-      return cached.widget;
-    }
-    final built = buildGated();
-    _rowMemo[memoKey] = _RowMemoEntry(inputs: inputs, widget: built);
-    return built;
-  }
+  Widget _layeredRow(TimelineDisplayRow row) => row.isLane
+      ? timelineGatedRow(
+          row,
+          widget.hooks.dragPreview,
+          (context, layer) => _buildLaneRow(row, layer),
+        )
+      : keptTimelineCellsRow(_rowMemo, row, _cellsRowGrid);
 
   @override
   Widget build(BuildContext context) {
@@ -729,15 +357,12 @@ class _TimelineFrameRowsScrollBodyState
 
     // Bound the memo to the rows built this pass (scrolled-out rows just
     // rebuild when they come back).
-    final liveKeys = <Object>{
-      for (final row in widget.rows)
-        'timeline-row-${row.layer.id}-${_rowKeySuffix(row)}',
-      if (pinnedLeading != null)
-        'timeline-row-${pinnedLeading.layer.id}-${_rowKeySuffix(pinnedLeading)}',
-      if (pinnedTrailing != null)
-        'timeline-row-${pinnedTrailing.layer.id}-${_rowKeySuffix(pinnedTrailing)}',
+    final liveLayers = <LayerId>{
+      for (final row in widget.rows) row.layer.id,
+      if (pinnedLeading != null) pinnedLeading.layer.id,
+      if (pinnedTrailing != null) pinnedTrailing.layer.id,
     };
-    _rowMemo.removeWhere((key, _) => !liveKeys.contains(key));
+    _rowMemo.removeWhere((layerId, _) => !liveLayers.contains(layerId));
 
     return KeyedSubtree(
       key: const ValueKey<String>('timeline-frame-rows-scroll-body'),

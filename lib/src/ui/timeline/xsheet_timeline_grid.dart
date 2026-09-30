@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
-import '../../models/layer_kind.dart';
 import '../text/app_face.dart';
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart';
@@ -34,11 +33,11 @@ import 'layer_drop_policy.dart'
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
 import 'layer_controls_row_facts.dart';
+import 'timeline_cells_row_facts.dart';
 import '../listenable_rebind.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
-import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline_frame_geometry.dart'
     show TimelineFrameGeometry, timelineFrameWindowMarginPx;
 import 'timeline_frame_scrub.dart';
@@ -62,7 +61,6 @@ import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_virtualization_plan.dart';
-import 'timeline_visible_range.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_grid_sheet.dart';

@@ -82,7 +82,6 @@ class LayerTimelineGrid extends StatefulWidget {
     this.legend,
     this.visibilitySoloEnabled = false,
     this.masterOpacityValue = 1.0,
-    this.memoAux = const TimelineRowMemoAux(),
   });
 
   final List<Layer> layers;
@@ -91,10 +90,6 @@ class LayerTimelineGrid extends StatefulWidget {
   /// rail and the sheet read the SAME bundle, so neither can lack an
   /// answer the other has.
   final TimelineGridHooks hooks;
-
-  /// Sparse-row memo identity tokens (UI-R20 #4) — see
-  /// [TimelineFrameRowsScrollBody.memoAux].
-  final TimelineRowMemoAux memoAux;
 
   /// The rail's window size, set by this grid's splitter and persisted by
   /// the workspace. Null = a session-local one of our own (tests, and any
@@ -649,8 +644,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           ? (pinnedIndex - rowWindow.endIndexExclusive) *
                 _metrics.layerRowHeight
           : 0,
-      dragPreview: widget.hooks.dragPreview,
-      playbackFrameCount: widget.hooks.playbackFrameCount,
+      hooks: widget.hooks,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
       leadingFrameSpacerWidth: 0,
@@ -659,34 +653,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportWidth,
       metrics: _metrics,
-      exposureStateForLayer: widget.hooks.exposureStateForLayer,
-      frameNameForLayer: widget.hooks.frameNameForLayer,
-      celContent: widget.hooks.celContent,
-      onSelectLayer: widget.hooks.onSelectLayer,
-      onSelectFrame: widget.hooks.onSelectFrame,
-      onSettledPress: widget.hooks.onSettledPress,
-      onActivateCell: widget.hooks.onActivateCell,
-      instructionDefById: widget.hooks.instructionDefById,
-      instructionCrossingTooltip: widget.hooks.instructionCrossingTooltip,
-      audioPeaksFor: widget.hooks.audioPeaksFor,
-      seClipMarkerTooltip: widget.hooks.seClipMarkerTooltip,
-      projectFrameRate: widget.hooks.projectFrameRate,
-      audioLane: widget.hooks.audioLane,
-      onDropMediaAssetOnLayer: widget.hooks.onDropMediaAssetOnLayer,
-      acceptsMediaAssetOnLayer: widget.hooks.acceptsMediaAssetOnLayer,
-      onHoverMediaAssetOnLayer: widget.hooks.onHoverMediaAssetOnLayer,
-      onLeaveMediaAssetOnLayer: widget.hooks.onLeaveMediaAssetOnLayer,
-      showSeconds: widget.hooks.showSeconds,
-      commaDrag: widget.hooks.commaDrag,
       rangeGesture: rangeGesture,
       laneRange: laneRange,
-      lanesForLayer: _lanes.lanesFor,
-      unionLaneForLayer: widget.hooks.unionLaneForLayer,
-      runEdit: widget.hooks.runEdit,
-      laneEdit: widget.hooks.laneEdit,
-      spillInLeadFrames: widget.hooks.spillInLeadFrames,
-      memoAux: widget.memoAux,
-      substrateGeneration: widget.hooks.substrateGeneration,
     );
   }
 

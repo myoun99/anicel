@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker, timelineLaneUnionKeyMarkerSize;
@@ -71,7 +72,20 @@ void main() {
               for (var i = 0; i < layers.length; i += 1)
                 TimelineDisplayRow.layer(layers[i], layerIndex: i),
             ],
-            playbackFrameCount: 12,
+            hooks: TimelineGridHooks(
+              activeLayerId: null,
+              frameCursor: ValueNotifier<int>(0),
+              playbackFrameCount: 12,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              showSeconds: showSeconds,
+              unionLaneForLayer: unionLaneForLayer,
+            ),
             frameStartIndex: 0,
             frameEndIndexExclusive: 12,
             leadingFrameSpacerWidth: 0,
@@ -81,11 +95,6 @@ void main() {
               frameCellWidth: cellWidth,
               layerRowHeight: 28,
             ),
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            showSeconds: showSeconds,
-            unionLaneForLayer: unionLaneForLayer,
           ),
         ),
       ),

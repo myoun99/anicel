@@ -136,7 +136,13 @@ void main() {
   /// printer it added takes its face, strata and images once
   /// (`SheetCanvasPrinter`) rather than on every call. 🔬`clean_code_diff`
   /// between master and the lane names those two and nothing added.
-  const wideSignatures = 385;
+  ///
+  /// ⚠️385 → 384 on 2026-09-30, lowered as the rule asks: F-244's x-sheet
+  /// columns build their cells row through the timeline's
+  /// (`timelineCellsRowFrom`), and the sheet's own builder — `_columnFor`
+  /// (five) — went with the copy it held. 🔬`clean_code_diff` between master
+  /// (`01944bc92`, at 385) and the lane named that one and nothing added.
+  const wideSignatures = 384;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -204,7 +210,15 @@ void main() {
   /// so `renderCelGroup` gave up its own copy of that choice and fell under
   /// the line. 🔬`clean_code_diff` between master (`2757f5455`, at 427) and
   /// the lane named that one and nothing added.
-  const longBodies = 426;
+  ///
+  /// ⚠️426 → 422 on 2026-09-30, lowered as the rule asks: master stood at
+  /// 425, and F-244's cells-row round took three off — the x-sheet's
+  /// `_columnFor` (its copy of the cells row), the timeline's `_layeredRow`
+  /// (its memo, now `keptTimelineCellsRow`, the sheet's too) and
+  /// `_buildFrameRowsBody` (thirty answers handed over one by one, now the
+  /// hooks bundle). 🔬`clean_code_diff` between master (`01944bc92`, at 425)
+  /// and the lane named those three and nothing added.
+  const longBodies = 422;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

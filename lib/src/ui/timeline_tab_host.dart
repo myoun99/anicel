@@ -30,7 +30,7 @@ import 'timeline/layer_row_drag.dart'
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
-import 'timeline/timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
+import 'timeline/timeline_grid_hooks.dart' show TimelineRowMemoAux;
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';

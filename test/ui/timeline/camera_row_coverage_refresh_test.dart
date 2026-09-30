@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
@@ -46,17 +47,25 @@ void main() {
         height: 200,
         child: TimelineFrameRowsScrollBody(
           rows: [TimelineDisplayRow.layer(cameraLayer, layerIndex: 0)],
-          playbackFrameCount: 24,
+          hooks: TimelineGridHooks(
+            activeLayerId: null,
+            frameCursor: ValueNotifier<int>(0),
+            playbackFrameCount: 24,
+            exposureStateForLayer: cameraExposure,
+            memoAux: TimelineRowMemoAux(cameraTrack: cameraTrack),
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+          ),
           frameStartIndex: 0,
           frameEndIndexExclusive: 24,
           leadingFrameSpacerWidth: 0,
           trailingFrameSpacerWidth: 0,
           totalFrameContentWidth: 24 * 24,
           metrics: TimelineGridMetrics.defaults,
-          exposureStateForLayer: cameraExposure,
-          memoAux: TimelineRowMemoAux(cameraTrack: cameraTrack),
-          onSelectLayer: (_) {},
-          onSelectFrame: (_) {},
         ),
       ),
     ),

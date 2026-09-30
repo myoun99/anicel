@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
 import '../helpers/exposure_of.dart';
@@ -397,19 +398,27 @@ Widget _body({
             expandedLayerIds: const {},
             lanesForLayer: (_) => const [],
           ),
-          playbackFrameCount: playbackFrameCount,
+          hooks: TimelineGridHooks(
+            activeLayerId: null,
+            frameCursor: ValueNotifier<int>(0),
+            playbackFrameCount: playbackFrameCount,
+            exposureStateForLayer:
+                exposureStateForLayer ??
+                ((_, _) => TimelineCellExposureState.uncovered),
+            frameNameForLayer: frameNameForLayer,
+            onSelectLayer: onSelectLayer ?? (_) {},
+            onSelectFrame: onSelectFrame ?? (_) {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+          ),
           frameStartIndex: frameStartIndex,
           frameEndIndexExclusive: frameEndIndexExclusive,
           leadingFrameSpacerWidth: leadingFrameSpacerWidth,
           trailingFrameSpacerWidth: trailingFrameSpacerWidth,
           totalFrameContentWidth: totalFrameContentWidth,
           metrics: metrics,
-          exposureStateForLayer:
-              exposureStateForLayer ??
-              ((_, _) => TimelineCellExposureState.uncovered),
-          frameNameForLayer: frameNameForLayer,
-          onSelectLayer: onSelectLayer ?? (_) {},
-          onSelectFrame: onSelectFrame ?? (_) {},
           rangeGesture: rangeGesture,
         ),
       ),

@@ -44,7 +44,7 @@ class _XSheetGridFrameScroll {
   /// EVERY kind takes the windowed one now: the sparse columns' span
   /// overlays are placed by [TimelineFrameSpanLayout] at layout time, so a
   /// window sliding under them carries them along.
-  ValueNotifier<TimelineFrameGeometry> publishFrameGeometry(LayerKind kind) {
+  ValueNotifier<TimelineFrameGeometry> publishFrameGeometry() {
     _state._frameGeometry.value = _baseFrameGeometry();
     _state._windowedFrameGeometry.value = _windowedFrameGeometryValue();
     return _state._windowedFrameGeometry;

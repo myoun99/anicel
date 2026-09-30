@@ -27,7 +27,6 @@ import 'layer_row_drag.dart' show TimelineRowDragHooks;
 import 'timeline_current_row.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
-import 'timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_metrics.dart';
@@ -661,6 +660,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       spillInLeadFrames: widget.spillInLeadFrames,
       cutEndDrag: widget.cutEndDrag,
       substrateGeneration: widget.substrateGeneration,
+      memoAux: widget.memoAux,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
       layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
       layerEyeOnOf: widget.layerEyeOnOf,
@@ -729,7 +729,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       legend: widget.legend,
                       visibilitySoloEnabled: widget.visibilitySoloEnabled,
                       masterOpacityValue: widget.masterOpacityValue,
-                      memoAux: widget.memoAux,
                     )
                   : XSheetTimelineGrid(
                       hooks: hooks,
