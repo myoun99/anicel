@@ -457,7 +457,13 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
   BuildContext context,
   EditorSessionManager session,
   Axis previewAxis,
-  ({CameraInstructionSet set, InstructionEvent covering, bool editsSet}) span,
+  ({
+    CameraInstructionSet set,
+    InstructionEvent covering,
+    bool editsSet,
+    InstructionEvent Function(InstructionEvent draft)? namedByItsCuts,
+  })
+  span,
 ) => showDialogVerb<InstructionEventDialogResult>(
   context,
   (dialogContext) => InstructionEventDialog(
@@ -472,6 +478,7 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
         ? () => _editInstructionSet(dialogContext, session)
         : null,
     previewAxis: previewAxis,
+    namedByItsCuts: span.namedByItsCuts,
   ),
 );
 
@@ -495,6 +502,7 @@ typedef _SpanRow = ({
   MapEntry<int, InstructionEvent>? covering,
   CameraInstructionSet set,
   bool editsSet,
+  InstructionEvent Function(InstructionEvent draft)? namedByItsCuts,
   void Function()? create,
   void Function() remove,
   int Function(InstructionEvent covering) length,
@@ -516,6 +524,7 @@ Future<void> _editSpanInstance(
     set: row.set,
     covering: covering.value,
     editsSet: row.editsSet,
+    namedByItsCuts: row.namedByItsCuts,
   ));
   if (result == null) {
     return;
@@ -550,6 +559,8 @@ Future<void> _editInstructionEvent(
   covering: session.instructionVerbs.instructionSpanAt(layerId, frameIndex),
   set: session.camera.cameraInstructionSet,
   editsSet: true,
+  // A direction's writing is the user's: its ends are what the camera does.
+  namedByItsCuts: null,
   // F-105: this is the Edit button's door too — an empty direction cell is
   // created by the double tap's fork and the ＋ ([createActiveInstance]).
   create: null,
@@ -595,10 +606,22 @@ Future<void> editTransitionSpanInstance(
   Axis previewAxis = Axis.horizontal,
 }) {
   final frame = globalFrame ?? session.editingGlobalFrame;
+  final covering = session.transitions.transitionSpanAt(frame);
   return _editSpanInstance(context, session, previewAxis, (
-    covering: session.transitions.transitionSpanAt(frame),
+    covering: covering,
     set: session.transitions.transitionInstructionSet,
     editsSet: false,
+    // F-229: a transition's targets are certain — the window previews the
+    // names its row will show, measured across the span's REAL length (the
+    // preview draws a draft of its own), and writes none of them.
+    namedByItsCuts: covering == null
+        ? null
+        : (draft) => session.transitions
+              .transitionEventShownAt(
+                covering.key,
+                draft.copyWith(length: covering.value.length),
+              )
+              .copyWith(length: draft.length),
     create: null,
     remove: () => session.transitions.removeTransitionSpanAt(frame),
     // LENGTH is not taken from the dialog. The grips own it, so a re-pick

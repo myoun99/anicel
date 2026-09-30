@@ -472,7 +472,11 @@ void main() {
     // shoot material for a fade the compositor never runs.
     expect(
       session.transitions
-          .trackTransitionSheetLayerFor(cutStart: 0, duration: first.duration)
+          .trackTransitionSheetLayerFor(
+            cutStart: 0,
+            duration: first.duration,
+            olWord: 'O.L',
+          )
           .instructions
           .keys,
       [2],

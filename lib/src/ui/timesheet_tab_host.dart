@@ -143,8 +143,18 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     // list identity, not the cut's.
     final trackSeLayers = session.activeTrack.seLayers;
     // Same story for the transition row: track-owned, so an edit there
-    // changes the track's identity rather than the cut's.
-    final transitionLayer = session.activeTrack.transitionLayer;
+    // changes the track's identity rather than the cut's. It is keyed as it
+    // PRINTS (F-229): an O.L writes the cuts it joins and the word of the
+    // sheet's language, so a rename next door or a language switch
+    // reprints.
+    final olWord = AppStrings.of(
+      session.languageSettings.value.notationLanguage,
+    ).tlTransitionCutOl;
+    final transitionLayer = session.transitions.transitionRowNamed(
+      session.activeTrack,
+      session.activeTrack.transitionLayer,
+      olWord: olWord,
+    );
     final cutStartFrame = at.startFrame;
     if (_document == null ||
         !identical(_documentCut, cut) ||
@@ -185,6 +195,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             ? session.transitions.trackTransitionSheetLayerFor(
                 cutStart: cutStartFrame,
                 duration: cut.duration,
+                olWord: olWord,
               )
             : null,
         dataSheet: _dataSheet,

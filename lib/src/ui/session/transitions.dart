@@ -1,5 +1,5 @@
 import 'dart:collection' show SplayTreeMap;
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
@@ -8,6 +8,7 @@ import '../../models/timeline_row_address.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
+import '../../models/transition_names.dart';
 import '../text/app_strings.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track_transitions.dart';
@@ -61,7 +62,7 @@ class Transitions {
   /// 적용해도 문제되나?」).
   ({Layer shown, Layer? global}) previewFormsOf(Layer row) => (
     shown: _projectOntoCut(
-      row,
+      transitionRowNamed(_selection.activeTrack, row),
       cutStart: _project.activeCutGlobalStartFrame,
       duration: _project.activeCutOrNull?.duration ?? 0,
     ).display,
@@ -101,6 +102,64 @@ class Transitions {
   bool isTrackTransitionLayerId(LayerId layerId) =>
       trackTransitionOwner(layerId) != null;
 
+  /// [row] — [track]'s transition row, or a drag's form of it — the way a
+  /// reader SHOWS it: every span named by the cuts it joins, in [olWord]
+  /// (the program's word unless the reader prints in another language —
+  /// [transitionRowNamedByItsCuts], F-229).
+  ///
+  /// ⛔Only for showing. An edit reads the row itself, so nothing derived
+  /// is ever written back into the project.
+  ///
+  /// For the track's own row, the same instance comes back while the row,
+  /// the cuts under it, the vocabulary and the word are the same, so the
+  /// identity-keyed row memos downstream hold ([trackTransitionDisplayLayer]'s
+  /// among them). A drag's form is new at every step and is named afresh —
+  /// kept, it would push the committed row out of the one slot.
+  Layer transitionRowNamed(Track track, Layer row, {String? olWord}) {
+    final word = olWord ?? AppText.strings.tlTransitionCutOl;
+    final cuts = cutSpansOf(track).toList();
+    final vocabulary = _camera.cameraInstructionSet;
+    Layer name() => transitionRowNamedByItsCuts(
+      row: row,
+      cuts: cuts,
+      defById: vocabulary.defById,
+      olWord: word,
+    );
+    if (!identical(row, track.transitionLayer)) {
+      return name();
+    }
+    final layout = [
+      for (final placed in cuts)
+        (placed.cut.name, placed.startFrame, placed.endFrame),
+    ];
+    final cached = _namedRows[(track.id, word)];
+    if (cached != null &&
+        identical(cached.row, row) &&
+        identical(cached.vocabulary, vocabulary) &&
+        listEquals(cached.layout, layout)) {
+      return cached.named;
+    }
+    final named = name();
+    _namedRows[(track.id, word)] = (
+      row: row,
+      vocabulary: vocabulary,
+      layout: layout,
+      named: named,
+    );
+    return named;
+  }
+
+  final Map<
+    (TrackId, String),
+    ({
+      Layer row,
+      CameraInstructionSet vocabulary,
+      List<(String, int, int)> layout,
+      Layer named,
+    })
+  >
+  _namedRows = {};
+
   /// The track's TRANSITION row as a cut-local display clone — the camera
   /// section's third row.
   ///
@@ -115,7 +174,8 @@ class Transitions {
   /// Cached on the same terms as the SE clones: same source layer + same
   /// window = the same instance back, so identity-keyed row memos hold.
   Layer get trackTransitionDisplayLayer {
-    final source = _selection.activeTrack.transitionLayer;
+    final track = _selection.activeTrack;
+    final source = transitionRowNamed(track, track.transitionLayer);
     final cutStart = _project.activeCutGlobalStartFrame;
     final duration = _project.activeCutOrNull?.duration ?? 0;
     final cached = _transitionDisplayClone;
@@ -240,12 +300,16 @@ class Transitions {
   ///
   /// F-90: for the cut the sheet PRINTS — a scrub over another cut makes it
   /// a different one from the cut open for editing.
+  ///
+  /// [olWord] is the sheet's: it prints in the NOTATION language (F-229).
   Layer trackTransitionSheetLayerFor({
     required int cutStart,
     required int duration,
+    required String olWord,
   }) {
+    final track = _selection.activeTrack;
     final (:display, :crossing, origins: _) = _projectOntoCut(
-      _selection.activeTrack.transitionLayer,
+      transitionRowNamed(track, track.transitionLayer, olWord: olWord),
       cutStart: cutStart,
       duration: duration,
     );
@@ -544,6 +608,20 @@ class Transitions {
         _selection.activeTrack.transitionLayer.instructions,
         globalFrame,
       );
+
+  /// [event] as the row would show it at [globalStart] — named by the cuts
+  /// it joins (F-229) — for the term window's preview, which follows a
+  /// re-pick of the term before anything is written.
+  InstructionEvent transitionEventShownAt(
+    int globalStart,
+    InstructionEvent event,
+  ) {
+    final track = _selection.activeTrack;
+    final alone = track.transitionLayer.copyWith(
+      instructions: {globalStart: event},
+    );
+    return transitionRowNamed(track, alone).instructions[globalStart]!;
+  }
 
   /// Replaces the event of the span covering [globalFrame], keeping its start
   /// and length (the grips own those). No-op on an empty cell — creation is

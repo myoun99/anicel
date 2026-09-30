@@ -185,7 +185,7 @@ class _StoryboardRowsAndLabels {
     final height = _state._rowHeights.transition;
     Widget row(Layer layer) => _StoryboardTransitionRow(
       track: track,
-      layer: layer,
+      layer: _state.widget.transitionRowShown?.call(track, layer) ?? layer,
       width: width,
       height: height,
       timelineScale: scale,

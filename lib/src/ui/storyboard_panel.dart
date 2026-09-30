@@ -528,6 +528,7 @@ class StoryboardPanel extends StatefulWidget {
     this.seSelect,
     this.audioLane,
     this.transitionDefById,
+    this.transitionRowShown,
     this.rowsChannel,
     this.transitionCrossingTooltip,
     this.transitionCommaDrag,
@@ -1115,6 +1116,11 @@ class StoryboardPanel extends StatefulWidget {
   /// the same wedge/bowtie the cut's direction row does. Null leaves the
   /// spans unmarked.
   final CameraInstructionDef? Function(String instructionId)? transitionDefById;
+
+  /// [track]'s transition row — or a drag's form of it — the way it is
+  /// SHOWN: every span named by the cuts it joins (F-229). Null shows the
+  /// row as stored, which is what a host with no session does.
+  final Layer Function(Track track, Layer row)? transitionRowShown;
 
   /// Where this panel hands its stacked rows to the shell — the ↑/↓ walk and
   /// the flip window read them while the storyboard is the panel being
