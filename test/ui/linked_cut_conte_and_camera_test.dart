@@ -281,7 +281,7 @@ void main() {
     );
 
     // Part them: the linked cut's conte row goes its own way, then goes.
-    session.layerVerbs.unlinkActiveLayer();
+    session.layerVerbs.unlinkLayers([session.activeLayerId!]);
     session.layerVerbs.deleteActiveLayer();
     expect(rowsOf(pair.linked, LayerKind.storyboard), isEmpty);
     expect(rowsOf(pair.source, LayerKind.storyboard), hasLength(1));

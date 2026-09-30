@@ -42,9 +42,13 @@ void main() {
     s.selectLayer(layer);
     s.layerVerbs.linkDuplicateActiveLayer();
     expect(s.activeLayerId, layer);
-    expect(s.layerVerbs.canUnlinkActiveLayer, isTrue);
+    expect(
+      s.layerVerbs.groupIsLinked(s.activeLayer!, s.requireActiveCut),
+      isTrue,
+    );
 
-    s.layerVerbs.unlinkActiveLayer();
+    // The menu's unlink is gone (I-25): the link window's button is the door.
+    s.layerVerbs.unlinkLayers([layer]);
 
     expect(s.activeLayerId, layer);
   });
