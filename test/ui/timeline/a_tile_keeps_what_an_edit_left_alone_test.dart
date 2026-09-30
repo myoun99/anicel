@@ -486,6 +486,17 @@ void main() {
       expect(warm.values, everyElement(isNotNull));
       final baked = landings;
 
+      // A release lands the row a new instance of the same cells: every
+      // tile serves it.
+      final released = paint(
+        painterFor(before.copyWith(timeline: {...before.timeline})),
+      );
+      for (final span in spans) {
+        expect(identical(released[span], warm[span]), isTrue, reason: '$span');
+      }
+      await waitIdle();
+      expect(landings, baked, reason: 'the same cells bake nothing');
+
       final stepped = paint(painterFor(after));
       for (final span in spans) {
         if (span.$2 < 16) {

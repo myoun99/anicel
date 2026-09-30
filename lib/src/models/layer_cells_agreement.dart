@@ -65,8 +65,8 @@ int? firstCellThatMayDiffer(Layer a, Layer b) {
 bool _sameCelNames(Layer a, Layer b) {
   final baseOfA = attachedDisplayBaseOf(a);
   final baseOfB = attachedDisplayBaseOf(b);
-  if (baseOfA == null || baseOfB == null) {
-    return baseOfA == null && baseOfB == null;
-  }
-  return listEquals(baseOfA.frames, baseOfB.frames);
+  return identical(baseOfA, baseOfB) ||
+      baseOfA != null &&
+          baseOfB != null &&
+          listEquals(baseOfA.frames, baseOfB.frames);
 }
