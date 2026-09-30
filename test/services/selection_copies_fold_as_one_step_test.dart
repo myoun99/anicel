@@ -139,12 +139,13 @@ void main() {
     test('선택중 keeps the whole union when the copies overlap and arrive '
         'RIGHT-first', () {
       // 🚨The ordering case. A row's spans have to be sorted AND merged
-      // before an intersect walks them: that walk marches a cursor left to
-      // right and clears everything it passes, so a span arriving behind
-      // the cursor is silently dropped. Copies come out of the guide in
-      // transform order, not in x order — a box on the right of the axis
-      // mirrors to the left — so "already sorted" is not something this
-      // code may assume.
+      // before an intersect folds them in: the walk that did it marched a
+      // cursor left to right and cleared everything it passed, so a span
+      // arriving behind the cursor was silently dropped. (↩️I-23 folds a
+      // row by one sweep over sorted endpoints, which needs the order just
+      // the same.) Copies come out of the guide in transform order, not in
+      // x order — a box on the right of the axis mirrors to the left — so
+      // "already sorted" is not something this code may assume.
       final region = CanvasSelectionRegion.combineCopies(
         CanvasSelectionRegion.shape(rect(0, 0, 16, 16)),
         [overlapB, overlapA],
