@@ -340,6 +340,15 @@ class CutVerbs {
     ),
   );
 
+  /// Names each cut of [names] — ONE undo step. 자동 이름 지정's cuts (I-18,
+  /// targets-Q4 「컷마다 따로 연번」): every cut takes a number of its own, a
+  /// 겸용 cut too — a name does not travel along a link.
+  void renameCuts(Map<CutId, String> names) {
+    _project.cutCommandCoordinator.renameCuts(names);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
+  }
+
   /// The active cut's drawing guides — empty when parked in a gap.
   ///
   /// ⛔What is WRITTEN: what the brush snaps to and what is saved. A drag in

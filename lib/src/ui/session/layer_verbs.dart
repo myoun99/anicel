@@ -63,7 +63,7 @@ class LayerVerbs {
   /// rows simply contribute nothing here instead of being kept out of the
   /// selection.
   List<LayerId> deletableSelectedLayerIds() =>
-      _selectedLayerIdsWhere(canDeleteLayer);
+      selectedLayerIdsWhere(canDeleteLayer);
 
   /// The selected rows that may be DUPLICATED (⑨'s 복사).
   ///
@@ -71,7 +71,7 @@ class LayerVerbs {
   /// predicates rather than restated: a track-owned SE row has no clipboard
   /// shape, a per-cut singleton cannot have a second, and an attach row's
   /// copy would double-link its base's cels.
-  List<LayerId> duplicatableSelectedLayerIds() => _selectedLayerIdsWhere(
+  List<LayerId> duplicatableSelectedLayerIds() => selectedLayerIdsWhere(
     (layer) =>
         layer.kind.isClipboardCopyable &&
         !layer.kind.isSingletonPerCut &&
@@ -84,7 +84,7 @@ class LayerVerbs {
   /// and it is the one [canDeleteLayer] refuses for the same reason: it has
   /// no row verbs of its own on any surface.
   List<LayerId> renameableSelectedLayerIds() =>
-      _selectedLayerIdsWhere(_nameIsEditable);
+      selectedLayerIdsWhere(_nameIsEditable);
 
   /// Of [ids] — the rows a press acted on — the ones whose NAME may be
   /// edited, by [renameableSelectedLayerIds]'s rule (I-48's double click).
@@ -96,7 +96,11 @@ class LayerVerbs {
   /// The selected LAYER rows whose layer passes [keep], in selection order,
   /// once each — the one walk behind [deletableSelectedLayerIds] and
   /// [renameableSelectedLayerIds] (the audit's clone scan, 2026-09-03).
-  List<LayerId> _selectedLayerIdsWhere(bool Function(Layer layer) keep) =>
+  ///
+  /// Public for the one asker outside this object: 자동 이름 지정's ROWS
+  /// rung (I-18, `BlockNaming`), which names its own predicate rather than
+  /// walking the selection a second time.
+  List<LayerId> selectedLayerIdsWhere(bool Function(Layer layer) keep) =>
       _layerIdsWhere([
         for (final row in _selection.rowSelection.value)
           if (row is LayerRowAddress) row.layerId,
@@ -340,7 +344,7 @@ class LayerVerbs {
     if (cut == null) {
       return const [];
     }
-    return _selectedLayerIdsWhere((layer) => groupIsLinked(layer, cut));
+    return selectedLayerIdsWhere((layer) => groupIsLinked(layer, cut));
   }
 
   /// 독립시키기 for every selected linked row, as ONE undo step.

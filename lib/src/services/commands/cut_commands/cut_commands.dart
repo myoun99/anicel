@@ -209,15 +209,23 @@ class _CutCommands {
     );
   }
 
-  void renameCut({required CutId cutId, required String newName}) {
-    _coordinator.historyManager.execute(
-      RenameCutCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        newName: newName,
-      ),
-    );
-  }
+  void renameCut({required CutId cutId, required String newName}) =>
+      renameCuts({cutId: newName});
+
+  /// Names each cut of [names] as ONE undo step — the rename's one body,
+  /// which 자동 이름 지정 (I-18) hands a whole run of cuts. A cut already
+  /// wearing its name adds nothing, and a press that changes nothing adds
+  /// no step ([HistoryManager.executeAsOneStep]).
+  void renameCuts(Map<CutId, String> names) =>
+      _coordinator.historyManager.executeAsOneStep('Rename cuts', [
+        for (final MapEntry(key: cutId, value: name) in names.entries)
+          if (_coordinator._requireCut(cutId).name != name)
+            RenameCutCommand(
+              repository: _coordinator.repository,
+              cutId: cutId,
+              newName: name,
+            ),
+      ]);
 
   /// Commits a storyboard edge drag as one undoable step: durations (end
   /// trims) and leading gaps (start slides / gap consumption) together.

@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart' show IterableExtension;
 
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
@@ -39,6 +40,38 @@ String celPlaceLine(CelPlace place) {
     EnvelopeInkPlace(:final cutName) => '${strings.panelEnvelope} · $cutName',
     GoneCelPlace() => strings.saveCelsLostGone,
   };
+}
+
+/// [layerId]'s drawings [frameIds], each as [celPlaceLine] names it, in the
+/// order given — none for a row [project] does not hold, or for a drawing
+/// its bank does not.
+///
+/// What a LINK notice lists (I-18): 「대상의 프레임을 리스트로서」 — the
+/// drawings a join by name discards, one line each, however many there
+/// are.
+List<String> drawingPlaceLines(
+  Project project,
+  LayerId layerId,
+  Iterable<FrameId> frameIds,
+) {
+  final owned = projectLayersWithOwners(
+    project,
+  ).firstWhereOrNull((owned) => owned.layer.id == layerId);
+  if (owned == null) {
+    return const [];
+  }
+  return [
+    for (final frameId in frameIds)
+      if (owned.layer.frameById(frameId) case final frame?)
+        celPlaceLine(
+          DrawingCelPlace.at(
+            track: owned.track,
+            cut: owned.cut,
+            layer: owned.layer,
+            frame: frame,
+          ),
+        ),
+  ];
 }
 
 /// One use of a media pool file as a line of the list the pool shows: a

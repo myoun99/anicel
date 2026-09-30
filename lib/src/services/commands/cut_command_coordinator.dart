@@ -186,6 +186,7 @@ class CutCommandCoordinator {
   );
   void renameCut({required CutId cutId, required String newName}) =>
       _cuts.renameCut(cutId: cutId, newName: newName);
+  void renameCuts(Map<CutId, String> names) => _cuts.renameCuts(names);
   void commitCutDurationDrag({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,

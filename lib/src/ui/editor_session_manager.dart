@@ -142,6 +142,7 @@ import 'session/active_cut_edits.dart';
 import 'session/layer_id_mint.dart';
 import 'session/layer_marks.dart';
 import 'session/exposure_verbs.dart';
+import 'session/block_naming.dart';
 import 'session/cell_instances.dart';
 import 'session/cell_verbs.dart';
 import 'session/pixel_verbs.dart';
@@ -1064,6 +1065,23 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/pixel_verbs.dart), carved out of the cell verbs
   // when I-55 doubled the family. Callers name it, as they name [cells].
   late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels);
+
+  // ── 자동 이름 지정: its own object, in its own file ─────────────────────
+  //
+  // A collaborator (session/block_naming.dart, I-18): which blocks a press
+  // numbers, the plan it writes, and writing it. Callers name it — the
+  // panels' contexts ask `session.blockNaming` for their targets.
+  late final BlockNaming blockNaming = BlockNaming(
+    project: this,
+    selection: this,
+    changes: this,
+    controllers: activeCutControllers,
+    laneVerbs: laneVerbs,
+    rangeSelections: rangeSelections,
+    layerVerbs: layerVerbs,
+    cutVerbs: cutVerbs,
+    projectSettings: projectSettings,
+  );
 
   TimelineRowAddress get selectedRow => standing.selectedRow;
 
