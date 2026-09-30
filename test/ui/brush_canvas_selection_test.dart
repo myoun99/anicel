@@ -2151,6 +2151,48 @@ void main() {
     );
   });
 
+  // F-222 ①: the snap belongs to the ENTRANCE — a hand on the canvas — so it
+  // cannot depend on whether the box was already open. The first drag
+  // opens the box (the move path); the second lands on the OPEN box, a
+  // different path that did not round.
+  testWidgets('a SECOND drag inside the box the first one opened asks for '
+      'whole canvas pixels too', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+      sourceDabs: [dab(40, 40)],
+    );
+    await dragOnLayer(tester, const Offset(90, 90), const Offset(180, 180));
+    await env.setTool(CanvasTool.move);
+    // 10 screen px = 3.33… canvas px each time: fractional by construction.
+    await dragOnLayer(
+      tester,
+      const Offset(112.5, 112.5),
+      const Offset(122.5, 112.5),
+    );
+    expect(
+      env.commands.transformValues!.tx,
+      3,
+      reason: 'precondition: the drag that opened the box snapped',
+    );
+
+    await dragOnLayer(
+      tester,
+      const Offset(122.5, 112.5),
+      const Offset(132.5, 112.5),
+    );
+
+    final moved = env.commands.transformValues!.tx;
+    expect(
+      moved,
+      6,
+      reason:
+          '유저: 「캔버스쪽 직접 손으로 끌어서 이동하는거는 소수점은 '
+          '이동안되게. 즉 스냅. 15다음이 15.2 이런식말고 16되도록」 — '
+          'the open box took 3.33… as it came',
+    );
+  });
+
   testWidgets('R26 #13: the MOVE tool with NO selection drags the WHOLE '
       'picture — implicit whole-canvas session, ONE confirmed entry, and '
       'the end returns to no selection', (tester) async {

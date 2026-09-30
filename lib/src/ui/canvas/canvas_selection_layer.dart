@@ -28,6 +28,7 @@ import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/guide_geometry.dart';
 import '../../services/resample/resample_kernel.dart';
+import '../../services/transform_box_law.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
@@ -677,13 +678,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ///
   /// The cost is deliberate: zoomed in, the drag steps by canvas pixels
   /// instead of gliding. That is the truth about where pixels can go.
-  CanvasPoint get _moveCanvasDelta {
-    final raw = widget.viewport.viewportDeltaToCanvasDelta(
+  CanvasPoint get _moveCanvasDelta => TransformBoxLaw.wholePixels(
+    widget.viewport.viewportDeltaToCanvasDelta(
       dx: _moveScreenDelta.dx,
       dy: _moveScreenDelta.dy,
-    );
-    return CanvasPoint(x: raw.x.roundToDouble(), y: raw.y.roundToDouble());
-  }
+    ),
+  );
 
   // Ctrl+T free-transform session (P9b): the open box, or none — see
   // [TransformBox]. The per-drag solving context is NOT here — it lives on
@@ -2451,7 +2451,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // was at so the first move is a delta rather than a jump.
         modifierHeld: _scaleModifierHeld,
         lastAngle: handle == TransformHandle.rotate
-            ? _pointerAngleAbout(canvasPoint, openTransform)
+            ? TransformBoxLaw.angleAbout(
+                _turnCentreOf(openTransform),
+                canvasPoint,
+              )
             : 0,
       ),
     );
@@ -2596,10 +2599,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final start = drag.start;
     switch (drag.handle) {
       case TransformHandle.inside:
+        // A hand on the canvas moves in whole pixels, as the drag that
+        // opened this box did ([TransformBoxLaw.wholePixels]).
+        final moved = TransformBoxLaw.wholePixels(
+          CanvasPoint(
+            x: pointer.x - drag.startPointer.x,
+            y: pointer.y - drag.startPointer.y,
+          ),
+        );
         setState(() {
           box.affine = start.copyWith(
-            tx: start.tx + pointer.x - drag.startPointer.x,
-            ty: start.ty + pointer.y - drag.startPointer.y,
+            tx: start.tx + moved.x,
+            ty: start.ty + moved.y,
           );
         });
       case TransformHandle.anchor:
@@ -2619,22 +2630,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           );
         });
       case TransformHandle.rotate:
-        // Wrapped-delta accumulation (the camera lever rule): continuous
-        // across the ±180° seam. Canvas-space angles, so the P8 view
-        // rotation/flip never skews the feel.
+        // Every box turns by the one turn law ([TransformBoxLaw.turn]):
+        // wrapped deltas, canvas-space angles.
         final current = box.affine;
-        final angle = _pointerAngleAbout(pointer, current);
-        var delta = angle - drag.lastAngle;
-        while (delta > 180) {
-          delta -= 360;
-        }
-        while (delta < -180) {
-          delta += 360;
-        }
-        drag.lastAngle = angle;
+        final step = TransformBoxLaw.turn(
+          centre: _turnCentreOf(current),
+          pointer: pointer,
+          lastAngle: drag.lastAngle,
+        );
+        drag.lastAngle = step.angle;
         setState(() {
           box.affine = current.copyWith(
-            rotationDegrees: current.rotationDegrees + delta,
+            rotationDegrees: current.rotationDegrees + step.turned,
           );
         });
       case TransformHandle.topLeft:
@@ -2672,170 +2679,41 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           box.baseWidth,
           box.baseHeight,
         )!;
+        // Which point stays put comes from [_scaleModifierHeld] and nothing
+        // else: the box's centre by default, the opposite handle while the
+        // modifier is held ([TransformBoxLaw.scaled]). The tablet is why the
+        // modifier has two entrances — the pen is already on the handle, so
+        // "hold Alt" there means a second hand on the glass, and that hand
+        // IS the entrance.
         setState(
-          () => box.affine = _solveScaleDrag(
+          () => box.affine = TransformBoxLaw.scaled(
             from,
             grabbed,
-            _pressDisplaced(from, grabbed, drag.startPointer, pointer),
+            TransformBoxLaw.pressDisplaced(
+              from,
+              grabbed,
+              drag.startPointer,
+              pointer,
+            ),
+            aboutCentre: !held,
+            uniform: widget.transformOptions.isUniform,
           ),
         );
     }
     _publishTransformValues();
   }
 
-  /// Where the [grabbed] handle (its base-local position) would be if it
-  /// moved exactly as far as the pointer has since the press — the point
-  /// [_solveScaleDrag] is handed, so a press that landed off the handle
-  /// moves it by the hand's travel and not onto the hand (F-127).
-  CanvasPoint _pressDisplaced(
-    SelectionAffine start,
-    CanvasPoint grabbed,
-    CanvasPoint startPointer,
-    CanvasPoint pointer,
-  ) {
-    final atPress = start.apply(
-      CanvasPoint(x: start.pivot.x + grabbed.x, y: start.pivot.y + grabbed.y),
-    );
-    return CanvasPoint(
-      x: atPress.x + pointer.x - startPointer.x,
-      y: atPress.y + pointer.y - startPointer.y,
-    );
-  }
-
-  /// Solves the scale drag: the grabbed handle lands on [pointer] — the
-  /// press-displaced point ([_pressDisplaced]) — while the ANCHOR stays
-  /// fixed (its motion folds into the translation).
+  /// The TURN's fixed point: the anchor ([SelectionAffine.anchorCanvas]),
+  /// which a turn leaves where it is.
   ///
-  /// Which point that is comes from [_scaleModifierHeld] and nothing else:
-  /// the box's centre by default, the opposite corner while the modifier
-  /// is held. The tablet is why the modifier has two entrances — the pen
-  /// is already on the handle, so "hold Alt" there means a second hand on
-  /// the glass, and that hand IS the entrance.
-  ///
-  /// The aspect ratio is locked by the MODE, not by a modifier. 일반변형
-  /// preserves it by definition. Shift used to lock it here and no longer
-  /// does anything — 유저 08-13, once 일반 became the default: "어차피
-  /// 일반변형이 종횡비 유지해서 수정자 기능 필요없을거같은데".
-  ///
-  /// ⚠️This used to add "non-uniform scaling lives on 퍼스's edge handles".
-  /// It does not any more (F-42): in 퍼스 an edge handle carries the edge's
-  /// two quad corners, so this solver never sees one. The sentence is
-  /// corrected rather than deleted, because a reader who remembers it
-  /// would otherwise look here for a path that has moved.
-  SelectionAffine _solveScaleDrag(
-    SelectionAffine start,
-    CanvasPoint grabbed,
-    CanvasPoint pointer,
-  ) {
-    // 🚨★★★**CENTRE BY DEFAULT, OPPOSITE CORNER ON THE MODIFIER.**
-    //
-    // 🗣️유저 2026-09-22: 「**확대/축소의 기준점은 항상 상자의 중심**이야 …
-    // 일반변형에서 꼭짓점 이동하면 **그림 자체가 중심점 기준으로 커져** …
-    // 지금 반대쪽 꼭짓점 그대로 두고 현재 꼭짓점만 키우는게 클튜방식이야.
-    // 그래서 **tvp방식인 전체 크게하도록** … 그걸 **수정자가아니라 일반
-    // 로직으로 적용**하고, **수정자로서 클튜방식의 현재꼭짓점만 늘리는
-    // 로직** 두도록」.
-    //
-    // ↩️It was a persistent SETTING (`TransformAnchor`) that Alt inverted,
-    // because a hold 「cannot be the whole answer on a tablet」 (2026-08-29).
-    // 유저 answered that differently on 09-22 — the modifier gets a TOUCH
-    // entrance instead — so the setting is gone and the default is the one
-    // they named.
-    final centerPivot = !_scaleModifierHeld;
-    final anchorLocal = centerPivot
-        ? CanvasPoint(x: 0, y: 0)
-        : CanvasPoint(x: -grabbed.x, y: -grabbed.y);
-    final anchorCanvas = start.apply(
-      CanvasPoint(
-        x: start.pivot.x + anchorLocal.x,
-        y: start.pivot.y + anchorLocal.y,
-      ),
-    );
-    final radians = start.rotationDegrees * math.pi / 180;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
-    // v = R(−θ)·(pointer − anchor): the pointer in the box's local frame.
-    final dx = pointer.x - anchorCanvas.x;
-    final dy = pointer.y - anchorCanvas.y;
-    final vx = dx * cos + dy * sin;
-    final vy = -dx * sin + dy * cos;
-
-    var sx = start.sx;
-    var sy = start.sy;
-    if (grabbed.x != anchorLocal.x) {
-      sx = vx / (grabbed.x - anchorLocal.x);
-    }
-    if (grabbed.y != anchorLocal.y) {
-      sy = vy / (grabbed.y - anchorLocal.y);
-    }
-    if (widget.transformOptions.isUniform &&
-        grabbed.x != anchorLocal.x &&
-        grabbed.y != anchorLocal.y) {
-      // One scale for both axes, chosen as the least-squares projection of
-      // the pointer onto the anchor→handle diagonal: the s that puts the
-      // handle as close to the pointer as a uniform scale can.
-      //
-      // It used to take max(|sx|, |sy|), which is the LARGER axis rather
-      // than the closest fit — so a drag that was not exactly along the
-      // diagonal pulled the short axis up to the long one. That grows the
-      // box past where the hand is, and it grows the resample with it: the
-      // output area a pointer move costs is proportional to sx·sy, and the
-      // measured penalty was 1.11× ten degrees off the diagonal, 1.33× at
-      // twenty-five, 2× at fifty
-      // (`test/services/transform_drag_cost_benchmark_test.dart`).
-      //
-      // The projection is a weighted mean of the two axis scales instead
-      // of their max, so it always sits BETWEEN them: the box follows the
-      // hand, and the cost follows the box. Signs need no special case
-      // either — dragging past the anchor makes the projection negative
-      // on its own, which is the mirror it should be.
-      final gx = grabbed.x - anchorLocal.x;
-      final gy = grabbed.y - anchorLocal.y;
-      final projected = (vx * gx + vy * gy) / (gx * gx + gy * gy);
-      sx = projected;
-      sy = projected;
-    }
-    sx = _clampScale(sx);
-    sy = _clampScale(sy);
-
-    // Anchor compensation: R·(S_old∘o − S_new∘o) folds into t.
-    final dLocalX = start.sx * anchorLocal.x - sx * anchorLocal.x;
-    final dLocalY = start.sy * anchorLocal.y - sy * anchorLocal.y;
-    return start.copyWith(
-      sx: sx,
-      sy: sy,
-      tx: start.tx + dLocalX * cos - dLocalY * sin,
-      ty: start.ty + dLocalX * sin + dLocalY * cos,
-    );
-  }
-
-  static double _clampScale(double scale) {
-    if (scale.isNaN || !scale.isFinite) {
-      return 0.01;
-    }
-    if (scale.abs() < 0.01) {
-      return scale.isNegative ? -0.01 : 0.01;
-    }
-    return scale;
-  }
-
-  /// The pointer's canvas-space angle about the transformed box center.
-  /// The pointer's angle about the ROTATION'S FIXED POINT — the anchor
-  /// ([SelectionAffine.anchorCanvas]), which a turn leaves where it is.
-  ///
-  /// 🚨It measured about the BOX CENTRE (`apply(pivot)`) until 2026-09-25:
-  /// right while the box turned about its centre, wrong from the day it
-  /// turned about the anchor (09-20). The centre orbits the anchor, so
-  /// each move read the hand against a centre the last move had carried
-  /// off — the box lagged the hand, and a hand held still kept turning it
-  /// (유저: 「십자 앵커 위치 바꾸고 사각형 바깥 조작해서 회전시킬때 아직도
-  /// 전위치랑 현위치랑 순간이동」). Measured: a still pen turned it 2.3°.
-  double _pointerAngleAbout(CanvasPoint pointer, SelectionAffine affine) {
-    final center = affine.anchorCanvas;
-    return math.atan2(pointer.y - center.y, pointer.x - center.x) *
-        180 /
-        math.pi;
-  }
+  /// 🚨It was the BOX CENTRE (`apply(pivot)`) until 2026-09-25: right while
+  /// the box turned about its centre, wrong from the day it turned about the
+  /// anchor (09-20). The centre orbits the anchor, so each move read the
+  /// hand against a centre the last move had carried off — the box lagged
+  /// the hand, and a hand held still kept turning it (유저: 「십자 앵커 위치
+  /// 바꾸고 사각형 바깥 조작해서 회전시킬때 아직도 전위치랑 현위치랑
+  /// 순간이동」). Measured: a still pen turned it 2.3°.
+  CanvasPoint _turnCentreOf(SelectionAffine affine) => affine.anchorCanvas;
 
   void _handlePointerUp(PointerUpEvent event) {
     // The modifier finger lifting is not the drag ending — it changes what

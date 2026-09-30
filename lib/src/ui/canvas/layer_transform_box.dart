@@ -9,6 +9,7 @@ import '../../models/transform_track.dart';
 import '../input/finger_mode_devices.dart';
 import '../theme/app_theme.dart';
 import '../../services/layer_pose_paint.dart';
+import '../../services/transform_box_law.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 import '../widgets/axis_bar_gesture.dart';
@@ -91,13 +92,18 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
   double? _grabbed;
 
   /// The value the grab started from, and where the pivot was then with
-  /// the pointer's angle / distance from it. Captured once: [LayerTransformBox.
+  /// the pointer's distance from it. Captured once: [LayerTransformBox.
   /// pose] is the grabbed value mid-drag, and measuring against it would
   /// count every move twice.
   double _start = 0;
   Offset _pivot = Offset.zero;
-  double _grabAngle = 0;
   double _grabDistance = 1;
+
+  /// A turn's fixed point on the CANVAS and the pointer's angle about it at
+  /// the last move: a turn is measured on the canvas and folded step by step
+  /// ([TransformBoxLaw.turn]).
+  CanvasPoint _turnCentre = CanvasPoint(x: 0, y: 0);
+  double _lastAngle = 0;
 
   static const double _handleSize = 10;
   static const double _rotateReach = 26;
@@ -151,10 +157,14 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
     final local = box == null ? globalPosition : box.globalToLocal(globalPosition);
     _pivot = _pivotScreen;
     final away = local - _pivot;
-    _grabAngle = math.atan2(away.dy, away.dx);
     // Never zero: a grab exactly on the pivot would make every ratio
     // infinite, and the box would jump to nothing on the first move.
     _grabDistance = math.max(away.distance, 0.001);
+    _turnCentre = widget.pose.center;
+    _lastAngle = TransformBoxLaw.angleAbout(
+      _turnCentre,
+      widget.viewport.viewportOffsetToCanvas(local),
+    );
     _start = switch (grab) {
       LayerBoxGrab.scale => widget.pose.zoom,
       LayerBoxGrab.rotation => widget.pose.rotationDegrees,
@@ -180,8 +190,17 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
         _grabbed = zoom;
         widget.onScaleChanged(zoom);
       case LayerBoxGrab.rotation:
-        final swept = math.atan2(away.dy, away.dx) - _grabAngle;
-        final rotation = _start + swept * 180 / math.pi;
+        // Every box turns by the one turn law ([TransformBoxLaw.turn]).
+        // ↩️It took the screen angle's whole sweep from the press, so the
+        // value jumped a full turn where the hand crossed the ±180° seam and
+        // a flipped view turned the layer against the hand.
+        final step = TransformBoxLaw.turn(
+          centre: _turnCentre,
+          pointer: widget.viewport.viewportOffsetToCanvas(local),
+          lastAngle: _lastAngle,
+        );
+        _lastAngle = step.angle;
+        final rotation = (_grabbed ?? _start) + step.turned;
         _grabbed = rotation;
         widget.onRotationChanged(rotation);
     }

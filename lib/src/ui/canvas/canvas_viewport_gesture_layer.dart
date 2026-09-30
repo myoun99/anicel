@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../core/wrap_degrees.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/app_input_settings.dart';
 import '../input/control_press_claim.dart';
@@ -166,20 +167,9 @@ class _CanvasViewportGestureLayerState
   /// the two-finger navigation gesture.
   final Map<int, Offset> _touchPositions = <int, Offset>{};
 
-  static double _wrapDegrees(double degrees) {
-    var wrapped = degrees;
-    while (wrapped > 180) {
-      wrapped -= 360;
-    }
-    while (wrapped < -180) {
-      wrapped += 360;
-    }
-    return wrapped;
-  }
-
   /// Snaps a candidate view angle to 0° when it lands near straight.
   static double _snappedRotation(double degrees) {
-    final normalized = _wrapDegrees(degrees);
+    final normalized = wrapDegrees(degrees);
     if (normalized.abs() <= rotationZeroSnapDegrees) {
       return degrees - normalized;
     }
@@ -793,7 +783,7 @@ class _CanvasViewportGestureLayerState
         widget.rotationEnabled && settings.navigationRotationEnabled;
     final startAngle = rotationOn ? _navStartAngle : null;
     if (startAngle != null) {
-      final rawDelta = _wrapDegrees(
+      final rawDelta = wrapDegrees(
         _touchAngleDegrees(first, second) - startAngle,
       );
       if (_navRotationCompensation == null &&

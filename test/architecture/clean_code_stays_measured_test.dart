@@ -142,7 +142,18 @@ void main() {
   /// (`timelineCellsRowFrom`), and the sheet's own builder — `_columnFor`
   /// (five) — went with the copy it held. 🔬`clean_code_diff` between master
   /// (`6dce949f7`, at 385) and the lane named that one and nothing added.
-  const wideSignatures = 384;
+  ///
+  /// ⚠️384 → 385 on 2026-10-01, the offender named as the rule asks: F-222
+  /// ①'s `TransformBoxLaw.scaled` (five). It is the transform tool's scale
+  /// solve moved out of the selection layer into the box law, where every
+  /// box will take it, and its two named flags are the two questions the
+  /// solve always asked — which point stays put, and whether the axes keep
+  /// one scale. In the layer it read them off the widget state
+  /// (`_scaleModifierHeld`, `transformOptions.isUniform`), so the same
+  /// inputs were there and uncounted; as a law they are parameters. Folding
+  /// them into one value would be a split for the score. 🔬The lane's scan
+  /// against master: that one added, nothing else.
+  const wideSignatures = 385;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

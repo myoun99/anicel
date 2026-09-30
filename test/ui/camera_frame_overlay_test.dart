@@ -155,7 +155,10 @@ void main() {
     // (camera-frame-keys-what-you-grab-Q1 「잡은 것만」) — and the members
     // it showed on the way ([changed]).
     var changed = <String>[];
-    Future<List<_Commit>> pumpInteractiveOverlay(WidgetTester tester) async {
+    Future<List<_Commit>> pumpInteractiveOverlay(
+      WidgetTester tester, {
+      CanvasViewport? viewport,
+    }) async {
       final committed = <_Commit>[];
       changed = <String>[];
       await tester.pumpWidget(
@@ -164,7 +167,7 @@ void main() {
             body: CameraFrameOverlay(
               pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
               cameraFrameSize: frameSize,
-              viewport: CanvasViewport(zoom: 0.5),
+              viewport: viewport ?? CanvasViewport(zoom: 0.5),
               dimOpacity: 0.5,
               interactive: true,
               onMoveChanged: (_) => changed.add('move'),
@@ -241,6 +244,70 @@ void main() {
       expect(committed.single.member, 'rotation', reason: 'the turn alone');
       expect(changed.toSet(), {'rotation'}, reason: 'shown on the way, alone');
       expect(committed.single.value as double, closeTo(90, 1e-6));
+    });
+
+    // F-222 ①: the lever turns by the CANVAS's angles, so under every view
+    // flip the knob follows the hand. ↩️It measured on the screen and
+    // turned the step round under a horizontal flip only — a vertical flip,
+    // or both, turned the camera against the hand. Each view below keeps
+    // the centre on screen (500, 300); the hand ends at the centre's right.
+    Future<double> swingKnobRightOfCentre(
+      WidgetTester tester,
+      CanvasViewport viewport,
+    ) async {
+      final committed = await pumpInteractiveOverlay(
+        tester,
+        viewport: viewport,
+      );
+      final origin = overlayOrigin(tester);
+      final knob = cameraRotateLeverInViewport(
+        pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
+        cameraFrameSize: frameSize,
+        viewport: viewport,
+      ).knob;
+      final gesture = await tester.startGesture(origin + knob);
+      await gesture.moveTo(origin + const Offset(770, 300));
+      await gesture.up();
+      await tester.pump();
+      expect(committed.single.member, 'rotation');
+      return committed.single.value as double;
+    }
+
+    testWidgets('F-222 ①: under a HORIZONTAL view flip the knob follows the '
+        'hand', (tester) async {
+      // The screen's right is the canvas's left: a quarter turn back.
+      final turned = await swingKnobRightOfCentre(
+        tester,
+        CanvasViewport(zoom: 0.5, panX: 1000, flipHorizontal: true),
+      );
+      expect(turned, closeTo(-90, 1e-6));
+    });
+
+    testWidgets('F-222 ①: under a VERTICAL view flip the knob follows the '
+        'hand', (tester) async {
+      // The frame's top edge shows at the bottom, so the knob hangs below
+      // the centre; the screen's right is still the canvas's right.
+      final turned = await swingKnobRightOfCentre(
+        tester,
+        CanvasViewport(zoom: 0.5, panY: 600, flipVertical: true),
+      );
+      expect(turned, closeTo(90, 1e-6));
+    });
+
+    testWidgets('F-222 ①: under BOTH view flips the knob follows the hand', (
+      tester,
+    ) async {
+      final turned = await swingKnobRightOfCentre(
+        tester,
+        CanvasViewport(
+          zoom: 0.5,
+          panX: 1000,
+          panY: 600,
+          flipHorizontal: true,
+          flipVertical: true,
+        ),
+      );
+      expect(turned, closeTo(-90, 1e-6));
     });
 
     testWidgets('non-interactive overlay ignores pointers', (tester) async {

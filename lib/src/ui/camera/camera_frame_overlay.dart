@@ -13,6 +13,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/camera_frame_corners.dart'
     show cameraFrameCornersInCanvas;
+import '../../services/transform_box_law.dart';
 import '../repaint_props.dart';
 import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
 import '../canvas/canvas_viewport_offset.dart';
@@ -216,10 +217,10 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
   Offset get _centerInViewport =>
       cameraCenterInViewport(pose: _gesturePose, viewport: widget.viewport);
 
-  double _pointerAngleDegrees(Offset position) {
-    final fromCenter = position - _centerInViewport;
-    return math.atan2(fromCenter.dy, fromCenter.dx) * 180 / math.pi;
-  }
+  /// Where [position] is on the CANVAS — a turn is measured there
+  /// ([TransformBoxLaw.turn]), whatever the view's rotation or flip.
+  CanvasPoint _canvasOf(Offset position) =>
+      widget.viewport.viewportOffsetToCanvas(position);
 
   void _dragStart(DragStartDetails details) {
     if (details.kind == PointerDeviceKind.touch) {
@@ -246,7 +247,10 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
     ).knob;
     if ((position - knob).distance <= CameraFrameOverlay.handleHitRadius) {
       _dragMode = _CameraDragMode.rotate;
-      _lastPointerAngle = _pointerAngleDegrees(position);
+      _lastPointerAngle = TransformBoxLaw.angleAbout(
+        pose.center,
+        _canvasOf(position),
+      );
       return;
     }
 
@@ -305,25 +309,20 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
         );
         _moveTo(pose.copyWith(zoom: zoom));
       case _CameraDragMode.rotate:
-        // Accumulate wrapped angular deltas so the rotation stays continuous
-        // across the ±180° seam and supports full extra turns (0 → 360
-        // keyframes are meaningful — poses lerp as-is).
-        final angle = _pointerAngleDegrees(details.localPosition);
-        var delta = angle - _lastPointerAngle;
-        while (delta > 180) {
-          delta -= 360;
-        }
-        while (delta < -180) {
-          delta += 360;
-        }
-        _lastPointerAngle = angle;
-        // A horizontally flipped VIEW mirrors on-screen angles: the same
-        // pointer sweep must still rotate the pose the way the user sees
-        // it turn.
-        if (widget.viewport.flipHorizontal) {
-          delta = -delta;
-        }
-        _moveTo(pose.copyWith(rotationDegrees: pose.rotationDegrees + delta));
+        // Every box turns by the one turn law ([TransformBoxLaw.turn]). The
+        // same pointer sweep must rotate the pose the way the user sees it
+        // turn, so the angles are the canvas's. ↩️They were the screen's,
+        // turned round under a horizontal view flip only — a vertical flip
+        // turned the camera against the hand.
+        final step = TransformBoxLaw.turn(
+          centre: pose.center,
+          pointer: _canvasOf(details.localPosition),
+          lastAngle: _lastPointerAngle,
+        );
+        _lastPointerAngle = step.angle;
+        _moveTo(
+          pose.copyWith(rotationDegrees: pose.rotationDegrees + step.turned),
+        );
     }
   }
 
