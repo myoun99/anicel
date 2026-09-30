@@ -421,6 +421,16 @@ import UniformTypeIdentifiers
   /// `asCopy: false` is the whole fix: the file stays where the user put it,
   /// the app receives its real URL, and a security-scoped bookmark can be
   /// minted from that URL so the reference survives a relaunch.
+  ///
+  /// ⚠️A Drive file not yet on the device keeps the picker spinning before
+  /// it lets go (유저 2026-09-27, import on Apple). That wait is the
+  /// picker's own: it asks the provider for the file as the user picks
+  /// (Apple's Document Provider guide — providePlaceholder and
+  /// startProvidingItem "may be triggered as the user interacts with the
+  /// document picker view controller"), and iOS gives the app no switch
+  /// for it, where macOS's NSOpenPanel does (canDownloadUbiquitousContents,
+  /// set in the macOS runner). Every door that picks a file here — the
+  /// project's and the import's — waits the same way.
   private func pickFiles(
     utis: [String], allowMultiple: Bool, result: @escaping FlutterResult
   ) {

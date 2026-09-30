@@ -186,6 +186,15 @@ final class PathGrantHandler {
     panel.canChooseFiles = true
     panel.allowsMultipleSelection = allowMultiple
     panel.canCreateDirectories = false
+    // A cloud file comes back as it stands instead of downloading first
+    // behind the panel's own spinner (유저 2026-09-27: 「프로젝트파일을
+    // 열땐 우리 창으로 클라우드에서 다운중이라고 표시 … 그쪽으로
+    // 통합하고싶어」). The default, true, refuses a file that is not local
+    // and downloads it before the panel lets go; false leaves the download
+    // and its progress to the app — which already has them: an open waits
+    // in its window (FolderPicker.materializeOpenedFile), and a placement
+    // on the import window's status line.
+    panel.canDownloadUbiquitousContents = false
     // Left unset when the list is empty or none of it resolves — an empty
     // `allowedContentTypes` would grey out every file in the panel, which
     // reads as a broken dialog rather than as "no filter".
