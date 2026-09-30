@@ -209,12 +209,15 @@ sealed class CutTrimDrag implements EditorDragSession {
     _after = after;
     _roles.dragPreview.value = after == null
         ? null
-        : CutTrimDragPreview(
-            previewDurations: after.durations,
-            previewGaps: after.gaps,
-            previewLayers: {
-              for (final edit in after.rowEdits) edit.after.id: edit.after,
-            },
+        : cutTrimPreviewAsReleased(
+            _roles.project.repository,
+            CutTrimDragPreview(
+              previewDurations: after.durations,
+              previewGaps: after.gaps,
+              previewLayers: {
+                for (final edit in after.rowEdits) edit.after.id: edit.after,
+              },
+            ),
           );
   }
 

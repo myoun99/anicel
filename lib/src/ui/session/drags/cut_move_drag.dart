@@ -3,9 +3,9 @@ import 'package:flutter/foundation.dart';
 import '../../../models/cut_id.dart';
 import '../../../models/cut_move_plan.dart';
 import '../../../models/timeline_row_address.dart';
-import '../../../models/track.dart';
 import '../../../models/track_frame_range.dart';
 import '../../../models/track_id.dart';
+import '../../../services/project_repository.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import 'editor_drag_session.dart';
 
@@ -32,6 +32,7 @@ class CutMoveDrag implements EditorDragSession {
     required int? runEnd,
     required int runFromFrame,
     required int runToFrame,
+    required ProjectRepository repository,
     required ValueNotifier<TimelineDragPreview?> preview,
     required TrackFrameRangeSelection? selectionBefore,
     required void Function(TrackFrameRangeSelection?) publishSelection,
@@ -53,6 +54,7 @@ class CutMoveDrag implements EditorDragSession {
        _runEnd = runEnd,
        _runFromFrame = runFromFrame,
        _runToFrame = runToFrame,
+       _repository = repository,
        _preview = preview,
        _selectionBefore = selectionBefore,
        _publishSelection = publishSelection,
@@ -68,7 +70,7 @@ class CutMoveDrag implements EditorDragSession {
   /// single length to carry.
   static CutMoveDrag? begin({
     required CutId cutId,
-    required List<Track> tracks,
+    required ProjectRepository repository,
     required List<CutId> selectedCutIds,
     required ValueNotifier<TimelineDragPreview?> preview,
     required TrackFrameRangeSelection? selection,
@@ -86,7 +88,7 @@ class CutMoveDrag implements EditorDragSession {
     })
     commitGaps,
   }) {
-    for (final track in tracks) {
+    for (final track in repository.requireProject().tracks) {
       final index = track.cuts.indexWhere((cut) => cut.id == cutId);
       if (index < 0) {
         continue;
@@ -152,6 +154,7 @@ class CutMoveDrag implements EditorDragSession {
         runEnd: runEnd,
         runFromFrame: runFrom,
         runToFrame: runTo,
+        repository: repository,
         preview: preview,
         selectionBefore: rides ? selection : null,
         publishSelection: publishSelection,
@@ -182,6 +185,10 @@ class CutMoveDrag implements EditorDragSession {
   /// The plan the last update arrived at, or null while it shows "no
   /// change". The commit reads THIS, never [_preview].
   CutMovePlan? _after;
+
+  /// Where each step's preview is settled as its release will be
+  /// ([cutTrimPreviewAsReleased]).
+  final ProjectRepository _repository;
 
   final ValueNotifier<TimelineDragPreview?> _preview;
 
@@ -278,19 +285,25 @@ class CutMoveDrag implements EditorDragSession {
     _publishLanded(plan);
     if (plan.isReorder) {
       _after = plan;
-      _preview.value = CutTrimDragPreview(
-        previewDurations: const {},
-        previewGaps: plan.gaps,
-        previewOrder: {_trackId: plan.order!},
+      _preview.value = cutTrimPreviewAsReleased(
+        _repository,
+        CutTrimDragPreview(
+          previewDurations: const {},
+          previewGaps: plan.gaps,
+          previewOrder: {_trackId: plan.order!},
+        ),
       );
       return;
     }
     _after = plan.gaps.isEmpty ? null : plan;
     _preview.value = plan.gaps.isEmpty
         ? null
-        : CutTrimDragPreview(
-            previewDurations: const {},
-            previewGaps: plan.gaps,
+        : cutTrimPreviewAsReleased(
+            _repository,
+            CutTrimDragPreview(
+              previewDurations: const {},
+              previewGaps: plan.gaps,
+            ),
           );
   }
 

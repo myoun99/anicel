@@ -14,6 +14,7 @@ import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
+import '../../services/project_repository.dart';
 import '../../services/project_tree_editor.dart';
 import '../listenable_rebind.dart';
 import '../collection_equality.dart';
@@ -389,6 +390,57 @@ class CutTrimDragPreview extends TimelineDragPreview {
     mapHash(previewGaps),
     mapOfListsHash(previewOrder),
   );
+}
+
+/// [drawn] as its release will leave the rows: the project it previews,
+/// settled the way the write settles it
+/// ([ProjectRepository.settledAsWritten]), every row that pass derived
+/// again joining the drag's own.
+///
+/// 🗣️F-227: the のりしろ holds and the conte start an O.L asks of the cuts
+/// it joins belong to the write, which reads them off the new layout.
+/// Every verb that re-lays the cuts — a front edge, a red end line or the
+/// comma it rides, a move — previews through here, or the hand shows one
+/// thing and the release another.
+CutTrimDragPreview cutTrimPreviewAsReleased(
+  ProjectRepository repository,
+  CutTrimDragPreview drawn,
+) {
+  final draft = _projectWithCutTrimPreview(repository.requireProject(), drawn);
+  final derived = _rowsDerivedAgain(
+    draft,
+    repository.settledAsWritten(draft),
+  );
+  return derived.isEmpty
+      ? drawn
+      : CutTrimDragPreview(
+          previewDurations: drawn.previewDurations,
+          previewGaps: drawn.previewGaps,
+          previewOrder: drawn.previewOrder,
+          previewLayers: {...drawn.previewLayers, ...derived},
+        );
+}
+
+/// The cut rows [settled] holds as other instances than [draft] does. The
+/// settle maps tracks and cuts in place, so the two walk side by side.
+Map<LayerId, Layer> _rowsDerivedAgain(Project draft, Project settled) {
+  final derived = <LayerId, Layer>{};
+  for (var t = 0; t < settled.tracks.length; t += 1) {
+    final drafted = draft.tracks[t].cuts;
+    final cuts = settled.tracks[t].cuts;
+    for (var c = 0; c < cuts.length; c += 1) {
+      if (identical(cuts[c], drafted[c])) {
+        continue;
+      }
+      final before = {for (final layer in drafted[c].layers) layer.id: layer};
+      for (final layer in cuts[c].layers) {
+        if (!identical(layer, before[layer.id])) {
+          derived[layer.id] = layer;
+        }
+      }
+    }
+  }
+  return derived;
 }
 
 /// A movie-end drag in flight (UI-R20 #3): the previewed TRAILING GAP —

@@ -41,7 +41,7 @@ class CutMoveDragVerbs {
   bool beginCutMoveDrag(CutId cutId) {
     final drag = CutMoveDrag.begin(
       cutId: cutId,
-      tracks: _project.repository.requireProject().tracks,
+      repository: _project.repository,
       selectedCutIds: _storyboardRows.storyboardSelectedCutIds,
       preview: _dragPreview,
       selection: _selection.trackFrameRangeSelection.value,

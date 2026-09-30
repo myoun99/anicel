@@ -231,6 +231,29 @@ class ProjectRepository {
   /// Identity-preserving on no-ops, so an already-normal project passes
   /// through untouched.
   Project _normalized(Project project) {
+    final pass = _settle(project, memo: _settled);
+    _settled = pass.settled;
+    return pass.project;
+  }
+
+  /// [draft] as a write of it would leave it — the invariants above, read
+  /// against what the last write settled — with nothing written and
+  /// nothing remembered.
+  ///
+  /// 🗣️F-227: a drag that re-lays the cuts previews through this. The
+  /// のりしろ holds and the conte start an O.L asks of the cuts it joins
+  /// are derived by the WRITE, from the new layout; a preview that skipped
+  /// the pass showed the holds gone and the receiving cut's panels where
+  /// the old のりしろ put them, then jumped on release.
+  Project settledAsWritten(Project draft) =>
+      _settle(draft, memo: _settled).project;
+
+  /// The five invariants over every cut [memo] does not already hold
+  /// settled, and the memo the next write reads.
+  static ({Project project, Map<CutId, _Settled> settled}) _settle(
+    Project project, {
+    required Map<CutId, _Settled> memo,
+  }) {
     final firstInstruction = project.cameraInstructions.defs.isEmpty
         ? null
         : project.cameraInstructions.defs.first.id;
@@ -239,7 +262,7 @@ class ProjectRepository {
     final tracks = mappedOrSame(project.tracks, (track) {
       final cuts = mappedOrSame(track.cuts, (cut) {
         final handles = handlesByCut[cut.id]!;
-        final last = _settled[cut.id];
+        final last = memo[cut.id];
         // A cut this write did not touch, whose のりしろ did not move, is the
         // very instance the last write settled: all five hold.
         final next =
@@ -267,10 +290,12 @@ class ProjectRepository {
       });
       return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
     });
-    _settled = settled;
-    return identical(tracks, project.tracks)
-        ? project
-        : project.copyWith(tracks: tracks);
+    return (
+      project: identical(tracks, project.tracks)
+          ? project
+          : project.copyWith(tracks: tracks),
+      settled: settled,
+    );
   }
 
   /// Each cut as the last write left it, with the のりしろ its conte row and

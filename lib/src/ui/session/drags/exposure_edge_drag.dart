@@ -492,10 +492,13 @@ class ExposureEdgeDrag implements EditorDragSession {
     final resize = _cutSyncResizeFor(after);
     _result = (edits: [(before: _before, after: after)], resize: resize);
     if (resize != null) {
-      _roles.dragPreview.value = CutTrimDragPreview(
-        previewDurations: resize.durations,
-        previewGaps: resize.gaps,
-        previewLayers: {after.id: after},
+      _roles.dragPreview.value = cutTrimPreviewAsReleased(
+        _roles.project.repository,
+        CutTrimDragPreview(
+          previewDurations: resize.durations,
+          previewGaps: resize.gaps,
+          previewLayers: {after.id: after},
+        ),
       );
       return;
     }
@@ -543,10 +546,13 @@ class ExposureEdgeDrag implements EditorDragSession {
     final resize = _bulkCutSyncResize(edits);
     _result = (edits: edits, resize: resize);
     _roles.dragPreview.value = resize != null
-        ? CutTrimDragPreview(
-            previewDurations: resize.durations,
-            previewGaps: resize.gaps,
-            previewLayers: previews,
+        ? cutTrimPreviewAsReleased(
+            _roles.project.repository,
+            CutTrimDragPreview(
+              previewDurations: resize.durations,
+              previewGaps: resize.gaps,
+              previewLayers: previews,
+            ),
           )
         : previews.length == 1
         ? ExposureEdgeDragPreview(previewLayer: previews.values.single)
