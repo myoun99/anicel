@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import '../../helpers/frame_census.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨F-244 (유저 2026-09-30: 「타임라인 블록 관련 조작이 너무 느림」): THE TOP
 /// STRIP HEARS ITS TABS, NOT EVERY EDIT.
@@ -87,7 +88,7 @@ void main() {
         .session;
     final before = shownName(tester);
     final directory = Directory.systemTemp.createTempSync('strip-tab-');
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
 
     await tester.runAsync(
       () => session.projectDoor.saveProjectToFile(
