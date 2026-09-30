@@ -75,9 +75,6 @@ class PillStrip extends StatelessWidget {
       child: Flex(
         direction: axis,
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: across
-            ? CrossAxisAlignment.center
-            : CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < items.length; i += 1)
             _pill(items[i], first: i == 0, across: across),
@@ -164,8 +161,9 @@ class Pill extends StatelessWidget {
         onTap: silentPress(onTap),
         child: Container(
           padding: _pillPadding,
-          // Down, a pill spans the strip, and its word sits in the middle
-          // as it does in a pill that is only as wide as its word.
+          // Down, a pill takes the whole width the strip is given and sets
+          // its word in the middle, as it sits in a pill only as wide as
+          // its word — one alignment does both.
           alignment: axis == Axis.vertical ? Alignment.center : null,
           decoration: BoxDecoration(
             color: selected ? accent.withValues(alpha: 0.14) : null,

@@ -90,8 +90,14 @@ void main() {
         closeTo(strip, 2.01),
         reason: 'the outline takes a pixel each side',
       );
+      // The word's own box, not a line as wide as the pill: a word laid
+      // across the whole pill reads centred here while its glyphs sit at
+      // the left edge (a mutant that dropped the alignment did exactly
+      // that, and survived the first version of this check).
+      final word = find.text(key);
+      expect(tester.getSize(word).width, lessThan(strip / 2));
       expect(
-        tester.getCenter(find.text(key)).dx,
+        tester.getCenter(word).dx,
         closeTo(tester.getCenter(pill).dx, 0.5),
         reason: 'its word in the middle, as in a pill as wide as its word',
       );
