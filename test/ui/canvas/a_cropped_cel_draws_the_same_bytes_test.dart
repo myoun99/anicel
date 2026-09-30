@@ -434,6 +434,15 @@ void main() {
   // off screen still reaches the blur at the edge. Seen with the view's
   // right edge through the ink at (141, 93), every pixel of the canvas on
   // screen is the pixel the whole view shows there.
+  //
+  // ⚠️RED ON IMPELLER VULKAN (`--enable-impeller`, Android's default), and
+  // not for the blur. The folder blends in multiply, and Vulkan mixes an
+  // advanced blend twice along the diagonal of the quad it draws
+  // (flutter#179547 — every advanced-blend draw does it, from an image, a
+  // saveLayer or a shader alike). This folder's raster follows the view, so
+  // the diagonal moves with the pan: two pixels, up to 3/255 at this one.
+  // Skia and the Windows app (Impeller GLES) keep every byte — measured
+  // 2026-09-30, board `a-blurred-folder-cut-by-the-view-moves-on-vulkan`.
   for (final walk in [false, true]) {
     final route = walk ? 'the direct walk' : 'the display buffer';
     testWidgets('a blurred folder cut by the view\'s edge blurs as it does '
