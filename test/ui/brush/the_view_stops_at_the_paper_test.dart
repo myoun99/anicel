@@ -176,9 +176,17 @@ void main() {
       expect(stored.panY / _ratio, closeTo(shown.panY, 1e-6));
     }
 
-    Rect windowOf(WidgetTester tester) =>
-        Offset.zero &
-        tester.getSize(find.byType(CanvasViewportGestureLayer));
+    /// The window the view is held in: the sheet's box less the lanes a
+    /// docked panel's scrollbars stand in (F-209).
+    Rect windowOf(WidgetTester tester) {
+      final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
+      return Rect.fromLTWH(
+        0,
+        0,
+        box.width - AppScrollbarLane.wide,
+        box.height - AppScrollbarLane.wide,
+      );
+    }
 
     /// The paper's corners on screen under the painted view.
     Rect paperOnScreen(WidgetTester tester) {
@@ -341,8 +349,12 @@ void main() {
         const Size(400, 300),
         limit: const Rect.fromLTWH(24, 24, 600, 500),
       );
-      // 24 + 500 − 300: the shorter paper's bottom on the window's.
-      expect(controller.value!.panY / _ratio, closeTo(-224, 1e-6));
+      // 24 + 500 − (300 − the bottom lane): the shorter paper's bottom on
+      // the window's.
+      expect(
+        controller.value!.panY / _ratio,
+        closeTo(-(24 + 500 - (300 - AppScrollbarLane.wide)), 1e-6),
+      );
     });
 
     testWidgets('with no paper the view goes where it is sent — the drawing '

@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import '../../helpers/device_viewport.dart';
 
 /// 🗣️F-201 (유저 2026-09-27): 「캔버스 베이스 패널, 뷰어든 콘티 프리뷰든
@@ -345,9 +346,11 @@ void main() {
     expect(readout(tester), '4 / 4');
     final shown = printedThrough(tester);
     final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
+    // The view ends where the bottom lane begins (F-209: a docked panel's
+    // scrollbars take their room).
     expect(
       stack.paper.bottom * shown.zoom + shown.panY,
-      closeTo(box.height, 1),
+      closeTo(box.height - AppScrollbarLane.wide, 1),
       reason: 'the paper\'s end on the view\'s',
     );
   });

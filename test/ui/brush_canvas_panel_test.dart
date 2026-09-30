@@ -389,14 +389,14 @@ void main() {
       '불투명하도록」)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1000, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    // How solid the capsule's ground is — the ground alone turns
+    // see-through, its controls stay as they are (no `Opacity`: it would
+    // cost the panel its bake).
     double seen(String key) {
-      final wrapper = find.ancestor(
-        of: find.byKey(ValueKey<String>(key)),
-        matching: find.byType(Opacity),
+      final capsule = tester.widget<DecoratedBox>(
+        find.byKey(ValueKey<String>(key)),
       );
-      return wrapper.evaluate().isEmpty
-          ? 1
-          : tester.widget<Opacity>(wrapper.first).opacity;
+      return (capsule.decoration as ShapeDecoration).color!.a;
     }
 
     for (final onFloor in [false, true]) {

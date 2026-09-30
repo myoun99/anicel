@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
@@ -406,8 +407,14 @@ void main() {
       await tester.pumpWidget(harness(uiScale: 1.0, canvasSize: canvasSize));
       await tester.pump();
 
-      final window = tester.getSize(
+      // What the view is fitted into: the editor viewport less the lanes a
+      // docked panel's scrollbars stand in (F-209).
+      final box = tester.getSize(
         find.byKey(const ValueKey<String>('brush-canvas-editor-viewport')),
+      );
+      final window = Size(
+        box.width - AppScrollbarLane.wide,
+        box.height - AppScrollbarLane.wide,
       );
       await tester.tap(
         find.byKey(const ValueKey<String>('canvas-viewport-fit')),

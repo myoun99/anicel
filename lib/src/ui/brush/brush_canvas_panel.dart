@@ -2616,73 +2616,74 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// edge left the bar hanging in the middle of nothing.
   Widget _floorCapsules(ColorScheme colorScheme) => Positioned.fill(
     child: LayoutBuilder(
-      builder: (context, panel) {
-        final insets = cover;
-        final visibleTop = insets.top;
-        final visibleBottom = math.max(
-          visibleTop,
-          panel.maxHeight - insets.bottom,
-        );
-        final track = _capsuleTrack(visibleBottom - visibleTop);
-        final centre = (visibleTop + visibleBottom) / 2;
-        final barTop = centre - track / 2;
-        final intrudes = canvasFloorBandIntrudes(
-          railBand,
-          top: barTop,
-          bottom: barTop + track,
-        );
-        final edge = intrudes
-            ? insets.right + _capsuleMargin
-            : _capsuleMargin;
-        return Stack(
-          children: [
-            Positioned(
-              right: edge,
-              top: barTop,
-              height: track,
-              child: _capsule(
-                colorScheme,
-                keyValue: 'canvas-panbar-vertical',
-                width: rightStripWidth,
-                height: track,
-                child: rightStripBar,
-              ),
-            ),
-            // 🆕유저 (R4): 가로스크롤바나 알약은 그냥 양옆에서
-            // 펼치든말든 중앙에. The two axes are NOT the same
-            // question, and the answer differs by axis rather than
-            // by widget:
-            //
-            //  * ALONG the edge it rides, the bar holds the window's
-            //    centre. A side panel opening is not a reason for
-            //    the thing you read to walk sideways — that is the
-            //    「읽는 것은 안 움직인다」 rule, and the earlier pass
-            //    over-applied "centre on what you can see" to it.
-            //  * ACROSS that edge it still yields, because there it
-            //    is not a matter of taste: a bar on the bottom edge
-            //    with the region docked below would be UNDER it.
-            Positioned(
-              left: _capsuleMargin,
-              right: _capsuleMargin,
-              // ⑩: …and above whatever lies ON the artwork at that
-              // edge. The collapsed row frames nothing, so it is not
-              // in `insets` — but it is exactly where this bar was,
-              // which is what the user saw.
-              bottom: insets.bottom + bottomOverlaySpan + _capsuleMargin,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: _capsule(
-                  colorScheme,
-                  keyValue: 'canvas-panbar-horizontal',
-                  height: AppScrollbarLane.medium,
-                  width: _capsuleTrack(panel.maxWidth),
-                  child: horizontalStripBar,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+      builder: (context, panel) => Stack(
+        children: [
+          _floorVerticalCapsule(colorScheme, panel),
+          _floorHorizontalCapsule(colorScheme, panel),
+        ],
+      ),
+    ),
+  );
+
+  Positioned _floorVerticalCapsule(
+    ColorScheme colorScheme,
+    BoxConstraints panel,
+  ) {
+    final insets = cover;
+    final visibleTop = insets.top;
+    final visibleBottom = math.max(visibleTop, panel.maxHeight - insets.bottom);
+    final track = _capsuleTrack(visibleBottom - visibleTop);
+    final centre = (visibleTop + visibleBottom) / 2;
+    final barTop = centre - track / 2;
+    final intrudes = canvasFloorBandIntrudes(
+      railBand,
+      top: barTop,
+      bottom: barTop + track,
+    );
+    return Positioned(
+      right: intrudes ? insets.right + _capsuleMargin : _capsuleMargin,
+      top: barTop,
+      height: track,
+      child: _capsule(
+        colorScheme,
+        keyValue: 'canvas-panbar-vertical',
+        width: rightStripWidth,
+        height: track,
+        child: rightStripBar,
+      ),
+    );
+  }
+
+  /// 🆕유저 (R4): 가로스크롤바나 알약은 그냥 양옆에서 펼치든말든 중앙에. The
+  /// two axes are NOT the same question, and the answer differs by axis
+  /// rather than by widget:
+  ///
+  ///  * ALONG the edge it rides, the bar holds the window's centre. A side
+  ///    panel opening is not a reason for the thing you read to walk
+  ///    sideways — that is the 「읽는 것은 안 움직인다」 rule, and the
+  ///    earlier pass over-applied "centre on what you can see" to it.
+  ///  * ACROSS that edge it still yields, because there it is not a matter
+  ///    of taste: a bar on the bottom edge with the region docked below
+  ///    would be UNDER it.
+  Positioned _floorHorizontalCapsule(
+    ColorScheme colorScheme,
+    BoxConstraints panel,
+  ) => Positioned(
+    left: _capsuleMargin,
+    right: _capsuleMargin,
+    // ⑩: …and above whatever lies ON the artwork at that edge. The
+    // collapsed row frames nothing, so it is not in `cover` — but it is
+    // exactly where this bar was, which is what the user saw.
+    bottom: cover.bottom + bottomOverlaySpan + _capsuleMargin,
+    child: Align(
+      alignment: Alignment.bottomCenter,
+      child: _capsule(
+        colorScheme,
+        keyValue: 'canvas-panbar-horizontal',
+        height: AppScrollbarLane.medium,
+        width: _capsuleTrack(panel.maxWidth),
+        child: horizontalStripBar,
+      ),
     ),
   );
 
@@ -2752,10 +2753,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     final shape = short.isFinite
         ? AppShapes.control(short)
         : AppShapes.container(AppShapes.wellRadius);
-    final capsule = DecoratedBox(
+    Widget capsule(double fill) => DecoratedBox(
       key: ValueKey<String>(keyValue),
       decoration: ShapeDecoration(
-        color: colorScheme.surface,
+        color: colorScheme.surface.withValues(alpha: fill),
         shape: shape.copyWith(
           side: const BorderSide(color: AppColors.backdrop),
         ),
@@ -2765,7 +2766,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         child: SizedBox(width: width, height: height, child: child),
       ),
     );
-    return seenThrough ? _SeenThroughUntilHeld(child: capsule) : capsule;
+    return seenThrough ? _SeenThroughUntilHeld(capsule: capsule) : capsule(1);
   }
 }
 
@@ -2775,16 +2776,23 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 /// through until the pointer is over them, or a finger is on them: a touch
 /// has no hover.
 ///
+/// ⚠️What turns see-through is the capsule's GROUND — its controls stay as
+/// they are. A capsule faded whole takes an `Opacity`, and an `Opacity` is
+/// a repaint boundary inside the panel's bake: the panel would stop baking
+/// and pay its full raster on every frame (`an_opacity_is_a_boundary_test`)
+/// — and an old tablet is where that shows (구형 기기 방침).
+///
 /// ⛔Not the stroke fade H3 took out (「알약 불투명도 낮추는거만 심플하게
 /// 삭제」): that dimmed the floor's capsules for the length of a stroke.
 /// This is how a docked panel's capsules rest, and the hand brings them up.
 class _SeenThroughUntilHeld extends StatefulWidget {
-  const _SeenThroughUntilHeld({required this.child});
+  const _SeenThroughUntilHeld({required this.capsule});
 
-  /// How much of a capsule at rest shows — half: 「반투명」.
+  /// How much of a resting capsule's ground there is — half: 「반투명」.
   static const double resting = 0.5;
 
-  final Widget child;
+  /// The capsule, its ground as solid as it is told.
+  final Widget Function(double fill) capsule;
 
   @override
   State<_SeenThroughUntilHeld> createState() => _SeenThroughUntilHeldState();
@@ -2805,9 +2813,8 @@ class _SeenThroughUntilHeldState extends State<_SeenThroughUntilHeld> {
       onPointerDown: (_) => setState(() => _pressed += 1),
       onPointerUp: (_) => setState(() => _pressed -= 1),
       onPointerCancel: (_) => setState(() => _pressed -= 1),
-      child: Opacity(
-        opacity: _hovered || _pressed > 0 ? 1 : _SeenThroughUntilHeld.resting,
-        child: widget.child,
+      child: widget.capsule(
+        _hovered || _pressed > 0 ? 1 : _SeenThroughUntilHeld.resting,
       ),
     ),
   );

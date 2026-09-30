@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
+import '../../helpers/device_viewport.dart';
 import '../../helpers/repaint_strays.dart';
 
 /// 🚨A SHEET PANS AND TURNS OVER ON A LAYER OF ITS OWN
@@ -156,6 +157,22 @@ void main() {
         return sheet.viewportController?.value ?? sheet.viewport;
       }
 
+      // The conte is a BOOK: zoomed in on its first page first, so the short
+      // pan below moves the paper and no page enters or leaves the view — a
+      // page's bakes disposed inside one of these part-frames are what trips
+      // flushPaint's `layer != null` (below). Measured when a docked
+      // panel's lanes (F-209) framed the book a lane smaller: its first
+      // page's last sliver left the view on the SECOND step. (The other
+      // sheets keep their framing: at 1:1 the timesheet's middle is a cell,
+      // and a mouse drag there is not a pan.)
+      if (tab == 'conte') {
+        final sheet = tester.widget<SheetCanvasPanel>(panel.first);
+        sheet.viewportController!.value = seedFromRender(
+          tester,
+          CanvasViewport(zoom: 1),
+        );
+        await tester.pumpAndSettle();
+      }
       final before = view();
       final gesture = await tester.startGesture(
         tester.getCenter(panel.first),
@@ -163,10 +180,11 @@ void main() {
       );
       await tester.pump();
 
-      // A short pan: over twelve of these part-frames the conte's teardown
-      // tripped flushPaint's `layer != null` — a boundary disposed while
-      // still waiting to repaint (measured: twelve steps trip it, three do
-      // not). The app's frames never stop before their paint.
+      // A short pan all the same: a boundary disposed while still waiting to
+      // repaint trips flushPaint's `layer != null` at teardown (measured
+      // before the zoom above: twelve steps tripped it, three did not; and
+      // on F-209's frame, pages 1·2·3 became 2·3 on the step that did). The
+      // app's frames never stop before their paint.
       final moves = await movesOf(
         tester,
         host,
