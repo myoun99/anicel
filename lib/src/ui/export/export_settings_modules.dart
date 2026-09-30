@@ -1,4 +1,3 @@
-import '../widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 import '../text/full_width_numerals.dart';
 
@@ -14,13 +13,13 @@ import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/pill_strip.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
 /// one accordion grammar, pill strips, and the shared Format module.
 /// Everything is stateless and callback-driven — the dialog owns the spec.
 
 const exportModuleGap = 6.0;
-const _chipPadding = EdgeInsets.symmetric(horizontal: 7, vertical: 2);
 
 /// A settings-column accordion: `Title — value summary` when collapsed,
 /// title + optional Reset chip when open. Selection/emphasis is color
@@ -195,222 +194,6 @@ class ExportModuleRow extends StatelessWidget {
   }
 }
 
-/// One segment of an [ExportPillStrip].
-class ExportPillItem {
-  const ExportPillItem({
-    required this.keyValue,
-    required this.label,
-    required this.selected,
-    this.onTap,
-    this.tooltip,
-    this.otherLabel,
-  });
-
-  /// Tests reach for `ValueKey<String>(keyValue)`, so the key is part of
-  /// the row's contract.
-  final String keyValue;
-  final String label;
-  final bool selected;
-
-  /// Null = offered but refused: the pill keeps its place and loses its
-  /// tap (「없다가 생기는 UI 금지」).
-  final VoidCallback? onTap;
-  final String? tooltip;
-
-  /// What the pill says in its other state, when a press changes its word
-  /// ([ExportTogglePill]).
-  final String? otherLabel;
-}
-
-/// 🚨THE ONE GROUPED-CHOICE CONTROL of the export window (유저 2026-09-09:
-/// 「여러개중 하나 선택한다거나 … 복수선택한다거나 그룹으로 묶여있는 선택은
-/// 이 ui 사용하도록 공용화」): joined pills in one outline, the chosen ones
-/// tinted accent. Whether the group is single- or multi-select is the
-/// CALLER's rule — the strip only shows which are on — so 선택(하나) and
-/// 이름 지정(여럿) wear one look. Selection is colour alone.
-///
-/// The other panels get the same control in their own round (board card
-/// `pill-group-everywhere`); this is the export window's half.
-///
-/// ⚠️Needs a BOUNDED width: its pills are [Flexible] so the strip shrinks
-/// instead of overflowing a narrow column. As a child of a `Row`, wrap it in
-/// `Flexible` yourself; under `Align`, `Wrap` or a `Column` it is fine.
-class ExportPillStrip extends StatelessWidget {
-  const ExportPillStrip({super.key, required this.items});
-
-  final List<ExportPillItem> items;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = theme.colorScheme.primary;
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: ShapeDecoration(
-        shape: AppShapes.container(
-          AppShapes.wellRadius,
-          side: BorderSide(color: theme.dividerColor),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < items.length; i += 1)
-            _pill(theme, accent, items[i], first: i == 0),
-        ],
-      ),
-    );
-  }
-
-  Widget _pill(
-    ThemeData theme,
-    Color accent,
-    ExportPillItem item, {
-    required bool first,
-  }) {
-    final pill = ExportPill(
-      key: ValueKey<String>(item.keyValue),
-      label: item.label,
-      otherLabel: item.otherLabel,
-      selected: item.selected,
-      onTap: item.onTap,
-      leadingHairline: !first,
-    );
-    final tooltip = item.tooltip;
-    // Loose: a pill takes its own width while the strip fits, and gives
-    // width up (its label ellipsising) when the column is narrower than
-    // the strip — a strip never overflows its row.
-    return Flexible(
-      child: tooltip == null ? pill : AppTooltip(message: tooltip, child: pill),
-    );
-  }
-}
-
-/// One drawn segment of an [ExportPillStrip] — the widget a test reaches
-/// through the item's key to read `selected`, `label` and `onTap`.
-class ExportPill extends StatelessWidget {
-  const ExportPill({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    required this.leadingHairline,
-    this.otherLabel,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  /// Every segment but the first draws the hairline that separates it
-  /// from the one before.
-  final bool leadingHairline;
-
-  /// The word of the pill's other state, held invisible under [label]: the
-  /// pill keeps ONE width whichever word it says, so a press that flips it
-  /// does not pull its edge out from under the pointer and the next press
-  /// lands where this one did (「자리는 항상 예약하고 내용만 바꾼다」).
-  final String? otherLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = theme.colorScheme.primary;
-    Text word(String text, {bool shown = true}) => Text(
-      text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.labelSmall?.copyWith(
-        // A selected pill reads selected even when it takes no tap —
-        // 「커스텀」 is a state the delta puts the row in, not a button.
-        color: !shown
-            ? Colors.transparent
-            : selected
-            ? accent
-            : onTap == null
-            ? theme.disabledColor
-            : theme.colorScheme.onSurface,
-      ),
-    );
-    final other = otherLabel;
-    return ControlPressClaim(
-      onPressed: onTap,
-      child: InkWell(
-        onTap: silentPress(onTap),
-        child: Container(
-          padding: _chipPadding,
-          decoration: BoxDecoration(
-            color: selected ? accent.withValues(alpha: 0.14) : null,
-            border: leadingHairline
-                ? Border(left: BorderSide(color: theme.dividerColor))
-                : null,
-          ),
-          child: other == null
-              ? word(label)
-              : Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Held for its width only: set in no colour and never
-                    // read out. ⛔Not an `Opacity` or a `Visibility`: the
-                    // one is a compositing boundary a panel cannot bake
-                    // across, the other takes the slot away.
-                    ExcludeSemantics(child: word(other, shown: false)),
-                    word(label),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 🚨A YES/NO IS ONE PILL (유저 2026-09-25: 「SE 빈칸 이런 불리언값 있잖아.
-/// 이런거 누르면 강조색/칠함, 다시누르면 일반색/비움 이렇게 텍스트도
-/// 바뀌게하면 알기쉬울거같은데. 공용ui로서 해도 될듯?」): lit with its ON
-/// word while on, plain with its OFF word while off, so the word says the
-/// state as plainly as the colour does. It is a strip of one, so it wears
-/// the grouped choices' outline.
-///
-/// The app's other yes/no rows (`SettingsSwitchRow`) come over to this in
-/// their own round (board card `pill-group-everywhere`, which the user put
-/// off on 09-13).
-class ExportTogglePill extends StatelessWidget {
-  const ExportTogglePill({
-    super.key,
-    required this.keyValue,
-    required this.on,
-    required this.words,
-    required this.onChanged,
-  });
-
-  /// The pill is keyed `ValueKey<String>(keyValue)`, as a strip's pill is.
-  final String keyValue;
-  final bool on;
-
-  /// What the pill says in each state.
-  final ({String on, String off}) words;
-
-  /// Null = refused: the pill keeps its place and its word, and loses its
-  /// tap.
-  final ValueChanged<bool>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final onChanged = this.onChanged;
-    return ExportPillStrip(
-      items: [
-        ExportPillItem(
-          keyValue: keyValue,
-          label: on ? words.on : words.off,
-          otherLabel: on ? words.off : words.on,
-          selected: on,
-          onTap: onChanged == null ? null : () => onChanged(!on),
-        ),
-      ],
-    );
-  }
-}
-
 /// How the export names a colour label in a button or a summary: the
 /// plate's two abbreviations as one reading (「원화 작감」), 「라벨 없음」 for
 /// none. The rail's plate writes the same two texts in its two columns.
@@ -479,10 +262,10 @@ class ExportChoiceRow<T> extends StatelessWidget {
     label: label,
     child: Align(
       alignment: Alignment.centerLeft,
-      child: ExportPillStrip(
+      child: PillStrip(
         items: [
           for (final value in values)
-            ExportPillItem(
+            PillItem(
               keyValue: '$keyPrefix-${keyOf(value)}',
               label: labelOf(value),
               selected: value == selected,
@@ -591,10 +374,10 @@ class ExportFormatModule extends StatelessWidget {
     label: AppText.strings.exVideo,
     child: Align(
       alignment: Alignment.centerLeft,
-      child: ExportPillStrip(
+      child: PillStrip(
         items: [
           for (final container in capabilities.video.keys)
-            ExportPillItem(
+            PillItem(
               keyValue: 'export-format-container-${container.jsonValue}',
               label: container.label,
               selected: selection.isVideo && selection.container == container,
@@ -636,10 +419,10 @@ class ExportFormatModule extends StatelessWidget {
     label: AppText.strings.exImage,
     child: Align(
       alignment: Alignment.centerLeft,
-      child: ExportPillStrip(
+      child: PillStrip(
         items: [
           for (final still in capabilities.stills)
-            ExportPillItem(
+            PillItem(
               keyValue: 'export-format-still-${still.jsonValue}',
               label: still.label,
               selected: selection.isStill && selection.stillFormat == still,
@@ -664,10 +447,10 @@ class ExportFormatModule extends StatelessWidget {
     label: AppText.strings.exCodec,
     child: Align(
       alignment: Alignment.centerLeft,
-      child: ExportPillStrip(
+      child: PillStrip(
         items: [
           for (final codec in codecs)
-            ExportPillItem(
+            PillItem(
               keyValue: 'export-format-codec-${codec.jsonValue}',
               label: codec.label,
               selected: selection.videoCodec == codec,
@@ -736,9 +519,9 @@ class ExportFormatModule extends StatelessWidget {
     label: AppText.strings.exBackground,
     child: Align(
       alignment: Alignment.centerLeft,
-      child: ExportPillStrip(
+      child: PillStrip(
         items: [
-          ExportPillItem(
+          PillItem(
             keyValue: 'export-format-bg-white',
             label: AppText.strings.exWhite,
             selected: selection.backgroundArgb == 0xFFFFFFFF,
@@ -746,7 +529,7 @@ class ExportFormatModule extends StatelessWidget {
                 ? () => _change(selection.copyWith(backgroundArgb: 0xFFFFFFFF))
                 : null,
           ),
-          ExportPillItem(
+          PillItem(
             keyValue: 'export-format-bg-black',
             label: AppText.strings.exBlack,
             selected: selection.backgroundArgb == 0xFF000000,
@@ -867,9 +650,9 @@ class ExportSizeModule extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ExportPillStrip(
+        PillStrip(
           items: [
-            ExportPillItem(
+            PillItem(
               keyValue: 'export-size-camera',
               label: strings.exCameraTemplate
                   .replaceAll('{w}', '${cameraSize.width}')
@@ -878,7 +661,7 @@ class ExportSizeModule extends StatelessWidget {
               onTap: enabled ? () => onChanged(ExportSizeMode.camera) : null,
             ),
             if (!projectScope)
-              ExportPillItem(
+              PillItem(
                 keyValue: 'export-size-canvas',
                 label: canvasLabel,
                 selected: sizeMode == ExportSizeMode.canvas,
@@ -1010,7 +793,7 @@ class ExportCelNamingModule extends StatelessWidget {
 
   /// Three names the file can carry and the same three the folders can, as
   /// two multi-select strips.
-  ExportPillStrip _names({
+  PillStrip _names({
     required String keyPrefix,
     required bool project,
     required bool cut,
@@ -1018,14 +801,14 @@ class ExportCelNamingModule extends StatelessWidget {
     required ExportCelNaming Function(String which) toggled,
   }) {
     final strings = AppText.strings;
-    ExportPillItem item(String which, String label, bool selected) =>
-        ExportPillItem(
+    PillItem item(String which, String label, bool selected) =>
+        PillItem(
           keyValue: '$keyPrefix-$which',
           label: label,
           selected: selected,
           onTap: enabled ? () => onChanged(toggled(which)) : null,
         );
-    return ExportPillStrip(
+    return PillStrip(
       items: [
         item('project', strings.exProject, project),
         item('cut', strings.exCut, cut),

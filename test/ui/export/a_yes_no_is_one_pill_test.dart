@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/export/export_settings_modules.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 const _key = ValueKey<String>('yes-no');
 const _words = (on: 'Filled', off: 'Left empty for now');
@@ -14,7 +14,7 @@ Future<void> _pump(
     home: Scaffold(
       body: Align(
         alignment: Alignment.topLeft,
-        child: ExportTogglePill(
+        child: TogglePill(
           keyValue: 'yes-no',
           on: on,
           words: _words,
@@ -25,8 +25,8 @@ Future<void> _pump(
   ),
 );
 
-ExportPill _pill(WidgetTester tester) =>
-    tester.widget<ExportPill>(find.byKey(_key));
+Pill _pill(WidgetTester tester) =>
+    tester.widget<Pill>(find.byKey(_key));
 
 /// The word the pill paints — the one NOT set in no colour to hold the
 /// width.

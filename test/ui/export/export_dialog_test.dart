@@ -37,10 +37,10 @@ import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
-import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/native_engine_path.dart';
@@ -1105,7 +1105,7 @@ void main() {
       // The tap is a no-op on a grayed chip — H.264 stays selected.
       await tester.tap(h265);
       await tester.pump();
-      final h264Chip = tester.widget<ExportPill>(
+      final h264Chip = tester.widget<Pill>(
         find.byKey(const ValueKey<String>('export-format-codec-h264')),
       );
       expect(h264Chip.selected, isTrue);

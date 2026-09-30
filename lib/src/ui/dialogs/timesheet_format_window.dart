@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/timesheet_info.dart';
 import '../../models/timesheet_sheet_kind.dart';
-import '../export/export_settings_modules.dart';
 import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
+import '../widgets/pill_strip.dart';
 
 /// What the 「타임시트 서식」 window answers: the work's sheet format and the
 /// paper of the cut the sheet shows — null in the gap, where there is no
@@ -26,7 +26,7 @@ typedef TimesheetFormat = ({TimesheetInfo info, TimesheetSheetKind? kind});
 /// Every choice is the export window's pill (유저 09-25: 「시트나 머리칸이나
 /// 이런 설정 토글은 기존 출력창의 토글같은거 버튼 재사용해서 알기쉽게」):
 /// the header boxes are one strip with several on at once, and each yes/no
-/// is one [ExportTogglePill].
+/// is one [TogglePill].
 class TimesheetFormatWindow extends StatefulWidget {
   const TimesheetFormatWindow({
     super.key,
@@ -115,13 +115,13 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     final printed = sheet == null || chosen == null
         ? TimesheetSheetKind.sixSeconds
         : sheetKindFor(chosen, celColumns: sheet.celColumns);
-    return ExportPillStrip(
+    return PillStrip(
       items: [
         for (final kind in const [
           TimesheetSheetKind.threeSeconds,
           TimesheetSheetKind.sixSeconds,
         ])
-          ExportPillItem(
+          PillItem(
             keyValue: 'timesheet-format-paper-${kind.jsonValue}',
             label: AppText.strings.sheetKindName(kind),
             selected: kind == printed,
@@ -141,10 +141,10 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     }
   });
 
-  Widget _headerBoxes() => ExportPillStrip(
+  Widget _headerBoxes() => PillStrip(
     items: [
       for (final field in TimesheetHeaderField.values)
-        ExportPillItem(
+        PillItem(
           keyValue: 'timesheet-format-visible-${field.name}',
           label: _fieldLabel(field),
           selected: !_hiddenFields.contains(field),
@@ -158,7 +158,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        ExportTogglePill(
+        TogglePill(
           keyValue: 'timesheet-format-exposure-bar',
           on: _exposureBarEnabled,
           words: (on: strings.sheetBarDrawn, off: strings.sheetBarNotDrawn),
@@ -227,7 +227,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
               label: strings.sheetSeEmptyFill,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: ExportTogglePill(
+                child: TogglePill(
                   keyValue: 'timesheet-format-se-empty-fill',
                   on: _seEmptyFill,
                   words: (on: strings.sheetFillOn, off: strings.sheetFillOff),

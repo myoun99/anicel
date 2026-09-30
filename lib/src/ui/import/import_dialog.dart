@@ -28,6 +28,7 @@ import '../widgets/dock_edge_splitter.dart';
 import '../widgets/settings_rows.dart';
 import '../text/cloud_wait_line.dart';
 import '../text/model_vocabulary.dart';
+import '../widgets/pill_strip.dart';
 
 /// The 가져오기/배치 window (§6-z21): ONE window for every import — file
 /// picks, folder drops, OS drag-and-drop all land here, defaults filled
@@ -1048,9 +1049,9 @@ class _ImportDialogState extends State<ImportDialog> {
             ),
           ),
           Flexible(
-            child: ExportPillStrip(
+            child: PillStrip(
               items: [
-                ExportPillItem(
+                PillItem(
                   keyValue: 'import-place-pool',
                   label: AppText.strings.imPool,
                   selected: !_placing,
@@ -1061,7 +1062,7 @@ class _ImportDialogState extends State<ImportDialog> {
                       ? AppText.strings.imAlreadyPooledTooltip
                       : null,
                 ),
-                ExportPillItem(
+                PillItem(
                   keyValue: 'import-place-timeline',
                   label: AppText.strings.panelTimeline,
                   selected: _placing,

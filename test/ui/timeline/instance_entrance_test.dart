@@ -16,9 +16,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
-import 'package:anicel/src/ui/export/export_settings_modules.dart'
-    show ExportPill;
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
@@ -322,7 +321,7 @@ void main() {
       findsOneWidget,
       reason: 'the common window — the camera no longer keeps one of its own',
     );
-    ExportPill pill(String kind) => tester.widget<ExportPill>(
+    Pill pill(String kind) => tester.widget<Pill>(
       find.byKey(ValueKey<String>('rename-key-interpolation-$kind')),
     );
     expect(

@@ -5,8 +5,8 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/ui/dialogs/timesheet_format_window.dart';
-import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 const _bar = ValueKey<String>('timesheet-format-exposure-bar');
 const _threshold = ValueKey<String>('timesheet-format-exposure-bar-threshold');
@@ -55,8 +55,8 @@ Future<void> _press(WidgetTester tester, ValueKey<String> key) async {
   await tester.pumpAndSettle();
 }
 
-ExportPill _pill(WidgetTester tester, ValueKey<String> key) =>
-    tester.widget<ExportPill>(find.byKey(key));
+Pill _pill(WidgetTester tester, ValueKey<String> key) =>
+    tester.widget<Pill>(find.byKey(key));
 
 ValueKey<String> _box(TimesheetHeaderField field) =>
     ValueKey<String>('timesheet-format-visible-${field.name}');

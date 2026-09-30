@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
-import '../theme/app_theme.dart' show AppShapes;
 import '../ui_scale.dart';
-import '../input/control_press_claim.dart';
+import '../widgets/pill_strip.dart';
 import '../widgets/settings_rows.dart';
 
 /// Preferences ▸ Display: the interface scale (R11), and whether the frame
@@ -36,15 +35,20 @@ class DisplaySettingsSection extends StatelessWidget {
         const SizedBox(height: 8),
         ValueListenableBuilder<double>(
           valueListenable: AppUiScale.value,
-          builder: (context, scale, _) => Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
+          // The app's one grouped choice (board pill-group-everywhere): its
+          // pills change colour and nothing else, so a stop landing never
+          // moves its neighbours.
+          builder: (context, scale, _) => PillStrip(
+            items: [
               for (final stop in AppUiScale.ladder)
-                _ScaleStop(
-                  stop: stop,
+                PillItem(
+                  // Keyed by the PERCENTAGE rather than the index: a stop
+                  // added or removed later must not silently move another
+                  // stop's key onto a different number.
+                  keyValue: 'ui-scale-stop-${(stop * 100).round()}',
+                  label: AppUiScale.label(stop),
                   selected: stop == scale,
-                  onPressed: () => session.setUiScale(stop),
+                  onTap: () => session.setUiScale(stop),
                 ),
             ],
           ),
@@ -63,66 +67,5 @@ class DisplaySettingsSection extends StatelessWidget {
         ),
       ],
     );
-  }
-}
-
-class _ScaleStop extends StatelessWidget {
-  const _ScaleStop({
-    required this.stop,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final double stop;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    // ⛔Not a hand-rolled corner radius — the app has ONE corner and
-    // [AppShapes] is where it lives. (The source contract that enforces
-    // that is line-based, so naming the forbidden constructor even inside
-    // a comment counts as an offence; it is spelled around here on purpose.)
-    // A chip in a dialog is a control of [AppShapes.controlMedium], so its
-    // corner is a fraction of its own height and it reads as the same shape
-    // as every other control in this window.
-    final shape = AppShapes.control(
-      AppShapes.controlMedium,
-      side: BorderSide(
-        color: selected ? colorScheme.primary : colorScheme.outlineVariant,
-      ),
-    );
-    return ControlPressClaim(onPressed: onPressed, child: InkWell(
-      // Keyed by the PERCENTAGE rather than the index: a stop added or
-      // removed later must not silently move another stop's key onto a
-      // different number.
-      key: ValueKey<String>('ui-scale-stop-${(stop * 100).round()}'),
-      onTap: silentPress(onPressed),
-      customBorder: shape,
-      child: Container(
-        height: AppShapes.controlMedium,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: ShapeDecoration(
-          shape: shape,
-          // Selection is COLOR only (법): no check mark, and the border
-          // keeps its width so a stop landing never moves its neighbours.
-          color: selected ? colorScheme.primary.withValues(alpha: 0.16) : null,
-        ),
-        child: Text(
-          AppUiScale.label(stop),
-          // ⛔No weight change. A w600 digit has a different advance width
-          // from a w400 one, so bolding the selected chip would resize it
-          // and slide every chip after it in the `Wrap` — a row that
-          // jitters under the finger, which is the exact thing the
-          // colour-only law forbids. Selection already reads through the
-          // fill, the border and the text colour.
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: selected ? colorScheme.primary : null),
-        ),
-      ),
-    ));
   }
 }

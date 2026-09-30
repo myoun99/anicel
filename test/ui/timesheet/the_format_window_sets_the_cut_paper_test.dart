@@ -16,10 +16,10 @@ import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 /// The default project, its cut given [cels] more cel layers.
 Project _project({required int cels}) {
@@ -127,10 +127,10 @@ void main() {
     expect(sheet(tester).sheetKind, TimesheetSheetKind.threeSeconds);
 
     await tap(tester, const ValueKey<String>('timesheet-format-button'));
-    final six = tester.widget<ExportPill>(
+    final six = tester.widget<Pill>(
       find.byKey(_paper(TimesheetSheetKind.sixSeconds)),
     );
-    final three = tester.widget<ExportPill>(
+    final three = tester.widget<Pill>(
       find.byKey(_paper(TimesheetSheetKind.threeSeconds)),
     );
     expect(six.onTap, isNull);

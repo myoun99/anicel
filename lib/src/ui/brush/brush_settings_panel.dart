@@ -16,6 +16,7 @@ import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
+import '../widgets/pill_strip.dart';
 
 /// Editable brush tool properties — the CSP-style GROUPED layout (BB-2,
 /// user-picked candidate B, 07-22): 브러시 크기 / 잉크 / 브러시 끝 /
@@ -675,11 +676,10 @@ class _RotationModeRow extends StatelessWidget {
 
 /// The brush EDGE row — 없음 / 1 / 2 / 3 (유저 확정, 클튜 4단).
 ///
-/// A [SegmentedButton] because that is how this program already asks a
-/// short N-way question (the transform anchor and the eyedropper source),
-/// and because the four answers have plain names — no icon has to be
-/// invented for them. `showSelectedIcon: false` for the house rule:
-/// 선택 표시는 색상만.
+/// A [PillStrip], the app's one grouped choice (유저 2026-09-09, board
+/// `pill-group-everywhere`) — the four answers have plain names, so no icon
+/// has to be invented for them, and the chosen one is told by colour alone.
+/// 🪦It was a Material `SegmentedButton`, as the eyedropper's source was.
 class _AntiAliasRow extends StatelessWidget {
   const _AntiAliasRow({required this.value, required this.onChanged});
 
@@ -715,20 +715,19 @@ class _AntiAliasRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: SegmentedButton<BrushAntiAlias>(
+                // The app's one grouped choice (board pill-group-everywhere).
+                Flexible(
+                  child: PillStrip(
                     key: const ValueKey<String>('brush-tool-edge-segments'),
-                    showSelectedIcon: false,
-                    segments: [
+                    items: [
                       for (final step in BrushAntiAlias.values)
-                        ButtonSegment<BrushAntiAlias>(
-                          value: step,
-                          label: Text(_labelFor(step)),
+                        PillItem(
+                          keyValue: 'brush-tool-edge-${step.name}',
+                          label: _labelFor(step),
+                          selected: step == value,
+                          onTap: () => onChanged(step),
                         ),
                     ],
-                    selected: {value},
-                    onSelectionChanged: (selection) =>
-                        onChanged(selection.first),
                   ),
                 ),
               ],

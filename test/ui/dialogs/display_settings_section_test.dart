@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/ui_scale.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 void main() {
   late EditorSessionManager session;
@@ -60,30 +61,19 @@ void main() {
     await pump(tester);
     session.setUiScale(1.5);
     await tester.pump();
-    ShapeDecoration decorationOf(double scale) =>
-        tester.widget<Container>(
-              find.descendant(of: stop(scale), matching: find.byType(Container)),
-            ).decoration!
-            as ShapeDecoration;
 
-    final selected = decorationOf(1.5);
-    final unselected = decorationOf(1.0);
+    bool lit(double scale) => tester.widget<Pill>(stop(scale)).selected;
     expect(
-      selected.color,
-      isNotNull,
-      reason: 'selection is COLOR only (법) — the chosen stop is filled',
+      lit(1.5),
+      isTrue,
+      reason: 'selection is COLOR only (법) — the chosen stop is lit',
     );
-    expect(unselected.color, isNull);
-    // ⛔And nothing that changes the chip's SIZE may change with selection,
-    // or the whole row slides sideways when a stop lands. Two of those:
-    // the border width, and the font weight — a w600 digit is wider than a
-    // w400 one. ⚠️Neither is observable by measuring the rendered box: the
-    // test font gives every glyph the same advance, so this has to read
-    // the resolved style.
-    expect(
-      (selected.shape as RoundedSuperellipseBorder).side.width,
-      (unselected.shape as RoundedSuperellipseBorder).side.width,
-    );
+    expect(lit(1.0), isFalse);
+    // ⛔And nothing that changes the pill's SIZE may change with selection,
+    // or the whole row slides sideways when a stop lands — the font weight
+    // above all: a w600 digit is wider than a w400 one. ⚠️Not observable
+    // by measuring the rendered box: the test font gives every glyph the
+    // same advance, so this has to read the resolved style.
     TextStyle styleOf(double scale) => tester
         .widget<Text>(find.descendant(of: stop(scale), matching: find.byType(Text)))
         .style!;

@@ -19,9 +19,8 @@ import '../dialogs/instruction_set_editor_dialog.dart';
 import '../dialogs/rename_frame_dialog.dart';
 import '../dialogs/se_instance_dialog.dart';
 import '../editor_session_manager.dart';
-import '../export/export_settings_modules.dart'
-    show ExportPillItem, ExportPillStrip;
 import '../text/app_strings.dart';
+import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
 
@@ -807,13 +806,13 @@ Widget _keyInterpolationPills({
   required ValueChanged<PropertyKeyInterpolation> onPicked,
 }) {
   final strings = AppText.strings;
-  return ExportPillStrip(
+  return PillStrip(
     items: [
       for (final (kind, label) in [
         (PropertyKeyInterpolation.linear, strings.keyInterpolationLinear),
         (PropertyKeyInterpolation.hold, strings.keyInterpolationHold),
       ])
-        ExportPillItem(
+        PillItem(
           keyValue: 'rename-key-interpolation-${kind.name}',
           label: label,
           selected: selected == kind,

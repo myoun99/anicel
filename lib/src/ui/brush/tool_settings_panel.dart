@@ -29,6 +29,7 @@ import '../text/trimmed_decimal.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/fill_reference_button.dart';
 import '../listenable_rebind.dart';
+import '../widgets/pill_strip.dart';
 
 /// The TOOL SETTINGS panel (R11-④, CSP's tool property palette): detailed
 /// knobs for the ACTIVE tool. Painting tools show the brush settings, the
@@ -1140,22 +1141,20 @@ class _ReadSourceControl extends StatelessWidget {
         //
         // STOOD UP, one answer per line: side by side, three answers in the
         // panel's width folded 「References」 onto four lines (measured in
-        // the real panel, 2026-09-24). Both tools wear the one shape.
-        SegmentedButton<CanvasReadSource>(
+        // the real panel, 2026-09-24). Both tools wear the one shape — the
+        // app's one grouped choice (board pill-group-everywhere), down.
+        PillStrip(
           key: ValueKey<String>('$tool-source-segments'),
-          direction: Axis.vertical,
-          showSelectedIcon: false,
-          segments: [
+          axis: Axis.vertical,
+          items: [
             for (final offer in offered)
-              ButtonSegment<CanvasReadSource>(
-                value: offer,
-                label: Text(_label(offer)),
+              PillItem(
+                keyValue: '$tool-source-${offer.name}',
+                label: _label(offer),
+                selected: offer == source,
+                onTap: handler == null ? null : () => handler(offer),
               ),
           ],
-          selected: {source},
-          onSelectionChanged: handler == null
-              ? null
-              : (selection) => handler(selection.first),
         ),
         const SizedBox(height: 4),
         Row(

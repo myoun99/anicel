@@ -94,6 +94,7 @@ import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import '../widgets/pill_strip.dart';
 
 /// One row of the output-cel list: the cut it belongs to, the bundle's
 /// axis layer, its plate (none for an instruction row), where its sheets
@@ -433,13 +434,13 @@ class ExportDialogState extends State<ExportDialog> {
   /// wrote that guard out; it is the same law each time — a run in flight
   /// owns the spec — so one place says it.
   /// One segment of a module's pill strip; the strip is the window's one
-  /// grouped-choice control ([ExportPillStrip]).
-  ExportPillItem _pill({
+  /// grouped-choice control ([PillStrip]).
+  PillItem _pill({
     required String keyValue,
     required String label,
     required bool selected,
     required VoidCallback onPick,
-  }) => ExportPillItem(
+  }) => PillItem(
     keyValue: keyValue,
     label: label,
     selected: selected,
@@ -3921,23 +3922,23 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// 적용 · 추가: a strip of switches — the same control the grouped
   /// choices wear, each pill holding one yes/no of its own.
-  Widget _celSwitchRow(String label, List<ExportPillItem> items) =>
+  Widget _celSwitchRow(String label, List<PillItem> items) =>
       ExportModuleRow(
         label: label,
         child: Align(
           alignment: Alignment.centerLeft,
-          child: ExportPillStrip(items: items),
+          child: PillStrip(items: items),
         ),
       );
 
   /// A pill that flips one spec field — lit while [on], writing [write]'s
   /// spec on tap, dead while an export runs.
-  ExportPillItem _specSwitch(
+  PillItem _specSwitch(
     String keyValue,
     String label,
     bool on,
     CelsExportSpec Function() write,
-  ) => ExportPillItem(
+  ) => PillItem(
     keyValue: keyValue,
     label: label,
     selected: on,
@@ -3951,8 +3952,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// is a state the delta puts the cut in, so it lights and takes no tap.
   Widget _celSelectionRow(CelsExportSpec spec) {
     final strings = AppText.strings;
-    ExportPillItem filter(String key, String label, bool on, CelsExportSpec Function() flip) =>
-        ExportPillItem(
+    PillItem filter(String key, String label, bool on, CelsExportSpec Function() flip) =>
+        PillItem(
           keyValue: 'export-cels-select-$key',
           label: label,
           selected: on,
@@ -3964,16 +3965,16 @@ class ExportDialogState extends State<ExportDialog> {
         spacing: 6,
         runSpacing: 4,
         children: [
-          ExportPillStrip(
+          PillStrip(
             items: [
               filter('base', strings.exSelBase, spec.base, () => spec.copyWith(base: !spec.base)),
               filter('attach', strings.exSelAttach, spec.attach, () => spec.copyWith(attach: !spec.attach)),
               filter('sheet', strings.exSelSheet, spec.sheetOnly, () => spec.copyWith(sheetOnly: !spec.sheetOnly)),
             ],
           ),
-          ExportPillStrip(
+          PillStrip(
             items: [
-              ExportPillItem(
+              PillItem(
                 keyValue: 'export-cels-select-custom',
                 label: strings.exSelCustom,
                 selected: _celSelectionIsCustom,
@@ -4185,7 +4186,7 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ExportPillStrip(
+            PillStrip(
               items: [
                 _pill(
                   keyValue: 'export-tsformat-sheet',
@@ -4236,7 +4237,7 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ExportPillStrip(
+            PillStrip(
               items: [
                 _pill(
                   keyValue: 'export-conteformat-pdf',
@@ -4285,7 +4286,7 @@ class ExportDialogState extends State<ExportDialog> {
         label: AppText.strings.brScale,
         child: Align(
           alignment: Alignment.centerLeft,
-          child: ExportPillStrip(
+          child: PillStrip(
             items: [
               for (final step in const [1, 2, 3, 4])
                 _pill(
@@ -4440,7 +4441,7 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ExportPillStrip(
+            PillStrip(
               items: [
                 _pill(
                   keyValue: 'export-envelope-paper-cut',
@@ -4466,7 +4467,7 @@ class ExportDialogState extends State<ExportDialog> {
                 label: AppText.strings.exWidth,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: ExportPillStrip(
+                  child: PillStrip(
                     items: [
                       for (final width in const [1240, 2480, 3508])
                         _pill(
@@ -4500,7 +4501,7 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ExportPillStrip(
+            PillStrip(
               items: [
                 // The strata an envelope HAS — it shows no film pictures.
                 for (final layer in EnvelopeExportSpec.strata)
@@ -4525,7 +4526,7 @@ class ExportDialogState extends State<ExportDialog> {
               label: AppText.strings.exFiles,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: ExportPillStrip(
+                child: PillStrip(
                   items: [
                     _pill(
                       keyValue: 'export-envelope-files-flat',
