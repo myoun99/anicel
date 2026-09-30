@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart';
+import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
+    show TimelineBlockText;
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
@@ -57,6 +59,11 @@ void main() {
     s.selectCut(const CutId('301'));
     return s;
   }
+
+  /// A span's writing as the rows draw it — a block word, not a Text.
+  Finder blockWord(String text) => find.byWidgetPredicate(
+    (widget) => widget is TimelineBlockText && widget.text == text,
+  );
 
   InstructionEvent shownInTheCut(EditorSessionManager s) =>
       s.transitions.trackTransitionDisplayLayer.instructions.values.single;
@@ -188,7 +195,7 @@ void main() {
       find.byKey(const ValueKey<String>('instruction-memo-field')),
       findsOneWidget,
     );
-    expect(find.text('c301'), findsWidgets, reason: 'the preview names it');
+    expect(blockWord('c301'), findsWidgets, reason: 'the preview names it');
 
     await tester.enterText(
       find.byKey(const ValueKey<String>('instruction-memo-field')),
@@ -247,7 +254,7 @@ void main() {
     );
     for (final end in ['c301', 'c302']) {
       expect(
-        find.descendant(of: strip, matching: find.text(end)),
+        find.descendant(of: strip, matching: blockWord(end)),
         findsOneWidget,
       );
     }

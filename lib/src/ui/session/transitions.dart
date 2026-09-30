@@ -122,7 +122,7 @@ class Transitions {
     Layer name() => transitionRowNamedByItsCuts(
       row: row,
       cuts: cuts,
-      defById: vocabulary.defById,
+      vocabulary: vocabulary,
       olWord: word,
     );
     if (!identical(row, track.transitionLayer)) {

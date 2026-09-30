@@ -1,6 +1,7 @@
 import 'camera_instruction.dart';
 import 'cut.dart';
 import 'layer.dart';
+import 'track_transitions.dart';
 import 'transition_geometry.dart';
 
 /// 🗣️F-229 (유저 2026-09-29): 「트랜지션 레이어는 대상이 확실해서 시작이름
@@ -30,7 +31,7 @@ import 'transition_geometry.dart';
 Layer transitionRowNamedByItsCuts({
   required Layer row,
   required Iterable<({Cut cut, int startFrame, int endFrame})> cuts,
-  required CameraInstructionDef? Function(String instructionId) defById,
+  required CameraInstructionSet vocabulary,
   required String olWord,
 }) {
   final placed = cuts.toList();
@@ -38,11 +39,10 @@ Layer transitionRowNamedByItsCuts({
   var changed = false;
   for (final entry in row.instructions.entries) {
     final event = entry.value;
-    final twoSided =
-        transitionSidesOf(transitionMarkOf(defById(event.instructionId))) ==
-        TransitionSides.both;
+    final span = transitionSpanOfEvent(entry, vocabulary);
+    final twoSided = transitionSidesOf(span.mark) == TransitionSides.both;
     final ends = twoSided
-        ? _cutsJoined(placed, start: entry.key, end: entry.key + event.length)
+        ? _cutsJoined(placed, start: span.start, end: span.start + span.length)
         : null;
     final text = twoSided ? olWord : null;
     final from = ends?.leaving == null ? null : transitionEndName(ends!.leaving!);

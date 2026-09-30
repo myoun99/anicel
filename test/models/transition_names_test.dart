@@ -32,7 +32,7 @@ void main() {
     return transitionRowNamedByItsCuts(
       row: track.transitionLayer.copyWith(instructions: spans),
       cuts: cutSpansOf(track),
-      defById: CameraInstructionSet.standard.defById,
+      vocabulary: CameraInstructionSet.standard,
       olWord: '컷O.L.',
     );
   }
@@ -100,7 +100,7 @@ void main() {
         transitionRowNamedByItsCuts(
           row: once,
           cuts: cutSpansOf(track),
-          defById: CameraInstructionSet.standard.defById,
+          vocabulary: CameraInstructionSet.standard,
           olWord: '컷O.L.',
         ),
         once,
