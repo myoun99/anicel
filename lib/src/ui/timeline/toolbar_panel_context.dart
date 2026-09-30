@@ -14,6 +14,7 @@ import '../../models/track_id.dart';
 import '../editor_command_actions.dart' show createActiveInstance;
 import '../editor_session_manager.dart';
 import '../paste_with_its_media.dart';
+import '../session/block_naming.dart' show AutoNameCuts, AutoNameTargets;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 
@@ -127,6 +128,12 @@ abstract class ToolbarPanelContext {
   /// unlink anything, and the press. One answer for both (T25's law).
   bool get canUnlink;
   void unlink();
+
+  /// 🗣️I-18 — 자동 이름 지정: what this panel's press numbers, or null when
+  /// there is nothing to number (the button dims). ONE answer for the gate,
+  /// for the window's Apply — asked again when the number is given — and
+  /// for the key (T25's law).
+  AutoNameTargets? get autoNameTargets;
 }
 
 /// What each SHARED pill button does when it is pressed — null while it has
@@ -151,6 +158,10 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       canPasteLinkedFrame ? pasteLinkedFrame : null;
 
   void Function()? get unlinkPress => canUnlink ? unlink : null;
+
+  /// Whether 자동 이름 지정 has anything to number here — the button's gate
+  /// and the key's, read off the one resolver ([autoNameTargets]).
+  bool get canAutoName => autoNameTargets != null;
 
   /// F: the ROWS rung asks first. It inherited that from the loose layer
   /// button this pill folded in — a delete that used to confirm must not
@@ -294,6 +305,9 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
 
   @override
   void unlink() => session.unlinkSelectionSubject();
+
+  @override
+  AutoNameTargets? get autoNameTargets => session.blockNaming.timelineTargets;
 }
 
 /// What the storyboard's Edit Instance press opens — resolved ONCE
@@ -744,4 +758,32 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
 
   @override
   void unlink() => session.cutVerbs.unlinkCuts(_unlinkCutIds);
+
+  /// 자동 이름 지정 on this panel (I-18: 「대상은 선택된 블록들(컷이나
+  /// 프레임)이 있으면 선택한 대상만」). The selected cuts first; a CELL band —
+  /// the strip's conte blocks — is the timeline's own, so the timeline
+  /// answers it (F-186, [_cellBand]); a band of this rail over its other
+  /// rows holds nothing to number and claims the press. With nothing
+  /// selected, a V row's cuts from the one under the playhead to the
+  /// track's last — and an S row, a lane or the transition row holds no
+  /// drawings this press numbers (targets-Q1).
+  @override
+  AutoNameTargets? get autoNameTargets {
+    final named = session.storyboardRows.storyboardSelectedCutIds;
+    if (named.isNotEmpty) {
+      return AutoNameCuts(named);
+    }
+    final cellBand = _cellBand;
+    if (cellBand != null) {
+      return cellBand.autoNameTargets;
+    }
+    if (_bandClaimsThePress) {
+      return null;
+    }
+    return switch (session.storyboardStandingRow) {
+      TrackRowAddress(:final trackId) =>
+        session.blockNaming.cutsFromThePlayhead(trackId),
+      LayerRowAddress() || LaneRowAddress() => null,
+    };
+  }
 }
