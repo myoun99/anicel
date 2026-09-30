@@ -156,9 +156,13 @@ void main() {
       expect(cells.start.valueA, 'c301');
       expect(cells.end.valueB, 'c302');
 
-      s.selectCut(const CutId('302'));
-      s.cutVerbs.renameActiveCut('305');
-      s.selectCut(const CutId('301'));
+      // The cut next door renamed while 301 stays printed — nothing the
+      // sheet keys its memo on changes but the names the O.L writes.
+      s.cutCommandCoordinator.renameCut(
+        cutId: const CutId('302'),
+        newName: '305',
+      );
+      s.notifyChanged();
       await tester.pumpAndSettle();
       expect(
         olCells(printed(tester), s).end.valueB,
