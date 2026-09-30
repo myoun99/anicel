@@ -327,7 +327,9 @@ void main() {
                   onPressed: () async {
                     popped = await showDialog<Object?>(
                       context: context,
-                      builder: (_) => const FrameNameConflictDialog(),
+                      builder: (_) => const FrameNameConflictDialog(
+                        targets: ['1 · A · 3'],
+                      ),
                     );
                   },
                   child: const Text('open'),

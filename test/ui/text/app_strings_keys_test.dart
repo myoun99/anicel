@@ -115,6 +115,7 @@ void main() {
     'deleteLayerMessageTemplate': (s) => s.deleteLayerMessageTemplate,
     'frameNameConflictTitle': (s) => s.frameNameConflictTitle,
     'frameNameConflictBody': (s) => s.frameNameConflictBody,
+    'frameNameConflictListHeading': (s) => s.frameNameConflictListHeading,
     'seInstanceNewTitle': (s) => s.seInstanceNewTitle,
     'seInstanceEditTitle': (s) => s.seInstanceEditTitle,
     'seNameLabel': (s) => s.seNameLabel,

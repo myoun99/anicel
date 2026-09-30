@@ -1,10 +1,13 @@
 import 'package:collection/collection.dart' show IterableExtension;
 
+import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
+import '../../models/track.dart';
 import '../../services/media/media_asset_uses.dart';
 import '../../services/persistence/cel_places.dart';
 import '../../services/project_lookup.dart';
@@ -54,9 +57,7 @@ List<String> drawingPlaceLines(
   LayerId layerId,
   Iterable<FrameId> frameIds,
 ) {
-  final owned = projectLayersWithOwners(
-    project,
-  ).firstWhereOrNull((owned) => owned.layer.id == layerId);
+  final owned = _rowOf(project, layerId);
   if (owned == null) {
     return const [];
   }
@@ -73,6 +74,27 @@ List<String> drawingPlaceLines(
         ),
   ];
 }
+
+/// [layerId]'s row as [rowPlaceLine] names it — none for a row [project]
+/// does not hold.
+///
+/// What a lane KEY's link notice lists: the keys a join re-values sit on
+/// that row's lanes, and a key has no drawing of its own to name.
+List<String> rowPlaceLines(Project project, LayerId layerId) => [
+  if (_rowOf(project, layerId) case final owned?)
+    rowPlaceLine(
+      ownerName: rowOwnerName(track: owned.track, cut: owned.cut),
+      layerName: owned.layer.name,
+    ),
+];
+
+/// [layerId]'s row in [project] with what holds it, wherever it lives.
+({Track track, Cut? cut, Layer layer})? _rowOf(
+  Project project,
+  LayerId layerId,
+) => projectLayersWithOwners(
+  project,
+).firstWhereOrNull((owned) => owned.layer.id == layerId);
 
 /// One use of a media pool file as a line of the list the pool shows: a
 /// picture of the work where it is set, a row by its cut and its name, a

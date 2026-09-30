@@ -322,7 +322,14 @@ enum AppStrings {
   /// '{name}' is replaced with the layer name.
   String get deleteLayerMessageTemplate => _s('deleteLayerMessageTemplate');
   String get frameNameConflictTitle => _s('frameNameConflictTitle');
+
+  /// Reads right for one frame or many (I-18: 「단일 변경만 대응하는게
+  /// 아니라 복수 대응을 기본으로」) — the frames are the list under it.
   String get frameNameConflictBody => _s('frameNameConflictBody');
+
+  /// The fold over the frames a name link would join.
+  String get frameNameConflictListHeading =>
+      _s('frameNameConflictListHeading');
 
   // --- The instance editors ---
   String get seInstanceNewTitle => _s('seInstanceNewTitle');
@@ -1817,9 +1824,11 @@ enum AppStrings {
     'deleteLayerMessageTemplate': 'Delete layer "{name}"?',
     'frameNameConflictTitle': 'Frame name already exists',
     'frameNameConflictBody':
-        'This name is already used by another frame in this layer. Link to '
-        'that frame? The same name then shares the same material, and this '
-        "frame's drawing is discarded.",
+        'Each frame listed takes a name another frame on its layer already '
+        'uses. Link them to the frames holding those names? The same name '
+        "then shares the same material, and each listed frame's drawing is "
+        'discarded.',
+    'frameNameConflictListHeading': 'Frames to link',
     'seInstanceNewTitle': 'New SE',
     'seInstanceEditTitle': 'Edit SE',
     'seNameLabel': 'Name (speaker — blank hides the box)',
@@ -2938,9 +2947,10 @@ enum AppStrings {
     'deleteLayerMessageTemplate': 'レイヤー「{name}」を削除しますか？',
     'frameNameConflictTitle': '同じフレーム名が既にあります',
     'frameNameConflictBody':
-        'この名前はこのレイヤーの別のフレームで既に使われています。既存のフレームに'
-        'リンクしますか？リンクすると同じ名前が同じ素材を共有し、このフレームの絵は'
-        '破棄されます。',
+        '一覧のフレームには、同じレイヤーの別のフレームが既に使っている名前が付きます。'
+        'その名前のフレームにリンクしますか？リンクすると同じ名前が同じ素材を共有し、'
+        '一覧のフレームの絵は破棄されます。',
+    'frameNameConflictListHeading': 'リンクするフレーム',
     'seInstanceNewTitle': 'SEの新規作成',
     'seInstanceEditTitle': 'SEの編集',
     'seNameLabel': '名前（話者 — 空欄でボックス非表示）',
@@ -4293,9 +4303,10 @@ enum AppStrings {
     'deleteLayerMessageTemplate': '레이어 "{name}"을(를) 삭제할까요?',
     'frameNameConflictTitle': '같은 프레임 이름이 이미 있습니다',
     'frameNameConflictBody':
-        '이 이름은 이 레이어의 다른 프레임이 이미 쓰고 있습니다. 기존 프레임에 '
-        '링크할까요? 링크하면 같은 이름이 같은 원화를 공유하고, 이 프레임의 '
-        '그림은 버려집니다.',
+        '목록의 프레임에 붙을 이름을 같은 레이어의 다른 프레임이 이미 쓰고 '
+        '있습니다. 그 이름의 프레임에 링크할까요? 링크하면 같은 이름이 같은 '
+        '원화를 공유하고, 목록의 프레임 그림은 버려집니다.',
+    'frameNameConflictListHeading': '링크할 프레임',
     'seInstanceNewTitle': '새 SE',
     'seInstanceEditTitle': 'SE 편집',
     'seNameLabel': '이름 (화자 — 비우면 박스 숨김)',
@@ -5647,9 +5658,11 @@ enum AppStrings {
     'deleteLayerMessageTemplate': 'Supprimer le calque « {name} » ?',
     'frameNameConflictTitle': "Ce nom d'image existe déjà",
     'frameNameConflictBody':
-        'Ce nom est déjà utilisé par une autre image de ce calque. Lier à '
-        "l'image existante ? Le même nom partagera alors le même dessin, et le "
-        'dessin de cette image sera supprimé.',
+        'Chaque image listée prend un nom déjà utilisé par une autre image de '
+        'son calque. Les lier aux images qui portent ces noms ? Le même nom '
+        'partagera alors le même dessin, et le dessin de chaque image listée '
+        'sera supprimé.',
+    'frameNameConflictListHeading': 'Images à lier',
     'seInstanceNewTitle': 'Nouveau SE',
     'seInstanceEditTitle': 'Modifier le SE',
     'seNameLabel': 'Nom (locuteur — vide masque le cadre)',
@@ -7066,8 +7079,9 @@ enum AppStrings {
     'deleteLayerMessageTemplate': '要删除图层“{name}”吗？',
     'frameNameConflictTitle': '帧名称已存在',
     'frameNameConflictBody':
-        '该名称已被此图层中的另一帧使用。是否链接到已有的同名帧？'
-        '链接后相同名称共用同一张原画，此帧的原画将被舍弃。',
+        '列表中的帧将使用同一图层中另一帧已在使用的名称。是否链接到使用该名称的帧？'
+        '链接后相同名称共用同一张原画，列表中各帧的原画将被舍弃。',
+    'frameNameConflictListHeading': '要链接的帧',
     'seInstanceNewTitle': '新建 SE',
     'seInstanceEditTitle': '编辑 SE',
     'seNameLabel': '名称（说话者 — 留空则隐藏名条）',

@@ -3,10 +3,21 @@ import 'package:flutter/material.dart';
 import '../text/app_strings.dart';
 import 'app_confirm_dialog.dart';
 
-/// Asks whether to link to an existing frame that already uses the entered
-/// name so identical names share the same material. Pops `true` to link.
+/// Asks whether to link frames to the frames already using the names they
+/// were given, so identical names share the same material. Pops `true` to
+/// link.
+///
+/// 🗣️I-18 (유저): 「이제 링크프레임이나 링크레이어 발동할때 뜨는 안내메시지를
+/// 단일 변경만 대응하는게 아니라 복수 대응을 기본으로. 대상의 프레임을
+/// 리스트로서 보여주도록」. One frame renamed or a whole 자동 이름 지정 press,
+/// it is the same window: the sentence reads for one or many, and the frames
+/// the link takes are listed under it — OPEN, because which ones is what the
+/// window asks about (F-118's rule, [AppConfirmDialog.detailsOpen]).
 class FrameNameConflictDialog extends StatelessWidget {
-  const FrameNameConflictDialog({super.key});
+  const FrameNameConflictDialog({super.key, required this.targets});
+
+  /// The frames the link takes, one line each.
+  final List<String> targets;
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +35,9 @@ class FrameNameConflictDialog extends StatelessWidget {
       title: strings.frameNameConflictTitle,
       titleIcon: Icons.link_outlined,
       message: strings.frameNameConflictBody,
+      details: targets,
+      detailsHeading: strings.frameNameConflictListHeading,
+      detailsOpen: true,
       actions: confirmActions(
         context,
         keys: keys,
