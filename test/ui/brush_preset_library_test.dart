@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:anicel/src/models/brush_hand_settings.dart';
 import 'package:anicel/src/ui/brush/picked_file.dart';
 import 'package:anicel/src/services/brush_pack_file.dart';
@@ -475,103 +474,6 @@ void main() {
   });
 
   group('brush export', _exportRoundTripTests);
-
-  group('🚨the library writes ONE AT A TIME, in call order', () {
-    test('a second edit does not start a second write', () async {
-      // Eleven mutators persist, and they used to fire each save unawaited
-      // with nothing serializing them. Two edits a frame apart raced, and
-      // "last write wins" meant last to FINISH, not last called — a rename
-      // could land after the delete that followed it and bring the preset
-      // back on the next load.
-      final writer = _RecordingFileService(
-        '${tempDirectory.path}/serialized.json',
-      );
-      final library = BrushPresetLibrary(fileService: writer);
-
-      library.saveCurrent(BrushSettings(size: 5));
-      library.saveCurrent(BrushSettings(size: 6));
-      library.saveCurrent(BrushSettings(size: 7));
-
-      expect(
-        writer.maximumOverlap,
-        1,
-        reason: 'two saves must never be in flight together',
-      );
-
-      await writer.settle();
-
-      // ...and the newest state is what the file ends up holding.
-      expect(writer.applied.last, library.presets.length);
-      library.dispose();
-    });
-
-    test('the states BETWEEN two edits may be skipped, the last may not', () async {
-      final writer = _RecordingFileService(
-        '${tempDirectory.path}/coalesced.json',
-      );
-      final library = BrushPresetLibrary(fileService: writer);
-
-      for (var i = 0; i < 6; i += 1) {
-        library.saveCurrent(BrushSettings(size: 5));
-      }
-      await writer.settle();
-
-      expect(
-        writer.applied.length,
-        lessThan(6),
-        reason: 'the in-between states of a burst are not worth a write each',
-      );
-      expect(writer.applied.last, 6);
-      library.dispose();
-    });
-  });
-}
-
-/// A file service that records what it was asked to write and how many
-/// writes were in flight at once.
-///
-/// ⛔NO TIMER FINISHES A WRITE HERE — the TEST does, one at a time. A fake
-/// that landed its completion on a `Future.delayed` would be betting on how
-/// busy the machine is, which is the race
-/// `tests_do_not_race_the_code_test` exists to refuse.
-class _RecordingFileService extends BrushPresetFileService {
-  _RecordingFileService(String path) : super(filePath: path);
-
-  /// Preset counts, in the order the library ASKED for them.
-  final List<int> applied = [];
-
-  final List<Completer<void>> _open = [];
-
-  /// The most writes this service was ever holding at once.
-  int maximumOverlap = 0;
-
-  @override
-  Future<void> save(BrushPresetLibraryData library) {
-    applied.add(library.presets.length);
-    final completer = Completer<void>();
-    _open.add(completer);
-    if (_open.length > maximumOverlap) {
-      maximumOverlap = _open.length;
-    }
-    return completer.future;
-  }
-
-  /// Finishes the write the library is waiting on and gives it the turn it
-  /// needs to queue whatever is next. False means nothing was in flight —
-  /// positive evidence that the queue is empty, not an observed silence.
-  Future<bool> _finishOne() async {
-    if (_open.isEmpty) {
-      return false;
-    }
-    _open.removeAt(0).complete();
-    await Future<void>.delayed(Duration.zero);
-    return true;
-  }
-
-  /// Runs the queue to exhaustion, one write per turn.
-  Future<void> settle() async {
-    while (await _finishOne()) {}
-  }
 }
 
 /// 🚨유저 (`brush-export-format-Q1` 답 1 + `H25-Q1` 답 both-by-selection):

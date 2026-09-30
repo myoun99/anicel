@@ -328,9 +328,9 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   Future<void> _pendingPersist = Future<void>.value();
 
-  /// Resolves when every override write issued so far has hit disk —
-  /// awaited by tests and available for a shutdown flush. Writes chain,
-  /// so ordering (last writer wins) is preserved.
+  /// Resolves once the file holds the last overrides written — awaited by
+  /// tests and available for a shutdown flush. The writes keep their order
+  /// ([saveVersionedSettings]), so the last one written is the one kept.
   Future<void> get pendingPersist => _pendingPersist;
 
   void _persist() {
@@ -351,7 +351,7 @@ class EditorShortcutBindings extends ChangeNotifier {
           entry.key: entry.value?.name,
       },
     };
-    _pendingPersist = _pendingPersist.then((_) => store.save(payload));
+    _pendingPersist = store.save(payload);
   }
 }
 
