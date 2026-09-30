@@ -74,6 +74,8 @@ import 'session/editor_app_settings.dart';
 import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
+import 'timeline/memo_token.dart' show ByList;
+import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'widgets/cursor_notice.dart';
 
 /// The editor shell: a slim top menu strip (menu bar + quick actions —
@@ -1157,17 +1159,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         ),
                                       ),
                                     ),
-                                    // Re-reads per notify: the panels bridge
-                                    // drives the visibility checks, the open
-                                    // projects their tabs — every one of them,
-                                    // since a tab behind this one is renamed
-                                    // by its own save — and the session on
-                                    // screen the export gate.
-                                    child: ListenableBuilder(
+                                    // What the strip shows of the open
+                                    // projects is their TABS — every one of
+                                    // them, since a tab behind this one is
+                                    // renamed by its own save — so it hears
+                                    // every project and rebuilds when a tab
+                                    // changes. 🚨F-244: it rebuilt on every
+                                    // notify, and so on every commit — the
+                                    // release frame's whole build phase on the
+                                    // user's own cut. The flyouts (the panels'
+                                    // checks, the export gate) build their
+                                    // entries when they open; the floor switch
+                                    // and the brush bars hear their own.
+                                    child: SlicedListenableBuilder<Object>(
                                       listenable: Listenable.merge([
                                         _projects,
                                         ..._projects.sessions,
-                                        _panelsMenu,
+                                      ]),
+                                      slice: () => ByList([
+                                        for (final session
+                                            in _projects.sessions)
+                                          (
+                                            projectTabLabel(_projects, session),
+                                            identical(
+                                              session,
+                                              _projects.active,
+                                            ),
+                                          ),
                                       ]),
                                       builder: (context, _) => EditorTopStrip(
                                         projects: _projects,
