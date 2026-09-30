@@ -408,13 +408,15 @@ void main() {
       await tester.pump();
 
       // What the view is fitted into: the editor viewport less the lanes a
-      // docked panel's scrollbars stand in (F-209).
+      // docked panel's scrollbars stand in (F-209) and the pill's band
+      // across its top.
       final box = tester.getSize(
         find.byKey(const ValueKey<String>('brush-canvas-editor-viewport')),
       );
+      final band = pillBandOf(tester);
       final window = Size(
         box.width - AppScrollbarLane.wide,
-        box.height - AppScrollbarLane.wide,
+        box.height - AppScrollbarLane.wide - band,
       );
       await tester.tap(
         find.byKey(const ValueKey<String>('canvas-viewport-fit')),
@@ -447,7 +449,7 @@ void main() {
         CanvasPoint(x: 317 / 2, y: 171 / 2),
       );
       expect(centre.x, closeTo(window.width / 2, 1e-9));
-      expect(centre.y, closeTo(window.height / 2, 1e-9));
+      expect(centre.y, closeTo(band + window.height / 2, 1e-9));
     });
 
     testWidgets('the angle reads 0.00° and writes what a rotation kept', (

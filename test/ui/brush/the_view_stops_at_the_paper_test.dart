@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
+import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
 
 void main() {
@@ -177,12 +178,13 @@ void main() {
     }
 
     /// The window the view is held in: the sheet's box less the lanes a
-    /// docked panel's scrollbars stand in (F-209).
+    /// docked panel's scrollbars stand in (F-209) and the pill's band
+    /// across its top (유저 2026-09-30: 「판정을 알약까지 포함해서」).
     Rect windowOf(WidgetTester tester) {
       final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
-      return Rect.fromLTWH(
+      return Rect.fromLTRB(
         0,
-        0,
+        pillBandOf(tester),
         box.width - AppScrollbarLane.wide,
         box.height - AppScrollbarLane.wide,
       );
@@ -254,10 +256,12 @@ void main() {
     testWidgets('an owner\'s write is held at once — the store itself reads '
         'the held view, not only the painting', (tester) async {
       final controller = await pumpSheet(tester);
-      controller.value = device(tester, CanvasViewport(panX: 900, panY: 5));
+      controller.value = device(tester, CanvasViewport(panX: 900, panY: 900));
       final stored = controller.value!;
+      // The paper's corner on the window's: its left edge, and the top
+      // just below the pill's band.
       expect(stored.panX / _ratio, closeTo(-24, 1e-6));
-      expect(stored.panY / _ratio, closeTo(-24, 1e-6));
+      expect(stored.panY / _ratio, closeTo(pillBandOf(tester) - 24, 1e-6));
     });
 
     testWidgets('zooming out past the paper stands it in the middle', (
@@ -275,7 +279,11 @@ void main() {
       tester,
     ) async {
       final controller = await pumpSheet(tester);
-      controller.value = device(tester, CanvasViewport(panX: -24, panY: -24));
+      // The paper's top on the window's, just below the pill's band.
+      controller.value = device(
+        tester,
+        CanvasViewport(panX: -24, panY: pillBandOf(tester) - 24),
+      );
       await tester.pump();
       final bar = find.byKey(
         const ValueKey<String>('canvas-viewport-vertical-scrollbar'),

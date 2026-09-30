@@ -63,6 +63,7 @@ Widget floorPillHarness({
   required bool onFloor,
   int leadingCount = 0,
   CanvasViewport? viewport,
+  Rect? unframedFit,
   bool hasContentToView = true,
   ValueChanged<CanvasViewport>? onViewportChanged,
   List<Widget> pageStrip = const [],
@@ -76,6 +77,7 @@ Widget floorPillHarness({
     pageStrip: pageStrip,
     canvasSize: const CanvasSize(width: 300, height: 300),
     viewport: viewport,
+    unframedFit: unframedFit,
     onViewportChanged: onViewportChanged,
     hasContentToView: hasContentToView,
     paperColor: 0xFFFFFFFF,
@@ -308,9 +310,12 @@ void main() {
     );
   });
 
-  testWidgets('🗣️F-209: a docked panel\'s lanes take their room — Fit '
-      'centres the artwork in what they leave, and the pill and the page '
-      'strip float over it; ringed on the artwork side', (tester) async {
+  testWidgets('🗣️F-209: a docked panel\'s lanes take their room, and every '
+      'panel\'s pill its band — Fit centres the artwork in what they leave, '
+      'the pill and the page strip float over it; ringed on the artwork '
+      'side (유저 2026-09-30: 「판정을 알약까지 포함해서 판정」)', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1000, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // A rail's width, where the pill fills what it is given, and a floor's.
@@ -332,13 +337,19 @@ void main() {
         await tester.pumpAndSettle();
         // The harness panel is `width` × 420; the artwork is 300 × 300.
         final lane = onFloor ? 0.0 : AppScrollbarLane.wide;
+        final band = pillBandOf(tester);
         final where = '${onFloor ? 'floor' : 'docked'} at ${width}px';
+        expect(band, greaterThan(30), reason: 'premise: the pill\'s band');
         final centre = renderOf(
           tester,
           fitted!,
         ).canvasToViewport(CanvasPoint(x: 150, y: 150));
         expect(centre.x, closeTo((width - lane) / 2, 0.5), reason: where);
-        expect(centre.y, closeTo((420 - lane) / 2, 0.5), reason: where);
+        expect(
+          centre.y,
+          closeTo(band + (420 - band - lane) / 2, 0.5),
+          reason: 'below the pill\'s band ($where)',
+        );
 
         final panel = tester.getRect(
           find.byKey(const ValueKey<String>('canvas-editor-panel-shell')),
@@ -383,60 +394,38 @@ void main() {
     expect(ringOf('canvas-panbar-horizontal').top, ring);
   });
 
-  testWidgets('🗣️F-209: a docked panel\'s pill and page strip let the '
-      'artwork show through until they are hovered or held; the floor\'s '
-      'stay solid (유저 2026-09-28: 「비호버시 반투명하게 뒤에 비치게. 호버시 '
-      '불투명하도록」)', (tester) async {
+  testWidgets('🗣️playback\'s fit — the frame an owner hands a view nobody '
+      'framed — keeps below the pill\'s band as Fit does, on the floor and '
+      'docked (유저 2026-09-30: 「캔버스 재생시나 그런거」)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1000, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    // How solid the capsule's ground is — the ground alone turns
-    // see-through, its controls stay as they are (no `Opacity`: it would
-    // cost the panel its bake).
-    double seen(String key) {
-      final capsule = tester.widget<DecoratedBox>(
-        find.byKey(ValueKey<String>(key)),
-      );
-      return (capsule.decoration as ShapeDecoration).color!.a;
-    }
-
     for (final onFloor in [false, true]) {
       await tester.pumpWidget(
         floorPillHarness(
           width: 900,
           onFloor: onFloor,
-          pageStrip: const [SizedBox(width: 26, height: 40)],
+          unframedFit: const Rect.fromLTWH(0, 0, 300, 300),
         ),
       );
       await tester.pumpAndSettle();
-      final resting = onFloor ? 1.0 : 0.5;
-      for (final key in ['canvas-view-pill', 'canvas-page-strip']) {
-        final capsule = find.byKey(ValueKey<String>(key));
-        expect(seen(key), resting, reason: '$key at rest, floor: $onFloor');
-        final mouse = await tester.createGesture(
-          kind: PointerDeviceKind.mouse,
-        );
-        await mouse.addPointer(location: Offset.zero);
-        await mouse.moveTo(tester.getCenter(capsule));
-        await tester.pump();
-        expect(seen(key), 1, reason: '$key under the pointer');
-        await mouse.moveTo(Offset.zero);
-        await tester.pump();
-        expect(seen(key), resting, reason: '$key once the pointer left');
-        await mouse.removePointer();
-
-        final finger = await tester.startGesture(
-          tester.getTopLeft(capsule) + const Offset(3, 3),
-        );
-        await tester.pump();
-        expect(
-          seen(key),
-          1,
-          reason: '$key under a finger — a touch has no hover',
-        );
-        await finger.up();
-        await tester.pump();
-        expect(seen(key), resting, reason: '$key once the finger lifted');
-      }
+      // What the panel paints: the fit resolves at the read, never stored.
+      final painted = tester
+          .widget<CanvasViewportGestureLayer>(
+            find.byType(CanvasViewportGestureLayer),
+          )
+          .viewport;
+      final lane = onFloor ? 0.0 : AppScrollbarLane.wide;
+      final band = pillBandOf(tester);
+      final top = painted.canvasToViewport(CanvasPoint(x: 150, y: 0));
+      final centre = painted.canvasToViewport(CanvasPoint(x: 150, y: 150));
+      final where = onFloor ? 'floor' : 'docked';
+      expect(band, greaterThan(30), reason: 'premise: the pill\'s band');
+      expect(top.y, greaterThan(band), reason: 'clear of the pill ($where)');
+      expect(
+        centre.y,
+        closeTo(band + (420 - band - lane) / 2, 0.5),
+        reason: 'in the middle of what the band and the lane leave ($where)',
+      );
     }
   });
 
@@ -1328,22 +1317,32 @@ void main() {
     final canvas = tester.widget<InteractiveBrushEditCanvasView>(
       find.byType(InteractiveBrushEditCanvasView),
     );
+    // What Fit frames into: the editor viewport less the pill's band across
+    // its top edge (the pill is cover — 유저 2026-09-30).
+    final band = pillBandOf(tester);
+    final window = Size(viewportSize.width, viewportSize.height - band);
     final expected = CanvasViewport.fitToView(
       canvasWidth: 100,
       canvasHeight: 50,
-      viewportWidth: viewportSize.width,
-      viewportHeight: viewportSize.height,
+      viewportWidth: window.width,
+      viewportHeight: window.height,
     );
 
-    // ⚠️`closeTo`, not `==`: the view is STORED in device pixels, so the
-    // panel's own fit result comes back through a multiply and a divide by
-    // the same ratio and can land one ulp off (measured: 5.919999999999999
-    // for 5.92). The tolerance is a millionth of a pixel — far below what
-    // this pin is about, which is that Fit measures the EDITOR viewport
-    // rather than the whole panel.
-    expect(canvas.viewport.zoom, closeTo(expected.zoom, 1e-9));
-    expect(canvas.viewport.panX, closeTo(expected.panX, 1e-6));
-    expect(canvas.viewport.panY, closeTo(expected.panY, 1e-6));
+    // The zoom lands DOWN to one the pill can say, by less than a readout
+    // digit (`a_zoom_lands_where_the_pill_can_say_it_test`), and the view
+    // is centred for the zoom it kept — so this pins what Fit MEASURES:
+    // the editor viewport, not the whole panel, and not the pill's band.
+    final zoom = canvas.viewport.zoom;
+    expect(zoom, lessThanOrEqualTo(expected.zoom + 1e-9));
+    expect(expected.zoom - zoom, lessThan(1e-4 + 1e-12));
+    expect(
+      canvas.viewport.panX,
+      closeTo((window.width - 100 * zoom) / 2, 1e-6),
+    );
+    expect(
+      canvas.viewport.panY,
+      closeTo(band + (window.height - 50 * zoom) / 2, 1e-6),
+    );
   });
 
   testWidgets('reset action restores the identity viewport', (tester) async {

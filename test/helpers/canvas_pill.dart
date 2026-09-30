@@ -44,3 +44,23 @@ Future<void> tapInViewSettings(
   await tester.tap(control);
   await tester.pumpAndSettle();
 }
+
+/// How much of a canvas panel's top edge the pill's band takes from what
+/// the panel frames — the pill with its margin above it and the same below
+/// (the pill is cover to every frame the panel makes). Read off the pill as
+/// it lies, so no test writes the pill's size down.
+///
+/// ⚠️For a panel nothing lies on: a floor cover moves the pill down by its
+/// own top, which this would read as margin. Pass [of] whenever more than
+/// one canvas panel is mounted.
+double pillBandOf(WidgetTester tester, {Finder? of}) {
+  Finder inPanel(String key) {
+    final finder = find.byKey(ValueKey<String>(key));
+    return of == null ? finder : find.descendant(of: of, matching: finder);
+  }
+
+  final shell = tester.getRect(inPanel('canvas-editor-panel-shell').first);
+  final pill = tester.getRect(inPanel('canvas-view-pill').first);
+  final margin = pill.top - shell.top;
+  return margin + pill.height + margin;
+}

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -124,9 +125,11 @@ void main() {
     expect(changes.single.zoom, 2.0);
     expect(changes.single.panY, lessThan(0));
 
-    // A rect already in view is a no-op — no viewport churn per tick.
+    // A rect already in view is a no-op — no viewport churn per tick. In
+    // view is inside the reveal's 24px margin under the window's top, which
+    // is the pill's band's bottom (유저 2026-09-30: 「판정을 알약까지 포함해서」).
     final settled = changes.single;
-    final visibleTop = (24 - settled.panY) / settled.zoom;
+    final visibleTop = (pillBandOf(tester) + 24 - settled.panY) / settled.zoom;
     await pumpPanel(
       tester,
       viewport: viewport,

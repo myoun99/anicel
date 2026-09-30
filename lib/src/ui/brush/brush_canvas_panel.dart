@@ -1181,6 +1181,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.didChangeDependencies();
     _shellBars.readStageColors();
     _onFloor = CanvasFloorInsets.isFloor(context);
+    _pillBand = _CanvasEditorPanelShell.pillBandIn(context);
     // ⛔Nothing here answers a RATIO change any more, deliberately. Holding
     // the percentage across one used to take a remembered scale, a re-zoom
     // around a chosen anchor, a value held through the build that noticed
@@ -2004,13 +2005,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  /// What is hidden from the artwork: the panels lying on the floor, and a
+  /// What is hidden from the artwork: the panels lying on the floor, a
   /// docked panel's own lanes — its panbars stand on the artwork's right and
-  /// bottom edges (F-209), and framing keeps out from under them as it keeps
-  /// out from under a panel.
+  /// bottom edges (F-209) — and the pill's band across the top edge
+  /// ([_CanvasEditorPanelShell.pillBandIn]). Framing keeps out from under
+  /// all of it as it keeps out from under a panel.
   EdgeInsets get _framingInsets =>
       widget.floorCover +
-      (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes);
+      (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
+      EdgeInsets.only(top: _pillBand);
+
+  /// [_CanvasEditorPanelShell.pillBandIn], measured where the words it is
+  /// sized by are known — and again whenever they change.
+  late double _pillBand;
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
@@ -2348,6 +2355,16 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     bottom: dockedLane,
   );
 
+  /// 🗣️(유저 2026-09-30): 「판정을 알약까지 포함해서 판정. 타임시트 최대
+  /// 스크롤기준이나 캔버스 재생시나 그런거」 — the pill is part of what hides
+  /// the artwork, on the floor and docked alike: the band it floats in
+  /// across the top edge, its margin above it and below, is cover to every
+  /// frame the panel makes (Fit, playback's fit, a limit's window, the
+  /// middle a zoom holds). ↩️It was a see-through capsule for a day
+  /// (F-209); the user took that back for this.
+  static double pillBandIn(BuildContext context) =>
+      2 * _capsuleMargin + _CanvasViewportBottomBar.heightIn(context);
+
   const _CanvasEditorPanelShell({
     required this.child,
     required this.bottomBar,
@@ -2533,7 +2550,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                             colorScheme,
                             keyValue: 'canvas-page-strip',
                             width: _pageStripWidth,
-                            seenThrough: !onFloor,
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: pageStrip,
@@ -2584,7 +2600,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                           colorScheme,
                           keyValue: 'canvas-view-pill',
                           height: _CanvasViewportBottomBar.heightIn(context),
-                          seenThrough: !onFloor,
                           child: bottomBar,
                         ),
                       ),
@@ -2734,6 +2749,15 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// One floating control surface: opaque, superellipse, ringed in the
   /// backdrop.
   ///
+  /// ↩️Opaque on a docked panel too. Its capsules were see-through for a
+  /// day (F-209, 유저 2026-09-28), and the user took that back (09-30:
+  /// 「알약 반투명하지말자. 원복. 대신 판정을 알약까지 포함해서 판정」),
+  /// leaving a see-through pill to us only if it costs nothing
+  /// (「굽기가능하거나 성능변화없으면」). It does not: the pill faded WHOLE is
+  /// a group opacity, one more offscreen pass on every frame the canvas
+  /// under it moves (Impeller keeps no raster cache) — and with the framing
+  /// out from under the pill ([pillBandIn]) nothing framed lies under it.
+  ///
   /// The ring is not decoration. What lies beside a capsule is the
   /// PASTEBOARD, a colour the user chooses, so no fill of ours can be
   /// relied on to contrast with it — the same reason the panbar lane has
@@ -2744,7 +2768,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required Widget child,
     double? width,
     double? height,
-    bool seenThrough = false,
   }) {
     // The corner follows the SHORT axis, the way every control's does. A
     // capsule with neither axis stated would ask for an infinite radius, so
@@ -2753,10 +2776,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     final shape = short.isFinite
         ? AppShapes.control(short)
         : AppShapes.container(AppShapes.wellRadius);
-    Widget capsule(double fill) => DecoratedBox(
+    return DecoratedBox(
       key: ValueKey<String>(keyValue),
       decoration: ShapeDecoration(
-        color: colorScheme.surface.withValues(alpha: fill),
+        color: colorScheme.surface,
         shape: shape.copyWith(
           side: const BorderSide(color: AppColors.backdrop),
         ),
@@ -2766,58 +2789,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         child: SizedBox(width: width, height: height, child: child),
       ),
     );
-    return seenThrough ? _SeenThroughUntilHeld(capsule: capsule) : capsule(1);
   }
-}
-
-/// 🗣️F-209 (유저 2026-09-28): 「도킹된 패널은 기존 알약, 상단이나 왼쪽?
-/// 그거는 비호버시 반투명하게 뒤에 비치게. 호버시 불투명하도록」 — a docked
-/// panel's capsules (its pill and its page strip) let the artwork show
-/// through until the pointer is over them, or a finger is on them: a touch
-/// has no hover.
-///
-/// ⚠️What turns see-through is the capsule's GROUND — its controls stay as
-/// they are. A capsule faded whole takes an `Opacity`, and an `Opacity` is
-/// a repaint boundary inside the panel's bake: the panel would stop baking
-/// and pay its full raster on every frame (`an_opacity_is_a_boundary_test`)
-/// — and an old tablet is where that shows (구형 기기 방침).
-///
-/// ⛔Not the stroke fade H3 took out (「알약 불투명도 낮추는거만 심플하게
-/// 삭제」): that dimmed the floor's capsules for the length of a stroke.
-/// This is how a docked panel's capsules rest, and the hand brings them up.
-class _SeenThroughUntilHeld extends StatefulWidget {
-  const _SeenThroughUntilHeld({required this.capsule});
-
-  /// How much of a resting capsule's ground there is — half: 「반투명」.
-  static const double resting = 0.5;
-
-  /// The capsule, its ground as solid as it is told.
-  final Widget Function(double fill) capsule;
-
-  @override
-  State<_SeenThroughUntilHeld> createState() => _SeenThroughUntilHeldState();
-}
-
-class _SeenThroughUntilHeldState extends State<_SeenThroughUntilHeld> {
-  bool _hovered = false;
-  int _pressed = 0;
-
-  @override
-  Widget build(BuildContext context) => MouseRegion(
-    // Hovering the capsule is not leaving the canvas: the cursor under it
-    // keeps whatever it had.
-    opaque: false,
-    onEnter: (_) => setState(() => _hovered = true),
-    onExit: (_) => setState(() => _hovered = false),
-    child: Listener(
-      onPointerDown: (_) => setState(() => _pressed += 1),
-      onPointerUp: (_) => setState(() => _pressed -= 1),
-      onPointerCancel: (_) => setState(() => _pressed -= 1),
-      child: widget.capsule(
-        _hovered || _pressed > 0 ? 1 : _SeenThroughUntilHeld.resting,
-      ),
-    ),
-  );
 }
 
 /// The floor's controls, laid on the drawing.

@@ -26,7 +26,9 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 
+import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
 
@@ -126,19 +128,26 @@ void main() {
   Rect pageRect(int page) =>
       Rect.fromLTWH(0, page * (pageSize.height + 32), 600, 800);
 
-  /// [page] framed whole: a portrait page fits the view's height, less the
-  /// fit's own margin — not the book, whose pages would each take a share.
+  /// [page] framed whole: a portrait page fits the window's height, less
+  /// the fit's own margin — not the book, whose pages would each take a
+  /// share. The window is the box less the pill's band over it and the
+  /// lane under it (유저 2026-09-30: 「판정을 알약까지 포함해서」).
   void expectFramed(WidgetTester tester, Rect page) {
     final view = renderOf(tester, slot.viewport.value!);
     final box = tester.getSize(
       find.byKey(const ValueKey<String>('brush-canvas-editor-viewport')),
     );
+    final window = Rect.fromLTRB(
+      0,
+      pillBandOf(tester),
+      box.width - AppScrollbarLane.wide,
+      box.height - AppScrollbarLane.wide,
+    );
     final top = page.top * view.zoom + view.panY;
     final height = page.height * view.zoom;
-    expect(height, lessThanOrEqualTo(box.height));
-    expect(height, greaterThan(box.height * 0.85));
-    expect(top, greaterThanOrEqualTo(-1e-6));
-    expect(top + height, lessThanOrEqualTo(box.height + 1e-6));
+    expect(height, greaterThan(window.height * 0.85));
+    expect(top, greaterThanOrEqualTo(window.top - 1e-6));
+    expect(top + height, lessThanOrEqualTo(window.bottom + 1e-6));
   }
 
   /// Drags the cut tool's rect across [outline] — book units, through the
@@ -266,8 +275,9 @@ void main() {
     final view = renderOf(tester, slot.viewport.value!);
     expect(
       view.panY + pageRect(1).top * view.zoom,
-      closeTo(16 * view.zoom, 1e-6),
-      reason: 'its top half a gap under the view\'s',
+      closeTo(pillBandOf(tester) + 16 * view.zoom, 1e-6),
+      reason: 'its top half a gap under the view\'s — the window\'s, under '
+          'the pill\'s band',
     );
 
     // Back to the top by hand: the page read follows the view.

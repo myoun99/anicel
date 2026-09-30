@@ -521,7 +521,10 @@ void main() {
     ViewerRasterBudget.debugPageBytesOverride = budget ~/ 4;
     slot.position.value = 0;
     await pumpViewer(tester, view: pannable);
-    for (final next in [1, 2]) {
+    // Over and back: a turn puts the page under the pill's band, so the
+    // tail of the page above shows beside the pill — only the first page,
+    // with nothing above it, is ever alone on screen.
+    for (final next in [1, 0]) {
       slot.position.value = next;
       await tester.pumpAndSettle();
     }
@@ -534,7 +537,7 @@ void main() {
     await cutDrag(tester);
 
     expect(held.isNotEmpty, isTrue, reason: 'room was made, so the cut went');
-    expect(document.regionReads.single.$1, 2, reason: 'the page on screen');
+    expect(document.regionReads.single.$1, 0, reason: 'the page on screen');
     expect(
       session.renderCaches.viewerRasterBytes,
       page,
