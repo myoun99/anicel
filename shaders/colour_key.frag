@@ -45,13 +45,16 @@ out vec4 fragColor;
 
 void main() {
   vec4 src = texture(uSource, FlutterFragCoord().xy / uSize);
-  if (src.a <= 0.0) {
-    // The CPU returns the alpha untouched at zero rather than dividing by
-    // it. Same answer, and no division by zero here either.
-    fragColor = vec4(0.0);
-    return;
-  }
-  vec3 straight = src.rgb / src.a;
+  // The CPU returns the alpha untouched at zero rather than dividing by it,
+  // and so does this: a transparent pixel divides nothing, and its byte of
+  // 0 runs through the arithmetic below to an alpha of 0 — the vec4(0.0)
+  // the CPU hands back, bit for bit.
+  //
+  // ⛔NO EARLY RETURN. A fragment shader that samples a texture and returns
+  // early is the shape ANGLE hands Windows' D3D shader compiler in a form it
+  // can crash on (flutter#190809, closed 2026-09-29 with a compiler warning
+  // for exactly that pair rather than a fix). This one used to leave here.
+  vec3 straight = src.a > 0.0 ? src.rgb / src.a : vec3(0.0);
   vec3 gap = abs(straight * 255.0 - uKey255);
   float widest = max(max(gap.r, gap.g), gap.b);
   // `<= tolerance` on integers, asked where no float can be ambiguous.
