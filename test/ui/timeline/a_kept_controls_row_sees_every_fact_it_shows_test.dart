@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
+import 'package:flutter/painting.dart' show Axis;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/attached_placement.dart';
@@ -79,34 +80,38 @@ void main() {
     void Function(LayerId)? onSelectLayer,
   }) => layerControlsRowFacts(
     TimelineDisplayRow.layer(row, layerIndex: 0, depth: depth),
-    hooks: TimelineGridHooks(
-      activeLayerId: activeLayerId,
-      frameCursor: ValueNotifier<int>(0),
-      playbackFrameCount: 24,
-      exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
-      onSelectLayer: onSelectLayer ?? (_) {},
-      onSelectFrame: (_) {},
-      onToggleLayerVisibility: (_) {},
-      onLayerOpacityChanged: (_, _) {},
-      onToggleLayerTimesheet: (_) {},
-      onLayerMarkSelected: (_, _) {},
-      selectedRows: selectedRows,
-      expandedLaneLayerIds: expandedLaneLayerIds,
-      layerFxStateOf: (_) => fxState,
-      layerOnionSkinEnabledOf: (_) => onionSkinEnabled,
-      // A fresh list at every ask, as the session hands them out.
-      layerLinkPartnersOf: (_) => [...linkPartners],
-      isLayerSoloed: (_) => soloed,
-      attachArrowPlacementOf: (_) => attachArrow,
-      layerSourceIsShortOf: (_) => sourceIsShort,
-      layerOpacityOverrideOf: (_) => opacityOverride,
-      opacityDragPreview: opacityDragPreview,
+    (
+      hooks: TimelineGridHooks(
+        activeLayerId: activeLayerId,
+        frameCursor: ValueNotifier<int>(0),
+        playbackFrameCount: 24,
+        exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
+        onSelectLayer: onSelectLayer ?? (_) {},
+        onSelectFrame: (_) {},
+        onToggleLayerVisibility: (_) {},
+        onLayerOpacityChanged: (_, _) {},
+        onToggleLayerTimesheet: (_) {},
+        onLayerMarkSelected: (_, _) {},
+        selectedRows: selectedRows,
+        expandedLaneLayerIds: expandedLaneLayerIds,
+        layerFxStateOf: (_) => fxState,
+        layerOnionSkinEnabledOf: (_) => onionSkinEnabled,
+        // A fresh list at every ask, as the session hands them out.
+        layerLinkPartnersOf: (_) => [...linkPartners],
+        isLayerSoloed: (_) => soloed,
+        attachArrowPlacementOf: (_) => attachArrow,
+        layerSourceIsShortOf: (_) => sourceIsShort,
+        layerOpacityOverrideOf: (_) => opacityOverride,
+        opacityDragPreview: opacityDragPreview,
+      ),
+      layers: [row, member(attached: memberAttached), base],
+      metrics: metrics,
+      axis: Axis.horizontal,
+      keyPrefix: 'timeline',
+      mainExtent: mainExtent,
     ),
-    layers: [row, member(attached: memberAttached), base],
-    metrics: metrics,
     fold: fold,
     hasLanes: hasLanes,
-    mainExtent: mainExtent,
   );
 
   test('the same facts, asked again, are the same facts — and a verb is '

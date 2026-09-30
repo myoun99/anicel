@@ -100,18 +100,32 @@ typedef LayerControlsRowFacts = ({
   AppLanguage language,
 });
 
-/// The facts of [row]'s controls row as [hooks] tell them. [fold] and
+/// A grid as its controls rows see it: what it reads them from, and how it
+/// stands them — the rail as it is, the x-sheet's header strip turned on
+/// its side ([axis] vertical, [keyPrefix] `xsheet`, each header laid out
+/// at [mainExtent]; null on the rail, where the row sizes itself).
+///
+/// One record for the facts and the row, so the two cannot be read off
+/// different hooks or metrics.
+typedef LayerControlsRowGrid = ({
+  TimelineGridHooks hooks,
+  List<Layer> layers,
+  TimelineGridMetrics metrics,
+  Axis axis,
+  String keyPrefix,
+  double? mainExtent,
+});
+
+/// The facts of [row]'s controls row as [grid] tells them. [fold] and
 /// [hasLanes] are the grid's to answer — each asks them its own way of the
 /// same rules ([timelineGroupFoldFor], the lanes it draws).
 LayerControlsRowFacts layerControlsRowFacts(
-  TimelineDisplayRow row, {
-  required TimelineGridHooks hooks,
-  required List<Layer> layers,
-  required TimelineGridMetrics metrics,
+  TimelineDisplayRow row,
+  LayerControlsRowGrid grid, {
   required TimelineGroupFold fold,
   required bool hasLanes,
-  double? mainExtent,
 }) {
+  final hooks = grid.hooks;
   final id = row.layer.id;
   return (
     layer: ControlsRowFace(row.layer),
@@ -129,103 +143,101 @@ LayerControlsRowFacts layerControlsRowFacts(
     soloed: hooks.isLayerSoloed?.call(id) ?? false,
     attachArrow: hooks.attachArrowPlacementOf?.call(id),
     isReferenceSourceShort: hooks.layerSourceIsShortOf?.call(id) ?? false,
-    wearsBaseComposite: attachRowWearsBaseComposite(row.layer, layers),
+    wearsBaseComposite: attachRowWearsBaseComposite(row.layer, grid.layers),
     opacityOverride: ByIdentity(hooks.layerOpacityOverrideOf?.call(id)),
     opacityDragPreview: ByIdentity(hooks.opacityDragPreview),
-    layerRowHeight: metrics.layerRowHeight,
-    layerControlsWidth: metrics.layerControlsWidth,
-    sectionLabelGutterWidth: metrics.sectionLabelGutterWidth,
-    railColumns: metrics.railColumns,
-    mainExtent: mainExtent,
+    layerRowHeight: grid.metrics.layerRowHeight,
+    layerControlsWidth: grid.metrics.layerControlsWidth,
+    sectionLabelGutterWidth: grid.metrics.sectionLabelGutterWidth,
+    railColumns: grid.metrics.railColumns,
+    mainExtent: grid.mainExtent,
     language: AppText.language,
   );
 }
 
-/// [row]'s controls row, built from [facts] and wired to [hooks]' verbs —
-/// the rail's as it stands, the x-sheet header's turned on its side
-/// ([axis] vertical, [keyPrefix] `xsheet`).
+/// [row]'s controls row, built from [facts] and wired to [grid]'s verbs
+/// ([fold] is the twirl the facts were read with, for its verb).
 Widget layerControlsRowFrom(
   LayerControlsRowFacts facts,
-  TimelineDisplayRow row, {
-  required TimelineGridHooks hooks,
-  required TimelineGridMetrics metrics,
-  required TimelineGroupFold fold,
-  Axis axis = Axis.horizontal,
-  String keyPrefix = 'timeline',
-}) => TimelineLayerControlsRow(
-  axis: axis,
-  keyPrefix: keyPrefix,
-  mainExtent: facts.mainExtent,
-  layer: row.layer,
-  wearsBaseComposite: facts.wearsBaseComposite,
-  active: facts.active,
-  selected: facts.selected,
-  metrics: metrics,
-  onSelectLayer: hooks.onSelectLayer,
-  // T10: the rail row and the frame cells take the SAME settled-tap
-  // clear, because 「행이든 뭐든 동일하게」.
-  onSettledPress: hooks.onSettledPress,
-  labelDoubleClick: hooks.labelDoubleClick,
-  onToggleLayerVisibility: hooks.onToggleLayerVisibility,
-  onLayerOpacityChanged: hooks.onLayerOpacityChanged,
-  onLayerOpacityChangeEnd: hooks.onLayerOpacityChangeEnd,
-  onToggleLayerTimesheet: hooks.onToggleLayerTimesheet,
-  fxState: facts.fxState,
-  onToggleLayerFx: hooks.onToggleLayerFx,
-  onionSkinEnabled: facts.onionSkinEnabled,
-  onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
-  onLayerMarkSelected: hooks.onLayerMarkSelected,
-  onToggleLayerFillReference: hooks.onToggleLayerFillReference,
-  onOpenLayerMixer: hooks.onOpenLayerMixer,
-  onOpenLayerReference: hooks.onOpenLayerReference,
-  isReferenceSourceShort: facts.isReferenceSourceShort,
-  isLayerSoloed: facts.soloed,
-  attachArrowPlacement: facts.attachArrow,
-  hasLanes: facts.hasLanes,
-  lanesExpanded: facts.lanesExpanded,
-  onToggleLanes: hooks.onToggleLayerLanes,
-  depth: facts.depth,
-  // One fold twirl: a folder folds its members, an attach base folds
-  // its attach rows — the one answer both grids ask for.
-  hasGroupFold: facts.hasGroupFold,
-  groupFoldExpanded: facts.groupFoldExpanded,
-  onToggleGroupFold: fold.onToggle,
-  opacityDragPreview: facts.opacityDragPreview.value,
-  linkPartners: facts.linkPartners.value,
-  onLayerBlendModeSelected: hooks.onLayerBlendModeSelected,
-  opacityOverride: facts.opacityOverride.value,
-);
+  TimelineDisplayRow row,
+  LayerControlsRowGrid grid,
+  TimelineGroupFold fold,
+) {
+  final hooks = grid.hooks;
+  return TimelineLayerControlsRow(
+    axis: grid.axis,
+    keyPrefix: grid.keyPrefix,
+    mainExtent: facts.mainExtent,
+    layer: row.layer,
+    wearsBaseComposite: facts.wearsBaseComposite,
+    active: facts.active,
+    selected: facts.selected,
+    metrics: grid.metrics,
+    onSelectLayer: hooks.onSelectLayer,
+    // T10: the rail row and the frame cells take the SAME settled-tap
+    // clear, because 「행이든 뭐든 동일하게」.
+    onSettledPress: hooks.onSettledPress,
+    labelDoubleClick: hooks.labelDoubleClick,
+    onToggleLayerVisibility: hooks.onToggleLayerVisibility,
+    onLayerOpacityChanged: hooks.onLayerOpacityChanged,
+    onLayerOpacityChangeEnd: hooks.onLayerOpacityChangeEnd,
+    onToggleLayerTimesheet: hooks.onToggleLayerTimesheet,
+    fxState: facts.fxState,
+    onToggleLayerFx: hooks.onToggleLayerFx,
+    onionSkinEnabled: facts.onionSkinEnabled,
+    onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
+    onLayerMarkSelected: hooks.onLayerMarkSelected,
+    onToggleLayerFillReference: hooks.onToggleLayerFillReference,
+    onOpenLayerMixer: hooks.onOpenLayerMixer,
+    onOpenLayerReference: hooks.onOpenLayerReference,
+    isReferenceSourceShort: facts.isReferenceSourceShort,
+    isLayerSoloed: facts.soloed,
+    attachArrowPlacement: facts.attachArrow,
+    hasLanes: facts.hasLanes,
+    lanesExpanded: facts.lanesExpanded,
+    onToggleLanes: hooks.onToggleLayerLanes,
+    depth: facts.depth,
+    // One fold twirl: a folder folds its members, an attach base folds
+    // its attach rows — the one answer both grids ask for.
+    hasGroupFold: facts.hasGroupFold,
+    groupFoldExpanded: facts.groupFoldExpanded,
+    onToggleGroupFold: fold.onToggle,
+    opacityDragPreview: facts.opacityDragPreview.value,
+    linkPartners: facts.linkPartners.value,
+    onLayerBlendModeSelected: hooks.onLayerBlendModeSelected,
+    opacityOverride: facts.opacityOverride.value,
+  );
+}
+
+/// What a kept controls row was built from: its facts, and what its drag
+/// wrapper was built from.
+typedef LayerControlsRowInputs = ({
+  LayerControlsRowFacts facts,
+  // F-244: the row's DRAG wrapper is kept with it, so a commit that moved
+  // no row rebuilds no wrapper (it rebuilt all of them, ~170 elements on
+  // 24 rows) — keyed on what the wrapper is built from, which its own
+  // module answers ([layerRowDragInputs]: the host's hooks, bound once
+  // there, the span verb and the caret line it paints).
+  LayerRowDragInputs drag,
+});
 
 /// What a grid keeps of a layer's controls row: the row as built — made
 /// draggable — and what it was built from.
-typedef KeptLayerControlsRow = ({
-  ({
-    LayerControlsRowFacts facts,
-    // F-244: the row's DRAG wrapper is kept with it, so a commit that moved
-    // no row rebuilds no wrapper (it rebuilt all of them, ~170 elements on
-    // 24 rows) — keyed on what the wrapper is built from, which its own
-    // module answers ([layerRowDragInputs]: the host's hooks, bound once
-    // there, the span verb and the caret line it paints).
-    LayerRowDragInputs drag,
-  })
-  inputs,
-  Widget row,
-});
+typedef KeptLayerControlsRow = ({LayerControlsRowInputs inputs, Widget row});
 
 /// [row]'s controls row as [kept] holds it (F-244): the one it holds while
-/// [facts] and its drag wrapper's inputs ([drag]) are what they were, so a
-/// commit rebuilds no row it did not change — else [build]'s, kept.
+/// [inputs] are what they were, so a commit rebuilds no row it did not
+/// change — else [build]'s, kept.
 ///
 /// ONE memo for the rail's rows and the x-sheet's headers — a grid says
-/// only how its row drags: [drag], and the wrapper [build] puts on.
+/// only how its row drags: the wrapper's inputs, and the wrapper [build]
+/// puts on.
 Widget keptLayerControlsRow(
   Map<LayerId, KeptLayerControlsRow> kept,
-  TimelineDisplayRow row, {
-  required LayerControlsRowFacts facts,
-  required LayerRowDragInputs drag,
-  required Widget Function() build,
-}) {
-  final inputs = (facts: facts, drag: drag);
+  TimelineDisplayRow row,
+  LayerControlsRowInputs inputs,
+  Widget Function() build,
+) {
   final held = kept[row.layer.id];
   if (held != null && held.inputs == inputs) {
     return held.row;

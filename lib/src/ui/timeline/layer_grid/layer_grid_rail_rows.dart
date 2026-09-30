@@ -85,32 +85,35 @@ class _LayerGridRailRows {
     if (row.isLane) {
       return _state._rowDrags.draggable(row, _laneRow(row));
     }
+    final grid = _controlsRowGrid;
     final fold = _groupFoldFor(row);
     final facts = layerControlsRowFacts(
       row,
-      hooks: _state.widget.hooks,
-      layers: _state.widget.layers,
-      metrics: _state._metrics,
+      grid,
       fold: fold,
       hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
     );
     return keptLayerControlsRow(
       _state._railRowMemo,
       row,
-      facts: facts,
-      drag: _state._rowDrags.inputsFor(row),
-      build: () => _state._rowDrags.draggable(
+      (facts: facts, drag: _state._rowDrags.inputsFor(row)),
+      () => _state._rowDrags.draggable(
         row,
-        layerControlsRowFrom(
-          facts,
-          row,
-          hooks: _state.widget.hooks,
-          metrics: _state._metrics,
-          fold: fold,
-        ),
+        layerControlsRowFrom(facts, row, grid, fold),
       ),
     );
   }
+
+  /// The rail as its controls rows see it — the x-sheet's header strip is
+  /// the same record turned on its side.
+  LayerControlsRowGrid get _controlsRowGrid => (
+    hooks: _state.widget.hooks,
+    layers: _state.widget.layers,
+    metrics: _state._metrics,
+    axis: Axis.horizontal,
+    keyPrefix: 'timeline',
+    mainExtent: null,
+  );
 
   /// The rail row's element key — ONE builder for the window loop and the
   /// A5 pin site, so the two can never drift and the pinned element

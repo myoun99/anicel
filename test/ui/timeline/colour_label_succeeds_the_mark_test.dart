@@ -287,11 +287,31 @@ void _oneWidgetBothSurfaces() {
     // The x-sheet grid is a LIBRARY — the file plus the collaborator parts
     // the audit's SRP cuts (2026-09-02) put beside it — so the row widget
     // is found where a cut put it.
+    //
+    // 🆕2026-09-30 (F-244): and neither grid raises the ROW itself — both
+    // build it through ONE function, from the record their memo keys on
+    // ([layerControlsRowFrom]). A grid that wrote the row out again would be
+    // a second spelling of it.
     final grid = librarySource('lib/src/ui/timeline/xsheet_timeline_grid.dart');
+    final rail = librarySource('lib/src/ui/timeline/layer_timeline_grid.dart');
+    for (final (surface, source) in [('x시트', grid), ('레일', rail)]) {
+      expect(
+        source,
+        contains('layerControlsRowFrom('),
+        reason: '$surface 의 행 머리는 두 격자가 같이 쓰는 빌더가 세운다',
+      );
+      expect(
+        source,
+        isNot(contains('TimelineLayerControlsRow(')),
+        reason: '⛔$surface 가 행을 따로 세우면 두 번째 자리가 생긴 것이다',
+      );
+    }
     expect(
-      grid,
+      File(
+        'lib/src/ui/timeline/layer_controls_row_facts.dart',
+      ).readAsStringSync(),
       contains('TimelineLayerControlsRow('),
-      reason: 'x시트의 열 머리는 레일의 행 위젯이다',
+      reason: 'x시트의 열 머리는 레일의 행 위젯이다 — 세우는 곳은 빌더 하나',
     );
     // `LayerMarkChip(` or its `.forLayer(` constructor (the round-8 audit,
     // 2026-09-06): either spelling raises the chip.

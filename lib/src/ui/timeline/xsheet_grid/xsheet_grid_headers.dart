@@ -99,41 +99,42 @@ class _XSheetGridHeaders {
     if (entry.isLane) {
       return draggableHeader(entry, _laneHeader(entry));
     }
-    final hooks = _state.widget.hooks;
+    final grid = _controlsRowGrid;
     final fold = _state._groupFoldFor(entry);
     final facts = layerControlsRowFacts(
       entry,
-      hooks: hooks,
-      layers: _state.widget.layers,
-      metrics: _state._metrics,
+      grid,
       fold: fold,
       hasLanes: _state._lanesFor(entry.layer).isNotEmpty,
-      mainExtent: naturalHeaderExtent,
+    );
+    final drag = layerRowDragInputs(
+      row: entry,
+      drawnRows: _state._dragRows,
+      hooks: grid.hooks.rowDragHooks,
+      onRowSelectionSpan: grid.hooks.onRowSelectionSpan,
     );
     return keptLayerControlsRow(
       _kept,
       entry,
-      facts: facts,
-      drag: layerRowDragInputs(
-        row: entry,
-        drawnRows: _state._dragRows,
-        hooks: hooks.rowDragHooks,
-        onRowSelectionSpan: hooks.onRowSelectionSpan,
-      ),
-      build: () => draggableHeader(
+      (facts: facts, drag: drag),
+      () => draggableHeader(
         entry,
-        layerControlsRowFrom(
-          facts,
-          entry,
-          hooks: hooks,
-          metrics: _state._metrics,
-          fold: fold,
-          axis: Axis.vertical,
-          keyPrefix: 'xsheet',
-        ),
+        layerControlsRowFrom(facts, entry, grid, fold),
       ),
     );
   }
 
   final Map<LayerId, KeptLayerControlsRow> _kept = {};
+
+  /// The header strip as its controls rows see it: the rail's record,
+  /// turned on its side — each header laid out at the strip's natural
+  /// extent, which the rail window above then cuts.
+  LayerControlsRowGrid get _controlsRowGrid => (
+    hooks: _state.widget.hooks,
+    layers: _state.widget.layers,
+    metrics: _state._metrics,
+    axis: Axis.vertical,
+    keyPrefix: 'xsheet',
+    mainExtent: naturalHeaderExtent,
+  );
 }
