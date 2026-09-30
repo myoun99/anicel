@@ -23,6 +23,7 @@ void main() {
     'pageLabel': (s) => s.pageLabel,
     'continuousLabel': (s) => s.continuousLabel,
     'noticeNoFrameHere': (s) => s.noticeNoFrameHere,
+    'noticeNoConteLayer': (s) => s.noticeNoConteLayer,
     'noticeLayerNotDrawable': (s) => s.noticeLayerNotDrawable,
     'noticeEditAttachOwner': (s) => s.noticeEditAttachOwner,
     'commonCancel': (s) => s.commonCancel,
