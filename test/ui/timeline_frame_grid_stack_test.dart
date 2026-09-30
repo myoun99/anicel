@@ -4,6 +4,7 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_grid_stack.dart';
+import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
 void main() {
   const rowsBodyKey = ValueKey<String>('test-rows-body');
@@ -107,22 +108,25 @@ void main() {
     testWidgets('preserves stack child order', (tester) async {
       await _pumpFrameGridStack(tester);
 
-      final stack = tester.widget<Stack>(find.byType(Stack));
+      final stack = tester.widget<Stack>(find.byType(Stack).first);
 
       // The user's layer order (2026-08-02): where the film STOPS is stated
       // over everything, so the wash, the のりしろ mark and the cut-end line
       // are the top layers and the cursor/selection sits under them. No grip
-      // here — nothing is being trimmed.
-      expect(stack.children, hasLength(6));
+      // here — nothing is being trimmed. They ride ONE tick layer over the
+      // rest (F-244: a drag step lays out and paints alone).
+      expect(stack.children, hasLength(4));
       expect((stack.children[0] as Positioned).child, isA<IgnorePointer>());
       expect(stack.children[1].key, rowsBodyKey);
       final playheadPositioned = stack.children[2] as Positioned;
       // The playhead brings its own layer (the cursor layer is a
       // `TickLayer`), so the slot places it bare.
       expect(playheadPositioned.child.key, playheadKey);
-      expect(stack.children[3], isA<Positioned>());
-      expect(stack.children[4], isA<TimelineBodyNoriShiroBoundary>());
-      expect(stack.children[5], isA<TimelineBodyCutEndBoundary>());
+      final overlay = stack.children[3] as TickOverlay;
+      expect(overlay.children, hasLength(3));
+      expect(overlay.children[0], isA<Positioned>());
+      expect(overlay.children[1], isA<TimelineBodyNoriShiroBoundary>());
+      expect(overlay.children[2], isA<TimelineBodyCutEndBoundary>());
     });
 
     testWidgets('the grid sheet gets its repaint boundary from the stack', (
@@ -132,7 +136,7 @@ void main() {
 
       // The DIRECT wrap, not "some ancestor" — MaterialApp puts boundaries
       // of its own above the stack.
-      final stack = tester.widget<Stack>(find.byType(Stack));
+      final stack = tester.widget<Stack>(find.byType(Stack).first);
       final slot = (stack.children[0] as Positioned).child as IgnorePointer;
       final boundary = slot.child! as RepaintBoundary;
       expect(boundary.child!.key, gridSheetKey);
