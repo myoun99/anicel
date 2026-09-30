@@ -637,6 +637,7 @@ void main() {
     'imRevAll': (s) => s.imRevAll,
     'imRevOriginals': (s) => s.imRevOriginals,
     'imSound': (s) => s.imSound,
+    'imSoundOnly': (s) => s.imSoundOnly,
     'bakeProgressRunning': (s) => s.bakeProgressRunning,
     'bakeProgressDone': (s) => s.bakeProgressDone,
     'pasteProgressRunning': (s) => s.pasteProgressRunning,

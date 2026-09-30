@@ -583,20 +583,8 @@ class ProjectImportDoors {
     /// Where [path] was cut from — see [importImageFile]'s.
     String? sourcePath,
   }) async {
-    // 🗣️유저 2026-09-27: 「소리만 임포트 … 고를수있게」 — a movie that brings
-    // its sound ALONE lands the way a sound does, through the sound's own
-    // door: its SE rows, its trim, and the ONE pool entry the pair shares
-    // (the door keeps a movie's kind for it). Asked here, so every caller
-    // of this door gets the same answer.
     if (settings.movieParts == MovieParts.sound) {
-      return importSoundFile(
-        path: path,
-        copyIntoProject: settings.mode == ImportFileMode.keepInside,
-        inFrame: settings.inFrame,
-        outFrame: settings.outFrame,
-        spot: spot,
-        sourcePath: sourcePath,
-      );
+      return _movieSoundAlone(path, settings, spot, sourcePath);
     }
     // The destination gate runs BEFORE the movie opens — a refused import
     // must not have a document to leak.
@@ -649,6 +637,25 @@ class ProjectImportDoors {
       await opened.close();
     }
   }
+
+  /// A movie that brings its sound ALONE (🗣️유저 2026-09-27: 「소리만 임포트
+  /// … 고를수있게」) lands the way a sound does, through the sound's own
+  /// door: its SE rows, its trim, and the ONE pool entry the pair shares
+  /// (the door keeps a movie's kind for it). Asked in [importVideoFile], so
+  /// every caller of the movie's door gets the same answer.
+  Future<bool> _movieSoundAlone(
+    String path,
+    ImportFileSettings settings,
+    ImportLayerSpot? spot,
+    String? sourcePath,
+  ) => importSoundFile(
+    path: path,
+    copyIntoProject: settings.mode == ImportFileMode.keepInside,
+    inFrame: settings.inFrame,
+    outFrame: settings.outFrame,
+    spot: spot,
+    sourcePath: sourcePath,
+  );
 
   /// What a placed movie LANDS AS: the span it covers on the sound's clock,
   /// the cut it arrives in — a NEW one is made at the movie's own size,
