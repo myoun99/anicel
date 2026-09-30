@@ -164,6 +164,13 @@ class BlockNaming {
     if (_selection.frameRangeSelection.value != null) {
       return _bandRows();
     }
+    // A band on the TRACK axis claims the press as well — the band source
+    // 링크 독립 reads is 「the cut's band, else the track's」
+    // (`selectionBlockStartsByLayer`). The S rows it sweeps number no
+    // drawings, so it numbers none: never a redirect onto the active row.
+    if (_selection.trackFrameRangeSelection.value != null) {
+      return const [];
+    }
     return [?_fromThePlayhead(_selection.activeLayer)];
   }
 

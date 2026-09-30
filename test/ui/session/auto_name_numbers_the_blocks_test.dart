@@ -8,6 +8,7 @@ import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
+import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/services/project_lookup.dart' show requireLayer;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/block_naming.dart';
@@ -204,6 +205,21 @@ void main() {
       endIndexExclusive: 22,
     );
     expect(namingOf(s).timelineTargets, isNull, reason: 'an empty band');
+
+    s.frameRangeSelection.value = null;
+    expect(namingOf(s).timelineTargets, isNotNull, reason: '⛔전제');
+    final track = s.activeTrack.id;
+    s.trackFrameRangeSelection.value = TrackFrameRangeSelection(
+      trackId: track,
+      anchorRow: TrackRowAddress(track),
+      startFrame: 0,
+      endFrameExclusive: 2,
+    );
+    expect(
+      namingOf(s).timelineTargets,
+      isNull,
+      reason: 'a band on the TRACK axis claims it too, as 링크 독립\'s does',
+    );
   });
 
   test('targets-Q1: a band across the SE, direction and image rows numbers '
