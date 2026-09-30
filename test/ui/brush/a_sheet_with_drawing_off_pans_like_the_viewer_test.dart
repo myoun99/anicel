@@ -195,12 +195,15 @@ void main() {
           expect(h.emitted, isEmpty);
         });
 
-        testWidgets('${kind.name}: a drag that leaves it pans from where it '
-            'left — and does not press it', (tester) async {
+        // 🗣️H53 (유저 2026-09-30): 「그냥 클릭한다=클릭, 드래그=바로스크롤」.
+        testWidgets('${kind.name}: a drag pans the moment it passes the touch '
+            'slop — inside the cell, from where it passed it — and does not '
+            'press it', (tester) async {
           final h = await pump(tester, drawing: false);
-          // From the middle (240, 120), 12 a step to the right: 252, 264,
-          // 276 — still inside — then 288, past the right edge at 280, where
-          // the pan starts, and on to 300 and 312.
+          // From the middle (240, 120), 12 a step to the right: 252 is a
+          // hand that wobbles; 264 is past the slop (18), where the pan
+          // starts — well inside the cell, whose right edge is 280 — and on
+          // to 276, 288, 300 and 312.
           final gesture = await tester.startGesture(
             tester.getCenter(find.byKey(cellKey)),
             kind: kind,
@@ -212,14 +215,14 @@ void main() {
           await gesture.up();
           await tester.pumpAndSettle();
           expect(h.pressed, isEmpty);
-          // The first view the pan gives is where the press left the cell
-          // — not a step past the press — and the last is 24 points
-          // further, in the view's device pixels.
-          expect(h.emitted, hasLength(3), reason: 'at 288, 300 and 312');
+          // The first view the pan gives is where the press passed the slop
+          // — not the press, so the view does not jump — and the last is 48
+          // points further, in the view's device pixels.
+          expect(h.emitted, hasLength(5), reason: 'at 264, 276 … 312');
           expect(
             h.emitted.last.panX - h.emitted.first.panX,
-            24 * tester.view.devicePixelRatio,
-            reason: '312 − 288',
+            48 * tester.view.devicePixelRatio,
+            reason: '312 − 264',
           );
           expect(h.emitted.last.panY, h.emitted.first.panY);
         });
@@ -253,7 +256,8 @@ void main() {
   // press as a pan: a press that left the cell is not the cell's, even
   // when it comes back inside to let go.
   testWidgets('a cell alone: a press that leaves it and comes back does not '
-      'press it — one that stays does', (tester) async {
+      'press it, nor one that goes past the slop inside it (H53) — one that '
+      'stays within the slop does', (tester) async {
     final pressed = <int>[];
     await tester.pumpWidget(
       MaterialApp(
@@ -286,11 +290,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(pressed, isEmpty);
 
+    // 30 across and 10 down, still inside the 80 × 40 cell: past the slop.
+    final dragged = await tester.startGesture(
+      const Offset(40, 20),
+      kind: PointerDeviceKind.mouse,
+    );
+    await dragged.moveTo(const Offset(70, 30));
+    await tester.pump();
+    await dragged.up();
+    await tester.pumpAndSettle();
+    expect(pressed, isEmpty);
+
     final stayed = await tester.startGesture(
       const Offset(40, 20),
       kind: PointerDeviceKind.mouse,
     );
-    await stayed.moveTo(const Offset(70, 30));
+    await stayed.moveTo(const Offset(50, 26));
     await tester.pump();
     await stayed.up();
     await tester.pumpAndSettle();

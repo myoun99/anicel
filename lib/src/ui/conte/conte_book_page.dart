@@ -203,8 +203,8 @@ class ConteBookPage extends StatelessWidget {
   /// horizontal camera move) the EARLIER cell is on top and takes the press,
   /// as the page-wide layer's first-match loop gave it.
   ///
-  /// A cell of the paper, not a button: a press that leaves the picture
-  /// pans, as one that leaves the cell's words does ([PressFire.upInsideOrPan],
+  /// A cell of the paper, not a button: a press that drags pans at once,
+  /// on the picture as on the cell's words ([PressFire.upInsideOrPan], H53 ·
   /// F-214 「픽쳐칸도 똑같음」).
   Positioned _cellTaps() {
     return Positioned.fill(

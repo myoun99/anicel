@@ -282,7 +282,7 @@ class _CanvasViewportGestureLayerState
   }
 
   /// A primary press this canvas would have panned but a control took at
-  /// its down — a cell's, until it leaves the cell
+  /// its down — a cell's, until the press turns into a drag
   /// ([PressFire.upInsideOrPan]).
   int? _heldByAControl;
 
@@ -300,10 +300,11 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
-    // The cell let go of the press as it left: it is this canvas's pan from
-    // here — the view does not jump for the way it came inside the cell.
-    // A move reaches the control below before this layer, so the claim is
-    // already gone on the move that left.
+    // The cell let go of the press as it turned into a drag: it is this
+    // canvas's pan from here — the view does not jump for the way it came
+    // before, as a scroller's drag starts where it was taken. A move
+    // reaches the control below before this layer, so the claim is already
+    // gone on the move that made it a drag.
     if (event.pointer == _heldByAControl &&
         !controlOwnsTap(event.pointer)) {
       _heldByAControl = null;

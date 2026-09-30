@@ -171,7 +171,7 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
       top: rect.top,
       width: rect.width,
       height: rect.height,
-      // A cell of the paper, not a button: a press that leaves it pans.
+      // A cell of the paper, not a button: a press that drags pans.
       child: PressFireScope(
         fireOn: PressFire.upInsideOrPan,
         child: ControlPressClaim(

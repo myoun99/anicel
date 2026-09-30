@@ -62,16 +62,25 @@ enum PressFire {
   upInside,
 
   /// A sheet's cell — pressed inside, released inside, as [upInside]; and
-  /// a press that LEAVES the cell is the canvas's: it pans from there, and
-  /// the cell does not act (F-214, 유저 2026-09-28: 「해당 칸 내에서
-  /// 펜업하면 창 열리게하고, 아니면 그냥 드래그 작동하도록. 픽쳐칸도
-  /// 똑같음」).
+  /// a press that goes further than the TOUCH SLOP from where it landed —
+  /// or out of the cell — is a drag, the canvas's: it pans from there at
+  /// once, and the cell does not act (유저 2026-09-30, H53: 「그냥
+  /// 클릭한다=클릭, 드래그=바로스크롤 … 그런 일반적으로 쓰는 규칙」 — the
+  /// common rule being the platform's: a tap is a press let go before the
+  /// slop, and there is no time limit to it).
   ///
   /// A cell is the paper itself, where a drag moves the view (F-80); it is
   /// claimed only so a hand that wobbles while it clicks still clicks (H24).
-  /// Where it LEAVES is the one question a click and a drag start both ask
-  /// ([pointerIsStillOn]) — no distance is compared. The sheet's layers
-  /// put their cells here through [PressFireScope].
+  /// ↩️F-214 (09-28: 「해당 칸 내에서 펜업하면 창 열리게하고, 아니면 그냥
+  /// 드래그 작동하도록」) let the pan start only once the press LEFT the
+  /// cell, comparing no distance — and a big cell held the view still for
+  /// the length of its picture.
+  ///
+  /// ⚠️The TOUCH slop whatever the pointer: a pen that reports as a mouse
+  /// wobbles like a finger (유저 2026-08-30: 「펜마우스만 그자리에서 손떼야
+  /// 작동함」), and a mouse's own pixel would turn its clicks into drags.
+  /// ⛔A cell's alone — a BUTTON still compares no distance (above). The
+  /// sheet's layers put their cells here through [PressFireScope].
   upInsideOrPan,
 }
 
@@ -247,7 +256,10 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
   /// ([[make-the-invariant-unrepresentable]]): pointer-down runs deepest
   /// first, so whoever finds [pressIsSpokenFor] still FALSE is the innermost,
   /// and everyone above it stands down for this press.
-  final Set<int> _mine = <int>{};
+  ///
+  /// Each is kept with where it came down: how far a cell's press has gone
+  /// is what makes it a drag ([PressFire.upInsideOrPan]).
+  final Map<int, Offset> _mine = <int, Offset>{};
 
   bool _releasedInside(Offset position) {
     // A control that left the tree while it was held — a playback view that
@@ -262,6 +274,8 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
   @override
   Widget build(BuildContext context) {
     final fireOn = PressFireScope.of(context);
+    final slop =
+        MediaQuery.maybeGestureSettingsOf(context)?.touchSlop ?? kTouchSlop;
     return RawGestureDetector(
       behavior: HitTestBehavior.deferToChild,
       gestures: _absorbingPair(_VerbKnown.byTheFirstMove),
@@ -272,27 +286,30 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
           if (!innermost) {
             return;
           }
-          _mine.add(event.pointer);
+          _mine[event.pointer] = event.position;
           if (fireOn == PressFire.down) {
             PressFireWatch.maybeOf(context)?.call();
             widget.onPressed?.call();
           }
         },
-        // A cell's press that leaves the cell is the canvas's from here: let
-        // go of it — the canvas pans a primary press no control holds — and
-        // never act on it.
+        // A cell's press that turns into a drag is the canvas's from here:
+        // let go of it — the canvas pans a primary press no control holds —
+        // and never act on it. A drag is a press gone past the touch slop
+        // from where it landed, or out of the cell ([PressFire.upInsideOrPan]).
         onPointerMove: fireOn != PressFire.upInsideOrPan
             ? null
             : (event) {
-                if (_mine.contains(event.pointer) &&
-                    !_releasedInside(event.position)) {
+                final down = _mine[event.pointer];
+                if (down != null &&
+                    ((event.position - down).distance > slop ||
+                        !_releasedInside(event.position))) {
                   _mine.remove(event.pointer);
                   releaseTapForControl(event.pointer);
                 }
               },
         onPointerUp: (event) {
           releaseTapForControl(event.pointer);
-          if (!_mine.remove(event.pointer)) {
+          if (_mine.remove(event.pointer) == null) {
             return;
           }
           // 🚨A PRESS SOMETHING TURNED INTO A DRAG VERB IS NOT A CLICK (H24,
