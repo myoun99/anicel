@@ -1011,6 +1011,11 @@ enum AppStrings {
   String get panelMediaViewerSub => _s('panelMediaViewerSub');
   String get panelOnionSkin => _s('panelOnionSkin');
   String get panelToolSize => _s('panelToolSize');
+  /// 🗣️F-76 (유저 2026-09-11): 「콘티패널은 지금의 스토리보드패널을
+  /// 콘티패널로 명명하고, 기존 콘티패널은 알기쉽게 콘티 프리뷰 패널이나 콘티
+  /// 용지 패널? 이거는 이름은 제안해주도록」 — F-76-Q1 (09-30): 「콘티 용지」.
+  /// Until then the two panels shared one Korean name. The code names follow
+  /// separately (storyboard → conte, conte → conteSheet).
   String get panelStoryboard => _s('panelStoryboard');
   String get panelTimeline => _s('panelTimeline');
   String get panelTimesheet => _s('panelTimesheet');
@@ -2211,10 +2216,10 @@ enum AppStrings {
     'panelMedia': 'Media',
     'panelOnionSkin': 'Onion skin',
     'panelToolSize': 'Tool size',
-    'panelStoryboard': 'Storyboard',
+    'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Timesheet',
-    'panelConte': 'Conte',
+    'panelConte': 'Conte Sheet',
     'panelEnvelope': 'Envelope',
     'commonRegister': 'Register',
     'commonNameField': 'Name',
@@ -3433,10 +3438,10 @@ enum AppStrings {
     'panelMedia': 'メディア',
     'panelOnionSkin': 'オニオンスキン',
     'panelToolSize': 'ツールサイズ',
-    'panelStoryboard': '絵コンテ',
+    'panelStoryboard': 'コンテ',
     'panelTimeline': 'タイムライン',
     'panelTimesheet': 'タイムシート',
-    'panelConte': 'コンテ',
+    'panelConte': 'コンテ用紙',
     'panelEnvelope': 'エンベロープ',
     'commonRegister': '登録',
     'commonNameField': '名前',
@@ -4782,7 +4787,7 @@ enum AppStrings {
     'panelStoryboard': '콘티',
     'panelTimeline': '타임라인',
     'panelTimesheet': '타임시트',
-    'panelConte': '콘티',
+    'panelConte': '콘티 용지',
     'panelEnvelope': '엔벨로프',
     'commonRegister': '등록',
     'commonNameField': '이름',
@@ -6160,10 +6165,10 @@ enum AppStrings {
     'panelMedia': 'Médias',
     'panelOnionSkin': "Pelure d'oignon",
     'panelToolSize': 'Taille de l\'outil',
-    'panelStoryboard': 'Storyboard',
+    'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Feuille de temps',
-    'panelConte': 'Conte',
+    'panelConte': 'Feuille de conte',
     'panelEnvelope': 'Enveloppe',
     'commonRegister': 'Enregistrer',
     'commonNameField': 'Nom',
@@ -7499,7 +7504,7 @@ enum AppStrings {
     'panelStoryboard': '分镜',
     'panelTimeline': '时间轴',
     'panelTimesheet': '摄影表',
-    'panelConte': '分镜稿',
+    'panelConte': '分镜用纸',
     'panelEnvelope': '包络',
     'commonRegister': '注册',
     'commonNameField': '名称',
