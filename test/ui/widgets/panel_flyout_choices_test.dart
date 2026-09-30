@@ -57,9 +57,11 @@ void main() {
         <String?>[null, 'a', 'b']
             .asFlyoutValueChoices(
               current: current,
-              keyOf: (value) => 'probe-${value ?? 'none'}',
-              labelOf: (value) => value ?? 'None',
-              iconOf: (value) => value == 'b' ? Icons.star : null,
+              choiceOf: (value) => PanelFlyoutChoice(
+                key: 'probe-${value ?? 'none'}',
+                label: value ?? 'None',
+                icon: value == 'b' ? Icons.star : null,
+              ),
               onPicked: (value) => picked = value,
             )
             .cast<PanelFlyoutItem>();

@@ -1452,8 +1452,10 @@ class _ProjectTabOverflow extends StatelessWidget {
       // ⛔NOT a check: the open one accents, as a tab does.
       entriesBuilder: () => hidden.asFlyoutValueChoices(
         current: active,
-        keyOf: (session) => 'project-tab-overflow-${sessions.indexOf(session)}',
-        labelOf: (session) => projectTabLabel(projects, session),
+        choiceOf: (session) => PanelFlyoutChoice(
+          key: 'project-tab-overflow-${sessions.indexOf(session)}',
+          label: projectTabLabel(projects, session),
+        ),
         onPicked: projects.activate,
       ),
       child: Center(

@@ -178,10 +178,22 @@ extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
     required ValueChanged<T> onPicked,
   }) => asFlyoutValueChoices(
     current: current,
-    keyOf: (value) => '$keyPrefix${value.name}',
-    labelOf: labelOf,
+    choiceOf: (value) => PanelFlyoutChoice(
+      key: '$keyPrefix${value.name}',
+      label: labelOf(value),
+    ),
     onPicked: onPicked,
   );
+}
+
+/// How a picker shows one value: the key its row is found by, the words it
+/// reads, and the glyph it wears when it has one.
+class PanelFlyoutChoice {
+  const PanelFlyoutChoice({required this.key, required this.label, this.icon});
+
+  final String key;
+  final String label;
+  final IconData? icon;
 }
 
 /// One [PanelFlyoutItem] per value, the one equal to [current] marked as
@@ -197,7 +209,7 @@ extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
 /// Any value, not only an enum's (F-230, 유저 2026-09-29: 「선택하는 ui가
 /// 구식 ui 쓰는곳있는데 … 공용화된 ui 통일적용. 다른곳도 확인해서」): an audio
 /// device's name, a cut, an instruction definition are picked from the same
-/// list — they only name their own [keyOf], and may show an [iconOf].
+/// list — [choiceOf] names each one's key and words, and its glyph if any.
 ///
 /// 🚨CURRENT IS [PanelFlyoutItem.selected], NEVER [PanelFlyoutItem.checked].
 /// All six copies said `checked`, which drew a check glyph on the current
@@ -206,19 +218,18 @@ extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
 extension PanelFlyoutValueChoices<T> on Iterable<T> {
   List<PanelFlyoutEntry> asFlyoutValueChoices({
     required T? current,
-    required String Function(T value) keyOf,
-    required String Function(T value) labelOf,
+    required PanelFlyoutChoice Function(T value) choiceOf,
     required ValueChanged<T> onPicked,
-    IconData? Function(T value)? iconOf,
   }) => [
     for (final value in this)
-      PanelFlyoutItem(
-        keyValue: keyOf(value),
-        label: labelOf(value),
-        icon: iconOf?.call(value),
-        selected: value == current,
-        onSelected: () => onPicked(value),
-      ),
+      if (choiceOf(value) case final choice)
+        PanelFlyoutItem(
+          keyValue: choice.key,
+          label: choice.label,
+          icon: choice.icon,
+          selected: value == current,
+          onSelected: () => onPicked(value),
+        ),
   ];
 }
 

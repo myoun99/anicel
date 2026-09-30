@@ -1265,10 +1265,12 @@ List<PanelFlyoutEntry> layerTakeFlyoutEntries({
   ...LayerMark.takeChoices,
 ].asFlyoutValueChoices(
   current: selectedTake,
-  keyOf: (take) => 'layer-take-option-${take ?? 'latest'}',
-  labelOf: (take) => take == null
-      ? AppText.strings.exTakeLatest
-      : AppText.strings.tlLayerTakeNumber(take),
+  choiceOf: (take) => PanelFlyoutChoice(
+    key: 'layer-take-option-${take ?? 'latest'}',
+    label: take == null
+        ? AppText.strings.exTakeLatest
+        : AppText.strings.tlLayerTakeNumber(take),
+  ),
   onPicked: onSelected,
 );
 

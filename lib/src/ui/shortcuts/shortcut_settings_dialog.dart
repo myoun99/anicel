@@ -278,11 +278,12 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                 <TouchGesture?>[null, ...TouchGesture.values]
                     .asFlyoutValueChoices(
                       current: touchGesture,
-                      keyOf: (gesture) =>
-                          'shortcut-touch-${definition.id}-'
-                          '${gesture?.name ?? 'none'}',
-                      labelOf: (gesture) =>
-                          gesture?.label ?? AppText.strings.commonNone,
+                      choiceOf: (gesture) => PanelFlyoutChoice(
+                        key:
+                            'shortcut-touch-${definition.id}-'
+                            '${gesture?.name ?? 'none'}',
+                        label: gesture?.label ?? AppText.strings.commonNone,
+                      ),
                       onPicked: (gesture) => widget.bindings.setTouchGesture(
                         definition.id,
                         gesture,

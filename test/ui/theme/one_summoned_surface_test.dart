@@ -84,9 +84,12 @@ void main() {
 
     // 🚨계측기를 먼저 의심한다: a scan that matched no files would report
     // 「위반 없음」 for the emptiest of reasons.
+    //
+    // ↓25 → 23 on 2026-09-30 (F-230): two files summoned nothing but a
+    // framework dropdown's menu, and every picker is the shared flyout now.
     expect(
       scanned,
-      greaterThanOrEqualTo(25),
+      greaterThanOrEqualTo(23),
       reason: '창을 부르는 파일을 못 찾았다 — 스캔이 빈 것을 쟀다',
     );
     expect(

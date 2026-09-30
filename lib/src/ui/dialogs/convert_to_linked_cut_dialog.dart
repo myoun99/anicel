@@ -74,9 +74,10 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
               expand: true,
               entriesBuilder: () => widget.candidates.asFlyoutValueChoices(
                 current: target,
-                keyOf: (candidate) =>
-                    'convert-linked-cut-target-${candidate.id.value}',
-                labelOf: (candidate) => candidate.name,
+                choiceOf: (candidate) => PanelFlyoutChoice(
+                  key: 'convert-linked-cut-target-${candidate.id.value}',
+                  label: candidate.name,
+                ),
                 onPicked: (candidate) =>
                     setState(() => _targetCutId = candidate.id),
               ),

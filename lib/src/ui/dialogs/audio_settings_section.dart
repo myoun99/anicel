@@ -78,10 +78,12 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 if (selected != null && !names.contains(selected)) selected,
               ].asFlyoutValueChoices(
                 current: selected,
-                keyOf: (name) => name == null
-                    ? '$keyValue-system-default'
-                    : '$keyValue-device-$name',
-                labelOf: labelOf,
+                choiceOf: (name) => PanelFlyoutChoice(
+                  key: name == null
+                      ? '$keyValue-system-default'
+                      : '$keyValue-device-$name',
+                  label: labelOf(name),
+                ),
                 onPicked: onChanged,
               ),
         ),

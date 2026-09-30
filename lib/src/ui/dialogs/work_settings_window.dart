@@ -207,9 +207,10 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
               for (final asset in widget.pictures) asset.path,
             ].asFlyoutValueChoices(
               current: path,
-              keyOf: (value) =>
-                  'work-settings-picture-${picture.name}-${value ?? 'none'}',
-              labelOf: labelOf,
+              choiceOf: (value) => PanelFlyoutChoice(
+                key: 'work-settings-picture-${picture.name}-${value ?? 'none'}',
+                label: labelOf(value),
+              ),
               onPicked: (value) => setState(() => _pictures[picture] = value),
             ),
       ),

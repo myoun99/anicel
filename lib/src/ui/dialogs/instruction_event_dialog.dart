@@ -164,9 +164,11 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
               entriesBuilder: () =>
                   widget.instructionSet.defs.asFlyoutValueChoices(
                     current: picked,
-                    keyOf: (def) => 'instruction-option-${def.id}',
-                    labelOf: (def) => def.name,
-                    iconOf: (def) => instructionIconFor(def.iconKey),
+                    choiceOf: (def) => PanelFlyoutChoice(
+                      key: 'instruction-option-${def.id}',
+                      label: def.name,
+                      icon: instructionIconFor(def.iconKey),
+                    ),
                     onPicked: (def) => setState(() => _instructionId = def.id),
                   ),
             ),
