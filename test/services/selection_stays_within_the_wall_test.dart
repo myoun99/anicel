@@ -176,6 +176,17 @@ void main() {
       expect(ringMask(taken.clippedTo(wall)!), ringMask(before));
     });
 
+    test('a selection that STARTED past the wall drops out, and what was '
+        'added after it starts the selection', () {
+      // The fold empties where its first outline vanishes, and the next
+      // surviving 추가 has nothing before it — so it lands as a 갱신.
+      final startedPast = CanvasSelectionRegion.shape(
+        past,
+      ).combinedWith(rect(5, 5, 20, 20), SelectionCombineMode.add)!;
+
+      expect(startedPast.clippedTo(wall), before);
+    });
+
     test('선택중 with it leaves nothing — even from a selection that '
         'reached past the wall itself', () {
       // Kept from a larger cut's wall: the cut is not asked of it until a
