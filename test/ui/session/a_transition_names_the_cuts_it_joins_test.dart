@@ -169,6 +169,15 @@ void main() {
         'c305',
         reason: 'a rename next door reprints the sheet of the cut it joins',
       );
+
+      // The notation language switched: nothing on the track changes, only
+      // the word the O.L prints — which is what the sheet's memo is keyed on.
+      s.setLanguageSettings(
+        s.languageSettings.value.copyWith(notationLanguage: AppLanguage.ko),
+      );
+      s.notifyChanged();
+      await tester.pumpAndSettle();
+      expect(olCells(printed(tester), s).start.label, '컷O.L.');
     });
   });
 
