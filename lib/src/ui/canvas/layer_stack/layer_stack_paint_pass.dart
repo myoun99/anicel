@@ -884,30 +884,27 @@ class _LayerStackPaintPass {
           // safety-net walk (rasterScale = the device scale) draws the
           // level its residual leaves.
           level: displayLevelOf(rasterScale),
+          // 🚨TS1: the selection's FLOAT belongs here, right on top of
+          // the surface it was lifted out of and UNDER everything
+          // above that row. Drawn inside this slot's clip and its
+          // effects/opacity buffer, because the pixels are that
+          // layer's pixels — 유저 확정 A: 「프리뷰는 원래 그런거」, so a
+          // half-opacity row previews a transform at half opacity,
+          // which is what the commit will look like.
+          //
+          // ⚠️Inside the POSE wrap as well (the whole switch is) — and the
+          // float is CANVAS space, so for a posed row the wrap is undone
+          // for it ([_slotFromCanvas]). ↩️It used to ride the wrap, which
+          // was right only while the lift took canvas coordinates as the
+          // row's own and moved the wrong pixels (a-marquee-on-a-posed-row).
+          //
+          // ↩️F-240: it is handed to the surface's own paint rather than
+          // drawn here after it — below 100% the surface draws level
+          // tiles, and a float laid over them 1:1 at `none` was sampled one
+          // pixel in two, so it looked sharper than what it landed as.
+          float: _painter.floatOverlay?.value,
+          floatToSlot: _slotFromCanvas,
         );
-      // 🚨TS1: the selection's FLOAT belongs here, right on top of
-      // the surface it was lifted out of and UNDER everything
-      // above that row. Drawn inside this slot's clip and its
-      // effects/opacity buffer, because the pixels are that
-      // layer's pixels — 유저 확정 A: 「프리뷰는 원래 그런거」, so a
-      // half-opacity row previews a transform at half opacity,
-      // which is what the commit will look like.
-      //
-      // ⚠️Inside the POSE wrap as well (the whole switch is) — and the
-      // float is CANVAS space, so for a posed row the wrap is undone
-      // for it ([_slotFromCanvas]). ↩️It used to ride the wrap, which
-      // was right only while the lift took canvas coordinates as the
-      // row's own and moved the wrong pixels (a-marquee-on-a-posed-row).
-      final float = _painter.floatOverlay?.value;
-      final intoSlot = _slotFromCanvas;
-      if (float != null && intoSlot != null) {
-        into.save();
-        into.transform(intoSlot.storage);
-        float.paintInto(into);
-        into.restore();
-      } else {
-        float?.paintInto(into);
-      }
       into.restore();
     }
 

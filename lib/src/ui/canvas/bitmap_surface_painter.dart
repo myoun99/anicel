@@ -15,6 +15,8 @@ import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'blends_in_place.dart';
 import 'display_resample.dart';
+import 'landing_preview.dart';
+import 'level_image.dart' show halvingPicture;
 import 'tile_origin.dart';
 import 'tile_picture_budget.dart';
 import 'tile_pyramid.dart';
@@ -295,13 +297,25 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// committed tiles are drawn as LEVEL TILES ([TilePyramid]), 1:1 in
   /// level pixels, and only a block no level tile can be made for yet
   /// falls back to its tiles under the caller's scale ([_LevelBlocks]).
-  void paintContentInto(Canvas canvas, {Paint? layerPaint, int level = 0}) =>
+  ///
+  /// [float] is a selection's lifted float, drawn over this surface's
+  /// coordinates — CANVAS space, so a caller drawing into a posed row hands
+  /// the canvas-to-row matrix as [floatToSlot].
+  void paintContentInto(
+    Canvas canvas, {
+    Paint? layerPaint,
+    int level = 0,
+    LandingPreview? float,
+    Matrix4? floatToSlot,
+  }) =>
       // Constructed PER PAINT: the pass keeps one paint's state in `late
       // final` fields, and a painter paints more than once.
       _SurfacePaintPass(this).paintContentInto(
         canvas,
         layerPaint: layerPaint,
         level: level,
+        float: float,
+        floatToSlot: floatToSlot,
       );
 
   /// The part of CANVAS space this paint can actually reach, read off the
