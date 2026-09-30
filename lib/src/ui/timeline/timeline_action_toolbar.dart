@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../models/app_frame_count_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../input/control_press_claim.dart';
 import '../../models/attached_mode.dart';
@@ -46,6 +47,13 @@ Future<void> showTimelineCommaCountDialog(
     context: context,
     builder: (context) => _CommaCountWindow(
       framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
+      // 🗣️I-24-open-entry-Q1 (유저 2026-10-01): 「마지막에 쓴 방식으로 연다」
+      // — the entry last switched to, kept as an app setting so a restart
+      // keeps it too.
+      entry: AppFrameCountSettings.settings.value.lastEntry,
+      onEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
+        AppFrameCountSettings(lastEntry: entry),
+      ),
     ),
   );
   if (comma != null && comma >= 1) {
@@ -60,9 +68,17 @@ Future<void> showTimelineCommaCountDialog(
 /// The N-comma window: the count typed as frames or as seconds+frames
 /// ([FrameCountField], I-24), popped as frames.
 class _CommaCountWindow extends StatefulWidget {
-  const _CommaCountWindow({required this.framesPerSecond});
+  const _CommaCountWindow({
+    required this.framesPerSecond,
+    required this.entry,
+    required this.onEntryChanged,
+  });
 
   final int framesPerSecond;
+
+  /// The entry the window opens on.
+  final FrameCountEntry entry;
+  final ValueChanged<FrameCountEntry> onEntryChanged;
 
   @override
   State<_CommaCountWindow> createState() => _CommaCountWindowState();
@@ -88,6 +104,8 @@ class _CommaCountWindowState extends State<_CommaCountWindow> {
         framesPerSecond: widget.framesPerSecond,
         onChanged: (count) => _count = count,
         onSubmitted: _apply,
+        initialEntry: widget.entry,
+        onEntryChanged: widget.onEntryChanged,
       ),
       actions: [
         AppWindowAction(

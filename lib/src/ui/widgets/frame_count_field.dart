@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_frame_count_settings.dart' show FrameCountEntry;
 import '../../models/project_frame_rate.dart';
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import 'app_window.dart';
 import 'pill_strip.dart';
-
-/// How a frame count is typed (I-24): as frames, or as seconds+frames.
-enum FrameCountEntry { frames, secondsPlusFrames }
 
 /// A count of frames, typed either way — the entry switch above, the field
 /// or fields under it.
@@ -31,6 +29,7 @@ class FrameCountField extends StatefulWidget {
     required this.onChanged,
     this.onSubmitted,
     this.initialEntry = FrameCountEntry.frames,
+    this.onEntryChanged,
   });
 
   /// `<keyPrefix>-field` (frames), `-seconds-field` and `-koma-field`
@@ -45,6 +44,10 @@ class FrameCountField extends StatefulWidget {
   final ValueChanged<int?> onChanged;
   final VoidCallback? onSubmitted;
   final FrameCountEntry initialEntry;
+
+  /// The entry the switch was just moved to — what a window remembers to
+  /// open on next time (I-24-open-entry).
+  final ValueChanged<FrameCountEntry>? onEntryChanged;
 
   @override
   State<FrameCountField> createState() => _FrameCountFieldState();
@@ -97,6 +100,7 @@ class _FrameCountFieldState extends State<FrameCountField> {
           _koma.text = '${split.frames}';
       }
     });
+    widget.onEntryChanged?.call(entry);
     _changed();
   }
 

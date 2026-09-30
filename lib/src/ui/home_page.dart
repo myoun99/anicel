@@ -19,6 +19,7 @@ import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_frame_count_settings_store.dart';
 import '../services/persistence/app_frame_grid_settings_store.dart';
 import '../services/persistence/app_onion_skin_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
@@ -185,6 +186,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     uiScaleStore: _unlessTesting(AppUiScaleStore.new),
     onionSkinSettingsStore: _unlessTesting(AppOnionSkinSettingsStore.new),
     frameGridSettingsStore: _unlessTesting(AppFrameGridSettingsStore.new),
+    frameCountSettingsStore: _unlessTesting(AppFrameCountSettingsStore.new),
   )..restore();
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();
