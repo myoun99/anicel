@@ -308,47 +308,45 @@ class FrameVerbs {
   /// mutating so the caller can offer to link instead (see [linkSelectedFrame]).
   /// SE rows are exempt from the collision rule — the same dialogue can
   /// legitimately repeat on a sheet, so duplicates just apply.
+  ///
+  /// The one-entry call of [TimelineController.nameFramesForLayer] — the
+  /// body 자동 이름 지정 names many drawings through (I-18).
   FrameId? renameSelectedFrame(String name) {
     final layer = _selection.activeLayer;
     final frame = selectedFrame;
     if (layer == null || frame == null || !canRenameFrameAtCurrentFrame) {
       return null;
     }
-
-    final allowDuplicateName = !layer.kind.celNameIsIdentity;
-    if (!allowDuplicateName) {
-      final conflictingFrameId = _controllers.timelineController
-          .conflictingFrameIdForRename(
-            layer: layer,
-            frameId: frame.id,
-            name: name,
-          );
-      if (conflictingFrameId != null) {
-        return conflictingFrameId;
+    final names = {frame.id: name};
+    if (layer.kind.celNameIsIdentity) {
+      final conflict = _controllers.timelineController.nameConflicts(
+        layer,
+        names,
+      )[frame.id];
+      if (conflict != null) {
+        return conflict;
       }
     }
-
-    _controllers.timelineController.renameFrameForLayer(
+    _controllers.timelineController.nameFramesForLayer(
       layerId: layer.id,
-      frameId: frame.id,
-      name: name,
-      allowDuplicateName: allowDuplicateName,
+      names: names,
     );
     _changes.notifyChanged();
     return null;
   }
 
+  /// Joins the selected frame onto [targetFrameId], the drawing holding
+  /// the name it was refused — [TimelineController.nameFramesForLayer]'s
+  /// one-entry join.
   void linkSelectedFrame(FrameId targetFrameId) {
     final layer = _selection.activeLayer;
     final frame = selectedFrame;
     if (layer == null || frame == null) {
       return;
     }
-
-    _controllers.timelineController.linkFrameForLayer(
+    _controllers.timelineController.nameFramesForLayer(
       layerId: layer.id,
-      sourceFrameId: frame.id,
-      targetFrameId: targetFrameId,
+      joins: {frame.id: targetFrameId},
     );
     _changes.notifyChanged();
   }

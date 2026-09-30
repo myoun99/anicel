@@ -409,21 +409,18 @@ void main() {
         'A1',
       );
 
-      final conflict = fixture.controller.conflictingFrameIdForRename(
-        layer: fixture.layer,
-        frameId: const FrameId('b'),
-        name: 'A1',
-      );
-      expect(conflict, const FrameId('a'));
+      final conflicts = fixture.controller.nameConflicts(fixture.layer, {
+        const FrameId('b'): 'A1',
+      });
+      expect(conflicts, {const FrameId('b'): const FrameId('a')});
     });
 
-    test('linkFrameForLayer rewires uses and collects the orphaned source', () {
+    test('a join rewires uses and collects the orphaned source', () {
       final fixture = _fixture();
 
-      fixture.controller.linkFrameForLayer(
+      fixture.controller.nameFramesForLayer(
         layerId: _layerId,
-        sourceFrameId: const FrameId('a'),
-        targetFrameId: const FrameId('b'),
+        joins: {const FrameId('a'): const FrameId('b')},
       );
 
       final layer = fixture.layer;
@@ -441,7 +438,54 @@ void main() {
         2,
       );
     });
-  });
+
+    // I-18: a batch of names — 자동 이름 지정's one edit.
+    List<Frame> named(String a, String b) => [
+      Frame(id: const FrameId('a'), duration: 1, strokes: const [], name: a),
+      Frame(id: const FrameId('b'), duration: 1, strokes: const [], name: b),
+    ];
+
+    test('a name held INSIDE the batch is no conflict — 3 4 numbered from '
+        '4 reads 4 5, as ONE undo step', () {
+      final history = HistoryManager();
+      final fixture = _fixture(
+        frames: named('3', '4'),
+        historyManager: history,
+      );
+      final names = {const FrameId('a'): '4', const FrameId('b'): '5'};
+
+      expect(fixture.controller.nameConflicts(fixture.layer, names), isEmpty);
+      fixture.controller.nameFramesForLayer(layerId: _layerId, names: names);
+
+      expect([for (final frame in fixture.layer.frames) frame.name], [
+        '4',
+        '5',
+      ]);
+      expect(history.undoCount, 1, reason: 'ONE step');
+      history.undo();
+      expect([for (final frame in fixture.layer.frames) frame.name], [
+        '3',
+        '4',
+      ]);
+    });
+
+    test('a joined drawing takes no name: its blocks show the holder, and '
+        'the drawing nobody shows any more leaves the bank', () {
+      final fixture = _fixture(frames: named('2', '1'));
+
+      fixture.controller.nameFramesForLayer(
+        layerId: _layerId,
+        names: {const FrameId('a'): '1'},
+        joins: {const FrameId('a'): const FrameId('b')},
+      );
+
+      final layer = fixture.layer;
+      expect(layer.timeline[0]!.frameId, const FrameId('b'));
+      expect([for (final frame in layer.frames) frame.id], [
+        const FrameId('b'),
+      ]);
+      expect(layer.frames.single.name, '1');
+    });
 
   group('undo integration', () {
     test('every mutating op is a single undoable command', () {

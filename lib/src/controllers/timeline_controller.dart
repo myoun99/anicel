@@ -524,14 +524,18 @@ class TimelineController {
 
   bool canRenameFrameAt({required Layer layer, required int frameIndex}) =>
       _names.canRenameFrameAt(layer: layer, frameIndex: frameIndex);
-  FrameId? conflictingFrameIdForRename({
-    required Layer layer,
-    required FrameId frameId,
-    required String? name,
-  }) => _names.conflictingFrameIdForRename(
-    layer: layer,
-    frameId: frameId,
-    name: name,
+  Map<FrameId, FrameId> nameConflicts(
+    Layer layer,
+    Map<FrameId, String?> names,
+  ) => _names.nameConflicts(layer, names);
+  void nameFramesForLayer({
+    required LayerId layerId,
+    Map<FrameId, String?> names = const {},
+    Map<FrameId, FrameId> joins = const {},
+  }) => _names.nameFramesForLayer(
+    layerId: layerId,
+    names: names,
+    joins: joins,
   );
   void renameFrameForLayer({
     required LayerId layerId,
@@ -546,47 +550,6 @@ class TimelineController {
     allowDuplicateName: allowDuplicateName,
     seEntry: seEntry,
   );
-
-  void linkFrameForLayer({
-    required LayerId layerId,
-    required FrameId sourceFrameId,
-    required FrameId targetFrameId,
-  }) {
-    final before = _requireLayer(layerId);
-    _requireFrameInLayer(layer: before, frameId: sourceFrameId);
-    _requireFrameInLayer(layer: before, frameId: targetFrameId);
-    if (sourceFrameId == targetFrameId) {
-      return;
-    }
-
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>();
-    for (final entry in before.timeline.entries) {
-      final exposure = entry.value;
-      if (exposure.isDrawing && exposure.frameId == sourceFrameId) {
-        nextTimeline[entry.key] = exposure.copyWith(frameId: targetFrameId);
-      } else {
-        nextTimeline[entry.key] = exposure;
-      }
-    }
-
-    var nextFrames = before.frames;
-    if (!bankLanesOf(layerId).exposes(sourceFrameId, lane: nextTimeline)) {
-      nextFrames = before.frames
-          .where((frame) => frame.id != sourceFrameId)
-          .toList(growable: false);
-    }
-
-    final after = before.copyWith(
-      frames: nextFrames,
-      timeline: nextTimeline,
-      audioClips: _audioClipsForFrames(before, nextFrames),
-    );
-    if (after == before) {
-      return;
-    }
-
-    _applyLayerEdit(before: before, after: after);
-  }
 
   // --- Comma adjustment (TVPaint-style edge shift) ------------------------------
 
