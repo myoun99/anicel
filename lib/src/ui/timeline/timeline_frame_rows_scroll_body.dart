@@ -591,7 +591,19 @@ class _TimelineFrameRowsScrollBodyState
     final rowKey = ValueKey<String>(
       'timeline-row-${row.layer.id}-${_rowKeySuffix(row)}',
     );
+    // 🚨F-244: the row's own size, laid FRESH on every build. It is what
+    // makes the tick layer's constraints tight — and a zoom step keeps the
+    // memo entry below while it moves the content extent, so a box inside
+    // the memo would hold the old width: the row cut short of its cells.
+    return SizedBox(
+      key: rowKey,
+      width: widget.totalFrameContentWidth,
+      height: timelineDisplayRowExtent(row, widget.metrics),
+      child: _layeredRow(row, rowKey.value),
+    );
+  }
 
+  Widget _layeredRow(TimelineDisplayRow row, String memoKey) {
     // A layer per row: one row's repaint (ink, hover, drags) never
     // re-rasterizes its neighbours, and the cursor layer above repaints
     // without touching the row layers at all. The gate inside makes an
@@ -600,28 +612,23 @@ class _TimelineFrameRowsScrollBodyState
     // boundary here held the paint in but not the layout: the step rebuilt in
     // the grid's layout scope, laid it out again and repainted the rows'
     // viewport around the one row that moved (a drag step is a tick:
-    // [TickLayer], which keeps a layout in only at the row's own size).
-    Widget buildGated() => SizedBox(
-      key: rowKey,
-      width: widget.totalFrameContentWidth,
-      height: timelineDisplayRowExtent(row, widget.metrics),
-      child: TickLayer(
-        child: TimelineDragPreviewRowGate(
-          dragPreview: widget.dragPreview,
-          layer: row.layer,
-          slice: row.isLane
-              ? (layer) => laneRowSlice(layer, row.lane!.laneId)
-              : null,
-          // R10: a FOLDER row is a cells row. Its band arrives as the display
-          // clone's own timeline, so it takes the shared painter, the shared
-          // press policy — the playhead can be put on it at last — and the
-          // tile bake, while staying non-editable for free: every edit
-          // affordance below gates on `LayerKind.holdsDrawings`, which a
-          // folder fails.
-          rowBuilder: (context, layer) => row.isLane
-              ? _buildLaneRow(row, layer)
-              : _buildCellsRow(layer, baseLayer: row.layer),
-        ),
+    // [TickLayer]).
+    Widget buildGated() => TickLayer(
+      child: TimelineDragPreviewRowGate(
+        dragPreview: widget.dragPreview,
+        layer: row.layer,
+        slice: row.isLane
+            ? (layer) => laneRowSlice(layer, row.lane!.laneId)
+            : null,
+        // R10: a FOLDER row is a cells row. Its band arrives as the display
+        // clone's own timeline, so it takes the shared painter, the shared
+        // press policy — the playhead can be put on it at last — and the
+        // tile bake, while staying non-editable for free: every edit
+        // affordance below gates on `LayerKind.holdsDrawings`, which a
+        // folder fails.
+        rowBuilder: (context, layer) => row.isLane
+            ? _buildLaneRow(row, layer)
+            : _buildCellsRow(layer, baseLayer: row.layer),
       ),
     );
 
@@ -653,12 +660,12 @@ class _TimelineFrameRowsScrollBodyState
       seAudioPeaks: ByList(_seAudioPeaksOf(row.layer)),
       showSeconds: widget.showSeconds,
     );
-    final cached = _rowMemo[rowKey.value];
+    final cached = _rowMemo[memoKey];
     if (cached != null && cached.inputs == inputs) {
       return cached.widget;
     }
     final built = buildGated();
-    _rowMemo[rowKey.value] = _RowMemoEntry(inputs: inputs, widget: built);
+    _rowMemo[memoKey] = _RowMemoEntry(inputs: inputs, widget: built);
     return built;
   }
 
