@@ -120,7 +120,8 @@ void main() {
   }
 
   testWidgets('the form prints every picture frame, on the rows a cut '
-      'reaches and the ones it does not', (tester) async {
+      'reaches and the ones it does not — black round a window of paper '
+      '(H52: 「그냥 그런거 규칙두지말고 흰색인채로」)', (tester) async {
     await tester.runAsync(() async {
       // One cut fills one row; four rows of the five stay empty.
       final (source, page) = sheet();
@@ -133,17 +134,24 @@ void main() {
       addTearDown(image.dispose);
 
       for (var row = 0; row < metrics.rowsPerPage; row += 1) {
-        final centre = Offset(
+        final y = metrics.rowTop(row) + metrics.rowHeight / 2;
+        final window = await pixelAt(
+          image,
           (metrics.pictureLeft + metrics.actionLeft) / 2,
-          metrics.rowTop(row) + metrics.rowHeight / 2,
+          y,
         );
-        final pixel = await pixelAt(image, centre.dx, centre.dy);
+        expect(window.$1, 255, reason: 'row $row: the window is paper');
+        expect(window.$4, 255, reason: 'row $row: and it is on the paper');
+        final frame = await pixelAt(
+          image,
+          metrics.pictureLeft + metrics.silhouetteBorder / 2,
+          y,
+        );
         expect(
-          pixel.$1,
-          lessThan(250),
-          reason: 'row $row: the picture well is toned, not bare paper',
+          frame.$1,
+          lessThan(64),
+          reason: 'row $row: inside the silhouette\'s black frame',
         );
-        expect(pixel.$4, 255, reason: 'row $row: and it is on the paper');
       }
     });
   });
