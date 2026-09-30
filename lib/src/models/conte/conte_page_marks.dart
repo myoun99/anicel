@@ -25,11 +25,13 @@ const int _ink = conteInkArgb;
 const double conteCellTextSize = 8.5;
 
 const int _rule = 0xFF404040;
-const int _paper = 0xFFFFFFFF;
 
-/// The tone inside a picture window — the well a panel is drawn into.
-/// Light enough that a drawing over it still reads as the drawing.
-const int _well = 0xFFEDEDED;
+/// The paper — inside a picture window too: an empty window, the canvas
+/// past a picture's edge and the slot of a cut not made yet are all paper
+/// (유저 2026-09-30, H52: 「빈곳? 밖공간이나 존재안하는컷의 코마가
+/// 회색표시인데, 그냥 그런거 규칙두지말고 흰색인채로」). ↩️A window had a
+/// grey well of its own (0xFFEDEDED), and each of those showed it.
+const int _paper = 0xFFFFFFFF;
 
 /// A block's own length: small and light, so the cut's total is the number
 /// that reads (유저 2026-09-25: 「컷 전체 길이를 눈에띄게 하고싶으니까
@@ -42,8 +44,13 @@ const int _blockLength = 0xFF8C8C8C;
 const int _cameraIn = 0xFF3B6D11;
 const int _cameraOut = 0xFFA32D2D;
 
-/// The trails a camera's corners draw, and the name of a key between.
-const int _cameraTrail = 0xFF5F5E5A;
+/// The name of a key between the first and the last.
+const int _cameraBetween = 0xFF5F5E5A;
+
+/// The trails a camera's corners draw: a key between's ink at half its
+/// strength (유저 2026-09-30, H47: 「꼭짓점 궤도 좀 더 연하게.(불투명도
+/// 낮추는방식)」) — every printer keeps the alpha, the PDF's too.
+const int _cameraTrail = 0x805F5E5A;
 
 const double _cameraFrameWidth = 1.2;
 const double _cameraTrailWidth = 0.8;
@@ -285,7 +292,7 @@ Iterable<SheetMark> _silhouette(ConteSheetMetrics m) sync* {
     yield SheetFill(
       SheetPaintLayer.form,
       rect: m.windowRect(row),
-      argb: _well,
+      argb: _paper,
     );
   }
 }
@@ -383,8 +390,8 @@ Rect contePictureSlot(ContePlacedCell cell, ConteSheetMetrics m) =>
 ///
 /// A cell whose camera moves shows the canvas that camera sweeps instead
 /// ([ConteCameraWork.field] — 유저 2026-09-29: 「일단 카메라 팬대로 해당
-/// 코마에서 보여주고」), at the plan's scale ([ConteCameraPlan.scale]) in
-/// the middle of its slot.
+/// 코마에서 보여주고」), at the plan's scale ([ConteCameraPlan.scale]) from
+/// the top of its slot — a slot its own size (H48: 「위쪽정렬로 배치」).
 SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) {
   final slot = contePictureSlot(cell, m);
   final work = cell.source.camera;
@@ -393,10 +400,11 @@ SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) {
     frame = containRect(Size(m.cameraAspect, 1), slot);
   } else {
     final scale = conteCameraPlan(m, work).scale;
-    frame = Rect.fromCenter(
-      center: slot.center,
-      width: work.field.width * scale,
-      height: work.field.height * scale,
+    frame = Rect.fromLTWH(
+      slot.left,
+      slot.top,
+      work.field.width * scale,
+      work.field.height * scale,
     );
   }
   return SheetPicture(
@@ -459,7 +467,7 @@ Iterable<SheetMark> conteCameraMarksOf(
     final argb = switch (key.role) {
       ConteCameraKeyRole.first => _cameraIn,
       ConteCameraKeyRole.last => _cameraOut,
-      ConteCameraKeyRole.between => _cameraTrail,
+      ConteCameraKeyRole.between => _cameraBetween,
     };
     if (key.role != ConteCameraKeyRole.between) {
       yield SheetStroke(
@@ -528,51 +536,36 @@ Iterable<SheetMark> _cell(
 }
 
 /// Camera work makes the cell ONE window over its rows and into the
-/// columns it claims ([conteCameraPlan]): the black it reaches beyond the
-/// column is its own, and so is the well that covers the bars between its
-/// rows.
+/// columns it claims ([conteCameraPlan]) — a box no larger than its
+/// picture, at the top of those rows (유저 2026-09-30, H48: 「칸은 2칸공간
+/// 차지하더라도 검은칸은 필요한 만큼만」). The picture column over the
+/// cell's rows turns paper, and the box stands on it: black round a window
+/// of paper, the picture's.
 Iterable<SheetMark> _cameraWork(
   ConteSheetMetrics m,
   ContePlacedCell cell,
 ) sync* {
-  final work = cell.source.camera;
-  if (work == null) return;
-  final plan = conteCameraPlan(m, work);
-  final picture = cell.pictureRect;
-  final encroaches = picture.right > m.actionLeft;
-  if (plan.pictureRows == 1 && !encroaches) return;
-  if (encroaches) {
-    yield SheetFill(
-      SheetPaintLayer.picture,
-      rect: Rect.fromLTRB(
-        m.actionLeft,
-        picture.top,
-        picture.right,
-        picture.bottom,
-      ),
-      argb: _ink,
-    );
-  }
+  if (cell.source.camera == null) return;
+  final box = cell.pictureRect;
+  yield* _pictureColumnPaper(
+    m,
+    box.top,
+    m.rowTop(cell.rowOnPage + cell.rowSpan),
+  );
+  yield SheetFill(SheetPaintLayer.picture, rect: box, argb: _ink);
   yield SheetFill(
     SheetPaintLayer.picture,
     rect: contePictureSlot(cell, m),
-    argb: _well,
+    argb: _paper,
   );
-  if (plan.wordsBelow) {
-    yield* _wordsRow(
-      m,
-      picture.bottom,
-      m.rowTop(cell.rowOnPage + cell.rowSpan),
-    );
-  }
 }
 
-/// The picture column of the row a cell's words moved down to, from [top]
-/// to [bottom]: no picture stands there, so it is paper, its sides ruled as
-/// the head rules the column — and its foot on the page's last row (유저
-/// 2026-09-30, the page drawn and taken: 「내려갈땐 다 같이
-/// 내려가도록하자」).
-Iterable<SheetMark> _wordsRow(
+/// The picture column from [top] to [bottom] where no window stands — the
+/// rows a camera cell's box leaves, and the row its words moved down to:
+/// paper, its sides ruled as the head rules the column, and its foot on
+/// the page's last row (유저 2026-09-30, the page drawn and taken:
+/// 「내려갈땐 다 같이 내려가도록하자」).
+Iterable<SheetMark> _pictureColumnPaper(
   ConteSheetMetrics m,
   double top,
   double bottom,

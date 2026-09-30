@@ -236,13 +236,21 @@ class _ContePdfPageWriter {
     _g.fillPath();
   }
 
-  /// A line, as the Canvas printer draws it.
+  /// A line, as the Canvas printer draws it — its alpha too: a PDF colour
+  /// is RGB alone, and a stroke's opacity is a state of the page's own
+  /// (a camera's trails, H47).
   void _stroke(SheetStroke stroke) {
     final points = stroke.points;
     if (points.length < 2) {
       return;
     }
-    _g.setStrokeColor(PdfColor.fromInt(stroke.argb));
+    final color = PdfColor.fromInt(stroke.argb);
+    final seeThrough = color.alpha < 1;
+    if (seeThrough) {
+      _g.saveContext();
+      _g.setGraphicState(PdfGraphicState(strokeOpacity: color.alpha));
+    }
+    _g.setStrokeColor(color);
     _g.setLineWidth(stroke.width);
     _g.setLineJoin(PdfLineJoin.miter);
     _g.moveTo(points.first.dx, _y(points.first.dy));
@@ -250,6 +258,9 @@ class _ContePdfPageWriter {
       _g.lineTo(point.dx, _y(point.dy));
     }
     _g.strokePath(close: stroke.closed);
+    if (seeThrough) {
+      _g.restoreContext();
+    }
   }
 
   void _contained(PdfImage image, ui.Rect slot) {

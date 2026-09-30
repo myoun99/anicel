@@ -90,6 +90,29 @@ void main() {
     }
   });
 
+  testWidgets('🗣️H47: the trails print see-through, as the page lays them — '
+      'the frames solid (유저 2026-09-30: 「꼭짓점 궤도 좀 더 연하게.(불투명도 '
+      '낮추는방식)」)', (tester) async {
+    final (pdf, _, _) = await printedOf(
+      tester,
+      conteCameraPan(across: 0.3, down: 0.5),
+    );
+    final strokes = pdfStrokes(pdf);
+    final trails = strokes.where((stroke) => !stroke.closed).toList();
+    expect(trails, hasLength(4), reason: 'fixture: four trails');
+    expect(
+      trails.map((trail) => trail.state),
+      everyElement(isNotNull),
+      reason: 'each stroked under a state of its own opacity',
+    );
+    expect(
+      strokes.where((stroke) => stroke.closed).map((frame) => frame.state),
+      everyElement(isNull),
+      reason: 'the frames in full',
+    );
+    expect(pdfStrokeOpacities(pdf), contains(closeTo(0x80 / 255, 1e-3)));
+  });
+
   testWidgets('a name turns with its frame, and a name on a square frame is '
       'not turned', (tester) async {
     const turn = math.pi / 6;

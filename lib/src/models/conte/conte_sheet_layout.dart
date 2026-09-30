@@ -165,7 +165,9 @@ class ContePlacedCell {
   final ConteCellSource source;
 
   /// The picture's box, thick black border and all — over more rows and
-  /// into the columns beside it when the camera works ([conteCameraPlan]).
+  /// into the columns beside it when the camera works ([conteCameraPlan]),
+  /// but only as far as the picture in it: the rows the cell takes are the
+  /// cell's, and what the box leaves of them is paper.
   final Rect pictureRect;
 
   /// The ACTION and DIALOGUE text boxes.
@@ -242,9 +244,13 @@ typedef ConteCameraPlan = ({
   /// The rows the picture takes.
   int pictureRows,
 
-  /// Where the picture's box ends on the right — the picture column's own
-  /// edge, or past it into the columns beside it.
+  /// Where the picture's box ends on the right, and how tall it is — the
+  /// picture and the silhouette's black round it, and not a row more (유저
+  /// 2026-09-30, H48: 「칸은 2칸공간 차지하더라도 검은칸은 필요한 만큼만」):
+  /// past the picture column's edge into the columns beside it, or short
+  /// of it.
   double pictureRight,
+  double pictureHeight,
 
   /// Whether the cell's words — ACTION, dialogue and its length — print on
   /// the row under the picture instead of beside it.
@@ -274,6 +280,7 @@ ConteCameraPlan conteCameraPlan(ConteSheetMetrics m, ConteCameraWork? work) {
     return (
       pictureRows: 1,
       pictureRight: m.actionLeft,
+      pictureHeight: m.rowHeight,
       wordsBelow: false,
       scale: 1,
     );
@@ -281,13 +288,12 @@ ConteCameraPlan conteCameraPlan(ConteSheetMetrics m, ConteCameraWork? work) {
   final screensTall = work.field.height / work.screen.height;
   final rows = (screensTall - 1e-9).ceil().clamp(1, conteCameraPictureRowsMax);
   final scale = _fieldScale(m, work, rows);
-  final right = math.max(
-    m.actionLeft,
-    m.pictureLeft + work.field.width * scale + 2 * m.silhouetteBorder,
-  );
+  final right =
+      m.pictureLeft + work.field.width * scale + 2 * m.silhouetteBorder;
   return (
     pictureRows: rows,
     pictureRight: right,
+    pictureHeight: work.field.height * scale + 2 * m.silhouetteBorder,
     wordsBelow: right >= m.dialogueLeft - 1e-9,
     scale: scale,
   );
@@ -555,11 +561,13 @@ List<ContePageLayout> layoutConteSheet(
           cutName: cut.name,
           cellIndex: index,
           source: cell,
+          // At the top of the cell's rows (유저 2026-09-30, H48:
+          // 「위쪽정렬로 배치」).
           pictureRect: Rect.fromLTRB(
             metrics.pictureLeft,
             top,
             plan.pictureRight,
-            metrics.rowTop(row + plan.pictureRows),
+            top + plan.pictureHeight,
           ),
           // The text runs to the page's foot: the columns have no
           // horizontal rules, so the next cell's anchor is what ends it.

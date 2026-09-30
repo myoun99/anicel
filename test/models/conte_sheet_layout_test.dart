@@ -1,3 +1,5 @@
+import 'dart:ui' show Size;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
@@ -249,10 +251,70 @@ void main() {
         _cell(0, 24, camera: conteCameraPan(down: 1)),
       ]).cells.single;
       expect(cell.rowSpan, 2);
-      expect(cell.pictureRect.bottom, closeTo(metrics.rowTop(2), 1e-9));
+      expect(
+        cell.pictureRect.height,
+        closeTo(2 * metrics.windowHeight + 2 * metrics.silhouetteBorder, 1e-9),
+        reason: 'two screens, and the black round them',
+      );
       expect(cell.pictureRect.right, closeTo(metrics.actionLeft, 1e-9));
       expect(cell.wordsTop, metrics.rowTop(0));
       expect(cell.actionRect.left, closeTo(metrics.actionLeft, 1e-9));
+    });
+
+    test('🗣️H48: the rows are the cell\'s and the black box only its '
+        'picture\'s, at the top of them — whatever shape the camera is (유저 '
+        '2026-09-30: 「칸은 2칸공간 차지하더라도 검은칸은 필요한 만큼만」 · '
+        '「위쪽정렬로 배치」 · 「카메라해상도는 유저가 마음껏 바꾸는거니까」)',
+        () {
+      for (final screen in const [
+        Size(1920, 1080),
+        Size(1440, 1080),
+        Size(1080, 1920),
+      ]) {
+        final shaped = ConteSheetMetrics(
+          cameraAspect: screen.width / screen.height,
+        );
+        final cell = layoutConteSheet(
+          ConteSheetSource(
+            cuts: [
+              _cut(
+                '0',
+                duration: 24,
+                cumulativeEnd: 24,
+                cells: [
+                  _cell(
+                    0,
+                    24,
+                    camera: conteCameraPan(down: 0.4, screen: screen),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          metrics: shaped,
+        ).first.cells.single;
+        final shape = '${screen.width} × ${screen.height}';
+        expect(cell.rowSpan, 2, reason: 'fixture: 1.4 screens ($shape)');
+        final box = cell.pictureRect;
+        expect(box.top, closeTo(shaped.rowTop(0), 1e-9), reason: shape);
+        expect(box.left, closeTo(shaped.pictureLeft, 1e-9), reason: shape);
+        expect(
+          box.height - 2 * shaped.silhouetteBorder,
+          closeTo(1.4 * shaped.windowHeight, 1e-9),
+          reason: 'as tall as its picture ($shape)',
+        );
+        expect(
+          box.right,
+          closeTo(shaped.actionLeft, 1e-9),
+          reason: 'a screen wide: the column, in the camera\'s shape ($shape)',
+        );
+        expect(
+          box.bottom,
+          lessThan(shaped.rowTop(2) - shaped.rowHeight / 4),
+          reason: 'the rest of its rows is not the box\'s ($shape)',
+        );
+        expect(cell.wordsTop, closeTo(shaped.rowTop(0), 1e-9), reason: shape);
+      }
     });
 
     test('however far it moves, its picture takes four rows at most — the '
@@ -268,6 +330,17 @@ void main() {
         work.field.height * plan.scale,
         closeTo(slot.height, 1e-9),
         reason: 'seven screens in four rows',
+      );
+      expect(
+        slot.width,
+        closeTo(work.field.width * plan.scale, 1e-9),
+        reason: 'and the box as wide as the picture laid smaller — short of '
+            'the column (H48: 「검은칸은 필요한 만큼만」)',
+      );
+      expect(
+        cell.pictureRect.right,
+        lessThan(metrics.actionLeft - 1),
+        reason: 'fixture: narrower than a screen',
       );
       expect(
         plan.scale,

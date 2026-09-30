@@ -70,6 +70,95 @@ void main() {
     return picture.frame.topLeft + (point - work.field.topLeft) * scale;
   }
 
+  /// The colour the last fill over [point] leaves: the strata bottom to
+  /// top, each one's marks in the order they print.
+  int? fillAt(List<SheetMark> marks, Offset point) {
+    int? seen;
+    for (final layer in SheetPaintLayer.values) {
+      for (final mark in marks) {
+        if (mark is SheetFill &&
+            mark.layer == layer &&
+            mark.rect.contains(point)) {
+          seen = mark.argb;
+        }
+      }
+    }
+    return seen;
+  }
+
+  test('🗣️H47: the corners\' trails print at half their ink, the frames in '
+      'full (유저 2026-09-30: 「꼭짓점 궤도 좀 더 연하게.(불투명도 '
+      '낮추는방식)」)', () {
+    final strokes = printed([
+      moving(conteCameraPan(across: 0.3, down: 0.5)),
+    ]).marks.whereType<SheetStroke>();
+    expect(
+      strokes.where((stroke) => !stroke.closed),
+      hasLength(4),
+      reason: 'fixture: four trails',
+    );
+    for (final stroke in strokes) {
+      expect(
+        stroke.argb >>> 24,
+        stroke.closed ? 0xFF : 0x80,
+        reason: stroke.closed ? 'a frame' : 'a trail',
+      );
+    }
+  });
+
+  test('🗣️H48: the rows a camera cell\'s box leaves are paper, and the box '
+      'is black round its picture at the top of its rows (유저 2026-09-30: '
+      '「칸은 2칸공간 차지하더라도 검은칸은 필요한 만큼만」 · 「위쪽정렬로 '
+      '배치」)', () {
+    final sheet = printed([moving(conteCameraPan(down: 0.4))]);
+    final box = sheet.page.cells.single.pictureRect;
+    final across = (metrics.pictureLeft + metrics.actionLeft) / 2;
+    final border = metrics.silhouetteBorder;
+    expect(
+      fillAt(sheet.marks, Offset(across, (box.bottom + metrics.rowTop(2)) / 2)),
+      0xFFFFFFFF,
+      reason: 'under the box, in the rows the cell takes: paper',
+    );
+    expect(
+      fillAt(sheet.marks, Offset(across, box.top + border / 2)),
+      conteInkArgb,
+      reason: 'the box\'s black, at the top of its rows',
+    );
+    expect(
+      fillAt(sheet.marks, Offset(across, box.bottom - border / 2)),
+      conteInkArgb,
+      reason: 'and closing under its picture',
+    );
+    final picture = sheet.marks.whereType<SheetPicture>().single;
+    expect(picture.frame.top, closeTo(box.top + border, 1e-9));
+    expect(picture.frame.bottom, closeTo(box.bottom - border, 1e-9));
+  });
+
+  test('🗣️H52: an empty window is paper — no grey well — and so is what a '
+      'picture leaves of its slot past its canvas (유저 2026-09-30: 「빈곳? '
+      '밖공간이나 존재안하는컷의 코마가 회색표시인데, 그냥 그런거 '
+      '규칙두지말고 흰색인채로」)', () {
+    final sheet = printed([still(), moving(conteCameraPan(down: 0.4))]);
+    expect(
+      fillAt(sheet.marks, metrics.windowRect(3).center),
+      0xFFFFFFFF,
+      reason: 'a row no cut stands in',
+    );
+    expect(
+      fillAt(sheet.marks, metrics.windowRect(0).center),
+      0xFFFFFFFF,
+      reason: 'under a still picture',
+    );
+    expect(
+      fillAt(
+        sheet.marks,
+        contePictureSlot(sheet.page.cells.last, metrics).center,
+      ),
+      0xFFFFFFFF,
+      reason: 'under a moving camera\'s picture',
+    );
+  });
+
   test('a camera that holds still writes nothing on its picture', () {
     final marks = printed([still()]).marks;
     expect(marks.whereType<SheetStroke>(), isEmpty);
@@ -201,6 +290,7 @@ void main() {
       'inside the corner its frame would have',
     );
     expect(between.argb, isNot(anyOf(green, red)));
+    expect(between.argb >>> 24, 0xFF, reason: 'a name in full ink (H47)');
   });
 
   test('every name stands inside its frame\'s top-left corner and turns with '
@@ -266,14 +356,16 @@ void main() {
   });
 
   test('where its words moved under it, the picture column of that row is '
-      'paper, ruled like the head — and footed on the page\'s last row', () {
+      'paper, ruled like the head — the column over all the cell\'s rows '
+      'is, its box standing on it — and footed on the page\'s last row', () {
     Iterable<SheetMark> wordsRowOf(List<SheetMark> marks, double top) =>
         marks.where(
           (mark) =>
               mark.layer == SheetPaintLayer.picture &&
               switch (mark) {
                 SheetFill(:final rect) || SheetRule(:final rect) =>
-                  rect.top >= top - 1e-9 && rect.right <= metrics.actionLeft,
+                  rect.bottom > top + 1e-9 &&
+                      rect.right <= metrics.actionLeft,
                 _ => false,
               },
         );
@@ -284,12 +376,23 @@ void main() {
       row.whereType<SheetFill>().single.rect,
       Rect.fromLTRB(
         metrics.pictureLeft,
-        metrics.rowTop(1),
+        metrics.rowTop(0),
         metrics.actionLeft,
         metrics.rowTop(2),
       ),
     );
     expect(row.whereType<SheetFill>().single.argb, 0xFFFFFFFF);
+    expect(
+      fillAt(
+        high.marks,
+        Offset(
+          (metrics.pictureLeft + metrics.actionLeft) / 2,
+          (metrics.rowTop(1) + metrics.rowTop(2)) / 2,
+        ),
+      ),
+      0xFFFFFFFF,
+      reason: 'the words\' row shows the paper',
+    );
     expect(
       row.whereType<SheetRule>().map((rule) => (rule.isUpright, rule.hold)),
       [(true, SheetRuleHold.near), (true, SheetRuleHold.far)],

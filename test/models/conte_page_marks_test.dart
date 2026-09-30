@@ -111,8 +111,8 @@ void main() {
 
     test('a picture fills the camera\'s frame in its slot: the whole slot in '
         'a window of the camera\'s shape — and where the camera moves, the '
-        'canvas it sweeps, a screen to a window, in the middle of the slot '
-        'its work made taller', () {
+        'canvas it sweeps, a screen to a window, in a slot its own size at '
+        'the top of its rows (H48)', () {
       // F-197: every printer and the pen read this one rect, so none of them
       // works out from a rendered picture's pixels where the picture is.
       // 유저 2026-09-29: 「일단 카메라 팬대로 해당 코마에서 보여주고」.
@@ -178,13 +178,15 @@ void main() {
       final window = laid.metrics.windowRect(0);
       expectSame(
         tall.frame,
-        Rect.fromCenter(
-          center: tall.slot.center,
-          width: window.width,
-          height: window.height * 2,
+        Rect.fromLTWH(
+          window.left,
+          laid.metrics.windowRect(1).top,
+          window.width,
+          window.height * 2,
         ),
-        'two screens tall at a window a screen, in the middle of the slot',
+        'two screens tall at a window a screen, from the top of its rows',
       );
+      expectSame(tall.slot, tall.frame, 'the slot is the picture\'s size');
     });
 
     test('the film\'s pictures — with the camera work written on them — are '
