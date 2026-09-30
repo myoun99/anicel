@@ -62,7 +62,7 @@ import 'timeline/timeline_drag_preview.dart'
         TimelineDragPreview,
         timelineDragPreviewGlobalLayerFor,
         timelineDragPreviewLayerFor;
-import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
+import '../models/layer.dart' show Layer;
 import '../services/layer_pose_matrix.dart'
     show LayerPoseSample, artworkToCanvas, canvasToArtwork;
 import '../models/canvas_point.dart';
@@ -77,6 +77,7 @@ import 'effective_device_pixel_ratio.dart';
 import 'timeline/transform_lane_policy.dart'
     show CanvasManipulator, canvasManipulatorsForLane;
 import 'repaint_props.dart';
+import 'session/editing_canvas.dart' show StrokeRefusal;
 
 part 'canvas_area/interactive_canvas_build.dart';
 
@@ -670,9 +671,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   // draw straight in the layer's own canvas space.
 
   /// R26 #35: WHY the paint press did nothing — a drawing row simply has
-  /// no cel at this frame; every other section cannot hold artwork at
-  /// all. One shared message table, so the wording stays consistent
-  /// wherever this refusal is reused.
+  /// no cel at this frame; a hidden one has it out of sight; every other
+  /// section cannot hold artwork at all. One shared message table, so the
+  /// wording stays consistent wherever this refusal is reused.
   String _drawRefusalFor(EditorSessionManager session) {
     final strings = AppStrings.of(
       session.languageSettings.value.programLanguage,
@@ -685,15 +686,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (!_rowAcceptsStrokes(session.standing.currentRowListenable.value)) {
       return strings.noticeLayerNotDrawable;
     }
-    final activeLayer = session.activeLayer;
     // R27 #16: the question is whether THIS LAYER takes strokes, not
     // which section it sits in — the CAM section is no longer uniformly
     // undrawable in the user's model, so the refusal names the layer
     // (media-REFERENCE layers included: strokes wait for a rasterize).
-    final drawable = activeLayer != null && layerAcceptsBrushInput(activeLayer);
-    return drawable
-        ? strings.noticeNoFrameHere
-        : strings.noticeLayerNotDrawable;
+    // F-242: and the answer is the stroke target's own, reason and all.
+    return switch (session.editingCanvas.activeRowStrokeRefusal) {
+      StrokeRefusal.notDrawable => strings.noticeLayerNotDrawable,
+      StrokeRefusal.hidden => strings.noticeLayerHidden,
+      null => strings.noticeNoFrameHere,
+    };
   }
 
   /// Whether the row the frame-axis verbs are on can take a stroke.
@@ -704,6 +706,21 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// brush has nothing to write on.
   static bool _rowAcceptsStrokes(TimelineRowAddress? row) =>
       row is! LaneRowAddress;
+
+  /// Whether the row you stand on takes a stroke — H19's ROW question, the
+  /// one a press and every pixel verb ask: not a property lane
+  /// ([_rowAcceptsStrokes]), and a layer the stroke target's own gates let
+  /// draw (`EditingCanvas.activeRowStrokeRefusal`).
+  ///
+  /// 🗣️F-223 (유저 2026-09-28): 「카메라 레이어에 서있을때 변형툴쓰면
+  /// 콘티그림?이 옮겨짐. 그림이 없으면 아무것도 안하는 로직인건데.」 The
+  /// camera row shows the first drawn row's cel so there is artwork to frame
+  /// (`Camera.cameraBackdropSelection`) — a cel it SHOWS, not one it stands
+  /// on — and this used to ask only 「is it a lane」, so the pixel verbs
+  /// took the borrowed cel for the row's own.
+  static bool _standingRowTakesStrokes(EditorSessionManager session) =>
+      _rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
+      session.editingCanvas.activeRowStrokeRefusal == null;
 
   void _noteCanvasProbe(
     EditorSessionManager session,
@@ -814,8 +831,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // 🚨F-196: the ROW first. `beginAutoFrameForStroke` asks the toggle and
     // the LAYER, never the row you stand on, so a press on a lane's empty
     // frame made a block on the layer beneath it and then drew into it —
-    // the stroke the lane refuses.
-    if (_rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
+    // the stroke the lane refuses. F-242: nor does it ask the eye, so a
+    // hidden row's empty frame got a block no stroke could draw into.
+    if (_standingRowTakesStrokes(session) &&
         session.autoFrame.beginAutoFrameForStroke()) {
       return true;
     }

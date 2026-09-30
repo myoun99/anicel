@@ -163,6 +163,10 @@ enum AppStrings {
   /// section is no longer uniformly undrawable in the user's model.
   String get noticeLayerNotDrawable => _s('noticeLayerNotDrawable');
 
+  /// F-242: a row that could be drawn on, with its eye (or a folder's above
+  /// it) off — its cel is there, only hidden.
+  String get noticeLayerHidden => _s('noticeLayerHidden');
+
   /// Synced attach rows look like blocks but own no timing — a grab
   /// redirects to the owner (the synced-block UI's cursor guidance).
   String get noticeEditAttachOwner => _s('noticeEditAttachOwner');
@@ -1711,6 +1715,7 @@ enum AppStrings {
     'noticeNoFrameHere': 'No frame here',
     'noticeNoConteLayer': 'This cut has no storyboard layer',
     'noticeLayerNotDrawable': 'This layer cannot be drawn on',
+    'noticeLayerHidden': 'This layer is hidden',
     'noticeEditAttachOwner': 'Edit the owner layer',
     'commonCancel': 'Cancel',
     'commonApply': 'Apply',
@@ -2831,6 +2836,7 @@ enum AppStrings {
     'noticeNoFrameHere': 'フレームがありません',
     'noticeNoConteLayer': 'このカットには絵コンテレイヤーがありません',
     'noticeLayerNotDrawable': 'このレイヤーには描けません',
+    'noticeLayerHidden': 'このレイヤーは非表示です',
     'noticeEditAttachOwner': '親レイヤーを編集してください',
     'commonCancel': 'キャンセル',
     'commonApply': '適用',
@@ -4179,6 +4185,7 @@ enum AppStrings {
     'noticeNoFrameHere': '프레임이 존재하지 않습니다',
     'noticeNoConteLayer': '콘티 레이어가 존재하지 않습니다',
     'noticeLayerNotDrawable': '드로잉이 허용되지 않은 레이어입니다',
+    'noticeLayerHidden': '숨김 상태인 레이어입니다',
     'noticeEditAttachOwner': '주인 레이어를 편집하세요',
     'commonCancel': '취소',
     'commonApply': '적용',
@@ -5522,6 +5529,7 @@ enum AppStrings {
     'noticeNoFrameHere': 'Aucune image ici',
     'noticeNoConteLayer': 'Ce plan n\'a pas de calque storyboard',
     'noticeLayerNotDrawable': 'Ce calque n\'accepte pas le dessin',
+    'noticeLayerHidden': 'Ce calque est masqué',
     'noticeEditAttachOwner': 'Modifiez le calque parent',
     'commonCancel': 'Annuler',
     'commonApply': 'Appliquer',
@@ -6940,6 +6948,7 @@ enum AppStrings {
     'noticeNoFrameHere': '此处没有帧',
     'noticeNoConteLayer': '该镜头没有分镜图层',
     'noticeLayerNotDrawable': '该图层不可绘制',
+    'noticeLayerHidden': '该图层已隐藏',
     'noticeEditAttachOwner': '请编辑父图层',
     'commonCancel': '取消',
     'commonApply': '应用',

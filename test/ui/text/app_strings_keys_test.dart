@@ -25,6 +25,7 @@ void main() {
     'noticeNoFrameHere': (s) => s.noticeNoFrameHere,
     'noticeNoConteLayer': (s) => s.noticeNoConteLayer,
     'noticeLayerNotDrawable': (s) => s.noticeLayerNotDrawable,
+    'noticeLayerHidden': (s) => s.noticeLayerHidden,
     'noticeEditAttachOwner': (s) => s.noticeEditAttachOwner,
     'commonCancel': (s) => s.commonCancel,
     'commonApply': (s) => s.commonApply,

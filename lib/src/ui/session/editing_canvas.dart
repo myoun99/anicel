@@ -265,15 +265,39 @@ class EditingCanvas {
   /// stack to stand, for the same reasons it gets no stroke.
   BrushEditorSelection? brushEditorSelectionFor(FrameId frameId) {
     final activeLayer = _selection.activeLayer;
-    if (activeLayer == null) {
+    if (activeLayer == null || activeRowStrokeRefusal != null) {
       return null;
     }
+    final cutId = _timeline.editingSession.activeCutId;
+    if (cutId == null) {
+      return null; // Gap state: no cut, no brush target.
+    }
+    return BrushEditorSelection(
+      projectId: _project.repository.requireProject().id,
+      trackId: _selection.selectedTrackId,
+      cutId: cutId,
+      layerId: activeLayer.id,
+      frameId: frameId,
+    );
+  }
+
+  /// WHY the active row takes no stroke — null when it takes one.
+  ///
+  /// 🗣️F-242 (유저 2026-09-29): 「그림 못그리는 이유 명확화. 지금 비지블off인
+  /// 프레임에서 그리려해도 프레임이 존재안한다고 뜨는데 그런부분 원인 제대로
+  /// 메시지 띄워주기」. The cursor notice chose its words from a second copy
+  /// of these gates that knew two answers — 「not drawable」 and 「no
+  /// frame」 — so a cel on a hidden row was reported MISSING. The gates are
+  /// asked here once: [brushEditorSelectionFor] refuses on any answer, and
+  /// the notice names the answer it got.
+  StrokeRefusal? get activeRowStrokeRefusal {
+    final activeLayer = _selection.activeLayer;
     // R6-④: SE/instruction cels are data rows — no editable brush target,
     // so the canvas never accepts strokes on them (the drawn stack still
     // composites them read-only). A media-REFERENCE layer (§6-z23) shows
     // a library asset: no strokes until it is rasterized.
-    if (!layerAcceptsBrushInput(activeLayer)) {
-      return null;
+    if (activeLayer == null || !layerAcceptsBrushInput(activeLayer)) {
+      return StrokeRefusal.notDrawable;
     }
     // R4 #1: a hidden layer takes no strokes either — you would be drawing
     // into something the canvas doesn't show. Flip the eye back on (or use
@@ -286,20 +310,9 @@ class EditingCanvas {
     // row's own eye is how a stroke went on landing in a folder the user had
     // switched off.
     if (!_project.layers.rowVisible(activeLayer)) {
-      return null;
+      return StrokeRefusal.hidden;
     }
-
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return null; // Gap state: no cut, no brush target.
-    }
-    return BrushEditorSelection(
-      projectId: _project.repository.requireProject().id,
-      trackId: _selection.selectedTrackId,
-      cutId: cutId,
-      layerId: activeLayer.id,
-      frameId: frameId,
-    );
+    return null;
   }
 
   /// Rasterize (§6-f): the ONE verb for every derived-content layer.
@@ -342,4 +355,14 @@ class EditingCanvas {
     );
     _changes.notifyChanged();
   }
+}
+
+/// Why a row takes no stroke ([EditingCanvas.activeRowStrokeRefusal]).
+enum StrokeRefusal {
+  /// The row cannot hold a drawing at all — its kind takes no brush input,
+  /// or it shows a library asset that waits for a rasterize.
+  notDrawable,
+
+  /// The row can hold one, but its eye (or a folder's above it) is off.
+  hidden,
 }

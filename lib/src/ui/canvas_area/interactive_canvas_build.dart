@@ -299,8 +299,8 @@ class _InteractiveCanvasBuild {
       isCameraLayerActive: isCameraLayerActive,
     );
     return MainCanvasBrushHost(
-      rowAcceptsStrokes: _EditorCanvasAreaState._rowAcceptsStrokes(
-        session.standing.currentRowListenable.value,
+      rowAcceptsStrokes: _EditorCanvasAreaState._standingRowTakesStrokes(
+        session,
       ),
       // MERGED canvas: we own the live-stroke overlay, so the
       // layer stack can paint the active layer inside the
