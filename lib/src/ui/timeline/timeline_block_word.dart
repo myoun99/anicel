@@ -49,17 +49,18 @@ TimelineBlockWordSlot _slotIn(Size size, TimelineBlockWordCells place) {
   );
 }
 
-/// A built word's style as a [Text] resolves one: over the ambient
-/// [DefaultTextStyle] while it inherits, and scaled by the ambient text
-/// scaler.
-TextStyle _resolvedStyle(BuildContext context, TextStyle style) {
-  final merged = DefaultTextStyle.of(context).style.merge(style);
-  return merged.copyWith(
-    fontSize: MediaQuery.textScalerOf(
-      context,
-    ).scale(merged.fontSize ?? kDefaultFontSize),
-  );
-}
+/// A built word's style: over the ambient [DefaultTextStyle] while it
+/// inherits — and at its own size, whatever the OS text size.
+///
+/// 🗣️block-words-os-text-size-Q1 (유저 2026-09-30: 「블록 글자는 전부 안
+/// 따른다」): a block's word keeps one type at every zoom, and at every OS
+/// text size too — built or painted alike. ↩️The built ones followed the
+/// setting because the `Text` they replaced did (its default, not anyone's
+/// rule), so under a large text setting one row wrote its words at two
+/// sizes: a lane key's name, an SE name and an instruction's writing
+/// larger than the frame names and the koma beside them.
+TextStyle _resolvedStyle(BuildContext context, TextStyle style) =>
+    DefaultTextStyle.of(context).style.merge(style);
 
 /// A built word WRITTEN IN A LINE — a lane key's name, an instruction's
 /// writing along the timeline, an SE name on the sheet. It is set and laid

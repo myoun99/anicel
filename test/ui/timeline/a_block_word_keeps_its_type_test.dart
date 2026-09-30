@@ -388,6 +388,63 @@ void main() {
     );
   });
 
+  // 🗣️block-words-os-text-size-Q1 (유저 2026-09-30): 「블록 글자는 전부 안
+  // 따른다」 — the painted words never followed the OS text size, and the
+  // built ones do not either.
+  testWidgets('a word built as a widget keeps its type under the OS text '
+      'size, as a painted one does', (tester) async {
+    const style = TextStyle(fontSize: 10);
+    const place = (
+      axis: Axis.horizontal,
+      cells: 1,
+      cellIndex: 0,
+      growth: TimelineBlockWordGrowth.towardBlockEnd,
+      acrossAlignment: 0.0,
+    );
+    await tester.pumpWidget(
+      const MediaQuery(
+        data: MediaQueryData(textScaler: TextScaler.linear(1.5)),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 80,
+                height: 20,
+                child: TimelineBlockText(
+                  text: '12',
+                  style: style,
+                  place: place,
+                ),
+              ),
+              SizedBox(
+                width: 20,
+                height: 80,
+                child: TimelineBlockColumn(
+                  text: 'ドア',
+                  style: style,
+                  latinForm: VerticalLatinForm.upright,
+                  place: place,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    for (final word in [
+      tester.renderObject<RenderTimelineBuiltWord>(
+        find.byType(TimelineBlockText),
+      ),
+      tester.renderObject<RenderTimelineBuiltWord>(
+        find.byType(TimelineBlockColumn),
+      ),
+    ]) {
+      expect(word.style.fontSize, 10, reason: '${word.runtimeType}');
+    }
+  });
+
   // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」 — for a word a row
   // builds as a widget too, set by the painted word's own code.
   test('a word built as a widget gives up its letter gaps first', () {
