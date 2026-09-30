@@ -34,10 +34,14 @@ void main() {
   // product `CanvasShapeKind` warns about. Those ids answer through the words
   // they are composed of, which the key contract reads in every language
   // (`app_strings_keys_test`), so no table is asked for a row — and a row
-  // for one is reported below as a row nothing reads.
+  // for one is reported below as a row nothing reads. A blend action's name
+  // is composed the same way, from the blend's own (`blendModeActionLabel`,
+  // I-31).
   final composedIds = {
     for (final definition in editorActionDefinitions)
-      if (definition.toolPress is ShapeTilePress) definition.id,
+      if (definition.toolPress is ShapeTilePress ||
+          definition.blendMode != null)
+        definition.id,
   };
   final registryIds = editorActionDefinitions
       .map((definition) => definition.id)

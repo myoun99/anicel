@@ -1187,7 +1187,7 @@ class _BlendModeControl extends StatelessWidget {
         final blendOn = state.supports(ToolParameter.blend);
         // The ERASER tool fixes it to 消去/Erase — the eraser IS the erase
         // blend — and that is not a blend CHOICE, so the flyout stands down.
-        final toolLocked = state.tool == CanvasTool.eraser;
+        final toolLocked = state.blendIsFixed;
         final mode = state.activeBlendMode;
         if (toolLocked) {
           return SizedBox(

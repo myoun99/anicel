@@ -840,6 +840,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
       return;
     }
+    // 🗣️I-31: a blend action picks what the strip's blend chooser picks, and
+    // only where that chooser can — a tool that composites nothing keeps the
+    // brush's blend untouched, and the eraser stays the erase blend.
+    if (definition?.blendMode case final mode?) {
+      final state = _brushTool.value;
+      if (state.blendIsAChoice) {
+        _brushTool.value = state.withActiveBlendMode(mode);
+      }
+      return;
+    }
     switch (actionId) {
       // 🗣️F-241 (유저 2026-09-29): 「이전/다음 프레임, 이전/다음 블록, 위/아래
       // 레이어 이렇게 개편」 — the six moves are MEANINGS. Which way the

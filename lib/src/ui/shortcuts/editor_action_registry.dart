@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/app_language.dart';
+import '../../models/brush_blend_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../brush/brush_tool_state.dart' show CanvasTool, canvasToolRailGroup;
 import '../brush/tool_press.dart';
 import '../brush/transform_tool_options.dart' show TransformMode;
 import '../text/app_strings.dart' show AppStrings;
+import '../text/model_vocabulary.dart' show BrushBlendModeWords;
 
 /// The single shortcut intent: every editor action dispatches through ONE
 /// intent type carrying its [actionId], so the app mounts exactly one
@@ -35,6 +37,7 @@ class EditorActionDefinition {
     this.zoomsView = false,
     this.toolPress,
     this.pixelVerb,
+    this.blendMode,
     this.readsTheSheet = false,
   });
 
@@ -78,6 +81,14 @@ class EditorActionDefinition {
   /// 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
   /// 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야」.
   final CelPixelVerb? pixelVerb;
+
+  /// The blend mode a BLEND action picks for the tool in hand, or null.
+  ///
+  /// 🗣️I-31 (유저 2026-09-14): 「도구의 블렌드모드(브러시나 채우기나)내용
+  /// 숏컷으로서 등록. 컬러,비하인드 등 리스트 전부」. It picks what the
+  /// strip's blend chooser picks, where that chooser can pick — see
+  /// `BrushToolState.blendIsAChoice`.
+  final BrushBlendMode? blendMode;
 
   /// A move on the sheet (F-241): its ARROW keys are written as the timeline
   /// reads them, and on the X-sheet a pressed arrow is turned to the
@@ -131,6 +142,47 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
       toolPress: ShapeTilePress(verb, shape),
     ),
 ];
+
+/// The tool blend modes as actions, one per [BrushBlendMode] — the strip's
+/// blend chooser, in its order.
+///
+/// 🗣️I-31: 「그리고 위에서부터 순서대로 F1부터 F12까지 등록할수있는만큼
+/// 초기값으로서 숏컷 등록」 — the first twelve get F1–F12, the rest none.
+///
+/// ★GENERATED from the list, like the shape tiles: a mode added to it
+/// arrives here with it, and its name is composed from the mode's own
+/// ([blendModeActionLabel]), so no table names a mode twice.
+List<EditorActionDefinition> _blendModeActions() => [
+  for (final (index, mode) in BrushBlendMode.values.indexed)
+    EditorActionDefinition(
+      id: 'tool-blend-${mode.name}',
+      label: blendModeActionLabel(mode, AppLanguage.en),
+      category: 'Tools',
+      defaultActivators: [
+        if (index < _functionKeys.length) SingleActivator(_functionKeys[index]),
+      ],
+      blendMode: mode,
+    ),
+];
+
+const _functionKeys = [
+  LogicalKeyboardKey.f1,
+  LogicalKeyboardKey.f2,
+  LogicalKeyboardKey.f3,
+  LogicalKeyboardKey.f4,
+  LogicalKeyboardKey.f5,
+  LogicalKeyboardKey.f6,
+  LogicalKeyboardKey.f7,
+  LogicalKeyboardKey.f8,
+  LogicalKeyboardKey.f9,
+  LogicalKeyboardKey.f10,
+  LogicalKeyboardKey.f11,
+  LogicalKeyboardKey.f12,
+];
+
+/// A blend action's name — 「합성: 곱하기」, 「Blend: Multiply」.
+String blendModeActionLabel(BrushBlendMode mode, AppLanguage language) =>
+    '${AppStrings.of(language).brBlend}: ${mode.labelFor(language)}';
 
 /// Registry ids (referenced from dispatch and menu labels).
 abstract final class EditorActionIds {
@@ -561,6 +613,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyV)],
     toolPress: ToolTilePress(CanvasTool.cutStamp),
   ),
+  ..._blendModeActions(),
   const EditorActionDefinition(
     id: EditorActionIds.selectionDeselect,
     label: 'Deselect',

@@ -44,6 +44,9 @@ String editorActionLabel(String actionId) {
   if (definition.toolPress case ShapeTilePress(:final verb, :final shape)) {
     return shapeTileLabel(verb, shape);
   }
+  if (definition.blendMode case final mode?) {
+    return blendModeActionLabel(mode, AppText.language);
+  }
   return AppText.strings.shortcutLabel(actionId, definition.label);
 }
 
