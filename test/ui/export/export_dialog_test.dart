@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -194,19 +195,22 @@ void main() {
     await tester.pump();
   }
 
-  /// The preview [tab] shows in the face [family], its bytes.
+  /// The preview [tab] shows in the face [family], its bytes — of
+  /// [session], or of a fresh [exportSession].
   Future<List<int>> previewIn(
     WidgetTester tester, {
     required String tab,
     required String family,
+    EditorSessionManager? session,
   }) async {
     final state = await pumpDialog(
       tester,
-      exportSession(),
+      session ?? exportSession(),
       face: TextStyle(fontFamily: family),
       dialogKey: ValueKey<String>(
         'preview-$tab-$family-'
-        '${AppText.settings.value.notationLanguage.name}',
+        '${AppText.settings.value.notationLanguage.name}-'
+        '${session == null ? '' : identityHashCode(session)}',
       ),
     );
     await switchTab(tester, tab);
@@ -749,6 +753,34 @@ void main() {
       final bytes = File('${temp.path}/CUTCut.png').readAsBytesSync();
       expect(bytes.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
       expect(statusText(tester), 'Exported 1 sheet page.');
+    });
+
+    // export-sheet-lacks-transitions (2026-09-30): the panel printed an O.L
+    // and the のりしろ it asks for; the export gathered the sheet's inputs
+    // on its own and stopped short of both, so its sheet came out as if
+    // there were none.
+    testWidgets('an O.L across the cut\'s end prints on the exported sheet',
+        (tester) async {
+      Future<List<int>> sheetPrinted({required bool withOl}) {
+        final session = exportSession();
+        addTearDown(session.dispose);
+        if (withOl) {
+          session.transitions.updateTransitionInstructions({
+            1: const InstructionEvent(instructionId: 'ol', length: 2),
+          });
+        }
+        return previewIn(
+          tester,
+          tab: 'timesheet',
+          family: 'BIZ UDPGothic',
+          session: session,
+        );
+      }
+
+      expect(
+        await sheetPrinted(withOl: true),
+        isNot(await sheetPrinted(withOl: false)),
+      );
     });
 
     // 유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」 — the sheet

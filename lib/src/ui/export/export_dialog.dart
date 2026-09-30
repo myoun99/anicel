@@ -84,6 +84,7 @@ import '../../models/timesheet_document.dart';
 import '../../models/timesheet_words.dart';
 import '../timesheet/timesheet_document_painter.dart'
     show TimesheetDocumentLayout;
+import '../timesheet/cut_sheet_document.dart';
 import '../timesheet/timesheet_ink_layer.dart' show timesheetInkWindows;
 import '../timesheet/timesheet_words_in.dart';
 import '../widgets/app_window.dart';
@@ -908,13 +909,9 @@ class ExportDialogState extends State<ExportDialog> {
     if (cached != null && identical(cached.$1, cut)) {
       return cached;
     }
-    final document = TimesheetDocument.fromCut(
+    final document = cutSheetDocument(
+      _session,
       cut: cut,
-      projectName: _session.repository.requireProject().name,
-      fps: _session.projectSettings.projectFps,
-      info: _session.timesheetInfo,
-      instructionDefById: _session.camera.cameraInstructionSet.defById,
-      trackSeLayers: _session.activeTrack.seLayers,
       cutStartFrame: _trackStartOf(cut),
     );
     final layout = TimesheetDocumentLayout(document: document);

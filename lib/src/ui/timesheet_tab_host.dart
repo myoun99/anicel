@@ -19,6 +19,7 @@ import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
 import 'widgets/page_turn_strip.dart';
+import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
 import 'effective_device_pixel_ratio.dart';
@@ -147,13 +148,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     // PRINTS (F-229): an O.L writes the cuts it joins and the word of the
     // sheet's language, so a rename next door or a language switch
     // reprints.
-    final olWord = AppStrings.of(
-      session.languageSettings.value.notationLanguage,
-    ).tlTransitionCutOl;
     final transitionLayer = session.transitions.names.rowNamed(
       session.activeTrack,
       session.activeTrack.transitionLayer,
-      olWord: olWord,
+      olWord: sheetOlWord(session),
     );
     final cutStartFrame = at.startFrame;
     if (_document == null ||
@@ -175,29 +173,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       _documentProjectName = projectName;
       _documentFps = session.projectSettings.projectFps;
       _documentDataSheet = _dataSheet;
-      _document = TimesheetDocument.fromCut(
+      _document = cutSheetDocument(
+        session,
         cut: cut,
-        projectName: projectName,
-        fps: session.projectSettings.projectFps,
-        info: info,
-        instructionDefById: instructionSet.defById,
-        trackSeLayers: trackSeLayers,
         cutStartFrame: cutStartFrame,
-        transitionSpans: session.transitions.activeTrackTransitionSpans,
-        // D31: the transition row prints when its own timesheet flag is
-        // on — through the SESSION'S cut-view projection (one walk for
-        // the sheet and the cut timeline's row; spans re-keyed to this
-        // cut's local axis), MINUS the D26-refused crossing fades (the
-        // sheet prints only what applies — the row keeps them for the
-        // warning to sit on). Off = the slot stays blank form space,
-        // the camera column's own precedent.
-        transitionLayer: transitionLayer.onTimesheet
-            ? session.transitions.trackTransitionSheetLayerFor(
-                cutStart: cutStartFrame,
-                duration: cut.duration,
-                olWord: olWord,
-              )
-            : null,
         dataSheet: _dataSheet,
       );
       _layout = null;
