@@ -13,6 +13,7 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/media_reference.dart';
 import '../models/movie_cel.dart';
+import '../models/se_line_type.dart';
 import '../models/timeline_coverage.dart';
 import '../services/editing/cut_duplicate_helpers.dart' show duplicateFrameContent;
 import '../models/timeline_exposure.dart';
@@ -537,15 +538,13 @@ class TimelineController {
     required FrameId frameId,
     required String? name,
     bool allowDuplicateName = false,
-    String? seName,
-    bool updateSeName = false,
+    SeEntryFields? seEntry,
   }) => _names.renameFrameForLayer(
     layerId: layerId,
     frameId: frameId,
     name: name,
     allowDuplicateName: allowDuplicateName,
-    seName: seName,
-    updateSeName: updateSeName,
+    seEntry: seEntry,
   );
 
   void linkFrameForLayer({

@@ -47,8 +47,7 @@ class _TimelineFrameNames {
     required FrameId frameId,
     required String? name,
     bool allowDuplicateName = false,
-    String? seName,
-    bool updateSeName = false,
+    SeEntryFields? seEntry,
   }) {
     final before = _controller._requireLayer(layerId);
     _controller._requireFrameInLayer(layer: before, frameId: frameId);
@@ -64,19 +63,23 @@ class _TimelineFrameNames {
     }
 
     final normalizedName = normalizeFrameName(name);
-    final normalizedSeName = normalizeFrameName(seName);
     final nextFrames = before.frames
         .map(
-          (frame) => frame.id == frameId
-              ? (updateSeName
-                    // Name + SE speaker name land in the same edit — the SE
-                    // dialog commits both as ONE undo step.
-                    ? frame.copyWith(
-                        name: normalizedName,
-                        seName: normalizedSeName,
-                      )
-                    : frame.copyWith(name: normalizedName))
-              : frame,
+          (frame) => frame.id != frameId
+              ? frame
+              : switch (seEntry) {
+                  // The SE block's own fields land in the same edit as its
+                  // dialogue — the SE dialog commits them as ONE undo step.
+                  // ↩️It was a name plus an `updateSeName` flag; I-20's
+                  // delivery would have made that one flag answer for two
+                  // fields, so the fields travel as one record instead.
+                  (:final seName, :final seType) => frame.copyWith(
+                    name: normalizedName,
+                    seName: normalizeFrameName(seName),
+                    seType: seType,
+                  ),
+                  null => frame.copyWith(name: normalizedName),
+                },
         )
         .toList(growable: false);
     final after = before.copyWith(frames: nextFrames);

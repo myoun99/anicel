@@ -11,6 +11,7 @@ import 'dart:ui' show Offset, Rect, Size;
 
 import '../cut_id.dart';
 import '../frame_id.dart';
+import '../se_line_type.dart';
 
 /// One panel of a cut, as the sheet reads it.
 ///
@@ -130,6 +131,7 @@ class ConteDialogueLine {
     required this.startFrame,
     required this.text,
     this.speaker = '',
+    this.delivery = SeLineType.on,
   });
 
   /// Cut-LOCAL, clipped to the cut. A line that begins in an earlier cut
@@ -138,9 +140,22 @@ class ConteDialogueLine {
   final String text;
   final String speaker;
 
+  /// The line's delivery (I-20) — written after the speaker when the sheets
+  /// print it ([SeLineType.printsOnSheets]).
+  final SeLineType delivery;
+
   /// The sheet's own rendering: `speaker「line」`, the shape a Japanese
   /// conte's DIALOGUE column uses. An unnamed speaker prints the line bare.
-  String get printed => speaker.isEmpty ? text : '$speaker「$text」';
+  ///
+  /// 🗣️I-20-Q2 (유저 2026-09-30): 「콘티 대사 칸에도 찍는다 — 이름 뒤 괄호」 —
+  /// `speaker(OFF)「line」`, and only OFF · MONO (「ON일때는 … 콘티용지에는
+  /// 표시하지않음」). A delivery with no speaker still says whose voice it is
+  /// not: `(OFF)「line」`.
+  String get printed {
+    final said = delivery.printsOnSheets ? '(${delivery.label})' : '';
+    final who = '$speaker$said';
+    return who.isEmpty ? text : '$who「$text」';
+  }
 }
 
 /// One cut's row band on the sheet.

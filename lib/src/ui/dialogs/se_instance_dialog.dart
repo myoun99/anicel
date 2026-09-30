@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../models/project_frame_rate.dart';
+import '../../models/se_line_type.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/pill_strip.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
 import 'se_offset_strip.dart';
@@ -28,12 +30,16 @@ class SeInstanceDialogResult {
   const SeInstanceDialogResult({
     required this.seName,
     required this.dialogue,
+    this.seType = SeLineType.on,
     this.unlinkedAudioTokens = const {},
     this.audioOffsets = const {},
   });
 
   final String seName;
   final String dialogue;
+
+  /// The line's delivery (I-20) — ON / OFF / MONO.
+  final SeLineType seType;
 
   /// The [SeInstanceAudioLink.token]s of the sounds unlinked in this
   /// sitting. Empty on every dialog that never showed one — unlinking is a
@@ -55,6 +61,7 @@ class SeInstanceDialog extends StatefulWidget {
     super.key,
     this.initialSeName = '',
     this.initialDialogue = '',
+    this.initialSeType = SeLineType.on,
     this.creating = false,
     this.previewAxis = Axis.horizontal,
     this.linkedAudio = const [],
@@ -62,6 +69,9 @@ class SeInstanceDialog extends StatefulWidget {
 
   final String initialSeName;
   final String initialDialogue;
+
+  /// The delivery the block has (I-20) — ON for one that never chose.
+  final SeLineType initialSeType;
 
   /// The sounds this instance carries (R5 #19). Shown even when empty —
   /// "none" is the answer to "what is this block linked to?", and a field
@@ -104,6 +114,9 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
     super.dispose();
   }
 
+  /// The delivery picked in this sitting, applied on OK.
+  late SeLineType _seType = widget.initialSeType;
+
   /// Tokens struck through in this sitting, applied on OK.
   final Set<int> _unlinked = <int>{};
 
@@ -115,6 +128,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
       SeInstanceDialogResult(
         seName: _seNameController.text.trim(),
         dialogue: _dialogueController.text.trim(),
+        seType: _seType,
         unlinkedAudioTokens: Set.unmodifiable(_unlinked),
         audioOffsets: Map.unmodifiable({
           for (final MapEntry(key: token, value: offset) in _offsets.entries)
@@ -201,6 +215,26 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
             child: TextField(
               key: const ValueKey<String>('se-name-field'),
               controller: _seNameController,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 🗣️I-20 (유저 2026-09-30): 「se 블록의 타입으로서 on off mono 타입
+          // 추가」 — one of three, always; a grouped choice wears the pills.
+          AppWindowField(
+            label: strings.seTypeLabel,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: PillStrip(
+                items: [
+                  for (final type in SeLineType.values)
+                    PillItem(
+                      keyValue: 'se-type-${type.name}',
+                      label: type.label,
+                      selected: _seType == type,
+                      onTap: () => setState(() => _seType = type),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 12),

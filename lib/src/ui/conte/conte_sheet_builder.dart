@@ -13,6 +13,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/project.dart';
+import '../../models/se_line_type.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
@@ -263,6 +264,7 @@ List<ConteDialogueLine> _dialogueOf(Track track, int startFrame, int endFrame) {
           startFrame: math.max(0, block.startIndex - startFrame),
           text: text,
           speaker: frame?.seName ?? '',
+          delivery: frame?.seType ?? SeLineType.on,
         ),
       );
     }

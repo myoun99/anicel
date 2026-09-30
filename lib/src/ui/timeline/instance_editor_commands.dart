@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/property_track.dart' show PropertyKeyInterpolation;
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaFileName;
+import '../../models/se_line_type.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_command_actions.dart' show createActiveInstance;
@@ -256,13 +257,17 @@ Future<void> _editSeLabel(
     context,
     initialSeName: session.seEntries.selectedFrameSeName ?? '',
     initialDialogue: session.selectedFrameName ?? '',
+    initialSeType: session.seEntries.selectedFrameSeType,
     linkedAudio: [
       for (final entry in linked)
         _audioLink(session, entry.clip, entry.index, blockFrames),
     ],
     previewAxis: previewAxis,
-    commit: (dialogue, seName) =>
-        session.seEntries.updateSelectedSeEntry(dialogue: dialogue, seName: seName),
+    commit: (dialogue, fields) => session.seEntries.updateSelectedSeEntry(
+      dialogue: dialogue,
+      seName: fields.seName,
+      seType: fields.seType,
+    ),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
     unlink: session.audioClips.unlinkAudioClipsFromActiveLayer,
@@ -376,17 +381,19 @@ Future<void> editSeEntryInstance(
     context,
     initialSeName: entry.seName ?? '',
     initialDialogue: entry.name ?? '',
+    initialSeType: entry.seType,
     linkedAudio: [
       for (var index = 0; index < layer.audioClips.length; index += 1)
         if (layer.audioClips[index].frameId == entryId)
           _audioLink(session, layer.audioClips[index], index, block.length),
     ],
     previewAxis: previewAxis,
-    commit: (dialogue, seName) => session.seEntries.updateSeEntryForLayer(
+    commit: (dialogue, fields) => session.seEntries.updateSeEntryForLayer(
       layerId,
       entryId,
       dialogue: dialogue,
-      seName: seName,
+      seName: fields.seName,
+      seType: fields.seType,
     ),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
@@ -401,9 +408,10 @@ Future<void> _editSeEntryWithDialog(
   BuildContext context, {
   required String initialSeName,
   required String initialDialogue,
+  required SeLineType initialSeType,
   required List<SeInstanceAudioLink> linkedAudio,
   required Axis previewAxis,
-  required void Function(String dialogue, String? seName) commit,
+  required void Function(String dialogue, SeEntryFields fields) commit,
   required void Function(int token, int offsetFrames) setOffset,
   required void Function(Iterable<int> tokens) unlink,
 }) async {
@@ -413,6 +421,7 @@ Future<void> _editSeEntryWithDialog(
       creating: false,
       initialSeName: initialSeName,
       initialDialogue: initialDialogue,
+      initialSeType: initialSeType,
       previewAxis: previewAxis,
       linkedAudio: linkedAudio,
     ),
@@ -423,7 +432,7 @@ Future<void> _editSeEntryWithDialog(
 
   final seName = result.seName.isEmpty ? null : result.seName;
   // SE edits never hit the link-conflict flow (duplicates allowed).
-  commit(result.dialogue, seName);
+  commit(result.dialogue, (seName: seName, seType: result.seType));
   // ⚠️The offsets BEFORE the unlink: a token is the clip's index, and taking
   // a sound off shifts every index after it.
   for (final MapEntry(key: token, value: offset)

@@ -20,6 +20,7 @@ class ResolvedSeNameTag {
     required this.content,
     required this.widthBudget,
     this.line,
+    this.delivery,
   });
 
   /// The SE row the tag belongs to (its eye is the display switch).
@@ -44,6 +45,15 @@ class ResolvedSeNameTag {
   /// width, so a long line stays inside the picture instead of running
   /// off it.
   final double widthBudget;
+
+  /// The line's DELIVERY (I-20) — ON / OFF / MONO — as a tag of its own.
+  ///
+  /// 🗣️유저 2026-09-30: 「해당 타입의 텍스트는 네임태그로서 화면에 보이게함.
+  /// 위치는 캐릭터 이름 박스 위 중앙정렬」 — so it wears the NAME's style, and
+  /// like [line] it carries no usable position: the painter centres it over
+  /// the box once the box is measured. Every type shows here — ON included
+  /// (「캔버스에는 표시」); only the sheets leave ON out.
+  final TextCelContent? delivery;
 }
 
 /// The tags visible at [localFrameIndex] of a cut starting at
@@ -103,13 +113,19 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
       orElse: () => layerIdentityPose(canvas),
     );
     final anchor = Offset(pose.center.x, pose.center.y);
+    final nameStyle = tag?.style ?? SeNameTag.defaultStyle;
     tags.add(
       ResolvedSeNameTag(
         layerId: layer.id.value,
         widthBudget: budget,
         content: TextCelContent(
           text: name,
-          style: tag?.style ?? SeNameTag.defaultStyle,
+          style: nameStyle,
+          position: anchor,
+        ),
+        delivery: TextCelContent(
+          text: frame.seType.label,
+          style: nameStyle,
           position: anchor,
         ),
         line: showsLine
@@ -129,5 +145,11 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
 /// to decide whether a repaint is needed without holding the tags.
 Object seNameTagSignature(List<ResolvedSeNameTag> tags) => Object.hashAll([
   for (final tag in tags)
-    Object.hash(tag.layerId, tag.content, tag.line, tag.widthBudget),
+    Object.hash(
+      tag.layerId,
+      tag.content,
+      tag.line,
+      tag.delivery,
+      tag.widthBudget,
+    ),
 ]);

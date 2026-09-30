@@ -102,6 +102,25 @@ class _TimesheetSePass {
         columnWidth: columnWidth,
         y: cellTop + 1,
       );
+      // 🗣️I-20 (유저 2026-09-30): the delivery over the name — 「타임시트에도
+      // 이름 위에 빨간 가로선 위에 배경색없이 텍스트만」 — and only where the
+      // sheets print it (「OFF거나 MONO일때만」, [SeLineType.printsOnSheets]).
+      // On the half's first row the row above IS the column's title, and it
+      // lands there on purpose: 「1콤마부터 대사 나올땐 … 1콤마의 위(SE1이나
+      // SE2 이런글자)에 겹치도록」.
+      final delivery = cell.seType;
+      if (delivery != null && delivery.printsOnSheets) {
+        _painter._text(
+          canvas,
+          delivery.label,
+          Offset(centerX, cellTop - _deliveryLift),
+          fontSize: 7,
+          bold: true,
+          color: TimesheetDocumentPainter._ink,
+          centeredAtX: true,
+          maxWidth: columnWidth - 2,
+        );
+      }
     }
 
     if (seName.isNotEmpty) {
@@ -146,6 +165,10 @@ class _TimesheetSePass {
   }
 
   static const double _nameBoxHeight = 12.0;
+
+  /// How far above the entry's red bar the delivery's writing starts — one
+  /// line of the name's size, so it sits on the bar rather than across it.
+  static const double _deliveryLift = 9.0;
 
   /// This page half's share of an SE entry's dialogue: the glyphs that the
   /// layout over the WHOLE span lands on this half's rows, from [row] down —

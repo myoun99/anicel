@@ -3,6 +3,7 @@ import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_line_type.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../timeline/timeline_drag_preview.dart'
@@ -107,6 +108,10 @@ class SeEntries {
   /// SE rows: the selected entry's speaker/effect name (the accent box).
   String? get selectedFrameSeName => _selection.selectedFrame?.seName;
 
+  /// The selected entry's delivery (I-20) — what the SE dialog opens on.
+  SeLineType get selectedFrameSeType =>
+      _selection.selectedFrame?.seType ?? SeLineType.on;
+
   /// Creates an SE entry at the current cell carrying [name] (the sheet's
   /// dialogue text) and the optional [seName] (speaker/effect, the accent
   /// box) in ONE undo step. The entry takes [lengthFrames] (the dialog's
@@ -143,10 +148,14 @@ class SeEntries {
     _changes.notifyChanged();
   }
 
-  /// SE rows: updates the selected entry's dialogue (Frame.name) and
-  /// speaker name in ONE undo step. Duplicates are allowed — the same
-  /// dialogue can legitimately repeat on a sheet.
-  void updateSelectedSeEntry({required String dialogue, String? seName}) {
+  /// SE rows: updates the selected entry's dialogue (Frame.name), speaker
+  /// name and delivery (I-20) in ONE undo step. Duplicates are allowed — the
+  /// same dialogue can legitimately repeat on a sheet.
+  void updateSelectedSeEntry({
+    required String dialogue,
+    String? seName,
+    required SeLineType seType,
+  }) {
     final layer = _selection.activeLayer;
     final frame = _selection.selectedFrame;
     if (layer == null ||
@@ -159,6 +168,7 @@ class SeEntries {
       frame.id,
       dialogue: dialogue,
       seName: seName,
+      seType: seType,
     );
   }
 
@@ -173,6 +183,7 @@ class SeEntries {
     FrameId frameId, {
     required String dialogue,
     String? seName,
+    required SeLineType seType,
   }) {
     final layer = requireLayerAnywhere(
       _project.repository.requireProject(),
@@ -186,8 +197,7 @@ class SeEntries {
       frameId: frameId,
       name: dialogue,
       allowDuplicateName: true,
-      seName: seName,
-      updateSeName: true,
+      seEntry: (seName: seName, seType: seType),
     );
     _changes.notifyChanged();
   }

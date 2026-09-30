@@ -137,22 +137,17 @@ Layer duplicateLayerAsIndependentCopy({
 /// duplication below is the same question asked about a whole cut, so it
 /// asks it here rather than growing a second answer.
 ///
-/// ⚠️Field-by-field reconstruction is this helper's trap: it silently
-/// dropped `seName` until the text round walked past — every new [Frame]
-/// field must be carried here by hand.
+/// ↩️Field-by-field reconstruction was this helper's trap: it silently
+/// dropped `seName` until the text round walked past, and I-20's delivery
+/// type would have been the next. A copy that names only what CHANGES —
+/// the id and the strokes — carries every other field by construction.
 Frame duplicateFrameContent({
   required Frame frame,
   required FrameId newFrameId,
-}) {
-  return Frame(
-    id: newFrameId,
-    duration: frame.duration,
-    strokes: frame.strokes.map(_duplicateStroke).toList(),
-    name: frame.name,
-    seName: frame.seName,
-    textContent: frame.textContent,
-  );
-}
+}) => frame.copyWith(
+  id: newFrameId,
+  strokes: frame.strokes.map(_duplicateStroke).toList(),
+);
 
 /// One timeline cell pointed at the copied cel: the exposure's frame id
 /// resolved through [frameIdMap], which must cover it.
