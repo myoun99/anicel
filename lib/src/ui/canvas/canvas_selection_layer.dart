@@ -2242,10 +2242,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (_region == null) {
       setState(
         // The implicit region IS the whole-canvas shape on this branch
-        // (`_region` is null), so its one step has one copy.
-        () => _adoptImplicitWholePictureShape(
-          implicitRegion.steps.first.shapes.first,
-        ),
+        // (`_region` is null), so it is one polygon.
+        () => _adoptImplicitWholePictureShape(implicitRegion.singleShape!),
       );
     }
     final hadPendingLift = _pendingLiftStamp != null;

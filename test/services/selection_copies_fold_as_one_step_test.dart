@@ -13,8 +13,12 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 /// and the wrong one for 선택중. Narrowing to the left copy and then to the
 /// right one keeps their overlap, which for a plain left/right mirror is
 /// nothing at all — the user would drag a box and watch the whole selection
-/// vanish. The step list is linear and cannot nest, so "∩ (A ∪ B)" has to be
-/// one step or it cannot be said.
+/// vanish. So "∩ (A ∪ B)" is one step.
+///
+/// ↩️This said the step list "cannot nest", which stopped being true with
+/// I-23: an operand may be a whole selection (`CanvasSelectionNested`, the
+/// inverse's 「wall minus the selection」). The copies stay one step anyway —
+/// they are one act, which a nested selection is not.
 void main() {
   CanvasSelectionShape rect(double l, double t, double r, double b) =>
       CanvasSelectionShape.rect(left: l, top: t, right: r, bottom: b);
@@ -198,7 +202,12 @@ void main() {
       expectBoth(region, 5, 5, true);
       expectBoth(region, 25, 5, true);
       expectBoth(region, 15, 5, false);
-      expect(region.steps.every((step) => step.shapes.length == 1), isTrue);
+      expect(
+        region.steps.every(
+          (step) => step is CanvasSelectionCopies && step.shapes.length == 1,
+        ),
+        isTrue,
+      );
     });
 
     test('and a click still deselects in 갱신 only', () {

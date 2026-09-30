@@ -4,6 +4,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -138,7 +139,14 @@ void main() {
     await dragOnLayer(tester, const Offset(20, 20), const Offset(60, 60));
 
     expect(commands.region!.steps, hasLength(1));
-    expect(commands.region!.steps.first.shapes, hasLength(2));
+    expect(
+      commands.region!.steps.first,
+      isA<CanvasSelectionCopies>().having(
+        (step) => step.shapes,
+        'shapes',
+        hasLength(2),
+      ),
+    );
   });
 
   testWidgets('and the ants show both copies WHILE the drag runs', (

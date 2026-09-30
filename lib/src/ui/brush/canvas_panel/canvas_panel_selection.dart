@@ -119,8 +119,7 @@ class _CanvasPanelSelection {
 
   /// [shape] on the active row's artwork — [regionOnTheRow] for one outline.
   CanvasSelectionShape? shapeOnTheRow(CanvasSelectionShape shape) =>
-      regionOnTheRow(CanvasSelectionRegion.shape(shape))?.steps.single.shapes
-          .single;
+      regionOnTheRow(CanvasSelectionRegion.shape(shape))?.singleShape;
 
   /// A canvas point on the active row's artwork — where a press on the
   /// canvas lands on a posed row (a stamp's), the same inverse the eyedropper
