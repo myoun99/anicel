@@ -411,6 +411,35 @@ class CanvasSelectionRegion {
     SelectionCombineMode mode,
   ) => combine(this, shape, mode);
 
+  /// 선택 반전 (I-23, 유저 2026-09-12: 「선택반전기능. 내용은 선택되지 않은
+  /// 부분을 선택함」): what [region] does NOT select, out to [wall] — the
+  /// pasteboard's edge (I-23-Q1: 「페이스트보드 벽까지」).
+  ///
+  /// Nothing selected ⇒ the whole wall. Otherwise the wall with [region]
+  /// taken away as ONE operand ([CanvasSelectionNested]) — exact whatever
+  /// the selection is made of, a 선택중 or an earlier inverse included, and
+  /// made at once: nothing is rasterised or traced to build it.
+  ///
+  /// Through the stage door like any landing ([clippedTo]), so the inverse
+  /// of everything — which selects nothing — is no selection, and two
+  /// presses come back to where they began.
+  static CanvasSelectionRegion? invertedWithin(
+    CanvasSelectionRegion? region,
+    ui.Rect wall,
+  ) => CanvasSelectionRegion([
+    CanvasSelectionStep(
+      CanvasSelectionShape.rect(
+        left: wall.left,
+        top: wall.top,
+        right: wall.right,
+        bottom: wall.bottom,
+      ),
+      SelectionCombineMode.replace,
+    ),
+    if (region != null)
+      CanvasSelectionStep.region(region, SelectionCombineMode.subtract),
+  ]).clippedTo(wall);
+
   /// Even-odd membership through the fold.
   bool containsPoint(CanvasPoint point) {
     var inside = false;
