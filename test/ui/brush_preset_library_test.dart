@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
+import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 import 'package:anicel/src/ui/brush/brush_import_merge.dart';
 import 'package:anicel/src/ui/brush/brush_preset_library.dart';
 import '../helpers/temp_dir.dart';
@@ -289,6 +290,28 @@ void main() {
       library.rename(const BrushPresetId('not-here'), 'Fine liner');
 
       expect(library.presets.map((p) => p.name), before);
+    });
+  });
+
+  group('what an edit writes', () {
+    // 🚨A MUTANT SURVIVED HERE (2026-09-30): the library could stop writing
+    // altogether and every test in this file stayed green, once the pins
+    // that watched its writes moved to the writer's own test with the
+    // order law (`a_settings_file_holds_the_last_save_test`).
+    test('the file is handed the library as it stands', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      final written = <String>[];
+      debugSettingsFileWrite = (_, text) async => written.add(text);
+      addTearDown(() => debugSettingsFileWrite = null);
+
+      library.rename(const BrushPresetId('i2'), 'Fine liner');
+
+      final presets = (jsonDecode(written.single) as Map)['presets'] as List;
+      expect(
+        [for (final preset in presets) (preset as Map)['name']],
+        ['i1', 'Fine liner', 'p1', 'loose'],
+      );
     });
   });
 

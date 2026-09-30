@@ -15,6 +15,18 @@ import '../../helpers/temp_dir.dart';
 /// the rest had nothing. The law is the writer's now, for every settings
 /// file.
 void main() {
+  // Every file here is in a folder of the test's own — a write that
+  // escaped the held disk must not land in the checkout (one did, under a
+  // mutant that gave every file one writer).
+  late Directory directory;
+
+  setUp(() async {
+    directory = await Directory.systemTemp.createTemp('anicel-settings');
+  });
+  tearDown(() => deleteTempQuietly(directory));
+
+  String pathFor(String name) => '${directory.path}/$name';
+
   group('an asynchronous save — one write at a time per file', () {
     late _HeldDisk disk;
 
@@ -28,8 +40,8 @@ void main() {
       debugSettingsFileWrite = null;
     });
 
-    Future<void> save(String path, int value) => saveVersionedSettings(
-      filePath: path,
+    Future<void> save(String name, int value) => saveVersionedSettings(
+      filePath: pathFor(name),
       version: 1,
       json: {'value': value},
     );
@@ -90,7 +102,7 @@ void main() {
     test('⛔a document JSON cannot hold is not written — and the caller '
         'does not hear of it', () async {
       final nan = saveVersionedSettings(
-        filePath: 'a.json',
+        filePath: pathFor('a.json'),
         version: 1,
         json: {'value': double.nan},
       );
@@ -101,13 +113,6 @@ void main() {
   });
 
   group('the real disk', () {
-    late Directory directory;
-
-    setUp(() async {
-      directory = await Directory.systemTemp.createTemp('anicel-settings');
-    });
-    tearDown(() => deleteTempQuietly(directory));
-
     test('a burst of saves leaves the file holding the LAST one, '
         'whole', () async {
       final path = '${directory.path}/burst.json';
@@ -158,23 +163,25 @@ void main() {
 /// would be a bet on how busy the machine is
 /// (`tests_do_not_race_the_code_test`).
 class _HeldDisk {
-  /// Every write the writer started, in order: the file and its value.
+  /// Every write the writer started, in order: the file's name and its
+  /// value.
   final List<(String, int)> started = [];
 
-  /// What each file holds once its writes landed.
+  /// What each file holds once its writes landed, by name.
   final Map<String, int> landed = {};
 
   /// Whether the writes started from now on fail.
   bool failing = false;
 
-  final List<({String path, int value, bool fails, Completer<void> done})>
+  final List<({String name, int value, bool fails, Completer<void> done})>
   _open = [];
 
   Future<void> write(String filePath, String text) {
+    final name = filePath.substring(filePath.lastIndexOf('/') + 1);
     final value = (jsonDecode(text) as Map)['value'] as int;
-    started.add((filePath, value));
+    started.add((name, value));
     final done = Completer<void>();
-    _open.add((path: filePath, value: value, fails: failing, done: done));
+    _open.add((name: name, value: value, fails: failing, done: done));
     return done.future;
   }
 
@@ -189,7 +196,7 @@ class _HeldDisk {
     if (write.fails) {
       write.done.completeError(const FileSystemException('held disk'));
     } else {
-      landed[write.path] = write.value;
+      landed[write.name] = write.value;
       write.done.complete();
     }
     await pumpEventQueue();
