@@ -83,8 +83,9 @@ void main() {
 
   Future<EditorSessionManager> pumpTimeline(
     WidgetTester tester,
-    ValueNotifier<double> zoom,
-  ) async {
+    ValueNotifier<double> zoom, {
+    TimelineOrientation orientation = TimelineOrientation.horizontal,
+  }) async {
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -107,7 +108,7 @@ void main() {
             listenable: session,
             builder: (context, _) => TimelineTabHost(
               session: session,
-              orientation: TimelineOrientation.horizontal,
+              orientation: orientation,
               onOrientationChanged: (_) {},
               pixelsPerFrame: zoom.value,
               pixelsPerFrameListenable: zoom,
@@ -123,41 +124,60 @@ void main() {
     return session;
   }
 
-  RenderBox rowChildBoxFor(WidgetTester tester, String layerId) {
+  RenderBox rowChildBoxFor(
+    WidgetTester tester,
+    String layerId, {
+    String prefix = 'timeline',
+  }) {
     // The row's cell strip: its render object is inside the frame-axis box,
     // so its size IS what the box lays the row out at.
-    final finder = find.byKey(ValueKey<String>('timeline-row-cells-$layerId'));
+    final finder = find.byKey(ValueKey<String>('$prefix-row-cells-$layerId'));
     return tester.renderObject<RenderBox>(finder);
   }
 
-  testWidgets('a zoom step leaves the drawing row\'s laid-out box alone while '
-      'the content grows under it', (tester) async {
-    final zoom = ValueNotifier<double>(24);
-    addTearDown(zoom.dispose);
-    final session = await pumpTimeline(tester, zoom);
-    final layerId = session.layers
-        .firstWhere((layer) => layer.kind == LayerKind.animation)
-        .id
-        .value;
+  // The x-sheet's columns ride the same window, turned on its side (F-244:
+  // they read and keep the cells row the timeline's rows do).
+  for (final (orientation, prefix) in [
+    (TimelineOrientation.horizontal, 'timeline'),
+    (TimelineOrientation.vertical, 'xsheet'),
+  ]) {
+    testWidgets('a zoom step leaves the drawing $prefix row\'s laid-out box '
+        'alone while the content grows under it', (tester) async {
+      final zoom = ValueNotifier<double>(24);
+      addTearDown(zoom.dispose);
+      final session = await pumpTimeline(
+        tester,
+        zoom,
+        orientation: orientation,
+      );
+      final layerId = session.layers
+          .firstWhere((layer) => layer.kind == LayerKind.animation)
+          .id
+          .value;
 
-    final before = rowChildBoxFor(tester, layerId).size;
-    expect(before.width, greaterThan(0));
+      final before = rowChildBoxFor(tester, layerId, prefix: prefix).size;
+      expect(before.width, greaterThan(0));
 
-    zoom.value = 48;
-    await tester.pumpAndSettle();
+      zoom.value = 48;
+      await tester.pumpAndSettle();
 
-    expect(
-      rowChildBoxFor(tester, layerId).size,
-      before,
-      reason: 'the window is a pixel extent — doubling the cell width must '
-          'not relayout the row subtree',
-    );
-    // Sanity: the zoom really did land.
-    expect(
-      timelineRowCellsPainterFor(tester, layerId).frameCellExtent,
-      48,
-    );
-  });
+      expect(
+        rowChildBoxFor(tester, layerId, prefix: prefix).size,
+        before,
+        reason: 'the window is a pixel extent — doubling the cell width must '
+            'not relayout the row subtree',
+      );
+      // Sanity: the zoom really did land.
+      expect(
+        timelineRowCellsPainterFor(
+          tester,
+          layerId,
+          prefix: prefix,
+        ).frameCellExtent,
+        48,
+      );
+    });
+  }
 
   testWidgets('cells paint and answer pointers where the content says, after '
       'a scroll', (tester) async {
