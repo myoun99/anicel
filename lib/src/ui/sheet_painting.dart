@@ -8,6 +8,7 @@ import '../models/brush_frame_key.dart';
 import '../models/canvas_viewport.dart';
 import '../models/sheet_marks.dart';
 import '../models/sheet_paint_layer.dart';
+import 'canvas/display_resample.dart';
 import 'canvas/viewport_canvas_transform.dart';
 
 /// Draws one baked ink window: the raster where its [placement] lays it,
@@ -55,6 +56,20 @@ void paintSheetImageContained(
     quality,
   );
 }
+
+/// The quality a cell's picture, [image] as it was rendered, is laid into
+/// its [shot] with: what is left of the reduction, as the canvas's display
+/// takes it — the picture was rendered down by the display's own levels
+/// (`CameraFrameRenderService.renderThroughCamera`'s `displayLevels`), so
+/// the print and the live composite beside it reduce one way (F-215, 유저
+/// 2026-09-30: 「왜 브러시허용이랑 렌더링이랑 연관있는거냐고」). ↩️It was
+/// `medium`, which mipmaps where an engine has mips and does not where it
+/// has none.
+FilterQuality sheetPictureQuality(
+  ui.Image image,
+  Rect shot,
+  double devicePixelRatio,
+) => filterQualityForDisplayScale(shot.width * devicePixelRatio / image.width);
 
 /// Draws [image] filling [rect] — the one image draw a sheet prints a
 /// picture or a media image through, owning the quality its caller names.
@@ -529,7 +544,12 @@ class _SheetCanvas {
     if (image == null) {
       return;
     }
-    paintSheetImageIn(canvas, image, shot, FilterQuality.medium);
+    paintSheetImageIn(
+      canvas,
+      image,
+      shot,
+      sheetPictureQuality(image, shot, grid.devicePixelRatio),
+    );
   }
 
   /// A line, anti-aliased: a camera's frame may be turned, and no grid

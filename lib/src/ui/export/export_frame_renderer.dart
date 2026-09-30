@@ -251,7 +251,8 @@ class ExportFrameRenderer {
   /// A panel's picture — the storyboard's, the conte's: [cut] at
   /// [frameIndex] through its camera, or over the canvas [region] a conte
   /// cell's moving camera sweeps ([pictureView]) — [width] pixels wide, in
-  /// the shape of what it shows.
+  /// the shape of what it shows, reduced as the canvas's display reduces
+  /// ([CameraFrameRenderService.renderThroughCamera]'s `displayLevels`).
   Future<ui.Image> renderPicture(
     Cut cut,
     int frameIndex, {
@@ -267,6 +268,7 @@ class ExportFrameRenderer {
       ExportFrameTask(cut: cut, frameIndex: frameIndex),
       view,
       outputSize: view.frameSize.scaledToWidth(width),
+      displayLevels: true,
     );
   }
 
@@ -289,6 +291,7 @@ class ExportFrameRenderer {
     CameraView view, {
     CanvasSize? outputSize,
     bool withNameTags = false,
+    bool displayLevels = false,
   }) async {
     final cut = task.cut;
     await _hydrate(cut, task.frameIndex);
@@ -306,6 +309,7 @@ class ExportFrameRenderer {
       pose: view.pose,
       cameraFrameSize: view.frameSize,
       outputSize: outputSize,
+      displayLevels: displayLevels,
       overlayPass: !withNameTags
           ? null
           : (canvas) {
