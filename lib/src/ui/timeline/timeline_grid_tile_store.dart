@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
 import '../../models/frame.dart' show InbetweenMark;
+import '../../models/layer.dart';
+import '../../models/layer_cells_agreement.dart';
 import '../../models/layer_id.dart';
 import '../../native/qa_native_engine.dart';
 import '../text/word_condensation.dart';
@@ -998,7 +1000,9 @@ class _TileEntry {
   /// the one failure mode a cache is not allowed to have.
   final String substrateGeneration;
 
-  final Object layer;
+  /// The layer the tile was baked from. A later instance serves too, where
+  /// it shows the same cells through this tile ([_showsSameCellsAs]).
+  final Layer layer;
 
   /// ㉘: what the row's coverage follows when it is not the layer — a
   /// camera row's keys live on `cut.camera`, so a tile baked before a key
@@ -1097,7 +1101,6 @@ class _TileEntry {
     // tiles any more (the out-of-cut wash became its own overlay), so a
     // cut-length drag re-rasters nothing.
     return substrateGeneration == painter.substrateGeneration &&
-        identical(layer, painter.layer) &&
         coverageIdentity == painter.coverageIdentity &&
         frameCellExtent == painter.frameCellExtent &&
         crossAxisExtent == painter.crossAxisExtent &&
@@ -1120,9 +1123,53 @@ class _TileEntry {
         blockFrameLines == painter.blockFrameLines &&
         framesPerSecond == painter.framesPerSecond &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
-        this.devicePixelRatio == devicePixelRatio;
+        this.devicePixelRatio == devicePixelRatio &&
+        // Last: the one fact that may walk two timelines.
+        _showsSameCellsAs(painter.layer);
+  }
+
+  /// Whether [next] shows the cells this tile was baked from: the same
+  /// instance, or a new one that agrees with it through the tile's reach
+  /// ([firstCellThatMayDiffer]).
+  ///
+  /// 🚨F-244 (유저 2026-09-30: 「블록 코마 늘리거나 관련 동작들 … 무거운
+  /// 컷일수록 심해짐」): a comma drag makes a new layer at every step, and
+  /// on the instance alone every visible span of the row — and of its
+  /// attach mirror — was baked again at every step: 40 tiles a step on FU
+  /// 301, the last landing 25–57ms after it, the row showing the step
+  /// before meanwhile. Only the spans from the dragged block on show
+  /// anything new.
+  ///
+  /// The reach is the span's own cells and the one after it — its last
+  /// paper asks that cell whether it joins, and a frame line at the span's
+  /// end stands on it. What a cell reads beyond itself (its neighbours, its
+  /// block's word) the agreement answers for; what it reads from outside
+  /// its layer is the look's other facts (the camera row's track is
+  /// [coverageIdentity], the cels' pixels [celContentRevision]).
+  bool _showsSameCellsAs(Layer next) {
+    if (identical(layer, next)) {
+      return true;
+    }
+    final differs = _agreementOf(layer, next);
+    return differs == null || spanEndIndexExclusive < differs;
   }
 }
+
+/// [firstCellThatMayDiffer] of the pair a row's tiles ask about together —
+/// every span of the row asks it of the same two instances.
+int? _agreementOf(Layer baked, Layer next) {
+  final known = _agreements[baked];
+  if (known != null && identical(known.next, next)) {
+    return known.differs;
+  }
+  final differs = firstCellThatMayDiffer(baked, next);
+  _agreements[baked] = (next: next, differs: differs);
+  return differs;
+}
+
+final Expando<({Layer next, int? differs})> _agreements = Expando(
+  'tile agreement',
+);
 
 /// One baked glyph: A8 coverage at physical resolution (1px pad on
 /// every side) plus the LOGICAL text size the classic pass centers on.

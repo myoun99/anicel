@@ -494,11 +494,25 @@ class Layer {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is Layer &&
-          other.id == id &&
+          sameBesideTimeline(other) &&
+          mapEquals(other.timeline, timeline);
+
+  /// Whether [other] is this layer in every field but its [timeline] — the
+  /// ONE list of those fields, and [==]'s own.
+  ///
+  /// 🚨F-244: the timeline's tiles keep what an edit left alone across the
+  /// new instance the edit made (`firstCellThatMayDiffer`), and this is
+  /// where they learn that nothing but the timeline moved. A field missing
+  /// here would keep a tile across a change of it — which is why [==] reads
+  /// this list rather than a copy of it.
+  bool sameBesideTimeline(Layer other) =>
+      identical(this, other) ||
+      other.id == id &&
           other.name == name &&
           listEquals(other.frames, frames) &&
-          mapEquals(other.timeline, timeline) &&
-          mapEquals(other.instructions, instructions) &&
+          // A direction row's spans are READ OFF its blocks ([instructions]),
+          // so what stands beside its timeline is the stored map.
+          mapEquals(other._storedInstructions, _storedInstructions) &&
           listEquals(other.audioClips, audioClips) &&
           other.isVisible == isVisible &&
           other.collapsed == collapsed &&

@@ -216,8 +216,21 @@ Layer attachedDisplayLayer({required Layer attached, required Layer base}) {
     timeline: attachedDisplayTimeline(attached: attached, base: base),
   );
   _displayClones[attached] = (base: base, display: display);
+  _mirroredBases[display] = base;
   return display;
 }
+
+/// The base a clone [attachedDisplayLayer] made mirrors — null for every
+/// other layer.
+///
+/// 🚨The mirror PRINTS its base's cel names (UI-R24 #2), so what the row
+/// shows is the clone's cells AND the base's cels: a reader that keeps what
+/// the row showed across a new clone (the timeline's tiles, F-244) has to
+/// ask this as well as the clone.
+Layer? attachedDisplayBaseOf(Layer display) => _mirroredBases[display];
+
+/// The base each clone mirrors, held weakly like the clones themselves.
+final Expando<Layer> _mirroredBases = Expando('attached display base');
 
 /// The last clone made of each attach row instance, with the base instance
 /// it mirrored — held weakly, so it goes when the row instance does.
