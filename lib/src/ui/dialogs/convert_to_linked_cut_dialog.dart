@@ -116,55 +116,75 @@ class _PreviewSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final lines = <String>[
-      if (preview.linkingLayerNames.isNotEmpty)
-        strings.convertLinkedCutLinksTemplate.replaceAll(
-          '{names}',
-          preview.linkingLayerNames.join(', '),
-        ),
-      // 원본 승리, announced up front (user-confirmed rule): the origin's
-      // picture wins each same-name conflict, exactly once, undoable.
-      if (preview.replacedFrameCount > 0)
-        strings.convertLinkedCutReplacedTemplate
-            .replaceAll('{count}', '${preview.replacedFrameCount}')
-            .replaceAll('{cut}', preview.targetCutName),
-      if (preview.joiningFrameCount > 0)
-        strings.convertLinkedCutJoiningTemplate.replaceAll(
-          '{count}',
-          '${preview.joiningFrameCount}',
-        ),
-      if (preview.layerNamesAppearingInTarget.isNotEmpty)
-        strings.convertLinkedCutTargetGainsTemplate
-            .replaceAll('{cut}', preview.targetCutName)
-            .replaceAll(
-              '{names}',
-              preview.layerNamesAppearingInTarget.join(', '),
-            ),
-      if (preview.layerNamesAppearingInOrigin.isNotEmpty)
-        strings.convertLinkedCutOriginGainsTemplate.replaceAll(
-          '{names}',
-          preview.layerNamesAppearingInOrigin.join(', '),
-        ),
-      if (!preview.linksAnything) strings.convertLinkedCutNothing,
-      // Sizes first: linking makes the two show ONE picture, and the
-      // origin's size wins — the target's artwork can land outside the
-      // frame if they disagree.
-      if (preview.linksAnything && preview.canvasSizesDiffer)
-        strings.convertLinkedCutResizeFirst,
-      if (preview.linksAnything) strings.convertLinkedCutUndoNote,
-    ];
+    Widget line(String text) => Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        text,
+        key: ValueKey<String>('convert-linked-cut-line-$text'),
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final line in lines)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              line,
-              key: ValueKey<String>('convert-linked-cut-line-$line'),
-              style: Theme.of(context).textTheme.bodySmall,
+        if (preview.linkingLayerNames.isNotEmpty)
+          line(
+            strings.convertLinkedCutLinksTemplate.replaceAll(
+              '{names}',
+              preview.linkingLayerNames.join(', '),
             ),
           ),
+        // 원본 승리, announced up front (user-confirmed rule): the origin's
+        // picture wins each same-name conflict, exactly once, undoable.
+        // 🗣️I-18 link-notice-Q1 (유저): 「겸용 변환 안내문을 목록으로」 — the
+        // drawings it replaces are LISTED under the sentence, in the notices'
+        // own fold, open: which ones is what the line is about.
+        if (preview.replacedDrawings.isNotEmpty) ...[
+          line(
+            strings.convertLinkedCutReplacedTemplate.replaceAll(
+              '{cut}',
+              preview.targetCutName,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: DetailsDisclosure(
+              heading: strings.convertLinkedCutReplacedHeading,
+              lines: preview.replacedDrawings,
+              startsOpen: true,
+            ),
+          ),
+        ],
+        if (preview.joiningFrameCount > 0)
+          line(
+            strings.convertLinkedCutJoiningTemplate.replaceAll(
+              '{count}',
+              '${preview.joiningFrameCount}',
+            ),
+          ),
+        if (preview.layerNamesAppearingInTarget.isNotEmpty)
+          line(
+            strings.convertLinkedCutTargetGainsTemplate
+                .replaceAll('{cut}', preview.targetCutName)
+                .replaceAll(
+                  '{names}',
+                  preview.layerNamesAppearingInTarget.join(', '),
+                ),
+          ),
+        if (preview.layerNamesAppearingInOrigin.isNotEmpty)
+          line(
+            strings.convertLinkedCutOriginGainsTemplate.replaceAll(
+              '{names}',
+              preview.layerNamesAppearingInOrigin.join(', '),
+            ),
+          ),
+        if (!preview.linksAnything) line(strings.convertLinkedCutNothing),
+        // Sizes first: linking makes the two show ONE picture, and the
+        // origin's size wins — the target's artwork can land outside the
+        // frame if they disagree.
+        if (preview.linksAnything && preview.canvasSizesDiffer)
+          line(strings.convertLinkedCutResizeFirst),
+        if (preview.linksAnything) line(strings.convertLinkedCutUndoNote),
       ],
     );
   }

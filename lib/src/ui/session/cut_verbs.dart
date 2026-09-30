@@ -21,6 +21,7 @@ import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
+import '../text/place_lines.dart' show drawingPlaceLines;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'cut_placement.dart';
@@ -486,7 +487,11 @@ class CutVerbs {
       layerNamesAppearingInOrigin: [
         for (final id in plan.targetOnlyLayerIds) layerName(targetCut, id),
       ],
-      replacedFrameCount: plan.replacedFrameCount,
+      replacedDrawings: [
+        for (final MapEntry(key: layerId, value: frames)
+            in plan.replacedFrames.entries)
+          ...drawingPlaceLines(project, layerId, frames),
+      ],
       joiningFrameCount: plan.joiningFrameCount,
       linksAnything: plan.linksAnything,
       canvasSizesDiffer: originCut.canvasSize != targetCut.canvasSize,

@@ -142,6 +142,8 @@ void main() {
     'convertLinkedCutLinksTemplate': (s) => s.convertLinkedCutLinksTemplate,
     'convertLinkedCutReplacedTemplate': (s) =>
         s.convertLinkedCutReplacedTemplate,
+    'convertLinkedCutReplacedHeading': (s) =>
+        s.convertLinkedCutReplacedHeading,
     'convertLinkedCutJoiningTemplate': (s) => s.convertLinkedCutJoiningTemplate,
     'convertLinkedCutTargetGainsTemplate': (s) =>
         s.convertLinkedCutTargetGainsTemplate,

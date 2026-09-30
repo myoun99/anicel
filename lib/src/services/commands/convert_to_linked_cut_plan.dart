@@ -22,7 +22,7 @@ class ConvertToLinkedCutPlan {
     required this.layerPairs,
     required this.originOnlyLayerIds,
     required this.targetOnlyLayerIds,
-    required this.replacedFrameCount,
+    required this.replacedFrames,
     required this.joiningFrameCount,
   });
 
@@ -40,8 +40,15 @@ class ConvertToLinkedCutPlan {
 
   /// Frames whose name exists on both sides with DIFFERENT ids: the
   /// target's picture is REPLACED by the origin's ("같은 이름의 그림
-  /// n장이 원본 컷의 그림으로 바뀝니다").
-  final int replacedFrameCount;
+  /// n장이 원본 컷의 그림으로 바뀝니다") — by target row, so the 안내문 can
+  /// name each one (I-18 link-notice-Q1: 「겸용 변환 안내문을 목록으로」).
+  final Map<LayerId, List<FrameId>> replacedFrames;
+
+  /// How many [replacedFrames] there are.
+  int get replacedFrameCount => replacedFrames.values.fold(
+    0,
+    (count, frames) => count + frames.length,
+  );
 
   /// Target-only frames joining the shared bank (visible from the origin
   /// afterwards — the union is bidirectional).
@@ -112,7 +119,7 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
   final matchedOriginIds = <LayerId>{};
 
   final pairs = <({LayerId originLayerId, LayerId targetLayerId})>[];
-  var replaced = 0;
+  final replaced = <LayerId, List<FrameId>>{};
   var joining = 0;
   for (final origin in originDrawing) {
     final target = partners[origin.id];
@@ -127,7 +134,9 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
     }
     pairs.add((originLayerId: origin.id, targetLayerId: target.id));
     final resolution = resolveLayerMerge(origin: origin, target: target);
-    replaced += resolution.retargetedFrameIds.length;
+    if (resolution.retargetedFrameIds.isNotEmpty) {
+      replaced[target.id] = resolution.retargetedFrameIds.keys.toList();
+    }
     joining += resolution.joiningFrameIds.length;
   }
 
@@ -144,7 +153,7 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
       for (final target in targetDrawing)
         if (!matchedTargetIds.contains(target.id)) target.id,
     ],
-    replacedFrameCount: replaced,
+    replacedFrames: replaced,
     joiningFrameCount: joining,
   );
 }
@@ -220,7 +229,7 @@ class ConvertToLinkedCutPreviewData {
     required this.linkingLayerNames,
     required this.layerNamesAppearingInTarget,
     required this.layerNamesAppearingInOrigin,
-    required this.replacedFrameCount,
+    required this.replacedDrawings,
     required this.joiningFrameCount,
     required this.linksAnything,
     this.canvasSizesDiffer = false,
@@ -230,7 +239,11 @@ class ConvertToLinkedCutPreviewData {
   final List<String> linkingLayerNames;
   final List<String> layerNamesAppearingInTarget;
   final List<String> layerNamesAppearingInOrigin;
-  final int replacedFrameCount;
+
+  /// The target's drawings the origin's replace, one line each — the list
+  /// the 안내문 shows rather than a count (I-18 link-notice-Q1: 「겸용 변환
+  /// 안내문을 목록으로」).
+  final List<String> replacedDrawings;
   final int joiningFrameCount;
   final bool linksAnything;
 

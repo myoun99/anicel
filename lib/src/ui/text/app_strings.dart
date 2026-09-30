@@ -356,10 +356,15 @@ enum AppStrings {
   String get convertLinkedCutLinksTemplate =>
       _s('convertLinkedCutLinksTemplate');
 
-  /// '{count}' drawings, '{cut}' the target cut. The origin's picture wins
-  /// each same-name conflict (원본 승리) — announced up front.
+  /// '{cut}' the target cut. The origin's picture wins each same-name
+  /// conflict (원본 승리) — announced up front, the drawings it replaces
+  /// listed under it rather than counted in it (I-18 link-notice-Q1).
   String get convertLinkedCutReplacedTemplate =>
       _s('convertLinkedCutReplacedTemplate');
+
+  /// The fold over those replaced drawings.
+  String get convertLinkedCutReplacedHeading =>
+      _s('convertLinkedCutReplacedHeading');
 
   /// '{count}' is the joining drawing count.
   String get convertLinkedCutJoiningTemplate =>
@@ -1846,8 +1851,9 @@ enum AppStrings {
     'convertLinkedCutTargetLabel': 'Link with cut',
     'convertLinkedCutLinksTemplate': 'Links {names}.',
     'convertLinkedCutReplacedTemplate':
-        '{count} same-name drawing(s) in "{cut}" will be replaced by the '
+        'Same-name drawings in "{cut}" will be replaced by the '
         "origin's (원본 승리).",
+    'convertLinkedCutReplacedHeading': 'Drawings replaced',
     'convertLinkedCutJoiningTemplate':
         '{count} drawing(s) join the shared set.',
     'convertLinkedCutTargetGainsTemplate': '"{cut}" gains: {names}.',
@@ -2968,7 +2974,8 @@ enum AppStrings {
     'convertLinkedCutTargetLabel': 'リンクするカット',
     'convertLinkedCutLinksTemplate': '{names} をリンクします。',
     'convertLinkedCutReplacedTemplate':
-        '「{cut}」の同名作画 {count} 枚が原本のもので置き換わります（原本優先）。',
+        '「{cut}」の同名作画が原本のもので置き換わります（原本優先）。',
+    'convertLinkedCutReplacedHeading': '置き換わる作画',
     'convertLinkedCutJoiningTemplate': '作画 {count} 枚が共有セットに加わります。',
     'convertLinkedCutTargetGainsTemplate': '「{cut}」に追加：{names}。',
     'convertLinkedCutOriginGainsTemplate': 'このカットに追加：{names}。',
@@ -4324,8 +4331,8 @@ enum AppStrings {
     'convertLinkedCutTargetLabel': '링크할 컷',
     'convertLinkedCutLinksTemplate': '{names}을(를) 링크합니다.',
     'convertLinkedCutReplacedTemplate':
-        '"{cut}"의 같은 이름 원화 {count}장이 원본 것으로 대체됩니다'
-        '(원본 승리).',
+        '"{cut}"의 같은 이름 원화가 원본 것으로 대체됩니다(원본 승리).',
+    'convertLinkedCutReplacedHeading': '대체되는 원화',
     'convertLinkedCutJoiningTemplate': '원화 {count}장이 공유 세트에 합류합니다.',
     'convertLinkedCutTargetGainsTemplate': '"{cut}"에 추가: {names}.',
     'convertLinkedCutOriginGainsTemplate': '이 컷에 추가: {names}.',
@@ -5680,8 +5687,9 @@ enum AppStrings {
     'convertLinkedCutTargetLabel': 'Lier au plan',
     'convertLinkedCutLinksTemplate': 'Lie {names}.',
     'convertLinkedCutReplacedTemplate':
-        '{count} dessin(s) de même nom dans « {cut} » seront remplacés par '
+        'Les dessins de même nom dans « {cut} » seront remplacés par '
         "ceux de l'origine (원본 승리).",
+    'convertLinkedCutReplacedHeading': 'Dessins remplacés',
     'convertLinkedCutJoiningTemplate':
         "{count} dessin(s) rejoignent l'ensemble partagé.",
     'convertLinkedCutTargetGainsTemplate': '« {cut} » gagne : {names}.',
@@ -7096,7 +7104,8 @@ enum AppStrings {
     'convertLinkedCutBodyTemplate': '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',
     'convertLinkedCutTargetLabel': '链接的镜头',
     'convertLinkedCutLinksTemplate': '链接 {names}。',
-    'convertLinkedCutReplacedTemplate': '“{cut}”中 {count} 张同名原画将被原本的替换（원본 승리）。',
+    'convertLinkedCutReplacedTemplate': '“{cut}”中的同名原画将被原本的替换（원본 승리）。',
+    'convertLinkedCutReplacedHeading': '被替换的原画',
     'convertLinkedCutJoiningTemplate': '{count} 张原画加入共用集合。',
     'convertLinkedCutTargetGainsTemplate': '“{cut}”新增：{names}。',
     'convertLinkedCutOriginGainsTemplate': '本镜头新增：{names}。',

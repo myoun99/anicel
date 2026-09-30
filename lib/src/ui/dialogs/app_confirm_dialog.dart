@@ -44,7 +44,7 @@ class AppConfirmDialog extends StatelessWidget {
   final String? detailsHeading;
 
   /// Whether the fold over [details] starts OPEN — for a window whose answer
-  /// IS the list (see [_DetailsDisclosure] for why the others start closed).
+  /// IS the list (see [DetailsDisclosure] for why the others start closed).
   final bool detailsOpen;
 
   /// Left to right; the one that answers 'yes' goes last and carries
@@ -69,7 +69,7 @@ class AppConfirmDialog extends StatelessWidget {
               children: [
                 Text(message, style: Theme.of(context).textTheme.bodyMedium),
                 const SizedBox(height: 8),
-                _DetailsDisclosure(
+                DetailsDisclosure(
                   heading:
                       detailsHeading ?? AppText.strings.commonAffectedFiles,
                   lines: details,
@@ -93,8 +93,14 @@ class AppConfirmDialog extends StatelessWidget {
 /// pool's in-use mark opens a window to show where a file is used: there the
 /// list is what was asked for, and a fold to open first would put it behind
 /// one more press. That window says so with [AppConfirmDialog.detailsOpen].
-class _DetailsDisclosure extends StatefulWidget {
-  const _DetailsDisclosure({
+///
+/// Public for the one window that is not an [AppConfirmDialog] and lists
+/// all the same: the 겸용 conversion's 안내문, whose replaced drawings are a
+/// list under one of its lines (I-18 link-notice-Q1) — the same fold, not a
+/// second one drawn for it.
+class DetailsDisclosure extends StatefulWidget {
+  const DetailsDisclosure({
+    super.key,
     required this.heading,
     required this.lines,
     required this.startsOpen,
@@ -105,10 +111,10 @@ class _DetailsDisclosure extends StatefulWidget {
   final bool startsOpen;
 
   @override
-  State<_DetailsDisclosure> createState() => _DetailsDisclosureState();
+  State<DetailsDisclosure> createState() => _DetailsDisclosureState();
 }
 
-class _DetailsDisclosureState extends State<_DetailsDisclosure> {
+class _DetailsDisclosureState extends State<DetailsDisclosure> {
   late bool _open = widget.startsOpen;
 
   @override
