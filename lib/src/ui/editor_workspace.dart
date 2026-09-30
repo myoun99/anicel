@@ -28,7 +28,6 @@ import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/canvas_read_source.dart';
-import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../models/brush_tip_entry.dart';
@@ -63,6 +62,7 @@ import 'brush/tool_settings_panel.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'session/session_row_button_presses.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'export/export_frame_renderer.dart';
@@ -859,28 +859,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     for (final railId in LayerRailId.values) railId: ValueNotifier<double>(0),
   };
 
-  void _toggleLayerLanes(LayerId layerId) {
-    // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). The
-    // property-lane twirl — the one the fx lanes live under — is a button
-    // on a layer row like any other.
-    //
-    // ⛔The closing half still runs here and NOT inside the command: the
-    // fold law hands the standing row to the layer when its lanes leave
-    // the screen (R5 #11), and that is a selection move, not part of the
-    // membership this undoes.
-    final expanded = widget.session.railView.expandedLaneLayerIds;
-    final closing = expanded.value.contains(layerId);
-    widget.session.historyManager.execute(
-      ToggleIdInSetCommand(
-        notifier: expanded,
-        layerId: layerId,
-        debugLabel: 'Toggle layer lanes',
-      ),
-    );
-    if (closing) {
-      widget.session.handOffCurrentRowOnFold(layerId);
-    }
-  }
+  // The lane twirl and the group fold are pressed through
+  // `SessionRowButtonPresses` — a press inside the row selection folds every
+  // selected row (I-32).
 
   // The hidden sections, the row filter, the folded attach groups and the
   // lane twirls are the SESSION's (`RailView`, F-169 and I-7): the standing

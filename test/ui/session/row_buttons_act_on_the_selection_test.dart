@@ -412,6 +412,16 @@ final List<_Button> _buttons = [
     read: (r, id) => r.s.onionSkin.isLayerOnionSkinEnabled(id),
     undoes: false,
   ),
+  // 🗣️I-32 (유저 2026-09-14): 「… fx펼치기, … 그룹펼치기 … 레이어에 있는 버튼
+  // 전부 조사하고 연결해서 일괄조작가능하게」. The group fold has a file of
+  // its own (`a_group_fold_folds_the_selection_test.dart`): its rows need
+  // groups to fold.
+  (
+    name: 'lane twirl',
+    press: (p, id) => p.toggleLanes(id),
+    read: (r, id) => r.s.railView.expandedLaneLayerIds.value.contains(id),
+    undoes: true,
+  ),
 ];
 
 /// Three cels — A and B are selected, C stands outside — the track's two SE

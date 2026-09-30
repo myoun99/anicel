@@ -885,7 +885,9 @@ class _WorkspaceTabs {
               xsheetFrameAxisOffset: _state._frameAxisOffsets[LayerRailId.xsheet],
               expandedLaneLayerIds:
                   _state.widget.session.railView.expandedLaneLayerIds.value,
-              onToggleLayerLanes: _state._toggleLayerLanes,
+              onToggleLayerLanes: SessionRowButtonPresses(
+                _state.widget.session,
+              ).toggleLanes,
               expandedLaneGroupKeys:
                   _state.widget.session.railView.expandedLaneGroupKeys.value,
               onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
@@ -896,7 +898,9 @@ class _WorkspaceTabs {
               onSetRowFilter: _state._setTimelineRowFilter,
               collapsedAttachBaseIds:
                   _state.widget.session.railView.collapsedAttachBaseIds.value,
-              onToggleAttachGroup: _state._rail._toggleAttachGroup,
+              onToggleAttachGroup: SessionRowButtonPresses(
+                _state.widget.session,
+              ).toggleGroupFold,
               // Unified layer controls: the camera row's visibility/opacity
               // drive the same camera-view state as the canvas overlay and
               // the camera panel.

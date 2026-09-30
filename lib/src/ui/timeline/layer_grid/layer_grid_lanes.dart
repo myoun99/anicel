@@ -23,8 +23,7 @@ class _LayerGridLanes {
       return;
     }
     for (final layer in _state.widget.layers) {
-      if (lanesFor(layer).isNotEmpty &&
-          !_state.widget.hooks.expandedLaneLayerIds.contains(layer.id)) {
+      if (lanesFor(layer).isNotEmpty && !_laneOpen(layer.id)) {
         onToggle(layer.id);
       }
     }
@@ -36,7 +35,19 @@ class _LayerGridLanes {
       return;
     }
     for (final layerId in _state.widget.hooks.expandedLaneLayerIds.toList()) {
-      onToggle(layerId);
+      if (_laneOpen(layerId)) {
+        onToggle(layerId);
+      }
     }
+  }
+
+  /// Read LIVE before every turn: a twirl pressed inside the row selection
+  /// turns every selected row (I-32), so a row the sweeps above reach may
+  /// already have been turned by an earlier one — and toggling it again
+  /// would turn it back.
+  bool _laneOpen(LayerId id) {
+    final hooks = _state.widget.hooks;
+    return hooks.laneOpenOf?.call(id) ??
+        hooks.expandedLaneLayerIds.contains(id);
   }
 }

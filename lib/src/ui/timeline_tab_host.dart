@@ -714,7 +714,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.
-            onToggleLayerCollapsed: _session.folders.toggleLayerCollapsed,
+            onToggleLayerCollapsed: _rowPresses.toggleGroupFold,
             onToggleLayerFx: _rowPresses.toggleFx,
             // Per-layer onion skin (UI-R17 #5, TVPaint style).
             layerOnionSkinEnabledOf: _session.onionSkin.isLayerOnionSkinEnabled,
@@ -865,7 +865,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             xsheetFrameAxisOffset: widget.xsheetFrameAxisOffset,
             projectFrameRate: _session.projectSettings.projectFrameRate,
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
-            laneOpenOf: widget.expandedLaneLayerIds.contains,
+            // LIVE, as the hook asks: the widget's set is the one this build
+            // was handed, and a twirl replaces the session's set with a new
+            // one — so a sweep that toggles row after row inside one frame
+            // (the legend's 「all」, or a press spread across the selection)
+            // read every row it had already turned as still unturned.
+            laneOpenOf: (id) =>
+                _session.railView.expandedLaneLayerIds.value.contains(id),
             laneGroupOnOf: _session.layerSwitches.isLayerTransformOn,
             layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
             onToggleLayerLanes: widget.onToggleLayerLanes,
