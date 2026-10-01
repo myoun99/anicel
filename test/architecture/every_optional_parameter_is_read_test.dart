@@ -24,13 +24,13 @@
 @TestOn('vm')
 library;
 
-import 'dart:io';
-
 import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/dart_sources.dart';
 
 /// Unread today, each with why it is still here. An entry that no longer
 /// matches FAILS: a ledger that keeps paid debts on it stops being read.
@@ -46,12 +46,10 @@ const _unread = <String, String>{};
 
 void main() {
   test('every optional parameter under lib/ is read by its body', () {
-    final found = <String>{};
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is File && file.path.endsWith('.dart')) {
-        found.addAll(unreadParameters(file.path, file.readAsStringSync()));
-      }
-    }
+    final found = <String>{
+      for (final file in dartFilesUnder('lib'))
+        ...unreadParameters(file.path, file.readAsStringSync()),
+    };
     expect(
       found.difference(_unread.keys.toSet()),
       isEmpty,
