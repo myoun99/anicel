@@ -175,8 +175,10 @@ void main() {
       expect(expanded[2].layerIndex, 1);
     });
 
-    test('R26 #36: a base\'s lanes land AFTER its trailing attach rows — '
-        'the attach group never splits', () {
+    // F-249 (유저 2026-10-01): 「기준레이어 fx펼치면 기준레이어 밑에 fx행오도록」
+    // — ↩️R26 #36 had held them past the whole attach group.
+    test('a base\'s lanes land right under the base, before its attach '
+        'rows', () {
       final base = Layer(
         id: const LayerId('base'),
         name: 'B',
@@ -212,16 +214,15 @@ void main() {
               )
               .toList();
 
-      // Trailing attach rows: the base's lanes wait past the whole group.
+      // Trailing attach rows: the base's lanes come first, right under it.
       expect(orderOf([base, attach1, attach2], {base.id}), [
         'base',
+        'lane:base',
         'at1',
         'at2',
-        'lane:base',
       ]);
 
-      // Attach rows PRECEDING the base keep the classic order — the group
-      // already ends at the base there.
+      // Attach rows PRECEDING the base: the same answer — under the base.
       expect(orderOf([attach1, attach2, base], {base.id}), [
         'at1',
         'at2',
@@ -229,14 +230,14 @@ void main() {
         'lane:base',
       ]);
 
-      // An expanded attach layer's own lanes emit in place; the base's
-      // still wait for the run to end.
+      // Every layer's lanes sit under its own row, a base's and an attach
+      // layer's alike.
       expect(orderOf([base, attach1, attach2], {base.id, attach1.id}), [
         'base',
+        'lane:base',
         'at1',
         'lane:at1',
         'at2',
-        'lane:base',
       ]);
     });
   });

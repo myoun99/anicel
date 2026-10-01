@@ -594,18 +594,16 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   bool lanesPrecedeLayer = false,
 }) {
   final rows = <TimelineDisplayRow>[];
-  // R26 #36: the attach group is unsplittable — a base's transform lanes
-  // WAIT here until the group's trailing attach rows have been laid, so
-  // the order reads base → attach rows → lanes in every orientation
-  // (attach rows preceding the base in display order are unaffected: the
-  // group already ends at the base there).
-  final pendingLanes = <TimelineDisplayRow>[];
-  LayerId? pendingLaneBaseId;
-  void flushPendingLanes() {
-    rows.addAll(pendingLanes);
-    pendingLanes.clear();
-    pendingLaneBaseId = null;
-  }
+  // 🚨F-249 (유저 2026-10-01): 「과거 결정 번복. 역시 변형 펼칠땐 어태치레이어의
+  // 밑이아니라 레이어의 밑에 오도록 하고싶음. 즉 기준레이어 fx펼치면
+  // 기준레이어 밑에 fx행오도록」 — a layer's lanes follow ITS OWN row, a
+  // base's as much as an attach row's.
+  //
+  // ↩️R26 #36 (07-22) held a base's lanes back until its trailing attach
+  // rows were laid (base → attach rows → lanes), because the attach group
+  // is unsplittable. The group stays one for the fold and for a drop
+  // (`newRowPlacement`, `layer_drop_policy`); where the lanes sit is no
+  // longer that rule's question.
 
   // Folder rows need no synthesis: they are IN the stack, already sitting
   // directly above their members. All that is left is the nesting indent,
@@ -623,18 +621,6 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   final layerById = {for (final layer in modelStack) layer.id: layer};
   for (var index = 0; index < layers.length; index += 1) {
     final layer = layers[index];
-    // An ORGANIZER folder row ([연출]/[작감]… inside an attach group)
-    // belongs to its base's group: the group fold hides it and the lane
-    // deferral treats it as part of the attach run.
-    final organizerBaseId = attachOrganizerBaseOf(layer, modelStack);
-    // The attach run ends at the first layer that is NOT an attach (or
-    // organizer folder) of the pending base (row-emission skips below
-    // never end it: a folded attach row still belongs to the group).
-    if (pendingLaneBaseId != null &&
-        layer.attachedToLayerId != pendingLaneBaseId &&
-        organizerBaseId != pendingLaneBaseId) {
-      flushPendingLanes();
-    }
     final attachBaseId = attachGroupBaseOf(layer, modelStack);
     if (layerRowHiddenBy(
           layer,
@@ -683,42 +669,23 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
     if (!expandedLayerIds.contains(layer.id)) {
       continue;
     }
-    // R26 #36: with trailing attach rows ahead, the lanes go PENDING and
-    // land after the group; otherwise they follow the layer row exactly
-    // as before. An attach layer's own lanes always emit in place (it
-    // has no attach children of its own).
-    final defer =
-        layer.attachedToLayerId == null &&
-        index + 1 < layers.length &&
-        layers[index + 1].attachedToLayerId == layer.id;
     for (final lane in lanesForLayer(layer)) {
-      final laneRow = TimelineDisplayRow.lane(layer, lane, layerIndex: index);
-      if (defer) {
-        pendingLanes.add(laneRow);
-        pendingLaneBaseId = layer.id;
-      } else {
-        rows.add(laneRow);
-      }
+      rows.add(TimelineDisplayRow.lane(layer, lane, layerIndex: index));
     }
   }
-  flushPendingLanes();
   if (!lanesPrecedeLayer) {
     return List.unmodifiable(rows);
   }
-  return List.unmodifiable(_laneRunsMovedAhead(rows, modelStack));
+  return List.unmodifiable(_laneRunsMovedAhead(rows));
 }
 
-/// Flips each lane RUN to the far side of its owner's attach group and
-/// reverses it — the x-sheet's leftward reading of "further means later"
-/// (R9 #23).
+/// Flips each lane RUN to the near side of its owner's row and reverses it
+/// — the x-sheet's leftward reading of "further means later" (R9 #23).
 ///
-/// It moves the run past the WHOLE group, mirroring R26 #36: the group is
-/// unsplittable, so where the horizontal axis pushes the lanes past its
-/// end, the x-sheet pushes them past its start.
-List<TimelineDisplayRow> _laneRunsMovedAhead(
-  List<TimelineDisplayRow> rows,
-  List<Layer> modelStack,
-) {
+/// ↩️It moved the run past the owner's WHOLE attach group, mirroring R26
+/// #36 on the horizontal axis. F-249 (유저 2026-10-01) put a base's lanes
+/// right under its own row there, so here they sit right beside it.
+List<TimelineDisplayRow> _laneRunsMovedAhead(List<TimelineDisplayRow> rows) {
   final out = <TimelineDisplayRow>[];
   var index = 0;
   while (index < rows.length) {
@@ -735,23 +702,11 @@ List<TimelineDisplayRow> _laneRunsMovedAhead(
       run.add(rows[index]);
       index += 1;
     }
-    var insertAt = out.length;
-    while (insertAt > 0) {
-      final candidate = out[insertAt - 1];
-      if (candidate.isLane) {
-        break;
-      }
-      final layer = candidate.layer;
-      final belongs =
-          layer.id == ownerId ||
-          layer.attachedToLayerId == ownerId ||
-          attachOrganizerBaseOf(layer, modelStack) == ownerId;
-      if (!belongs) {
-        break;
-      }
-      insertAt -= 1;
-    }
-    out.insertAll(insertAt, run.reversed);
+    // A run follows its owner's row, so the owner is the row just laid.
+    final owner = out.lastIndexWhere(
+      (row) => !row.isLane && row.layer.id == ownerId,
+    );
+    out.insertAll(owner < 0 ? out.length : owner, run.reversed);
   }
   return out;
 }
