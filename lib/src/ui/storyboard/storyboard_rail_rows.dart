@@ -1724,9 +1724,10 @@ class _FollowsTheCutUnderThePlayheadState
   Widget build(BuildContext context) => widget.builder(_subject);
 }
 
-/// A track's cuts as a drag preview lays them: the same strip while every
-/// cut is the same object over the same frames — what its rows are built
-/// from ([_StoryboardRailRows.trackGroupSection]).
+/// A track's cuts as a drag preview lays them — what its rows are built
+/// from ([_StoryboardRailRows.trackGroupSection]): the same strip while it
+/// is the same cut objects in the same order, which is all a layout is
+/// made of ([cutSpansOfCuts]).
 final class _TrackStrip {
   const _TrackStrip(this.entries);
 
@@ -1738,14 +1739,7 @@ final class _TrackStrip {
       return false;
     }
     for (var i = 0; i < entries.length; i += 1) {
-      final a = entries[i];
-      final b = other.entries[i];
-      if (!identical(a.cut, b.cut) ||
-          a.cutIndex != b.cutIndex ||
-          a.startFrame != b.startFrame ||
-          a.endFrame != b.endFrame ||
-          a.duration != b.duration ||
-          a.mediaLead != b.mediaLead) {
+      if (!identical(entries[i].cut, other.entries[i].cut)) {
         return false;
       }
     }
@@ -1754,6 +1748,6 @@ final class _TrackStrip {
 
   @override
   int get hashCode => Object.hashAll([
-    for (final entry in entries) Object.hash(entry.cutId, entry.startFrame),
+    for (final entry in entries) identityHashCode(entry.cut),
   ]);
 }
