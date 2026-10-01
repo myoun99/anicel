@@ -103,7 +103,11 @@ final class NativeCommitScratch implements CommitTileScratch {
       () => native.acquireTileBuffer(_tileByteLength * 2, zeroed: false),
     );
     if (_wideCurrent.add(coord)) {
-      widenStrokeBytes(bytes.view, _wideView(wide));
+      native.widenBytes(
+        bytes.pointer,
+        wide.pointer.cast<Uint16>(),
+        _tileByteLength,
+      );
     }
     return wide;
   }

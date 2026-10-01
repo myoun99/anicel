@@ -642,6 +642,10 @@ void blendDabTilesDart(
   final tileXStart = plan.tileXStart;
   final tileXEnd = plan.tileXEnd;
   final erase = plan.erase;
+  // The dab's colour on the 16-bit plane (`qa_dab_over_own_colour`).
+  final ownR = sourceR * 257;
+  final ownG = sourceG * 257;
+  final ownB = sourceB * 257;
 
   for (var y = top; y < bottomExclusive; y += 1) {
     final dy = y + 0.5 - centerY;
@@ -831,7 +835,17 @@ void blendDabTilesDart(
           outAlpha = destinationAlpha * inverseSourceAlpha;
         } else {
           outAlpha = sourceAlpha + destinationAlpha * inverseSourceAlpha;
-          if (outAlpha != 0.0) {
+          // Over nothing or over its own colour the dab lands its own
+          // colour exactly (`qa_dab_over_own_colour`).
+          if (outAlpha != 0.0 &&
+              (wide[offset + 3] == 0 ||
+                  (wide[offset] == ownR &&
+                      wide[offset + 1] == ownG &&
+                      wide[offset + 2] == ownB))) {
+            red = sourceR.toDouble();
+            green = sourceG.toDouble();
+            blue = sourceB.toDouble();
+          } else if (outAlpha != 0.0) {
             red =
                 (sourceR * sourceAlpha +
                     wide[offset] / 257.0 *

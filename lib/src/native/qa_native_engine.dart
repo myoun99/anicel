@@ -38,6 +38,8 @@ class QaNativeEngine {
     this._preBlendTiles,
     this._premultiplyRgbaCopy,
     this._copyBytes,
+    this._zeroBytes,
+    this._widenBytes,
     this._tileAlloc,
     this._tileFree,
     this._tileFreePointer,
@@ -156,6 +158,23 @@ class QaNativeEngine {
   /// VM's typed-data setRange ran several times slower in debug).
   void copyBytes(Pointer<Uint8> dst, Pointer<Uint8> src, int length) {
     _copyBytes(dst, src, length);
+  }
+
+  final void Function(Pointer<Uint8> dst, int length) _zeroBytes;
+
+  /// A native memset — a zeroed tile without the VM's debug-build
+  /// `fillRange` loop (`qa_zero_bytes`, ABI 40).
+  void zeroBytes(Pointer<Uint8> dst, int length) {
+    _zeroBytes(dst, length);
+  }
+
+  final void Function(Pointer<Uint8> bytes, Pointer<Uint16> wide, int count)
+  _widenBytes;
+
+  /// A stroke tile's 16-bit plane widened from its bytes, natively
+  /// (`qa_widen_bytes`, ABI 40).
+  void widenBytes(Pointer<Uint8> bytes, Pointer<Uint16> wide, int count) {
+    _widenBytes(bytes, wide, count);
   }
 
   final Pointer<Void> Function(int size) _tileAlloc;
@@ -964,6 +983,16 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int64),
             void Function(Pointer<Uint8>, Pointer<Uint8>, int)
           >('qa_copy_bytes');
+      final zeroBytes = library
+          .lookupFunction<
+            Void Function(Pointer<Uint8>, Int64),
+            void Function(Pointer<Uint8>, int)
+          >('qa_zero_bytes');
+      final widenBytes = library
+          .lookupFunction<
+            Void Function(Pointer<Uint8>, Pointer<Uint16>, Int64),
+            void Function(Pointer<Uint8>, Pointer<Uint16>, int)
+          >('qa_widen_bytes');
       final tileAlloc = library
           .lookupFunction<
             Pointer<Void> Function(Int64),
@@ -1212,6 +1241,8 @@ class QaNativeEngine {
         preBlendTiles,
         premultiplyRgbaCopy,
         copyBytes,
+        zeroBytes,
+        widenBytes,
         tileAlloc,
         tileFree,
         tileFreePointer,
@@ -1845,7 +1876,7 @@ class QaNativeEngine {
     final pointer = tileAlloc(byteLength);
     final view = pointer.asTypedList(byteLength);
     if (zeroed) {
-      view.fillRange(0, byteLength, 0);
+      _zeroBytes(pointer, byteLength);
     }
     return QaNativeTileBuffer._(pointer, view);
   }

@@ -73,6 +73,20 @@ StrokePixel strokeSourceOverAt({
     return StrokePixel.transparent;
   }
 
+  // Over nothing or over its own colour the source lands its own colour
+  // exactly — `qa_dab_over_own_colour` says why that is the same bytes.
+  if (destination.a == 0 ||
+      (destination.r == source.r * 257 &&
+          destination.g == source.g * 257 &&
+          destination.b == source.b * 257)) {
+    return StrokePixel.rounded(
+      red: source.r.toDouble(),
+      green: source.g.toDouble(),
+      blue: source.b.toDouble(),
+      alpha: outAlpha,
+    );
+  }
+
   return StrokePixel.rounded(
     red:
         (source.r * sourceAlpha +
