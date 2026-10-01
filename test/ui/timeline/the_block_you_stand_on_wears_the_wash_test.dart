@@ -178,6 +178,11 @@ void main() {
       findsNothing,
       reason: 'premise: the playhead is out of the window',
     );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-selected-cell')),
+      findsNothing,
+      reason: 'the cell it stands on went with it',
+    );
     expect(washed(tester, windowStart: 10), (start: 6, end: 12, row: 0));
 
     await pump(tester, frame: 2, windowStart: 10);
