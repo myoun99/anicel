@@ -400,9 +400,15 @@ void main() {
     final session = await pump(tester);
     paint(session, 'c0', left: 10, top: 10, right: 20, bottom: 20, rgba: red);
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('shared-colour-edit-button')).first,
+    // Scrolled into view first: the head sits at the far end of a strip
+    // that scrolls since I-18's 자동 이름 지정 took the last of the bar's
+    // room, and a tap off the strip's view opens nothing.
+    final head = find.byKey(
+      const ValueKey<String>('shared-colour-edit-button'),
     );
+    await tester.ensureVisible(head);
+    await tester.pumpAndSettle();
+    await tester.tap(head);
     await tester.pumpAndSettle();
     for (final key in [
       'shared-keep-colour-button',
