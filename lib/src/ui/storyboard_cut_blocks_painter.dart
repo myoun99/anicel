@@ -522,7 +522,6 @@ class StoryboardCutBlocksPainter extends CustomPainter
     required ({int startIndex, int endIndexExclusive}) window,
     required TrackFrameRangeSelection? selection,
     required CutId? hovered,
-    required CutId? standing,
   }) {
     final left = _left(entry.startFrame);
     final width = _widthFor(entry);
@@ -556,7 +555,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       isRangeSelected:
           selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
       isHovered: entry.cutId == hovered,
-      isStanding: entry.cutId == standing,
+      isStanding: entry.cutId == standingCutId?.value,
       title: entry.cut.name,
       // D27: no explanatory copy — an empty layer slot reads as ''.
       layerLabel: layerName ?? '',
@@ -693,7 +692,6 @@ class StoryboardCutBlocksPainter extends CustomPainter
         ? selectionValue
         : null;
     final hovered = hoveredCutId.value;
-    final standing = standingCutId?.value;
     final visuals = <StoryboardCutBlockVisual>[];
     for (final entry in entries) {
       final visual = _visualFor(
@@ -701,7 +699,6 @@ class StoryboardCutBlocksPainter extends CustomPainter
         window: window,
         selection: selection,
         hovered: hovered,
-        standing: standing,
       );
       if (visual != null) {
         visuals.add(visual);

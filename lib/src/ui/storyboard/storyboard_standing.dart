@@ -93,10 +93,12 @@ class _StoryboardStanding {
           listenable: Listenable.merge([playhead, ?dragPreview]),
           builder: (context, _) {
             final frame = playhead.value;
+            final unit = frame == null
+                ? null
+                : _standingUnit(track, standingRow, frame);
             return Stack(
               children: [
-                if (frame != null)
-                  ?_standingWash(track, standingRow, rowBand, scale, frame),
+                if (unit != null) _washOver(unit, rowBand, scale),
                 if (frame != null)
                   Positioned(
                     left: scale.leftForFrame(frame),
@@ -123,22 +125,23 @@ class _StoryboardStanding {
   /// wears the standing wash, as on the timeline — an S row's sound or span,
   /// a lane's cell. The V row's cut wears it in its plate instead, under the
   /// pictures ([StoryboardCutBlocksPainter.standingCutId]): a state colours
-  /// what is not the picture.
-  Widget? _standingWash(
+  /// what is not the picture — so no unit here.
+  ({int startIndex, int endIndexExclusive})? _standingUnit(
     Track track,
     TimelineRowAddress row,
+    int frame,
+  ) => switch (row) {
+    TrackRowAddress() => null,
+    LaneRowAddress() => (startIndex: frame, endIndexExclusive: frame + 1),
+    LayerRowAddress(:final layerId) => _unitOn(track, layerId, frame),
+  };
+
+  /// The standing wash over [unit], in the row's [band].
+  Widget _washOver(
+    ({int startIndex, int endIndexExclusive}) unit,
     ({double top, double height}) band,
     TimelineScale scale,
-    int frame,
   ) {
-    final unit = switch (row) {
-      TrackRowAddress() => null,
-      LaneRowAddress() => (startIndex: frame, endIndexExclusive: frame + 1),
-      LayerRowAddress(:final layerId) => _unitOn(track, layerId, frame),
-    };
-    if (unit == null) {
-      return null;
-    }
     return Positioned(
       left: scale.leftForFrame(unit.startIndex),
       top: band.top,
