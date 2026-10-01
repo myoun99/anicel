@@ -128,6 +128,20 @@ void main() {
     );
     expect(strip, paints..drawImageRect());
     expect(strip, paintsExactlyCountTimes(#drawParagraph, 0));
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, word, const Offset(3, 4), fit),
+      paints..drawImageRect(
+        destination: Rect.fromLTWH(
+          3 - 1,
+          4 - 1,
+          word.width * fit.x + 2,
+          word.height * fit.y + 2,
+        ),
+      ),
+      reason:
+          'the bake lands on the narrowed word\'s own box, its one-pixel '
+          'margin around it — nothing moves when it lands',
+    );
 
     expect(
       (Canvas canvas) =>
