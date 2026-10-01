@@ -123,7 +123,7 @@ final class TransformModePress extends SubToolPress {
 /// guard (R26 #13) and its rail memory see a key exactly as they see a tap.
 ///
 /// [cutWhole] is what a [CutWholePress] runs — the session's
-/// (`CellVerbs.cutWhole`), handed in by whoever holds the session, so the
+/// (`PixelVerbs.cutWhole`), handed in by whoever holds the session, so the
 /// tile and its key are one press here too.
 void pressTool(
   ToolPress press, {

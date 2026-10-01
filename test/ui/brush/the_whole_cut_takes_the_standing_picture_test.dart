@@ -164,7 +164,7 @@ void main() {
     inkTwoSquares(session);
     // A marquee over the first square alone: the cut tool cuts through its
     // own outline, never the selection's.
-    session.cells.pixelVerbCanvas = () => (
+    session.pixelVerbs.pixelVerbCanvas = () => (
       region: CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: 0, top: 0, right: 30, bottom: 30),
       ),
@@ -173,11 +173,11 @@ void main() {
     );
     final slot = CutPieceSlot();
     addTearDown(slot.dispose);
-    final published = session.cells.cutToolHand;
+    final published = session.pixelVerbs.cutToolHand;
     expect(published, isNotNull, reason: 'the workspace hands its slot in');
-    session.cells.cutToolHand = slot.hold;
+    session.pixelVerbs.cutToolHand = slot.hold;
 
-    session.cells.cutWhole();
+    session.pixelVerbs.cutWhole();
 
     final piece = slot.piece!;
     expect((piece.originLeft, piece.originTop), (10, 10));
@@ -188,8 +188,8 @@ void main() {
     );
 
     // The real hand: the window's slot, which arms the stamp.
-    session.cells.cutToolHand = published;
-    session.cells.cutWhole();
+    session.pixelVerbs.cutToolHand = published;
+    session.pixelVerbs.cutWhole();
     await tester.pump();
     final workspace = tester.widget<EditorWorkspace>(
       find.byType(EditorWorkspace),
@@ -202,14 +202,14 @@ void main() {
     inkTwoSquares(session);
     final slot = CutPieceSlot();
     addTearDown(slot.dispose);
-    session.cells.cutToolHand = slot.hold;
-    session.cells.cutWhole();
+    session.pixelVerbs.cutToolHand = slot.hold;
+    session.pixelVerbs.cutWhole();
     final held = slot.piece;
     expect(held, isNotNull);
 
     session.selectFrameIndex(1);
     await tester.pump();
-    session.cells.cutWhole();
+    session.pixelVerbs.cutWhole();
 
     expect(
       slot.piece,

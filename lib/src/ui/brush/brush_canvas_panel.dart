@@ -287,7 +287,7 @@ class BrushCanvasPanel extends StatefulWidget {
   /// 🗣️유저 2026-09-17: 「몇 행에 걸쳐서 적용하던 **동시적용은 가능하게**.
   /// **적용시만 각 행에 따라 불가능하면 그냥 무시**하는방식」 · 2026-09-18:
   /// 「**여러프레임 확정가능**하게한다던가」. Rows and frames are ONE law and
-  /// the session already writes it — `CellVerbs.pixelVerbCellKeys`, which
+  /// the session already writes it — `PixelVerbs.pixelVerbCellKeys`, which
   /// skips a hidden row, an empty cel or a row that takes no brush.
   ///
   /// ⛔A FUNCTION, not a list: the range changes under this panel, and a
@@ -301,7 +301,7 @@ class BrushCanvasPanel extends StatefulWidget {
 
   /// Where each cel of [transformTargetKeys] stands on the canvas — its
   /// row's placement, the one the pixel verbs restate an outline through
-  /// (`CellVerbs.placementOf`). A range over several rows lands each cel
+  /// (`PixelVerbs.placementOf`). A range over several rows lands each cel
   /// through its OWN row's placement (a-marquee-on-a-posed-row ④).
   ///
   /// ⚠️Null (a host with no rows behind it — the focused tests) crosses

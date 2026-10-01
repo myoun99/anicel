@@ -144,6 +144,7 @@ import 'session/layer_marks.dart';
 import 'session/exposure_verbs.dart';
 import 'session/cell_instances.dart';
 import 'session/cell_verbs.dart';
+import 'session/pixel_verbs.dart';
 import 'session/folders_and_attachments.dart';
 import 'session/project_settings.dart';
 import 'session/frame_verbs.dart';
@@ -1055,7 +1056,13 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels);
+  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, transitions: transitions);
+
+  // ── the pixel verbs: the 색 편집 list and 전체 잘라내기 ─────────────
+  //
+  // A collaborator (session/pixel_verbs.dart), carved out of the cell verbs
+  // when I-55 doubled the family. Callers name it, as they name [cells].
+  late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels);
 
   TimelineRowAddress get selectedRow => standing.selectedRow;
 

@@ -38,45 +38,31 @@ CutPiece? buildCutPiece({
   required BitmapSurface surface,
   SelectionMaskOptions options = SelectionMaskOptions.none,
 }) {
-  final read = selectionMaskOnPasteboard(
-    region,
-    canvasSize: surface.canvasSize,
-    options: options,
-  );
-  if (read == null) {
-    return null;
-  }
-  final (:mask, :box) = read;
-  final (:left, :top, :width, :height) = box;
-  final gathered = gatherMaskedSurfacePixels(
+  // The MOVE's lift, the same steps: whole pixels unless a feather asked
+  // for a soft edge — with no options every mask byte is 0 or 255 and there
+  // is nothing to decide.
+  final lifted = liftSelectionPixels(
+    region: region,
     surface: surface,
-    mask: mask,
-    left: left,
-    top: top,
-    width: width,
-    height: height,
-    // The MOVE's law (`buildSelectionLiftDabs`): whole pixels unless a
-    // feather asked for a soft edge. With no options every mask byte is 0
-    // or 255 and there is nothing to decide.
-    takeWholePixels: options.featherPx <= 0,
+    options: options,
   );
   // Scraping an empty stretch of cel must NOT hand back a blank piece: the
   // slot is a long-term holder that survives frames, cuts and projects, and
   // overwriting it with nothing would make one stray drag the only way to
   // lose work you meant to keep.
-  if (!gathered.liftedAnything) {
+  if (lifted == null) {
     return null;
   }
-
+  final box = lifted.box;
   return CutPiece(
     image: BrushStampImage(
       id: _nextCutPieceId(),
-      width: width,
-      height: height,
-      rgba: gathered.rgba,
+      width: box.width,
+      height: box.height,
+      rgba: lifted.rgba,
     ),
-    originLeft: left,
-    originTop: top,
+    originLeft: box.left,
+    originTop: box.top,
   );
 }
 

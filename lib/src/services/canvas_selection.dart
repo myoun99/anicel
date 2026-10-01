@@ -943,11 +943,27 @@ SelectionMaskReading? selectionMaskOnPasteboard(
   );
 }
 
-SelectionLiftDabs? buildSelectionLiftDabs({
+/// What a selection takes off a cel: its reading
+/// ([selectionMaskOnPasteboard]), the straight-alpha pixels under it, and
+/// whether a partly-covered pixel travelled whole.
+typedef SelectionPixels = ({
+  Uint8List mask,
+  ({int left, int top, int width, int height}) box,
+  Uint8List rgba,
+  bool takeWholePixels,
+});
+
+/// The pixels [region] takes off [surface] at [options] — null when its box
+/// is empty or nothing under the mask is painted.
+///
+/// ⛔ONE LIFT. The move's lift and the cut piece (the cut tool, 전체
+/// 잘라내기, 픽셀 복사) each read the selection and gathered under it, the
+/// piece citing the move's law in a comment — the same steps twice, which is
+/// how one marquee comes to take two different sets of pixels.
+SelectionPixels? liftSelectionPixels({
   required CanvasSelectionRegion region,
   required BitmapSurface surface,
-  required String liftId,
-  SelectionMaskOptions options = SelectionMaskOptions.none,
+  required SelectionMaskOptions options,
 }) {
   // Pasteboard clip, not canvas — off-canvas artwork is selectable and
   // liftable (the whole point of moving things on and off the stage).
@@ -961,7 +977,6 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     return null;
   }
   final (:mask, :box) = read;
-  final (:left, :top, :width, :height) = box;
 
   // 🚨WHOLE PIXELS unless the softness was ASKED for. A feathered selection
   // is a soft edge on purpose; anti-aliasing is not, and splitting a pixel
@@ -973,17 +988,39 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   final gathered = gatherMaskedSurfacePixels(
     surface: surface,
     mask: mask,
-    left: left,
-    top: top,
-    width: width,
-    height: height,
+    left: box.left,
+    top: box.top,
+    width: box.width,
+    height: box.height,
     takeWholePixels: takeWholePixels,
   );
-  final rgba = gathered.rgba;
-  final liftedAnything = gathered.liftedAnything;
-  if (!liftedAnything) {
+  if (!gathered.liftedAnything) {
     return null;
   }
+  return (
+    mask: mask,
+    box: box,
+    rgba: gathered.rgba,
+    takeWholePixels: takeWholePixels,
+  );
+}
+
+SelectionLiftDabs? buildSelectionLiftDabs({
+  required CanvasSelectionRegion region,
+  required BitmapSurface surface,
+  required String liftId,
+  SelectionMaskOptions options = SelectionMaskOptions.none,
+}) {
+  final lifted = liftSelectionPixels(
+    region: region,
+    surface: surface,
+    options: options,
+  );
+  if (lifted == null) {
+    return null;
+  }
+  final (:mask, :box, :rgba, :takeWholePixels) = lifted;
+  final (:left, :top, :width, :height) = box;
 
   // The erase rides the STAMP path too (R15-④): destination-out from the
   // exact mask bytes — tip-mask erases resample bilinearly and left a

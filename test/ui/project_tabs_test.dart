@@ -294,11 +294,11 @@ void main() {
     await newProject(tester);
     expect(first.rangeSelections.canvasHasSelection, isNull);
     expect(first.rangeSelections.clearCanvasSelection, isNull);
-    expect(first.cells.pixelVerbCanvas, isNull);
+    expect(first.pixelVerbs.pixelVerbCanvas, isNull);
     final second = projects.active;
     expect(second.rangeSelections.canvasHasSelection, isNotNull);
     expect(second.rangeSelections.clearCanvasSelection, isNotNull);
-    expect(second.cells.pixelVerbCanvas, isNotNull);
+    expect(second.pixelVerbs.pixelVerbCanvas, isNotNull);
   });
 
   testWidgets('a file that fails to open leaves the tabs as they were, and '

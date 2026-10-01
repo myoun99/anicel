@@ -23,7 +23,7 @@ import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/session/cell_verbs.dart';
+import 'package:anicel/src/ui/session/pixel_verbs.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 
@@ -168,15 +168,15 @@ void main() {
     expect(empty.frames, isEmpty);
     session.selectLayer(empty.id);
     await tester.pump();
-    expect(session.cells.pixelVerbSubject, PixelVerbSubject.nothing);
+    expect(session.pixelVerbs.pixelVerbSubject, PixelVerbSubject.nothing);
   });
 
   testWidgets('standing is one cel — the ladder does not reach for neighbours',
       (tester) async {
     final session = await pump(tester);
     await drawableRow(tester, session);
-    expect(session.cells.pixelVerbSubject, PixelVerbSubject.standing);
-    expect(cellVerbsOf(session).pixelVerbCellKeys(), hasLength(1));
+    expect(session.pixelVerbs.pixelVerbSubject, PixelVerbSubject.standing);
+    expect(pixelVerbsOf(session).pixelVerbCellKeys(), hasLength(1));
   });
 
   testWidgets(
@@ -184,7 +184,7 @@ void main() {
       '옛날에 했다가 폐기했어」', (tester) async {
     final session = await pump(tester);
     await drawableRow(tester, session);
-    final standing = cellVerbsOf(session).pixelVerbCellKeys();
+    final standing = pixelVerbsOf(session).pixelVerbCellKeys();
     expect(standing, hasLength(1));
 
     // Select every row there is. Under the discarded design this would have
@@ -197,13 +197,13 @@ void main() {
     expect(session.rowSelection.value.length, greaterThan(1));
 
     expect(
-      session.cells.pixelVerbSubject,
+      session.pixelVerbs.pixelVerbSubject,
       PixelVerbSubject.standing,
       reason: 'selecting rows says which rows are selected, not '
           '「recolour all of their drawings」',
     );
     expect(
-      cellVerbsOf(session).pixelVerbCellKeys().map((k) => k.frameId).toList(),
+      pixelVerbsOf(session).pixelVerbCellKeys().map((k) => k.frameId).toList(),
       standing.map((k) => k.frameId).toList(),
     );
   });
@@ -220,13 +220,13 @@ void main() {
     );
     await tester.pump();
 
-    expect(session.cells.pixelVerbSubject, PixelVerbSubject.range);
+    expect(session.pixelVerbs.pixelVerbSubject, PixelVerbSubject.range);
     // 🚨COUNTED, not just non-empty. `isNotEmpty` passed with the range rung
     // deleted, because the standing rung answers with one — the assertion has
     // to say 「more than standing would give you」 or it is not about the range
     // at all.
     expect(
-      cellVerbsOf(session).pixelVerbCellKeys().length,
+      pixelVerbsOf(session).pixelVerbCellKeys().length,
       greaterThan(1),
       reason: 'a range is drawn ACROSS the cels, which is why it is the one '
           'rung allowed to name more than one',
@@ -237,12 +237,12 @@ void main() {
       '활성화되야함」', (tester) async {
     final session = await pump(tester);
     final row = await drawableRow(tester, session);
-    expect(session.cells.pixelVerbSubject, PixelVerbSubject.standing);
+    expect(session.pixelVerbs.pixelVerbSubject, PixelVerbSubject.standing);
 
     session.layerSwitches.toggleLayerVisibility(row.id);
     await tester.pump();
     expect(
-      session.cells.pixelVerbSubject,
+      session.pixelVerbs.pixelVerbSubject,
       PixelVerbSubject.nothing,
       reason: '「기본적으로 그림 조작하는건 그런느낌인거지」 — a pixel verb '
           'acts on what you can see',
@@ -253,8 +253,8 @@ void main() {
       '사라진거니 … 버튼도 비활성화되야하는데」', (tester) async {
     final session = await pump(tester);
     await drawableRow(tester, session);
-    expect(session.cells.pixelVerbSubject, PixelVerbSubject.standing);
-    final key = cellVerbsOf(session).pixelVerbCellKeys().single;
+    expect(session.pixelVerbs.pixelVerbSubject, PixelVerbSubject.standing);
+    final key = pixelVerbsOf(session).pixelVerbCellKeys().single;
 
     // 🚨What 픽셀 비우기 leaves behind: the tiles are still there, every
     // alpha at zero. It cannot drop them — undo walks the tiles that EXIST
@@ -281,7 +281,7 @@ void main() {
       isFalse,
       reason: 'the same question the block\'s tint asks',
     );
-    expect(session.cells.pixelVerbSubject, PixelVerbSubject.nothing);
+    expect(session.pixelVerbs.pixelVerbSubject, PixelVerbSubject.nothing);
   });
 
   testWidgets('the gate is the existing predicate — a camera row has no pixels',
@@ -296,7 +296,7 @@ void main() {
     session.selectLayer(camera.first.id);
     await tester.pump();
     expect(
-      session.cells.pixelVerbSubject,
+      session.pixelVerbs.pixelVerbSubject,
       PixelVerbSubject.nothing,
       reason: 'layerAcceptsBrushInput already refuses this — ⛔no new predicate',
     );
@@ -306,11 +306,11 @@ void main() {
       'coordinator has been published', (tester) async {
     final session = await pump(tester);
     session.pixelEditing.coordinator = null;
-    expect(cellVerbsOf(session).canRunPixelVerb, isFalse);
+    expect(pixelVerbsOf(session).canRunPixelVerb, isFalse);
     // ⛔And the press is a no-op rather than an exception: a gate and a verb
     // that disagree is the bug T25 exists to prevent.
     expect(
-      () => cellVerbsOf(session).runPixelVerb(CelPixelVerb.replaceColour),
+      () => pixelVerbsOf(session).runPixelVerb(CelPixelVerb.replaceColour),
       returnsNormally,
     );
   });
@@ -322,7 +322,7 @@ void main() {
   /// which answers with an empty 256-tile surface for the same key. A pin
   /// on the PIXELS has to put the drawing where the verb will look.
   void inkThroughCoordinator(EditorSessionManager session) {
-    final key = cellVerbsOf(session).pixelVerbCellKeys().single;
+    final key = pixelVerbsOf(session).pixelVerbCellKeys().single;
     final coordinator = session.pixelEditing.coordinator!;
     final base = coordinator.currentSurfaceOf(key);
     final bytes = base.tileSize * base.tileSize * 4;
@@ -341,7 +341,7 @@ void main() {
   }
 
   int alphaAt(EditorSessionManager session, int x, int y) {
-    final key = cellVerbsOf(session).pixelVerbCellKeys().single;
+    final key = pixelVerbsOf(session).pixelVerbCellKeys().single;
     final tile = session.pixelEditing.coordinator!
         .currentSurfaceOf(key)
         .tileAt(TileCoord(x: 0, y: 0))!;
@@ -363,12 +363,12 @@ void main() {
       final session = await pump(tester);
 
       expect(
-        session.cells.pixelVerbCanvas,
+        session.pixelVerbs.pixelVerbCanvas,
         isNotNull,
         reason: 'the canvas-side facts the verbs read at the press',
       );
       expect(
-        session.cells.pixelVerbCanvas!().mask.isHard,
+        session.pixelVerbs.pixelVerbCanvas!().mask.isHard,
         isTrue,
         reason: 'every option is off by default, so nothing changes for a '
             'user who never touched them',
@@ -385,14 +385,14 @@ void main() {
       final box = CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: 0, top: 0, right: 40, bottom: 40),
       );
-      session.cells.pixelVerbCanvas = () => (
+      session.pixelVerbs.pixelVerbCanvas = () => (
         region: box,
         argb: 0xFF000000,
         mask: SelectionMaskOptions.none,
       );
       expect(alphaAt(session, 20, 20), 255, reason: 'fixture: ink is here');
 
-      cellVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
+      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
       await tester.pump();
       final hard = alphaAt(session, 38, 38);
 
@@ -400,12 +400,12 @@ void main() {
       await tester.pump();
       expect(alphaAt(session, 38, 38), 255, reason: 'fixture: undo put it back');
 
-      session.cells.pixelVerbCanvas = () => (
+      session.pixelVerbs.pixelVerbCanvas = () => (
         region: box,
         argb: 0xFF000000,
         mask: const SelectionMaskOptions(featherPx: 8),
       );
-      cellVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
+      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
       await tester.pump();
       final feathered = alphaAt(session, 38, 38);
 
@@ -446,12 +446,12 @@ void main() {
       EditorSessionManager session,
       CanvasSelectionRegion marquee,
     ) async {
-      session.cells.pixelVerbCanvas = () => (
+      session.pixelVerbs.pixelVerbCanvas = () => (
         region: marquee,
         argb: 0xFF000000,
         mask: SelectionMaskOptions.none,
       );
-      cellVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
+      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
       await tester.pump();
     }
 
@@ -520,4 +520,5 @@ void main() {
 /// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
 /// transitive reachability was tried and reverted (one small file drew 390
 /// namers); a collaborator that holds a law gets a test that names it instead.
-CellVerbs cellVerbsOf(EditorSessionManager session) => session.cells;
+PixelVerbs pixelVerbsOf(EditorSessionManager session) =>
+    session.pixelVerbs;

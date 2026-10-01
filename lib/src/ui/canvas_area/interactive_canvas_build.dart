@@ -319,10 +319,10 @@ class _InteractiveCanvasBuild {
       // 🗣️유저: 「몇 행에 걸쳐서 적용하던 동시적용은 가능하게 … 여러프레임
       // 확정가능하게」. ⚠️With no range live this answers 「the cel you stand
       // on」, which is why nothing downstream has a case for 「many」.
-      transformTargetKeys: session.cells.pixelVerbCellKeys,
+      transformTargetKeys: session.pixelVerbs.pixelVerbCellKeys,
       // …each through its OWN row's placement, the one the pixel verbs
       // restate an outline through (a-marquee-on-a-posed-row ④).
-      cellPlacementOf: session.cells.placementOf,
+      cellPlacementOf: session.pixelVerbs.placementOf,
       // Camera mode still needs artwork on screen: fall
       // back to the first drawn layer at the playhead.
       selection: _selection,

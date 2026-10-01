@@ -1175,7 +1175,7 @@ class _CursorGatedStoryboardToolbarState
       // F-75: the 색 편집 head on this bar reads the session's own answer —
       // whether the cel under the playhead has a drawing — which none of the
       // entries above moves with. (I-55: the head's gate is every row's now.)
-      widget.session.cells.canOpenColourEdit,
+      widget.session.pixelVerbs.canOpenColourEdit,
       // The shift pair aims at the standing row, passed by VALUE.
       widget.session.selectedRow,
       widget.session.languageSettings.value,

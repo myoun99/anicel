@@ -229,7 +229,17 @@ void main() {
   /// `_buildFrameRowsBody` (thirty answers handed over one by one, now the
   /// hooks bundle). 🔬`clean_code_diff` between master (`6dce949f7`, at 426)
   /// and the lane named those three and nothing added.
-  const longBodies = 423;
+  ///
+  /// ⚠️423 → 422 on 2026-10-01, lowered as the rule asks (I-55 · I-28, the
+  /// pixel copy round): two off, one on. `celPixelWalkFor` fell under the
+  /// line when every pixel reader's box-and-mask became one reading
+  /// (`selectionMaskOnPasteboard`), and the cell verbs' `pixelVerbCellKeys`
+  /// when the ladder it walked became a step of its own that the paste
+  /// shares. `PixelVerbs._pastePixels` (62) is the one added: the board
+  /// landing on every cel the ladder names, each through the marquee on its
+  /// own row, one landing per physical cel, folded into one undo. 🔬The
+  /// lane's scan against master (`1bde29155`, at 423) named those three.
+  const longBodies = 422;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

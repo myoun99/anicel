@@ -835,19 +835,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         press,
         tool: _brushTool,
         transform: _transformOptions,
-        cutWhole: _session.cells.cutWhole,
+        cutWhole: _session.pixelVerbs.cutWhole,
       );
       return;
     }
     if (definition?.pixelVerb case final verb?) {
-      if (_session.cells.canRunPixelVerb) {
-        _session.cells.runPixelVerb(verb);
+      if (_session.pixelVerbs.canRunPixelVerb) {
+        _session.pixelVerbs.runPixelVerb(verb);
       }
       return;
     }
     if (definition?.pixelClipboardVerb case final verb?) {
-      if (_session.cells.canRunPixelClipboardVerb(verb)) {
-        _session.cells.runPixelClipboardVerb(verb);
+      if (_session.pixelVerbs.canRunPixelClipboardVerb(verb)) {
+        _session.pixelVerbs.runPixelClipboardVerb(verb);
       }
       return;
     }

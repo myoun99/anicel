@@ -11,7 +11,7 @@ import '../../models/cut_piece.dart';
 /// its own on the app's clipboard, beside the frame and layer boards, and
 /// ⛔NOT the cut tool's slot either: 「픽셀복사/붙여넣기랑 잘라내기도구의
 /// 전체잘라내기는 로직적으론 비슷한거 사용할지라도 다른 버튼인건 인지」. The
-/// two share the read (`CellVerbs.standingPiece`) and nothing they hold.
+/// two share the read (`PixelVerbs.standingPiece`) and nothing they hold.
 ///
 /// Pasting leaves it full (유저 2026-08-12: 「붙여넣는다고 들고있는거
 /// 삭제시키지않음 … 여기 붙여넣고 저기 또 붙여넣고」).

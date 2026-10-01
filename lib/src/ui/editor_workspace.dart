@@ -744,7 +744,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     press,
     tool: _brushTool,
     transform: _transformOptions,
-    cutWhole: widget.session.cells.cutWhole,
+    cutWhole: widget.session.pixelVerbs.cutWhole,
   );
 
   /// The one piece the cut tool is holding.
@@ -1127,13 +1127,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // publisher was missing it. 유저 확정 2026-09-09
     // (`pixel-verbs-mask-options` = 가): 「선택툴로 선택한채로 사용할때 …
     // 선택의 aa 따르게」.
-    session.cells.pixelVerbCanvas = () => (
+    session.pixelVerbs.pixelVerbCanvas = () => (
       region: widget.canvasSelectionCommands?.region,
       argb: _brushTool.value.color,
       mask: _views._selectionMaskOptions.value,
     );
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
-    session.cells.cutToolHand = _cutPieceSlot.hold;
+    session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
     // The marquee, as the fifth selection kind — so one 선택 해제 can let go
     // of everything rather than half of it.
     // ⛔Not a cascade: an arrow closure swallows the next `..` section.
@@ -1215,8 +1215,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
     // A project behind the one on screen has no canvas: its marquee is not
     // this window's to report or to clear.
-    session.cells.pixelVerbCanvas = null;
-    session.cells.cutToolHand = null;
+    session.pixelVerbs.pixelVerbCanvas = null;
+    session.pixelVerbs.cutToolHand = null;
     session.rangeSelections
       ..canvasHasSelection = null
       ..clearCanvasSelection = null;

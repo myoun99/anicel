@@ -661,8 +661,8 @@ class TimelineActionToolbar extends StatelessWidget {
           CelPixelVerb.keepColour => Icons.colorize_outlined,
         },
         shortcuts: [pixelVerbActionIdFor(verb)],
-        enabled: session.cells.canRunPixelVerb,
-        onSelected: () => session.cells.runPixelVerb(verb),
+        enabled: session.pixelVerbs.canRunPixelVerb,
+        onSelected: () => session.pixelVerbs.runPixelVerb(verb),
       ),
     const PanelFlyoutDivider(),
     for (final verb in PixelClipboardVerb.values)
@@ -679,8 +679,8 @@ class TimelineActionToolbar extends StatelessWidget {
           PixelClipboardVerb.pasteBelow => Icons.flip_to_back,
         },
         shortcuts: [pixelClipboardActionIdFor(verb)],
-        enabled: session.cells.canRunPixelClipboardVerb(verb),
-        onSelected: () => session.cells.runPixelClipboardVerb(verb),
+        enabled: session.pixelVerbs.canRunPixelClipboardVerb(verb),
+        onSelected: () => session.pixelVerbs.runPixelClipboardVerb(verb),
       ),
   ];
 
@@ -958,7 +958,7 @@ class TimelineActionToolbar extends StatelessWidget {
       // and what the press DOES have to come from one answer.
       onEditInstance != null && panelContext.canEditInstance,
       // The 색 편집 head reads the gate its rows open behind.
-      session.cells.canOpenColourEdit,
+      session.pixelVerbs.canOpenColourEdit,
       // I-45: the link-independent button, from its own one answer.
       panelContext.canUnlink,
     ),
@@ -1088,7 +1088,7 @@ class TimelineActionToolbar extends StatelessWidget {
             key: const ValueKey<String>('shared-colour-edit-button'),
             tooltip: AppText.strings.tlSharedColourEdit,
             icon: Icons.palette_outlined,
-            onPressed: session.cells.canOpenColourEdit
+            onPressed: session.pixelVerbs.canOpenColourEdit
                 ? () => showPanelFlyout(context, entries: _colourEditEntries())
                 : null,
           ),
