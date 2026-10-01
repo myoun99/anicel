@@ -142,6 +142,7 @@ void main() {
       key: span,
     );
     expect(along.width, greaterThan(along.height), reason: 'fixture');
+    expect(along.left, 0, reason: 'its block starts at the first frame given');
     expect(
       down.size,
       Size(along.height, along.width),
