@@ -49,9 +49,19 @@ void main() {
         'undo', () {
       final s = session();
       final row = s.activeLayerId!;
+      final before = {for (final layer in s.layers) layer.id};
       s.layerVerbs.linkDuplicateActiveLayer();
-      final copy = s.activeLayerId!;
-      expect(copy, isNot(row), reason: 'the premise: two linked rows');
+      // The duplicate leaves you standing on the row you duplicated (the
+      // standing law, `the_row_you_acted_on_stays_active_test`): the copy
+      // is the row that was not there before.
+      final copy = s.layers
+          .map((layer) => layer.id)
+          .firstWhere((id) => !before.contains(id));
+      expect(
+        s.layerVerbs.isLayerLinked(copy),
+        isTrue,
+        reason: 'the premise: two linked rows',
+      );
       expect(s.layerVerbs.activeCutIsLinkedCut, isFalse);
       final depth = s.historyManager.undoCount;
 
