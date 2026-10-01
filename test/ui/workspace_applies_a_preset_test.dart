@@ -6,8 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
+import 'package:anicel/src/services/brush_tip_mask_defaults.dart'
+    show paperGrainTextureMask;
 import 'package:anicel/src/ui/brush/brush_hand_settings_store.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
@@ -559,6 +562,72 @@ void main() {
           'started just before the reset must not land after it. It holds: '
           '${bank.existsSync() ? bank.readAsStringSync() : 'no file'}',
     );
+  });
+
+  // 🗣️board `a-brush-picked-wears-the-texture-of-the-one-before` (유저
+  // 2026-10-01): 「아날로그가 아닌 일반수채등 질감이 없어야하는게 아직있거든?
+  // … 초기화가 설마 텍스처항목은 초기화안하나?」 — F-181 again. Its pin read
+  // a size for the paper grain, and the grain rode a door the size never
+  // takes: the tool state's copyWith laid the LEFT brush's texture over the
+  // brush picked, and H25 filed it as the hand's. These read the texture.
+  group('🚨the texture a brush wears is its own', () {
+    Future<void> openWatercolours(WidgetTester tester) async {
+      final tab = find.byKey(
+        const ValueKey<String>('brush-preset-tab-builtin-watercolor-group'),
+      );
+      await tester.ensureVisible(tab);
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+    }
+
+    BrushToolState held(WidgetTester tester) => tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .brushTool!
+        .value;
+
+    const analog = BrushPresetId('builtin-analog-watercolor');
+    const plain = BrushPresetId('builtin-watercolor');
+
+    testWidgets('a brush picked after a textured one wears none — and none '
+        'is filed as the hand\'s to come back', (tester) async {
+      await pumpWithPresets(tester);
+      await openWatercolours(tester);
+      await pickInView(tester, analog);
+      expect(held(tester).textureMaskSource, isNotNull, reason: 'premise');
+
+      await pickInView(tester, plain);
+      expect(held(tester).textureMaskSource, isNull);
+      await pickInView(tester, analog);
+      await pickInView(tester, plain);
+      expect(held(tester).textureMaskSource, isNull);
+    });
+
+    testWidgets('a library reset takes off a texture the hand laid on', (
+      tester,
+    ) async {
+      await pumpWithPresets(tester);
+      await openWatercolours(tester);
+      await pickInView(tester, plain);
+      await openBrushSettings(tester);
+      await edit(
+        tester,
+        (state) => state.withMask(BrushMaskSlot.texture, paperGrainTextureMask),
+      );
+      expect(held(tester).textureMaskSource, isNotNull, reason: 'premise');
+
+      await fromTheMenu(tester, 'Reset brush library');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-preset-reset-confirm-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(held(tester).presetId, plain, reason: 'premise: still in hand');
+      expect(
+        held(tester).textureMaskSource,
+        isNull,
+        reason: '「초기화가 설마 텍스처항목은 초기화안하나?」',
+      );
+    });
   });
 
   testWidgets('🚨H36: the eraser shows the brush it holds from the first '

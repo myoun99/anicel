@@ -936,9 +936,9 @@ class BrushToolState {
     double? dualDensity,
     SeparableBlendMode? dualCompositeMode,
     BrushTipMask? textureMaskSource,
-    bool textureInvert = false,
-    double textureBrightness = 0.0,
-    double textureContrast = 0.0,
+    bool? textureInvert,
+    double? textureBrightness,
+    double? textureContrast,
     double? textureScale,
     double? textureDensity,
     bool? mixesGroundColor,
@@ -992,7 +992,18 @@ class BrushToolState {
           dualMaskScale: dualMaskScale,
           dualDensity: dualDensity,
           dualCompositeMode: dualCompositeMode,
-          textureMaskSource: textureMask,
+          // 🚨THE ARGUMENTS, NOT THIS STATE'S TEXTURE (board
+          // `a-brush-picked-wears-the-texture-of-the-one-before`, 유저
+          // 2026-10-01 「초기화가 설마 텍스처항목은 초기화안하나?」). Since G5
+          // renamed the argument this line read `textureMask` — no argument
+          // any more but the getter, the levelled texture of the brush being
+          // LEFT — and the three levels were dropped: every brush picked
+          // after a textured one wore its paper, H25 filed it as the hand's,
+          // and a library reset took it up again through this same door.
+          textureMaskSource: textureMaskSource,
+          textureInvert: textureInvert,
+          textureBrightness: textureBrightness,
+          textureContrast: textureContrast,
           textureScale: textureScale,
           textureDensity: textureDensity,
           mixesGroundColor: mixesGroundColor,
