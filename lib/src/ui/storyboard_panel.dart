@@ -4829,6 +4829,7 @@ class _StoryboardTrackRow extends StatelessWidget {
           grips[index].endFrameExclusive,
     },
     cornerRadius: blocksPainter.plateCorner.x,
+    band: StoryboardCutBlocksPainter.bandHeight,
   );
 
   /// One chrome layer of the row's EDGES, on one [paper]: over its slot
@@ -5302,6 +5303,13 @@ class _StoryboardTrackRow extends StatelessWidget {
             // 2026-09-25 (「제대로 컷블록의 위치에 존재하지않아」), and on the
             // picture strip before that (#757, 07-25).
             //
+            // 🗣️IN THE BANDS ALONE (I-52, 유저 2026-09-28: 「썸네일이 존재하는
+            // 블록은 엣지를 썸네일 안가리도록 … 띠에만」 · 「세로로는 해당
+            // 상단띠 전체에 걸치도록」): on both papers a triangle takes one
+            // band whole — the back edge's the paper's first (the conte
+            // block's name, the cut's name), the front edge's its last (the
+            // comma count, the cut's length) — and never a picture.
+            //
             // THE timeline's chrome layer, not a cut-shaped copy of it: one
             // painter and one gesture layer per paper, where this used to be
             // two widgets a cut.
@@ -5315,6 +5323,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                     cornerStarts: <int>{},
                     cornerEnds: <int>{},
                     cornerRadius: 0.0,
+                    band: StoryboardCutBlocksPainter.bandHeight,
                   ),
                 ),
                 (

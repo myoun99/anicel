@@ -83,14 +83,22 @@ const double _gripCrossShare = 1 / 2;
 /// THE law for both kinds of mount: the sparse rows lay a widget out by it,
 /// and the dense rows' chrome resolves the same placement through
 /// [timelineFrameSpanRect] — one statement, two readers.
+///
+/// 🗣️I-52 (유저 2026-09-28): 「썸네일이 존재하는 블록은 엣지를 썸네일
+/// 안가리도록 하고싶으니, 띠에만 존재하도록」 · 「세로로는 해당 상단띠 전체에
+/// 걸치도록」 — on a paper that carries pictures between label bands, [band]
+/// is a band's extent, and the triangle takes that band whole instead of
+/// half the paper: the back edge's in the paper's first band, the front
+/// edge's in its last, neither over a picture.
 TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
   required TimelineBlockEdge edge,
   required int startIndex,
   required int endIndexExclusive,
   required double crossAxisExtent,
+  double? band,
 }) {
   final start = edge == TimelineBlockEdge.start;
-  final across = crossAxisExtent * _gripCrossShare;
+  final across = band ?? crossAxisExtent * _gripCrossShare;
   return TimelineFrameSpanPlacement(
     startIndex: start ? startIndex : endIndexExclusive,
     mainExtent: _gripMainExtent,

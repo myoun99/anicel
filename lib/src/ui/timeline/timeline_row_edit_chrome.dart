@@ -189,11 +189,14 @@ typedef TimelineChromeGripBlock = ({
 /// each cut's plate: the frames where a plate starts ([cornerStarts]) and
 /// ends ([cornerEnds]), and the corner it wears there. A grip at one of
 /// them is in the plate's round corner; one between panels stands on the
-/// plate's straight edge.
+/// plate's straight edge. Its pictures lie between label bands [band]
+/// deep, and its triangles stand in those bands alone (I-52 —
+/// [timelineBlockEdgeGripPlacement]).
 typedef TimelineGripPaper = ({
   Set<int> cornerStarts,
   Set<int> cornerEnds,
   double cornerRadius,
+  double band,
 });
 
 /// A stretch of a row whose ground is not the row's `gripGround` — one of
@@ -300,6 +303,7 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
           startIndex: block.startIndex,
           endIndexExclusive: block.endIndexExclusive,
           crossAxisExtent: crossAxisExtent,
+          band: gripPaper?.band,
         ),
         geometry,
         crossAxisExtent: crossAxisExtent,
@@ -434,6 +438,7 @@ class TimelineRowChromeResolver {
       a == null || b == null
       ? a == b
       : a.cornerRadius == b.cornerRadius &&
+            a.band == b.band &&
             setEquals(a.cornerStarts, b.cornerStarts) &&
             setEquals(a.cornerEnds, b.cornerEnds);
 
