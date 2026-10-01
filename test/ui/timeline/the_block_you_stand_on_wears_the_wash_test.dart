@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -171,5 +182,81 @@ void main() {
 
     await pump(tester, frame: 2, windowStart: 10);
     expect(wash, findsNothing);
+  });
+
+  // The grids hand the layer the preview their rows show.
+  group('in the app, through a comma drag', () {
+    Project project() => Project(
+      id: const ProjectId('standing-wash'),
+      name: 'Standing wash',
+      createdAt: DateTime.utc(2026, 10, 1),
+      tracks: [
+        Track(
+          id: const TrackId('t'),
+          name: 'Video',
+          cuts: [
+            Cut(
+              id: const CutId('cut-0'),
+              name: 'cut-0',
+              duration: 48,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: [drawn('a', {0: 6, 6: 6}), drawn('b', {0: 6, 6: 6})],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    for (final sheet in [false, true]) {
+      testWidgets('the wash rides it${sheet ? ' (x-sheet)' : ''}', (
+        tester,
+      ) async {
+        await tester.binding.setSurfaceSize(const Size(1600, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildAppTheme(),
+            home: HomePage(initialProject: project()),
+          ),
+        );
+        await tester.pumpAndSettle();
+        if (sheet) {
+          await tester.tap(
+            find.byKey(
+              const ValueKey<String>('timeline-orientation-toggle-button'),
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
+        final session = tester
+            .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+            .session;
+        // The first block: the x-sheet's short panel shows four frames.
+        session.selectLayer(const LayerId('b'));
+        session.selectFrameIndex(1);
+        await tester.pumpAndSettle();
+        double along() {
+          final rect = tester.getRect(wash);
+          return sheet ? rect.height : rect.width;
+        }
+
+        final standing = along();
+        expect(
+          session.edgeDrag.beginExposureEdgeDrag(
+            layerId: const LayerId('b'),
+            blockStartIndex: 0,
+            edge: TimelineBlockEdge.end,
+          ),
+          isTrue,
+          reason: 'premise: the block is there to grab',
+        );
+        session.edgeDrag.updateExposureEdgeDrag(2);
+        await tester.pump();
+        expect(along() / standing, moreOrLessEquals(8 / 6));
+
+        session.edgeDrag.cancelExposureEdgeDrag();
+        await tester.pumpAndSettle();
+      });
+    }
   });
 }
