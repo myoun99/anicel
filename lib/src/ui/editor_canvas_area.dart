@@ -15,6 +15,7 @@ import '../services/canvas_color_sampler.dart';
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../services/canvas_selection_shape.dart' show CanvasSelectionShape;
 import '../services/cut_piece_slot.dart';
 import '../services/playback/playback_frame_mapping.dart'
     show TrackStackContribution;
@@ -42,8 +43,7 @@ import 'canvas/flip_hud_controller.dart';
 import '../models/drawing_guide.dart';
 import 'canvas/guide_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
-import 'canvas/canvas_point_gizmo.dart';
-import 'canvas/layer_transform_box.dart';
+import 'canvas/row_transform_box.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'playback/canvas_playback_view.dart';
@@ -63,6 +63,7 @@ import 'timeline/timeline_drag_preview.dart'
         timelineDragPreviewGlobalLayerFor,
         timelineDragPreviewLayerFor;
 import '../models/layer.dart' show Layer;
+import '../models/layer_kind.dart';
 import '../services/layer_pose_matrix.dart'
     show LayerPoseSample, artworkToCanvas, canvasToArtwork;
 import '../models/canvas_point.dart';
@@ -846,11 +847,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// ([FrameVerbs.layerParentPlacement]); an unfoldered row's parent is the
   /// canvas itself, and its values pass straight through.
   ///
-  /// 🚨The three gizmos below edit that own pose, so each stands where the
-  /// parent shows its value and each drag comes back through the parent: a
-  /// row in a folder moved right by 200 had its crosshair 200 to the left of
-  /// its picture, and under a 2× folder a drag moved the picture twice as
-  /// far as the pointer (measured 2026-09-25).
+  /// 🚨The layer's box below edits that own pose, so each of its grabs
+  /// stands where the parent shows its value and each drag comes back
+  /// through the parent: a row in a folder moved right by 200 had its
+  /// crosshair 200 to the left of its picture, and under a 2× folder a drag
+  /// moved the picture twice as far as the pointer (measured 2026-09-25).
   ({
     LayerPoseSample? placement,
     CanvasPoint Function(CanvasPoint point) toCanvas,
@@ -879,17 +880,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       layer;
 
   /// A canvas handle's ONE edit, landed two ways (F-195): shown while the
-  /// handle moves, written when it lets go, dropped when it is cancelled.
+  /// handle moves, written when it lets go — and dropped when it is
+  /// cancelled, through the box's [RowTransformBox.onCancelled]
+  /// (`endLaneEditPreview`).
   ///
   /// ⛔[editOf] is the SAME edit for both landings — the release keeps what
   /// the drag showed because it is the drag's own computation, not a second
   /// one that happens to agree.
-  ({
-    ValueChanged<T> onChanged,
-    ValueChanged<T> onCommitted,
-    VoidCallback onCancelled,
-  })
-  _handleLandings<T>(
+  RowBoxLanding<T> _handleLandings<T>(
     EditorSessionManager session,
     LayerId layerId,
     TransformTrack Function(TransformTrack track, int frameIndex) Function(
@@ -900,110 +898,40 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }) {
     final verbs = session.laneVerbs;
     return (
-      onChanged: (value) =>
+      changed: (value) =>
           verbs.previewLayerTransformAtPlayhead(layerId, editOf(value)),
-      onCommitted: (value) => verbs.editLayerTransformAtPlayhead(
+      committed: (value) => verbs.editLayerTransformAtPlayhead(
         layerId,
         editOf(value),
         description: description,
       ),
-      onCancelled: verbs.endLaneEditPreview,
     );
   }
 
-  Positioned _anchorGizmo(
-    EditorSessionManager session,
-    Layer activeLayer,
+  /// The active layer's fx box (F-222 ②): the inside moves its position, a
+  /// corner scales it, outside on stage turns it, and the cross places its
+  /// anchor point — as much of that as the standing lane declares (R5 #10:
+  /// the box for position, scale and rotation, the cross for the anchor).
+  ///
+  /// ONE key at the playhead per drag (AE rule, one undo) — on the row the
+  /// project holds, at the playhead on its own axis. ⚠️Not on the active
+  /// layer as found: a track-SE row's is its cut-local clone, and writing
+  /// that back erased the keys of earlier cuts (F-102).
+  Widget _layerBox(
+    _HostFrame frame,
     CanvasViewport viewport,
+    CanvasSize canvasSize,
   ) {
-    // The handle stands where the row's value IS: for a track-SE row that is
+    final session = frame.session;
+    final activeLayer = frame.activeLayer!;
+    // The handles stand where the row's value IS: for a track-SE row that is
     // the track's row at the global frame, not the cut's clone (F-102).
     final at = session.laneVerbs.laneValueSourceAt(
       _shownRow(session, activeLayer),
       session.currentFrameIndex,
     );
-    final parent = _parentSpaceOf(session, activeLayer);
-    final landings = _handleLandings<CanvasPoint>(
-      session,
-      activeLayer.id,
-      (dropped) =>
-          (track, frameIndex) => transformTrackWithAnchorDragged(
-            track,
-            frameIndex: frameIndex,
-            anchorPoint: parent.fromCanvas(dropped),
-          ),
-      description: 'Anchor ${activeLayer.name}',
-    );
-    return Positioned.fill(
-      // Unwrapped like the position handle, for the same
-      // reason.
-      child: CanvasPointGizmo(
-        glyph: HandleGlyph.anchor,
-        point: parent.toCanvas(
-          session.layerAnchorPointAtFrame(at.layer, at.frame),
-        ),
-        viewport: viewport,
-        onChanged: landings.onChanged,
-        onCommitted: landings.onCommitted,
-        onCancelled: landings.onCancelled,
-      ),
-    );
-  }
-
-  Positioned _positionGizmo(
-    EditorSessionManager session,
-    Layer activeLayer,
-    CanvasViewport viewport,
-  ) {
-    final at = session.laneVerbs.laneValueSourceAt(
-      _shownRow(session, activeLayer),
-      session.currentFrameIndex,
-    );
-    final parent = _parentSpaceOf(session, activeLayer);
-    // ONE key at the playhead per drag (AE rule, one undo) — on the row the
-    // project holds, at the playhead on its own axis. ⚠️Not on [activeLayer]
-    // as found: a track-SE row's is its cut-local clone, and writing that
-    // back erased the keys of earlier cuts (F-102).
-    final landings = _handleLandings<CanvasPoint>(
-      session,
-      activeLayer.id,
-      (dropped) =>
-          (track, frameIndex) => transformTrackWithPositionDragged(
-            track,
-            frameIndex: frameIndex,
-            position: parent.fromCanvas(dropped),
-          ),
-      description: 'Move ${activeLayer.name}',
-    );
-    return Positioned.fill(
-      // No cut-pose wrap: the V row's transform is gone. The
-      // crosshair stands in the row's PARENT space — the canvas
-      // for an unfoldered row — carried out and back through it.
-      child: CanvasPointGizmo(
-        glyph: HandleGlyph.crosshair,
-        point: parent.toCanvas(
-          session.layerPoseAtFrame(at.layer, at.frame).center,
-        ),
-        viewport: viewport,
-        onChanged: landings.onChanged,
-        onCommitted: landings.onCommitted,
-        onCancelled: landings.onCancelled,
-      ),
-    );
-  }
-
-  Positioned _transformBox(
-    Rect transformBoxBounds,
-    EditorSessionManager session,
-    Layer activeLayer,
-    CanvasSize canvasSize,
-    CanvasViewport viewport,
-  ) {
-    final at = session.laneVerbs.laneValueSourceAt(
-      _shownRow(session, activeLayer),
-      session.currentFrameIndex,
-    );
     final own = session.layerPoseAtFrame(at.layer, at.frame);
+    final anchorPoint = session.layerAnchorPointAtFrame(at.layer, at.frame);
     final parent = _parentSpaceOf(session, activeLayer);
     // The box draws the row as the canvas SHOWS it — its own pose under the
     // folders' — and turns and scales about the row's anchor where that
@@ -1011,103 +939,251 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // are those less the parent's.
     final parentZoom = parent.placement?.pose.zoom ?? 1;
     final parentTurn = parent.placement?.pose.rotationDegrees ?? 0;
-    final scale = _handleLandings<double>(
+    final pose = TransformPose(
+      center: parent.toCanvas(own.center),
+      zoom: parentZoom * own.zoom,
+      rotationDegrees: parentTurn + own.rotationDegrees,
+    );
+    final name = activeLayer.name;
+    final box = frame.boxGrabbable;
+    final posed = artworkToCanvas((
+      pose: pose,
+      anchorPoint: anchorPoint,
+    ), canvasSize);
+    return RowTransformBox(
+      // The box frames the layer's PICTURE (the user chose that on the
+      // mockup: 「레이어 그림의 바운드에 걸리는게 알기쉬울거같기도하고?
+      // 그렇게하자」) — and a blank cel's box is the canvas, the transform
+      // tool's own rule for a picture with nothing in it.
+      corners: box
+          ? [
+              for (final point in CanvasSelectionShape.wholePicture(
+                canvasSize,
+                frame.inkBounds,
+              ).points)
+                posed.apply(point),
+            ]
+          : const [],
+      pose: pose,
+      canvasSize: canvasSize,
+      viewport: viewport,
+      claimsCanvas: frame.boxClaimsCanvas,
+      onCancelled: session.laneVerbs.endLaneEditPreview,
+      move: box
+          ? _handleLandings<CanvasPoint>(
+              session,
+              activeLayer.id,
+              (dropped) =>
+                  (track, frameIndex) => transformTrackWithPositionDragged(
+                    track,
+                    frameIndex: frameIndex,
+                    position: parent.fromCanvas(dropped),
+                  ),
+              description: 'Move $name',
+            )
+          : null,
+      scale: box
+          ? _handleLandings<double>(
+              session,
+              activeLayer.id,
+              (zoom) =>
+                  (track, frameIndex) => transformTrackWithScaleDragged(
+                    track,
+                    frameIndex: frameIndex,
+                    zoom: zoom / parentZoom,
+                  ),
+              description: 'Scale $name',
+            )
+          : null,
+      turn: box
+          ? _handleLandings<double>(
+              session,
+              activeLayer.id,
+              (degrees) =>
+                  (track, frameIndex) => transformTrackWithRotationDragged(
+                    track,
+                    frameIndex: frameIndex,
+                    rotationDegrees: degrees - parentTurn,
+                  ),
+              description: 'Rotate $name',
+            )
+          : null,
+      // 🗣️F-222-box-Q3 (유저 2026-10-01, chat — replacing the board's 「그림은
+      // 가만히」): 「레이어 상자 십자가는 앵커포인트로서 작동하게, 즉 각자
+      // 대응하는 ui로직이됨. 그래서 그림은 가만히라기보다 지금 로직
+      // 그대로이고 앵커포인트위치를 십자가로 조정하도록」 — a drag keys the
+      // anchor point alone, and the picture moves as scrubbing its value does.
+      // 🗣️And it is After Effects' (same day): 「ae랑 똑같으면 문제없어.
+      // 애초에 트랜스폼 fx는 똑같도록하는게 목표」. AE draws the anchor where
+      // it LANDS — the position, the centre the layer turns and scales about
+      // — so the cross stands there, never apart from the box's pivot, and
+      // stays with the position while the drag moves the picture under it.
+      cross: frame.crossGrabbable
+          ? (
+              at: pose.center,
+              value: parent.toCanvas(anchorPoint),
+              landing: _handleLandings<CanvasPoint>(
+                session,
+                activeLayer.id,
+                (dropped) =>
+                    (track, frameIndex) => transformTrackWithAnchorDragged(
+                      track,
+                      frameIndex: frameIndex,
+                      anchorPoint: parent.fromCanvas(dropped),
+                    ),
+                description: 'Anchor $name',
+              ),
+            )
+          : null,
+    );
+  }
+
+  /// An SE row's box (F-222 ②): its name tag, and it only MOVES — the tag
+  /// is placed by position alone (a tag has no scale or turn to drive).
+  /// With no tag under the playhead the box is the canvas, the law for a
+  /// box with nothing in it.
+  Widget _seBox(
+    _HostFrame frame,
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+    List<ResolvedSeNameTag> tags,
+  ) {
+    final session = frame.session;
+    final activeLayer = frame.activeLayer!;
+    final at = session.laneVerbs.laneValueSourceAt(
+      _shownRow(session, activeLayer),
+      session.currentFrameIndex,
+    );
+    final parent = _parentSpaceOf(session, activeLayer);
+    var bounds = Rect.fromLTWH(
+      0,
+      0,
+      canvasSize.width.toDouble(),
+      canvasSize.height.toDouble(),
+    );
+    for (final tag in tags) {
+      if (tag.layerId != activeLayer.id.value) {
+        continue;
+      }
+      final tagBox = seNameTagBoxBounds(tag, canvasSize: canvasSize);
+      if (!tagBox.isEmpty) {
+        bounds = tagBox;
+      }
+    }
+    return RowTransformBox(
+      corners: [
+        CanvasPoint(x: bounds.left, y: bounds.top),
+        CanvasPoint(x: bounds.right, y: bounds.top),
+        CanvasPoint(x: bounds.right, y: bounds.bottom),
+        CanvasPoint(x: bounds.left, y: bounds.bottom),
+      ],
+      pose: TransformPose(
+        center: parent.toCanvas(
+          session.layerPoseAtFrame(at.layer, at.frame).center,
+        ),
+      ),
+      canvasSize: canvasSize,
+      viewport: viewport,
+      claimsCanvas: frame.boxClaimsCanvas,
+      onCancelled: session.laneVerbs.endLaneEditPreview,
+      move: frame.boxGrabbable
+          ? _handleLandings<CanvasPoint>(
+              session,
+              activeLayer.id,
+              (dropped) =>
+                  (track, frameIndex) => transformTrackWithPositionDragged(
+                    track,
+                    frameIndex: frameIndex,
+                    position: parent.fromCanvas(dropped),
+                  ),
+              description: 'Move ${activeLayer.name}',
+            )
+          : null,
+    );
+  }
+
+  /// The camera row's box ([CameraFrameBox], F-222 ③).
+  ///
+  /// It drives the CAMERA ROW's transform — the cut's camera track —
+  /// through the one handle path the layer handles take (「트랜스폼이나
+  /// 카메라나 법 하나」): one key at the playhead, shown while it moves, on
+  /// the ONE member the grab drives — as the user chose
+  /// (camera-frame-keys-what-you-grab-Q1 「잡은 것만」).
+  Widget _cameraBox(
+    _HostFrame frame,
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+  ) {
+    final session = frame.session;
+    final cameraRow = session.activeLayer!;
+    final at = 'at frame ${session.currentFrameIndex + 1}';
+    final move = _handleLandings<CanvasPoint>(
       session,
-      activeLayer.id,
+      cameraRow.id,
+      (center) =>
+          (track, frameIndex) => transformTrackWithPositionDragged(
+            track,
+            frameIndex: frameIndex,
+            position: center,
+          ),
+      description: 'Move camera $at',
+    );
+    final zoom = _handleLandings<double>(
+      session,
+      cameraRow.id,
       (zoom) =>
           (track, frameIndex) => transformTrackWithScaleDragged(
             track,
             frameIndex: frameIndex,
-            zoom: zoom / parentZoom,
+            zoom: zoom,
           ),
-      description: 'Scale ${activeLayer.name}',
+      description: 'Zoom camera $at',
     );
-    final rotation = _handleLandings<double>(
+    final turn = _handleLandings<double>(
       session,
-      activeLayer.id,
+      cameraRow.id,
       (degrees) =>
           (track, frameIndex) => transformTrackWithRotationDragged(
             track,
             frameIndex: frameIndex,
-            rotationDegrees: degrees - parentTurn,
+            rotationDegrees: degrees,
           ),
-      description: 'Rotate ${activeLayer.name}',
+      description: 'Rotate camera $at',
     );
-    return Positioned.fill(
-      // R5 #10: the box frames the PICTURE, and its
-      // corners scale while its rotate handle turns —
-      // one member per handle. No cut pose to ride any
-      // more: the V row's transform is gone.
-      child: LayerTransformBox(
-        bounds: transformBoxBounds,
-        pose: TransformPose(
-          center: parent.toCanvas(own.center),
-          zoom: parentZoom * own.zoom,
-          rotationDegrees: parentTurn + own.rotationDegrees,
-        ),
-        anchorPoint: session.layerAnchorPointAtFrame(at.layer, at.frame),
-        canvasSize: canvasSize,
-        viewport: viewport,
-        onScaleChanged: scale.onChanged,
-        onScaleCommitted: scale.onCommitted,
-        onRotationChanged: rotation.onChanged,
-        onRotationCommitted: rotation.onCommitted,
-        onCancelled: scale.onCancelled,
+    // The box follows the frame along its animated pose during scrubs, as
+    // the frame does ([_cameraOverlay]).
+    return ListenableBuilder(
+      listenable: session.editingFrameCursor,
+      builder: (context, _) => ValueListenableBuilder<int?>(
+        valueListenable: session.editingSession.gapParkingListenable,
+        builder: (context, _, _) {
+          final pose = session.camera.displayedCameraPose;
+          if (pose == null) {
+            return const SizedBox.shrink();
+          }
+          return CameraFrameBox(
+            pose: pose,
+            cameraFrameSize: session.camera.cameraFrameSize,
+            canvasSize: canvasSize,
+            viewport: viewport,
+            claimsCanvas: frame.boxClaimsCanvas,
+            onCancelled: session.laneVerbs.endLaneEditPreview,
+            move: move,
+            zoom: zoom,
+            turn: turn,
+          );
+        },
       ),
     );
   }
 
+  /// The camera's frame — the dim outside it and its hairline — drawn for
+  /// every row. It takes no press: on the camera row the frame's box does
+  /// ([_cameraBox]), over the tools.
   Positioned _cameraOverlay(
     EditorSessionManager session,
     CanvasViewport viewport,
-    bool isCameraLayerActive,
   ) {
-    // The frame is dragged on the CAMERA ROW's transform — the cut's camera
-    // track — through the one handle path the layer handles take (「트랜스폼
-    // 이나 카메라나 법 하나」): one key at the playhead, shown while it moves,
-    // on the ONE member the handle drives — the layer box's writers, as the
-    // user chose (camera-frame-keys-what-you-grab-Q1 「잡은 것만」).
-    final cameraRow = isCameraLayerActive ? session.activeLayer : null;
-    final at = 'at frame ${session.currentFrameIndex + 1}';
-    final move = cameraRow == null
-        ? null
-        : _handleLandings<CanvasPoint>(
-            session,
-            cameraRow.id,
-            (center) =>
-                (track, frameIndex) => transformTrackWithPositionDragged(
-                  track,
-                  frameIndex: frameIndex,
-                  position: center,
-                ),
-            description: 'Move camera $at',
-          );
-    final zoom = cameraRow == null
-        ? null
-        : _handleLandings<double>(
-            session,
-            cameraRow.id,
-            (zoom) =>
-                (track, frameIndex) => transformTrackWithScaleDragged(
-                  track,
-                  frameIndex: frameIndex,
-                  zoom: zoom,
-                ),
-            description: 'Zoom camera $at',
-          );
-    final rotation = cameraRow == null
-        ? null
-        : _handleLandings<double>(
-            session,
-            cameraRow.id,
-            (degrees) =>
-                (track, frameIndex) => transformTrackWithRotationDragged(
-                  track,
-                  frameIndex: frameIndex,
-                  rotationDegrees: degrees,
-                ),
-            description: 'Rotate camera $at',
-          );
     return Positioned.fill(
       // The cursor subscription keeps the frame gliding
       // along its animated pose during scrubs (and after
@@ -1139,15 +1215,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               dimOpacity: widget.cameraViewEnabled.value
                   ? widget.cameraDimOpacity.value
                   : 0,
-              interactive: isCameraLayerActive,
-              onMoveChanged: move?.onChanged,
-              onMoveCommitted: move?.onCommitted,
-              onZoomChanged: zoom?.onChanged,
-              onZoomCommitted: zoom?.onCommitted,
-              onRotationChanged: rotation?.onChanged,
-              onRotationCommitted: rotation?.onCommitted,
-              // The three cancel the same way: the one lane edit in flight.
-              onCancelled: move?.onCancelled,
             );
           },
         ),

@@ -257,45 +257,30 @@ class _InteractiveCanvasBuild {
     // computed above would answer the row you left. Same trap the
     // stroke gate two lines down was written to avoid.
     final standing = session.standing.currentRowListenable.value;
-    final showPositionGizmo =
+    final manipulators =
         canPoseActiveLayer &&
-        standing is LaneRowAddress &&
-        standing.layerId == activeLayer.id &&
-        canvasManipulatorsForLane(
-          standing.laneId,
-        ).contains(CanvasManipulator.transformBox);
-    // The box frames the layer's INK, so a blank cel has no box —
-    // the crosshair still answers for Position there. Resolved
-    // only when something will use it: the scan is memoized on the
-    // surface, but asking at all costs a frame lookup.
-    final boundsRect = showPositionGizmo
+            standing is LaneRowAddress &&
+            standing.layerId == activeLayer.id
+        ? canvasManipulatorsForLane(standing.laneId)
+        : const <CanvasManipulator>{};
+    final boxGrabbable = manipulators.contains(CanvasManipulator.transformBox);
+    // The box frames the layer's INK — or, on a blank cel, the canvas
+    // (the transform tool's own rule, [CanvasSelectionShape.wholePicture]).
+    // Resolved only when something will use it: the scan is memoized on
+    // the surface, but asking at all costs a frame lookup.
+    final inkBounds = boxGrabbable && activeLayer != null
         ? session.renderCaches.layerContentBoundsAt(
             activeLayer,
             session.currentFrameIndex,
           )
         : null;
-    final transformBoxBounds = boundsRect == null
-        ? null
-        : Rect.fromLTRB(
-            boundsRect.left.toDouble(),
-            boundsRect.top.toDouble(),
-            boundsRect.rightExclusive.toDouble(),
-            boundsRect.bottomExclusive.toDouble(),
-          );
-    final showAnchorGizmo =
-        canPoseActiveLayer &&
-        standing is LaneRowAddress &&
-        standing.layerId == activeLayer.id &&
-        canvasManipulatorsForLane(
-          standing.laneId,
-        ).contains(CanvasManipulator.anchorPoint);
     final frame = _HostFrame(
       session: session,
       tool: tool,
       activeLayer: activeLayer,
-      showPositionGizmo: showPositionGizmo,
-      transformBoxBounds: transformBoxBounds,
-      showAnchorGizmo: showAnchorGizmo,
+      boxGrabbable: boxGrabbable,
+      inkBounds: inkBounds,
+      crossGrabbable: manipulators.contains(CanvasManipulator.anchorPoint),
       isCameraLayerActive: isCameraLayerActive,
     );
     return MainCanvasBrushHost(
@@ -556,6 +541,11 @@ class _InteractiveCanvasBuild {
       viewportOverlayBuilder: _isPlaybackActive
           ? null
           : (context, viewport) => _overlay(context, viewport, frame),
+      // F-222: the standing row's box, over every tool — always there while
+      // editing, whatever it holds, for the overlay's reason above.
+      viewportControlsBuilder: _isPlaybackActive
+          ? null
+          : (context, viewport) => _controls(context, viewport, frame),
       // 🚨T28-c: while playback owns the content a press only stops it, so no
       // tool takes the press — the same flag swaps the content in below.
       toolInputEnabled: !_isPlaybackActive,
@@ -656,11 +646,11 @@ class _InteractiveCanvasBuild {
   }
 
   /// What is stacked OVER the canvas inside the viewport: the guides and
-  /// their edit layer, the SE name tags, the fade wash past the cut's end,
-  /// the camera overlay, and the transform box / position / anchor gizmos
-  /// the standing row admits. It follows a drag itself
-  /// ([_followingTheDrag]): the tags, the fade and the handles are asked
-  /// afresh at each of its builds.
+  /// their edit layer, the SE name tags, the fade wash past the cut's end
+  /// and the camera's frame. The row's box is not here — it sits over the
+  /// tools ([_controls]). It follows a drag itself ([_followingTheDrag]):
+  /// the tags, the fade and the frame are asked afresh at each of its
+  /// builds.
   Widget _overlay(
     BuildContext context,
     CanvasViewport viewport,
@@ -710,25 +700,39 @@ class _InteractiveCanvasBuild {
             context,
           ),
         if (_cameraOverlayVisible)
-          _state._cameraOverlay(
-            frame.session,
-            viewport,
-            frame.isCameraLayerActive,
-          ),
-        if (frame.showPositionGizmo && frame.transformBoxBounds != null)
-          _state._transformBox(
-            frame.transformBoxBounds!,
-            frame.session,
-            frame.activeLayer!,
-            _canvasSize,
-            viewport,
-          ),
-        if (frame.showPositionGizmo)
-          _state._positionGizmo(frame.session, frame.activeLayer!, viewport),
-        if (frame.showAnchorGizmo)
-          _state._anchorGizmo(frame.session, frame.activeLayer!, viewport),
+          _state._cameraOverlay(frame.session, viewport),
       ],
     );
+  }
+
+  /// The standing row's box, over every tool
+  /// ([BrushCanvasPanel.viewportControlsBuilder]): the camera's while the
+  /// camera row is active, an SE row's name tag, or the active layer's while
+  /// its standing lane declares one. It follows a drag itself
+  /// ([_followingTheDrag]), as the overlay does.
+  Widget _controls(
+    BuildContext context,
+    CanvasViewport viewport,
+    _HostFrame frame,
+  ) => _followingTheDrag(frame.session, (context) => _rowBox(viewport, frame));
+
+  Widget _rowBox(CanvasViewport viewport, _HostFrame frame) {
+    if (frame.isCameraLayerActive && _cameraOverlayVisible) {
+      return _state._cameraBox(frame, viewport, _canvasSize);
+    }
+    final layer = frame.activeLayer;
+    if (layer == null || !(frame.boxGrabbable || frame.crossGrabbable)) {
+      return const SizedBox.shrink();
+    }
+    if (layer.kind == LayerKind.se) {
+      return _state._seBox(
+        frame,
+        viewport,
+        _canvasSize,
+        _seNameTagsShown(frame.session),
+      );
+    }
+    return _state._layerBox(frame, viewport, _canvasSize);
   }
 
   /// The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark
@@ -793,9 +797,9 @@ class _HostFrame {
     required this.session,
     required this.tool,
     required this.activeLayer,
-    required this.showPositionGizmo,
-    required this.transformBoxBounds,
-    required this.showAnchorGizmo,
+    required this.boxGrabbable,
+    required this.inkBounds,
+    required this.crossGrabbable,
     required this.isCameraLayerActive,
   });
 
@@ -806,11 +810,27 @@ class _HostFrame {
   /// colour held here would be the one from the last tool switch.
   final CanvasTool tool;
 
-  /// Non-null whenever [showPositionGizmo] or [showAnchorGizmo] is true:
-  /// both gates include the null check.
+  /// Non-null whenever [boxGrabbable] or [crossGrabbable] is true: both
+  /// gates include the null check.
   final Layer? activeLayer;
-  final bool showPositionGizmo;
-  final Rect? transformBoxBounds;
-  final bool showAnchorGizmo;
+
+  /// The standing lane declares the box (position, scale, rotation) and the
+  /// cross (the anchor point) — R5 #10, what is selected is what you grab.
+  final bool boxGrabbable;
+  final bool crossGrabbable;
+
+  /// The active layer's ink at the playhead, while [boxGrabbable].
+  final ({int left, int top, int rightExclusive, int bottomExclusive})?
+  inkBounds;
   final bool isCameraLayerActive;
+
+  /// Whether the row's box takes every press on the canvas, rather than its
+  /// cross and corners alone ([RowTransformBox.claimsCanvas]).
+  ///
+  /// 🗣️F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」: standing on the
+  /// row, the box takes the empty canvas under every tool but the two that
+  /// draw an area on it — a selection is not stopped by the kind of row
+  /// you stand on.
+  bool get boxClaimsCanvas =>
+      tool != CanvasTool.select && tool != CanvasTool.cut;
 }

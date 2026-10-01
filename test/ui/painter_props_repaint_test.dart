@@ -20,14 +20,13 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
 const _size = CanvasSize(width: 100, height: 100);
 
-CameraFramePainter _camera({double dim = 0.5, bool handles = false}) =>
+CameraFramePainter _camera({double dim = 0.5}) =>
     CameraFramePainter(
       pose: CameraPose(center: CanvasPoint(x: 10, y: 10)),
       cameraFrameSize: _size,
       viewport: CanvasViewport(),
       dimOpacity: dim,
       outlineColor: const Color(0xFF00FF00),
-      showHandles: handles,
     );
 
 TimelineGridSheetPainter _sheet({
@@ -62,7 +61,6 @@ void main() {
       final old = _camera();
       expect(_camera().shouldRepaint(old), isFalse);
       expect(_camera(dim: 0.6).shouldRepaint(old), isTrue);
-      expect(_camera(handles: true).shouldRepaint(old), isTrue);
     });
 
     test('TimelineGridSheetPainter', () {

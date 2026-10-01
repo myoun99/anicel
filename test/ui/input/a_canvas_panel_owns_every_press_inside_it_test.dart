@@ -4,12 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
 import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
-import 'package:anicel/src/ui/canvas/canvas_point_gizmo.dart';
+import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
@@ -480,13 +481,20 @@ void main() {
             child: CanvasViewportGestureLayer(
               viewport: CanvasViewport(),
               onViewportChanged: (_) {},
-              child: CanvasPointGizmo(
-                glyph: HandleGlyph.crosshair,
-                point: CanvasPoint(x: 100, y: 80),
+              // A row's box (F-222) — its handles alone, as the selection
+              // tools leave it: the press below lands on its cross.
+              child: RowTransformBox(
+                corners: const [],
+                pose: TransformPose(center: CanvasPoint(x: 100, y: 80)),
+                canvasSize: const CanvasSize(width: 400, height: 300),
                 viewport: CanvasViewport(),
-                onChanged: (_) {},
-                onCommitted: committed.add,
+                claimsCanvas: false,
                 onCancelled: () {},
+                cross: (
+                  at: CanvasPoint(x: 100, y: 80),
+                  value: CanvasPoint(x: 100, y: 80),
+                  landing: (changed: (_) {}, committed: committed.add),
+                ),
               ),
             ),
           ),
@@ -496,7 +504,7 @@ void main() {
     await tester.pumpAndSettle();
     // ON the handle: it sits at the point, (100, 80) under an identity view.
     await tester.dragFrom(
-      tester.getTopLeft(find.byType(CanvasPointGizmo)) + const Offset(100, 80),
+      tester.getTopLeft(find.byType(RowTransformBox)) + const Offset(100, 80),
       const Offset(48, -20),
       kind: PointerDeviceKind.stylus,
     );

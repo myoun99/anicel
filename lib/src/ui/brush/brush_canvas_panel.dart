@@ -169,6 +169,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewportController,
     this.onViewportChanged,
     this.viewportOverlayBuilder,
+    this.viewportControlsBuilder,
     this.viewportUnderlayBuilder,
     this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
@@ -467,6 +468,14 @@ class BrushCanvasPanel extends StatefulWidget {
   /// (e.g. the camera frame overlay, layers above the active one).
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   viewportOverlayBuilder;
+
+  /// Optional CONTROLS stacked over every tool layer — the standing row's
+  /// transform box (F-222). On top, so a press that lands on one of them is
+  /// its own whatever tool is armed (「컨트롤 위에서 시작한 제스처는 그
+  /// 컨트롤의 것이다」), and it says which presses those are: a press it does
+  /// not claim falls to the tool beneath.
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportControlsBuilder;
 
   /// Optional layer painted UNDER the interactive canvas (layers below the
   /// active one + the paper). When present, the interactive view skips its

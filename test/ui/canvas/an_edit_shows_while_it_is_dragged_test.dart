@@ -25,8 +25,9 @@ import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/canvas_point_gizmo.dart';
+import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -203,13 +204,23 @@ void main() {
           )
           .data!;
 
-  CanvasPointGizmo crosshairOf(WidgetTester tester) =>
-      tester.widget<CanvasPointGizmo>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is CanvasPointGizmo && widget.glyph == HandleGlyph.crosshair,
-        ),
-      );
+  /// The standing row's box (F-222) — the layer's, or the camera frame's.
+  RowTransformBox boxOf(WidgetTester tester) =>
+      tester.widget<RowTransformBox>(find.byType(RowTransformBox));
+
+  /// Where [point] on the canvas shows on the screen, through the box's view.
+  Offset onScreen(WidgetTester tester, CanvasPoint point) =>
+      tester.getTopLeft(find.byType(RowTransformBox)) +
+      boxOf(tester).viewport.canvasToViewportOffset(point);
+
+  /// The middle of the box — inside it, on no handle: a move.
+  CanvasPoint boxMiddle(WidgetTester tester) {
+    final corners = boxOf(tester).corners;
+    return CanvasPoint(
+      x: (corners[0].x + corners[2].x) / 2,
+      y: (corners[0].y + corners[2].y) / 2,
+    );
+  }
 
   Layer committedRow(EditorSessionManager session) =>
       session.requireActiveCut.layers.byId(row)!;
@@ -219,7 +230,7 @@ void main() {
     expect(actual.y, closeTo(expected.y, 0.01), reason: reason);
   }
 
-  testWidgets('TRANSFORM × the canvas: dragging the crosshair moves the '
+  testWidgets('TRANSFORM × the canvas: dragging inside the box moves the '
       'picture, the pen\'s space and the Position label before the release — '
       'and writes nothing until it', (tester) async {
     final session = await open(
@@ -227,26 +238,25 @@ void main() {
       layer: row,
       standOn: 'position',
     );
-    final crosshair = find.byKey(const ValueKey<String>('layer-position-gizmo'));
-    final zoom = crosshairOf(tester).viewport.zoom;
+    final zoom = boxOf(tester).viewport.zoom;
     final labelBefore = valueLabel(tester, row, 'position');
-    final start = tester.getCenter(crosshair);
+    final cornerBefore = boxOf(tester).corners.first;
 
     final gesture = await tester.startGesture(
-      start,
+      onScreen(tester, boxMiddle(tester)),
       kind: PointerDeviceKind.mouse,
     );
     for (var step = 0; step < 4; step += 1) {
       await gesture.moveBy(const Offset(10, 5));
       await tester.pump();
     }
-    // What the handle reports — the pan's slop is the recognizer's, so the
-    // value is read off the handle rather than off the raw pointer.
-    final dragged = crosshairOf(tester).point;
+    // What the box shows — handed back by the host (F-195), in whole pixels
+    // (09-22 ⑭).
+    final dragged = boxOf(tester).pose.center;
     expect(
       dragged.x - centre.x,
-      inInclusiveRange(20 / zoom, 40 / zoom),
-      reason: 'the handle went with the pointer (less the pan\'s slop)',
+      inInclusiveRange(40 / zoom - 1, 40 / zoom + 1),
+      reason: 'the box went with the pointer',
     );
 
     expect(session.dragPreview.value, isA<LaneEditPreview>());
@@ -256,12 +266,11 @@ void main() {
       dragged,
       'the PEN\'s space follows it — a stroke mid-drag lands where it shows',
     );
-    final drawnAt = tester.getCenter(crosshair);
     expect(
-      drawnAt.dx - start.dx,
-      closeTo((dragged.x - centre.x) * zoom, 0.5),
-      reason: 'the handle is DRAWN at the value it shows — not the value plus '
-          'an offset of its own, which would count the drag twice',
+      boxOf(tester).corners.first.x - cornerBefore.x,
+      closeTo(dragged.x - centre.x, 0.01),
+      reason: 'the box is DRAWN at the value it shows — not the value plus an '
+          'offset of its own, which would count the drag twice',
     );
     expect(
       valueLabel(tester, row, 'position'),
@@ -285,7 +294,7 @@ void main() {
   });
 
   testWidgets('TRANSFORM × the lane: scrubbing Position moves the picture '
-      'and the crosshair before the release', (tester) async {
+      'and the box before the release', (tester) async {
     final session = await open(
       tester,
       layer: row,
@@ -307,9 +316,9 @@ void main() {
 
     expectPoint(shownCentre(session), scrubbed, 'the PICTURE follows the scrub');
     expectPoint(
-      crosshairOf(tester).point,
+      boxOf(tester).pose.center,
       scrubbed,
-      'so does the handle on the canvas',
+      'so does the box on the canvas',
     );
     expect(committedRow(session).transformTrack.position.isEmpty, isTrue);
 
@@ -331,13 +340,10 @@ void main() {
       layer: row,
       standOn: 'position',
     );
-    final corner = find.byKey(
-      const ValueKey<String>('layer-transform-box-corner-2'),
-    );
     final labelBefore = valueLabel(tester, row, 'scale');
 
     final gesture = await tester.startGesture(
-      tester.getCenter(corner),
+      onScreen(tester, boxOf(tester).corners[2]),
       kind: PointerDeviceKind.mouse,
     );
     for (var step = 0; step < 4; step += 1) {
@@ -409,21 +415,13 @@ void main() {
       standOn: 'position',
       openGroups: const [],
     );
-    final overlay = find.byKey(
-      const ValueKey<String>('camera-frame-overlay-gesture'),
-    );
     final poseBefore = session.camera.cameraPoseAtCurrentFrame;
     final labelBefore = valueLabel(tester, camera, 'position');
-    // The frame's centre — inside it, on no handle: a move.
-    final frame = tester.widget<CameraFrameOverlay>(
-      find.byType(CameraFrameOverlay),
-    );
-    final press =
-        tester.getTopLeft(overlay) +
-        cameraCenterInViewport(pose: frame.pose, viewport: frame.viewport);
 
+    // The frame's centre — inside it, on no handle (it wears no cross): a
+    // move.
     final gesture = await tester.startGesture(
-      press,
+      onScreen(tester, boxOf(tester).pose.center),
       kind: PointerDeviceKind.mouse,
     );
     for (var step = 0; step < 4; step += 1) {
@@ -464,7 +462,7 @@ void main() {
   });
 
   testWidgets('CAMERA × the canvas: a corner of the frame keys the zoom '
-      'ALONE — the lever and the middle key nothing with it', (tester) async {
+      'ALONE — the turn and the middle key nothing with it', (tester) async {
     // 유저 2026-09-28 camera-frame-keys-what-you-grab-Q1 「잡은 것만 — 레이어
     // 핸들과 같은 법」. The frame used to key position, scale and rotation
     // together whatever it was grabbed by.
@@ -478,11 +476,9 @@ void main() {
     // `camera_frame_overlay_test` (its corners lie off this view: the frame
     // is the 1300-wide page). What changed HERE is the host's wiring, so
     // this drives the very landings the canvas area handed the frame.
-    final frame = tester.widget<CameraFrameOverlay>(
-      find.byType(CameraFrameOverlay),
-    );
+    final frame = tester.widget<CameraFrameBox>(find.byType(CameraFrameBox));
     for (final zoom in [1.4, 1.8, 2.0]) {
-      frame.onZoomChanged!(zoom);
+      frame.zoom!.changed(zoom);
       await tester.pump();
     }
     expect(
@@ -490,7 +486,7 @@ void main() {
       isTrue,
       reason: 'nothing is written before the release',
     );
-    frame.onZoomCommitted!(2.0);
+    frame.zoom!.committed(2.0);
     await tester.pump();
 
     final track = session.requireActiveCut.camera.track;
@@ -546,10 +542,8 @@ void main() {
       layer: row,
       standOn: 'position',
     );
-    final crosshair = find.byKey(const ValueKey<String>('layer-position-gizmo'));
-
     final gesture = await tester.startGesture(
-      tester.getCenter(crosshair),
+      onScreen(tester, boxMiddle(tester)),
       kind: PointerDeviceKind.mouse,
     );
     await gesture.moveBy(const Offset(20, 0));
@@ -558,12 +552,16 @@ void main() {
     await tester.pump();
     expect(session.dragPreview.value, isA<LaneEditPreview>());
 
-    // Stepping onto a lane that declares no handle takes the crosshair away
-    // under the pointer — it never sees its release.
+    // Stepping onto a lane that declares no handle takes the box away under
+    // the pointer — it never sees its release.
     session.standOnRow(const LaneRowAddress(row, 'opacity'));
     await tester.pump();
     await tester.pump();
-    expect(crosshair, findsNothing, reason: 'the premise: the handle is gone');
+    expect(
+      find.byType(RowTransformBox),
+      findsNothing,
+      reason: 'the premise: the box is gone',
+    );
 
     expect(session.dragPreview.value, isNull, reason: 'nothing left showing');
     expectPoint(shownCentre(session), centre, 'the picture is back');
@@ -655,10 +653,9 @@ void main() {
     State<StatefulWidget> surface() =>
         tester.state(find.byType(InteractiveBrushEditCanvasView));
     final mounted = surface();
-    final crosshair = find.byKey(const ValueKey<String>('layer-position-gizmo'));
 
     final gesture = await tester.startGesture(
-      tester.getCenter(crosshair),
+      onScreen(tester, boxMiddle(tester)),
       kind: PointerDeviceKind.mouse,
     );
     for (var step = 0; step < 3; step += 1) {
