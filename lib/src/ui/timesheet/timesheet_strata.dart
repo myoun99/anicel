@@ -1,8 +1,7 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
@@ -113,7 +112,7 @@ class TimesheetStrata extends StatelessWidget {
       SheetStratum stratum, {
       ValueListenable<TimelineDragPreview?>? dragPreview,
       List<SheetInkWindow> ink = const [],
-      ui.Image? Function(BrushFrameKey key)? inkImageFor,
+      BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor,
       Set<BrushFrameKey> liveInkKeys = const {},
       Listenable? inkRepaint,
     }) => TimesheetDocumentPainter(
@@ -127,7 +126,7 @@ class TimesheetStrata extends StatelessWidget {
       dragPreview: dragPreview,
       cutId: cutId,
       ink: [for (final window in ink) window.mark],
-      inkImageFor: inkImageFor,
+      inkSurfaceFor: inkSurfaceFor,
       liveInkKeys: liveInkKeys,
       inkRepaint: inkRepaint,
     );
@@ -150,8 +149,8 @@ class TimesheetStrata extends StatelessWidget {
         SheetStratum.ink: painterOf(
           SheetStratum.ink,
           ink: windows,
-          inkImageFor: (key) =>
-              ink.controller.displayImageFor(TimesheetInkPlane.of(key), key),
+          inkSurfaceFor: (key) =>
+              ink.controller.surfaceFor(TimesheetInkPlane.of(key), key),
           liveInkKeys: ink.live
               ? {for (final window in windows) window.key}
               : const {},

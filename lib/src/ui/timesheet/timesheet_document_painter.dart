@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../core/page_stack.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
@@ -32,6 +33,7 @@ import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount, timelineDrawnEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
 import '../repaint_props.dart';
+import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
 import '../timeline/memo_token.dart';
 
@@ -533,7 +535,8 @@ Object timesheetDragPrint({
 /// strikethrough and the playhead row — under the panel viewport transform
 /// (the same
 /// inside-the-picture transform the brush canvas uses, crisp at any zoom).
-class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
+class TimesheetDocumentPainter extends CustomPainter
+    with RepaintOnProps, SheetInkOnScreen {
   TimesheetDocumentPainter({
     required this.document,
     required this.layout,
@@ -546,6 +549,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     this.effectiveRatio = 1.0,
     this.ink = const [],
     this.inkImageFor,
+    this.inkSurfaceFor,
     this.liveInkKeys = const {},
     Listenable? inkRepaint,
   }) : accent = AppColors.accent,
@@ -555,17 +559,25 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   /// through too (`timesheetInkWindows`), handed in by whoever built it.
   final List<SheetInk> ink;
 
-  /// A window's baked ink raster, or null to print none there.
+  /// A window's baked ink raster, or null to print none there — for an
+  /// EXPORT, which has no view to draw it through.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// A window's ink surface ON SCREEN, printed as the brush's live window
+  /// paints it ([SheetInkOnScreen], F-215).
+  @override
+  final BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor;
 
   /// Keys a LIVE brush window is already showing: skipped here, so
   /// translucent ink never composites twice.
+  @override
   final Set<BrushFrameKey> liveInkKeys;
 
   /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
   /// viewport transform lands the paper on the device grid with it.
   /// Defaulting to 1.0 keeps every focused test and the PSD export path
   /// unchanged.
+  @override
   final double effectiveRatio;
 
   /// The accent at the moment this painter was BUILT.
@@ -584,6 +596,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
 
   final TimesheetDocument document;
   final TimesheetDocumentLayout layout;
+  @override
   final CanvasViewport? viewport;
 
   /// The words the sheet prints, in the NOTATION language (UI-R10 #7) —
@@ -783,11 +796,16 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
       _bands.paintCutEndLine(canvas);
       _se.paintSeCrossingMarks(canvas);
     }
-    if (_draws(SheetPaintLayer.ink)) {
+    if (_draws(SheetPaintLayer.ink) && !printsInkAsLive) {
       _paintInk(canvas);
     }
 
     canvas.restore();
+    // On screen the ink is the stratum's last, and drawn out of document
+    // space: as the live windows draw it (F-215).
+    if (_draws(SheetPaintLayer.ink)) {
+      printInkAsLive(canvas, size, ink);
+    }
   }
 
   /// The handwriting, pen over paper: each window's surface where its

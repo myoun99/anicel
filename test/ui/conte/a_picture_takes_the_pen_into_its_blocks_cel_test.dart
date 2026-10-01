@@ -19,6 +19,7 @@ import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -44,6 +45,8 @@ import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_frame_renderer.dart'
+    show exportFrameGround;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 
 /// 🚨A CONTE PICTURE TAKES THE PEN INTO ITS BLOCK'S CEL (유저 2026-09-25,
@@ -478,15 +481,28 @@ void main() {
 
     /// The cut framed by its camera at [zoom] about the canvas's middle,
     /// held still over its one block — two keys at one place are no camera
-    /// work — or panning on to [last]; its conte row posed by [rowPose].
+    /// work — or panning on to [last]; its conte row posed by [rowPose], its
+    /// block's handwriting named [inkId].
     Project framed({
       required double zoom,
       TransformPose? rowPose,
       CameraPose? last,
+      String? inkId,
     }) {
       final pose = CameraPose(center: CanvasPoint(x: 320, y: 180), zoom: zoom);
       final base = cut();
-      final row = base.layers.single;
+      final block = base.layers.single;
+      final row = inkId == null
+          ? block
+          : block.copyWith(
+              timeline: {
+                0: TimelineExposure.drawing(
+                  frameId,
+                  length: 10,
+                  memo: ExposureMemo(inkId: inkId),
+                ),
+              },
+            );
       return Project(
         id: const ProjectId('conte-project'),
         name: 'Conte',
@@ -534,6 +550,39 @@ void main() {
       );
     }
 
+    /// Handwriting over the top of a band surface of [size]: a hairline in
+    /// every seventh column and every fifth row, across its first three
+    /// tile rows — a pattern a sub-pixel shift or a softer filter changes
+    /// everywhere.
+    BitmapSurface hatched(CanvasSize size) {
+      const tile = defaultCelTileSize;
+      BitmapTile hatchedAt(int tileX, int tileY) {
+        final pixels = Uint8List(tile * tile * 4);
+        for (var y = 0; y < tile; y += 1) {
+          for (var x = 0; x < tile; x += 1) {
+            if ((tileX * tile + x) % 7 == 0 || (tileY * tile + y) % 5 == 0) {
+              final i = (y * tile + x) * 4;
+              pixels[i] = 0x10;
+              pixels[i + 1] = 0x10;
+              pixels[i + 2] = 0x10;
+              pixels[i + 3] = 0xFF;
+            }
+          }
+        }
+        return BitmapTile(size: tile, pixels: pixels);
+      }
+
+      return BitmapSurface(
+        canvasSize: size,
+        tileSize: tile,
+        tiles: {
+          for (var y = 0; y < 3; y += 1)
+            for (var x = 0; x * tile < size.width; x += 1)
+              TileCoord(x: x, y: y): hatchedAt(x, y),
+        },
+      );
+    }
+
     /// The block's cel black over the whole canvas — the cut filled black.
     BitmapSurface filledBlack() {
       const size = defaultCelTileSize;
@@ -553,19 +602,36 @@ void main() {
     }
 
     /// The panel on [project], its brush off, with the block's cel [cel]
-    /// (inked, unless told) and the page's printed picture [printed], seen
-    /// through [view].
+    /// (inked, unless told), the page's printed picture [printed] and the
+    /// handwriting [band] makes for a band surface of its size, keyed
+    /// `band`, seen through [view].
     Future<Rect> pumpPanel(
       WidgetTester tester,
       Project project, {
       ui.Image? printed,
       BitmapSurface? cel,
       CanvasViewport? view,
+      BitmapSurface Function(CanvasSize size)? band,
     }) async {
       session = EditorSessionManager(initialProject: project);
       addTearDown(session.dispose);
-      final ink = ConteInkController();
+      final rows = BrushFrameStore();
+      final ink = ConteInkController(rowStore: rows);
       addTearDown(ink.dispose);
+      if (band != null) {
+        final metrics = ConteSheetMetrics(
+          cameraAspect: session.camera.cameraFrameAspect,
+        );
+        rows.storeBakedSurface(
+          conteInkRowKey(cutId, 'band'),
+          band(
+            CanvasSize(
+              width: (metrics.bodyWidth * conteInkScale).ceil(),
+              height: (metrics.bodyHeight * conteInkScale).ceil(),
+            ),
+          ),
+        );
+      }
       final cels = ContePictureInkController(
         cels: session.renderCaches.brushFrameStore,
       );
@@ -706,6 +772,47 @@ void main() {
       brushOn.value = false;
       await tester.pumpAndSettle();
       expect(buffers, isEmpty, reason: 'and stops when it goes');
+    });
+
+    testWidgets('🗣️F-215: the brush switch moves no pixel — the band\'s '
+        'handwriting and the picture print where and as the live windows '
+        'draw them (유저 2026-10-01: 「허용 on하면 칸 잉크는 선명해지고 '
+        '살짝오른쪽이동, 픽쳐칸 그림은 왼쪽위 0.5픽셀?1픽셀? 이동. 대체 '
+        '왜?」)', (tester) async {
+      // A ratio, a zoom and a pan that leave every edge inside a device
+      // pixel: the print's snap and the live views' each have something to
+      // round.
+      tester.view.devicePixelRatio = 1.25;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      // The camera at 4× frames canvas x 240–400, y 135–225: white, and
+      // from x 384 the blue of tile (3, 1). What the print renders of it,
+      // pixel for pixel.
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder)
+          ..drawColor(exportFrameGround, BlendMode.src)
+          ..drawRect(
+            const Rect.fromLTWH(144, 0, 16, 90),
+            Paint()..color = blue,
+          );
+        return recorder.endRecording().toImage(160, 90);
+      }))!;
+      addTearDown(printed.dispose);
+      await pumpPanel(
+        tester,
+        framed(zoom: 4, inkId: 'band'),
+        printed: printed,
+        band: hatched,
+        view: CanvasViewport(zoom: 1.37, panX: 13.3, panY: 7.7),
+      );
+      final off = await shoot(tester);
+      brushOn.value = true;
+      final on = await shoot(tester);
+      expect(
+        on.unlike(off),
+        isEmpty,
+        reason: 'device pixels the brush switch changed',
+      );
     });
 
     testWidgets('the camera\'s work is printed over the live picture — its '
@@ -890,6 +997,29 @@ class _Screen {
         ((logical.dy * ratio).floor() * width + (logical.dx * ratio).floor()) *
         4;
     return Color.fromARGB(rgba[i + 3], rgba[i], rgba[i + 1], rgba[i + 2]);
+  }
+
+  /// The first [most] device pixels where [other] differs from this, as
+  /// `(x, y) this≠other` — and how many there are in all.
+  List<String> unlike(_Screen other, {int most = 8}) {
+    final found = <String>[];
+    var count = 0;
+    for (var i = 0; i < rgba.length; i += 4) {
+      if (rgba[i] != other.rgba[i] ||
+          rgba[i + 1] != other.rgba[i + 1] ||
+          rgba[i + 2] != other.rgba[i + 2] ||
+          rgba[i + 3] != other.rgba[i + 3]) {
+        count += 1;
+        if (found.length < most) {
+          final pixel = i ~/ 4;
+          found.add(
+            '(${pixel % width}, ${pixel ~/ width}) '
+            '${rgba.sublist(i, i + 4)}≠${other.rgba.sublist(i, i + 4)}',
+          );
+        }
+      }
+    }
+    return [if (count > 0) '$count in all', ...found];
   }
 
   /// How many device pixels inside [rect] read as [test] says.

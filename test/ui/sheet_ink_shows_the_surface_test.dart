@@ -1,30 +1,42 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/material.dart' show Canvas, Rect, Size;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/rgba_color.dart';
+import 'package:anicel/src/models/sheet_marks.dart';
+import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 
-/// 🚨★★★A SHEET'S DISPLAY IMAGE IS THE SURFACE'S PICTURE THE MOMENT IT IS
-/// THE SURFACE (유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면
-/// 안 되」). `displayImageFor` composes the baked surface inside the call —
-/// a tile that has no picture gets one made there, through the one door —
-/// so a stroke's pen-up, an undo and a redo each show on the frame they
-/// happen.
+/// 🚨★★★A SHEET SHOWS ITS INK'S SURFACE THE MOMENT IT IS THE SURFACE (유저
+/// 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The
+/// controller hands the panel the baked surface itself (`surfaceFor`), and
+/// the print draws it as the brush's live window does
+/// ([printSheetInkAsLive], F-215) — a tile that has no picture gets one
+/// made in the draw, through the one door — so a stroke's pen-up, an undo
+/// and a redo each show on the frame they happen.
 ///
-/// 🪦WHAT THIS FILE USED TO BE (`sheet_ink_controller_dispose_test`, until
+/// ↩️THE FILE WAS `sheet_ink_display_image_test` (09-17 → 10-01): the
+/// controller composed the surface into one raster, `displayImageFor`, and
+/// the panel drew that `medium`-filtered in paper space — the soft, slid
+/// ink of F-215. The law it held is unchanged; the seam moved.
+///
+/// 🪦WHAT IT WAS BEFORE THAT (`sheet_ink_controller_dispose_test`, until
 /// 2026-09-17): 「closing a sheet panel mid-compose must not throw」. A
 /// surface with an unpictured tile was composed ASYNCHRONOUSLY — 「the stale
 /// image holds meanwhile」 — and notified when the image landed; if the
@@ -37,10 +49,10 @@ import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 /// guard; what stays is the merge, and the last test holds it.
 ///
 /// ⚠️THE FIRST VERSION OF THAT FILE PROVED NOTHING, and the lesson outlives
-/// it: it called `displayImageFor` on a controller with no ink, so the
-/// method returned on its first line and deleting the guard left every test
-/// green. These seed a REAL baked surface whose tiles were never pictured —
-/// exactly the state that used to take the asynchronous road.
+/// it: it asked a controller with no ink, so the method returned on its
+/// first line and deleting the guard left every test green. These seed a
+/// REAL baked surface whose tiles were never pictured — exactly the state
+/// that used to take the asynchronous road.
 void main() {
   const canvasSize = CanvasSize(width: 16, height: 16);
 
@@ -58,15 +70,45 @@ void main() {
   final red = RgbaColor(r: 255, g: 0, b: 0, a: 255);
   final blue = RgbaColor(r: 0, g: 0, b: 255, a: 255);
 
-  Future<List<int>> pixelAt(ui.Image image, int x, int y) async {
+  /// [surface] printed through a window at the paper's corner, one surface
+  /// pixel to a screen pixel — what a panel at 100% shows of it.
+  Future<List<int>> printedAt(
+    BitmapSurface surface,
+    BrushFrameKey key,
+    int x,
+    int y,
+  ) async {
+    final recorder = ui.PictureRecorder();
+    printSheetInkAsLive(
+      Canvas(recorder),
+      [
+        SheetInk(
+          SheetPaintLayer.ink,
+          key: key,
+          placement: const SheetInkPlacement(
+            window: Rect.fromLTWH(0, 0, 16, 16),
+            scale: 1,
+          ),
+        ),
+      ],
+      (_) => surface,
+      (
+        viewport: CanvasViewport(),
+        devicePixelRatio: 1,
+        size: const Size(16, 16),
+        above: const [],
+      ),
+    );
+    final image = await recorder.endRecording().toImage(16, 16);
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
     final bytes = data!.buffer.asUint8List();
-    final o = (y * image.width + x) * 4;
+    final o = (y * 16 + x) * 4;
     return [bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]];
   }
 
   testWidgets('a conte window shows a surface nobody has pictured, in the '
-      'call — and the NEXT surface on the next ask, never the stale one', (
+      'draw — and the NEXT surface on the next ask, never the stale one', (
     tester,
   ) async {
     final rowStore = BrushFrameStore();
@@ -78,20 +120,15 @@ void main() {
     rowStore.storeBakedSurface(key, freshSurface(red));
 
     await tester.runAsync(() async {
-      final first = controller.displayImageFor(null, key);
+      final first = controller.surfaceFor(null, key);
       expect(first, isNotNull, reason: 'nothing to wait for');
-      expect(await pixelAt(first!, 1, 1), [255, 0, 0, 255]);
-      expect(
-        identical(controller.displayImageFor(null, key), first),
-        isTrue,
-        reason: 'kept while the surface stands',
-      );
+      expect(await printedAt(first!, key, 1, 1), [255, 0, 0, 255]);
 
       // An undo, a redo, another stroke: a new surface of new tiles.
       rowStore.storeBakedSurface(key, freshSurface(blue));
-      final second = controller.displayImageFor(null, key);
+      final second = controller.surfaceFor(null, key);
       expect(
-        await pixelAt(second!, 1, 1),
+        await printedAt(second!, key, 1, 1),
         [0, 0, 255, 255],
         reason: 'the stale image used to hold here until an asynchronous '
             'compose landed — the undone stroke stayed on the sheet',
@@ -112,15 +149,16 @@ void main() {
     store.storeBakedSurface(key, freshSurface(red));
 
     await tester.runAsync(() async {
-      final image = controller.displayImageFor(null, key);
-      expect(image, isNotNull, reason: 'nothing to wait for');
-      expect(await pixelAt(image!, 1, 1), [255, 0, 0, 255]);
+      final surface = controller.surfaceFor(null, key);
+      expect(surface, isNotNull, reason: 'nothing to wait for');
+      expect(await printedAt(surface!, key, 1, 1), [255, 0, 0, 255]);
       controller.dispose();
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
   });
 
-  test('the display image is made in ONE place, and nothing there waits', () {
+  test('the ink a sheet shows is handed out in ONE place, and nothing there '
+      'waits', () {
     // ⛔SOURCE SCAN. Behaviour cannot see the defect the merge was for: two
     // copies that agree pass, and so do two that do not — until the day the
     // wrong one runs. The invariant worth holding is that there is nothing
@@ -129,14 +167,14 @@ void main() {
       'lib/src/ui/sheet/sheet_ink_controller.dart',
     ).readAsStringSync();
     expect(
-      shared.contains('composeTiledSurfaceImageNow('),
+      shared.contains('surfaceFor('),
       isTrue,
-      reason: 'the shared controller composes in the call',
+      reason: 'the shared controller hands out the surface',
     );
     expect(
-      shared.contains('composeTiledSurfaceImage('),
+      shared.contains('composeTiledSurfaceImage'),
       isFalse,
-      reason: 'and has no asynchronous compose to hold a stale image for',
+      reason: 'and composes nothing — no image to hold stale',
     );
     for (final path in const [
       'lib/src/ui/conte/conte_ink.dart',
@@ -148,9 +186,9 @@ void main() {
         fail('$path moved: point this scan at the sheet\'s ink controller');
       }
       expect(
-        file.readAsStringSync().contains('displayImageFor('),
+        file.readAsStringSync().contains('surfaceFor('),
         isFalse,
-        reason: '$path must inherit the display image, not carry a copy',
+        reason: '$path must inherit the surface, not carry a copy',
       );
     }
   });

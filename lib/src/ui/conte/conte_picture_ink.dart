@@ -147,8 +147,8 @@ ContePicture? _pictureOf(
       picture: (
         picture: mark,
         canvas: _canvasOnPaper(cut.canvasSize, canvasToPaper),
+        canvasToPaper: canvasToPaper,
       ),
-      canvasToPaper: canvasToPaper,
       artworkToCanvas: placement == null
           ? Matrix4.identity()
           : layerPoseMatrix(
@@ -237,13 +237,17 @@ SheetPictureOverInk _overInk(
   Cut cut,
   CameraPose pose,
   CanvasSize cameraFrameSize,
-) => (
-  picture: picture,
-  canvas: _canvasOnPaper(
-    cut.canvasSize,
-    conteCanvasToPaper(picture, (pose: pose, frameSize: cameraFrameSize)),
-  ),
-);
+) {
+  final canvasToPaper = conteCanvasToPaper(picture, (
+    pose: pose,
+    frameSize: cameraFrameSize,
+  ));
+  return (
+    picture: picture,
+    canvas: _canvasOnPaper(cut.canvasSize, canvasToPaper),
+    canvasToPaper: canvasToPaper,
+  );
+}
 
 /// The cels the conte's pictures draw into: the SESSION's cel store,
 /// through a coordinator of its own per canvas size — a cut's canvas may

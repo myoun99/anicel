@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../core/convex_clip.dart' show convexContains, convexInset;
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
@@ -18,10 +19,15 @@ import '../../services/history_manager.dart';
 import '../../services/viewport_transform_matrix.dart';
 import '../brush/brush_tool_state.dart';
 import '../canvas/active_stroke_overlay.dart';
+import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../sheet_painting.dart'
-    show SheetDeviceGrid, SheetPictureOverInk, pictureOutline;
+    show
+        SheetDeviceGrid,
+        SheetPictureOverInk,
+        pictureOutline,
+        pictureShowsOnScreen;
 import '../widgets/cursor_notice.dart' show cursorNotices;
 
 /// A window the sheet's brush draws through: where it sits on the paper,
@@ -239,15 +245,15 @@ class SheetPictureWindow extends SheetWindow {
     required super.key,
     super.plane,
     required this.picture,
-    required this.canvasToPaper,
     required this.artworkToCanvas,
     required this.overlay,
     this.refusal,
   });
 
-  /// The picture as the sheet prints it, and where its cut's canvas lies
-  /// on the paper — THE shape the pen takes ([paperOutline]) and the one
-  /// the paper's ink yields to on screen ([takesOnScreen]).
+  /// The picture as the sheet prints it, where its cut's canvas lies on
+  /// the paper and the map that lays it there — THE shape the pen takes
+  /// ([paperOutline]), the one the paper's ink yields to on screen
+  /// ([takesOnScreen]) and the map the print is laid by (F-215).
   final SheetPictureOverInk picture;
 
   /// Where the picture sits on the paper.
@@ -262,10 +268,11 @@ class SheetPictureWindow extends SheetWindow {
   List<Offset> get paperOutline => pictureOutline(picture);
 
   /// Where its live composite shows the cut's canvas on [grid] — cut
-  /// INSIDE (F-197), the same call the composite is clipped by.
+  /// INSIDE (F-197), the same call the composite is clipped by, and the one
+  /// the print's ink yields to (F-215).
   @override
   Path takesOnScreen(SheetDeviceGrid grid, CanvasViewport panelViewport) =>
-      grid.pictureCanvas(grid.livePicture(picture.picture), picture.canvas);
+      pictureShowsOnScreen(grid, picture);
 
   @override
   final String? refusal;
@@ -285,7 +292,7 @@ class SheetPictureWindow extends SheetWindow {
   final ActiveStrokeOverlayModel overlay;
 
   /// The cut's canvas → the paper.
-  final Matrix4 canvasToPaper;
+  Matrix4 get canvasToPaper => picture.canvasToPaper;
 
   /// The cel's own pixels → the cut's canvas.
   final Matrix4 artworkToCanvas;
@@ -326,12 +333,12 @@ class SheetPictureWindow extends SheetWindow {
       picture: (
         picture: picture.picture.shiftedBy(by),
         canvas: [for (final point in picture.canvas) point + by],
+        canvasToPaper: Matrix4.translationValues(
+          by.dx,
+          by.dy,
+          0,
+        ).multiplied(canvasToPaper),
       ),
-      canvasToPaper: Matrix4.translationValues(
-        by.dx,
-        by.dy,
-        0,
-      ).multiplied(canvasToPaper),
       artworkToCanvas: artworkToCanvas,
       overlay: overlay,
       refusal: refusal,
@@ -344,6 +351,193 @@ CanvasSelectionShape _outlineShape(List<Offset> points) =>
     CanvasSelectionShape([
       for (final point in points) CanvasPoint(x: point.dx, y: point.dy),
     ]);
+
+/// Something over a window that takes the screen from it where it shows
+/// its own: its [rect] on the paper, and the shape it [takes] on a grid.
+typedef SheetInkAbove = ({Rect rect, Path Function(SheetDeviceGrid grid) takes});
+
+/// [window] as one standing over another ([SheetWindow.takesOnScreen]).
+SheetInkAbove sheetInkAbove(SheetWindow window, CanvasViewport viewport) => (
+  rect: window.documentRect,
+  takes: (grid) => window.takesOnScreen(grid, viewport),
+);
+
+/// [over] as a picture standing over the paper's ink
+/// ([pictureShowsOnScreen]) — the print's stand-in for its window, which
+/// only the brush mounts.
+SheetInkAbove sheetInkAbovePicture(SheetPictureOverInk over) => (
+  rect: over.picture.slot,
+  takes: (grid) => pictureShowsOnScreen(grid, over),
+);
+
+/// Where a [window] shows its own surface on screen: its rect
+/// ([SheetWindow.screenRect]), less what it [yieldsTo] there.
+typedef SheetInkShown = ({SheetWindow window, Rect shows, List<Path> yieldsTo});
+
+/// Where each of [windows] shows its own surface on screen, in their order:
+/// each yields to every window after it and to [above] where they overlap
+/// it (F-216). ONE answer for the live frames ([SheetInkLayer]) and for the
+/// print ([printSheetInkAsLive]) — the brush switch must not move a pixel
+/// of the ink (F-215, 유저 2026-10-01: 「허용 on하면 칸 잉크는 선명해지고
+/// 살짝오른쪽이동 … 대체 왜?」).
+List<SheetInkShown> sheetInkWindowsShown(
+  List<SheetWindow> windows,
+  List<SheetInkAbove> above,
+  SheetDeviceGrid grid,
+  CanvasViewport viewport,
+) => [
+  for (var index = 0; index < windows.length; index += 1)
+    (
+      window: windows[index],
+      shows: windows[index].screenRect(viewport),
+      yieldsTo: [
+        for (final upper in [
+          for (final later in windows.skip(index + 1))
+            sheetInkAbove(later, viewport),
+          ...above,
+        ])
+          if (upper.rect.overlaps(windows[index].documentRect))
+            upper.takes(grid),
+      ],
+    ),
+];
+
+/// [shows] less each of [yieldsTo] — null when it yields nothing, and a
+/// plain rect, hard-edged, clips it.
+Path? sheetInkShownCut(Rect shows, List<Path> yieldsTo) {
+  if (yieldsTo.isEmpty) {
+    return null;
+  }
+  var shown = Path()..addRect(shows);
+  for (final upper in yieldsTo) {
+    shown = Path.combine(PathOperation.difference, shown, upper);
+  }
+  return shown;
+}
+
+/// How [window]'s view is laid [SheetWindow.stretch] times as wide from the
+/// window's left edge on screen — null where it is not stretched.
+Matrix4? sheetInkStretch(SheetWindow window, CanvasViewport viewport) {
+  final stretch = window.stretch;
+  if (stretch == 1) {
+    return null;
+  }
+  final left = window.screenRect(viewport).left;
+  return Matrix4.identity()
+    ..translateByDouble(left, 0, 0, 1)
+    ..scaleByDouble(stretch, 1, 1, 1)
+    ..translateByDouble(-left, 0, 0, 1);
+}
+
+/// What the print of a sheet's ink is laid through: the panel's
+/// [viewport] at [devicePixelRatio] over a box of [size], and what stands
+/// over all its windows ([above]).
+typedef SheetInkPrintView = ({
+  CanvasViewport viewport,
+  double devicePixelRatio,
+  Size size,
+  List<SheetInkAbove> above,
+});
+
+/// Prints [ink] on screen as the layer's live views paint it (F-215): each
+/// window's surface ([surfaceFor] — null for a window a live view is
+/// showing, or with no ink) clipped where its frame clips the view
+/// ([sheetInkWindowsShown]), laid as wide as the layer lays it, and drawn
+/// by the brush view's own painter at the window's ink viewport — its
+/// snap, its levels, its sampling. The brush switch only mounts the views;
+/// it does not change a pixel. ↩️It drew the surface's whole raster in
+/// paper space, `medium`-filtered and snapped with the PAGE's view: the
+/// ink went soft and slid by up to a pixel as the switch was flipped.
+///
+/// It IS the surface the moment it is the surface — a pen-up, an undo, a
+/// redo (유저 절대규칙 2026-09-17 「보이는 중이랑 결과랑 절대로 다르면 안
+/// 되」): the painter draws its tiles' pictures, made where they are
+/// missing through the one synchronous door, with nothing to wait for.
+void printSheetInkAsLive(
+  Canvas canvas,
+  List<SheetInk> ink,
+  BitmapSurface? Function(BrushFrameKey key) surfaceFor,
+  SheetInkPrintView view,
+) {
+  final windows = [
+    for (final mark in ink) SheetInkWindow.of(mark, id: 'print-${mark.key}'),
+  ];
+  final grid = SheetDeviceGrid.through(view.viewport, view.devicePixelRatio);
+  for (final shown in sheetInkWindowsShown(
+    windows,
+    view.above,
+    grid,
+    view.viewport,
+  )) {
+    final surface = surfaceFor(shown.window.key);
+    if (surface == null) {
+      continue;
+    }
+    final window = shown.window;
+    canvas.save();
+    final cut = sheetInkShownCut(shown.shows, shown.yieldsTo);
+    if (cut == null) {
+      canvas.clipRect(shown.shows, doAntiAlias: false);
+    } else {
+      canvas.clipPath(cut);
+    }
+    if (sheetInkStretch(window, view.viewport) case final stretch?) {
+      canvas.transform(stretch.storage);
+    }
+    BitmapSurfacePainter(
+      surface: surface,
+      viewport: window.inkViewport(view.viewport),
+      showTransparentBackground: false,
+      lineage: (window.key.layerId, window.key.frameId),
+      devicePixelRatio: view.devicePixelRatio,
+    ).paint(canvas, view.size);
+    canvas.restore();
+  }
+}
+
+/// What a sheet's painter prints its ink by: on screen — a [viewport] and
+/// the ink's surfaces ([inkSurfaceFor]) — as the live windows draw it
+/// ([printSheetInkAsLive]); for an export, its rasters in paper space, the
+/// painter's own. ONE decision for the conte's, the envelope's and the
+/// timesheet's painters (F-215).
+mixin SheetInkOnScreen {
+  CanvasViewport? get viewport;
+  double get effectiveRatio;
+  BitmapSurface? Function(BrushFrameKey key)? get inkSurfaceFor;
+
+  /// Keys a live window is showing: not printed again, so translucent ink
+  /// never composites twice.
+  Set<BrushFrameKey> get liveInkKeys;
+
+  /// Whether the ink is printed as the live windows draw it.
+  bool get printsInkAsLive => viewport != null && inkSurfaceFor != null;
+
+  /// Prints [ink] as the live windows draw it, the pictures [above] taking
+  /// their place over it — nothing where the ink is not printed that way.
+  void printInkAsLive(
+    Canvas canvas,
+    Size size,
+    List<SheetInk> ink, {
+    List<SheetInkAbove> above = const [],
+  }) {
+    final view = viewport;
+    final surfaceFor = inkSurfaceFor;
+    if (view == null || surfaceFor == null) {
+      return;
+    }
+    printSheetInkAsLive(
+      canvas,
+      ink,
+      (key) => liveInkKeys.contains(key) ? null : surfaceFor(key),
+      (
+        viewport: view,
+        devicePixelRatio: effectiveRatio,
+        size: size,
+        above: above,
+      ),
+    );
+  }
+}
 
 /// Where each of [windows] keeps ink, in its OWN surface's pixels: what it
 /// [SheetWindow.shows], less every window stacked above it — and a ring of
@@ -582,9 +776,17 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
           (index: index, window: windows[index], region: region),
     ];
     _releaseWindowsGone({for (final entry in keeping) entry.window.id});
-    final grid = SheetDeviceGrid.through(
+    // Where each shows its own (F-216) — what it keeps past the edges of
+    // the windows above it is never on screen — the print's answer too
+    // (F-215).
+    final shown = sheetInkWindowsShown(
+      windows,
+      const [],
+      SheetDeviceGrid.through(
+        widget.viewport,
+        EffectiveDevicePixelRatio.of(context),
+      ),
       widget.viewport,
-      EffectiveDevicePixelRatio.of(context),
     );
     // It claims the press, after the window it lands on has heard it — and
     // where that window refuses the pen, says why, as the canvas does.
@@ -596,20 +798,14 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
           for (final (:index, :window, :region) in keeping)
             Positioned.fill(
               child: _InkWindowFrame(
-                shows: window.screenRect(widget.viewport),
+                shows: shown[index].shows,
                 // The press is its own where it is the window on top, and
                 // the stroke with it wherever the pen goes after (H49).
                 owns: (position) => identical(
                   sheetInkOwnerAt(windows, _paperOf(position)),
                   window,
                 ),
-                // Where the windows above it show theirs (F-216): what it
-                // keeps past their edges is never on screen.
-                yieldsTo: [
-                  for (final upper in windows.skip(index + 1))
-                    if (upper.documentRect.overlaps(window.documentRect))
-                      upper.takesOnScreen(grid, widget.viewport),
-                ],
+                yieldsTo: shown[index].yieldsTo,
                 child: RepaintBoundary(
                   child: _stretched(window, _view(window, region)),
                 ),
@@ -659,20 +855,11 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// surface's own shape ([SheetWindow.inkViewport]) and a press reaches it
   /// back through the same stretch, so the brush writes the pixel under the
   /// pen.
-  Widget _stretched(SheetWindow window, Widget view) {
-    final stretch = window.stretch;
-    if (stretch == 1) {
-      return view;
-    }
-    final left = window.screenRect(widget.viewport).left;
-    return Transform(
-      transform: Matrix4.identity()
-        ..translateByDouble(left, 0, 0, 1)
-        ..scaleByDouble(stretch, 1, 1, 1)
-        ..translateByDouble(-left, 0, 0, 1),
-      child: view,
-    );
-  }
+  Widget _stretched(SheetWindow window, Widget view) =>
+      switch (sheetInkStretch(window, widget.viewport)) {
+        final stretch? => Transform(transform: stretch, child: view),
+        null => view,
+      };
 }
 
 /// A window SHOWS its own rect and HEARS the presses it [owns] — the ones
@@ -760,7 +947,9 @@ class _RenderInkWindowFrame extends RenderProxyBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    if (_yieldsTo.isEmpty) {
+    // The print clips by the same cut (printSheetInkAsLive, F-215).
+    final cut = sheetInkShownCut(_shows, _yieldsTo);
+    if (cut == null) {
       _cutClip.layer = null;
       _clip.layer = context.pushClipRect(
         needsCompositing,
@@ -771,16 +960,12 @@ class _RenderInkWindowFrame extends RenderProxyBox {
       );
       return;
     }
-    var shows = Path()..addRect(_shows);
-    for (final upper in _yieldsTo) {
-      shows = Path.combine(PathOperation.difference, shows, upper);
-    }
     _clip.layer = null;
     _cutClip.layer = context.pushClipPath(
       needsCompositing,
       offset,
       _shows,
-      shows,
+      cut,
       super.paint,
       oldLayer: _cutClip.layer,
     );

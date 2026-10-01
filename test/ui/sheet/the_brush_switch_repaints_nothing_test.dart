@@ -85,12 +85,13 @@ void main() {
     ],
   );
 
-  Future<_Shot> shoot(WidgetTester tester) async {
+  /// The screen, at [pixelRatio] image pixels to a logical one.
+  Future<_Shot> shoot(WidgetTester tester, {double pixelRatio = 1}) async {
     final render = tester.renderObject<RenderRepaintBoundary>(
       find.byKey(screen),
     );
     return (await tester.runAsync(() async {
-      final image = await render.toImage();
+      final image = await render.toImage(pixelRatio: pixelRatio);
       final data = await image.toByteData();
       final shot = _Shot(data!.buffer.asUint8List(), image.width);
       image.dispose();
@@ -284,6 +285,31 @@ void main() {
           first.differingFrom(settled),
           0,
           reason: 'what the switch drew is what stays on screen',
+        );
+      });
+    }
+
+    // The conte's is pinned with its pictures, beside its other live pins
+    // (`a_picture_takes_the_pen_into_its_blocks_cel_test.dart`).
+    if (sheet.sheet != 'conte') {
+      testWidgets('🗣️F-215: ${sheet.sheet}: the handwriting is the same '
+          'device pixels with the brush on as off — printed where and as '
+          'its live window draws it (유저 2026-10-01: 「허용 on하면 칸 '
+          '잉크는 선명해지고 살짝오른쪽이동 … 대체 왜?」)', (tester) async {
+        // A ratio that leaves the ink's edges inside device pixels, so the
+        // print and the live window each have something to snap.
+        tester.view.devicePixelRatio = 1.25;
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await mount(tester);
+        final off = await shoot(tester, pixelRatio: 1.25);
+        brushAllowed.value = true;
+        await _settle(tester);
+        final on = await shoot(tester, pixelRatio: 1.25);
+        expect(
+          on.differingFrom(off),
+          0,
+          reason: 'device pixels the brush switch changed, first at '
+              '${on.unlike(off)}',
         );
       });
     }
@@ -595,17 +621,24 @@ class _Shot {
     return found;
   }
 
-  /// How many pixels differ from [other]'s.
-  int differingFrom(_Shot other) {
-    var n = 0;
+  /// The pixels that differ from [other]'s, as indices in reading order.
+  Iterable<int> _differing(_Shot other) sync* {
     for (var i = 0; i < rgba.length; i += 4) {
       if (rgba[i] != other.rgba[i] ||
           rgba[i + 1] != other.rgba[i + 1] ||
           rgba[i + 2] != other.rgba[i + 2] ||
           rgba[i + 3] != other.rgba[i + 3]) {
-        n += 1;
+        yield i ~/ 4;
       }
     }
-    return n;
   }
+
+  /// Where the first [limit] pixels that differ from [other]'s lie, (x, y).
+  List<(int, int)> unlike(_Shot other, {int limit = 8}) => [
+    for (final pixel in _differing(other).take(limit))
+      (pixel % width, pixel ~/ width),
+  ];
+
+  /// How many pixels differ from [other]'s.
+  int differingFrom(_Shot other) => _differing(other).length;
 }

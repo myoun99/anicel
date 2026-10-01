@@ -306,13 +306,13 @@ void main() {
       expect(controller.hasInkFor(null, envelopeInkBoxKey(owner, 'cell')), isFalse);
     });
 
-    test('a box with no strokes has no display image to draw', () {
+    test('a box with no strokes has no surface to draw', () {
       final controller = CutEnvelopeInkController();
       addTearDown(controller.dispose);
       controller.syncGeometry(aspectRatio: 1);
 
       expect(
-        controller.displayImageFor(null, envelopeInkBoxKey(owner, 'cell')),
+        controller.surfaceFor(null, envelopeInkBoxKey(owner, 'cell')),
         isNull,
       );
     });

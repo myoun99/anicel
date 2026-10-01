@@ -266,11 +266,10 @@ class ConteBookPage extends StatelessWidget {
       viewport: viewport,
       effectiveRatio: EffectiveDevicePixelRatio.of(context),
       layers: stratum.layers,
-      // Saved sheet ink shows whatever the ink mode says (R5); a live input
-      // window's key stands down so translucent ink never composites twice.
-      inkImageFor: ink == null
-          ? null
-          : (key) => ink.displayImageFor(null, key),
+      // Saved sheet ink shows whatever the ink mode says (R5), as the live
+      // window would draw it (F-215); a live input window's key stands down
+      // so translucent ink never composites twice.
+      inkSurfaceFor: ink == null ? null : (key) => ink.surfaceFor(null, key),
       liveInkKeys: liveInkKeys,
       picturesOverInk: picturesOverInk,
       dragPreview: dragPreview,
@@ -308,9 +307,12 @@ class ConteBookPage extends StatelessWidget {
                 dragPreview: printed,
                 repaint: [printed, imageRepaint],
               ),
-              // A landed thumbnail or cover picture, likewise.
+              // A landed thumbnail or cover picture, likewise. Each picture is
+              // laid where its live composite shows it, by the map of its
+              // cut's canvas (F-215).
               SheetStratum.picture: painterOf(
                 SheetStratum.picture,
+                picturesOverInk: picturesOverInk,
                 repaint: [picturesLanded, imageRepaint],
               ),
               if (ink != null)

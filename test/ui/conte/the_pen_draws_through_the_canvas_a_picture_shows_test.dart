@@ -95,8 +95,8 @@ void main() {
       picture: (
         picture: pictureOver(region),
         canvas: const [Offset.zero, Offset(10, 0), Offset(10, 10)],
+        canvasToPaper: Matrix4.identity(),
       ),
-      canvasToPaper: Matrix4.identity(),
       artworkToCanvas: Matrix4.identity(),
       overlay: overlay,
     );

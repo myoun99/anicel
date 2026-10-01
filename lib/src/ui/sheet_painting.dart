@@ -314,9 +314,58 @@ class SheetDeviceGrid {
   }
 }
 
-/// A picture the paper's ink yields to: the picture, and [canvas] — the
-/// corners of the cut's canvas on the paper, as its camera lays them.
-typedef SheetPictureOverInk = ({SheetPicture picture, List<Offset> canvas});
+/// A picture the paper's ink yields to: the picture, [canvas] — the corners
+/// of the cut's canvas on the paper, as its camera lays them — and
+/// [canvasToPaper], the map that lays them there (`conteCanvasToPaper`):
+/// the one its live composite is drawn through, and so the one its print
+/// is laid by (F-215).
+typedef SheetPictureOverInk = ({
+  SheetPicture picture,
+  List<Offset> canvas,
+  Matrix4 canvasToPaper,
+});
+
+/// Where [over]'s picture shows its cut's canvas on [grid], the brush on or
+/// off: its frame cut INSIDE, as its live composite is
+/// ([SheetDeviceGrid.livePicture], F-197), and in it the canvas — what the
+/// paper's ink yields to on screen (F-216), in a live window and in the
+/// print alike (F-215).
+Path pictureShowsOnScreen(SheetDeviceGrid grid, SheetPictureOverInk over) =>
+    grid.pictureCanvas(grid.livePicture(over.picture), over.canvas);
+
+/// The view a picture's live composite draws its cut's canvas through: the
+/// page's [view] after [canvasToPaper]. Its painter snaps it to the device
+/// grid at its own scale ([renderSnappedViewport]).
+CanvasViewport pictureCanvasViewport(
+  CanvasViewport view,
+  Matrix4 canvasToPaper,
+) => viewportOfSimilarity(
+  viewportTransformMatrix(view).multiplied(canvasToPaper),
+)!;
+
+/// Where the print of [over]'s picture is laid on screen so that each of its
+/// pixels lands where the live composite shows it (F-215, 유저 2026-10-01:
+/// 「픽쳐칸 그림은 왼쪽위 0.5픽셀?1픽셀? 이동. 대체 왜?」): its frame through
+/// the page's [view], moved by the snap the composite's own painter gives
+/// the canvas ([pictureCanvasViewport]). ↩️It was the frame cut on the
+/// page's grid ([SheetDeviceGrid.printedPicture]): the print pinned its
+/// edges to the grid, the composite its canvas's origin, and the brush
+/// switch moved the picture by the difference.
+Rect pictureLaidAsLive(
+  SheetPictureOverInk over,
+  CanvasViewport view,
+  double devicePixelRatio,
+) {
+  final canvas = pictureCanvasViewport(view, over.canvasToPaper);
+  final snapped = renderSnappedViewport(canvas, devicePixelRatio);
+  final frame = over.picture.frame;
+  return Rect.fromLTRB(
+    view.panX + view.zoom * frame.left,
+    view.panY + view.zoom * frame.top,
+    view.panX + view.zoom * frame.right,
+    view.panY + view.zoom * frame.bottom,
+  ).shift(Offset(snapped.panX - canvas.panX, snapped.panY - canvas.panY));
+}
 
 /// Where [over] shows its cut's canvas, exactly, on the paper: the
 /// camera's frame in its slot, and the canvas in it — what the pen takes
@@ -422,7 +471,12 @@ class SheetCanvasPrinter {
     ({CanvasViewport? viewport, double devicePixelRatio, Size paper}) sheet,
     Iterable<SheetMark> marks,
   ) {
-    final page = _SheetCanvas(canvas, SheetDeviceGrid.of(size, sheet), this);
+    final page = _SheetCanvas(
+      canvas,
+      SheetDeviceGrid.of(size, sheet),
+      sheet.viewport,
+      this,
+    );
     canvas.save();
     if (sheet.viewport != null) {
       canvas.clipRect(Offset.zero & size);
@@ -439,10 +493,15 @@ class SheetCanvasPrinter {
 /// One [SheetCanvasPrinter.paint]: the canvas, where its paper lands on the
 /// device, and the printer's face and images.
 class _SheetCanvas {
-  _SheetCanvas(this.canvas, this.grid, this.printer);
+  _SheetCanvas(this.canvas, this.grid, this.view, this.printer);
 
   final Canvas canvas;
   final SheetDeviceGrid grid;
+
+  /// The panel's view, as it is handed in — before the grid snaps it — or
+  /// null for an export, which has none.
+  final CanvasViewport? view;
+
   final SheetCanvasPrinter printer;
 
   void printMark(SheetMark mark) {
@@ -487,7 +546,9 @@ class _SheetCanvas {
 
   /// No ink of [window] shows where a picture over it shows its cut's
   /// canvas — cut at the edge the print shows that picture by, so the ink's
-  /// ring past the edge (`sheetInkApron`) never lies over the picture.
+  /// ring past the edge (`sheetInkApron`) never lies over the picture. An
+  /// export's: on screen the ink is printed as the live windows draw it,
+  /// and yields where they do ([pictureShowsOnScreen], F-215).
   void _yieldToPictures(Rect window) {
     final over = [
       for (final picture in printer.picturesOverInk)
@@ -503,7 +564,7 @@ class _SheetCanvas {
           grid.onDevice(window.bottomRight),
         ).inflate(1),
       );
-    for (final (:picture, canvas: cut) in over) {
+    for (final (:picture, canvas: cut, canvasToPaper: _) in over) {
       shows = Path.combine(
         PathOperation.difference,
         shows,
@@ -535,6 +596,11 @@ class _SheetCanvas {
   /// device pixel, the picture covered part of that pixel and the light well
   /// showed through the rest. A pan keeps each edge's place in its pixel
   /// (whole pixels, the snap's phase), so only a zoom ever moved it.
+  ///
+  /// On screen the print is laid again over that, where the live composite
+  /// shows each of its pixels ([pictureLaidAsLive], F-215) and cut at the
+  /// window's edge: the copy under it keeps the edge covered whichever way
+  /// the composite's snap moves the picture.
   void _picture(SheetPicture picture) {
     final shot = grid.printedPicture(picture);
     final image = printer.images.pictureFor?.call(
@@ -550,6 +616,34 @@ class _SheetCanvas {
       shot,
       sheetPictureQuality(image, shot, grid.devicePixelRatio),
     );
+    final laid = _laidAsLive(picture);
+    if (laid == null) {
+      return;
+    }
+    canvas.save();
+    canvas.clipRect(shot);
+    paintSheetImageIn(
+      canvas,
+      image,
+      laid,
+      sheetPictureQuality(image, laid, grid.devicePixelRatio),
+    );
+    canvas.restore();
+  }
+
+  /// Where [picture]'s live composite would lay it, on screen — null for an
+  /// export, and for a picture no ink yields to (no map of its canvas).
+  Rect? _laidAsLive(SheetPicture picture) {
+    final shown = view;
+    if (shown == null) {
+      return null;
+    }
+    for (final over in printer.picturesOverInk) {
+      if (over.picture == picture) {
+        return pictureLaidAsLive(over, shown, grid.devicePixelRatio);
+      }
+    }
+    return null;
   }
 
   /// A line, anti-aliased: a camera's frame may be turned, and no grid

@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/widgets.dart' show Matrix4;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
@@ -70,6 +71,8 @@ void main() {
         centre + Offset(0, down),
         centre + Offset(-across, 0),
       ],
+      // The PDF cuts by the outline alone; nothing lays a print by this.
+      canvasToPaper: Matrix4.identity(),
     );
     Future<Uint8List?> written({required bool picture}) => tester.runAsync(
       () async => writeContePdf(

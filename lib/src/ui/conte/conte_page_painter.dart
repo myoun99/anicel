@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart';
@@ -13,6 +14,8 @@ import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../repaint_props.dart';
+import '../sheet/sheet_ink_layer.dart'
+    show SheetInkOnScreen, sheetInkAbovePicture;
 import '../sheet_painting.dart';
 import '../timeline/memo_token.dart';
 import '../timeline/timeline_cut_end_handle.dart'
@@ -53,7 +56,8 @@ Object conteDragPrint(ConteSheetSource source, TimelineDragPreview? preview) =>
 ///
 /// The paper is WHITE and the ink is black whatever the app theme is: this
 /// is a printed page shown on a screen, not a panel.
-class ContePagePainter extends CustomPainter with RepaintOnProps {
+class ContePagePainter extends CustomPainter
+    with RepaintOnProps, SheetInkOnScreen {
   ContePagePainter({
     required this.page,
     required this.source,
@@ -63,6 +67,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     this.effectiveRatio = 1.0,
     this.layers,
     this.inkImageFor,
+    this.inkSurfaceFor,
     this.liveInkKeys = const {},
     this.picturesOverInk = const [],
     this.dragPreview,
@@ -89,9 +94,11 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
 
   /// The panel's pan/zoom (the canvas-shell mount, #16). Null fits the page
   /// into the size it is given (the export paths).
+  @override
   final CanvasViewport? viewport;
 
   /// The view's DPR — the SAME one the host snapped with.
+  @override
   final double effectiveRatio;
 
   /// The finished composite for a cell, or null while it renders (the cell
@@ -106,13 +113,21 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   /// three sheets' shared vocabulary.
   final Set<SheetPaintLayer>? layers;
 
-  /// The sheet ink's display raster for one window key (R5) — the page's
-  /// surface and each cell's row-band surface, at [conteInkScale] over
-  /// document points. Null (the resolver or the image) draws no ink.
+  /// The sheet ink's raster for one window key (R5) — each cell's row-band
+  /// surface, at [conteInkScale] over document points — for an EXPORT,
+  /// which has no view to draw it through. Null (the resolver or the
+  /// image) draws no ink.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// The sheet ink's surface for one window key, ON SCREEN: printed as the
+  /// brush's live window paints it ([SheetInkOnScreen], F-215), so the
+  /// brush switch changes no pixel of it.
+  @override
+  final BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor;
 
   /// Keys whose ink a LIVE input window is already showing: skipped, so
   /// translucent ink never composites twice.
+  @override
   final Set<BrushFrameKey> liveInkKeys;
 
   /// This page's pictures and where each shows its cut's canvas — no ink
@@ -132,6 +147,8 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final printed = marks();
+    final asLive = printsInkAsLive;
     SheetCanvasPrinter(
       style: conteTextStyle,
       layers: layers,
@@ -150,8 +167,21 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
         devicePixelRatio: effectiveRatio,
         paper: Size(metrics.pageWidth, metrics.pageHeight),
       ),
-      marks(),
+      [
+        for (final mark in printed)
+          if (!(asLive && mark is SheetInk)) mark,
+      ],
     );
+    if (layers?.contains(SheetPaintLayer.ink) ?? true) {
+      printInkAsLive(
+        canvas,
+        size,
+        printed.whereType<SheetInk>().toList(),
+        above: [
+          for (final over in picturesOverInk) sheetInkAbovePicture(over),
+        ],
+      );
+    }
   }
 
   /// The live length of the cut [cutId] names ([conteLiveFramesOf]), or

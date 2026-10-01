@@ -108,7 +108,8 @@ class ContePictureLive extends StatelessWidget {
                 nodes: drawn.nodes,
                 imageCache: session.renderCaches.layerFrameImageCache,
                 canvasSize: canvas,
-                viewport: viewportOfSimilarity(canvasToScreen)!,
+                // The view the print is laid by too (F-215).
+                viewport: pictureCanvasViewport(viewport, window.canvasToPaper),
                 activeSurfacePainter: BitmapSurfacePainter(
                   surface: celSurfaceWithSourceEffects(
                     surfaceOf(picture),
