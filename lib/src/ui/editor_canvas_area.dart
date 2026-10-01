@@ -1150,29 +1150,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ),
       description: 'Rotate camera $at',
     );
-    // The box follows the frame along its animated pose during scrubs, as
-    // the frame does ([_cameraOverlay]).
-    return ListenableBuilder(
-      listenable: session.editingFrameCursor,
-      builder: (context, _) => ValueListenableBuilder<int?>(
-        valueListenable: session.editingSession.gapParkingListenable,
-        builder: (context, _, _) {
-          final pose = session.camera.displayedCameraPose;
-          if (pose == null) {
-            return const SizedBox.shrink();
-          }
-          return CameraFrameBox(
-            pose: pose,
-            cameraFrameSize: session.camera.cameraFrameSize,
-            canvasSize: canvasSize,
-            viewport: viewport,
-            claimsCanvas: frame.boxClaimsCanvas,
-            onCancelled: session.laneVerbs.endLaneEditPreview,
-            move: move,
-            zoom: zoom,
-            turn: turn,
-          );
-        },
+    // The box follows the frame along its animated pose, as the frame does.
+    return _atTheCameraPose(
+      session,
+      (pose) => CameraFrameBox(
+        pose: pose,
+        cameraFrameSize: session.camera.cameraFrameSize,
+        canvasSize: canvasSize,
+        viewport: viewport,
+        claimsCanvas: frame.boxClaimsCanvas,
+        onCancelled: session.laneVerbs.endLaneEditPreview,
+        move: move,
+        zoom: zoom,
+        turn: turn,
       ),
     );
   }
@@ -1185,42 +1175,46 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasViewport viewport,
   ) {
     return Positioned.fill(
-      // The cursor subscription keeps the frame gliding
-      // along its animated pose during scrubs (and after
-      // committed seeks) without any wider rebuild.
-      //
-      // ㊲: the PARKING is the other half of "where am
-      // I". A scrub that crosses a cut boundary moves
-      // only that — the cursor stays put, by design —
-      // so a pose read on the cursor alone stayed
-      // frozen on the cut being left.
-      child: ListenableBuilder(
-        listenable: session.editingFrameCursor,
-        builder: (context, _) => ValueListenableBuilder<int?>(
-          valueListenable: session.editingSession.gapParkingListenable,
-          builder: (context, _, _) {
-            final pose = session.camera.displayedCameraPose;
-            // Nothing under the cursor to frame:
-            // the scrub is over a gap.
-            if (pose == null) {
-              return const SizedBox.shrink();
-            }
-            return CameraFrameOverlay(
-              pose: pose,
-              cameraFrameSize: session.camera.cameraFrameSize,
-              viewport: viewport,
-              // Dim belongs to camera-view mode;
-              // plain manipulation keeps the
-              // artwork undimmed.
-              dimOpacity: widget.cameraViewEnabled.value
-                  ? widget.cameraDimOpacity.value
-                  : 0,
-            );
-          },
+      child: _atTheCameraPose(
+        session,
+        (pose) => CameraFrameOverlay(
+          pose: pose,
+          cameraFrameSize: session.camera.cameraFrameSize,
+          viewport: viewport,
+          // Dim belongs to camera-view mode; plain manipulation keeps the
+          // artwork undimmed.
+          dimOpacity: widget.cameraViewEnabled.value
+              ? widget.cameraDimOpacity.value
+              : 0,
         ),
       ),
     );
   }
+
+  /// [build] at the camera's pose as the canvas shows it, again whenever the
+  /// pose moves — and nothing where there is no pose: under the cursor is a
+  /// gap. The camera's frame and its box both stand on it.
+  ///
+  /// The cursor subscription keeps the frame gliding along its animated
+  /// pose during scrubs (and after committed seeks) without any wider
+  /// rebuild.
+  ///
+  /// ㊲: the PARKING is the other half of "where am I". A scrub that crosses
+  /// a cut boundary moves only that — the cursor stays put, by design — so a
+  /// pose read on the cursor alone stayed frozen on the cut being left.
+  Widget _atTheCameraPose(
+    EditorSessionManager session,
+    Widget Function(TransformPose pose) build,
+  ) => ListenableBuilder(
+    listenable: session.editingFrameCursor,
+    builder: (context, _) => ValueListenableBuilder<int?>(
+      valueListenable: session.editingSession.gapParkingListenable,
+      builder: (context, _, _) {
+        final pose = session.camera.displayedCameraPose;
+        return pose == null ? const SizedBox.shrink() : build(pose);
+      },
+    ),
+  );
 
   Positioned _cutFadeWash(
     CanvasViewport viewport,

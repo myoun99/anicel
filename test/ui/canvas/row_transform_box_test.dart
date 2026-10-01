@@ -217,6 +217,33 @@ void main() {
     expect(moves, isEmpty);
   });
 
+  testWidgets('a cross that stands apart from the value it carries — a '
+      'moved layer\'s, AE\'s mark — is grabbed where it STANDS and moves the '
+      'VALUE by the drag', (tester) async {
+    final anchors = <CanvasPoint>[];
+    await pumpBox(
+      tester,
+      RowTransformBox(
+        corners: corners,
+        pose: TransformPose(center: anchor),
+        canvasSize: canvasSize,
+        viewport: CanvasViewport(),
+        claimsCanvas: true,
+        onCancelled: () {},
+        cross: (
+          at: anchor,
+          value: CanvasPoint(x: 260, y: 150),
+          landing: into(anchors),
+        ),
+      ),
+    );
+
+    await tester.dragFrom(pivot, const Offset(30, -10));
+    await tester.pumpAndSettle();
+
+    expect(anchors, [CanvasPoint(x: 290, y: 140)]);
+  });
+
   testWidgets('a box that does not scale has no corners to grab — an SE '
       'tag\'s: the press on its corner is the move', (tester) async {
     final moves = <CanvasPoint>[];

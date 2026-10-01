@@ -153,7 +153,16 @@ void main() {
   /// inputs were there and uncounted; as a law they are parameters. Folding
   /// them into one value would be a split for the score. 🔬The lane's scan
   /// against master: that one added, nothing else.
-  const wideSignatures = 385;
+  ///
+  /// ⚠️385 → 381 on 2026-10-01, lowered as the rule asks (F-222 ②~④, one
+  /// box for every row): master stood at 383, and the round took three off
+  /// and put one on. Gone with the handles they built: `_gizmoHandle` (the
+  /// point gizmo), `_LayerTransformBoxState._handle` and the canvas area's
+  /// `_transformBox`. Added: `boxPressAt` (five) — the one order a press on
+  /// any box is read in, its five the press and the four things a box may
+  /// wear (a cross, handles, an inside, a stage), and a box with fewer
+  /// passes fewer. 🔬The lane's scan against master (`a41fb7564`, at 383).
+  const wideSignatures = 381;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -239,7 +248,18 @@ void main() {
   /// landing on every cel the ladder names, each through the marquee on its
   /// own row, one landing per physical cel, folded into one undo. 🔬The
   /// lane's scan against master (`1bde29155`, at 423) named those three.
-  const longBodies = 422;
+  ///
+  /// ⚠️422 → 421 on 2026-10-01, following master down (F-222 ②~④): master
+  /// stood at 421, and the round traded two for two. Off: the camera
+  /// frame's painter (`CameraFramePainter.paint`, its handles and lever
+  /// gone into the box) and the canvas area's `_cameraOverlay` (its pose
+  /// subscription now the one `_atTheCameraPose` the frame and its box both
+  /// stand on). On: `_RowTransformBoxState.build` (62 — the claim, the
+  /// finger gate, the pan and the chrome, in that order) and the canvas
+  /// area's `_layerBox` (116 — the row's pose under its folders and the
+  /// four landings, each with the decision it carries). 🔬The lane's scan
+  /// against master (`a41fb7564`, at 421).
+  const longBodies = 421;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
