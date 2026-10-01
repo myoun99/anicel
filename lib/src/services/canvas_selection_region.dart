@@ -322,7 +322,7 @@ final class CanvasSelectionNested extends CanvasSelectionStep {
 ///
 /// A fold that selects nothing does not LAND: the stage door ([clippedTo])
 /// hands back null for it, the app's "no selection" state (I-23-empty-Q1,
-/// pending — see [_noSelectionWhenEmpty]). ↩️This paragraph said
+/// answered — see [_noSelectionWhenEmpty]). ↩️This paragraph said
 /// [combinedWith] returned null for one, which it never did: 삭제 of
 /// everything folds to a region there, and [combine] keeps doing so for the
 /// callers that are not selections.
@@ -648,16 +648,14 @@ class CanvasSelectionRegion {
 
   /// 🚨I-23-empty-Q1: A FOLD THAT SELECTS NOTHING IS NO SELECTION.
   ///
-  /// ⏳PENDING — the user has not answered yet. This applies the
-  /// RECOMMENDED answer (A, 「어디서든 선택 없음으로」, the PS/CSP rule), so
+  /// 🗣️유저 2026-10-01: 「어디서든 선택 없음으로」 (the PS/CSP rule) — so
   /// 삭제 of everything, a 선택중 that misses and the inverse of everything
-  /// all land as no selection — which is also what brings two presses of
-  /// the inverse back where they started. Until now such a fold stayed a
-  /// live selection with no ants, and the brush's clip to it drew nothing.
+  /// all land as no selection, which is also what brings two presses of the
+  /// inverse back where they started. ↩️Until then such a fold stayed a live
+  /// selection with no ants, and the brush's clip to it drew nothing.
   ///
-  /// ⚠️ONE place on purpose. If the answer is B (「반전에서만」) this call
-  /// moves from [clippedTo] into [invertedWithin]; if it is C (「그대로
-  /// 둔다」) it goes. Nothing else changes either way.
+  /// ⚠️ONE place on purpose: every door a selection lands through asks it
+  /// here, so the rule cannot hold at one door and not at another.
   static CanvasSelectionRegion? _noSelectionWhenEmpty(
     CanvasSelectionRegion region,
   ) => region._selectsNothing ? null : region;
