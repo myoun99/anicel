@@ -512,6 +512,32 @@ void main() {
     expect(painted.widths, everyElement(9), reason: 'it keeps its type');
   });
 
+  // F-224: the column is narrowed glyph by glyph, each set at its share of
+  // the narrowing (so a screen draws it from its bake), not scaled whole.
+  test('a column built as a widget narrows down its block past that', () {
+    const style = TextStyle(fontSize: 9, fontFamily: 'Face');
+    final column = RenderTimelineBlockColumn(
+      text: 'ドアー',
+      style: style,
+      lineHeight: 1.05,
+      latinForm: VerticalLatinForm.upright,
+      place: (
+        axis: Axis.horizontal,
+        cells: 1,
+        cellIndex: 0,
+        growth: TimelineBlockWordGrowth.towardBlockEnd,
+        acrossAlignment: 0,
+      ),
+    )..layout(BoxConstraints.tight(const Size(20, 12)));
+    final painted = _PaintedBoxes();
+    column.paint(TestRecordingPaintingContext(painted), Offset.zero);
+    expect(painted.boxes, hasLength(3), reason: 'fixture: three glyphs');
+    // To within a pixel: a glyph's box is its line, not its ink.
+    final set = painted.boxes.reduce((a, b) => a.expandToInclude(b));
+    expect(set.top, greaterThan(-1));
+    expect(set.bottom, lessThan(12 + 1), reason: 'narrowed into its block');
+  });
+
   group('a lane key\'s NAME', () {
     Future<void> pumpLane(
       WidgetTester tester, {
