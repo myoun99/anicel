@@ -137,11 +137,11 @@ void main() {
   /// (`SheetCanvasPrinter`) rather than on every call. 🔬`clean_code_diff`
   /// between master and the lane names those two and nothing added.
   ///
-  /// ⚠️385 → 384 on 2026-09-30, lowered as the rule asks: F-244's x-sheet
+  /// ⚠️385 → 384 on 2026-10-01, lowered as the rule asks: F-244's x-sheet
   /// columns build their cells row through the timeline's
   /// (`timelineCellsRowFrom`), and the sheet's own builder — `_columnFor`
   /// (five) — went with the copy it held. 🔬`clean_code_diff` between master
-  /// (`01944bc92`, at 385) and the lane named that one and nothing added.
+  /// (`6dce949f7`, at 385) and the lane named that one and nothing added.
   const wideSignatures = 384;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
@@ -211,14 +211,14 @@ void main() {
   /// the line. 🔬`clean_code_diff` between master (`2757f5455`, at 427) and
   /// the lane named that one and nothing added.
   ///
-  /// ⚠️426 → 422 on 2026-09-30, lowered as the rule asks: master stood at
-  /// 425, and F-244's cells-row round took three off — the x-sheet's
+  /// ⚠️426 → 423 on 2026-10-01, lowered as the rule asks: master stood at
+  /// 426, and F-244's cells-row round took three off — the x-sheet's
   /// `_columnFor` (its copy of the cells row), the timeline's `_layeredRow`
   /// (its memo, now `keptTimelineCellsRow`, the sheet's too) and
   /// `_buildFrameRowsBody` (thirty answers handed over one by one, now the
-  /// hooks bundle). 🔬`clean_code_diff` between master (`01944bc92`, at 425)
+  /// hooks bundle). 🔬`clean_code_diff` between master (`6dce949f7`, at 426)
   /// and the lane named those three and nothing added.
-  const longBodies = 422;
+  const longBodies = 423;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
