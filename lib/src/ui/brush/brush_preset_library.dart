@@ -395,6 +395,22 @@ class BrushPresetLibrary extends ChangeNotifier {
       if (preset.groupShownAmong(_groups) == groupId) preset,
   ];
 
+  /// The preset beside [id] in the tab it shows in — the next one, or the
+  /// one before when it is the last — or null when it stands alone: what a
+  /// hand holding [id] takes up when it is deleted (F-250).
+  BrushPresetId? presetBeside(BrushPresetId id) {
+    final preset = _presets.where((each) => each.id == id).firstOrNull;
+    if (preset == null) {
+      return null;
+    }
+    final tab = presetsInGroup(preset.groupShownAmong(_groups));
+    final at = tab.indexWhere((each) => each.id == id);
+    if (at + 1 < tab.length) {
+      return tab[at + 1].id;
+    }
+    return at > 0 ? tab[at - 1].id : null;
+  }
+
   String _groupNameFor(Set<BrushGroupId?> groupIds) {
     if (groupIds.length != 1) {
       return 'Brushes';

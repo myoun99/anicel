@@ -359,14 +359,14 @@ class _WorkspaceBrushPresets {
   }
 
   /// Deletes a preset, and every paint tool that held it takes up the brush
-  /// beside it ([_brushBeside]).
+  /// beside it ([BrushPresetLibrary.presetBeside]).
   ///
   /// 🗣️F-250 ③ (유저 2026-10-01): 「브러시 삭제하면 현재 선택된 브러시 ui가
   /// 없어지는데, 제대로 삭제하면 그 외 브러시 선택시키도록」 — a tool left
   /// holding a deleted preset holds a brush the library cannot name, the
   /// F-63 state ([openingPresetFor]).
   void deletePreset(BrushPresetId id) {
-    final beside = _brushBeside(id);
+    final beside = _state._presetLibrary.presetBeside(id);
     _whileDropping({id}, () => _state._presetLibrary.delete(id), beside);
   }
 
@@ -407,22 +407,6 @@ class _WorkspaceBrushPresets {
       inHand: held.tool,
       brushFor: _brushNamed,
     );
-  }
-
-  /// The preset beside [id] in the tab it shows in — the next one, or the
-  /// one before when it is the last — or null when it stands alone.
-  BrushPresetId? _brushBeside(BrushPresetId id) {
-    final library = _state._presetLibrary;
-    final preset = _presetNamed(id);
-    if (preset == null) {
-      return null;
-    }
-    final tab = library.presetsInGroup(preset.groupShownAmong(library.groups));
-    final at = tab.indexWhere((each) => each.id == id);
-    if (at + 1 < tab.length) {
-      return tab[at + 1].id;
-    }
-    return at > 0 ? tab[at - 1].id : null;
   }
 
   /// [from] holding the brush of the library's preset [id] for [tool] — null
