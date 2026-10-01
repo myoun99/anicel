@@ -211,11 +211,19 @@ void main() {
     );
 
     // The end triangle hangs from its conte block's top: the conte blocks'
-    // top band, in the storyboard layer's label — the paper, unlabelled.
+    // top band, in the storyboard layer's label — the paper, unlabelled —
+    // as painted: the conte opens standing on the V row, in the cut under
+    // the playhead, whose bands wear the standing wash (F-248).
     final band = painter.gripGrounds!()
         .under(end.rect)
         .singleWhere((ground) => ground.rect.top == end.rect.top);
-    expect(band.color, layerMarkColor(LayerMark.none));
+    expect(
+      band.color,
+      Color.alphaBlend(
+        timelineStandingWashColor,
+        layerMarkColor(LayerMark.none),
+      ),
+    );
     expect(band.rect.height, StoryboardCutBlocksPainter.bandHeight);
 
     // Painted: the band's part in the dark ink, the rest in the plate's
@@ -279,10 +287,18 @@ void main() {
     )!;
     expect(painter.gripGround, conteSheetInk);
     final grounds = painter.gripGrounds!();
+    // The film's one cut is the one stood on, so its bands wear the
+    // standing wash (F-248) — what the edges stand on is the band as
+    // painted.
     for (final grip in painter.targets.whereType<TimelineRowGripTarget>()) {
       expect(
         grounds.under(grip.rect).map((ground) => ground.color).toSet(),
-        {layerMarkColor(LayerMark.none)},
+        {
+          Color.alphaBlend(
+            timelineStandingWashColor,
+            layerMarkColor(LayerMark.none),
+          ),
+        },
         reason: '${grip.id}: its conte block\'s band, and the plate',
       );
     }
