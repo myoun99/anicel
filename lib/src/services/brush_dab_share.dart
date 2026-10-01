@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -47,11 +46,16 @@ double stampShareOf(BrushDab dab) {
 /// reads entry `a * eveningTableSteps`, linearly between two.
 const int eveningTableSteps = 1024;
 
-/// The tables built so far, newest last — a stroke lays a few shares, and
-/// a table is 8 KB.
-final LinkedHashMap<double, Float64List> _tables =
-    LinkedHashMap<double, Float64List>();
+/// The tables built so far — a stroke lays a few shares, and a table is
+/// 8 KB. ⚠️Not an LRU: this is asked once per dab, and a recency shuffle a
+/// dab (remove, re-insert) was most of what the share cost a stroke of small
+/// dabs in a debug build (2026-10-01: a 301-dab size-30 commit, 2.0 ms →
+/// 2.8 ms). A full cache starts over instead; [_lastShare] answers the run
+/// of dabs one move lays, which share one step.
+final Map<double, Float64List> _tables = <double, Float64List>{};
 const int _tableCap = 64;
+double _lastShare = -1;
+Float64List? _lastTable;
 
 /// The table [dab] lays through, or null where it lays whole
 /// ([stampShareOf] is one).
@@ -65,19 +69,23 @@ Float64List? eveningTableOf(BrushDab dab) {
 /// reference and the swatch all read these numbers through [evenedLaid], so
 /// they agree to the byte, and no pixel pays a power.
 Float64List eveningTableFor(double share) {
-  final held = _tables.remove(share);
-  if (held != null) {
-    _tables[share] = held;
-    return held;
+  final last = _lastTable;
+  if (last != null && share == _lastShare) {
+    return last;
   }
-  final table = Float64List(eveningTableSteps + 1);
-  for (var i = 0; i <= eveningTableSteps; i += 1) {
-    table[i] = 1.0 - math.pow(1.0 - i / eveningTableSteps, share);
+  var table = _tables[share];
+  if (table == null) {
+    if (_tables.length >= _tableCap) {
+      _tables.clear();
+    }
+    table = Float64List(eveningTableSteps + 1);
+    for (var i = 0; i <= eveningTableSteps; i += 1) {
+      table[i] = 1.0 - math.pow(1.0 - i / eveningTableSteps, share);
+    }
+    _tables[share] = table;
   }
-  _tables[share] = table;
-  if (_tables.length > _tableCap) {
-    _tables.remove(_tables.keys.first);
-  }
+  _lastShare = share;
+  _lastTable = table;
   return table;
 }
 
