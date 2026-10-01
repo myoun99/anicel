@@ -865,11 +865,40 @@ void guideShots(AppLanguage language) {
       await shot(tester, 'toolbar', rect: toolbarRow(tester), ratio: 2);
       await shot(tester, 'timeline', rect: timelineRows(tester), ratio: 2);
 
+      // The conte layer: its row stood on, in its second panel.
+      s.selectLayer(conte1);
+      s.selectFrameIndex(13);
+      await settleReal(tester, 4);
+      await shot(tester, 'conte-layer', rect: timelineRows(tester), ratio: 2);
+      s.selectLayer(ballLayer);
+      s.selectFrameIndex(9);
+      await settleReal(tester, 4);
+
       // The sound: S2's lanes open, the bounce's waveform under it.
       await tester.tap(byKey('timeline-lane-toggle-${bounceRow.value}'));
       await settleReal(tester, 10);
       await shot(tester, 'sound', rect: timelineRows(tester), ratio: 2);
       await tester.tap(byKey('timeline-lane-toggle-${bounceRow.value}'));
+      await settleReal(tester, 4);
+
+      // The Edit button on a line of dialogue: S1's block, its window.
+      s.selectLayer(seLayerIdForTrack(const TrackId('default-track'), 1));
+      s.selectFrameIndex(18);
+      await settleReal(tester, 4);
+      await tester.tap(byKey('shared-edit-button'));
+      // Past the window's fade in: caught early, the timeline showed
+      // through it.
+      await settle(tester, 10);
+      await settleReal(tester, 4);
+      await shot(
+        tester,
+        'se-edit',
+        rect: windowBody(tester, byKey('instance-edit-dialog')),
+        ratio: 2,
+      );
+      await closeWindow(tester);
+      s.selectLayer(ballLayer);
+      s.selectFrameIndex(9);
       await settleReal(tester, 4);
 
       // The labels: the A row's label menu, open over the rows.
@@ -985,6 +1014,15 @@ void guideShots(AppLanguage language) {
       await shot(
         tester,
         'export',
+        rect: windowBody(tester, find.byType(AppWindow).last),
+      );
+
+      // The same window on its Cels tab.
+      await tester.tap(byKey('export-tab-cels'));
+      await settleReal(tester, 10);
+      await shot(
+        tester,
+        'export-cels',
         rect: windowBody(tester, find.byType(AppWindow).last),
       );
     },
