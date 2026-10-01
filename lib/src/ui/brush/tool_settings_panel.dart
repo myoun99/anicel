@@ -1,6 +1,8 @@
 import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart' show ControlPressClaim, silentPress;
+
 import '../../models/app_language.dart';
 import '../../models/brush_tip_entry.dart';
 import '../../models/canvas_shape_kind.dart';
@@ -550,6 +552,9 @@ class _SelectionSettings extends StatelessWidget {
     final onMask = onMaskOptionsChanged;
     final commands = selectionCommands;
     final canvas = canvasSize;
+    final VoidCallback? invert = commands == null || canvas == null
+        ? null
+        : () => commands.invertSelection(canvasSize: canvas);
     // R26 #12: the rectangle/lasso CHOICE lives in the tool library
     // (two tools there), so the settings panel no longer duplicates
     // it — only the mask knobs remain.
@@ -578,12 +583,15 @@ class _SelectionSettings extends StatelessWidget {
           // 선택툴일때의 툴설정. 버튼.」 In its place whatever is selected
           // (with nothing selected it selects the whole wall), and greyed —
           // never gone — when there is no canvas to take the wall from.
-          OutlinedButton(
-            key: const ValueKey<String>('selection-invert-button'),
-            onPressed: canvas == null
-                ? null
-                : () => commands.invertSelection(canvasSize: canvas),
-            child: Text(AppText.strings.selectionInvert),
+          // The press is the button's own (control_press_claim): a drag that
+          // starts on it never scrolls the panel.
+          ControlPressClaim(
+            onPressed: invert,
+            child: OutlinedButton(
+              key: const ValueKey<String>('selection-invert-button'),
+              onPressed: silentPress(invert),
+              child: Text(AppText.strings.selectionInvert),
+            ),
           ),
         ],
         if (onMask != null) ...[
