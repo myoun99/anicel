@@ -166,6 +166,7 @@ part 'workspace/workspace_tabs.dart';
 part 'workspace/workspace_rail.dart';
 part 'workspace/workspace_flip_hud.dart';
 part 'workspace/workspace_brush_presets.dart';
+part 'workspace/workspace_brush_groups.dart';
 part 'workspace/workspace_document_views.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
@@ -762,6 +763,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final _WorkspaceBrushPresets _brushPresets = _WorkspaceBrushPresets(
     this,
   );
+
+  // The group each paint tool opens on (F-250, workspace/workspace_brush_
+  // groups.dart) — beside the presets, which take the brush up.
+  late final _WorkspaceBrushGroups _brushGroups = _WorkspaceBrushGroups(this);
 
   // The document views' state (Round 6): what each panel shows and how.
   late final _WorkspaceDocumentViews _views = _WorkspaceDocumentViews();

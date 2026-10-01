@@ -16,38 +16,6 @@ class _WorkspaceBrushPresets {
 
   int _registeredCutTipSequence = 0;
 
-  /// The brush each paint tool last held in each group, by the tab it shows
-  /// in — what opening that tab hands the tool back ([openGroup]).
-  ///
-  /// 🗣️F-250-group-memory-Q1 (유저 2026-10-01): 「도구마다 따로」 — a tool
-  /// keeps its own memory, as it keeps its own brush (R11-④): the eraser
-  /// opening a group it has never held anything in takes the group's first,
-  /// whatever the brush tool last held there.
-  final Map<(CanvasTool, BrushGroupId?), BrushPresetId> _lastInGroup = {};
-
-  /// Opens [group]'s tab for the paint tool in hand — the library shows only
-  /// while one is (`ToolLibraryPanel`): it takes up the brush it last held
-  /// there, or the tab's first ([BrushPresetLibrary.presetEntering]) —
-  /// unless the brush in hand already shows in that tab, which stays exactly
-  /// where it is (`railEntry`: 안에 있으면 그대로).
-  void openGroup(BrushGroupId? group) {
-    final state = _state._brushTool.value;
-    final library = _state._presetLibrary;
-    final heldId = state.presetId;
-    final held = heldId == null ? null : _presetNamed(heldId);
-    if (held != null && held.groupShownAmong(library.groups) == group) {
-      return;
-    }
-    final entering = library.presetEntering(
-      group,
-      remembered: _lastInGroup[(state.tool, group)],
-    );
-    final preset = entering == null ? null : _presetNamed(entering);
-    if (preset != null) {
-      _applyPreset(preset);
-    }
-  }
-
   /// Rename a library tip. The model has had this since the library
   /// landed; what it never had was anywhere to be called from.
   ///
@@ -208,7 +176,7 @@ class _WorkspaceBrushPresets {
   ///    on (유저: 「브러시만 되있는데 이상하잖아」). The apply re-enters this
   ///    listener through the assignment and lands in the two rules below.
   /// 2. F-250: the brush is remembered in the tab it shows in, for the tool
-  ///    holding it ([openGroup] reads it back).
+  ///    holding it (`_WorkspaceBrushGroups`, which opens a tab on it).
   /// 3. H25: what the hand set is filed under the brush the state is
   ///    holding — [BrushToolState.presetId], read from the SAME state as the
   ///    values, so the two can never name different brushes (H25-again).
@@ -234,10 +202,7 @@ class _WorkspaceBrushPresets {
     }
     // 2. F-250: the group this tool last held a brush in remembers it — for
     //    every road a brush is taken up by, which all pass here.
-    _lastInGroup[(
-      state.tool,
-      preset.groupShownAmong(_state._presetLibrary.groups),
-    )] = presetId;
+    _state._brushGroups.remember(state.tool, preset);
     final key = _handKey(state.tool, presetId);
     // The brush's OWN blend rides in its shape — not `activeBlendMode`,
     // which answers 消去 for the eraser tool no matter what the brush says;
