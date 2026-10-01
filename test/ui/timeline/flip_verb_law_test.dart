@@ -10,12 +10,10 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
-import '../../helpers/run_edge_fixtures.dart';
 
 /// F-21 and F-13 — what the FLIP verb does.
 ///
@@ -29,9 +27,11 @@ void main() {
   const trackId = TrackId('flip-track');
   const layerId = LayerId('flip-layer');
 
-  /// One drawing at frame 0 with an END-side HOLD, so its ghosts fill the
-  /// cut: the whole row is ONE flip column, which is the shape that made
-  /// the leftward flip do nothing at all.
+  /// One drawing held across the whole cut — a twelve-frame block, so the
+  /// whole row is ONE flip column: the shape that made the leftward flip do
+  /// nothing at all. ↩️It was one frame with a run-edge HOLD filling the cut
+  /// until F-245 (유저 2026-10-01): a hold is empty space to the flip now,
+  /// walked a frame at a time, so a long block is what one column is.
   Project heldProject() => Project(
     id: const ProjectId('flip-project'),
     name: 'Flip',
@@ -47,30 +47,15 @@ void main() {
             duration: 12,
             canvasSize: const CanvasSize(width: 64, height: 64),
             layers: [
-              // The ghosts are DERIVED, never hand-written: `rederiveRunBehaviors`
-              // is what the repository runs, and a hand-rolled ghost whose
-              // stamp does not say hold is not a hold — it is twelve
-              // one-frame columns wearing a hold's clothes.
-              rederiveRunBehaviors(
-                Layer(
-                  id: layerId,
-                  name: 'A',
-                  frames: [
-                    Frame(
-                      id: const FrameId('cel'),
-                      duration: 1,
-                      strokes: const [],
-                    ),
-                  ],
-                  timeline: const {
-                    0: TimelineExposure.drawing(
-                      FrameId('cel'),
-                      length: 1,
-                      endEdge: holdMark,
-                    ),
-                  },
-                ),
-                drawnFrameCount: 12,
+              Layer(
+                id: layerId,
+                name: 'A',
+                frames: [
+                  Frame(id: const FrameId('cel'), duration: 1, strokes: const []),
+                ],
+                timeline: const {
+                  0: TimelineExposure.drawing(FrameId('cel'), length: 12),
+                },
               ),
             ],
           ),
@@ -86,7 +71,7 @@ void main() {
   }
 
   group('F-21: a flip with nowhere to go lands on the first frame', () {
-    test('mid-hold, leftward: it used to do nothing at all', () {
+    test('mid-block, leftward: it used to do nothing at all', () {
       final session = sessionFor(heldProject());
       session.selectLayer(layerId);
       session.selectFrameIndex(5);
@@ -97,7 +82,7 @@ void main() {
       expect(
         session.currentFrameIndex,
         0,
-        reason: 'the hold starts at 0, so the whole row is one column and '
+        reason: 'the block starts at 0, so the whole row is one column and '
             'the step asks for frame -1. Falling to the first frame is a '
             'move; refusing is not',
       );

@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart' show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -334,17 +335,30 @@ void main() {
     });
   });
 
-  // 🗣️F-245 (유저 2026-09-30): 「홀드는 그냥 블록으로 인식해서
-  // 안넘어가도록. 즉 1홀드----x이면, 지금 1에있는상태에서 오른쪽누르면 x로
-  // 이동하는데, 그게아니라 블록 다음칸 그냥 평범하게 가도록」 — the run-edge
-  // HOLD's ghost block is a flip column of its own, as a repeat's is.
-  // ↩️A7① (2026-08-18, 「홀드 블록을 한 단위로 건너뛰어」) absorbed it into
-  // the held run, and a flip leapt the whole hold.
-  group('a HOLD is walked, not leapt', () {
-    (EditorSessionManager, LayerId) heldSession(TimelineRunEdgeMode mode) {
+  // 🗣️F-245 (유저 2026-10-01, 「그게 아님」): 「1(홀드)---- 일경우 1에
+  // 서있을때 오른쪽 플립하면 두번째인 - 로 이동되는건 좋음. 근데 그 다음
+  // 플립에서도 세번째 -, 네번째 -으로 이동되야한단거임. 일반 1프레임이동이랑
+  // 똑같이. 즉 리피트는 고스트프레임을 블록으로 인식해서 걸어가지만 홀드는
+  // 빈공간으로 인식해서 플립이 1프레임마다」 — a HOLD is empty space to the
+  // flip, a REPEAT's ghost a column. ↩️The 09-30 reading made the hold one
+  // column of its own; ↩️A7① (2026-08-18) had merged it into the held run.
+  group('a HOLD is walked a frame at a time, a REPEAT a part at a time', () {
+    (EditorSessionManager, LayerId) heldSession(
+      TimelineRunEdgeMode mode, {
+      int blockLength = 1,
+    }) {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       s.createDrawingAtCurrentFrame(); // 1-cell block at index 0
       final layerId = s.activeLayer!.id;
+      if (blockLength > 1) {
+        s.edgeDrag.beginExposureEdgeDrag(
+          layerId: layerId,
+          blockStartIndex: 0,
+          edge: TimelineBlockEdge.end,
+        );
+        s.edgeDrag.updateExposureEdgeDrag(blockLength - 1);
+        s.edgeDrag.endExposureEdgeDrag();
+      }
       s.rangeMove.setRunEdgeBehavior(
         layerId: layerId,
         blockStartIndex: 0,
@@ -354,43 +368,54 @@ void main() {
       return (s, layerId);
     }
 
-    test('forward from the held block stands on the hold\'s first cell, and '
-        'from there leaves the hold', () {
+    test('forward from the held block steps onto every cell of the hold, '
+        'one at a time, and then out of it', () {
       final (s, _) = heldSession(TimelineRunEdgeMode.hold);
       addTearDown(s.dispose);
       final cutEnd = s.requireActiveCut.duration;
-      expect(cutEnd, greaterThan(2), reason: 'fixture: a hold to walk');
+      expect(cutEnd, greaterThan(3), reason: 'fixture: a hold to walk');
 
       s.selectFrameIndex(0);
-      s.frameVerbs.flipRow(forward: true);
-      expect(s.currentFrameIndex, 1, reason: '「블록 다음칸」');
-      s.frameVerbs.flipRow(forward: true);
-      expect(s.currentFrameIndex, cutEnd, reason: 'the hold is one column');
+      for (var frame = 1; frame <= cutEnd; frame += 1) {
+        s.frameVerbs.flipRow(forward: true);
+        expect(
+          s.currentFrameIndex,
+          frame,
+          reason: '「일반 1프레임이동이랑 똑같이」',
+        );
+      }
     });
 
-    test('backward from beyond stands on the hold\'s first cell, then on the '
-        'held block', () {
+    test('backward through the hold is the same walk, onto the held block '
+        'at the end', () {
       final (s, _) = heldSession(TimelineRunEdgeMode.hold);
       addTearDown(s.dispose);
       final cutEnd = s.requireActiveCut.duration;
 
       s.selectFrameIndex(cutEnd);
-      s.frameVerbs.flipRow(forward: false);
-      expect(s.currentFrameIndex, 1);
-      s.frameVerbs.flipRow(forward: false);
-      expect(s.currentFrameIndex, 0);
+      for (var frame = cutEnd - 1; frame >= 0; frame -= 1) {
+        s.frameVerbs.flipRow(forward: false);
+        expect(s.currentFrameIndex, frame);
+      }
     });
 
-    test('REPEAT ghosts stay their own columns, as they were', () {
-      final (s, _) = heldSession(TimelineRunEdgeMode.repeat);
+    test('a REPEAT\'s parts are walked as blocks, as they were', () {
+      final (s, _) = heldSession(TimelineRunEdgeMode.repeat, blockLength: 2);
       addTearDown(s.dispose);
+      expect(
+        s.activeLayer!.timeline[0]?.length,
+        2,
+        reason: 'fixture: a two-cell block, so a part and a cell differ',
+      );
 
       s.selectFrameIndex(0);
       s.frameVerbs.flipRow(forward: true);
+      expect(s.currentFrameIndex, 2, reason: 'onto the first part');
+      s.frameVerbs.flipRow(forward: true);
       expect(
         s.currentFrameIndex,
-        1,
-        reason: 'each repeated part remains a flip column of its own',
+        4,
+        reason: 'each repeated part is a flip column of its own',
       );
     });
   });
