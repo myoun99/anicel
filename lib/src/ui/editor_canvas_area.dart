@@ -1055,12 +1055,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       session.currentFrameIndex,
     );
     final parent = _parentSpaceOf(session, activeLayer);
-    var bounds = Rect.fromLTWH(
-      0,
-      0,
-      canvasSize.width.toDouble(),
-      canvasSize.height.toDouble(),
-    );
+    var bounds = canvasSize.canvasRect;
     for (final tag in tags) {
       if (tag.layerId != activeLayer.id.value) {
         continue;

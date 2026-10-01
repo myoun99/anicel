@@ -2110,7 +2110,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The surface is never written here. Cutting copies.
   void _cutPieceFromShape(CanvasSelectionShape shape) {
     final slot = widget.cutPieceSlot;
-    final coordinator = widget._editableCoordinator;
+    // ★THE CEL QUESTION, NOT THE ROW'S (H19): a cut COPIES — it reads the
+    // cel and writes nothing — so a lane, which refuses the STROKE, does
+    // not refuse it. 🗣️F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」
+    // leaves the cut its canvas on an fx row; through the verbs' guard it
+    // drew its outline there and silently cut nothing.
+    final coordinator = widget.celEditable ? widget.coordinator : null;
     // The outline is drawn on the canvas; the pixels are the row's own
     // (a-marquee-on-a-posed-row) — and the PIECE stays those pure pixels in
     // the row's own coordinates, as confirmed above.
