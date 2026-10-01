@@ -91,6 +91,11 @@ void main() {
     void paintLegible(Canvas canvas) =>
         paintFittedText(canvas, legible, Offset.zero, (x: 0.5, y: 1.0));
     expect(paintLegible, paints..paragraph());
+    // Small type nobody narrowed is the rasteriser's own, as it always was.
+    final small = _word('ことば', fontSize: 9);
+    void paintSmall(Canvas canvas) =>
+        paintFittedText(canvas, small, Offset.zero);
+    expect(paintSmall, paints..paragraph());
 
     final word = _word('ことば', fontSize: 12);
     final painted = ValueNotifier(0);
@@ -156,6 +161,11 @@ void main() {
       paintLegible,
       paintsExactlyCountTimes(#drawImageRect, 0),
       reason: 'a word the rasteriser draws well is painted as it always was',
+    );
+    expect(
+      paintSmall,
+      paintsExactlyCountTimes(#drawImageRect, 0),
+      reason: 'and so is a word nobody narrowed',
     );
 
     await tester.runAsync(() async {
