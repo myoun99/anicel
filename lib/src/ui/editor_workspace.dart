@@ -806,6 +806,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.session.timelineZoom.remember(widget.session.activeCutId, value);
   }
 
+  /// The storyboard's zoom slider's one writer — a method like the
+  /// timeline's, so the callback its view cluster is kept by is the same
+  /// across the workspace's rebuilds (a closure here was a new one each).
+  void _setStoryboardZoom(double value) {
+    _storyboardPixelsPerFrame.value = value;
+  }
+
   /// The storyboard's V rows share ONE height (user's rule), kept here so
   /// it survives a tab switch the way the zoom does — as the splitter or a
   /// saved layout SET it. What the rows are drawn at is

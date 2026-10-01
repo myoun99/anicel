@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -24,6 +25,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/frame_census.dart';
+import '../../helpers/home_page_probes.dart' show showStoryboardPanel;
 
 /// 🚨F-244 (유저 2026-09-30: 「타임라인 블록 관련 조작이 너무 느림」): AN EDIT'S
 /// COMMIT REBUILDS NO RAIL ROW'S DRAG.
@@ -193,6 +195,19 @@ void main() {
       expect(rebuilt, isNot(contains(TimelineViewCluster)));
     });
   }
+
+  testWidgets('a comma drag released rebuilds none of the view cluster '
+      '(storyboard)', (tester) async {
+    final session = await openApp(tester);
+    await showStoryboardPanel(tester);
+    final rebuilt = await rebuiltByARelease(tester, session);
+    expect(
+      rebuilt,
+      contains(StoryboardTabHost),
+      reason: 'premise: the commit rebuilt the host the cluster hangs from',
+    );
+    expect(rebuilt, isNot(contains(TimelineViewCluster)));
+  });
 
   // A kept wrapper is only right while it is the one a fresh build would
   // make: the oracle is the grid mounted afresh (the other grid and back),

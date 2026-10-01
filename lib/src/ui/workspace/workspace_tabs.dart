@@ -984,9 +984,7 @@ class _WorkspaceTabs {
                   _state.widget.session.railView.hiddenSections.value,
               onToggleSection: _state._toggleTimelineSection,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
-              onPixelsPerFrameChanged: (value) {
-                _state._storyboardPixelsPerFrame.value = value;
-              },
+              onPixelsPerFrameChanged: _state._setStoryboardZoom,
               showSeconds: _state._showSecondsDisplay.value,
               onShowSecondsChanged: (show) {
                 _state._showSecondsDisplay.value = show;

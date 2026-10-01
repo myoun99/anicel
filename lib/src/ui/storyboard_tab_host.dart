@@ -44,6 +44,7 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
 import 'storyboard_playhead_mapping.dart';
 import 'timeline/timeline_frame_range_gesture.dart' show TimelineLaneRangeHooks;
 import 'timeline/timeline_command_bar.dart';
+import 'timeline/memo_token.dart' show Kept, keptWhileSame;
 import 'timeline/timeline_view_cluster.dart';
 
 /// The Storyboard tab's content: its own toolbar row (frame counter,
@@ -164,6 +165,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   final Set<String> _expandedSeAudioRows = {};
   final Set<String> _expandedTransformTracks = {};
   final Set<String> _expandedTransformGroups = {};
+
+  /// The view cluster, kept by what it shows across this host's rebuilds —
+  /// the timeline panel's keep (F-244 ⑧).
+  final Map<Type, Kept<TimelineViewClusterFacts>> _kept = {};
 
   // ⛔The storyboard's playhead channel is the SESSION's now
   // ([PlayheadCursors.trackFrame]): the row this panel folds into draws the
@@ -460,16 +465,31 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           // bar carries exactly what the timeline's does.
         ],
       ),
-      cluster: TimelineViewCluster(
-        frameCursor: _session.editingFrameCursor,
-        // Global · cut-local pair (UI-R9 #6) — the channel already
-        // follows scrubs, gap parking and playback ticks.
-        globalFrame: _session.playheadCursors.trackFrame,
-        cutName: _session.activeCutOrNull?.name ?? '',
-        projectFrameRate: _session.projectSettings.projectFrameRate,
-        showSeconds: widget.showSeconds,
-        pixelsPerFrame: widget.pixelsPerFrame,
-        onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+      // The facts typed at the call, as the timeline panel's are.
+      cluster: keptWhileSame<Type, TimelineViewClusterFacts>(
+        _kept,
+        TimelineViewCluster,
+        (
+          frameCursor: _session.editingFrameCursor,
+          globalFrame: _session.playheadCursors.trackFrame,
+          projectFrameRate: _session.projectSettings.projectFrameRate,
+          showSeconds: widget.showSeconds,
+          pixelsPerFrame: widget.pixelsPerFrame,
+          onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+          cutName: _session.activeCutOrNull?.name ?? '',
+          trailing: null,
+        ),
+        () => TimelineViewCluster(
+          frameCursor: _session.editingFrameCursor,
+          // Global · cut-local pair (UI-R9 #6) — the channel already
+          // follows scrubs, gap parking and playback ticks.
+          globalFrame: _session.playheadCursors.trackFrame,
+          cutName: _session.activeCutOrNull?.name ?? '',
+          projectFrameRate: _session.projectSettings.projectFrameRate,
+          showSeconds: widget.showSeconds,
+          pixelsPerFrame: widget.pixelsPerFrame,
+          onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+        ),
       ),
     );
   }
