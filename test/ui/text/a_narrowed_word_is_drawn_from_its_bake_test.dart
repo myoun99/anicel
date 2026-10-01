@@ -4,11 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/text/word_bake.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
 
 import '../../helpers/dart_sources.dart';
+import '../../helpers/word_bakes.dart';
 
 /// F-224 — a narrowed word is drawn from its bake.
 ///
@@ -19,7 +21,7 @@ import '../../helpers/dart_sources.dart';
 /// so a screen's narrowed word is drawn from that bake too.
 ///
 /// The bake reads its pixels back off the engine, which answers in real
-/// time: real time is let pass between the frames ([_pumpUntilABakeLands]).
+/// time ([pumpUntilAWordBakeLands]).
 
 /// A word in a red ink, laid out.
 TextPainter _word(String text, {required double fontSize, double? maxWidth}) =>
@@ -48,20 +50,6 @@ class _WordPainter extends CustomPainter with RepaintOnWordBakes {
 
   @override
   bool shouldRepaint(_WordPainter oldDelegate) => false;
-}
-
-Future<void> _pumpUntilABakeLands(WidgetTester tester) async {
-  final before = BakedWords.instance.landed.value;
-  for (var i = 0; i < 400; i += 1) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 5)),
-    );
-    await tester.pump();
-    if (BakedWords.instance.landed.value != before) {
-      return;
-    }
-  }
-  fail('fixture: no bake landed');
 }
 
 /// The colour of the most inked pixel [paint] leaves on a [size] canvas.
@@ -123,7 +111,7 @@ void main() {
     expect(strip, paintsExactlyCountTimes(#drawImageRect, 0));
 
     final before = painted.value;
-    await _pumpUntilABakeLands(tester);
+    await pumpUntilAWordBakeLands(tester);
     expect(
       painted.value,
       before + 1,
@@ -198,7 +186,7 @@ void main() {
     // Two narrowings asked in one frame, the way a zoom asks them.
     expect(paintAt(0.25), paints..paragraph());
     expect(paintAt(0.5), paints..paragraph());
-    await _pumpUntilABakeLands(tester);
+    await pumpUntilAWordBakeLands(tester);
     // The first narrowing's bake: a pixel a pixel, with its margin.
     final first = Rect.fromLTWH(
       0,
@@ -211,6 +199,45 @@ void main() {
       paints..drawImageRect(source: first),
       reason: 'the second narrowing waited for the first to land',
     );
+    await pumpUntilAWordBakeLands(tester);
+    expect(
+      paintAt(0.5),
+      paints..drawImageRect(
+        source: Rect.fromLTWH(
+          0,
+          0,
+          (word.width * 0.5).ceil() + 2.0,
+          word.height.ceil() + 2.0,
+        ),
+      ),
+      reason: 'and was baked once it had',
+    );
+  });
+
+  testWidgets('a bake the engine refuses leaves the word painted as it '
+      'always was', (tester) async {
+    var refused = 0;
+    debugRawRgbaUploader =
+        (rgba, {required width, required height, targetWidth, targetHeight}) {
+          refused += 1;
+          return Future.error(StateError('refused'));
+        };
+    addTearDown(() => debugRawRgbaUploader = null);
+    final word = _word('ことわり', fontSize: 12);
+    void paintIt(Canvas canvas) =>
+        paintFittedText(canvas, word, Offset.zero, (x: 0.25, y: 1.0));
+    expect(paintIt, paints..paragraph());
+    for (var i = 0; i < 400 && refused == 0; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      await tester.pump();
+    }
+    expect(refused, 1, reason: 'fixture: the bake reached the upload');
+    await tester.pump();
+    expect(paintIt, paints..paragraph());
+    expect(paintIt, paintsExactlyCountTimes(#drawImageRect, 0));
+    expect(refused, 1, reason: 'a refused word is not asked for again');
   });
 
   group('down a column', () {

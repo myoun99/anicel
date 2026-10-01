@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
-import 'package:flutter/rendering.dart' show CustomPainter;
+import 'package:flutter/rendering.dart' show CustomPainter, RendererBinding;
 import 'package:flutter/scheduler.dart';
 
 import '../../core/bake_once_lru.dart';
@@ -189,10 +189,12 @@ bool paintBakedWord(
   if (span == null || wordBakeScale(_narrowedType(fontSize, fit)) == 1) {
     return false;
   }
+  // The ROOT TRANSFORM's ratio, which carries the app's UI scale — the
+  // view's own ratio does not, and a bake cut for it would be shrunk by the
+  // GPU again (`EffectiveDevicePixelRatio` is this number where there is a
+  // context; a painter has none).
   final dpr =
-      SchedulerBinding.instance.platformDispatcher.implicitView
-          ?.devicePixelRatio ??
-      1.0;
+      RendererBinding.instance.renderViews.first.configuration.devicePixelRatio;
   final baked = BakedWords.instance._bakeFor(
     (
       span: span,
