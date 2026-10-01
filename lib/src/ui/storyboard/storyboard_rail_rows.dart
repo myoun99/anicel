@@ -888,44 +888,27 @@ class _StoryboardRailRows {
     TimelineScale scale,
     List<Widget> trackGlobalRows,
   ) {
-    final dragPreview = _state.widget.dragPreview;
+    final dragPreview = _state.widget.dragPreview ?? _noDragPreview;
     return Stack(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: dragPreview == null
-              ? _stripRowsForTrack(
-                  track,
-                  index,
-                  entries,
-                  width,
-                  scale,
-                  trackGlobalRows,
-                )
-              : [
-                  // Only where the preview lays this track's cuts: a step
-                  // that moves none of them — an SE row's comma, whose rows
-                  // are built outside (R10-③) — rebuilds none of its rows.
-                  // 🔬Measured (storyboard-drags-lay-out-alone, 10-01): it
-                  // rebuilt every one of them at every step.
-                  SlicedListenableBuilder<_TrackStrip>(
-                    listenable: dragPreview,
-                    slice: () => _TrackStrip(
-                      _previewedEntriesFor(index, dragPreview.value, entries),
-                    ),
-                    builder: (context, strip) => Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: _stripRowsForTrack(
-                        track,
-                        index,
-                        strip.entries,
-                        width,
-                        scale,
-                        trackGlobalRows,
-                      ),
-                    ),
-                  ),
-                ],
+        // Rebuilt only where the preview moves this track's cuts
+        // ([_TrackStrip]).
+        SlicedListenableBuilder<_TrackStrip>(
+          listenable: dragPreview,
+          slice: () => _TrackStrip(
+            _previewedEntriesFor(index, dragPreview.value, entries),
+          ),
+          builder: (context, strip) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _stripRowsForTrack(
+              track,
+              index,
+              strip.entries,
+              width,
+              scale,
+              trackGlobalRows,
+            ),
+          ),
         ),
         Positioned.fill(
           child: IgnorePointer(child: _trackRangeBand(track, scale)),
@@ -1728,6 +1711,11 @@ class _FollowsTheCutUnderThePlayheadState
 /// from ([_StoryboardRailRows.trackGroupSection]): the same strip while it
 /// is the same cut objects in the same order, which is all a layout is
 /// made of ([cutSpansOfCuts]).
+///
+/// So a step that moves none of them — an SE row's comma, whose rows are
+/// built outside (R10-③) — rebuilds none of its rows. 🔬Measured
+/// (storyboard-drags-lay-out-alone, 10-01): it rebuilt every one of them at
+/// every step.
 final class _TrackStrip {
   const _TrackStrip(this.entries);
 
