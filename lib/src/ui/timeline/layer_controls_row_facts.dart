@@ -224,7 +224,7 @@ typedef LayerControlsRowInputs = ({
 
 /// What a grid keeps of a layer's controls row: the row as built — made
 /// draggable — and what it was built from.
-typedef KeptLayerControlsRow = ({LayerControlsRowInputs inputs, Widget row});
+typedef KeptLayerControlsRow = Kept<LayerControlsRowInputs>;
 
 /// [row]'s controls row as [kept] holds it (F-244): the one it holds while
 /// [inputs] are what they were, so a commit rebuilds no row it did not
@@ -238,12 +238,4 @@ Widget keptLayerControlsRow(
   TimelineDisplayRow row,
   LayerControlsRowInputs inputs,
   Widget Function() build,
-) {
-  final held = kept[row.layer.id];
-  if (held != null && held.inputs == inputs) {
-    return held.row;
-  }
-  final built = build();
-  kept[row.layer.id] = (inputs: inputs, row: built);
-  return built;
-}
+) => keptWhileSame(kept, row.layer.id, inputs, build);

@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
@@ -113,6 +114,41 @@ void main() {
         .session;
   }
 
+  /// What the frame of a comma drag's release rebuilds — after a first
+  /// release, since what the FIRST edit changes once is not what every edit
+  /// costs.
+  Future<List<Type>> rebuiltByARelease(
+    WidgetTester tester,
+    EditorSessionManager session,
+  ) async {
+    void dragTheComma(int by) {
+      expect(
+        session.edgeDrag.beginExposureEdgeDrag(
+          layerId: const LayerId('b'),
+          blockStartIndex: 12,
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+        reason: 'premise: the block is there to grab',
+      );
+      session.edgeDrag.updateExposureEdgeDrag(by);
+    }
+
+    dragTheComma(2);
+    await tester.pump();
+    session.edgeDrag.endExposureEdgeDrag();
+    await tester.pumpAndSettle();
+
+    dragTheComma(-2);
+    await tester.pump();
+    final release = await frameCensus(
+      tester,
+      session.edgeDrag.endExposureEdgeDrag,
+    );
+    await tester.pumpAndSettle();
+    return release.rebuilt;
+  }
+
   // The x-sheet's header strip is the rail turned on its side, and keeps
   // its headers by the rail's own memo.
   for (final sheet in [false, true]) {
@@ -125,47 +161,36 @@ void main() {
         findsWidgets,
         reason: 'premise: the ${rows}s wear their drag targets',
       );
-
-      void dragTheComma(int by) {
-        expect(
-          session.edgeDrag.beginExposureEdgeDrag(
-            layerId: const LayerId('b'),
-            blockStartIndex: 12,
-            edge: TimelineBlockEdge.end,
-          ),
-          isTrue,
-          reason: 'premise: the block is there to grab',
-        );
-        session.edgeDrag.updateExposureEdgeDrag(by);
-      }
-
-      // A first release first: what the FIRST edit changes once is not what
-      // every edit costs.
-      dragTheComma(2);
-      await tester.pump();
-      session.edgeDrag.endExposureEdgeDrag();
-      await tester.pumpAndSettle();
-
-      dragTheComma(-2);
-      await tester.pump();
-      final release = await frameCensus(
-        tester,
-        session.edgeDrag.endExposureEdgeDrag,
-      );
-      await tester.pumpAndSettle();
+      final rebuilt = await rebuiltByARelease(tester, session);
 
       expect(
-        release.rebuilt,
+        rebuilt,
         contains(TimelineTabHost),
         reason: 'premise: the commit rebuilt the host the ${rows}s hang from',
       );
       expect(
-        release.rebuilt.where(
+        rebuilt.where(
           (type) =>
               type == TimelineLayerControlsRow || type == LayerRowDragTarget,
         ),
         isEmpty,
       );
+    });
+  }
+
+  // F-244 ⑧: the view cluster is kept by what it shows — a commit moves
+  // none of it (10-01: 47 elements, rebuilt at every one).
+  for (final sheet in [false, true]) {
+    testWidgets('a comma drag released rebuilds none of the view cluster '
+        '(${sheet ? 'x-sheet' : 'timeline'})', (tester) async {
+      final session = await openApp(tester, sheet: sheet);
+      final rebuilt = await rebuiltByARelease(tester, session);
+      expect(
+        rebuilt,
+        contains(TimelineTabHost),
+        reason: 'premise: the commit rebuilt the host the cluster hangs from',
+      );
+      expect(rebuilt, isNot(contains(TimelineViewCluster)));
     });
   }
 

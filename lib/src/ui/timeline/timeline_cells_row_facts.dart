@@ -354,7 +354,7 @@ Widget timelineLaneRowFrom(
 
 /// What a grid keeps of a cells row: the row as built, and what it was
 /// built from.
-typedef KeptTimelineCellsRow = ({TimelineCellsRowFacts facts, Widget row});
+typedef KeptTimelineCellsRow = Kept<TimelineCellsRowFacts>;
 
 /// [row]'s cells row as [kept] holds it (F-244): the one it holds while its
 /// facts are what they were — on a commit, only the rows the edit touched
@@ -377,22 +377,18 @@ Widget keptTimelineCellsRow(
   Map<LayerId, KeptTimelineCellsRow> kept,
   TimelineDisplayRow row,
   TimelineCellsRowGrid grid,
-) {
-  final facts = timelineCellsRowFacts(row, grid);
-  final held = kept[row.layer.id];
-  if (held != null && held.facts == facts) {
-    return held.row;
-  }
+) => keptWhileSame(
+  kept,
+  row.layer.id,
+  timelineCellsRowFacts(row, grid),
   // R10: a FOLDER row is a cells row. Its band arrives as the display
-  // clone's own timeline, so it takes the shared painter, the shared
-  // press policy — the playhead can be put on it at last — and the tile
-  // bake, while staying non-editable for free: every edit affordance
-  // below gates on `LayerKind.holdsDrawings`, which a folder fails.
-  final built = timelineGatedRow(
+  // clone's own timeline, so it takes the shared painter, the shared press
+  // policy — the playhead can be put on it at last — and the tile bake,
+  // while staying non-editable for free: every edit affordance below gates
+  // on `LayerKind.holdsDrawings`, which a folder fails.
+  () => timelineGatedRow(
     row,
     grid.hooks.dragPreview,
     (context, layer) => timelineCellsRowFrom(row, layer, grid),
-  );
-  kept[row.layer.id] = (facts: facts, row: built);
-  return built;
-}
+  ),
+);

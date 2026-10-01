@@ -37,6 +37,7 @@ import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_run_end_handles.dart';
 import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline_row_filter.dart';
+import 'memo_token.dart' show Kept, keptWhileSame;
 import 'timeline_view_cluster.dart';
 import 'timeline_zoom_limits.dart';
 import 'timeline_orientation.dart';
@@ -541,6 +542,9 @@ class TimelinePanel extends StatefulWidget {
 }
 
 class _TimelinePanelState extends State<TimelinePanel> {
+  /// The pieces this panel keeps across its host's rebuilds (F-244 ⑧).
+  final Map<Type, Kept<TimelineViewClusterFacts>> _kept = {};
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -687,28 +691,46 @@ class _TimelinePanelState extends State<TimelinePanel> {
           // right.
           TimelineCommandBar(
             leading: showToolbar ? widget.timelineActionToolbar : null,
-            cluster: TimelineViewCluster(
-              frameCursor: widget.frameCursor,
-              projectFrameRate: widget.projectFrameRate,
-              showSeconds: widget.showSeconds,
-              pixelsPerFrame: widget.pixelsPerFrame,
-              onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
-              cutName: widget.cutName,
-              trailing: [
-                // R26 #42's standard button, like every other control on
-                // this bar. It was the last plain Material `IconButton`
-                // here — a 24px glyph in 8px of padding, which made the
-                // timeline's bar 18px taller than the storyboard's and
-                // then got written down as the bar's measured height.
-                AppIconButton(
-                  keyValue: 'timeline-orientation-toggle-button',
-                  tooltip: widget.orientation == TimelineOrientation.horizontal
-                      ? 'Show X-sheet'
-                      : 'Show timeline',
-                  onPressed: () => widget.onOrientationChanged(nextOrientation),
-                  icon: const Icon(Icons.swap_horiz),
-                ),
-              ],
+            cluster: keptWhileSame(
+              _kept,
+              TimelineViewCluster,
+              (
+                frameCursor: widget.frameCursor,
+                globalFrame: null,
+                projectFrameRate: widget.projectFrameRate,
+                showSeconds: widget.showSeconds,
+                pixelsPerFrame: widget.pixelsPerFrame,
+                onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+                cutName: widget.cutName,
+                // The orientation toggle below: what it shows, and where its
+                // press goes.
+                trailing: widget.orientation,
+              ),
+              () => TimelineViewCluster(
+                frameCursor: widget.frameCursor,
+                projectFrameRate: widget.projectFrameRate,
+                showSeconds: widget.showSeconds,
+                pixelsPerFrame: widget.pixelsPerFrame,
+                onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+                cutName: widget.cutName,
+                trailing: [
+                  // R26 #42's standard button, like every other control on
+                  // this bar. It was the last plain Material `IconButton`
+                  // here — a 24px glyph in 8px of padding, which made the
+                  // timeline's bar 18px taller than the storyboard's and
+                  // then got written down as the bar's measured height.
+                  AppIconButton(
+                    keyValue: 'timeline-orientation-toggle-button',
+                    tooltip:
+                        widget.orientation == TimelineOrientation.horizontal
+                        ? 'Show X-sheet'
+                        : 'Show timeline',
+                    onPressed: () =>
+                        widget.onOrientationChanged(nextOrientation),
+                    icon: const Icon(Icons.swap_horiz),
+                  ),
+                ],
+              ),
             ),
           ),
           // ★COLLAPSED = the command bar and nothing else (유저 확정,

@@ -10,6 +10,29 @@ import 'timeline_zoom_limits.dart';
 
 import '../../models/project_frame_rate.dart';
 
+/// What a [TimelineViewCluster] shows — the key both frame panels keep
+/// theirs by across their host's rebuilds (F-244 ⑧, `keptWhileSame`):
+/// the channels its counter hears, by identity, its words and numbers, and
+/// [trailing] — what the host's own controls beside it show.
+///
+/// 🔬Measured (10-01, a comma drag released on 24 rows): the timeline's
+/// cluster was built anew at every commit — 47 elements, every one of them
+/// the same — because the panel made it afresh in its build.
+///
+/// The zoom's callback is a fact, by equality, as the cells rows' content
+/// callbacks are: whether there is one is what the − and + show, and a
+/// host's tear-off compares equal across its rebuilds.
+typedef TimelineViewClusterFacts = ({
+  ValueListenable<int> frameCursor,
+  ValueListenable<int?>? globalFrame,
+  ProjectFrameRate projectFrameRate,
+  bool showSeconds,
+  double pixelsPerFrame,
+  ValueChanged<double>? onPixelsPerFrameChanged,
+  String cutName,
+  Object? trailing,
+});
+
 /// The right-side view cluster shared VERBATIM by the timeline and
 /// storyboard tabs: frame counter + zoom slider, plus host-specific
 /// trailing controls (the timeline's orientation toggle).
