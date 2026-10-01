@@ -163,6 +163,97 @@ void main() {
   String curveOf(BrushToolState state) =>
       jsonEncode(state.shape.sizePressureCurve?.toJson());
 
+  Future<void> fromTheMenu(WidgetTester tester, String verb) async {
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(verb).first);
+    await tester.pumpAndSettle();
+  }
+
+  /// The library's order, every brush, as the panel is handed it.
+  List<BrushPresetId> order(WidgetTester tester) => [
+    for (final preset in panel(tester).presets) preset.id,
+  ];
+
+  /// The brushes of the tab [id] shows in, in order.
+  List<BrushPresetId> tabOf(WidgetTester tester, BrushPresetId id) {
+    final shown = panel(tester);
+    final group = shown.presets
+        .firstWhere((preset) => preset.id == id)
+        .groupShownAmong(shown.groups);
+    return [
+      for (final preset in shown.presets)
+        if (preset.groupShownAmong(shown.groups) == group) preset.id,
+    ];
+  }
+
+  Future<void> pickInView(WidgetTester tester, BrushPresetId id) async {
+    await tester.ensureVisible(tileOf(id));
+    await pick(tester, id);
+  }
+
+  // 🗣️F-250 (유저 2026-10-01): 「브러시 위치 바꾸는것도 언두에 기록. 그룹바꾸든
+  // 순서바꾸든. 그리고 브러시 삭제하면 현재 선택된 브러시 ui가 없어지는데,
+  // 제대로 삭제하면 그 외 브러시 선택시키도록」.
+  testWidgets('🚨F-250: a brush moved in the library goes back with one undo '
+      '— and a brush deleted since stays deleted', (tester) async {
+    await pumpWithPresets(tester);
+    final before = order(tester);
+    final tab = tabOf(tester, panel(tester).selectedPresetId!);
+    final moved = [...panel(tester).presets];
+    moved.insert(0, moved.removeAt(before.indexOf(tab[2])));
+    panel(tester).onPresetsReordered!(moved);
+    await tester.pumpAndSettle();
+    expect(order(tester).first, tab[2], reason: 'premise: it moved');
+
+    // Not on the undo stack: a delete between the move and its undo.
+    final doomed = tab[3];
+    await pickInView(tester, doomed);
+    await fromTheMenu(tester, 'Delete selected brush');
+    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+    await tester.pumpAndSettle();
+
+    expect(order(tester), [
+      for (final id in before)
+        if (id != doomed) id,
+    ]);
+  });
+
+  testWidgets('🚨F-250: deleting the brush in hand hands every tool that held '
+      'it the brush beside it', (tester) async {
+    await pumpWithPresets(tester);
+    final tab = tabOf(tester, panel(tester).selectedPresetId!);
+    final doomed = tab[1];
+    await pickInView(tester, doomed);
+    await takeUp(tester, 'eraser');
+    await pickInView(tester, doomed);
+    await takeUp(tester, 'brush');
+
+    await fromTheMenu(tester, 'Delete selected brush');
+
+    expect(tileOf(doomed), findsNothing, reason: 'premise: it is gone');
+    expect(panel(tester).selectedPresetId, tab[2], reason: 'the next one');
+    await takeUp(tester, 'eraser');
+    expect(
+      panel(tester).selectedPresetId,
+      tab[2],
+      reason: 'the eraser held it too',
+    );
+  });
+
+  testWidgets('F-250: the last brush of a tab hands over to the one before',
+      (tester) async {
+    await pumpWithPresets(tester);
+    final tab = tabOf(tester, panel(tester).selectedPresetId!);
+    await pickInView(tester, tab.last);
+
+    await fromTheMenu(tester, 'Delete selected brush');
+
+    expect(panel(tester).selectedPresetId, tab[tab.length - 2]);
+  });
+
   testWidgets('tapping a preset makes it the active one', (tester) async {
     await pumpWithPresets(tester);
     final active = panel(tester).selectedPresetId;
@@ -262,22 +353,13 @@ void main() {
     expect(size(tester), isNot(own), reason: 'premise: and on the eraser');
     await takeUp(tester, 'brush');
 
-    Future<void> fromTheMenu(String verb) async {
-      await tester.tap(
-        find.byKey(const ValueKey<String>('brush-preset-menu-button')).first,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(verb).first);
-      await tester.pumpAndSettle();
-    }
-
     // The library itself has changed too: a brush is deleted.
     await pick(tester, two);
-    await fromTheMenu('Delete selected brush');
+    await fromTheMenu(tester, 'Delete selected brush');
     expect(tileOf(two), findsNothing, reason: 'premise: it is gone');
     await pick(tester, one);
 
-    await fromTheMenu('Reset brush library');
+    await fromTheMenu(tester, 'Reset brush library');
     await tester.tap(
       find.byKey(const ValueKey<String>('brush-preset-reset-confirm-button')),
     );

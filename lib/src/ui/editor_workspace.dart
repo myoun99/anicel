@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../core/set_toggle.dart';
+import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
@@ -35,6 +36,7 @@ import '../services/cut_piece_slot.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
+import 'brush/arrange_brush_library_command.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';

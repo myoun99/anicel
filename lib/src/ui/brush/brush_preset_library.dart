@@ -78,6 +78,33 @@ BrushPreset? openingPresetFor({
   return presets.first;
 }
 
+/// Where every brush stands in the library: each preset's place and group,
+/// and the groups' order — what a move in the panel changes, and what its
+/// undo puts back (F-250).
+///
+/// ⚠️IDS, NOT PRESETS. A move undone after a delete or an import — neither
+/// of which is on the undo stack — must not bring the deleted brush back or
+/// push the imported one out, so a step remembers only where things stood
+/// and is laid over what the library holds then
+/// ([BrushPresetLibrary.arrange]).
+typedef BrushLibraryArrangement = ({
+  List<(BrushPresetId, BrushGroupId?)> presets,
+  List<BrushGroupId> groups,
+});
+
+BrushLibraryArrangement brushLibraryArrangementOf(
+  List<BrushPreset> presets,
+  List<BrushGroup> groups,
+) => (
+  presets: [for (final preset in presets) (preset.id, preset.groupId)],
+  groups: [for (final group in groups) group.id],
+);
+
+bool sameBrushLibraryArrangement(
+  BrushLibraryArrangement a,
+  BrushLibraryArrangement b,
+) => listEquals(a.presets, b.presets) && listEquals(a.groups, b.groups);
+
 class BrushPresetLibrary extends ChangeNotifier {
   BrushPresetLibrary({
     BrushPresetFileService? fileService,
@@ -198,8 +225,33 @@ class BrushPresetLibrary extends ChangeNotifier {
     _persist();
   }
 
-  void reorder(List<BrushPreset> presets) {
-    _presets = List.of(presets);
+  BrushLibraryArrangement get arrangement =>
+      brushLibraryArrangementOf(_presets, _groups);
+
+  /// Lays [target] over the library as it stands: the presets and groups it
+  /// names take its order, and each named preset its group; anything it does
+  /// not name — a brush imported since — keeps its own order after them, and
+  /// anything gone since stays gone.
+  void arrange(BrushLibraryArrangement target) {
+    final presetsById = {for (final preset in _presets) preset.id: preset};
+    final namedPresets = {for (final (id, _) in target.presets) id};
+    final groupsById = {for (final group in _groups) group.id: group};
+    final namedGroups = target.groups.toSet();
+    _presets = [
+      for (final (id, groupId) in target.presets)
+        if (presetsById[id] case final preset?)
+          if (preset.groupId == groupId)
+            preset
+          else
+            preset.copyWith(groupId: groupId),
+      for (final preset in _presets)
+        if (!namedPresets.contains(preset.id)) preset,
+    ];
+    _groups = [
+      for (final id in target.groups) ?groupsById[id],
+      for (final group in _groups)
+        if (!namedGroups.contains(group.id)) group,
+    ];
     _notify();
     _persist();
   }
@@ -264,12 +316,6 @@ class BrushPresetLibrary extends ChangeNotifier {
       _groups,
       (group) => group.id == id ? group.copyWith(collapsed: collapsed) : group,
     );
-    _notify();
-    _persist();
-  }
-
-  void reorderGroups(List<BrushGroup> groups) {
-    _groups = List.of(groups);
     _notify();
     _persist();
   }
@@ -342,10 +388,11 @@ class BrushPresetLibrary extends ChangeNotifier {
 
   /// The presets in [groupId], in library order — the second entry point.
   /// A null id means the ROOT section, which is every preset without a
-  /// group rather than a group of its own.
+  /// group rather than a group of its own — and every preset whose group is
+  /// gone, the brushes that tab shows ([BrushPreset.groupShownAmong]).
   List<BrushPreset> presetsInGroup(BrushGroupId? groupId) => [
     for (final preset in _presets)
-      if (preset.groupId == groupId) preset,
+      if (preset.groupShownAmong(_groups) == groupId) preset,
   ];
 
   String _groupNameFor(Set<BrushGroupId?> groupIds) {

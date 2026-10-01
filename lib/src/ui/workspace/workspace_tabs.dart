@@ -401,9 +401,10 @@ class _WorkspaceTabs {
                             onPresetApplied: _state._brushPresets._applyPreset,
                             onPresetSaveRequested:
                                 _state._brushPresets.saveHeldBrushAsPreset,
-                            onPresetDeleted: _state._presetLibrary.delete,
+                            onPresetDeleted: _state._brushPresets.deletePreset,
                             onPresetRenamed: _state._presetLibrary.rename,
-                            onPresetsReordered: _state._presetLibrary.reorder,
+                            onPresetsReordered:
+                                _state._brushPresets.arrangePresets,
                             onPresetImportRequested: () {
                               unawaited(
                                 _state._brushPresets._importAndNotice(
@@ -413,9 +414,9 @@ class _WorkspaceTabs {
                             },
                             onGroupCreated: _state._presetLibrary.createGroup,
                             onGroupEdited: _state._presetLibrary.editGroup,
-                            onGroupDeleted: _state._presetLibrary.deleteGroup,
+                            onGroupDeleted: _state._brushPresets.deleteGroup,
                             onGroupsReordered:
-                                _state._presetLibrary.reorderGroups,
+                                _state._brushPresets.arrangeGroups,
                             onLibraryReset:
                                 _state._brushPresets.resetLibrary,
                             onPresetExported: (id) {

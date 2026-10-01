@@ -1,3 +1,4 @@
+import 'brush_group.dart';
 import 'brush_group_id.dart';
 import 'brush_preset_id.dart';
 import 'brush_settings.dart';
@@ -18,6 +19,18 @@ class BrushPreset {
   /// `null` — and, defensively, an id no group carries — means the preset
   /// belongs to the library's headerless root section.
   final BrushGroupId? groupId;
+
+  /// The group this preset shows under among [groups] — [groupId] when one
+  /// of them carries it, else null for the root, so a stale reference can
+  /// never hide the preset. The panel's tabs and every 「which brushes are in
+  /// this group」 read ask here.
+  BrushGroupId? groupShownAmong(List<BrushGroup> groups) {
+    final id = groupId;
+    if (id == null) {
+      return null;
+    }
+    return groups.any((group) => group.id == id) ? id : null;
+  }
 
   static const Object _groupUnset = Object();
 

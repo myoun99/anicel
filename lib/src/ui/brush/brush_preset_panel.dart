@@ -301,15 +301,8 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         (_railShowIcon ? 1 : 0) + (_railShowName ? 1 : 0) > 1;
   }
 
-  /// The group a preset displays under, treating an id no group carries as
-  /// "root" so a stale reference can never hide a preset entirely.
-  BrushGroupId? _ownerGroupId(BrushPreset preset) {
-    final groupId = preset.groupId;
-    if (groupId == null) {
-      return null;
-    }
-    return widget.groups.any((group) => group.id == groupId) ? groupId : null;
-  }
+  BrushGroupId? _ownerGroupId(BrushPreset preset) =>
+      preset.groupShownAmong(widget.groups);
 
   /// Whether the root section gets a tab: only when something is actually
   /// in it. A library whose brushes are all filed shows no leftovers tab.

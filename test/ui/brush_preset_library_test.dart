@@ -197,13 +197,68 @@ void main() {
       expect(reloaded.groups.last.collapsed, isTrue);
     });
 
-    test('reorderGroups replaces the display order', () async {
+    test('arrange takes a new group order and a preset into another group',
+        () async {
       final library = await seeded();
       addTearDown(library.dispose);
 
-      library.reorderGroups(library.groups.reversed.toList());
+      library.arrange(
+        brushLibraryArrangementOf([
+          for (final preset in library.presets)
+            if (preset.id.value == 'loose')
+              preset.copyWith(groupId: _paint)
+            else
+              preset,
+        ], library.groups.reversed.toList()),
+      );
 
       expect(library.groups.map((group) => group.name), ['Paint', 'Ink']);
+      expect(
+        library.presetsInGroup(_paint).map((preset) => preset.id.value),
+        ['p1', 'loose'],
+      );
+    });
+
+    // F-250: a move is undone by laying the old arrangement back, and the
+    // library may have changed in ways that are not on the stack since.
+    test('🚨an old arrangement laid back keeps a delete and an import made '
+        'since', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      final old = library.arrangement;
+      library.arrange(
+        brushLibraryArrangementOf(
+          library.presets.reversed.toList(),
+          library.groups,
+        ),
+      );
+      library.delete(const BrushPresetId('i2'));
+      final imported = library.saveCurrent(BrushSettings(size: 7));
+
+      library.arrange(old);
+
+      expect(library.presets.map((preset) => preset.id.value), [
+        'i1',
+        'p1',
+        'loose',
+        imported.id.value,
+      ]);
+    });
+
+    test('a preset whose group is gone shows in the root tab', () async {
+      final library = await seeded(
+        presets: [
+          _preset('i1', groupId: _ink),
+          _preset('stale', groupId: const BrushGroupId('gone')),
+          _preset('loose'),
+        ],
+      );
+      addTearDown(library.dispose);
+
+      expect(
+        library.presetsInGroup(null).map((preset) => preset.id.value),
+        ['stale', 'loose'],
+      );
     });
 
     test('resetToDefaults restores the built-ins', () async {
