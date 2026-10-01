@@ -14,6 +14,7 @@ import '../../models/brush_settings.dart';
 import '../../models/canvas_point.dart';
 import '../../services/brush_dab_coverage.dart';
 import '../../services/brush_dab_interpolator.dart';
+import '../../services/brush_pixel_blend.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import 'brush_tool_state.dart';
@@ -563,17 +564,33 @@ Uint8List rasterizeBrushStrokeSample(
     // of those objects, and the container was 127 ms of an 833 ms raster.
     // ⛔The arithmetic is unchanged: same walk, same cascade, same order —
     // see `forEachBrushPixelCoverage`, which the list form now also runs.
-    // ⛔`coverage * dab.flow * dab.opacity` STAYS IN THAT ORDER. Folding the
-    // two dab factors into one hoisted product is the same value in algebra
-    // and a different double in floating point, and this plane is compared
-    // byte for byte by the preview's own pins.
+    //
+    // 🚨THE DAB SETTLES AT ITS OPACITY, as it does on the canvas (F-205,
+    // [settledDabAlpha]). ↩️The swatch multiplied it in —
+    // `coverage * dab.flow * dab.opacity`, kept in that order for the
+    // preview's byte pins — until 2026-10-01, so a pressure-opacity brush's
+    // swatch went on darkening where its dabs crossed while the canvas
+    // stopped at the press. An opacity of one still lays those same bytes:
+    // `coverage * dab.flow` is that product with its factor of one gone.
+    final opacity = dab.opacity;
     forEachBrushPixelCoverage(dab, (x, y, coverage) {
       if (x >= width || y >= height) {
         return;
       }
       final index = y * width + x;
-      final dabAlpha = coverage * dab.flow * dab.opacity;
-      accumulated[index] += dabAlpha * (1 - accumulated[index]);
+      final laid = coverage * dab.flow;
+      final under = accumulated[index];
+      final dabAlpha = opacity >= 1.0
+          ? laid
+          : settledDabAlpha(
+              laid: laid,
+              opacity: opacity,
+              destinationAlpha: under,
+            );
+      if (dabAlpha == null) {
+        return;
+      }
+      accumulated[index] = under + dabAlpha * (1 - under);
     });
   }
 
