@@ -486,6 +486,7 @@ void main() {
       ]);
       expect(layer.frames.single.name, '1');
     });
+  });
 
   group('undo integration', () {
     test('every mutating op is a single undoable command', () {

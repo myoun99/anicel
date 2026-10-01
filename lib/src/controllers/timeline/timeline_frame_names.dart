@@ -42,8 +42,7 @@ class _TimelineFrameNames {
     }
     return {
       for (final MapEntry(key: frameId, value: name) in names.entries)
-        if (holders[normalizeFrameName(name)] case final holder?)
-          frameId: holder,
+        frameId: ?holders[normalizeFrameName(name)],
     };
   }
 
