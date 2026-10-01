@@ -3,17 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'property_lane_model.dart';
-import 'se_audio_lane.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_cells_row_facts.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
 import 'timeline_grid_metrics.dart';
-import 'timeline_lane_rows.dart';
 import 'timeline_section_runs.dart' show timelineDisplayRowExtent;
 
 import '../listenable_rebind.dart';
@@ -195,70 +192,15 @@ class _TimelineFrameRowsScrollBodyState
   /// folder row is a cells row now, so it keys like one.
   String _rowKeySuffix(TimelineDisplayRow row) => row.lane?.laneId ?? 'cells';
 
-  /// The lane to render: the drag preview's version while one is staged
-  /// for this row's layer (R10), the committed one otherwise.
-  PropertyLaneRow _laneOf(TimelineDisplayRow row, Layer layer) {
-    final lanesForLayer = widget.hooks.lanesForLayer;
-    if (lanesForLayer == null) {
-      return row.lane!;
-    }
-    return previewedLaneRow(
-      row: row,
-      previewLayer: layer,
-      lanesForLayer: lanesForLayer,
-    );
-  }
-
-  Widget _buildLaneRow(TimelineDisplayRow row, Layer layer) {
-    return laneIsSeAudio(row.lane!)
-        ? SeAudioLaneFrameRow(
-            layer: layer,
-            frameStartIndex: widget.frameStartIndex,
-            frameEndIndexExclusive: widget.frameEndIndexExclusive,
-            leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
-            trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
-            metrics: widget.metrics,
-            frameRate: widget.hooks.projectFrameRate,
-            audioPeaksFor: widget.hooks.audioPeaksFor,
-            spillInLeadFrames: widget.hooks.spillInLeadFrames[layer.id],
-            onSetClipOffset: widget.hooks.audioLane?.onSetClipOffset == null
-                ? null
-                : (clipIndex, offsetFrames) =>
-                      widget.hooks.audioLane!.onSetClipOffset!(
-                        layer.id,
-                        clipIndex,
-                        offsetFrames,
-                      ),
-            offsetDrag: widget.hooks.audioLane?.offsetDrag,
-            onSetClipFades: widget.hooks.audioLane?.onSetClipFades == null
-                ? null
-                : (clipIndex, fadeIn, fadeOut) =>
-                      widget.hooks.audioLane!.onSetClipFades!(
-                        layer.id,
-                        clipIndex,
-                        fadeIn,
-                        fadeOut,
-                      ),
-          )
-        : TimelineLaneFrameRow(
-            layer: layer,
-            lane: _laneOf(row, layer),
-            frameStartIndex: widget.frameStartIndex,
-            frameEndIndexExclusive: widget.frameEndIndexExclusive,
-            leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
-            trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
-            metrics: widget.metrics,
-            // The LANE selection domain (UI-R23 #3 part 2) — EVERY row's
-            // lanes now, camera included. It stood down there until
-            // 2026-08-08 on the reading that the camera's keyframes are
-            // atomic; they are not (a camera row's lanes edit
-            // `cut.camera.track`, a per-property TransformTrack like any
-            // other). What was actually missing was the move path's
-            // camera arm, which is why wiring this earlier would have
-            // written keys into the camera layer's own unused track.
-            laneRange: widget.laneRange,
-          );
-  }
+  /// The frames this body lays its lane rows over, and their selection
+  /// domain ([timelineLaneRowFrom]).
+  TimelineLaneRowSpan get _laneRowSpan => (
+    startIndex: widget.frameStartIndex,
+    endIndexExclusive: widget.frameEndIndexExclusive,
+    leadingSpacer: widget.leadingFrameSpacerWidth,
+    trailingSpacer: widget.trailingFrameSpacerWidth,
+    laneRange: widget.laneRange,
+  );
 
   Widget _buildRow(TimelineDisplayRow row) {
     final rowKey = ValueKey<String>(
@@ -293,7 +235,8 @@ class _TimelineFrameRowsScrollBodyState
       ? timelineGatedRow(
           row,
           widget.hooks.dragPreview,
-          (context, layer) => _buildLaneRow(row, layer),
+          (context, layer) =>
+              timelineLaneRowFrom(row, layer, _cellsRowGrid, _laneRowSpan),
         )
       : keptTimelineCellsRow(_rowMemo, row, _cellsRowGrid);
 

@@ -48,7 +48,6 @@ import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
-import 'se_audio_lane.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_layer_controls_header.dart';

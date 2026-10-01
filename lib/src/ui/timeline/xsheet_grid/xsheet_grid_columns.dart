@@ -78,7 +78,8 @@ class _XSheetGridColumns {
           ? timelineGatedRow(
               entry,
               grid.hooks.dragPreview,
-              (context, layer) => _laneColumn(entry, layer, plan),
+              (context, layer) =>
+                  timelineLaneRowFrom(entry, layer, grid, _laneSpan(plan)),
             )
           : keptTimelineCellsRow(_kept, entry, grid),
     );
@@ -86,70 +87,15 @@ class _XSheetGridColumns {
 
   final Map<LayerId, KeptTimelineCellsRow> _kept = {};
 
-  Widget _laneColumn(
-    TimelineDisplayRow entry,
-    Layer layer,
-    TimelineVirtualizationPlan plan,
-  ) {
-    final frameRange = plan.frameRange;
-    return laneIsSeAudio(entry.lane!)
-        ? SeAudioLaneFrameRow(
-            axis: Axis.vertical,
-            keyPrefix: 'xsheet',
-            layer: layer,
-            frameStartIndex: frameRange.startIndex,
-            frameEndIndexExclusive: frameRange.endIndexExclusive,
-            leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
-            trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
-            metrics: _state._metrics,
-            frameRate: _state.widget.hooks.projectFrameRate,
-            audioPeaksFor: _state.widget.hooks.audioPeaksFor,
-            spillInLeadFrames:
-                _state.widget.hooks.spillInLeadFrames[entry.layer.id],
-            onSetClipOffset:
-                _state.widget.hooks.audioLane?.onSetClipOffset == null
-                ? null
-                : (clipIndex, offsetFrames) =>
-                      _state.widget.hooks.audioLane!.onSetClipOffset!(
-                        entry.layer.id,
-                        clipIndex,
-                        offsetFrames,
-                      ),
-            offsetDrag: _state.widget.hooks.audioLane?.offsetDrag,
-            onSetClipFades:
-                _state.widget.hooks.audioLane?.onSetClipFades == null
-                ? null
-                : (clipIndex, fadeIn, fadeOut) =>
-                      _state.widget.hooks.audioLane!.onSetClipFades!(
-                        entry.layer.id,
-                        clipIndex,
-                        fadeIn,
-                        fadeOut,
-                      ),
-          )
-        : TimelineLaneFrameRow(
-            axis: Axis.vertical,
-            keyPrefix: 'xsheet',
-            layer: layer,
-            // R10: the previewed lane while a key drag is in flight —
-            // the same re-derivation the horizontal body does.
-            lane: previewedLaneRow(
-              row: entry,
-              previewLayer: layer,
-              lanesForLayer: _state._lanesFor,
-            ),
-            frameStartIndex: frameRange.startIndex,
-            frameEndIndexExclusive: frameRange.endIndexExclusive,
-            leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
-            trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
-            metrics: _state._metrics,
-            // The LANE selection domain (UI-R23 #3 part 2) — EVERY row's
-            // lanes now, camera included (2026-08-08; see the rail's
-            // twin for why it stood down and why the reason was wrong).
-            // Through the B4-④ escalation wrap, like the horizontal grid.
-            laneRange: _state._laneRange,
-          );
-  }
+  /// The frames the sheet lays its lane columns over — its plan's window
+  /// and room — and their selection domain ([timelineLaneRowFrom]).
+  TimelineLaneRowSpan _laneSpan(TimelineVirtualizationPlan plan) => (
+    startIndex: plan.frameRange.startIndex,
+    endIndexExclusive: plan.frameRange.endIndexExclusive,
+    leadingSpacer: plan.leadingFrameSpacerWidth,
+    trailingSpacer: plan.trailingFrameSpacerWidth,
+    laneRange: _state._laneRange,
+  );
 
   /// The sheet's columns as their cells see them — the timeline's rows'
   /// record, turned on its side.

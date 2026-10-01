@@ -11,6 +11,7 @@ import '../widgets/tick_layer.dart';
 import 'lane_row_slice.dart';
 import 'memo_token.dart';
 import 'property_lane_model.dart';
+import 'se_audio_lane.dart' show SeAudioLaneFrameRow, laneIsSeAudio;
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_cells_row.dart';
@@ -18,6 +19,7 @@ import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_lane_rows.dart' show TimelineLaneFrameRow;
 import 'timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 
 /// What a grid's CELLS row is built from beyond its drawing — the key both
@@ -267,6 +269,88 @@ Widget timelineGatedRow(
     rowBuilder: rowBuilder,
   ),
 );
+
+/// The frames a grid lays its lane rows over — its window and the room it
+/// leaves at either end — and the lanes' selection domain: what a lane row
+/// takes of its grid beyond the cells' record.
+typedef TimelineLaneRowSpan = ({
+  int startIndex,
+  int endIndexExclusive,
+  double leadingSpacer,
+  double trailingSpacer,
+  // The LANE selection domain (UI-R23 #3 part 2) — EVERY row's lanes now,
+  // camera included. It stood down there until 2026-08-08 on the reading
+  // that the camera's keyframes are atomic; they are not (a camera row's
+  // lanes edit `cut.camera.track`, a per-property TransformTrack like any
+  // other). What was actually missing was the move path's camera arm, which
+  // is why wiring this earlier would have written keys into the camera
+  // layer's own unused track. The x-sheet's goes through the B4-④
+  // escalation wrap, like the horizontal grid's.
+  TimelineLaneRangeCallbacks? laneRange,
+});
+
+/// [row]'s lane at [layer] — the gate's, so a drag step shows its preview —
+/// as [grid] lays its rows over [span]: the SE audio lane or a property
+/// lane, the timeline's rows as they are and the x-sheet's columns turned
+/// on their side.
+///
+/// 🚨ONE builder for both grids (`lane-rows-built-twice`, 2026-10-01). Each
+/// wrote both rows out from the same hooks, and they differed only in the
+/// axis, the key prefix and where the span came from — which [grid] and
+/// [span] carry.
+Widget timelineLaneRowFrom(
+  TimelineDisplayRow row,
+  Layer layer,
+  TimelineCellsRowGrid grid,
+  TimelineLaneRowSpan span,
+) {
+  final hooks = grid.hooks;
+  final audioLane = hooks.audioLane;
+  final onSetClipOffset = audioLane?.onSetClipOffset;
+  final onSetClipFades = audioLane?.onSetClipFades;
+  return laneIsSeAudio(row.lane!)
+      ? SeAudioLaneFrameRow(
+          axis: grid.axis,
+          keyPrefix: grid.keyPrefix,
+          layer: layer,
+          frameStartIndex: span.startIndex,
+          frameEndIndexExclusive: span.endIndexExclusive,
+          leadingFrameSpacerWidth: span.leadingSpacer,
+          trailingFrameSpacerWidth: span.trailingSpacer,
+          metrics: grid.metrics,
+          frameRate: hooks.projectFrameRate,
+          audioPeaksFor: hooks.audioPeaksFor,
+          spillInLeadFrames: hooks.spillInLeadFrames[layer.id],
+          onSetClipOffset: onSetClipOffset == null
+              ? null
+              : (clipIndex, offsetFrames) =>
+                    onSetClipOffset(layer.id, clipIndex, offsetFrames),
+          offsetDrag: audioLane?.offsetDrag,
+          onSetClipFades: onSetClipFades == null
+              ? null
+              : (clipIndex, fadeIn, fadeOut) =>
+                    onSetClipFades(layer.id, clipIndex, fadeIn, fadeOut),
+        )
+      : TimelineLaneFrameRow(
+          axis: grid.axis,
+          keyPrefix: grid.keyPrefix,
+          layer: layer,
+          // R10: the previewed lane while a key drag is in flight. A grid
+          // with no lanes hands back the committed row (`laneAsPreviewed`).
+          lane: previewedLaneRow(
+            row: row,
+            previewLayer: layer,
+            lanesForLayer: (layer) =>
+                hooks.lanesForLayer?.call(layer) ?? const [],
+          ),
+          frameStartIndex: span.startIndex,
+          frameEndIndexExclusive: span.endIndexExclusive,
+          leadingFrameSpacerWidth: span.leadingSpacer,
+          trailingFrameSpacerWidth: span.trailingSpacer,
+          metrics: grid.metrics,
+          laneRange: span.laneRange,
+        );
+}
 
 /// What a grid keeps of a cells row: the row as built, and what it was
 /// built from.
