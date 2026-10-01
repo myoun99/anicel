@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import '../listenable_rebind.dart';
 
 /// Whether the surrounding panel tab is the ACTIVE tab of its group.
 ///
@@ -29,11 +28,11 @@ class PanelVisibilityScope extends InheritedWidget {
       !identical(oldWidget.visible, visible);
 }
 
-/// A [ListenableBuilder] that stands down while its panel is hidden:
-/// notifications arriving offstage only set a dirty flag, and becoming
-/// visible again flushes it as ONE catch-up rebuild (none when nothing
-/// changed back there). Visible panels rebuild per notify exactly like a
-/// plain ListenableBuilder.
+/// A [ListenableBuilder] that stands down while its panel is hidden: it
+/// rebuilds through [PanelInSightListenable], so notifications arriving
+/// offstage are told as ONE catch-up rebuild when the panel is visible
+/// again (none when nothing changed back there). Visible panels rebuild per
+/// notify exactly like a plain ListenableBuilder.
 class PanelAwareListenableBuilder extends StatefulWidget {
   const PanelAwareListenableBuilder({
     super.key,
@@ -51,39 +50,16 @@ class PanelAwareListenableBuilder extends StatefulWidget {
 
 class _PanelAwareListenableBuilderState
     extends State<PanelAwareListenableBuilder> {
-  ValueListenable<bool>? _visibility;
-  bool _dirty = false;
+  late final PanelInSightListenable _gate = PanelInSightListenable(
+    widget.listenable,
+  )..addListener(_rebuild);
 
-  bool get _visible => _visibility?.value ?? true;
-
-  void _handleNotify() {
-    if (!_visible) {
-      _dirty = true;
-      return;
-    }
-    setState(() {});
-  }
-
-  void _handleVisibilityChanged() {
-    // Fires from the tab strip's build when the active tab changes; this
-    // subtree is a DESCENDANT of the strip, so marking it dirty here is
-    // legal mid-build and the catch-up lands in the same frame.
-    if (_visible && _dirty) {
-      _dirty = false;
-      setState(() {});
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    widget.listenable.addListener(_handleNotify);
-  }
+  void _rebuild() => setState(() {});
 
   @override
   void didUpdateWidget(covariant PanelAwareListenableBuilder oldWidget) {
     super.didUpdateWidget(oldWidget);
-    rebindListener(oldWidget.listenable, widget.listenable, _handleNotify);
+    _gate.source = widget.listenable;
   }
 
   @override
@@ -92,21 +68,102 @@ class _PanelAwareListenableBuilderState
     // The scope's listenable is stable per tab (the strip owns it), so a
     // plain lookup here suffices — no inherited dependency, no rebuilds
     // from the scope widget itself.
-    final next = PanelVisibilityScope.maybeOf(context);
-    if (!identical(next, _visibility)) {
-      _visibility?.removeListener(_handleVisibilityChanged);
-      _visibility = next;
-      _visibility?.addListener(_handleVisibilityChanged);
-    }
+    _gate.sight = PanelVisibilityScope.maybeOf(context);
   }
 
   @override
   void dispose() {
-    _visibility?.removeListener(_handleVisibilityChanged);
-    widget.listenable.removeListener(_handleNotify);
+    _gate
+      ..removeListener(_rebuild)
+      ..dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => widget.builder(context);
+}
+
+/// [source] as a panel hears it: in sight every notify passes, and out of
+/// sight the news stops at the panel's edge and is told ONCE when the panel
+/// comes back (none when nothing changed back there) — an offstage rebuild
+/// is pure cost, nothing is painted (R12-①).
+///
+/// THE gate a hidden panel rests behind: [PanelAwareListenableBuilder]
+/// rebuilds through it, and a panel whose parts each subscribe to one
+/// channel hands them this in its place, so all of them rest at once
+/// (storyboard-drags-lay-out-alone, 10-01: the storyboard kept behind the
+/// timeline rebuilt its strip at every step of a timeline drag).
+class PanelInSightListenable extends ChangeNotifier {
+  PanelInSightListenable(Listenable source) : _source = source {
+    source.addListener(_onSource);
+  }
+
+  Listenable _source;
+
+  /// What the gate passes on — re-pointable, keeping what it missed.
+  Listenable get source => _source;
+  set source(Listenable value) {
+    if (identical(value, _source)) {
+      return;
+    }
+    _source.removeListener(_onSource);
+    _source = value..addListener(_onSource);
+  }
+
+  ValueListenable<bool>? _sight;
+
+  /// The panel's sight ([PanelVisibilityScope]); null is always in sight.
+  ValueListenable<bool>? get sight => _sight;
+  set sight(ValueListenable<bool>? value) {
+    if (identical(value, _sight)) {
+      return;
+    }
+    _sight?.removeListener(_onSight);
+    _sight = value?..addListener(_onSight);
+  }
+
+  bool _missed = false;
+
+  bool get _inSight => _sight?.value ?? true;
+
+  void _onSource() {
+    if (!_inSight) {
+      _missed = true;
+      return;
+    }
+    notifyListeners();
+  }
+
+  void _onSight() {
+    // Fires from the tab strip's build when the active tab changes; what
+    // hears it is a DESCENDANT of the strip, so the rebuild it asks for is
+    // legal mid-build and the catch-up lands in the same frame.
+    if (_inSight && _missed) {
+      _missed = false;
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _source.removeListener(_onSource);
+    _sight?.removeListener(_onSight);
+    super.dispose();
+  }
+}
+
+/// [PanelInSightListenable] over a value channel: the source's value, its
+/// news passed only while the panel is in sight.
+class PanelInSightValueListenable<T> extends PanelInSightListenable
+    implements ValueListenable<T> {
+  PanelInSightValueListenable(ValueListenable<T> super.source);
+
+  @override
+  ValueListenable<T> get source => super.source as ValueListenable<T>;
+
+  @override
+  set source(covariant ValueListenable<T> value) => super.source = value;
+
+  @override
+  T get value => source.value;
 }

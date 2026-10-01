@@ -15,6 +15,7 @@ import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
@@ -23,6 +24,8 @@ import 'session/session_legend_callbacks.dart';
 import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
+import 'panels/panel_visibility_scope.dart'
+    show PanelInSightValueListenable, PanelVisibilityScope;
 import 'panels/working_panel_surface.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_panel.dart';
@@ -186,6 +189,32 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.playbackRig.prerenderScheduler.progress,
     _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
+
+  /// The drag preview as this panel hears it: resting while the panel is
+  /// out of sight. 🔬Measured (storyboard-drags-lay-out-alone, 10-01): kept
+  /// alive behind the timeline, the strip, its gesture layers and its end
+  /// line rebuilt at every step of every timeline drag — the panel's parts
+  /// each subscribe, so the channel they all hear is gated once here.
+  late final PanelInSightValueListenable<TimelineDragPreview?> _dragPreview =
+      PanelInSightValueListenable(_session.dragPreview);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _dragPreview.sight = PanelVisibilityScope.maybeOf(context);
+  }
+
+  @override
+  void didUpdateWidget(covariant StoryboardTabHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _dragPreview.source = _session.dragPreview;
+  }
+
+  @override
+  void dispose() {
+    _dragPreview.dispose();
+    super.dispose();
+  }
 
   // ⛔"To start" (REC1-B) is a free function now
   // ([seekStoryboardPlayheadToTrackStart]): the button that calls it is the
@@ -507,7 +536,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     hiddenSections: widget.hiddenSections,
                     onToggleSection: widget.onToggleSection,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
-                    dragPreview: _session.dragPreview,
+                    dragPreview: _dragPreview,
                     // While playing, the highlight follows the PLAYING cut
                     // (onStopped syncs the real active cut).
                     activeCutId: _session.playbackRig.playback.isActive

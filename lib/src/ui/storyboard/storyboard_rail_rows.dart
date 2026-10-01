@@ -903,14 +903,22 @@ class _StoryboardRailRows {
                   trackGlobalRows,
                 )
               : [
-                  ValueListenableBuilder<TimelineDragPreview?>(
-                    valueListenable: dragPreview,
-                    builder: (context, preview, _) => Column(
+                  // Only where the preview lays this track's cuts: a step
+                  // that moves none of them — an SE row's comma, whose rows
+                  // are built outside (R10-③) — rebuilds none of its rows.
+                  // 🔬Measured (storyboard-drags-lay-out-alone, 10-01): it
+                  // rebuilt every one of them at every step.
+                  SlicedListenableBuilder<_TrackStrip>(
+                    listenable: dragPreview,
+                    slice: () => _TrackStrip(
+                      _previewedEntriesFor(index, dragPreview.value, entries),
+                    ),
+                    builder: (context, strip) => Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: _stripRowsForTrack(
                         track,
                         index,
-                        _previewedEntriesFor(index, preview, entries),
+                        strip.entries,
                         width,
                         scale,
                         trackGlobalRows,
@@ -1714,4 +1722,38 @@ class _FollowsTheCutUnderThePlayheadState
 
   @override
   Widget build(BuildContext context) => widget.builder(_subject);
+}
+
+/// A track's cuts as a drag preview lays them: the same strip while every
+/// cut is the same object over the same frames — what its rows are built
+/// from ([_StoryboardRailRows.trackGroupSection]).
+final class _TrackStrip {
+  const _TrackStrip(this.entries);
+
+  final List<StoryboardTimelineLayoutEntry> entries;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! _TrackStrip || other.entries.length != entries.length) {
+      return false;
+    }
+    for (var i = 0; i < entries.length; i += 1) {
+      final a = entries[i];
+      final b = other.entries[i];
+      if (!identical(a.cut, b.cut) ||
+          a.cutIndex != b.cutIndex ||
+          a.startFrame != b.startFrame ||
+          a.endFrame != b.endFrame ||
+          a.duration != b.duration ||
+          a.mediaLead != b.mediaLead) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll([
+    for (final entry in entries) Object.hash(entry.cutId, entry.startFrame),
+  ]);
 }

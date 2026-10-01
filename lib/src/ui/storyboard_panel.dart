@@ -170,6 +170,7 @@ import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
 import 'listenable_rebind.dart';
+import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
