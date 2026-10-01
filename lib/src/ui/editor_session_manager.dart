@@ -213,6 +213,11 @@ class EditorSessionManager extends ChangeNotifier
     editingSession.gapParkingListenable.addListener(cutUnderPlayhead.sync);
     frameScrub.active.addListener(cutUnderPlayhead.sync);
     addListener(cutUnderPlayhead.resync);
+    // …and answers now, not at the first change: the conte's plate reads its
+    // VALUE (F-248), where the sheet and the envelope only heard its news
+    // and asked [CutUnderPlayhead.resolve] — so it read null until the
+    // session first notified, and an opened film stood in no cut.
+    cutUnderPlayhead.resync();
     // Where the playhead is drawn re-answers on every channel it moves on —
     // after the cut follow above, so a tick that crosses into another cut
     // is answered against the cut it landed in. A scrub move fires the

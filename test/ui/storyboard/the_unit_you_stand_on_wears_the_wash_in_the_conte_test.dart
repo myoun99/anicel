@@ -21,6 +21,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 
+import '../storyboard_cut_block_probe.dart';
+
 /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색 표시.
 /// 전처럼 연하게」, 10-01 「재생헤드가 선 블록」), on the conte: the unit you
 /// stand on wears the standing wash — an S row's sound, the one cell beside
@@ -153,7 +155,8 @@ void main() {
     expect(washed(tester, 5).end, 6);
   });
 
-  testWidgets('on the V row, nothing over its pictures', (tester) async {
+  testWidgets('on the V row, nothing over its pictures — the cut under the '
+      'playhead wears it in its plate', (tester) async {
     await openConte(tester);
     expect(
       find.byKey(const ValueKey<String>('storyboard-standing-cell')),
@@ -161,6 +164,7 @@ void main() {
       reason: 'premise: the rail rests on the V row and stands there',
     );
     expect(wash, findsNothing);
+    expect(cutBlocksPainter(tester).blocks().single.isStanding, isTrue);
   });
 
   testWidgets('on a lane, its cell', (tester) async {

@@ -462,8 +462,25 @@ void main() {
       Color.alphaBlend(timelineStandingWashColor, conteSheetInk).toARGB32(),
     );
     under.value = null;
+    expect(
+      tester.renderObject(cutBlocksFinder()).debugNeedsPaint,
+      isTrue,
+      reason: 'the crossing repaints the row',
+    );
     await tester.pump();
     expect(plate(), conteSheetInk.toARGB32(), reason: 'it goes with the cut');
+  });
+
+  test('a hovered cut under the playhead lifts its washed plate, not the '
+      'bare ink', () {
+    final scheme = ThemeData.dark().colorScheme;
+    expect(
+      storyboardCutBlockBackgroundColor(scheme, hovered: true, standing: true),
+      Color.alphaBlend(
+        scheme.onSurface.withValues(alpha: 0.10),
+        Color.alphaBlend(timelineStandingWashColor, conteSheetInk),
+      ),
+    );
   });
 
   testWidgets('a range selection tints all FOUR bands and never the plate — '

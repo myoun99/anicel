@@ -168,6 +168,19 @@ void main() {
     expect(render.debugNeedsPaint, isTrue, reason: 'the folded row heard it');
   });
 
+  testWidgets('F-248: the cut under the playhead wears the standing wash in '
+      'its plate here too — the same channel as the open row', (tester) async {
+    await _pumpFolded(tester, storyboard: true);
+    final painter =
+        tester.widget<CustomPaint>(_cutBlocks()).painter!
+            as StoryboardCutBlocksPainter;
+    final standing = [
+      for (final block in painter.blocks())
+        if (block.isStanding) block.cutId,
+    ];
+    expect(standing, hasLength(1));
+  });
+
   testWidgets('a folded TIMELINE is untouched — it still shows its own rail '
       'row and its own height', (tester) async {
     await _pumpFolded(tester, storyboard: false);
