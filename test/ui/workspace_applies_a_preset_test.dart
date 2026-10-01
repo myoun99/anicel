@@ -383,6 +383,37 @@ void main() {
     );
   });
 
+  // The rail's other half (railEntry: 안에 있으면 그대로): a tab the brush in
+  // hand shows in keeps it, whatever was last picked there — the memory
+  // answers only a hand coming from outside.
+  testWidgets('🚨F-250: the brush in hand moved into another tab stays in '
+      'hand when that tab opens', (tester) async {
+    await pumpWithPresets(tester);
+    final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+    await tapTabOf(tester, y.first);
+    await tapTabOf(tester, x.first);
+    await pickInView(tester, x[1]);
+    final shown = panel(tester);
+    final yGroup = shown.presets
+        .firstWhere((preset) => preset.id == y.first)
+        .groupShownAmong(shown.groups);
+    shown.onPresetsReordered!([
+      for (final preset in shown.presets)
+        if (preset.id == x[1]) preset.copyWith(groupId: yGroup) else preset,
+    ]);
+    await tester.pumpAndSettle();
+    expect(tabOf(tester, x[1]), contains(y.first), reason: 'premise: moved');
+
+    await tapTabOf(tester, y.first);
+
+    expect(
+      panel(tester).selectedPresetId,
+      x[1],
+      reason: 'it shows in that tab now — the hand stays on it, though '
+          '${y.first} was the last picked there',
+    );
+  });
+
   testWidgets('tapping a preset makes it the active one', (tester) async {
     await pumpWithPresets(tester);
     final active = panel(tester).selectedPresetId;

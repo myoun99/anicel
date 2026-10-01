@@ -25,26 +25,22 @@ class _WorkspaceBrushPresets {
   /// whatever the brush tool last held there.
   final Map<(CanvasTool, BrushGroupId?), BrushPresetId> _lastInGroup = {};
 
-  /// Opens [group]'s tab for the paint tool in hand: it takes up the brush
-  /// it last held there, or the tab's first ([BrushPresetLibrary
-  /// .presetEntering]) — unless the brush in hand already shows in that tab,
-  /// which stays exactly where it is (`railEntry`: 안에 있으면 그대로).
-  /// From a tool that paints nothing it arms the brush, as a press on a
-  /// preset does.
+  /// Opens [group]'s tab for the paint tool in hand — the library shows only
+  /// while one is (`ToolLibraryPanel`): it takes up the brush it last held
+  /// there, or the tab's first ([BrushPresetLibrary.presetEntering]) —
+  /// unless the brush in hand already shows in that tab, which stays exactly
+  /// where it is (`railEntry`: 안에 있으면 그대로).
   void openGroup(BrushGroupId? group) {
     final state = _state._brushTool.value;
     final library = _state._presetLibrary;
     final heldId = state.presetId;
     final held = heldId == null ? null : _presetNamed(heldId);
-    final tool = canvasToolPaints(state.tool) ? state.tool : CanvasTool.brush;
-    if (tool == state.tool &&
-        held != null &&
-        held.groupShownAmong(library.groups) == group) {
+    if (held != null && held.groupShownAmong(library.groups) == group) {
       return;
     }
     final entering = library.presetEntering(
       group,
-      remembered: _lastInGroup[(tool, group)],
+      remembered: _lastInGroup[(state.tool, group)],
     );
     final preset = entering == null ? null : _presetNamed(entering);
     if (preset != null) {
