@@ -44,6 +44,7 @@ import 'brush/paint_tool_state_notifier.dart';
 import 'brush/tool_press.dart';
 import 'brush/transform_tool_options.dart';
 import 'debug/input_inspector.dart';
+import 'input/contact_census.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
@@ -284,7 +285,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   );
 
   /// Undo and redo — the keys, the finger taps and a mapped button here,
-  /// the rail's ↶ ↷ in the workspace. The census is [_pointersDown]. Made
+  /// the rail's ↶ ↷ in the workspace. The census is [_contacts]. Made
   /// for the project on screen ([_followProjectOnScreen]).
   late HistoryVerbs _history;
 
@@ -336,10 +337,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     },
   );
 
-  /// Pointer ids currently down. A count rather than a bool because a
-  /// second finger landing and lifting must not report the stroke over
-  /// while the first is still drawing.
-  final Set<int> _pointersDown = <int>{};
+  /// Whether a contact is down, and every way it learns that one is over.
+  final ContactCensus _contacts = ContactCensus();
 
   /// PEN-12 #5: the DESKTOP exit gate — the window's close button lands
   /// in the same confirm dialog as the Android back button (the OS asks
@@ -558,7 +557,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _history = HistoryVerbs(
       selection: _canvasSelectionCommands,
       session: session,
-      contactIsDown: () => _pointersDown.isNotEmpty,
+      contactIsDown: () => _contacts.anyDown,
     );
     _keyHolds.strokeLive = session.brushInputActive;
     return true;
@@ -638,12 +637,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// joining hit testing, so nothing about how input reaches the canvas
   /// changes. This repo cares about that path more than most.
   void _noteUserActivity(PointerEvent event) {
-    if (event is PointerDownEvent) {
-      _pointersDown.add(event.pointer);
-    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
-      _pointersDown.remove(event.pointer);
-    }
-    _autosaveClock.noteActivity(strokeInFlight: _pointersDown.isNotEmpty);
+    _contacts.note(event);
+    _autosaveClock.noteActivity(strokeInFlight: _contacts.anyDown);
   }
 
   /// The window lost the OS's focus — a notification took it, another app
@@ -663,9 +658,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// ⛔Not the lifecycle SNAPSHOT that F-1 took out (above): nothing is
   /// saved here. It only lets go of input.
   void _letGoOfEverythingPressed() {
-    for (final pointer in [..._pointersDown]) {
-      GestureBinding.instance.cancelPointer(pointer);
-    }
+    _contacts.letGoOfEverything();
     _keyHolds.letGoOfEverything();
   }
 

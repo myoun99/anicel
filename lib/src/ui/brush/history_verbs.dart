@@ -37,10 +37,11 @@ class HistoryVerbs {
   /// 말고도 **도구를 사용중이면 언두/리두 작동불가**하도록」.
   ///
   /// ⛔**A CONTACT DOWN IS THE WHOLE TEST, and the fact was already there**:
-  /// the shell's census is fed by the global pointer route, and the autosave
-  /// clock has read it as 「a stroke is in flight」 since F-1. A second way
-  /// to ask 「is the user in the middle of something」 is how the two come
-  /// to disagree ([[no-copy-to-share]]).
+  /// the shell's census (`ContactCensus`) is fed by the global pointer route,
+  /// and the autosave clock has read it as 「a stroke is in flight」 since
+  /// F-1. A second way to ask 「is the user in the middle of something」 is
+  /// how the two come to disagree ([[no-copy-to-share]]). A lift the window
+  /// never hears is the census's to learn of, not this door's (F-232).
   ///
   /// ⚠️It stands BEFORE the channels rather than beside them. They answer
   /// 「is this about the thing I am in the middle of?」 and each falls
