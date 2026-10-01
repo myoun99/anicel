@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -34,7 +35,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_marker.dart'
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
-        storyboardPanelPictureGroundColor;
+        storyboardPanelPictureGroundColor,
+        timelineStandingWashColor;
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge;
 import '../helpers/fixed_thumbnails.dart';
@@ -130,6 +132,7 @@ Future<void> _pump(
   CutId? activeCutId = const CutId('cut-1'),
   double pixelsPerFrame = 12,
   StoryboardThumbnailResolver? thumbnailFor,
+  ValueListenable<CutId?>? cutUnderPlayhead,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1400, 700));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -139,6 +142,7 @@ Future<void> _pump(
         body: StoryboardPanel(
           project: _project(storyboardLayer: storyboardLayer, cutMark: cutMark),
           activeCutId: activeCutId,
+          cutUnderPlayhead: cutUnderPlayhead,
           pixelsPerFrame: pixelsPerFrame,
           thumbnails: thumbnailFor == null
               ? null
@@ -415,8 +419,9 @@ void main() {
   testWidgets('🗣️the plate is the conte sheet\'s ink, and nothing outlines '
       'it — 「바탕색을 콘티프리뷰패널의 픽쳐의 실루엣이랑 똑같이 검정색」 · 「패딩/'
       '실루엣선 이런거 싹 없도록 심플하게만」 (유저 2026-09-26)', (tester) async {
-    // The ACTIVE cut, on purpose: standing in it colours no plate (F-212 —
-    // ↩️the active cut's plate was the accent's container).
+    // The ACTIVE cut, on purpose: being active colours no plate. What does
+    // is the playhead standing in it (F-248, below) — none is wired here.
+    // ↩️F-212 had taken the active cut's accent plate away.
     await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
     final block = requireCutBlock(tester, 'cut-1');
     final spy = _painted(tester);
@@ -438,6 +443,27 @@ void main() {
       reason: 'the bands and nothing else: no panel silhouette (↩️#15), no '
           'create box (↩️D30), no gap',
     );
+  });
+
+  testWidgets('🗣️F-248: the cut under the playhead wears the standing wash '
+      'in its plate, under its pictures — 「외곽라인말고 블럭을 바탕색으로서 '
+      '강조색 표시. 전처럼 연하게」', (tester) async {
+    final under = ValueNotifier<CutId?>(const CutId('cut-1'));
+    addTearDown(under.dispose);
+    await _pump(
+      tester,
+      storyboardLayer: _dividedStoryboardLayer('cut-1'),
+      cutUnderPlayhead: under,
+    );
+    int plate() => _painted(tester).plates.single.color.toARGB32();
+
+    expect(
+      plate(),
+      Color.alphaBlend(timelineStandingWashColor, conteSheetInk).toARGB32(),
+    );
+    under.value = null;
+    await tester.pump();
+    expect(plate(), conteSheetInk.toARGB32(), reason: 'it goes with the cut');
   });
 
   testWidgets('a range selection tints all FOUR bands and never the plate — '
@@ -497,6 +523,7 @@ void main() {
       storyboardCutBlockBackgroundColor(
         painter.colorScheme,
         hovered: false,
+        standing: false,
       ).toARGB32(),
       reason: 'the block keeps its resting plate around the picture',
     );

@@ -208,6 +208,9 @@ class _WorkspaceCollapsedRows {
                     minBlockWidth: StoryboardPanel.cutBlockMinWidth,
                     // D15: the folded row shows the link icons too (I-25).
                     linkedCutIds: session.cutVerbs.linkedCutIds,
+                    // F-248: the cut under the playhead wears the standing
+                    // wash in its plate, as on the open row.
+                    standingCutId: session.cutUnderPlayhead.listenable,
                     rowAddress: TrackRowAddress(track.id),
                     colorScheme: Theme.of(context).colorScheme,
                     baseTextStyle: DefaultTextStyle.of(context).style,

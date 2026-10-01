@@ -43,6 +43,7 @@ void main() {
     rect: const Rect.fromLTWH(0, 0, 120, 96),
     isRangeSelected: isRangeSelected,
     isHovered: false,
+    isStanding: false,
     title: '1',
     layerLabel: '',
     hasStoryboardLayer: conteLabel != null,
@@ -97,7 +98,11 @@ void main() {
     final resting = visual(cutLabel: paper, conteLabel: null);
     expect(
       ground(resting, StoryboardBand.conte),
-      storyboardCutBlockBackgroundColor(scheme, hovered: false),
+      storyboardCutBlockBackgroundColor(
+        scheme,
+        hovered: false,
+        standing: false,
+      ),
     );
     expect(
       timelineTextOnColor(ground(resting, StoryboardBand.conte)),

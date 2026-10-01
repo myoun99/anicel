@@ -462,17 +462,24 @@ Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
 /// outline to read — and the outline went (「심플이즈베스트」).
 ///
 /// 🗣️F-212 (유저 2026-09-28): 「현재 블록을 알리는 바탕색 오버레이도 일단
-/// 삭제. 재생 헤드 오버레이로 충분」 — the cut you stand in wears the plate
+/// 삭제. 재생 헤드 오버레이로 충분」 — the cut you stand in wore the plate
 /// every cut wears. ↩️Its plate was the accent's container colour.
+/// ↩️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색 표시.
+/// 전처럼 연하게」, 10-01 「재생헤드가 선 블록」): the cut [standing] under the
+/// playhead wears the standing wash over the ink again — in its plate, under
+/// its pictures, since a state colours what is not the picture.
 Color storyboardCutBlockBackgroundColor(
   ColorScheme colorScheme, {
   required bool hovered,
-}) => hovered
-    ? Color.alphaBlend(
-        colorScheme.onSurface.withValues(alpha: 0.10),
-        conteSheetInk,
-      )
-    : conteSheetInk;
+  required bool standing,
+}) {
+  final ground = standing
+      ? Color.alphaBlend(timelineStandingWashColor, conteSheetInk)
+      : conteSheetInk;
+  return hovered
+      ? Color.alphaBlend(colorScheme.onSurface.withValues(alpha: 0.10), ground)
+      : ground;
+}
 
 /// A cut block's BAND in its label's colour [label] — under the colour-only
 /// range tint when the block is range-selected: a cut selection colours

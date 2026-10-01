@@ -74,6 +74,7 @@ Color storyboardCarriedWritingGround(
           storyboardCutBlockBackgroundColor(
             colorScheme,
             hovered: block.isHovered,
+            standing: block.isStanding,
           ),
   },
   rangeSelected: block.isRangeSelected,
@@ -96,6 +97,7 @@ class StoryboardCutBlockVisual {
     required this.rect,
     required this.isRangeSelected,
     required this.isHovered,
+    required this.isStanding,
     required this.title,
     required this.layerLabel,
     required this.hasStoryboardLayer,
@@ -188,6 +190,9 @@ class StoryboardCutBlockVisual {
   final bool isRangeSelected;
   final bool isHovered;
 
+  /// The cut under the playhead (F-248) — its plate wears the standing wash.
+  final bool isStanding;
+
   /// The cut's name, drawn top-left.
   final String title;
 
@@ -232,6 +237,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   required int countingBase,
   ValueListenable<TrackFrameRangeSelection?>? selectedRange,
   ValueListenable<CutId?>? hoveredCutId,
+  ValueListenable<CutId?>? standingCutId,
   StoryboardThumbnails? thumbnails,
   required double devicePixelRatio,
   ValueListenable<int>? windowBucket,
@@ -257,6 +263,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   selectedRange: selectedRange,
   rowAddress: rowAddress,
   hoveredCutId: hoveredCutId ?? _noHover,
+  standingCutId: standingCutId,
   colorScheme: colorScheme,
   baseTextStyle: baseTextStyle,
   showSeconds: showSeconds,
@@ -298,6 +305,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
     required this.selectedRange,
     required this.rowAddress,
     required this.hoveredCutId,
+    this.standingCutId,
     required this.colorScheme,
     required this.baseTextStyle,
     required this.showSeconds,
@@ -311,6 +319,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
            geometry,
            ?selectedRange,
            hoveredCutId,
+           ?standingCutId,
            ?windowBucket,
            ?thumbnails?.landed,
          ]),
@@ -355,6 +364,12 @@ class StoryboardCutBlocksPainter extends CustomPainter
   /// once those select too) does not tint these blocks.
   final TimelineRowAddress rowAddress;
   final ValueListenable<CutId?> hoveredCutId;
+
+  /// The cut under the playhead (F-248), whose plate wears the standing
+  /// wash: the session's one answer for the cut being looked at
+  /// (`CutUnderPlayhead`), which moves on crossings only — so this row
+  /// repaints once a cut, never a tick. Null where nobody stands.
+  final ValueListenable<CutId?>? standingCutId;
 
   final ColorScheme colorScheme;
 
@@ -507,6 +522,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
     required ({int startIndex, int endIndexExclusive}) window,
     required TrackFrameRangeSelection? selection,
     required CutId? hovered,
+    required CutId? standing,
   }) {
     final left = _left(entry.startFrame);
     final width = _widthFor(entry);
@@ -540,6 +556,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       isRangeSelected:
           selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
       isHovered: entry.cutId == hovered,
+      isStanding: entry.cutId == standing,
       title: entry.cut.name,
       // D27: no explanatory copy — an empty layer slot reads as ''.
       layerLabel: layerName ?? '',
@@ -676,6 +693,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
         ? selectionValue
         : null;
     final hovered = hoveredCutId.value;
+    final standing = standingCutId?.value;
     final visuals = <StoryboardCutBlockVisual>[];
     for (final entry in entries) {
       final visual = _visualFor(
@@ -683,6 +701,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
         window: window,
         selection: selection,
         hovered: hovered,
+        standing: standing,
       );
       if (visual != null) {
         visuals.add(visual);
@@ -850,6 +869,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       storyboardCutBlockBackgroundColor(
         colorScheme,
         hovered: block.isHovered,
+        standing: block.isStanding,
       );
 
   @override

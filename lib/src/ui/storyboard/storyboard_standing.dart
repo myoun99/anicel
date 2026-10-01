@@ -77,37 +77,111 @@ class _StoryboardStanding {
     return ValueListenableBuilder<TimelineRowAddress?>(
       valueListenable: currentRow,
       builder: (context, standing, _) {
-        var band = standing == null ? null : _trackRowBand(track, standing);
+        var row = standing;
+        var band = row == null ? null : _trackRowBand(track, row);
         if (band == null) {
-          final row = _state.widget.selectedRow;
+          row = _state.widget.selectedRow;
           band = row == null ? null : _trackRowBand(track, row);
         }
-        if (band == null) {
+        if (row == null || band == null) {
           return const SizedBox.shrink();
         }
+        final standingRow = row;
         final rowBand = band;
-        return ValueListenableBuilder<int?>(
-          valueListenable: playhead,
-          builder: (context, frame, _) => Stack(
-            children: [
-              if (frame != null)
-                Positioned(
-                  left: scale.leftForFrame(frame),
-                  top: rowBand.top,
-                  width: scale.spanWidth(frame, frame + 1),
-                  height: rowBand.height,
-                  child: Semantics(
-                    key: const ValueKey<String>('storyboard-standing-cell'),
-                    label: AppText.strings.tlSelectedCell,
-                    container: true,
-                    child: const SizedBox.expand(),
+        final dragPreview = _state.widget.dragPreview;
+        return ListenableBuilder(
+          listenable: Listenable.merge([playhead, ?dragPreview]),
+          builder: (context, _) {
+            final frame = playhead.value;
+            return Stack(
+              children: [
+                if (frame != null)
+                  ?_standingWash(track, standingRow, rowBand, scale, frame),
+                if (frame != null)
+                  Positioned(
+                    left: scale.leftForFrame(frame),
+                    top: rowBand.top,
+                    width: scale.spanWidth(frame, frame + 1),
+                    height: rowBand.height,
+                    child: Semantics(
+                      key: const ValueKey<String>('storyboard-standing-cell'),
+                      label: AppText.strings.tlSelectedCell,
+                      container: true,
+                      child: const SizedBox.expand(),
+                    ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            );
+          },
         );
       },
     );
+  }
+
+  /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색
+  /// 표시. 전처럼 연하게」, 10-01 「재생헤드가 선 블록」): the unit you stand on
+  /// wears the standing wash, as on the timeline — an S row's sound or span,
+  /// a lane's cell. The V row's cut wears it in its plate instead, under the
+  /// pictures ([StoryboardCutBlocksPainter.standingCutId]): a state colours
+  /// what is not the picture.
+  Widget? _standingWash(
+    Track track,
+    TimelineRowAddress row,
+    ({double top, double height}) band,
+    TimelineScale scale,
+    int frame,
+  ) {
+    final unit = switch (row) {
+      TrackRowAddress() => null,
+      LaneRowAddress() => (startIndex: frame, endIndexExclusive: frame + 1),
+      LayerRowAddress(:final layerId) => _unitOn(track, layerId, frame),
+    };
+    if (unit == null) {
+      return null;
+    }
+    return Positioned(
+      left: scale.leftForFrame(unit.startIndex),
+      top: band.top,
+      width: scale.spanWidth(unit.startIndex, unit.endIndexExclusive),
+      height: band.height,
+      child: DecoratedBox(
+        key: const ValueKey<String>('storyboard-standing-wash'),
+        decoration: timelineStandingWashDecorationAt(
+          cellExtent: scale.pixelsPerFrame,
+          crossExtent: band.height,
+        ),
+      ),
+    );
+  }
+
+  /// The unit under [frame] on an S row: what a click there selects
+  /// ([trackRowMaterialBlocks] — its sound or its span, else the one cell),
+  /// read off the row as it is shown: through a drag, previewed (H12); while
+  /// a take rolls, the take.
+  ({int startIndex, int endIndexExclusive}) _unitOn(
+    Track track,
+    LayerId layerId,
+    int frame,
+  ) {
+    final spans = layerId == track.transitionLayer.id;
+    var shown = timelineDragPreviewGlobalLayerFor(
+      _state.widget.dragPreview?.value,
+      layerId,
+    );
+    if (shown == null && spans) {
+      shown = track.transitionLayer;
+    }
+    for (var slot = 0; shown == null && slot < _seSlotCount(track); slot++) {
+      if (_trackSeAt(track, slot)?.id == layerId) {
+        shown = _state._seDisplayAt(track, slot);
+      }
+    }
+    final unit = snapSpanToBlocks(
+      lanes: [if (shown != null) trackRowMaterialBlocks(shown, spans: spans)],
+      anchorIndex: frame,
+      headIndex: frame,
+    );
+    return unit ?? (startIndex: frame, endIndexExclusive: frame + 1);
   }
 
   /// The cross-axis band [row] occupies inside this track's group, or null

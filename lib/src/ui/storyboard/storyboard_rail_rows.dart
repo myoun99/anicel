@@ -1405,6 +1405,7 @@ class _StoryboardRailRows {
         timelineScale: scale,
         frameGeometry: _state._frameGeometry,
         hoveredCutId: _state._hoveredCutId,
+        standingCutId: _state.widget.cutUnderPlayhead,
         windowBucket: _state._horizontalWindowBucket,
         viewportWidth: _state._stripViewportWidth,
         railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(

@@ -16,6 +16,7 @@ import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
 import '../models/project_frame_rate.dart';
+import '../models/range_snap.dart' show snapSpanToBlocks;
 import '../models/se_audio_spans.dart';
 import '../models/timeline_coverage.dart'
     show
@@ -107,7 +108,8 @@ import 'timeline/timeline_cell_style.dart'
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecorationAt,
         timelineRowSelectionBandDecoration,
-        timelineSelectedFrameBorderColor;
+        timelineSelectedFrameBorderColor,
+        timelineStandingWashDecorationAt;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -170,6 +172,7 @@ import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
 import 'listenable_rebind.dart';
+import 'session/row_spans.dart' show trackRowMaterialBlocks;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 
 part 'storyboard/storyboard_standing.dart';
@@ -480,6 +483,7 @@ class StoryboardPanel extends StatefulWidget {
     this.frameAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
+    this.cutUnderPlayhead,
     this.revealSelectionTick,
     this.playbackFrame,
     this.frameReadySignal,
@@ -860,6 +864,11 @@ class StoryboardPanel extends StatefulWidget {
   /// subscribe, so scrub moves and playback ticks never rebuild the panel's
   /// strips/blocks/rails. Null (or a null value) hides the line.
   final ValueListenable<int?>? playheadFrame;
+
+  /// The cut under the playhead — the session's one answer for the cut being
+  /// looked at, moving on crossings only. Its plate wears the standing wash
+  /// (F-248); null where none is wired.
+  final ValueListenable<CutId?>? cutUnderPlayhead;
 
 
   /// F-110: WHETHER PLAYBACK IS RUNNING — the playback position, or null
@@ -4652,6 +4661,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.timelineScale,
     required this.frameGeometry,
     required this.hoveredCutId,
+    this.standingCutId,
     required this.windowBucket,
     required this.viewportWidth,
     required this.showSeconds,
@@ -4716,6 +4726,10 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// is no widget per cut to hold a hover state, so one notifier does for
   /// the whole row and a hover is a repaint rather than a rebuild.
   final ValueNotifier<CutId?> hoveredCutId;
+
+  /// The cut under the playhead, whose plate wears the standing wash
+  /// ([StoryboardCutBlocksPainter.standingCutId]).
+  final ValueListenable<CutId?>? standingCutId;
 
   /// The shared window inputs (UI-R16): the blocks painter draws — and asks
   /// for thumbnails — only inside the visible span.
@@ -4844,6 +4858,7 @@ class _StoryboardTrackRow extends StatelessWidget {
       gripGround: storyboardCutBlockBackgroundColor(
         Theme.of(context).colorScheme,
         hovered: false,
+        standing: false,
       ),
       gripGrounds: () =>
           StoryboardPlateGrounds(blocksPainter, crossOffset: paper.slot.top),
@@ -5143,6 +5158,7 @@ class _StoryboardTrackRow extends StatelessWidget {
       selectedRange: cutSelect?.selectedRange,
       rowAddress: TrackRowAddress(track.id),
       hoveredCutId: hoveredCutId,
+      standingCutId: standingCutId,
       colorScheme: Theme.of(context).colorScheme,
       baseTextStyle: DefaultTextStyle.of(context).style,
       showSeconds: showSeconds,

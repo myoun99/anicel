@@ -15,6 +15,26 @@ import 'session_roles.dart';
 import 'track_se_display.dart';
 import 'transitions.dart';
 
+/// The blocks a track-owned row's [material] makes, as a snap lane: a sound
+/// row's sounds, or — [spans] — the transition row's spans. One reading for
+/// the select-drag that snaps to them and the standing wash that stands on
+/// them (F-248), so a row cannot select one block and stand on another.
+RangeBlockAt trackRowMaterialBlocks(Layer material, {required bool spans}) =>
+    spans
+    ? (index) {
+        final covering = instructionSpanCovering(
+          material.instructions,
+          index,
+        );
+        return covering == null
+            ? null
+            : RangeBlock(
+                startIndex: covering.key,
+                endIndexExclusive: covering.key + covering.value.length,
+              );
+      }
+    : (index) => exposureBlockAt(material, index);
+
 /// WHAT A ROW SPANS — where a row's material starts and ends, and what a
 /// range drag over it may snap to.
 ///
@@ -136,7 +156,7 @@ class RowSpans {
         // every unselected track's sounds snapless.
         final layer = _trackSe.trackSeAnywhere(layerId)?.layer;
         if (layer != null) {
-          return (index) => exposureBlockAt(layer, index);
+          return trackRowMaterialBlocks(layer, spans: false);
         }
         // 🚨The transition row snaps to its SPANS, and a row with no snap lane
         // at all produced no span — which cleared the selection instead of
@@ -148,18 +168,7 @@ class RowSpans {
         if (transition == null) {
           return null;
         }
-        return (index) {
-          final covering = instructionSpanCovering(
-            transition.instructions,
-            index,
-          );
-          return covering == null
-              ? null
-              : RangeBlock(
-                  startIndex: covering.key,
-                  endIndexExclusive: covering.key + covering.value.length,
-                );
-        };
+        return trackRowMaterialBlocks(transition, spans: true);
       case LaneRowAddress():
         // Lane keys are POINTS, not blocks — the lane domain's own rule
         // ("raw cells, no block snap"), so there is nothing to snap to.

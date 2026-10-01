@@ -483,6 +483,7 @@ void main() {
       rect: Rect.fromLTWH(0, 0, width, 52 + stripHeight),
       isRangeSelected: false,
       isHovered: false,
+      isStanding: false,
       title: '1',
       layerLabel: '',
       hasStoryboardLayer: hasStoryboardLayer,
