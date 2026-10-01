@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import '../text/vertical_writing.dart' show verticalTextCells;
 import '../text/vertical_writing_text.dart';
+import '../text/word_bake.dart' show BakedWords;
 import '../text/word_condensation.dart';
 import 'axis_turn.dart' show extentAlong;
 import 'timeline_cell_style.dart';
@@ -210,6 +211,20 @@ abstract class RenderTimelineBuiltWord extends RenderBox {
 
   @override
   bool get sizedByParent => true;
+
+  // A narrowed word is painted from its bake, which lands after the first
+  // paint ([BakedWords.landed]).
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    BakedWords.instance.landed.addListener(markNeedsPaint);
+  }
+
+  @override
+  void detach() {
+    BakedWords.instance.landed.removeListener(markNeedsPaint);
+    super.detach();
+  }
 
   @override
   Size computeDryLayout(BoxConstraints constraints) => _roomFor(constraints);

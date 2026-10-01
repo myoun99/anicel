@@ -31,6 +31,7 @@ import 'timeline/timeline_glyph_cache.dart';
 import 'timeline/timeline_row_edit_chrome.dart'
     show TimelineChromeGround, TimelineChromeGrounds;
 import 'repaint_props.dart';
+import 'text/word_bake.dart' show RepaintOnWordBakes;
 import 'timeline/memo_token.dart';
 
 /// The ground EVERY piece of CARRIED writing on a cut block receives — all
@@ -277,7 +278,8 @@ final ValueNotifier<CutId?> _noHover = ValueNotifier<CutId?>(null);
 ///
 /// Only the drawing lives here. Selecting, sliding and reordering are the
 /// shared range gesture's, mounted above.
-class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
+class StoryboardCutBlocksPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   StoryboardCutBlocksPainter({
     required this.entries,
     required this.storyboardLayerNames,

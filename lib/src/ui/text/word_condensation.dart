@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/painting.dart' show TextPainter;
 
+import 'word_bake.dart';
+
 /// How far a WORD is narrowed along one axis so it keeps to its room — THE
 /// rule every word in a block obeys, on each axis on its own.
 ///
@@ -92,6 +94,11 @@ void paintFittedText(
 ]) {
   if (fit == wordFitsAsItIs) {
     painter.paint(canvas, origin);
+    return;
+  }
+  // F-224: a word narrowed under the legible size is drawn from its bake,
+  // as a tile word is — scaled here it speckles on the engine.
+  if (paintBakedWord(canvas, painter, origin, fit)) {
     return;
   }
   canvas

@@ -14,6 +14,7 @@ import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_second.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../text/word_condensation.dart';
 
 /// The ruler's top-line SECOND mark at [frameIndex], or '' off a boundary.
@@ -115,7 +116,8 @@ class TimelineRulerHeaderModel {
 /// gone. Shared by the timeline header and the storyboard ruler (which
 /// already share [TimelineFrameHeaderRow]); scrubbing stays on the
 /// viewport-level listeners (G8) — the strip itself is passive.
-class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
+class TimelineFrameRulerPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   TimelineFrameRulerPainter({required this.scale})
     : super(repaint: scale.windowBucket);
 

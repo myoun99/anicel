@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../widgets/tick_layer.dart';
 import 'memo_token.dart';
 import 'timeline_frame_ruler_painter.dart';
@@ -169,7 +170,7 @@ Widget timelineRulerStripWithWriting({
 /// clipped to it, and rewrites whatever standing writing reaches in there
 /// — so what stands down goes whole and nothing beside it is cut.
 class TimelineRulerPlayheadWritingPainter extends CustomPainter
-    with RepaintOnProps {
+    with RepaintOnProps, RepaintOnWordBakes {
   TimelineRulerPlayheadWritingPainter({
     required this.scale,
     required this.playhead,

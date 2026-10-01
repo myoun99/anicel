@@ -28,6 +28,7 @@ import 'timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'timeline_zoom_anchor_policy.dart'
     show applyZoomAnchoredScroll, zoomAnchoredScrollOffset;
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../widgets/tick_layer.dart';
 import 'memo_token.dart';
 
@@ -732,7 +733,8 @@ class _CollapsedStripPlayheadPainter extends CustomPainter
   Object get props => (playhead, pixelsPerFrame, frameStartIndex);
 }
 
-class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
+class _CollapsedStripPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   const _CollapsedStripPainter({
     required this.snapshot,
     required this.row,

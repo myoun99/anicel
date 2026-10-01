@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
+import 'package:anicel/src/ui/text/word_bake.dart';
 
 /// 🚨★★★TINY TEXT SHRINKS INTO A MARK. IT DOES NOT VANISH.
 ///
@@ -48,7 +48,7 @@ void main() {
     for (var y = 0; y < 8; y += 1) {
       src[y * 8 + 3] = 255; // one vertical stroke, column 3
     }
-    final filtered = TimelineGridTileStore.boxFilterA8(src, 8, 8, 2, 2);
+    final filtered = boxFilterA8(src, 8, 8, 2, 2);
     expect(filtered.length, 4);
     expect(
       mean(filtered),
@@ -65,19 +65,10 @@ void main() {
     // ⛔The two fixed points. A filter that dimmed a solid block would be
     // losing ink globally rather than redistributing it.
     final full = Uint8List(6 * 6)..fillRange(0, 36, 255);
-    expect(
-      TimelineGridTileStore.boxFilterA8(
-        full,
-        6,
-        6,
-        3,
-        3,
-      ).every((v) => v == 255),
-      isTrue,
-    );
+    expect(boxFilterA8(full, 6, 6, 3, 3).every((v) => v == 255), isTrue);
     final empty = Uint8List(6 * 6);
     expect(
-      TimelineGridTileStore.boxFilterA8(empty, 6, 6, 3, 3).every((v) => v == 0),
+      boxFilterA8(empty, 6, 6, 3, 3).every((v) => v == 0),
       isTrue,
     );
   });
@@ -86,7 +77,7 @@ void main() {
     // 🚨A shrink whose source ranges skip a row leaves a dark band. 7→3 is
     // the awkward case: the ranges have to tile the source without holes.
     final src = Uint8List(7 * 7)..fillRange(0, 49, 200);
-    final out = TimelineGridTileStore.boxFilterA8(src, 7, 7, 3, 3);
+    final out = boxFilterA8(src, 7, 7, 3, 3);
     expect(out.length, 9);
     expect(
       out.every((v) => v == 200),
@@ -109,25 +100,17 @@ void main() {
   });
 
   test('the bake scale is 1 at and above the legible size', () {
-    // ⛔THE ZOOM-IN GUARANTEE, read off the source. `_bakeAtScale` is
-    // private, so this asserts the property that makes it safe: the
-    // oversample only turns on BELOW the legible size, and the ordinary
-    // path multiplies by exactly 1.
-    //
+    // ⛔THE ZOOM-IN GUARANTEE: the oversample only turns on BELOW the
+    // legible size, and the ordinary path multiplies by exactly 1 — a
+    // glyph the rasteriser already draws well is baked as it always was.
+    expect(wordBakeScale(legibleBakeSize), 1);
+    expect(wordBakeScale(14), 1);
+    expect(wordBakeScale(legibleBakeSize / 2), 2);
     // ⚠️WHITESPACE-FREE. The first version matched a multi-line literal and
     // answered differently on Windows (CRLF) and CI (LF) — a test that
     // depends on line endings measures the checkout, not the code.
     final source = _squash(
-      File(
-        'lib/src/ui/timeline/timeline_grid_tile_store.dart',
-      ).readAsStringSync(),
-    );
-    expect(
-      source.contains('if(size>=_legibleBakeSize){return1;}'),
-      isTrue,
-      reason:
-          'a glyph the rasteriser already draws well is baked as it '
-          'always was — zoom-in keeps its pixels',
+      File('lib/src/ui/text/word_bake.dart').readAsStringSync(),
     );
     expect(
       source.contains('bakeScale==1?big'),

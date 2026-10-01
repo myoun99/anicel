@@ -14,6 +14,7 @@ import 'timeline_frame_range_policy.dart'
 import 'timeline_frame_window.dart' show visibleFrameWindowFor;
 import 'timeline_glyph_cache.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import 'memo_token.dart';
 
 /// One block's printed length and where it sits — the probe surface tests
@@ -70,7 +71,8 @@ const double timelineRunLabelFontSize = 9;
 ///
 /// Ghost blocks stay unlabeled: their timing is derived, the same rule the
 /// run-edge clusters follow.
-class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
+class TimelineRowRunLabelsPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   TimelineRowRunLabelsPainter({
     required this.layer,
     required this.geometry,

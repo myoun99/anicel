@@ -39,6 +39,7 @@ import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'timeline_grid_tile_store.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import 'memo_token.dart';
 import 'timeline_tile_raster_source.dart';
 
@@ -92,7 +93,7 @@ List<int> timelineRowCellEdges(Layer layer) {
 }
 
 class TimelineRowCellsPainter extends CustomPainter
-    with RepaintOnProps
+    with RepaintOnProps, RepaintOnWordBakes
     implements TimelineTileRasterSource {
   TimelineRowCellsPainter({
     required this.layer,

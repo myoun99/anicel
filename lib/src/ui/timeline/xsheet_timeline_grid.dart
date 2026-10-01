@@ -72,6 +72,7 @@ import 'rail_eyes.dart';
 import 'timeline_swipe_columns.dart';
 import '../input/wheel_law.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 
 part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
 part 'xsheet_grid/xsheet_grid_headers.dart';
@@ -1352,7 +1353,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
 /// ruler's UI-R13 #1 treatment, transposed): number rows, the seconds
 /// column, selection tint, playback dimming and the cached strip paint
 /// in a single pass. Public for the test probe.
-class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
+class XSheetFrameRailPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   XSheetFrameRailPainter({required this.scale})
     : super(repaint: scale.windowBucket);
 

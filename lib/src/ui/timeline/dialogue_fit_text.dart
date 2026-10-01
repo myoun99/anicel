@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../text/app_face.dart';
 import '../text/dialogue_fit_layout.dart';
 import '../text/dialogue_fit_paint.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../text/word_condensation.dart';
 import 'axis_turn.dart';
 import '../repaint_props.dart';
@@ -66,7 +67,8 @@ TextStyle dialogueFitStyle(
   fontWeight: FontWeight.w600,
 );
 
-class _DialogueFitPainter extends CustomPainter with RepaintOnProps {
+class _DialogueFitPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   _DialogueFitPainter({
     required this.text,
     required this.axis,

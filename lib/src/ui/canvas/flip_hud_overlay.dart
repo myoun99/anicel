@@ -12,6 +12,7 @@ import '../timeline/timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'flip_hud_controller.dart';
 import 'flip_hud_model.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../timeline/memo_token.dart';
 import '../text/app_face.dart';
 import '../text/vertical_writing_text.dart';
@@ -281,7 +282,8 @@ class FlipHudOverlay extends StatelessWidget {
   }
 }
 
-class FlipHudPainter extends CustomPainter with RepaintOnProps {
+class FlipHudPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   const FlipHudPainter({
     required this.snapshot,
     required this.axis,
