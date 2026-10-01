@@ -153,20 +153,18 @@ class BrushPresetFileService {
 
   /// Sends presets whose group no longer exists back to the root section, so
   /// a hand-edited or partially-merged file can never hide a preset behind a
-  /// header that is not there.
+  /// header that is not there — the tab it shows in
+  /// ([BrushPreset.groupShownAmong]) made what it holds.
   static List<BrushPreset> _withKnownGroups(
     List<BrushPreset> presets,
     List<BrushGroup> groups,
-  ) {
-    final knownIds = {for (final group in groups) group.id};
-    return [
-      for (final preset in presets)
-        if (preset.groupId == null || knownIds.contains(preset.groupId))
-          preset
-        else
-          preset.copyWith(groupId: null),
-    ];
-  }
+  ) => [
+    for (final preset in presets)
+      if (preset.groupShownAmong(groups) == preset.groupId)
+        preset
+      else
+        preset.copyWith(groupId: null),
+  ];
 
   /// Writes the preset library, creating the app-data directory as needed.
   Future<void> save(BrushPresetLibraryData library) => saveVersionedSettings(

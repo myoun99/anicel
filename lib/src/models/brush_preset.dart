@@ -22,8 +22,9 @@ class BrushPreset {
 
   /// The group this preset shows under among [groups] — [groupId] when one
   /// of them carries it, else null for the root, so a stale reference can
-  /// never hide the preset. The panel's tabs and every 「which brushes are in
-  /// this group」 read ask here.
+  /// never hide the preset. The panel's tabs, every 「which brushes are in
+  /// this group」 read and the library file's clean-up on load ask here —
+  /// three places answered it apart until 2026-10-01.
   BrushGroupId? groupShownAmong(List<BrushGroup> groups) {
     final id = groupId;
     if (id == null) {
