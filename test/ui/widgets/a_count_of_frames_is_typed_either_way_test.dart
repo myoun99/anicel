@@ -138,6 +138,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     final s = tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+    // The window opens over a block to apply to, as in the test above.
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
     final seconds = find.byKey(
       const ValueKey<String>('set-comma-n-seconds-field'),
     );
