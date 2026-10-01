@@ -186,15 +186,20 @@ bool paintBakedWord(
 ) {
   final span = painter.text;
   final fontSize = span?.style?.fontSize;
-  if (span == null || wordBakeScale(_narrowedType(fontSize, fit)) == 1) {
+  // The ROOT TRANSFORM's pixels are what a bake is cut for — with no view on
+  // screen (a painter called by itself) there are none, and the word is
+  // painted as it always was.
+  final views = RendererBinding.instance.renderViews;
+  if (span == null ||
+      views.isEmpty ||
+      wordBakeScale(_narrowedType(fontSize, fit)) == 1) {
     return false;
   }
-  // The ROOT TRANSFORM's ratio, which carries the app's UI scale — the
-  // view's own ratio does not, and a bake cut for it would be shrunk by the
-  // GPU again (`EffectiveDevicePixelRatio` is this number where there is a
-  // context; a painter has none).
-  final dpr =
-      RendererBinding.instance.renderViews.first.configuration.devicePixelRatio;
+  // The root transform's ratio carries the app's UI scale — the view's own
+  // ratio does not, and a bake cut for it would be shrunk by the GPU again
+  // (`EffectiveDevicePixelRatio` is this number where there is a context; a
+  // painter has none).
+  final dpr = views.first.configuration.devicePixelRatio;
   final baked = BakedWords.instance._bakeFor(
     (
       span: span,
