@@ -719,6 +719,32 @@ Project _projectWithLayersSubstituted(
   );
 }
 
+/// What [layer]'s cut-local row SHOWS while [preview] is in flight, or null
+/// when the preview does not reach it — the row gate's answer, and the
+/// standing wash's, so the wash cannot ride a drag its row does not.
+Layer? timelineRowPreviewLayer(TimelineDragPreview? preview, Layer layer) {
+  final direct = timelineDragPreviewLayerFor(preview, layer.id);
+  if (direct != null) {
+    return direct;
+  }
+  // SYNCED attach rows mirror their BASE live (UI-R20 #8): while a
+  // drag previews the base, re-derive the mirrored display timeline
+  // from the previewed base so the attach row follows the pointer, not
+  // just the release commit. FREE attach rows own their timeline — a
+  // base drag must never overwrite it (UI-R21 #3).
+  if (!isSyncedAttachedLayer(layer)) {
+    return null;
+  }
+  final baseId = layer.attachedToLayerId;
+  if (baseId != null) {
+    final previewBase = timelineDragPreviewLayerFor(preview, baseId);
+    if (previewBase != null) {
+      return attachedDisplayLayer(attached: layer, base: previewBase);
+    }
+  }
+  return null;
+}
+
 /// Wraps one grid row (or X-sheet column) so an edge drag rebuilds ONLY
 /// the dragged layer's row: the gate listens to the preview channel and
 /// re-runs [rowBuilder] with the preview layer substituted while its layer
@@ -804,40 +830,12 @@ class _TimelineDragPreviewRowGateState
     super.dispose();
   }
 
-  Layer? _resolvePreviewLayer() {
-    if (widget.useGlobalForm) {
-      return timelineDragPreviewGlobalLayerFor(
-        widget.dragPreview?.value,
-        widget.layer.id,
-      );
-    }
-    final direct = timelineDragPreviewLayerFor(
-      widget.dragPreview?.value,
-      widget.layer.id,
-    );
-    if (direct != null) {
-      return direct;
-    }
-    // SYNCED attach rows mirror their BASE live (UI-R20 #8): while a
-    // drag previews the base, re-derive the mirrored display timeline
-    // from the previewed base so the attach row follows the pointer, not
-    // just the release commit. FREE attach rows own their timeline — a
-    // base drag must never overwrite it (UI-R21 #3).
-    if (!isSyncedAttachedLayer(widget.layer)) {
-      return null;
-    }
-    final baseId = widget.layer.attachedToLayerId;
-    if (baseId != null) {
-      final previewBase = timelineDragPreviewLayerFor(
-        widget.dragPreview?.value,
-        baseId,
-      );
-      if (previewBase != null) {
-        return attachedDisplayLayer(attached: widget.layer, base: previewBase);
-      }
-    }
-    return null;
-  }
+  Layer? _resolvePreviewLayer() => widget.useGlobalForm
+      ? timelineDragPreviewGlobalLayerFor(
+          widget.dragPreview?.value,
+          widget.layer.id,
+        )
+      : timelineRowPreviewLayer(widget.dragPreview?.value, widget.layer);
 
   /// Track-global hosts draw no silhouette ([timelineDragSilhouetteFor] is
   /// the active-cut rows' question).

@@ -540,6 +540,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       frameRangeSelection: widget.hooks.rangeHooks?.selection,
       // R27 #14: one band for cells and lanes alike.
       laneRangeSelection: widget.hooks.laneRange?.selection,
+      dragPreview: widget.hooks.dragPreview,
       frameCursor: widget.hooks.frameCursor,
       rows: entries,
       activeLayerId: widget.hooks.activeLayerId,

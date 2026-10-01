@@ -693,6 +693,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       // span draws the SAME
       // band here.
       laneRangeSelection: widget.hooks.laneRange?.selection,
+      dragPreview: widget.hooks.dragPreview,
       rows: rows,
       activeLayerId: widget.hooks.activeLayerId,
       frameStartIndex: 0,

@@ -7,6 +7,7 @@ import '../../models/timeline_row_address.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import 'property_lane_model.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_drag_preview.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'axis_turn.dart';
 import 'timeline_frame_window.dart';
@@ -17,8 +18,8 @@ import '../widgets/tick_layer.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 
 /// Everything of a timeline grid that moves with the frame cursor — the
-/// playhead, the selection bands and the standing cell's semantics — in
-/// ONE widget subscribed to the cursor.
+/// standing wash, the playhead, the selection bands and the standing cell's
+/// semantics — in ONE widget subscribed to the cursor.
 ///
 /// This is the heart of the playback-performance architecture: a playback
 /// tick or an editing seek repaints THIS layer only, and lays out this layer
@@ -41,6 +42,7 @@ class TimelineCursorLayer extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.frameRangeSelection,
     this.laneRangeSelection,
+    this.dragPreview,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.selectedSemanticsKey = const ValueKey<String>(
@@ -61,6 +63,12 @@ class TimelineCursorLayer extends StatelessWidget {
   /// a different colour, a different corner, for what is the same idea
   /// ("다른 프레임셀선택이랑 완전동일화").
   final ValueListenable<TimelineLaneSelection?>? laneRangeSelection;
+
+  /// The edit-drag preview the rows below show: while a drag reshapes the
+  /// row you stand on, the standing wash reads that row as previewed, so it
+  /// rides the drag (H12) instead of holding the block's old seat. Null where
+  /// the rows show no preview.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
 
   /// The grid's display rows (layer rows + expanded lanes), for the active
   /// layer's cross-axis position.
@@ -131,6 +139,7 @@ class TimelineCursorLayer extends StatelessWidget {
               ?frameRangeSelection,
               ?laneRangeSelection,
               ?currentRow,
+              ?dragPreview,
               ?windowBucket,
             ]),
             builder: (context, _) => _overlay(),
@@ -140,8 +149,9 @@ class TimelineCursorLayer extends StatelessWidget {
     );
   }
 
-  /// Everything the cursor moves, bottom to top: the playhead, the
-  /// selected-range band or the lane-range band, and the standing cell.
+  /// Everything the cursor moves, bottom to top: the standing wash, the
+  /// playhead, the selected-range band or the lane-range band, and the
+  /// standing cell.
   ///
   /// UI-R15→R16: under full bounds + the quantized bucket, visibility GATES
   /// use the bucket-derived window, while positioning stays in the widget's
@@ -151,10 +161,12 @@ class TimelineCursorLayer extends StatelessWidget {
     final frame = frameCursor.value;
     final window = _visibleWindow();
     final cursorVisible = frameWindowContains(window, frame);
+    final standing = _standingRow();
     final children = <Widget>[
+      if (standing != null) ?_standingWash(standing, frame, window),
       ?_playhead(frame, cursorVisible: cursorVisible),
       ?_selectedBand(window),
-      ?_standingCell(frame, cursorVisible: cursorVisible),
+      if (standing != null && cursorVisible) _standingCell(standing, frame),
     ];
     return Stack(clipBehavior: Clip.none, children: children);
   }
@@ -229,7 +241,7 @@ class TimelineCursorLayer extends StatelessWidget {
     );
   }
 
-  // ── the five layers ───────────────────────────────────────────────────
+  // ── the layers ────────────────────────────────────────────────────────
 
   /// Mounted only while the cursor is inside the built window (the widget's
   /// own out-of-range shrink is not enough — tests and semantics treat
@@ -337,10 +349,81 @@ class TimelineCursorLayer extends StatelessWidget {
         lane.laneId == standing.laneId;
   }
 
+  /// The row you stand on, as a display row: the lane when you stand on one,
+  /// the active layer's row otherwise (one standing place, not two).
+  ({int index, bool lane})? _standingRow() {
+    final lane = _standingLaneIndex();
+    if (lane != null) return (index: lane, lane: true);
+    final layer = _rowIndexWhere(_rowIsActiveLayer);
+    return layer == null ? null : (index: layer, lane: false);
+  }
+
+  /// The unit the playhead stands on, on [row] — what a click on that cell
+  /// selects ([snapFrameRangeToBlocks]): its block, or the one cell when it
+  /// has none (F-175: 「빈 공간 한칸은 블럭으로서 한칸으로 쳐서」). A lane's
+  /// keys are points, not blocks, so on a lane it is the cell.
+  ///
+  /// The row as the rows below show it: through a drag, previewed.
+  ({int startIndex, int endIndexExclusive}) _standingUnit(
+    TimelineDisplayRow row,
+    int frame,
+  ) {
+    final cell = (startIndex: frame, endIndexExclusive: frame + 1);
+    if (row.isLane) return cell;
+    final shown =
+        timelineRowPreviewLayer(dragPreview?.value, row.layer) ?? row.layer;
+    final unit = snapFrameRangeToBlocks(
+      layer: shown,
+      anchorIndex: frame,
+      headIndex: frame,
+    );
+    return unit == null
+        ? cell
+        : (
+            startIndex: unit.startIndex,
+            endIndexExclusive: unit.endIndexExclusive,
+          );
+  }
+
+  /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색
+  /// 표시. 전처럼 연하게」, 10-01 「재생헤드가 선 블록」): the unit you stand on
+  /// wears the standing wash — a fill and no line, under the playhead's.
+  /// It stays while the playhead is scrolled out of the window and the unit
+  /// still reaches into it.
+  Widget? _standingWash(
+    ({int index, bool lane}) standing,
+    int frame,
+    ({int startIndex, int endIndexExclusive}) window,
+  ) {
+    final unit = _standingUnit(rows[standing.index], frame);
+    if (!frameRangesOverlap(
+      unit.startIndex,
+      unit.endIndexExclusive,
+      window.startIndex,
+      window.endIndexExclusive,
+    )) {
+      return null;
+    }
+    final unitStart = _frameX(unit.startIndex);
+    return placedAlong(
+      axis,
+      along: unitStart,
+      across: standing.index * metrics.layerRowHeight,
+      alongExtent: _frameX(unit.endIndexExclusive) - unitStart,
+      acrossExtent: metrics.layerRowHeight,
+      child: DecoratedBox(
+        key: const ValueKey<String>('timeline-standing-wash'),
+        decoration: timelineStandingWashDecorationAt(
+          cellExtent: metrics.frameCellWidth,
+          crossExtent: metrics.layerRowHeight,
+        ),
+      ),
+    );
+  }
+
   /// Where you STAND, said to semantics and to the probes that read it —
-  /// the cell under the playhead on the row you stand on: the lane when you
-  /// stand on one, the active layer's row otherwise (one standing place,
-  /// not two). It paints nothing.
+  /// the cell under the playhead on the row you stand on. It paints
+  /// nothing; the wash under it ([_standingWash]) is what shows.
   ///
   /// 🗣️F-212 (유저 2026-09-28): 「현재 블록이나 갭 등 위치를 알리는 실루엣
   /// 라인, 초기부터 있었지만 삭제하고싶음. 현재 재생헤드의 세로 바탕색
@@ -348,22 +431,18 @@ class TimelineCursorLayer extends StatelessWidget {
   /// ↩️The active row wore a ring round the block or the gap under the
   /// playhead, and a 3px ring on an empty cell; a lane you stood on wore
   /// the 3px ring (user, 2026-08-08: 진짜로 서 있게).
-  Widget? _standingCell(int frame, {required bool cursorVisible}) {
-    if (!cursorVisible) return null;
-    final lane = _standingLaneIndex();
-    final index = lane ?? _rowIndexWhere(_rowIsActiveLayer);
-    if (index == null) return null;
+  Widget _standingCell(({int index, bool lane}) standing, int frame) {
     final spanStart = _frameX(frame);
     return placedAlong(
       axis,
       along: spanStart,
-      across: index * metrics.layerRowHeight,
+      across: standing.index * metrics.layerRowHeight,
       alongExtent: _frameX(frame + 1) - spanStart,
       acrossExtent: metrics.layerRowHeight,
       child: Semantics(
-        key: lane == null
-            ? selectedSemanticsKey
-            : const ValueKey<String>('timeline-lane-standing-cell'),
+        key: standing.lane
+            ? const ValueKey<String>('timeline-lane-standing-cell')
+            : selectedSemanticsKey,
         label: AppText.strings.tlSelectedCell,
         container: true,
         child: const SizedBox.expand(),

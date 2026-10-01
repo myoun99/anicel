@@ -18,6 +18,8 @@ Color get timelinePlayheadColor => AppColors.accent;
 /// and it is the one thing that says where you stand now: the outlines
 /// round the block or gap you stand in went with the same request.
 /// ↩️The grids and the conte laid the accent at 18%, the rulers at 12%.
+/// ↩️F-248 (10-01) brought the block's own wash back, without its outline
+/// (`timelineStandingWashColor`).
 Color get timelinePlayheadWashColor =>
     timelinePlayheadColor.withValues(alpha: 0.3);
 

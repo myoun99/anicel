@@ -65,6 +65,33 @@ BoxDecoration _timelineSelectionBand(BorderRadius borderRadius) =>
       borderRadius: borderRadius,
     );
 
+/// THE standing wash — what the unit the playhead stands on wears, on the
+/// row you stand on: its block, or its one cell when it has none.
+///
+/// 🗣️F-248 (유저 2026-09-30): 「선택되있는 블럭 다시 표시하게하고싶음. 우선
+/// 외곽라인말고 블럭을 바탕색으로서 강조색 표시. 전처럼 연하게」, and of the
+/// block you stand on or the blocks you select (10-01): 「재생헤드가 선 블록」.
+/// F-212 took the outlines and this wash together; the wash alone comes back.
+/// 「전처럼」 is the plate the cut you stood in wore on the conte — the
+/// accent's container colour, the accent at 26%.
+Color get timelineStandingWashColor =>
+    timelineSelectedFrameBorderColor.withValues(alpha: 0.26);
+
+/// The standing wash over frame cells of [cellExtent] × [crossExtent]: the
+/// blocks' own corner, as the selection band wears it — a fill and no line.
+BoxDecoration timelineStandingWashDecorationAt({
+  required double cellExtent,
+  required double crossExtent,
+}) => BoxDecoration(
+  color: timelineStandingWashColor,
+  borderRadius: BorderRadius.all(
+    timelineBlockCornerRadiusAt(
+      cellExtent: cellExtent,
+      crossExtent: crossExtent,
+    ),
+  ),
+);
+
 /// The same band with SQUARE corners — the one the LAYER area wears.
 ///
 /// 🚨F-26 (유저 2026-08-24): 「레이어영역의 선택범위 ui, 프레임은 블록
