@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -9,10 +11,13 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_section_defaults.dart'
+    show createTrackTransitionLayer;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -57,6 +62,14 @@ void main() {
             ],
           ),
         ],
+        // A span over [5, 7).
+        transitionLayer: createTrackTransitionLayer(
+          const TrackId('sb-track'),
+        ).copyWith(
+          instructions: {
+            5: const InstructionEvent(instructionId: 'ol', length: 2),
+          },
+        ),
         effects: [
           LayerEffect(
             id: trackEffect,
@@ -153,6 +166,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(washed(tester, 5).start, 5);
     expect(washed(tester, 5).end, 6);
+  });
+
+  testWidgets('on the transition row, its span', (tester) async {
+    final session = await openConte(tester);
+    session.standing.selectRow(
+      LayerRowAddress(session.activeTrack.transitionLayer.id),
+    );
+    session.selectGlobalFrame(6);
+    await tester.pumpAndSettle();
+    expect(washed(tester, 6), (
+      start: 5,
+      end: 7,
+      row: rowOf(tester, 'storyboard-transition-row-sb-track'),
+    ));
   });
 
   testWidgets('on the V row, nothing over its pictures — the cut under the '
