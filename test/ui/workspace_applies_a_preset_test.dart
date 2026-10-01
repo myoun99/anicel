@@ -283,6 +283,106 @@ void main() {
     expect(panel(tester).selectedPresetId, tab[tab.length - 2]);
   });
 
+  /// The tabs of at least [count] brushes that the opening brush does not
+  /// show in, in rail order.
+  List<List<BrushPresetId>> otherTabsWithAtLeast(
+    WidgetTester tester,
+    int count,
+  ) {
+    final shown = panel(tester);
+    final opening = shown.presets
+        .firstWhere((preset) => preset.id == shown.selectedPresetId)
+        .groupShownAmong(shown.groups);
+    return [
+      for (final group in shown.groups)
+        if (group.id != opening)
+          [
+            for (final preset in shown.presets)
+              if (preset.groupShownAmong(shown.groups) == group.id) preset.id,
+          ],
+    ].where((tab) => tab.length >= count).toList();
+  }
+
+  /// A tap on the tab [member] shows in, the way a hand taps it.
+  Future<void> tapTabOf(WidgetTester tester, BrushPresetId member) async {
+    final shown = panel(tester);
+    final group = shown.presets
+        .firstWhere((preset) => preset.id == member)
+        .groupShownAmong(shown.groups);
+    final tab = find.byKey(
+      ValueKey<String>('brush-preset-tab-${group?.value ?? 'root'}'),
+    );
+    await tester.ensureVisible(tab);
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+  }
+
+  // 🗣️F-250 (유저 2026-10-01): 「브러시 그룹을 바꿀때(선택하던 뭐던), 해당
+  // 그룹의 마지막으로 선택했던걸 기억해서 그거 자동선택되도록」.
+  testWidgets('🚨F-250: opening a group takes up the brush last picked there '
+      '— its first the first time — and the tab in hand stays', (
+    tester,
+  ) async {
+    await pumpWithPresets(tester);
+    final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x.first,
+      reason: 'nothing held there yet: the group\'s first',
+    );
+    await pickInView(tester, x[1]);
+    await tapTabOf(tester, y.first);
+    expect(panel(tester).selectedPresetId, y.first);
+
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x[1],
+      reason: '「해당 그룹의 마지막으로 선택했던걸 기억해서」',
+    );
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x[1],
+      reason: 'the brush in hand is in that tab already — it stays',
+    );
+  });
+
+  // 🗣️F-250-group-memory-Q1 (유저 2026-10-01): 「도구마다 따로」.
+  //
+  // ⚠️A paint tool held for the first time takes up the brush in hand
+  // (PaintToolStateNotifier), and taking a brush up is remembered in its
+  // tab like any pick — so the eraser is taken up in ANOTHER tab here, or
+  // it would hold the brush tool's choice in x already and the rule 「inside
+  // the tab, the brush stays」 would answer for the memory.
+  testWidgets('🚨F-250: each paint tool remembers its own last brush in a '
+      'group', (tester) async {
+    await pumpWithPresets(tester);
+    final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+    await tapTabOf(tester, x.first);
+    await pickInView(tester, x[1]);
+    await tapTabOf(tester, y.first);
+
+    await takeUp(tester, 'eraser');
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x.first,
+      reason: 'the eraser never held one there — the brush tool\'s choice '
+          'is the brush tool\'s',
+    );
+
+    await takeUp(tester, 'brush');
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x[1],
+      reason: 'and the eraser\'s did not overwrite it',
+    );
+  });
+
   testWidgets('tapping a preset makes it the active one', (tester) async {
     await pumpWithPresets(tester);
     final active = panel(tester).selectedPresetId;

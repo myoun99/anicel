@@ -99,6 +99,7 @@ class BrushPresetPanel extends StatefulWidget {
     this.onGroupCreated,
     this.onGroupEdited,
     this.onGroupDeleted,
+    this.onGroupOpened,
     this.onGroupsReordered,
     this.onLibraryReset,
     this.onPresetExported,
@@ -142,6 +143,11 @@ class BrushPresetPanel extends StatefulWidget {
   /// Deletes the group AND every preset inside it (the panel confirms first,
   /// naming the count).
   final ValueChanged<BrushGroupId>? onGroupDeleted;
+
+  /// Told which tab was opened — the root section's is null — so the paint
+  /// tool in hand can take up the brush it last held there (F-250); the
+  /// panel only shows the tab.
+  final ValueChanged<BrushGroupId?>? onGroupOpened;
 
   /// Called with the full reordered group list after a tab drag.
   final ValueChanged<List<BrushGroup>>? onGroupsReordered;
@@ -550,6 +556,17 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     );
   }
 
+  /// A tab TAPPED: the paint tool in hand takes up its brush there
+  /// (F-250), then the tab shows. Told every time, the open tab's own
+  /// included — whether the hand already holds a brush of this tab is the
+  /// workspace's question, and the tab shown can differ from it after a
+  /// switch of tool. ⛔Not a drag's spring-loaded opening ([_openTab]),
+  /// which only shows where a dragged brush can land.
+  void _enterTab(BrushGroupId? groupId) {
+    widget.onGroupOpened?.call(groupId);
+    _openTab(groupId);
+  }
+
   void _openTab(BrushGroupId? groupId) {
     if (_tabChosen && _activeGroupId == groupId) {
       return;
@@ -930,7 +947,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
               // looks chalky and no one has to pick an icon.
               preview: _firstPresetIn(group?.id),
               selected: group?.id == open,
-              onTap: () => _openTab(group?.id),
+              onTap: () => _enterTab(group?.id),
             );
             return KeyedSubtree(
               key: ValueKey<String>(

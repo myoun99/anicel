@@ -219,6 +219,48 @@ void main() {
       );
     });
 
+    // F-250 (유저 2026-10-01): 「브러시 그룹을 바꿀때 … 해당 그룹의 마지막으로
+    // 선택했던걸 기억해서 그거 자동선택되도록」.
+    test('entering a tab takes the remembered brush while it still shows '
+        'there, the tab\'s first otherwise, nothing in an empty tab', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      const i2 = BrushPresetId('i2');
+
+      expect(library.presetEntering(_ink, remembered: i2), i2);
+      expect(
+        library.presetEntering(_ink)?.value,
+        'i1',
+        reason: 'nothing remembered: the first',
+      );
+      expect(
+        library.presetEntering(_ink, remembered: const BrushPresetId('p1'))
+            ?.value,
+        'i1',
+        reason: 'remembered somewhere else: the first',
+      );
+      expect(
+        library.presetEntering(null)?.value,
+        'loose',
+        reason: 'the root section is a tab like any other',
+      );
+
+      library.arrange(
+        brushLibraryArrangementOf([
+          for (final preset in library.presets)
+            if (preset.id == i2) preset.copyWith(groupId: _paint) else preset,
+        ], library.groups),
+      );
+      expect(
+        library.presetEntering(_ink, remembered: i2)?.value,
+        'i1',
+        reason: 'it moved out of the tab since',
+      );
+
+      library.createGroup('Empty');
+      expect(library.presetEntering(library.groups.last.id), isNull);
+    });
+
     // F-250: a move is undone by laying the old arrangement back, and the
     // library may have changed in ways that are not on the stack since.
     test('🚨an old arrangement laid back keeps a delete and an import made '

@@ -395,6 +395,25 @@ class BrushPresetLibrary extends ChangeNotifier {
       if (preset.groupShownAmong(_groups) == groupId) preset,
   ];
 
+  /// The preset a hand entering [groupId]'s tab takes up: [remembered] — the
+  /// one it last held there — while it still shows in that tab, otherwise
+  /// the tab's first, or null for an empty tab.
+  ///
+  /// 🗣️F-250 (유저 2026-10-01): 「브러시 그룹을 바꿀때(선택하던 뭐던), 해당
+  /// 그룹의 마지막으로 선택했던걸 기억해서 그거 자동선택되도록」 — the tool
+  /// rail's `railEntry` law for brush groups: from outside, back to where it
+  /// was left; the first time, the group's own first.
+  BrushPresetId? presetEntering(
+    BrushGroupId? groupId, {
+    BrushPresetId? remembered,
+  }) {
+    final tab = presetsInGroup(groupId);
+    if (remembered != null && tab.any((each) => each.id == remembered)) {
+      return remembered;
+    }
+    return tab.firstOrNull?.id;
+  }
+
   /// The preset beside [id] in the tab it shows in — the next one, or the
   /// one before when it is the last — or null when it stands alone: what a
   /// hand holding [id] takes up when it is deleted (F-250).
